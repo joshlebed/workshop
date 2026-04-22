@@ -14,7 +14,10 @@
     "android": {
       "package": "dev.josh.watchlist"
     },
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
     "experiments": {
       "typedRoutes": true
     },
@@ -22,13 +25,15 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/REPLACE_WITH_EAS_PROJECT_ID"
+      "url": "https://u.expo.dev/630ef7a3-31c2-4d74-84f6-4f93a302360e"
     },
     "extra": {
       "apiUrl": "http://localhost:8787",
+      "router": {},
       "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+        "projectId": "630ef7a3-31c2-4d74-84f6-4f93a302360e"
       }
-    }
+    },
+    "owner": "joshlebed"
   }
 }
