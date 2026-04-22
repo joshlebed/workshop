@@ -48,7 +48,7 @@ export default function SignIn() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Text style={styles.title}>Workshop</Text>
+      <Text style={styles.title}>Workshop.dev</Text>
       <Text style={styles.subtitle}>
         {step === "email" ? "Sign in with your email" : `We sent a code to ${email}`}
       </Text>
