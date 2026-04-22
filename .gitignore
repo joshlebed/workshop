@@ -60,3 +60,7 @@ apps/backend/*.zip
 # Test
 coverage/
 .nyc_output/
+
+# Local plans and handoff docs — keep off git so they can hold
+# account IDs, tokens, and in-progress migration state without risk.
+docs/plans/
