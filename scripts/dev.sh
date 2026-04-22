@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Full local dev stack: Docker postgres + backend + Expo.
-# Run from repo root. Ctrl-C stops everything.
+# Start postgres (Docker) + backend. Run Expo separately in another terminal:
+#
+#   EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter watchlist start
+#
+# Why two terminals: Expo's interactive QR/keybind UI doesn't render cleanly
+# if backend logs are streaming into the same TTY.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-# 1. Postgres via Docker
 if ! docker info >/dev/null 2>&1; then
   echo "Docker isn't running. Start Docker Desktop and retry."
   exit 1
@@ -24,7 +27,6 @@ else
   docker start workshop-pg >/dev/null
 fi
 
-# Wait for postgres
 printf "Waiting for postgres"
 for _ in $(seq 1 20); do
   if docker exec workshop-pg pg_isready -U postgres >/dev/null 2>&1; then
@@ -35,7 +37,6 @@ for _ in $(seq 1 20); do
   sleep 0.5
 done
 
-# 2. Ensure .env exists
 if [ ! -f apps/backend/.env ]; then
   cp apps/backend/.env.example apps/backend/.env
   SECRET=$(openssl rand -hex 32)
@@ -46,17 +47,15 @@ if [ ! -f apps/backend/.env ]; then
   echo "Created apps/backend/.env (with a generated SESSION_SECRET)."
 fi
 
-# 3. Apply migrations
 set -a
 # shellcheck disable=SC1091
 source apps/backend/.env
 set +a
 pnpm --filter @workshop/backend run db:migrate
 
-# 4. Start backend + mobile in parallel
-trap 'echo "Stopping..."; kill 0' EXIT INT TERM
+echo ""
+echo "→ Backend starting. In another terminal, run:"
+echo "  EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter watchlist start"
+echo ""
 
-pnpm --filter @workshop/backend run dev &
-EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter watchlist run start &
-
-wait
+exec pnpm --filter @workshop/backend run dev

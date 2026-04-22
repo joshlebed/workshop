@@ -14,11 +14,17 @@ app (`apps/watchlist`). Future apps live alongside it.
 
 ```bash
 pnpm install
-./scripts/dev.sh          # postgres (docker) + backend + expo
+./scripts/dev.sh                  # postgres + backend (leave running)
+
+# In a second terminal:
+EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter watchlist start
 ```
 
-Then open Expo Go on your iPhone and scan the QR code. Sign in with any email — you'll see the
-6-digit code printed in the backend terminal (local mode doesn't send real email).
+Open Expo Go on your iPhone, scan the QR code from the second terminal. Sign in with any email —
+the 6-digit code prints in the backend terminal (local mode doesn't send real email).
+
+> Two terminals because Expo's interactive QR/keybind UI doesn't render cleanly next to streaming
+> backend logs.
 
 ## Commands
 
