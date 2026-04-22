@@ -1,0 +1,147 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/backend/**"
+      - "packages/shared/**"
+      - "infra/**"
+      - ".github/workflows/deploy-backend.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-backend
+  cancel-in-progress: false
+
+permissions:
+  id-token: write # OIDC to AWS
+  contents: read
+
+jobs:
+  terraform:
+    name: Terraform apply
+    runs-on: ubuntu-latest
+    outputs:
+      lambda_name: ${{ steps.out.outputs.lambda_name }}
+      db_url_param: ${{ steps.out.outputs.db_url_param }}
+      log_group: ${{ steps.out.outputs.log_group }}
+      api_url: ${{ steps.out.outputs.api_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.7
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init
+
+      - name: terraform apply
+        working-directory: infra
+        run: terraform apply -auto-approve
+
+      - name: Capture outputs
+        id: out
+        working-directory: infra
+        run: |
+          echo "lambda_name=$(terraform output -raw lambda_function_name)" >> "$GITHUB_OUTPUT"
+          echo "db_url_param=$(terraform output -raw db_url_ssm_param)" >> "$GITHUB_OUTPUT"
+          echo "log_group=$(terraform output -raw cloudwatch_log_group)" >> "$GITHUB_OUTPUT"
+          echo "api_url=$(terraform output -raw api_url)" >> "$GITHUB_OUTPUT"
+
+  migrate:
+    name: Run DB migrations
+    needs: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.19.0 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Fetch DB URL from SSM
+        id: ssm
+        run: |
+          DB_URL=$(aws ssm get-parameter \
+            --name "${{ needs.terraform.outputs.db_url_param }}" \
+            --with-decryption \
+            --query Parameter.Value --output text)
+          echo "::add-mask::$DB_URL"
+          echo "DB_URL=$DB_URL" >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        working-directory: apps/backend
+        env:
+          STAGE: prod
+          DATABASE_URL: ${{ env.DB_URL }}
+          SESSION_SECRET: dummy_for_migrate_only_not_used
+          SES_FROM_ADDRESS: noreply@example.com
+          AWS_REGION: us-east-1
+        run: pnpm run db:migrate
+
+  deploy:
+    name: Build + upload Lambda
+    needs: [terraform, migrate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.19.0 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Bundle Lambda
+        working-directory: apps/backend
+        run: pnpm run build
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Upload to Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name "${{ needs.terraform.outputs.lambda_name }}" \
+            --zip-file fileb://apps/backend/lambda.zip \
+            --publish
+          aws lambda wait function-updated \
+            --function-name "${{ needs.terraform.outputs.lambda_name }}"
+
+      - name: Smoke test /health
+        run: |
+          set -euo pipefail
+          URL="${{ needs.terraform.outputs.api_url }}/health"
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$URL" >/dev/null; then
+              echo "health OK"
+              exit 0
+            fi
+            echo "retry $i..."
+            sleep 3
+          done
+          echo "health check failed"
+          exit 1

@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Watchlist",
+    "slug": "watchlist",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "watchlist",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.josh.watchlist"
+    },
+    "android": {
+      "package": "dev.josh.watchlist"
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/REPLACE_WITH_EAS_PROJECT_ID"
+    },
+    "extra": {
+      "apiUrl": "http://localhost:8787",
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    }
+  }
+}

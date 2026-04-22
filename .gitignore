@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+.next/
+.expo/
+.expo-shared/
+web-build/
+
+# Env + secrets (never commit)
+.env
+.env.local
+.env.*.local
+*.pem
+*.p8
+*.p12
+*.key
+.aws/
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+
+# Logs
+*.log
+dev.log
+logs/
+
+# IDE
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+.DS_Store
+
+# Expo
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Lambda build artifacts
+apps/backend/dist/
+apps/backend/*.zip
+
+# Test
+coverage/
+.nyc_output/

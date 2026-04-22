@@ -1,0 +1,7 @@
+# Copy to terraform.tfvars.local and fill in. tfvars files are gitignored.
+# For CI deploys, set these as HCP Terraform workspace variables instead.
+
+ses_verified_email     = "joshlebed@gmail.com"
+budget_email_recipient = "joshlebed@gmail.com"
+# aws_region           = "us-east-1"      # default
+# github_repository    = "joshlebed/workshop"  # default

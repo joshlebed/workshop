@@ -1,0 +1,54 @@
+name: TestFlight (native iOS build)
+
+# Manual trigger only — EAS Build burns free-tier quota, so we don't auto-run
+# on every merge. Native changes (new native libs, config plugin changes,
+# version bumps) need this. JS-only changes go through deploy-mobile.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: "Submit to TestFlight after build?"
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: EAS Build iOS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.19.0 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build and optionally submit
+        working-directory: apps/watchlist
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+        run: |
+          npx eas-cli@latest build \
+            --platform ios \
+            --profile production \
+            --non-interactive \
+            --wait
+
+          if [ "${{ inputs.submit }}" = "true" ]; then
+            npx eas-cli@latest submit \
+              --platform ios \
+              --latest \
+              --non-interactive
+          fi

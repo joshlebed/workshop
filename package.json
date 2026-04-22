@@ -1,0 +1,24 @@
+{
+  "name": "workshop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Josh's personal monorepo for apps, scripts, and experiments.",
+  "packageManager": "pnpm@10.19.0",
+  "engines": {
+    "node": ">=20.19 <21"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r --parallel typecheck",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "test": "pnpm -r --parallel test",
+    "dev:backend": "pnpm --filter @workshop/backend dev",
+    "dev:mobile": "pnpm --filter watchlist start",
+    "dev": "./scripts/dev.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4",
+    "typescript": "5.9.3"
+  }
+}

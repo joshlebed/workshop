@@ -1,0 +1,41 @@
+{
+  "name": "watchlist",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "typecheck": "tsc --noEmit",
+    "test": "echo \"no tests yet\" && exit 0",
+    "prebuild": "expo prebuild",
+    "eas:update": "eas update --auto --branch preview",
+    "eas:build:ios": "eas build --platform ios --profile production --non-interactive",
+    "eas:submit:ios": "eas submit --platform ios --latest --non-interactive"
+  },
+  "dependencies": {
+    "@workshop/shared": "workspace:*",
+    "expo": "55.0.17",
+    "expo-constants": "55.0.15",
+    "expo-linking": "55.0.14",
+    "expo-router": "55.0.13",
+    "expo-secure-store": "55.0.13",
+    "expo-splash-screen": "55.0.19",
+    "expo-status-bar": "55.0.5",
+    "expo-system-ui": "55.0.16",
+    "expo-updates": "55.0.21",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "react-native": "0.85.2",
+    "react-native-gesture-handler": "2.31.1",
+    "react-native-reanimated": "4.3.0",
+    "react-native-safe-area-context": "5.7.0",
+    "react-native-screens": "4.24.0"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.0",
+    "@types/react": "19.2.14",
+    "typescript": "5.9.3"
+  }
+}

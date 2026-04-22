@@ -1,0 +1,45 @@
+name: Deploy Mobile (OTA)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/watchlist/**"
+      - "packages/shared/**"
+      - ".github/workflows/deploy-mobile.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mobile
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ota:
+    name: Publish EAS Update
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.19.0 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Publish JS bundle via EAS Update
+        working-directory: apps/watchlist
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+        run: |
+          npx eas-cli@latest update \
+            --auto \
+            --branch production \
+            --message "ci: ${{ github.sha }}"
