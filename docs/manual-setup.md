@@ -58,7 +58,7 @@ In SES sandbox mode, you can only send mail to *verified* addresses. So for solo
 - [ ] Confirm you're enrolled at <https://developer.apple.com/account>.
 - [ ] Grab your **Apple Team ID** (top-right in Apple Developer console) and **App Store Connect
       App ID** (create a new app at <https://appstoreconnect.apple.com>; bundle ID:
-      `dev.josh.watchlist`).
+      `dev.josh.workshop`).
 - [ ] Sign up at <https://expo.dev> (free tier).
 - [ ] `npx eas-cli@latest login` — paste Expo credentials.
 - [ ] `cd apps/watchlist && npx eas-cli@latest init` — creates an EAS project and prints the
@@ -113,4 +113,4 @@ In repo settings → **Branches** → Branch protection rules → Add rule for `
 - **"terraform apply fails on aws_budgets_budget"**: Budgets service isn't enabled on a brand-new
   AWS account. Visit Budgets in the AWS console once to initialize, then retry.
 - **"Expo Go can't reach backend from my phone"**: if using local dev, your phone isn't on the
-  same network as your laptop. Use the tunnel mode: `pnpm --filter watchlist start -- --tunnel`.
+  same network as your laptop. Use the tunnel mode: `pnpm --filter workshop-app start -- --tunnel`.

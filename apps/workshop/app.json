@@ -1,18 +1,18 @@
 {
   "expo": {
-    "name": "Watchlist",
-    "slug": "watchlist",
+    "name": "Workshop",
+    "slug": "workshop",
     "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "watchlist",
+    "scheme": "workshop",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.josh.watchlist"
+      "bundleIdentifier": "dev.josh.workshop"
     },
     "android": {
-      "package": "dev.josh.watchlist"
+      "package": "dev.josh.workshop"
     },
     "plugins": ["expo-router", "expo-secure-store"],
     "experiments": {
@@ -22,13 +22,13 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/630ef7a3-31c2-4d74-84f6-4f93a302360e"
+      "url": "https://u.expo.dev/e395fb39-54cc-4841-a40a-c8d074f5db60"
     },
     "extra": {
       "apiUrl": "http://localhost:8787",
       "router": {},
       "eas": {
-        "projectId": "630ef7a3-31c2-4d74-84f6-4f93a302360e"
+        "projectId": "e395fb39-54cc-4841-a40a-c8d074f5db60"
       }
     },
     "owner": "joshlebed"

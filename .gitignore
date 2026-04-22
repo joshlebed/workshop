@@ -28,7 +28,9 @@ web-build/
 *.tfstate.*
 *.tfplan
 *.tfvars
+*.tfvars.local
 !*.tfvars.example
+infra/.placeholder.zip
 
 # Logs
 *.log

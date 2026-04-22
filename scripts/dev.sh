@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start postgres (Docker) + backend. Run Expo separately in another terminal:
 #
-#   EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter watchlist start
+#   EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start
 #
 # Why two terminals: Expo's interactive QR/keybind UI doesn't render cleanly
 # if backend logs are streaming into the same TTY.
@@ -55,7 +55,7 @@ pnpm --filter @workshop/backend run db:migrate
 
 echo ""
 echo "→ Backend starting. In another terminal, run:"
-echo "  EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter watchlist start"
+echo "  EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start"
 echo ""
 
 exec pnpm --filter @workshop/backend run dev

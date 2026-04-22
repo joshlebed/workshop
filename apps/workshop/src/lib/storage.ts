@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 
-const SESSION_KEY = "watchlist.session";
+const SESSION_KEY = "workshop.session";
 
 export async function saveSession(token: string): Promise<void> {
   await SecureStore.setItemAsync(SESSION_KEY, token, {

@@ -1,9 +1,9 @@
 # workshop
 
 Josh's personal monorepo for apps, scripts, and experiments. First product: a movie watchlist iOS
-app (`apps/watchlist`). Future apps live alongside it.
+app (`apps/workshop`). Future apps live alongside it.
 
-- **Mobile**: Expo (React Native, TypeScript) — `apps/watchlist`
+- **Mobile**: Expo (React Native, TypeScript) — `apps/workshop`
 - **Backend**: Hono on AWS Lambda + PostgreSQL on RDS — `apps/backend`
 - **Shared types**: `packages/shared`
 - **Infra**: Terraform (AWS, one prod env) — `infra/`
@@ -17,7 +17,7 @@ pnpm install
 ./scripts/dev.sh                  # postgres + backend (leave running)
 
 # In a second terminal:
-EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter watchlist start
+EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start
 ```
 
 Open Expo Go on your iPhone, scan the QR code from the second terminal. Sign in with any email —

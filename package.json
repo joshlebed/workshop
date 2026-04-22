@@ -14,7 +14,7 @@
     "format": "biome format --write .",
     "test": "pnpm -r --parallel test",
     "dev:backend": "pnpm --filter @workshop/backend dev",
-    "dev:mobile": "pnpm --filter watchlist start",
+    "dev:mobile": "pnpm --filter workshop-app start",
     "dev": "./scripts/dev.sh"
   },
   "devDependencies": {

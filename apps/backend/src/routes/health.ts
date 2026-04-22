@@ -5,7 +5,7 @@ import { logger } from "../lib/logger.js";
 
 export const healthRoutes = new Hono();
 
-healthRoutes.get("/", (c) => c.json({ ok: true, service: "watchlist-api" }));
+healthRoutes.get("/", (c) => c.json({ ok: true, service: "workshop-api" }));
 
 healthRoutes.get("/db", async (c) => {
   try {

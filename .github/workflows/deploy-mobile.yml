@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "apps/watchlist/**"
+      - "apps/workshop/**"
       - "packages/shared/**"
       - ".github/workflows/deploy-mobile.yml"
   workflow_dispatch:
@@ -34,7 +34,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Publish JS bundle via EAS Update
-        working-directory: apps/watchlist
+        working-directory: apps/workshop
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
