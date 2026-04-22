@@ -23,7 +23,7 @@
     "production": {
       "ios": {
         "ascAppId": "REPLACE_WITH_APPSTORE_CONNECT_APP_ID",
-        "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID"
+        "appleTeamId": "Q65U6C65ZZ"
       }
     }
   }
