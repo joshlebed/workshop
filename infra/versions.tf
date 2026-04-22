@@ -19,7 +19,7 @@ terraform {
   # State lives in HCP Terraform (free tier). Configure via `terraform login`
   # then set org/workspace here. Migrate to s3 backend later if desired.
   cloud {
-    organization = "joshlebed"
+    organization = "josh-personal-org"
     workspaces {
       name = "workshop-prod"
     }
