@@ -32,7 +32,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           flex: 1,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#1a1a1a",
+          backgroundColor: "#0f1115",
         }}
       >
         <ActivityIndicator color="#fff" />
@@ -51,16 +51,12 @@ export default function RootLayout() {
         <AuthGate>
           <Stack
             screenOptions={{
-              headerShown: true,
-              headerTitleAlign: "center",
-              headerStyle: { backgroundColor: "#1a1a1a" },
-              headerTintColor: "#fff",
-              contentStyle: { backgroundColor: "#1a1a1a" },
+              headerShown: false,
+              contentStyle: { backgroundColor: "#0f1115" },
             }}
           >
-            <Stack.Screen name="index" options={{ title: "Watchlist" }} />
-            <Stack.Screen name="add" options={{ title: "Add Movie", presentation: "modal" }} />
-            <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+            <Stack.Screen name="index" />
+            <Stack.Screen name="sign-in" />
           </Stack>
         </AuthGate>
       </AuthProvider>

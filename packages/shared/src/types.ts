@@ -1,4 +1,4 @@
-export type WatchStatus = "want_to_watch" | "watched" | "abandoned";
+export type RecCategory = "movie" | "tv" | "book";
 
 export interface User {
   id: string;
@@ -6,17 +6,15 @@ export interface User {
   createdAt: string;
 }
 
-export interface WatchlistItem {
+export interface RecItem {
   id: string;
   userId: string;
   title: string;
-  year: number | null;
-  status: WatchStatus;
-  rating: number | null;
-  notes: string | null;
+  category: RecCategory;
+  count: number;
+  completed: boolean;
   createdAt: string;
   updatedAt: string;
-  watchedAt: string | null;
 }
 
 export interface RequestMagicLinkBody {
@@ -37,19 +35,36 @@ export interface VerifyMagicLinkResponse {
   user: User;
 }
 
-export interface CreateWatchlistItemBody {
+export interface CreateRecItemBody {
   title: string;
-  year?: number | null;
-  status?: WatchStatus;
-  notes?: string | null;
+  category: RecCategory;
 }
 
-export interface UpdateWatchlistItemBody {
+export interface UpdateRecItemBody {
   title?: string;
-  year?: number | null;
-  status?: WatchStatus;
-  rating?: number | null;
-  notes?: string | null;
+  completed?: boolean;
+  count?: number;
+}
+
+export interface ListRecItemsResponse {
+  items: RecItem[];
+}
+
+export interface BulkImportBody {
+  category: RecCategory;
+  titles: string[];
+}
+
+export interface ImportCsvBody {
+  csv: string;
+}
+
+export interface ImportCsvResponse {
+  imported: number;
+}
+
+export interface ExportCsvResponse {
+  csv: string;
 }
 
 export interface ApiErrorResponse {
