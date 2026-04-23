@@ -1,8 +1,6 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
+  "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -35,16 +33,17 @@
     }
   },
   "files": {
-    "ignore": [
-      "node_modules/**",
-      "dist/**",
-      "build/**",
-      ".expo/**",
-      ".next/**",
-      "**/*.generated.*",
-      "apps/backend/drizzle/**",
-      "infra/.terraform/**",
-      "**/*.icon/**"
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/build",
+      "!**/.expo",
+      "!**/.next",
+      "!**/*.generated.*",
+      "!**/apps/backend/drizzle",
+      "!**/infra/.terraform",
+      "!**/*.icon"
     ]
   }
 }
