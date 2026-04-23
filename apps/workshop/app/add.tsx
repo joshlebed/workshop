@@ -97,7 +97,7 @@ export default function AddMovie() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#000" },
+  container: { flex: 1, padding: 20, backgroundColor: "#1a1a1a" },
   label: { fontSize: 13, fontWeight: "600", color: "#aaa", marginBottom: 6, marginTop: 14 },
   input: {
     borderWidth: 1,

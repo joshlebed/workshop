@@ -117,8 +117,8 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#000" },
+  container: { flex: 1, backgroundColor: "#1a1a1a" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#1a1a1a" },
   empty: { padding: 40, alignItems: "center" },
   emptyTitle: { fontSize: 18, fontWeight: "600", marginBottom: 4, color: "#fff" },
   emptyBody: { color: "#aaa" },
