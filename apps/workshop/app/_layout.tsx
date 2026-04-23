@@ -32,7 +32,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           flex: 1,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#0f1115",
+          backgroundColor: "#0a1931",
         }}
       >
         <ActivityIndicator color="#fff" />
@@ -52,7 +52,7 @@ export default function RootLayout() {
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: "#0f1115" },
+              contentStyle: { backgroundColor: "#0a1931" },
             }}
           >
             <Stack.Screen name="index" />
