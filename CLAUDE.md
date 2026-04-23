@@ -161,11 +161,11 @@ uses `concurrently` to run the backend (`tsx watch`) and `expo start --web` with
 `[web]` prefixes in a single terminal. Ctrl-C stops both. `app.json` already points `apiUrl` at
 `http://localhost:8787`; backend CORS is `origin: "*"`.
 
-### Dev logs — `/tmp/workshop-dev.log`
+### Dev logs — `/tmp/workshop-dev.log` (local) or `$NITESHIFT_LOG_FILE` (sandbox)
 
-All dev output is also tee'd to `/tmp/workshop-dev.log` (override with `WORKSHOP_DEV_LOG=...`).
-The terminal copy keeps ANSI colors; the file copy is plain text so grep and agents can read it
-directly. **This is the first place to look when something isn't working.**
+When running `pnpm dev` locally, all output is tee'd to `/tmp/workshop-dev.log` (override with
+`WORKSHOP_DEV_LOG=...`). The terminal copy keeps ANSI colors; the file copy is plain text so grep
+and agents can read it directly. **This is the first place to look when something isn't working.**
 
 ```bash
 tail -f /tmp/workshop-dev.log
@@ -173,6 +173,27 @@ grep "magic code" /tmp/workshop-dev.log         # local sign-in codes
 grep -iE "error|warn" /tmp/workshop-dev.log
 grep "<request_id>" /tmp/workshop-dev.log       # trace a single request
 ```
+
+**Inside the Niteshift sandbox**, `pnpm dev` isn't what runs — `~/.niteshift/niteshift-setup.sh`
+starts backend + web via `concurrently` directly, and dev output lands in `$NITESHIFT_LOG_FILE`
+(`/root/.niteshift/task-<task_id>.log`) alongside harness output. Same `[backend]` / `[web]`
+prefixes, same grep patterns:
+
+```bash
+grep "magic code" "$NITESHIFT_LOG_FILE" | tail -1   # sandbox sign-in codes
+grep -iE "error|warn" "$NITESHIFT_LOG_FILE" | tail -50
+grep "^\[backend\]" "$NITESHIFT_LOG_FILE" | tail -50
+```
+
+### Known sandbox gotcha: CORS preflight via the preview proxy
+
+The Niteshift preview proxy (`https://ns-<port>-<id>.preview.niteshift.dev`) rejects
+unauthenticated CORS OPTIONS preflights with `403`, which breaks any POST/PATCH/DELETE from a
+browser whose origin differs from the backend's. `/.env.setup` pre-sets `EXPO_PUBLIC_API_URL` to
+the 8787 preview URL, so the web bundle would otherwise bake that in. `apps/workshop/src/config.ts`
+works around this by deriving the API URL from `window.location` on web (localhost stays on
+localhost; a `ns-<port>-<id>` preview host rewrites to the matching `ns-8787-<id>` host). Keep that
+derivation in place or agent-browser (and any sandbox-local browser) won't be able to sign in.
 
 ### Signing in locally (no email)
 
