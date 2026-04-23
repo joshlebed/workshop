@@ -1,0 +1,12 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome:
+      glob: "*.{js,jsx,ts,tsx,cjs,mjs,json,jsonc}"
+      run: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+    gitleaks:
+      # Skip silently if gitleaks isn't installed — CI enforces regardless.
+      skip:
+        - run: "! command -v gitleaks >/dev/null 2>&1"
+      run: gitleaks git --pre-commit --redact --staged --verbose

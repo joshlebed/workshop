@@ -36,9 +36,9 @@ async function request<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  const payload = text ? JSON.parse(text) : null;
+  const payload = text ? (JSON.parse(text) as Record<string, unknown>) : null;
   if (!res.ok) {
-    const message = payload?.error ?? `HTTP ${res.status}`;
+    const message = typeof payload?.error === "string" ? payload.error : `HTTP ${res.status}`;
     throw new ApiError(res.status, message);
   }
   return payload as T;

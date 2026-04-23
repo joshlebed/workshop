@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.{sh,ts,mjs,js}"]
+    },
+    "apps/backend": {
+      "entry": ["src/lambda.ts"]
+    },
+    "apps/workshop": {
+      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"]
+    },
+    "packages/*": {}
+  }
+}

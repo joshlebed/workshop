@@ -13,12 +13,17 @@
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "test": "pnpm -r --parallel test",
+    "knip": "knip",
     "dev:backend": "pnpm --filter @workshop/backend dev",
     "dev:mobile": "pnpm --filter workshop-app start",
-    "dev": "./scripts/dev.sh"
+    "dev": "./scripts/dev.sh",
+    "prepare": "lefthook install || true"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
+    "@total-typescript/ts-reset": "0.6.1",
+    "knip": "6.6.1",
+    "lefthook": "2.1.6",
     "typescript": "5.9.3"
   }
 }

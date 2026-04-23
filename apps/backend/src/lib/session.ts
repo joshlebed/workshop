@@ -1,12 +1,15 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
 import { getConfig } from "./config.js";
 
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
 
-interface SessionPayload {
-  userId: string;
-  exp: number;
-}
+const sessionPayloadSchema = z.object({
+  userId: z.string(),
+  exp: z.number(),
+});
+
+type SessionPayload = z.infer<typeof sessionPayloadSchema>;
 
 function b64urlEncode(input: Buffer | string): string {
   return Buffer.from(input)
@@ -50,13 +53,15 @@ export function verifySession(token: string): SessionPayload | null {
   if (expected.length !== provided.length) return null;
   if (!timingSafeEqual(expected, provided)) return null;
 
-  let payload: SessionPayload;
+  let parsed: unknown;
   try {
-    payload = JSON.parse(b64urlDecode(payloadB64).toString("utf8"));
+    parsed = JSON.parse(b64urlDecode(payloadB64).toString("utf8"));
   } catch {
     return null;
   }
-  if (!payload.userId || typeof payload.exp !== "number") return null;
+  const result = sessionPayloadSchema.safeParse(parsed);
+  if (!result.success) return null;
+  const payload = result.data;
   if (payload.exp < Math.floor(Date.now() / 1000)) return null;
   return payload;
 }
