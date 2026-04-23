@@ -42,10 +42,30 @@ async function request<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await res.text();
-  const payload = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+  const contentType = res.headers.get("content-type") ?? "";
+  const looksJson = contentType.includes("application/json") || /^\s*[{[]/.test(text);
+  let payload: Record<string, unknown> | null = null;
+  if (text && looksJson) {
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      payload = null;
+    }
+  }
   if (!res.ok) {
-    const message = typeof payload?.error === "string" ? payload.error : `HTTP ${res.status}`;
+    const message =
+      typeof payload?.error === "string"
+        ? payload.error
+        : res.status === 401
+          ? "unauthorized"
+          : `HTTP ${res.status}`;
     throw new ApiError(res.status, message);
+  }
+  if (text && !payload) {
+    throw new ApiError(
+      res.status,
+      `expected JSON from ${path} but got ${contentType || "unknown"}`,
+    );
   }
   return payload as T;
 }
