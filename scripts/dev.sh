@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Start postgres (Docker) + backend. Run Expo separately in another terminal:
+# Start postgres (Docker) + backend + Expo web app, with namespaced log output
+# via `concurrently`. Web runs at http://localhost:8081, backend at :8787.
 #
-#   EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start
-#
-# Why two terminals: Expo's interactive QR/keybind UI doesn't render cleanly
-# if backend logs are streaming into the same TTY.
+# For native iOS (interactive QR UI), use `pnpm dev:mobile` in a separate
+# terminal instead — `expo start` keybindings don't render cleanly when logs
+# stream into the same TTY.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -53,9 +53,23 @@ source apps/backend/.env
 set +a
 pnpm --filter @workshop/backend run db:migrate
 
+LOG_FILE="${WORKSHOP_DEV_LOG:-/tmp/workshop-dev.log}"
+: > "$LOG_FILE"
+
 echo ""
-echo "→ Backend starting. In another terminal, run:"
-echo "  EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start"
+echo "→ Starting backend (:8787) and web app (:8081). Ctrl-C stops both."
+echo "  Logs tee'd to $LOG_FILE — \`tail -f $LOG_FILE\` to follow, or grep to search."
 echo ""
 
-exec pnpm --filter @workshop/backend run dev
+lsof -ti:8081 | xargs kill 2>/dev/null || true
+
+# Keep colors on the terminal (FORCE_COLOR=1 propagates through the pipe), but
+# strip ANSI escapes from the tee'd file so grep / agents see plain text.
+export FORCE_COLOR=1
+exec pnpm exec concurrently \
+  --names "backend,web" \
+  --prefix-colors "cyan.bold,magenta.bold" \
+  --kill-others-on-fail \
+  "pnpm --filter @workshop/backend run dev" \
+  "pnpm --filter workshop-app run web" 2>&1 \
+  | tee >(perl -MIO::Handle -pe 'BEGIN { STDOUT->autoflush(1) } s/\e\[[0-9;?]*[a-zA-Z]//g' > "$LOG_FILE")

@@ -7,6 +7,7 @@
     "start": "expo start",
     "ios": "expo start --ios",
     "android": "expo start --android",
+    "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test": "echo \"no tests yet\" && exit 0",
     "prebuild": "expo prebuild",
@@ -15,6 +16,7 @@
     "eas:submit:ios": "eas submit --platform ios --latest --non-interactive"
   },
   "dependencies": {
+    "@expo/metro-runtime": "~55.0.10",
     "@workshop/shared": "workspace:*",
     "expo": "55.0.17",
     "expo-constants": "55.0.15",
@@ -32,6 +34,7 @@
     "react-native-reanimated": "4.3.0",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.24.0",
+    "react-native-web": "^0.21.2",
     "react-native-worklets": "0.8.1"
   },
   "devDependencies": {
