@@ -35,6 +35,10 @@ export interface VerifyMagicLinkResponse {
   user: User;
 }
 
+export interface MeResponse {
+  user: User;
+}
+
 export interface CreateRecItemBody {
   title: string;
   category: RecCategory;
