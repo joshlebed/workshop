@@ -1,7 +1,15 @@
 import { Stack, useRouter, useSegments } from "expo-router";
+import * as Updates from "expo-updates";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
+
+function useApplyOtaUpdatesOnArrival() {
+  const { isUpdatePending } = Updates.useUpdates();
+  useEffect(() => {
+    if (isUpdatePending) Updates.reloadAsync().catch(() => {});
+  }, [isUpdatePending]);
+}
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
@@ -26,6 +34,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
+  useApplyOtaUpdatesOnArrival();
   return (
     <AuthProvider>
       <AuthGate>
