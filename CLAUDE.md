@@ -27,8 +27,16 @@ land as additional routes inside the same app.
   stored in HCP).
 - **GitHub Actions** for CI/CD. OIDC to AWS (no long-lived keys). Secrets: `TF_API_TOKEN`,
   `AWS_ROLE_ARN`, `EXPO_TOKEN`, `EXPO_PUBLIC_API_URL`.
-- **EAS Update** for JS-only OTA updates to iPhones within ~60s of merge. TestFlight for native
-  builds (manual dispatch only).
+- **EAS Update** for JS-only OTA updates to iPhones within ~60s of merge. TestFlight builds
+  auto-trigger on merge when `@expo/fingerprint` detects a native change (new native dep, config
+  plugin, bundle id, etc.) and auto-submit to TestFlight; otherwise skipped. Manual dispatch with
+  `force=true` bypasses the fingerprint check. Last-built fingerprint is stored as a git tag
+  (`ios-fp-<hash>`).
+- **Tooling baseline**: Biome (lint + format), Vitest, Zod (for API-boundary validation),
+  `@total-typescript/ts-reset` (globally enabled), knip (unused code/deps), lefthook (pre-commit),
+  actionlint + gitleaks in CI. Dependabot opens grouped npm/Actions/Terraform PRs weekly on
+  Mondays. `.mise.toml` pins node, pnpm, terraform, actionlint, gitleaks — `mise install` gets
+  you the exact versions CI uses.
 
 ## AWS
 
@@ -59,6 +67,21 @@ land as additional routes inside the same app.
   files in `drizzle/` and `drizzle/meta/`.
 - **Biome for lint + format**. `eas-cli` and some other tools reformat `app.json`; always run
   `pnpm run lint:fix` after those to settle CI.
+- **Pre-commit auto-formats via lefthook**. Biome runs `--write` on staged files with
+  `stage_fixed: true`, so if a commit includes tweaks to a file you didn't explicitly edit,
+  that's the hook — not a bug. Gitleaks is wired too but skips silently when the binary isn't
+  installed locally; CI enforces regardless.
+- **`JSON.parse` and `Response.json()` return `unknown`** (ts-reset is enabled via `reset.d.ts`
+  in each package). Validate with zod — see `apps/backend/src/lib/session.ts` for the pattern —
+  or narrow with a type guard. Blind `as T` casts without runtime checks are a footgun; agents
+  have already hit this once.
+- **Editing GitHub Actions workflows** — two CI-blocking rules enforced by actionlint:
+  (1) SHA-pin every `uses:` (`owner/repo@<40-char-sha> # v4`); fetch fresh SHAs with
+  `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`. Dependabot rolls them forward weekly.
+  (2) Never interpolate `${{ … }}` inside a shell `run:` block — hoist into the step's `env:`
+  and read as `$VAR` in bash. Both patterns are visible throughout `.github/workflows/*`.
+- **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
+  unless there's a specific reason (security fix, unblocking work). Weekly PRs on Mondays.
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full error objects:
   `logger.error("failed to x", { error })`, not `{ error: error.message }` — you lose the stack.
 - **Postgres connection pool**: `postgres({ max: 1 })` is correct for Lambda. Each container has
@@ -119,5 +142,7 @@ cleanly.
 pnpm run typecheck     # ~12s
 pnpm run lint          # ~1s
 pnpm run test          # ~2s
+pnpm run knip          # ~2s — non-blocking in CI while the baseline is tuned; known findings
+                       # include expo-splash-screen, @types/aws-lambda, closeDb, etc.
 cd infra && terraform fmt -check -recursive && terraform validate
 ```
