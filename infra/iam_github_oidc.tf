@@ -46,6 +46,7 @@ data "aws_iam_policy_document" "github_permissions" {
       "lambda:UpdateFunctionCode",
       "lambda:UpdateFunctionConfiguration",
       "lambda:GetFunction",
+      "lambda:GetFunctionConfiguration",
       "lambda:PublishVersion",
     ]
     resources = [aws_lambda_function.api.arn]
