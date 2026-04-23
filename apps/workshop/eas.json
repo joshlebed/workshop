@@ -16,7 +16,10 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://flaqpucm3f.execute-api.us-east-1.amazonaws.com"
+      }
     }
   },
   "submit": {
