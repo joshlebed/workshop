@@ -41,21 +41,21 @@ jobs:
       hash: ${{ steps.fp.outputs.hash }}
       build_needed: ${{ steps.decide.outputs.build_needed }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0 # need tags for the compare
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with: { version: 10.19.0 }
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Cache hoisted node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             node_modules
@@ -77,9 +77,12 @@ jobs:
 
       - name: Decide whether to build
         id: decide
+        env:
+          FP_HASH: ${{ steps.fp.outputs.hash }}
+          FORCE: ${{ inputs.force }}
         run: |
-          TAG="ios-fp-${{ steps.fp.outputs.hash }}"
-          if [ "${{ inputs.force }}" = "true" ]; then
+          TAG="ios-fp-$FP_HASH"
+          if [ "$FORCE" = "true" ]; then
             echo "Force build requested"
             echo "build_needed=true" >> "$GITHUB_OUTPUT"
           elif git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
@@ -96,19 +99,19 @@ jobs:
     if: needs.fingerprint.outputs.build_needed == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with: { version: 10.19.0 }
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - name: Cache hoisted node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             node_modules
@@ -136,7 +139,8 @@ jobs:
       - name: Tag successful fingerprint
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FP_HASH: ${{ needs.fingerprint.outputs.hash }}
         run: |
-          TAG="ios-fp-${{ needs.fingerprint.outputs.hash }}"
+          TAG="ios-fp-$FP_HASH"
           git tag "$TAG"
           git push origin "$TAG"
