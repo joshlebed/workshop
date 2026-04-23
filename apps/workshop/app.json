@@ -6,11 +6,10 @@
     "orientation": "portrait",
     "scheme": "workshop",
     "userInterfaceStyle": "automatic",
-    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.josh.workshop",
-      "icon": "./assets/icon.png",
+      "icon": "./assets/Workshop.dev.icon",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
