@@ -43,6 +43,8 @@ jobs:
 
       - name: terraform apply
         working-directory: infra
+        env:
+          TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
         run: terraform apply -auto-approve
 
       - name: Capture outputs

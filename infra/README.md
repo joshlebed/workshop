@@ -7,7 +7,7 @@ Terraform for the whole `workshop` prod stack. One environment, one stack.
 - `versions.tf` — Terraform + provider versions, HCP Terraform backend config
 - `providers.tf` — AWS provider
 - `variables.tf` / `locals.tf` / `outputs.tf` — inputs / derived / outputs
-- `rds.tf` — PostgreSQL t4g.micro, public + SSL-required, secrets in SSM
+- `ssm.tf` — SSM SecureString params (DATABASE_URL from Neon, SESSION_SECRET)
 - `lambda.tf` — Lambda function + role + log group (code replaced by CI)
 - `apigateway.tf` — HTTP API Gateway, catch-all → Lambda
 - `ses.tf` — Email identity for the sender (sandbox mode)
@@ -28,8 +28,10 @@ Terraform for the whole `workshop` prod stack. One environment, one stack.
 7. Capture `api_url` and `github_actions_role_arn` from outputs — you'll set
    `AWS_ROLE_ARN` and `EXPO_PUBLIC_API_URL` in GitHub secrets.
 
-## Changing RDS
+## Database
 
-The default `publicly_accessible = true` is documented as prototype-only in
-`docs/decisions.md`. Before launching to real users, move the DB into a VPC
-and update Lambda to run inside it — see that doc for the migration plan.
+Postgres is managed externally by Neon (see `docs/decisions.md`). The
+connection string is provided via `var.database_url` in
+`terraform.tfvars.local` and plumbed to the Lambda through an SSM
+SecureString. Rotate by updating the tfvars value and running
+`terraform apply`.

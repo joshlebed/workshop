@@ -5,7 +5,7 @@ called **Workshop.dev** (`apps/workshop`), an umbrella that currently hosts a mo
 and will grow to include more small apps over time.
 
 - **Mobile**: Expo (React Native, TypeScript) — `apps/workshop`
-- **Backend**: Hono on AWS Lambda + PostgreSQL on RDS — `apps/backend`
+- **Backend**: Hono on AWS Lambda + PostgreSQL on Neon — `apps/backend`
 - **Shared types**: `packages/shared`
 - **Infra**: Terraform on AWS, state in HCP Terraform — `infra/`
 - **CI/CD**: GitHub Actions — merge to `main` deploys the API and ships a JS OTA update to
@@ -36,7 +36,7 @@ pnpm run test             # vitest
 
 ./scripts/dev.sh                                          # local dev stack
 AWS_PROFILE=workshop-prod ./scripts/logs.sh               # tail prod Lambda logs
-AWS_PROFILE=workshop-prod ./scripts/db-connect.sh         # psql into prod RDS
+AWS_PROFILE=workshop-prod ./scripts/db-connect.sh         # psql into prod Neon
 AWS_PROFILE=workshop-prod ./scripts/deploy.sh             # manual Lambda upload (CI does this automatically)
 ```
 
@@ -58,8 +58,8 @@ If there's a `docs/plans/HANDOFF.md`, setup isn't finished — read that first.
 
 ## Decisions
 
-See [`docs/decisions.md`](./docs/decisions.md) for architectural choices (why Lambda over EC2, why
-public RDS for the prototype, how to migrate when it's time to lock things down).
+See [`docs/decisions.md`](./docs/decisions.md) for architectural choices (why Lambda over EC2,
+why Neon over RDS, how this prototype is set up to stay on free tiers).
 
 ## Contributing
 

@@ -27,7 +27,7 @@ workflows to run on your PR.
 ## Architectural guidelines
 
 Read [`docs/decisions.md`](./docs/decisions.md) before proposing substantial changes. Most of the
-quirks (public RDS, manual TMDB, email codes instead of links) are deliberate and explained
+quirks (Neon for Postgres, manual TMDB, email codes instead of links) are deliberate and explained
 there.
 
 If you're adding a new app or script, drop it in `apps/<name>/` or as a top-level script — the

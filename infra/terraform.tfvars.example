@@ -3,5 +3,8 @@
 
 ses_verified_email     = "joshlebed@gmail.com"
 budget_email_recipient = "joshlebed@gmail.com"
+# Full Postgres connection string from Neon (Connection Pooling must be ON).
+# Looks like: postgresql://<user>:<pw>@<host>-pooler.<region>.aws.neon.tech/<db>?sslmode=require
+database_url           = "postgresql://..."
 # aws_region           = "us-east-1"      # default
 # github_repository    = "joshlebed/workshop"  # default

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Open a psql shell against the production RDS, pulling credentials from SSM.
+# Open a psql shell against the production Postgres (Neon), pulling the
+# connection string from SSM.
 # Requires: aws CLI configured, psql installed.
 set -euo pipefail
 
@@ -18,5 +19,5 @@ DB_URL=$(aws ssm get-parameter \
   --query Parameter.Value \
   --output text)
 
-echo "Connecting to prod RDS. Be careful."
+echo "Connecting to prod Postgres (Neon). Be careful."
 exec psql "$DB_URL"

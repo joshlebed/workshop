@@ -8,19 +8,9 @@ output "lambda_function_name" {
   value       = aws_lambda_function.api.function_name
 }
 
-output "db_endpoint" {
-  description = "RDS endpoint host:port."
-  value       = aws_db_instance.main.endpoint
-}
-
 output "db_url_ssm_param" {
   description = "SSM param name holding DATABASE_URL (SecureString)."
   value       = aws_ssm_parameter.db_url.name
-}
-
-output "db_password_ssm_param" {
-  description = "SSM param name holding the DB password (SecureString)."
-  value       = aws_ssm_parameter.db_password.name
 }
 
 output "cloudwatch_log_group" {

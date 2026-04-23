@@ -18,8 +18,10 @@ land as additional routes inside the same app.
 - **Expo (React Native) + expo-router + TypeScript** for the iOS client. Bundle id
   `dev.josh.workshop`, Apple Team ID `Q65U6C65ZZ`, App Store Connect App ID `6763154414`, EAS
   project `@joshlebed/workshop` (id `e395fb39-54cc-4841-a40a-c8d074f5db60`).
-- **Hono on AWS Lambda behind API Gateway HTTP API** for the backend. PostgreSQL on RDS
-  (`db.t4g.micro`, public + forced SSL — see `docs/decisions.md`). Drizzle ORM.
+- **Hono on AWS Lambda behind API Gateway HTTP API** for the backend. PostgreSQL on **Neon**
+  (managed, free tier, see `docs/decisions.md` for the switch from RDS). Drizzle ORM, `postgres-js`
+  driver. Connection string lives in `infra/terraform.tfvars.local` (gitignored) → SSM SecureString
+  → Lambda env var.
 - **Terraform** for all infra. State in HCP Terraform (free tier), org `josh-personal-org`,
   workspace `workshop-prod`, execution mode **Local** (plans/applies run on the client, state
   stored in HCP).
@@ -69,7 +71,7 @@ Reach for these before asking the user:
 ```bash
 AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 10m --filter error   # Lambda errors
 AWS_PROFILE=workshop-prod ./scripts/logs.sh --filter "<request_id>"       # one request
-AWS_PROFILE=workshop-prod ./scripts/db-connect.sh                          # psql into RDS
+AWS_PROFILE=workshop-prod ./scripts/db-connect.sh                          # psql into Neon
 
 cd infra && AWS_PROFILE=workshop-prod terraform state list                 # deployed resources
 cd infra && AWS_PROFILE=workshop-prod terraform output                     # api_url, lambda_name, log_group, etc.
@@ -99,8 +101,8 @@ cleanly.
 - **Safe** (green light, just push): new routes, new Expo screens, new Drizzle columns with
   defaults, new tests, new scripts.
 - **Careful** (run `terraform plan` locally first, show the user): anything in `infra/` other than
-  `outputs.tf` / `README.md`; anything touching IAM policies; anything that would recreate RDS
-  (e.g. changing `engine_version` with `apply_immediately=true`).
+  `outputs.tf` / `README.md`; anything touching IAM policies; rotating `database_url` (Lambda env
+  var gets updated, in-flight requests may fail briefly).
 - **Ask first**: deleting DB data, changing the Lambda runtime major version, rotating the OIDC
   provider, adding a new AWS service (every service has a free-tier implication), touching
   anything in a *different* AWS account than Workshop's.

@@ -32,28 +32,41 @@ and Node server targets (we use the Node target for local dev).
 **Known tradeoffs**: Cold starts ~300–500ms for a Node.js Lambda. Acceptable for this use case.
 If latency ever matters, provisioned concurrency is a knob we can turn.
 
-## 2026-04 — Postgres on RDS (public + SSL + strong password)
+## 2026-04 — Postgres on Neon (superseded RDS)
 
-**Context**: Prototype with no real users, coding-agent-friendly debugging, AWS free tier.
+**Context**: Initial prototype went live on RDS `db.t4g.micro` (public + SSL + strong password —
+see the history below). During the AWS-account migration, RDS provision/destroy latency (8-10
+min each way) became the slow part of every infra change. Revisited vendor choice.
 
-**Decision**: `db.t4g.micro` RDS, `publicly_accessible = true`, security group open to
-`0.0.0.0/0:5432`, forced TLS, 32-char auto-generated password stored in SSM Parameter Store.
+**Decision**: Managed Postgres on **Neon** (`aws-us-east-1`, Connection Pooling on). Lambda
+reads `DATABASE_URL` from an SSM SecureString populated from the `database_url` TF variable
+(value in `terraform.tfvars.local`, gitignored).
 
-**Why**: Putting RDS in a private subnet forces Lambda into a VPC, which forces a NAT Gateway
-(~$32/mo) to reach AWS APIs — blows the free tier. For a prototype with no user data, the
-"public endpoint + strong password + TLS" model is the same security posture as Neon/Supabase.
+**Why**:
+- Free tier covers realistic personal-project usage (0.5 GB storage, 100 CU-hours/mo,
+  autosuspend after 5 min idle). RDS `db.t4g.micro` is free only for the first 12 months, then
+  ~$13-15/mo. Savings after year 1: ~$180/yr.
+- Provisioning is seconds, not 8-10 min. Makes teardown/rebuild cheap during rapid iteration.
+- No more VPC / NAT gateway question for "lock it down before real users" — Neon pooled
+  connections are already TLS-only and not publicly DNS-scannable the same way RDS is.
+- Wire-compatible Postgres 17. Drizzle + `postgres-js` driver works unchanged.
 
-**Known risk**: The DB hostname is discoverable via DNS. Attackers actively scan for misconfigured
-RDS instances. The password is strong and TLS is forced, so successful attack requires password
-brute-force against forced TLS — slow and ratelimited by RDS.
+**Tradeoffs**:
+- New vendor to manage (console, billing, API tokens) outside AWS.
+- First query after 5 min idle pays a cold-start (~500ms-1s). Acceptable for a personal watchlist.
+- Free-tier compute suspension is per-project; if this grows into multiple tenants, re-evaluate.
 
-**Migration plan (before real users)**:
-1. Add a VPC module with two private subnets in different AZs.
-2. Flip `publicly_accessible = false`, move RDS into the private subnets.
-3. Put Lambda in the same VPC with security group allowing 5432 → RDS.
-4. Add a VPC endpoint for SSM (so Lambda can still read secrets without a NAT Gateway). Or add
-   RDS Proxy and skip VPC endpoints.
-5. Downtime: ~1min DNS flip. Apply during a quiet window.
+**Driver note**: Kept the `postgres-js` driver (TCP). Could switch to `@neondatabase/serverless`
+HTTP driver for faster Lambda cold starts (~20-50ms vs ~100-200ms), but not needed at current
+latency budget.
+
+### Historical: 2026-04 — Postgres on RDS (replaced)
+
+Initial choice was `db.t4g.micro` RDS, `publicly_accessible = true`, security group open to
+`0.0.0.0/0:5432`, forced TLS, 32-char auto-generated password in SSM. Rationale was free-tier
+alignment without needing a VPC+NAT gateway. Superseded by Neon for the reasons above. If we
+ever move back to RDS-in-VPC, the original migration plan was: add VPC with two private subnets,
+flip `publicly_accessible = false`, put Lambda in the VPC, add SSM VPC endpoint.
 
 ## 2026-04 — Drizzle ORM
 

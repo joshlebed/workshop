@@ -12,22 +12,18 @@ variable "github_repository" {
 
 variable "ses_verified_email" {
   type        = string
+  default     = "joshlebed@gmail.com"
   description = "Email address to verify in SES as the sender (and, in sandbox mode, as a recipient). A verification email will be sent here after apply."
 }
 
 variable "budget_email_recipient" {
   type        = string
+  default     = "joshlebed@gmail.com"
   description = "Email to receive the $5 monthly AWS budget alert. Usually the same as ses_verified_email."
 }
 
-variable "db_name" {
+variable "database_url" {
   type        = string
-  default     = "workshop"
-  description = "Initial PostgreSQL database name."
-}
-
-variable "db_username" {
-  type        = string
-  default     = "workshop_admin"
-  description = "RDS master username."
+  sensitive   = true
+  description = "Full Postgres connection string (Neon). Must include sslmode=require. Set in terraform.tfvars.local; never committed."
 }

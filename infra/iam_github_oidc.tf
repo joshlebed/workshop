@@ -60,7 +60,6 @@ data "aws_iam_policy_document" "github_permissions" {
     ]
     resources = [
       aws_ssm_parameter.db_url.arn,
-      aws_ssm_parameter.db_password.arn,
       aws_ssm_parameter.session_secret.arn,
     ]
   }
@@ -70,7 +69,6 @@ data "aws_iam_policy_document" "github_permissions" {
     effect = "Allow"
     actions = [
       "apigateway:GET",
-      "rds:DescribeDBInstances",
       "logs:DescribeLogGroups",
       "logs:FilterLogEvents",
       "logs:GetLogEvents",
