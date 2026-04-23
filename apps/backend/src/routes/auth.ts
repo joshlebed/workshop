@@ -1,7 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
 import type { RequestMagicLinkResponse, VerifyMagicLinkResponse } from "@workshop/shared";
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type { InferSelectModel } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../db/client.js";

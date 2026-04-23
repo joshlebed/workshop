@@ -1,5 +1,5 @@
 import type { User } from "@workshop/shared";
-import { type ReactNode, createContext, useContext, useEffect, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { api } from "../api/client";
 import { clearSession, loadSession, saveSession } from "../lib/storage";
 

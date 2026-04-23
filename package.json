@@ -20,11 +20,11 @@
     "prepare": "lefthook install || true"
   },
   "devDependencies": {
-    "@biomejs/biome": "1.9.4",
+    "@biomejs/biome": "2.4.12",
     "@total-typescript/ts-reset": "0.6.1",
     "concurrently": "^9.2.1",
     "knip": "6.6.1",
     "lefthook": "2.1.6",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   }
 }
