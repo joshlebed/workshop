@@ -107,6 +107,80 @@ cleanly.
   provider, adding a new AWS service (every service has a free-tier implication), touching
   anything in a *different* AWS account than Workshop's.
 
+## Local development
+
+The Expo app builds to **iOS and web from the same component tree** via `react-native-web`. Web
+is the primary dev surface — it's faster to iterate in Chrome, and browser-automation tools
+(including Claude's `mcp__claude-in-chrome__*`) can drive the real UI for closed-loop testing.
+iOS ships via EAS; the web build is dev-only.
+
+### First-time setup
+
+Prereqs: Node 20.19 (see `.nvmrc`), pnpm 10.19 (pinned in `package.json`), Docker Desktop
+running. Then:
+
+```bash
+pnpm install
+pnpm dev   # first run creates apps/backend/.env and migrates the local DB
+```
+
+### Running it
+
+```bash
+pnpm dev          # → postgres (docker) + backend (:8787) + web app (:8081)
+pnpm dev:backend  # backend only
+pnpm dev:mobile   # iOS/Expo Go — MUST be a separate terminal (QR/keybinds)
+```
+
+`pnpm dev` runs `scripts/dev.sh`, which: starts the `workshop-pg` postgres container, seeds
+`apps/backend/.env` on first run (generating `SESSION_SECRET`), applies Drizzle migrations, then
+uses `concurrently` to run the backend (`tsx watch`) and `expo start --web` with `[backend]` /
+`[web]` prefixes in a single terminal. Ctrl-C stops both. `app.json` already points `apiUrl` at
+`http://localhost:8787`; backend CORS is `origin: "*"`.
+
+### Dev logs — `/tmp/workshop-dev.log`
+
+All dev output is also tee'd to `/tmp/workshop-dev.log` (override with `WORKSHOP_DEV_LOG=...`).
+The terminal copy keeps ANSI colors; the file copy is plain text so grep and agents can read it
+directly. **This is the first place to look when something isn't working.**
+
+```bash
+tail -f /tmp/workshop-dev.log
+grep "magic code" /tmp/workshop-dev.log         # local sign-in codes
+grep -iE "error|warn" /tmp/workshop-dev.log
+grep "<request_id>" /tmp/workshop-dev.log       # trace a single request
+```
+
+### Signing in locally (no email)
+
+In `STAGE=local`, `sendMagicLinkEmail` does **not** hit SES — it logs the code to stdout (see
+`apps/backend/src/lib/email.ts:17-20`). To sign in through the web app: submit your email in
+the form, then:
+
+```bash
+grep "magic code" /tmp/workshop-dev.log | tail -1
+```
+
+Copy the 6-digit `code` out of the JSON log line and paste it into the verify step. Codes
+expire in 15 minutes.
+
+### Sharing code between web and iOS
+
+Metro resolves `.web.ts(x)` before `.ts(x)` on web and `.native.ts(x)` before `.ts(x)` on iOS,
+so most of the UI is truly shared and only native-specific modules need a platform variant:
+
+- `src/lib/storage.ts` → `expo-secure-store` (iOS keychain)
+- `src/lib/storage.web.ts` → `window.localStorage` shim with the same exports
+
+Add a new `.web.ts(x)` beside a file when a feature imports a native-only module. Don't add
+`Platform.OS === 'web'` branches inside shared files — the `.web.ts` extension is cleaner and
+Metro strips the unused variant from each bundle.
+
+Modules known to work as-is on web: `expo-router`, `expo-linking`, `expo-constants`,
+`expo-status-bar`, `expo-updates` (web stub returns `isUpdatePending: false`),
+`react-native-safe-area-context`, `react-native-screens`, `react-native-gesture-handler`,
+`@react-navigation/native`. Re-check when adding any new native module.
+
 ## Per-area guides
 
 - `apps/backend/CLAUDE.md` — Hono + Drizzle patterns, Lambda bundling

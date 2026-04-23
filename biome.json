@@ -43,6 +43,7 @@
       ".next/**",
       "**/*.generated.*",
       "apps/backend/drizzle/**",
+      "apps/workshop/expo-env.d.ts",
       "infra/.terraform/**",
       "**/*.icon/**"
     ]
