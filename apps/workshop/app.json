@@ -6,10 +6,12 @@
     "orientation": "portrait",
     "scheme": "workshop",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "dev.josh.workshop"
+      "bundleIdentifier": "dev.josh.workshop",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "dev.josh.workshop"
