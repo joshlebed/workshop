@@ -21,7 +21,7 @@
     "drizzle-orm": "0.45.2",
     "hono": "4.12.14",
     "postgres": "3.4.9",
-    "zod": "3.25.76"
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.161",

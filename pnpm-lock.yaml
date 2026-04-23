@@ -45,8 +45,8 @@ importers:
         specifier: 3.4.9
         version: 3.4.9
       zod:
-        specifier: 3.25.76
-        version: 3.25.76
+        specifier: 4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/aws-lambda':
         specifier: 8.10.161
