@@ -5,6 +5,7 @@ import type {
   ImportCsvBody,
   ImportCsvResponse,
   ListRecItemsResponse,
+  MeResponse,
   RecCategory,
   RecItem,
   RequestMagicLinkBody,
@@ -25,6 +26,12 @@ class ApiError extends Error {
   }
 }
 
+type UnauthorizedHandler = () => void | Promise<void>;
+let onUnauthorized: UnauthorizedHandler | null = null;
+export function setOnUnauthorized(handler: UnauthorizedHandler | null) {
+  onUnauthorized = handler;
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -36,11 +43,21 @@ async function request<T>(
     const token = await loadSession();
     if (token) headers.Authorization = `Bearer ${token}`;
   }
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const url = `${API_URL}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      // Required so the Niteshift preview proxy cookie flows cross-subdomain
+      // from ns-<app>-<id>.preview.niteshift.dev to ns-<api>-<id>.preview…
+      credentials: "include",
+    });
+  } catch (e) {
+    console.error("[api] network error", { method, url, error: e });
+    throw new ApiError(0, e instanceof Error ? e.message : "network error");
+  }
   const text = await res.text();
   const contentType = res.headers.get("content-type") ?? "";
   const looksJson = contentType.includes("application/json") || /^\s*[{[]/.test(text);
@@ -59,9 +76,25 @@ async function request<T>(
         : res.status === 401
           ? "unauthorized"
           : `HTTP ${res.status}`;
+    console.warn("[api] request failed", {
+      method,
+      url,
+      status: res.status,
+      contentType,
+      bodyPreview: text.slice(0, 200),
+    });
+    if (res.status === 401 && options.auth !== false && onUnauthorized) {
+      void onUnauthorized();
+    }
     throw new ApiError(res.status, message);
   }
   if (text && !payload) {
+    console.warn("[api] non-JSON success response", {
+      method,
+      url,
+      contentType,
+      bodyPreview: text.slice(0, 200),
+    });
     throw new ApiError(
       res.status,
       `expected JSON from ${path} but got ${contentType || "unknown"}`,
@@ -75,6 +108,7 @@ export const api = {
     request<RequestMagicLinkResponse>("POST", "/auth/request", body, { auth: false }),
   verifyMagicLink: (body: VerifyMagicLinkBody) =>
     request<VerifyMagicLinkResponse>("POST", "/auth/verify", body, { auth: false }),
+  me: () => request<MeResponse>("GET", "/auth/me"),
 
   listItems: (category?: RecCategory) =>
     request<ListRecItemsResponse>("GET", category ? `/items?category=${category}` : "/items"),

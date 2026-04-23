@@ -1,6 +1,6 @@
 import type { User } from "@workshop/shared";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
-import { api } from "../api/client";
+import { ApiError, api, setOnUnauthorized } from "../api/client";
 import { clearSession, loadSession, saveSession } from "../lib/storage";
 
 interface AuthState {
@@ -18,6 +18,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    setOnUnauthorized(async () => {
+      await clearSession();
+      setUser(null);
+    });
+    return () => setOnUnauthorized(null);
+  }, []);
+
+  useEffect(() => {
     (async () => {
       const token = await loadSession();
       if (!token) {
@@ -25,9 +33,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       try {
-        // Validate by hitting the server. For now we don't have a /me route,
-        // so we trust the token until the next request fails.
-        setUser({ id: "cached", email: "cached", createdAt: new Date().toISOString() });
+        const res = await api.me();
+        setUser(res.user);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 401) {
+          await clearSession();
+        } else {
+          console.warn("[auth] failed to validate cached session", { error: e });
+        }
       } finally {
         setReady(true);
       }

@@ -1,5 +1,9 @@
 import { createHash, randomInt } from "node:crypto";
-import type { RequestMagicLinkResponse, VerifyMagicLinkResponse } from "@workshop/shared";
+import type {
+  MeResponse,
+  RequestMagicLinkResponse,
+  VerifyMagicLinkResponse,
+} from "@workshop/shared";
 import type { InferSelectModel } from "drizzle-orm";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -8,7 +12,7 @@ import { getDb } from "../db/client.js";
 import { magicTokens, users } from "../db/schema.js";
 import { sendMagicLinkEmail } from "../lib/email.js";
 import { logger } from "../lib/logger.js";
-import { signSession } from "../lib/session.js";
+import { signSession, verifySession } from "../lib/session.js";
 
 const MAGIC_TOKEN_TTL_MS = 15 * 60 * 1000;
 
@@ -103,6 +107,30 @@ authRoutes.post("/verify", async (c) => {
   const sessionToken = signSession(user.id);
   const response: VerifyMagicLinkResponse = {
     sessionToken,
+    user: {
+      id: user.id,
+      email: user.email,
+      createdAt: user.createdAt.toISOString(),
+    },
+  };
+  return c.json(response);
+});
+
+authRoutes.get("/me", async (c) => {
+  const header = c.req.header("Authorization");
+  if (!header?.startsWith("Bearer ")) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  const payload = verifySession(header.slice("Bearer ".length));
+  if (!payload) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  const db = getDb();
+  const [user] = await db.select().from(users).where(eq(users.id, payload.userId)).limit(1);
+  if (!user) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  const response: MeResponse = {
     user: {
       id: user.id,
       email: user.email,

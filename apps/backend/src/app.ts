@@ -32,6 +32,7 @@ export function buildApp() {
 
   app.notFound((c) => c.json({ error: "not found" }, 404));
 
+  app.get("/", (c) => c.json({ service: "workshop-api" }));
   app.route("/health", healthRoutes);
   app.route("/auth", authRoutes);
   app.route("/items", itemsRoutes);
