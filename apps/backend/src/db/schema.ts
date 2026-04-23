@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 export const watchStatusEnum = pgEnum("watch_status", ["want_to_watch", "watched", "abandoned"]);
 
@@ -24,20 +33,29 @@ export const magicTokens = pgTable("magic_tokens", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
 });
 
-export const watchlistItems = pgTable("watchlist_items", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  year: integer("year"),
-  status: watchStatusEnum("status").notNull().default("want_to_watch"),
-  rating: integer("rating"),
-  notes: text("notes"),
-  watchedAt: timestamp("watched_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
-});
+export const watchlistItems = pgTable(
+  "watchlist_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    year: integer("year"),
+    status: watchStatusEnum("status").notNull().default("want_to_watch"),
+    rating: integer("rating"),
+    notes: text("notes"),
+    watchedAt: timestamp("watched_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    userCreatedIdx: index("watchlist_items_user_id_created_at_idx").on(
+      t.userId,
+      t.createdAt.desc(),
+    ),
+  }),
+);
 
 export type DbUser = typeof users.$inferSelect;
 export type DbMagicToken = typeof magicTokens.$inferSelect;
