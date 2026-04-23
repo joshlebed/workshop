@@ -1,7 +1,16 @@
 import { sql } from "drizzle-orm";
-import { integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  integer,
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 
-export const watchStatusEnum = pgEnum("watch_status", ["want_to_watch", "watched", "abandoned"]);
+export const categoryEnum = pgEnum("rec_category", ["movie", "tv", "book"]);
 
 export const users = pgTable(
   "users",
@@ -24,21 +33,29 @@ export const magicTokens = pgTable("magic_tokens", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
 });
 
-export const watchlistItems = pgTable("watchlist_items", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  year: integer("year"),
-  status: watchStatusEnum("status").notNull().default("want_to_watch"),
-  rating: integer("rating"),
-  notes: text("notes"),
-  watchedAt: timestamp("watched_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
-});
+export const recItems = pgTable(
+  "rec_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    category: categoryEnum("category").notNull(),
+    count: integer("count").notNull().default(1),
+    completed: boolean("completed").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    userCategoryTitleIdx: uniqueIndex("rec_items_user_cat_title_idx").on(
+      t.userId,
+      t.category,
+      sql`lower(${t.title})`,
+    ),
+  }),
+);
 
 export type DbUser = typeof users.$inferSelect;
 export type DbMagicToken = typeof magicTokens.$inferSelect;
-export type DbWatchlistItem = typeof watchlistItems.$inferSelect;
+export type DbRecItem = typeof recItems.$inferSelect;

@@ -1,11 +1,17 @@
 import type {
-  CreateWatchlistItemBody,
+  BulkImportBody,
+  CreateRecItemBody,
+  ExportCsvResponse,
+  ImportCsvBody,
+  ImportCsvResponse,
+  ListRecItemsResponse,
+  RecCategory,
+  RecItem,
   RequestMagicLinkBody,
   RequestMagicLinkResponse,
-  UpdateWatchlistItemBody,
+  UpdateRecItemBody,
   VerifyMagicLinkBody,
   VerifyMagicLinkResponse,
-  WatchlistItem,
 } from "@workshop/shared";
 import { API_URL } from "../config";
 import { loadSession } from "../lib/storage";
@@ -49,11 +55,20 @@ export const api = {
     request<RequestMagicLinkResponse>("POST", "/auth/request", body, { auth: false }),
   verifyMagicLink: (body: VerifyMagicLinkBody) =>
     request<VerifyMagicLinkResponse>("POST", "/auth/verify", body, { auth: false }),
-  listWatchlist: () => request<{ items: WatchlistItem[] }>("GET", "/watchlist"),
-  createItem: (body: CreateWatchlistItemBody) => request<WatchlistItem>("POST", "/watchlist", body),
-  updateItem: (id: string, body: UpdateWatchlistItemBody) =>
-    request<WatchlistItem>("PATCH", `/watchlist/${id}`, body),
-  deleteItem: (id: string) => request<{ ok: true }>("DELETE", `/watchlist/${id}`),
+
+  listItems: (category?: RecCategory) =>
+    request<ListRecItemsResponse>("GET", category ? `/items?category=${category}` : "/items"),
+  createItem: (body: CreateRecItemBody) => request<RecItem>("POST", "/items", body),
+  updateItem: (id: string, body: UpdateRecItemBody) =>
+    request<RecItem>("PATCH", `/items/${id}`, body),
+  incrementItem: (id: string) => request<RecItem>("POST", `/items/${id}/increment`),
+  decrementItem: (id: string) =>
+    request<RecItem | { deleted: true; id: string }>("POST", `/items/${id}/decrement`),
+  deleteItem: (id: string) => request<{ ok: true }>("DELETE", `/items/${id}`),
+
+  bulkImport: (body: BulkImportBody) => request<{ imported: number }>("POST", "/items/bulk", body),
+  importCsv: (body: ImportCsvBody) => request<ImportCsvResponse>("POST", "/items/import-csv", body),
+  exportCsv: () => request<ExportCsvResponse>("GET", "/items/export-csv"),
 };
 
 export { ApiError };

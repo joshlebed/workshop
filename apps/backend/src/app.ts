@@ -4,7 +4,7 @@ import { logger as honoLogger } from "hono/logger";
 import { logger } from "./lib/logger.js";
 import { authRoutes } from "./routes/auth.js";
 import { healthRoutes } from "./routes/health.js";
-import { watchlistRoutes } from "./routes/watchlist.js";
+import { itemsRoutes } from "./routes/items.js";
 
 export function buildApp() {
   const app = new Hono();
@@ -12,9 +12,10 @@ export function buildApp() {
   app.use(
     "*",
     cors({
-      origin: "*",
+      origin: (origin) => origin ?? "*",
       allowHeaders: ["Content-Type", "Authorization"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      credentials: true,
       maxAge: 600,
     }),
   );
@@ -33,7 +34,7 @@ export function buildApp() {
 
   app.route("/health", healthRoutes);
   app.route("/auth", authRoutes);
-  app.route("/watchlist", watchlistRoutes);
+  app.route("/items", itemsRoutes);
 
   return app;
 }
