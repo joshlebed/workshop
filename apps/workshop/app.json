@@ -9,6 +9,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "dev.josh.workshop",
+      "icon": "./assets/Workshop.dev.icon",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }

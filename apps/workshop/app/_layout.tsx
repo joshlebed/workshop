@@ -32,7 +32,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           flex: 1,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#000",
+          backgroundColor: "#1a1a1a",
         }}
       >
         <ActivityIndicator color="#fff" />
@@ -53,9 +53,9 @@ export default function RootLayout() {
             screenOptions={{
               headerShown: true,
               headerTitleAlign: "center",
-              headerStyle: { backgroundColor: "#000" },
+              headerStyle: { backgroundColor: "#1a1a1a" },
               headerTintColor: "#fff",
-              contentStyle: { backgroundColor: "#000" },
+              contentStyle: { backgroundColor: "#1a1a1a" },
             }}
           >
             <Stack.Screen name="index" options={{ title: "Watchlist" }} />
