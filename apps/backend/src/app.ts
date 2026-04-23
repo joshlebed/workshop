@@ -12,9 +12,10 @@ export function buildApp() {
   app.use(
     "*",
     cors({
-      origin: "*",
+      origin: (origin) => origin ?? "*",
       allowHeaders: ["Content-Type", "Authorization"],
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      credentials: true,
       maxAge: 600,
     }),
   );
