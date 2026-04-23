@@ -90,7 +90,7 @@ jobs:
         env:
           STAGE: prod
           DATABASE_URL: ${{ env.DB_URL }}
-          SESSION_SECRET: dummy_for_migrate_only_not_used
+          SESSION_SECRET: dummy_for_migrate_only_not_used_padding_to_32
           SES_FROM_ADDRESS: noreply@example.com
           AWS_REGION: us-east-1
         run: pnpm run db:migrate
