@@ -50,6 +50,7 @@ export default function AddMovie() {
           onChangeText={setTitle}
           autoFocus
           placeholder="The Shawshank Redemption"
+          placeholderTextColor="#666"
         />
 
         <Text style={styles.label}>Year (optional)</Text>
@@ -58,6 +59,7 @@ export default function AddMovie() {
           value={year}
           onChangeText={setYear}
           placeholder="1994"
+          placeholderTextColor="#666"
           keyboardType="number-pad"
           maxLength={4}
         />
@@ -68,6 +70,7 @@ export default function AddMovie() {
           value={notes}
           onChangeText={setNotes}
           placeholder="Andy's prison-break drama"
+          placeholderTextColor="#666"
           multiline
         />
 
@@ -83,7 +86,7 @@ export default function AddMovie() {
           disabled={!title.trim() || loading}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#000" />
           ) : (
             <Text style={styles.buttonText}>Add</Text>
           )}
@@ -94,26 +97,27 @@ export default function AddMovie() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: "#fff" },
-  label: { fontSize: 13, fontWeight: "600", color: "#666", marginBottom: 6, marginTop: 14 },
+  container: { flex: 1, padding: 20, backgroundColor: "#000" },
+  label: { fontSize: 13, fontWeight: "600", color: "#aaa", marginBottom: 6, marginTop: 14 },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#333",
     borderRadius: 10,
     padding: 14,
     fontSize: 16,
-    backgroundColor: "#fafafa",
+    backgroundColor: "#111",
+    color: "#fff",
   },
   notes: { height: 100, textAlignVertical: "top" },
   button: {
     marginTop: 20,
-    backgroundColor: "#111",
+    backgroundColor: "#fff",
     padding: 16,
     borderRadius: 10,
     alignItems: "center",
   },
   buttonDisabled: { opacity: 0.4 },
   buttonPressed: { opacity: 0.85 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  error: { color: "#b00", marginTop: 12 },
+  buttonText: { color: "#000", fontSize: 16, fontWeight: "600" },
+  error: { color: "#f87171", marginTop: 12 },
 });

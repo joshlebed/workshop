@@ -1,4 +1,6 @@
+import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack, useRouter, useSegments } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
@@ -25,8 +27,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#000",
+        }}
+      >
+        <ActivityIndicator color="#fff" />
       </View>
     );
   }
@@ -36,14 +45,25 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   return (
-    <AuthProvider>
-      <AuthGate>
-        <Stack screenOptions={{ headerShown: true, headerTitleAlign: "center" }}>
-          <Stack.Screen name="index" options={{ title: "Watchlist" }} />
-          <Stack.Screen name="add" options={{ title: "Add Movie", presentation: "modal" }} />
-          <Stack.Screen name="sign-in" options={{ headerShown: false }} />
-        </Stack>
-      </AuthGate>
-    </AuthProvider>
+    <ThemeProvider value={DarkTheme}>
+      <StatusBar style="light" />
+      <AuthProvider>
+        <AuthGate>
+          <Stack
+            screenOptions={{
+              headerShown: true,
+              headerTitleAlign: "center",
+              headerStyle: { backgroundColor: "#000" },
+              headerTintColor: "#fff",
+              contentStyle: { backgroundColor: "#000" },
+            }}
+          >
+            <Stack.Screen name="index" options={{ title: "Watchlist" }} />
+            <Stack.Screen name="add" options={{ title: "Add Movie", presentation: "modal" }} />
+            <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+          </Stack>
+        </AuthGate>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

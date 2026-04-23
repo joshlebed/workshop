@@ -57,6 +57,7 @@ export default function SignIn() {
         <TextInput
           style={styles.input}
           placeholder="you@example.com"
+          placeholderTextColor="#666"
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
@@ -69,6 +70,7 @@ export default function SignIn() {
         <TextInput
           style={[styles.input, styles.code]}
           placeholder="123456"
+          placeholderTextColor="#666"
           autoCapitalize="none"
           keyboardType="number-pad"
           textContentType="oneTimeCode"
@@ -92,7 +94,7 @@ export default function SignIn() {
         disabled={loading || (step === "email" ? !email : code.length !== 6)}
       >
         {loading ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color="#000" />
         ) : (
           <Text style={styles.buttonText}>{step === "email" ? "Send code" : "Verify"}</Text>
         )}
@@ -112,25 +114,27 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     justifyContent: "center",
-    backgroundColor: "#fff",
+    backgroundColor: "#000",
   },
   title: {
     fontSize: 40,
     fontWeight: "800",
     marginBottom: 8,
+    color: "#fff",
   },
   subtitle: {
     fontSize: 16,
-    color: "#666",
+    color: "#aaa",
     marginBottom: 24,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#333",
     borderRadius: 10,
     padding: 14,
     fontSize: 18,
-    backgroundColor: "#fafafa",
+    backgroundColor: "#111",
+    color: "#fff",
   },
   code: {
     fontSize: 28,
@@ -139,14 +143,14 @@ const styles = StyleSheet.create({
   },
   button: {
     marginTop: 20,
-    backgroundColor: "#111",
+    backgroundColor: "#fff",
     padding: 16,
     borderRadius: 10,
     alignItems: "center",
   },
   buttonDisabled: { opacity: 0.4 },
   buttonPressed: { opacity: 0.85 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  link: { marginTop: 16, textAlign: "center", color: "#666" },
-  error: { color: "#b00", marginTop: 12 },
+  buttonText: { color: "#000", fontSize: 16, fontWeight: "600" },
+  link: { marginTop: 16, textAlign: "center", color: "#aaa" },
+  error: { color: "#f87171", marginTop: 12 },
 });
