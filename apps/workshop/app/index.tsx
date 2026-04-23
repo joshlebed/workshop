@@ -1,5 +1,5 @@
 import type { WatchlistItem } from "@workshop/shared";
-import { Link, useFocusEffect } from "expo-router";
+import { Link, Stack, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -59,6 +59,15 @@ export default function Home() {
 
   return (
     <View style={styles.container}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable onPress={signOut} style={styles.signOut} hitSlop={8}>
+              <Text style={styles.signOutText}>Sign out</Text>
+            </Pressable>
+          ),
+        }}
+      />
       <FlatList
         data={items}
         keyExtractor={(i) => i.id}
@@ -108,10 +117,6 @@ export default function Home() {
           <Text style={styles.fabText}>+</Text>
         </Pressable>
       </Link>
-
-      <Pressable onPress={signOut} style={styles.signOut}>
-        <Text style={styles.signOutText}>Sign out</Text>
-      </Pressable>
     </View>
   );
 }
@@ -158,7 +163,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
   },
   fabText: { fontSize: 34, color: "#000", fontWeight: "300", lineHeight: 36 },
-  signOut: { position: "absolute", top: 8, right: 16, padding: 8 },
-  signOutText: { color: "#aaa" },
+  signOut: { paddingHorizontal: 8, paddingVertical: 4 },
+  signOutText: { color: "#aaa", fontSize: 15 },
   error: { color: "#f87171", padding: 16 },
 });
