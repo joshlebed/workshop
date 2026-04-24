@@ -77,3 +77,84 @@ export interface AuthResponse {
 export interface UpdateMeRequest {
   displayName: string;
 }
+
+// --- Lists (Phase 1a-1) ---
+
+/**
+ * Palette keys for list color tokens. The backend treats these as opaque
+ * strings; the client maps each key to a hex value via `tokens.list[key]`.
+ * See `apps/workshop/src/ui/theme.ts` and `docs/redesign-plan.md` §9.
+ */
+export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand" | "slate";
+
+export interface List {
+  id: string;
+  type: ListType;
+  name: string;
+  emoji: string;
+  color: ListColor;
+  description: string | null;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Shape returned by `GET /v1/lists` — the home-screen card. Includes the
+ * requesting user's role on the list plus aggregate counts so the client can
+ * render a list card without an extra round-trip.
+ */
+export interface ListSummary extends List {
+  role: MemberRole;
+  itemCount: number;
+  memberCount: number;
+}
+
+export interface ListMemberSummary {
+  userId: string;
+  displayName: string | null;
+  role: MemberRole;
+  joinedAt: string;
+}
+
+/**
+ * Reserved for Phase 3 — `GET /v1/lists/:id` returns it now as an empty array
+ * so the response shape doesn't churn when invites land.
+ */
+export interface PendingInvite {
+  id: string;
+  email: string | null;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+export interface CreateListRequest {
+  type: ListType;
+  name: string;
+  emoji: string;
+  color: ListColor;
+  description?: string;
+}
+
+export interface UpdateListRequest {
+  name?: string;
+  emoji?: string;
+  color?: ListColor;
+  /** Pass `null` to clear; omit to leave unchanged. */
+  description?: string | null;
+}
+
+export interface ListListResponse {
+  lists: ListSummary[];
+}
+
+export interface ListResponse {
+  list: List;
+}
+
+export interface ListDetailResponse {
+  list: List;
+  members: ListMemberSummary[];
+  pendingInvites: PendingInvite[];
+}

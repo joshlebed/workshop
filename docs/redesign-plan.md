@@ -479,38 +479,110 @@ Track in `docs/plans/HANDOFF.md`.
 add items, upvote, complete, edit, delete. All single-user for now — sharing
 is Phase 3.
 
+Phase 1 ships as a stack of chunks (mirroring Phase 0) so each PR is reviewable
+on its own and `main` stays deployable between landings.
+
+#### 3.7 Phase 1 chunks
+
+| Chunk | What ships | External deps | Status |
+|---|---|---|---|
+| **1a-1** | Backend lists CRUD: `GET /v1/lists` (with `role`/`memberCount`/`itemCount` aggregates), `POST` (transactional list + owner-member insert), `GET /:id` (list + members + empty `pendingInvites`), `PATCH /:id` (owner only), `DELETE /:id` (owner only; cascades). `requireListMember` + `requireListOwner` middleware (404 vs 403 — non-members get 404 to avoid leaking existence). Shared types `List`, `ListSummary`, `ListMemberSummary`, `PendingInvite`, `CreateListRequest`, `UpdateListRequest` and the matching response shapes. Vitest coverage of input validation + auth gating (20 tests). | None — runs against the existing local Postgres and v2 schema; doesn't depend on 0c-2's portal/SSM/Cloudflare work. | **Done** (this PR) |
+| **1a-2** | Backend items CRUD + upvote + complete: `GET /v1/lists/:id/items` (with `upvote_count` aggregate via `LEFT JOIN ... COUNT(*)::int`), `POST` (transactional: insert item + insert creator's upvote in one tx — spec §2.3), `GET /v1/items/:id`, `PATCH`, `DELETE`, `POST/:id/upvote` (idempotent), `DELETE/:id/upvote`, `POST/:id/complete`, `POST/:id/uncomplete`. `requireItemMember` helper that resolves the item's list and reuses `requireListMember`'s membership check. Shared types `Item`, `ItemListResponse`, `ItemResponse`, request bodies. Sort order: `upvote_count DESC, created_at DESC` per spec §7.7. | None. | Pending |
+| **1b-1** | Client TanStack Query foundation + home screen: `apps/workshop/src/lib/query.ts` (`QueryClient` with `refetchOnWindowFocus` / `refetchOnReconnect`), `src/lib/queryKeys.ts` (centralized factory), `src/api/lists.ts` (typed wrappers around `/v1/lists`), `app/index.tsx` rewritten as the rich list-cards home with FAB and empty state. New primitives in `src/ui/`: `Sheet`, `Modal`, `Toast`. | None. | Pending |
+| **1b-2** | Client list detail + create-list flow: `app/list/[id]/index.tsx` (filter bar + completed section), `app/list/[id]/item/[itemId].tsx`, `app/list/[id]/add.tsx` (free-form for date-idea / trip; movie/TV/book stubs route to free-form until Phase 2), `app/create-list/_layout.tsx` + `type.tsx` + `customize.tsx`. New primitives: `UpvotePill`, `Avatar`, `Chip`. Optimistic-update helpers for upvote/complete/add with toast rollback. `expo-haptics` wired on upvote/complete/delete (no-op `.web.ts`). One Playwright happy-path: create list → add item → upvote → complete. | None. | Pending |
+
+#### 3.8 What 1a-1 actually shipped — start here for 1a-2
+
+Files that landed in 1a-1 (read these before touching 1a-2):
+
+- `apps/backend/src/middleware/authorize.ts` — `requireListMember` reads
+  `:id` from the path, parses it as a UUID (404s on parse failure so handlers
+  never see invalid ids), looks up `(list_id, user_id)` in `list_members`,
+  404s if not a member, otherwise stashes `c.var.listMemberRole` on the
+  context. `requireListOwner` reads that role and 403s on member. Layer them:
+  `requireListMember, requireListOwner` (member runs first; owner is cheap).
+- `apps/backend/src/routes/v1/lists.ts` — five handlers, all behind
+  `requireAuth`. The list shape comes back from `toListShape(DbList)` so
+  enum widening + date-to-ISO is in one place; reuse for items in 1a-2 by
+  building an analogous `toItemShape` helper.
+  - `GET /` uses `db.execute(sql\`...\`)` for the aggregate query (member +
+    item count subselects). The Drizzle relational API can do this but the
+    raw SQL is shorter and easier to audit. The result is cast through
+    `Array<Record<string, unknown>> | { rows: ... }` because `postgres-js`
+    sometimes returns one shape and sometimes the other depending on the
+    statement; do the same in 1a-2's `GET /lists/:id/items` aggregate.
+  - `POST /` opens a `db.transaction(async tx => ...)`. 1a-2's `POST
+    /lists/:id/items` should use the same pattern to insert the item + the
+    creator's upvote atomically.
+  - `PATCH` uses `Partial<DbList>` + `if (parsed.data.foo !== undefined)`
+    so a field can be cleared with `null` (description) without hitting the
+    "did the caller mean to update?" question. `description: undefined` is
+    "leave alone", `description: null` is "clear it".
+- `packages/shared/src/types.ts` — `List`, `ListColor` (the seven palette
+  keys baked into spec §9), `ListSummary`, `ListMemberSummary`, `PendingInvite`
+  (defined now to lock the `GET /:id` shape ahead of Phase 3),
+  `CreateListRequest`, `UpdateListRequest`, response wrappers. The `Item`
+  shape lands in 1a-2.
+- `apps/backend/src/app.ts` — `app.route("/v1/lists", listRoutes)` mounted.
+  No rate-limit middleware on it yet — 1a-2 should wire `POST /items` +
+  `POST /items/:id/upvote` per spec §8 (60/user/min and 120/user/min
+  respectively) using the existing `rateLimit({ family, key: ... })`
+  middleware with a `userId`-derived key.
+- `apps/backend/src/routes/v1/lists.test.ts` — 20 tests covering the Zod
+  schemas (`createListSchema`, `updateListSchema`) plus auth gating + UUID
+  parse-failure paths. Same convention as `users.test.ts` / `auth.test.ts`:
+  validation-only, no DB integration. End-to-end coverage of the DB path
+  comes from the 1b Playwright run; smoke-tested locally during
+  development against the docker postgres.
+
+What 1a-2 should do *first*: read `apps/backend/src/routes/v1/lists.ts` end
+to end (especially `toListShape`, the `db.transaction` shape, and the raw
+SQL aggregate) and `apps/backend/src/middleware/authorize.ts`. Items reuse
+the same helpers — `requireListMember` already reads `:id` from the path,
+so the natural URL shape for the *item-keyed* routes (`GET /v1/items/:id`,
+`PATCH`, `DELETE`, `POST /:id/upvote`, etc.) is to add a sibling
+`requireItemMember` middleware that resolves the item's list and then
+delegates to the same membership check. Don't duplicate the role-gating
+logic; layer the existing pieces.
+
+#### 3.9 Original Phase 1 deliverable list
+
+(Each item is annotated with the chunk that lands it.)
+
 **Deliverables**:
 
 1. **Backend routes** (`apps/backend/src/routes/v1/`)
-   - `lists.ts` — `GET /v1/lists`, `POST`, `GET /:id`, `PATCH /:id`, `DELETE /:id`.
+   - `lists.ts` — `GET /v1/lists`, `POST`, `GET /:id`, `PATCH /:id`, `DELETE /:id`. — *1a-1*
    - `items.ts` — `GET /v1/lists/:id/items`, `POST`, `GET /v1/items/:id`,
      `PATCH`, `DELETE`, `POST /:id/upvote`, `DELETE /:id/upvote`,
-     `POST /:id/complete`, `POST /:id/uncomplete`.
-   - Helpers: `assertListMember(userId, listId)` authorization guard used by
-     every item route.
-2. **Item creation transactionally inserts the creator's upvote** (spec §2.3).
+     `POST /:id/complete`, `POST /:id/uncomplete`. — *1a-2*
+   - Helpers: `requireListMember` / `requireListOwner` middleware (1a-1)
+     plus `requireItemMember` (1a-2) used by every item-keyed route.
+2. **Item creation transactionally inserts the creator's upvote** (spec §2.3). — *1a-2*
 3. **List query returns `upvote_count` as a computed column** via
    `LEFT JOIN ... COUNT(...)::int` (spec §7.7). Sort: `upvote_count DESC,
-   created_at DESC`.
+   created_at DESC`. — *1a-2*
 4. **Client**
-   - `app/index.tsx` — Home with rich list cards, empty state, FAB.
+   - `app/index.tsx` — Home with rich list cards, empty state, FAB. — *1b-1*
    - `app/create-list/_layout.tsx` + `type.tsx` + `customize.tsx` —
-     create-list modal stack (skip the Invite screen in P1; added in P3).
+     create-list modal stack (skip the Invite screen in P1; added in P3). — *1b-2*
    - `app/list/[id]/index.tsx` — list detail with filter bar, upvote pill,
-     completed section.
-   - `app/list/[id]/item/[itemId].tsx` — item detail.
+     completed section. — *1b-2*
+   - `app/list/[id]/item/[itemId].tsx` — item detail. — *1b-2*
    - `app/list/[id]/add.tsx` — free-form add (date-idea/trip type only).
-     Movie/TV/Book add pathway is a stub that routes to free-form until P2.
-   - New primitives: `Sheet`, `Modal`, `UpvotePill`, `Avatar`, `Chip`, `Toast`.
-5. **TanStack Query integration** (`apps/workshop/src/lib/query.ts`)
+     Movie/TV/Book add pathway is a stub that routes to free-form until P2. — *1b-2*
+   - New primitives: `Sheet`, `Modal`, `Toast` (1b-1); `UpvotePill`,
+     `Avatar`, `Chip` (1b-2).
+5. **TanStack Query integration** (`apps/workshop/src/lib/query.ts`) — *1b-1*
    - `QueryClient` setup with `refetchOnWindowFocus`, `refetchOnReconnect`.
    - `queryKeys.ts` — centralized key factory (`lists.all`, `lists.detail(id)`,
      `items.byList(id)`, `items.detail(id)`).
-   - Optimistic update helpers for upvote, complete, add. Rollback with toast
-     on error (spec §5.5).
-6. **Shared types**: `List`, `Item`, `ListMemberSummary`, CRUD request bodies.
+   - Optimistic update helpers for upvote, complete, add — *1b-2*. Rollback
+     with toast on error (spec §5.5).
+6. **Shared types**: `List`, `ListMemberSummary`, list CRUD request bodies — *1a-1*;
+   `Item`, item CRUD request bodies — *1a-2*.
 7. **Haptics**: wire `expo-haptics` on upvote / complete / delete (no-op on
-   web — handle via `.web.ts` override).
+   web — handle via `.web.ts` override). — *1b-2*
 
 **Dependencies**: Phase 0.
 
