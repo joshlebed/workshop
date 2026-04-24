@@ -102,9 +102,10 @@ cd infra && AWS_PROFILE=workshop-prod terraform output                     # api
 curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)/health   # quick health check
 ```
 
-The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `SES_FROM_ADDRESS`, `LOG_LEVEL` from
-env vars set by Terraform. If behavior seems wrong, `aws lambda get-function-configuration` shows
-what's actually running.
+The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
+`APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
+`GOOGLE_BOOKS_API_KEY`, `LOG_LEVEL` from env vars set by Terraform. If behavior seems wrong,
+`aws lambda get-function-configuration` shows what's actually running.
 
 ## Known gotcha: HCP Terraform state lock
 
