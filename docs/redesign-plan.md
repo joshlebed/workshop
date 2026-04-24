@@ -100,7 +100,8 @@ apply) being done up front.
 | **0a** | Backend foundation: v2 schema + drop_v1 migration, `lib/response.ts` envelope, `middleware/rate-limit.ts` (table-backed, not yet wired), shared types skeleton, deletion of v1 `routes/auth.ts` + `routes/items.ts` + `lib/email.ts`, `/v1/*` returns 501, client neutralized to "v2 in progress" placeholder, `@aws-sdk/client-ses` + `SES_FROM_ADDRESS` config removed. | None | **Done** |
 | **0b-1** | Backend OAuth foundation: `lib/oauth/{jwks,apple,google}.ts` with JWKS-cached JWT verify via `jose`, `routes/v1/auth.ts` (`POST /apple`, `POST /google`, `POST /signout`, `GET /me`), `routes/v1/users.ts` (`PATCH /me` with display-name validation), `requireAuth` middleware refactored to the v1 envelope, rate-limit wired to `/v1/auth/*` (per-IP, 30/min), shared types extended (`AppleAuthRequest`, `GoogleAuthRequest`, `AuthResponse`, `UpdateMeRequest`), `config.ts` reads OAuth audiences from env, Vitest mocked-JWKS coverage (43 tests). | None — uses dep-injected JWKS/audiences in tests so no provider portal config required to land the code. | **Done** (this PR) |
 | **0b-2** | Client OAuth surface: primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten (signInWithApple/Google, signOut, setDisplayName), dev-only `POST /v1/auth/dev` backend route gated on `DEV_AUTH_ENABLED=1`, one Playwright happy-path that drives sign-in → display-name → home via the dev route. | None — real OAuth SDK integration is deferred to 0c (requires Apple/Google portal config). | **Done** (this PR) |
-| **0c** | Infra cutover + real OAuth SDK integration: SSM SecureString params (`apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`), Lambda env vars updated (`APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`), **delete `infra/ses.tf`** + `ses_verified_email` variable + SES IAM policy, Cloudflare Pages project wired for the web build, `expo-apple-authentication` + `expo-auth-session` added and wired to the existing `signInWithApple` / `signInWithGoogle` hook methods (replace the warning-dialog stubs in `app/sign-in.tsx`). | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account; Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). All tracked in `docs/plans/HANDOFF.md`. | Pending |
+| **0c-1** | Infra Terraform code only (no apply): delete `infra/ses.tf` + `ses_verified_email` variable + SES IAM policy + `SES_FROM_ADDRESS` from Lambda + `SES_FROM_ADDRESS` from the deploy-backend migrate job; add six `aws_ssm_parameter` SecureString resources (`apple_bundle_id`, `apple_services_id`, `google_ios_client_id`, `google_web_client_id`, `tmdb_api_key`, `google_books_api_key`) with empty defaults and `lifecycle { ignore_changes = [value] }`; wire six matching env vars into `aws_lambda_function.api`; update `terraform.tfvars.example`; create `docs/plans/HANDOFF.md` tracking the remaining external work. | None — zero cloud actions; `terraform plan` is informational until 0c-2 applies. | **Done** (this PR) |
+| **0c-2** | Apply the infra + wire real OAuth SDKs: `AWS_PROFILE=workshop-prod terraform apply`; paste real values into SSM via `aws ssm put-parameter --overwrite`; stand up the Cloudflare Pages project wired to `main`; add `expo-apple-authentication` + `expo-auth-session` + `expo-crypto` + `expo-web-browser` to `apps/workshop`; replace the warning-dialog stubs in `app/sign-in.tsx` + `useAuth.signInWithApple` / `signInWithGoogle` with real SDK calls reading `EXPO_PUBLIC_APPLE_SERVICES_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`; add a second Playwright happy-path that stubs Google Identity Services. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account; Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). All tracked in `docs/plans/HANDOFF.md`. | Pending |
 
 #### 3.2 What 0a actually shipped — start here for 0b
 
@@ -295,6 +296,50 @@ The only deliberate ordering is that SSM params have to exist before the
 Terraform apply that wires them into Lambda env vars, and real OAuth client
 IDs have to be pasted into SSM *before* the client's Sign-in buttons stop
 showing the warning dialog.
+
+#### 3.6 What 0c-1 actually shipped — start here for 0c-2
+
+Files that landed in 0c-1 (read these first before touching 0c-2):
+
+- `infra/ses.tf` — **deleted**. The `aws_sesv2_email_identity.sender`
+  resource and the `ses_verification_notice` output are gone.
+- `infra/variables.tf` — `ses_verified_email` variable removed. Six new
+  variables added: `apple_bundle_id`, `apple_services_id`,
+  `google_ios_client_id`, `google_web_client_id`, `tmdb_api_key`,
+  `google_books_api_key`. All default to `""` so `terraform apply`
+  succeeds before any portal setup; the backend rejects OAuth requests
+  with `OAuthVerifyError` when audiences are empty.
+  `budget_email_recipient` is unchanged — AWS Budgets uses SNS, not SES.
+- `infra/ssm.tf` — six new `aws_ssm_parameter` SecureString resources
+  matching the variables above, each with
+  `lifecycle { ignore_changes = [value] }` so `aws ssm put-parameter
+  --overwrite` doesn't drift state.
+- `infra/lambda.tf` — SES IAM policy (`aws_iam_role_policy.lambda_inline`
+  with `ses:SendEmail` / `ses:SendRawEmail`) removed. `SES_FROM_ADDRESS`
+  env var removed from `aws_lambda_function.api`. Six new env vars added:
+  `APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`,
+  `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`, each
+  sourced from the matching SSM param.
+- `infra/terraform.tfvars.example` — `ses_verified_email` line removed;
+  six empty OAuth/API-key placeholders added.
+- `.github/workflows/deploy-backend.yml` — `SES_FROM_ADDRESS` removed
+  from the migrate job env (the backend config no longer reads it, so
+  it was already dead code).
+- `CLAUDE.md` — the "Lambda reads…" line updated to list the six new
+  env vars instead of `SES_FROM_ADDRESS`.
+- `docs/plans/HANDOFF.md` — new file. This is the runbook for 0c-2:
+  portal checklists, SSM paste commands, Cloudflare Pages build config,
+  and the client-SDK wiring sketch.
+
+Nothing was applied — this PR is pure code. `terraform plan` after
+merge will show the SES identity + IAM policy removal and the six new
+SSM params created with empty values.
+
+What 0c-2 should do *first*: read `docs/plans/HANDOFF.md` top to bottom.
+The ordering there is deliberate: portals produce identifiers, identifiers
+get pasted into SSM, SSM must exist before `terraform apply` wires the
+Lambda env vars, and real client IDs must be in SSM before the client
+sign-in buttons stop showing warning dialogs.
 
 #### 3.3 Original Phase 0 deliverable list
 

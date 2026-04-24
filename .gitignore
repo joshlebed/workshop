@@ -68,5 +68,5 @@ playwright-report/
 # in-progress migration state without risk. HANDOFF.md is the one
 # exception: it's the tracked cross-phase baton that names pending
 # setup work (no secrets, just pointers).
-docs/plans/
+docs/plans/*
 !docs/plans/HANDOFF.md

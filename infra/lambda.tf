@@ -21,26 +21,6 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "lambda_inline" {
-  role = aws_iam_role.lambda.name
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["ses:SendEmail", "ses:SendRawEmail"]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "ses:FromAddress" = var.ses_verified_email
-          }
-        }
-      }
-    ]
-  })
-}
-
 # A tiny placeholder zip so `terraform apply` succeeds before the first CI
 # deploy uploads real code. CI runs `aws lambda update-function-code` after.
 data "archive_file" "placeholder" {
@@ -65,11 +45,16 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      STAGE            = "prod"
-      DATABASE_URL     = aws_ssm_parameter.db_url.value
-      SESSION_SECRET   = random_password.session_secret.result
-      SES_FROM_ADDRESS = var.ses_verified_email
-      LOG_LEVEL        = "info"
+      STAGE                = "prod"
+      DATABASE_URL         = aws_ssm_parameter.db_url.value
+      SESSION_SECRET       = random_password.session_secret.result
+      APPLE_BUNDLE_ID      = aws_ssm_parameter.apple_bundle_id.value
+      APPLE_SERVICES_ID    = aws_ssm_parameter.apple_services_id.value
+      GOOGLE_IOS_CLIENT_ID = aws_ssm_parameter.google_ios_client_id.value
+      GOOGLE_WEB_CLIENT_ID = aws_ssm_parameter.google_web_client_id.value
+      TMDB_API_KEY         = aws_ssm_parameter.tmdb_api_key.value
+      GOOGLE_BOOKS_API_KEY = aws_ssm_parameter.google_books_api_key.value
+      LOG_LEVEL            = "info"
     }
   }
 

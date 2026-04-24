@@ -16,3 +16,71 @@ resource "aws_ssm_parameter" "db_url" {
   type  = "SecureString"
   value = var.database_url
 }
+
+# OAuth verification audiences. Values default to empty so `terraform apply`
+# succeeds before Apple/Google portals are configured; after portal setup,
+# paste the real IDs via `aws ssm put-parameter --overwrite` (see
+# docs/plans/HANDOFF.md) and Lambda picks them up on next deploy.
+#
+# ignore_changes on `value` lets ops rotate the secret via the CLI/Console
+# without Terraform reverting it back to the tfvars default.
+
+resource "aws_ssm_parameter" "apple_bundle_id" {
+  name  = "/${local.prefix}/apple_bundle_id"
+  type  = "SecureString"
+  value = var.apple_bundle_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "apple_services_id" {
+  name  = "/${local.prefix}/apple_services_id"
+  type  = "SecureString"
+  value = var.apple_services_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "google_ios_client_id" {
+  name  = "/${local.prefix}/google_ios_client_id"
+  type  = "SecureString"
+  value = var.google_ios_client_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "google_web_client_id" {
+  name  = "/${local.prefix}/google_web_client_id"
+  type  = "SecureString"
+  value = var.google_web_client_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "tmdb_api_key" {
+  name  = "/${local.prefix}/tmdb_api_key"
+  type  = "SecureString"
+  value = var.tmdb_api_key
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "google_books_api_key" {
+  name  = "/${local.prefix}/google_books_api_key"
+  type  = "SecureString"
+  value = var.google_books_api_key
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}

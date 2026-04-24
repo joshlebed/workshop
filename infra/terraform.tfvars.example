@@ -1,10 +1,21 @@
 # Copy to terraform.tfvars.local and fill in. tfvars files are gitignored.
 # For CI deploys, set these as HCP Terraform workspace variables instead.
 
-ses_verified_email     = "joshlebed@gmail.com"
 budget_email_recipient = "joshlebed@gmail.com"
 # Full Postgres connection string from Neon (Connection Pooling must be ON).
 # Looks like: postgresql://<user>:<pw>@<host>-pooler.<region>.aws.neon.tech/<db>?sslmode=require
-database_url           = "postgresql://..."
+database_url = "postgresql://..."
 # aws_region           = "us-east-1"      # default
 # github_repository    = "joshlebed/workshop"  # default
+
+# OAuth verification audiences. Leave empty until Apple/Google portals are
+# configured — the backend treats empty values as "unconfigured" and rejects
+# sign-in attempts. See docs/plans/HANDOFF.md for the portal + SSM paste steps.
+apple_bundle_id      = ""
+apple_services_id    = ""
+google_ios_client_id = ""
+google_web_client_id = ""
+
+# Enrichment API keys (Phase 2). Leave empty until obtained.
+tmdb_api_key         = ""
+google_books_api_key = ""
