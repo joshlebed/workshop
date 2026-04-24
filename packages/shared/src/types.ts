@@ -49,3 +49,31 @@ export interface ApiErrorResponse {
   code: ErrorCode;
   details?: unknown;
 }
+
+// --- Auth (Phase 0b) ---
+
+export interface AppleAuthRequest {
+  identityToken: string;
+  nonce?: string;
+  /**
+   * Apple returns email/name only on the *first* sign-in. Web SDKs surface
+   * them on the JS callback; iOS surfaces them on `ASAuthorizationAppleIDCredential`.
+   * The client forwards both so the backend can persist them on initial upsert.
+   */
+  email?: string;
+  fullName?: string;
+}
+
+export interface GoogleAuthRequest {
+  idToken: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  token: string;
+  needsDisplayName: boolean;
+}
+
+export interface UpdateMeRequest {
+  displayName: string;
+}

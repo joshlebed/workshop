@@ -37,6 +37,10 @@ Terraform sets env vars on the Lambda function. In local dev, `scripts/dev.sh` s
 
 ## Auth (in flight — see `docs/redesign-plan.md`)
 
-The v1 magic-link flow has been removed. OAuth (Apple + Google) lands in Phase 0b; until then
-`/v1/*` returns 501 and there's no working sign-in path. Don't reintroduce SES — `sesFromAddress`
-is gone from `lib/config.ts` and `@aws-sdk/client-ses` is no longer a dependency.
+The v1 magic-link flow is removed. OAuth (Apple + Google) backend landed in Phase 0b-1:
+`POST /v1/auth/{apple,google}`, `POST /v1/auth/signout`, `GET /v1/auth/me`,
+`PATCH /v1/users/me`. Provider audiences come from env vars (`APPLE_BUNDLE_ID`,
+`APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`) — empty by default;
+0c wires the real values via SSM. The client surface (sign-in screen, display-name
+onboarding, `useAuth`) ships in 0b-2. Don't reintroduce SES — `sesFromAddress` is gone
+from `lib/config.ts` and `@aws-sdk/client-ses` is no longer a dependency.
