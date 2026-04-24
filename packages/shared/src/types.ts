@@ -158,3 +158,57 @@ export interface ListDetailResponse {
   members: ListMemberSummary[];
   pendingInvites: PendingInvite[];
 }
+
+// --- Items (Phase 1a-2) ---
+
+/**
+ * `metadata` is per-list-type free-form JSONB in v1; Phase 2 adds per-type
+ * Zod validators (poster URL for movies, OG image for date ideas, etc.) at
+ * the API boundary. Keep it loose here so the type doesn't churn when the
+ * validators land.
+ */
+export type ItemMetadata = Record<string, unknown>;
+
+export interface Item {
+  id: string;
+  listId: string;
+  type: ListType;
+  title: string;
+  url: string | null;
+  note: string | null;
+  metadata: ItemMetadata;
+  addedBy: string;
+  completed: boolean;
+  completedAt: string | null;
+  completedBy: string | null;
+  /** Aggregate count from `item_upvotes`. New items always start at 1 (creator's auto-upvote). */
+  upvoteCount: number;
+  /** True when the requesting user has upvoted this item. */
+  hasUpvoted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateItemRequest {
+  title: string;
+  url?: string;
+  note?: string;
+  metadata?: ItemMetadata;
+}
+
+export interface UpdateItemRequest {
+  title?: string;
+  /** Pass `null` to clear; omit to leave unchanged. */
+  url?: string | null;
+  /** Pass `null` to clear; omit to leave unchanged. */
+  note?: string | null;
+  metadata?: ItemMetadata;
+}
+
+export interface ItemListResponse {
+  items: Item[];
+}
+
+export interface ItemResponse {
+  item: Item;
+}

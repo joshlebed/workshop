@@ -6,6 +6,7 @@ import { err } from "./lib/response.js";
 import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/v1/auth.js";
+import { itemRoutes } from "./routes/v1/items.js";
 import { listRoutes } from "./routes/v1/lists.js";
 import { userRoutes } from "./routes/v1/users.js";
 
@@ -63,6 +64,7 @@ export function buildApp() {
   app.route("/v1/auth", authRoutes);
   app.route("/v1/users", userRoutes);
   app.route("/v1/lists", listRoutes);
+  app.route("/v1/items", itemRoutes);
 
   return app;
 }

@@ -487,7 +487,7 @@ on its own and `main` stays deployable between landings.
 | Chunk | What ships | External deps | Status |
 |---|---|---|---|
 | **1a-1** | Backend lists CRUD: `GET /v1/lists` (with `role`/`memberCount`/`itemCount` aggregates), `POST` (transactional list + owner-member insert), `GET /:id` (list + members + empty `pendingInvites`), `PATCH /:id` (owner only), `DELETE /:id` (owner only; cascades). `requireListMember` + `requireListOwner` middleware (404 vs 403 — non-members get 404 to avoid leaking existence). Shared types `List`, `ListSummary`, `ListMemberSummary`, `PendingInvite`, `CreateListRequest`, `UpdateListRequest` and the matching response shapes. Vitest coverage of input validation + auth gating (20 tests). | None — runs against the existing local Postgres and v2 schema; doesn't depend on 0c-2's portal/SSM/Cloudflare work. | **Done** (this PR) |
-| **1a-2** | Backend items CRUD + upvote + complete: `GET /v1/lists/:id/items` (with `upvote_count` aggregate via `LEFT JOIN ... COUNT(*)::int`), `POST` (transactional: insert item + insert creator's upvote in one tx — spec §2.3), `GET /v1/items/:id`, `PATCH`, `DELETE`, `POST/:id/upvote` (idempotent), `DELETE/:id/upvote`, `POST/:id/complete`, `POST/:id/uncomplete`. `requireItemMember` helper that resolves the item's list and reuses `requireListMember`'s membership check. Shared types `Item`, `ItemListResponse`, `ItemResponse`, request bodies. Sort order: `upvote_count DESC, created_at DESC` per spec §7.7. | None. | Pending |
+| **1a-2** | Backend items CRUD + upvote + complete: `GET /v1/lists/:id/items` (with `upvote_count` aggregate via `LEFT JOIN ... COUNT(*)::int` + per-user `has_upvoted`), `POST` (transactional: insert item + insert creator's upvote in one tx — spec §2.3), `GET /v1/items/:id`, `PATCH`, `DELETE`, `POST/:id/upvote` (idempotent), `DELETE/:id/upvote`, `POST/:id/complete`, `POST/:id/uncomplete`. `requireItemMember` helper that resolves the item's list and reuses `requireListMember`'s membership check. Shared types `Item`, `ItemListResponse`, `ItemResponse`, request bodies. Sort order: `upvote_count DESC, created_at DESC` per spec §7.7; completed-only filter sorts by `completed_at DESC` per spec §2.4. Rate limits wired: `POST /lists/:id/items` 60/user/min, upvote endpoints 120/user/min per spec §8. Vitest coverage of input validation + auth gating + UUID bail-out (29 tests). | None. | **Done** (this PR) |
 | **1b-1** | Client TanStack Query foundation + home screen: `apps/workshop/src/lib/query.ts` (`QueryClient` with `refetchOnWindowFocus` / `refetchOnReconnect`), `src/lib/queryKeys.ts` (centralized factory), `src/api/lists.ts` (typed wrappers around `/v1/lists`), `app/index.tsx` rewritten as the rich list-cards home with FAB and empty state. New primitives in `src/ui/`: `Sheet`, `Modal`, `Toast`. | None. | Pending |
 | **1b-2** | Client list detail + create-list flow: `app/list/[id]/index.tsx` (filter bar + completed section), `app/list/[id]/item/[itemId].tsx`, `app/list/[id]/add.tsx` (free-form for date-idea / trip; movie/TV/book stubs route to free-form until Phase 2), `app/create-list/_layout.tsx` + `type.tsx` + `customize.tsx`. New primitives: `UpvotePill`, `Avatar`, `Chip`. Optimistic-update helpers for upvote/complete/add with toast rollback. `expo-haptics` wired on upvote/complete/delete (no-op `.web.ts`). One Playwright happy-path: create list → add item → upvote → complete. | None. | Pending |
 
@@ -544,6 +544,86 @@ so the natural URL shape for the *item-keyed* routes (`GET /v1/items/:id`,
 `requireItemMember` middleware that resolves the item's list and then
 delegates to the same membership check. Don't duplicate the role-gating
 logic; layer the existing pieces.
+
+#### 3.10 What 1a-2 actually shipped — start here for 1b-1
+
+Files that landed in 1a-2 (read these before touching 1b-1):
+
+- `apps/backend/src/middleware/authorize.ts` — adds `requireItemMember`
+  alongside the existing `requireListMember` / `requireListOwner`. It
+  parses `:id` as a UUID (404s on parse failure so handlers never see
+  invalid ids), then resolves the item → list → membership in a single
+  inner-join query keyed by `(list_id, user_id)`. Stashes
+  `c.var.listMemberRole` (matches the existing list middleware) and
+  `c.var.itemListId` for handlers that want the parent list id without
+  re-fetching. 404 on miss — never 403, to match `requireListMember`.
+- `apps/backend/src/routes/v1/items.ts` — new file, all handlers behind
+  `requireAuth + requireItemMember`. Exports three reusable primitives the
+  list-scoped routes consume:
+  - `createItemSchema` / `updateItemSchema` — Zod validators. `title` is
+    1–500 chars + single-line; `url` is ≤2048 chars (free text — no
+    `z.url()` because date-idea/trip URLs come through here too); `note` is
+    ≤1000 chars; `metadata` is `z.record(z.string(), z.unknown())`. **The
+    loose metadata record is intentional — Phase 2 swaps in per-list-type
+    Zod validators per spec §9.4.**
+  - `fetchItemShape(itemId, userId)` — re-selects an item with
+    `upvote_count` (subselect COUNT) and `has_upvoted` (subselect EXISTS).
+    Used after every mutation to return the fresh shape. Cheaper than
+    threading aggregates through every `RETURNING` clause.
+  - `fetchItemsForList(listId, userId, { completed })` — the list-scoped
+    aggregate query. Default sort `upvote_count DESC, created_at DESC` per
+    spec §7.7; `?completed=true` filter sorts by `completed_at DESC NULLS
+    LAST, created_at DESC` per spec §2.4. Uses a `LEFT JOIN (SELECT
+    item_id, COUNT(*)::int AS upvote_count, BOOL_OR(user_id = $userId) AS
+    has_upvoted FROM item_upvotes GROUP BY item_id)` derived table — one
+    round-trip, computes both aggregates in the same scan.
+  - `createItem(listId, userId, data)` — opens a transaction, looks up the
+    parent list's `type` so `items.type` matches `lists.type` (denormalized
+    per schema §7.6), inserts the item, then inserts the creator's upvote
+    in the same tx (spec §2.3). Returns the shape with `upvoteCount: 1,
+    hasUpvoted: true` directly — no extra SELECT.
+  - Item-id-scoped handlers: `GET`, `PATCH`, `DELETE`,
+    `POST/DELETE /:id/upvote`, `POST /:id/complete`, `POST /:id/uncomplete`.
+    Upvote handlers use `INSERT ... ON CONFLICT DO NOTHING` for idempotency.
+    Complete/uncomplete set `completed_at` + `completed_by` together (or
+    `null/null` on uncomplete). All return `{ item }` with fresh aggregates.
+- `apps/backend/src/routes/v1/lists.ts` — adds list-scoped item routes:
+  - `GET /v1/lists/:id/items` accepts `?completed=true|false`. Validation
+    via a `z.union([z.literal("true"), z.literal("false")]).optional()`
+    that transforms to `boolean | undefined`.
+  - `POST /v1/lists/:id/items` calls `createItem`. Rate-limited inline at
+    60/user/min (`family: "v1.items.create"`, `key: c.get("userId")`).
+  Both layered on top of the existing `requireListMember` so non-members
+  hit 404 before the handler runs.
+- `apps/backend/src/app.ts` — mounts `app.route("/v1/items", itemRoutes)`.
+  Upvote rate-limits live inline on the upvote handlers (120/user/min,
+  `family: "v1.items.upvote"`) — applied after `requireItemMember` so the
+  key function sees `c.get("userId")`. The existing per-IP `/v1/auth/*`
+  limiter is unchanged.
+- `packages/shared/src/types.ts` — adds `Item`, `ItemMetadata` (loose
+  record alias), `CreateItemRequest`, `UpdateItemRequest`,
+  `ItemListResponse`, `ItemResponse`. `Item.upvoteCount` and
+  `Item.hasUpvoted` are always populated by the backend — the client UI
+  reads `hasUpvoted` to render the upvote pill's "selected" state per spec
+  §4.2.
+- `apps/backend/src/routes/v1/items.test.ts` — 29 tests covering
+  `createItemSchema` / `updateItemSchema` (trim, length caps, single-line,
+  metadata-must-be-record, null-clears-vs-undefined-leaves-alone), auth
+  gating across every route shape (401 on no token), and uuid bail-out via
+  `requireItemMember` (404 before any DB read). Same convention as
+  `lists.test.ts`: validation-only — DB-integration coverage comes from
+  the 1b Playwright run. End-to-end smoke-tested locally against the
+  docker postgres during development.
+
+What 1b-1 should do *first*: read `apps/backend/src/routes/v1/items.ts`
+end-to-end (request/response shapes for the typed client wrappers) and
+`apps/backend/src/routes/v1/lists.ts` for the `GET /v1/lists` shape — that's
+the home-screen card data. The shared types (`Item`, `ListSummary`,
+`Me`) fully describe what `apiRequest<T>()` should return; `apps/workshop/src/lib/api.ts`
+already wraps the v1 envelope. New work in 1b-1 is purely client side:
+TanStack Query setup, query keys, typed list wrappers, and the home-screen
+rewrite. The backend changes nothing — 1a-2 closed out the Phase 1 server
+surface; 1b-2 will lift in the item-mutation wrappers.
 
 #### 3.9 Original Phase 1 deliverable list
 
