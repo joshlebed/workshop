@@ -107,3 +107,130 @@ jobs:
           # Skip HCP backend for validation so PRs from forks can run.
           terraform init -backend=false
           terraform validate
+
+  # Guards against the RN-drift bug class (Dependabot bumped RN past Expo SDK,
+  # breaking Metro codegen). Two layers:
+  #   1. Dependency pin check — fail if RN or a satellite drifts off the SDK matrix.
+  #   2. Real iOS bundle — catches any Metro / codegen error the pin check would miss.
+  mobile-bundle:
+    name: Mobile Metro bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        with:
+          version: 10.19.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Cache hoisted node_modules
+        id: nm-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install deps
+        if: steps.nm-cache.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      # Scoped on purpose — a full `expo install --check` also flags react/
+      # typescript, which the monorepo intentionally pins above the SDK-preferred
+      # versions. RN + its satellites are the ones that must track the SDK.
+      - name: Verify RN deps match Expo SDK
+        working-directory: apps/workshop
+        run: |
+          pnpm exec expo install --check \
+            react-native \
+            react-native-gesture-handler \
+            react-native-reanimated \
+            react-native-safe-area-context \
+            react-native-screens \
+            react-native-worklets
+
+      - name: Bundle iOS (Metro codegen smoke)
+        working-directory: apps/workshop
+        run: pnpm exec expo export --platform ios --output-dir dist-ci
+
+  # Guards against the migration-drift bug class (0000_initial_schema re-applied
+  # to a prod DB that already had v1 tables). Spins up a fresh Postgres, runs
+  # migrations, then re-runs to confirm drizzle skips every entry. The second
+  # run failing = a migration SQL file is out of sync with the journal.
+  migrate-smoke:
+    name: Migrate smoke (fresh DB + idempotent re-run)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: workshop
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      STAGE: local
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/workshop
+      # 32+ char placeholder; migrate never reads it, but config.ts validates length.
+      SESSION_SECRET: ci_migrate_smoke_session_secret_padding_32
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        with:
+          version: 10.19.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Cache hoisted node_modules
+        id: nm-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install deps
+        if: steps.nm-cache.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Journal ↔ file consistency
+        working-directory: apps/backend
+        run: node ../../scripts/check-drizzle-journal.mjs
+
+      - name: Apply migrations (fresh DB)
+        working-directory: apps/backend
+        run: pnpm run db:migrate
+
+      - name: Re-apply migrations (must be a no-op)
+        working-directory: apps/backend
+        run: pnpm run db:migrate
+
+      - name: Verify journal row count
+        env:
+          PGPASSWORD: postgres
+        run: |
+          set -euo pipefail
+          applied=$(psql -h localhost -U postgres -d workshop -tAc \
+            "select count(*) from drizzle.__drizzle_migrations")
+          expected=$(find apps/backend/drizzle -maxdepth 1 -name '*.sql' | wc -l)
+          echo "applied=$applied expected=$expected"
+          test "$applied" = "$expected"

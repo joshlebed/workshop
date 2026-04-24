@@ -5,8 +5,113 @@ Status: in progress · Opened: 2026-04-24 · Owner: @joshlebed
 This file tracks the work that Phase 0c-1 (infra code changes, this PR) intentionally did
 not do because it requires external-account access. Anyone picking up 0c-2 starts here.
 
-The order matters: **portals → SSM → Terraform apply → Cloudflare Pages → client SDK
-wiring**. Earlier steps unblock later ones.
+The order matters: **CI/CD unblock → portals → SSM → Terraform apply → Cloudflare Pages →
+client SDK wiring**. Earlier steps unblock later ones.
+
+---
+
+## 0. CI/CD unblock (run this first — blocks every deploy)
+
+All three deploy pipelines have been failing since Phase 0a landed on 2026-04-24. None of
+the redesign is in production. Merging more redesign work without doing §0.1 first just
+stacks up unshipped code.
+
+### 0.1 Backend deploy — baseline the drizzle migration journal (manual, one-off)
+
+**Symptom**: `Deploy Backend` workflow fails at `Run DB migrations` with
+`relation "magic_tokens" already exists`.
+
+**Root cause**: The production Neon database has the v1 schema but
+`drizzle.__drizzle_migrations` is missing. On each deploy drizzle re-reads the journal
+from scratch and tries to re-apply `0000_initial_schema`.
+
+**Fix (admin, one-time)**:
+
+1. Pull the prod connection string (if you don't already have it):
+
+    ```bash
+    AWS_PROFILE=workshop-prod aws ssm get-parameter \
+      --name /workshop/database_url \
+      --with-decryption --query 'Parameter.Value' --output text
+    ```
+
+    Or use the repo helper:
+
+    ```bash
+    AWS_PROFILE=workshop-prod ./scripts/db-connect.sh
+    ```
+
+2. Run the backfill SQL against prod. **Review it first** — it creates the `drizzle`
+   schema and inserts exactly one row:
+
+    ```bash
+    AWS_PROFILE=workshop-prod psql "$DATABASE_URL" \
+      -f apps/backend/scripts/2026-04-24-baseline-drizzle-migrations.sql
+    ```
+
+    Expected output: a single row with
+    `hash = 210fa360a1e6defb5856138ff724c8842761ed2cb1f0ba935e49406b80f62858`
+    and `created_at = 1776966724611`. The hash and timestamp are pinned to the
+    on-disk inputs drizzle hashes at runtime — do not edit them.
+
+3. Re-run the failed `Deploy Backend` workflow. On the next run drizzle will skip
+    0000, apply `0001_drop_v1_schema` (drops v1 tables — irreversible, see §0.1-risks),
+    then apply `0002_v2_schema`.
+
+4. Verify:
+
+    ```bash
+    curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)/health
+    # expect: { "ok": true }
+    AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 5m --filter error
+    # expect: silent
+    ```
+
+**§0.1 risks**:
+
+- `0001_drop_v1_schema` drops the `users`, `magic_tokens`, and `rec_items` tables with
+  `CASCADE`. Any v1 user data is gone. That's the intended outcome of the redesign
+  (spec §1, "Starting state") — v1 accounts are being thrown away and v2 rebuilds from
+  OAuth sign-ins — but **snapshot the DB in Neon first** before running step 2 so there's
+  a restore point. Neon: *Branch → Create branch from current state* on the prod branch.
+- If the backfill row already exists (script is idempotent), the script is a no-op and
+  safe to re-run.
+
+### 0.2 Mobile (OTA) + TestFlight — RN pinned back to Expo SDK 55 (code, in this PR)
+
+**Symptom**: `Deploy Mobile (OTA)` and `TestFlight` workflows fail at
+`Publish EAS Update` / `EAS Build` with:
+
+```
+SyntaxError: ../../node_modules/react-native/src/private/components/virtualview/
+  VirtualViewExperimentalNativeComponent.js: Unable to determine event arguments
+  for "onModeChange"
+```
+
+**Root cause**: Dependabot (#?) bumped `react-native` 0.83.6 → 0.85.2 and satellites
+past the versions Expo SDK 55 supports. RN 0.85's new `VirtualViewExperimentalNativeComponent`
+declares a nested `DirectEventHandler` type that the Expo-bundled
+`@react-native/babel-plugin-codegen` (older) can't parse. The CLAUDE.md rule was
+"run `npx expo install --check` before upgrading mobile deps"; Dependabot ran without
+that gate.
+
+**Fix (in this PR)**:
+
+- `apps/workshop/package.json` — `react-native` / `react-native-gesture-handler` /
+  `react-native-reanimated` / `react-native-safe-area-context` / `react-native-screens`
+  / `react-native-worklets` / `react` / `react-dom` pinned back to the exact versions
+  reported by `pnpm exec expo install --check`.
+- `.github/dependabot.yml` — added `ignore` entries (minor + major) for each RN
+  satellite. Re-open these when bumping Expo SDK itself.
+
+**Admin follow-up**:
+
+- After this PR merges, re-run the failed `Deploy Mobile (OTA)` and
+  `TestFlight (native iOS build)` workflows. The EAS Update should publish within ~60s;
+  TestFlight only rebuilds if `@expo/fingerprint` sees a native change (it will — RN is
+  pinned back). Expect an auto-submit to App Store Connect.
+- Close any open Dependabot PRs that bump RN past 0.83.6 — the new `ignore` will keep
+  future ones from opening until the SDK itself moves.
 
 ---
 
