@@ -84,14 +84,84 @@ These flow through every phase and are not separate PRs:
 Each phase lists: **goal**, **deliverables** (file-level), **dependencies**,
 **acceptance**, **risks**. Phases map 1:1 to spec §15.
 
-### Phase 0 — Foundations (1 PR, or small stack)
+### Phase 0 — Foundations (small stack)
 
 **Goal**: Wipe v1, land the v2 schema, move auth + user profile under `/v1`,
 capture `display_name`, ship the primitives library skeleton.
 
+Phase 0 ships as a small stack of three chunks (see §3.1) so that no single PR
+depends on external setup (Apple/Google portals, Cloudflare Pages, Terraform
+apply) being done up front.
+
+#### 3.1 Phase 0 chunks
+
+| Chunk | What ships | External deps | Status |
+|---|---|---|---|
+| **0a** | Backend foundation: v2 schema + drop_v1 migration, `lib/response.ts` envelope, `middleware/rate-limit.ts` (table-backed, not yet wired), shared types skeleton, deletion of v1 `routes/auth.ts` + `routes/items.ts` + `lib/email.ts`, `/v1/*` returns 501, client neutralized to "v2 in progress" placeholder, `@aws-sdk/client-ses` + `SES_FROM_ADDRESS` config removed. | None | **Done** (this PR) |
+| **0b** | OAuth backend (`routes/v1/auth.ts`, `routes/v1/users.ts`, `lib/oauth/{apple,google}.ts` with JWKS-cached JWT verify), `requireAuth` middleware refactor, rate-limit wired to `/v1/auth/*`, primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten, Vitest mocked-JWKS coverage, one Playwright happy-path. | Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). Track in `docs/plans/HANDOFF.md`. | Pending |
+| **0c** | Infra cutover: SSM SecureString params (`apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`), Lambda env vars updated, **delete `infra/ses.tf`** + `ses_verified_email` variable + SES IAM policy, Cloudflare Pages project wired for the web build. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account. | Pending |
+
+#### 3.2 What 0a actually shipped — start here for 0b
+
+Files that landed in 0a (read these first; they're the foundation 0b builds on):
+
+- `apps/backend/drizzle/0001_drop_v1_schema.sql` + `0002_v2_schema.sql` —
+  applied locally; CI's `migrate` job will re-apply on first deploy after
+  merge. Drops `users`/`magic_tokens`/`rec_items`; creates the full v2 set
+  (`users`, `lists`, `list_members`, `list_invites`, `items`, `item_upvotes`,
+  `activity_events`, `user_activity_reads`, `metadata_cache`, `rate_limits`)
+  + four enums (`list_type`, `member_role`, `auth_provider`,
+  `activity_event_type`).
+- `apps/backend/src/db/schema.ts` — Drizzle definitions for all of the above,
+  including the partial unique index `list_members_one_owner_idx` that
+  enforces "exactly one owner per list" at the DB layer.
+- `apps/backend/src/lib/response.ts` — `ok(c, data, status?)` and
+  `err(c, code, message, details?, status?)`. `code` is the `ErrorCode` enum
+  (`UNAUTHORIZED | FORBIDDEN | NOT_FOUND | VALIDATION | RATE_LIMITED |
+  CONFLICT | INTERNAL`) and is mirrored in `@workshop/shared`.
+  **Use these in every new route — don't `c.json` raw.**
+- `apps/backend/src/middleware/rate-limit.ts` — `rateLimit({ family, limit,
+  windowSec, key })` middleware + `consume(db, bucketKey, windowStart)`
+  primitive. Fixed-window counter against the `rate_limits` table; race-safe
+  via the `(bucket_key, window_start)` PK upsert. Fail-open on DB error so a
+  rate-limiter outage doesn't take the API down. **Created but not yet wired
+  to any route — wire it in 0b.**
+- `apps/backend/src/app.ts` — `/v1/*` returns 501 with the new envelope until
+  0b lands real handlers. Old `/auth/*` and `/items/*` are gone.
+- `apps/backend/src/lib/config.ts` — `sesFromAddress` removed. Don't
+  reintroduce it; 0c deletes the env var from the Lambda definition.
+- `apps/backend/src/middleware/auth.ts` — kept (still wires `requireAuth` to
+  `verifySession`); **0b refactors this** into `requireAuth` +
+  `requireListMember` per the plan.
+- `apps/backend/src/lib/session.ts` — unchanged HMAC token signer/verifier;
+  0b's OAuth handlers issue tokens via `signSession(userId)` after
+  upserting the user.
+- `packages/shared/src/types.ts` — skeleton only (User, enums, error
+  shapes). 0b adds `AppleAuthRequest`, `GoogleAuthRequest`, `AuthResponse`,
+  and the display-name patch shape; Phase 1 adds list/item shapes.
+- `apps/workshop/app/{_layout,index}.tsx` — placeholder home + stripped
+  layout. `app/sign-in.tsx`, `src/{api,hooks,lib,components}/` were deleted
+  wholesale; `src/config.ts` (API URL resolver) and `src/ui/` (TBD) are the
+  only client surface 0b touches.
+- `@aws-sdk/client-ses` removed from `apps/backend/package.json`.
+
+What 0b should do *first*: regenerate `pnpm-lock.yaml` if it complains, then
+add `jose` to `apps/backend/package.json` for JWT/JWKS verification, then
+build out `lib/oauth/{apple,google}.ts` against the spec in the original
+deliverable #2 below.
+
+Open carry-overs for 0c that 0b should NOT touch:
+- `infra/ses.tf` deletion + `ses_verified_email` variable removal
+- `SES_FROM_ADDRESS` env var removal from `lambda.tf`
+- SSM SecureString params for OAuth client IDs + API keys
+
+#### 3.3 Original Phase 0 deliverable list
+
+(Each item is now annotated with the chunk that lands it.)
+
 **Deliverables**:
 
-1. **Migrations** (`apps/backend/drizzle/`)
+1. **Migrations** (`apps/backend/drizzle/`) — *0a*
    - `drop_v1_schema` — drops `rec_items`, `magic_tokens`, `users`.
    - `v2_schema` — creates enums (`list_type`, `member_role`,
      `activity_event_type`, `auth_provider`), tables (`users`, `lists`,
@@ -102,7 +172,7 @@ capture `display_name`, ship the primitives library skeleton.
      provider), `email` nullable (Apple "Hide My Email" relay stored as-is),
      `display_name`. No `magic_tokens` table — magic-link auth is dropped.
    - `apps/backend/src/db/schema.ts` — Drizzle table definitions for the above.
-2. **OAuth auth rewrite** (`apps/backend/src/routes/v1/auth.ts`, `users.ts`)
+2. **OAuth auth rewrite** (`apps/backend/src/routes/v1/auth.ts`, `users.ts`) — *0b*
    - `POST /v1/auth/apple` — body: `{ identityToken, nonce }`. Verify JWT
      against Apple's JWKS (`https://appleid.apple.com/auth/keys`), check
      `aud` matches the iOS bundle ID *or* the Services ID (web), check
@@ -117,13 +187,13 @@ capture `display_name`, ship the primitives library skeleton.
      in-memory caching (refresh on `kid` miss), JWT verify via `jose`.
    - Remove `src/routes/auth.ts` + `items.ts` from `src/app.ts`.
    - Remove `apps/backend/src/lib/email.ts` and `sendMagicLinkEmail`.
-3. **Rate-limit middleware** (`apps/backend/src/middleware/rate-limit.ts`)
+3. **Rate-limit middleware** (`apps/backend/src/middleware/rate-limit.ts`) — *0a* (created), *0b* (wired to `/v1/auth/*`)
    - Table-backed by `rate_limits`. Applied to `/v1/auth/*` first (by IP —
      cheap abuse surface); item/search limits wired when those routes land.
-4. **Response envelope helper** (`apps/backend/src/lib/response.ts`)
+4. **Response envelope helper** (`apps/backend/src/lib/response.ts`) — *0a*
    - `ok(data)`, `err(code, message, details?)` — uniform `{ error, code }` per
      spec §8.
-5. **Client — sign-in + display-name capture**
+5. **Client — sign-in + display-name capture** — *0b*
    - `apps/workshop/app/sign-in.tsx` rewritten: two buttons, Sign in with
      Apple + Sign in with Google. No email field.
      - iOS: `expo-apple-authentication` for Apple (native sheet);
@@ -138,14 +208,14 @@ capture `display_name`, ship the primitives library skeleton.
    - `useAuth` extended: user includes `displayName` + `authProvider`;
      exposes `signInWithApple()`, `signInWithGoogle()`, `signOut()`,
      `setDisplayName()`.
-6. **Primitives library skeleton** (`apps/workshop/src/ui/`)
+6. **Primitives library skeleton** (`apps/workshop/src/ui/`) — *0b*
    - `theme.ts` (palette + tokens per §9 Appendix; dark-only initially),
      `useTheme.ts`, `Text.tsx`, `Button.tsx`, `IconButton.tsx`, `Card.tsx`,
      `EmptyState.tsx`. Enough to rebuild sign-in + onboarding. (No
      `TextField` needed for Phase 0 — OAuth has no inputs; defer to Phase 1.)
    - Old `src/components/theme.ts` — migrate sign-in to tokens, then delete
      the hex palette exports.
-7. **Infra** (`infra/`)
+7. **Infra** (`infra/`) — *0c*
    - `ssm.tf` — add **OAuth verification params** (all SecureString,
      placeholder values; real values pasted after provider portals are
      configured):
@@ -163,11 +233,11 @@ capture `display_name`, ship the primitives library skeleton.
      in `budgets.tf` — AWS Budgets uses SNS, not SES.
    - `terraform apply` — AWS will delete the verified email identity; no
      cutover pain because nothing sends mail anymore.
-8. **Shared types** (`packages/shared/src/types.ts`)
+8. **Shared types** (`packages/shared/src/types.ts`) — *0a* (skeleton: `User`,
+   `AuthProvider`, `ListType`, `MemberRole`, `ActivityEventType`, `Me`,
+   `ApiErrorResponse`, `ErrorCode`); *0b* (`AppleAuthRequest`,
+   `GoogleAuthRequest`, `AuthResponse` `{ user, needsDisplayName }`)
    - Remove `RecItem`, `RecCategory`, old auth request/response types.
-   - Add `User` (with `authProvider`, `displayName`), `ListType`,
-     `MemberRole`, `AppleAuthRequest`, `GoogleAuthRequest`,
-     `AuthResponse` (`{ user, needsDisplayName }`), `Me`.
 
 **Dependencies**: None — this is the base of the stack. Prereq setup
 (outside code): Apple Developer portal — enable Sign in with Apple on the

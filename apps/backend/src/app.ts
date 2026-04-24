@@ -2,9 +2,8 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "./lib/logger.js";
-import { authRoutes } from "./routes/auth.js";
+import { err } from "./lib/response.js";
 import { healthRoutes } from "./routes/health.js";
-import { itemsRoutes } from "./routes/items.js";
 
 export function buildApp() {
   const app = new Hono();
@@ -25,17 +24,20 @@ export function buildApp() {
     honoLogger((msg) => logger.debug(msg)),
   );
 
-  app.onError((err, c) => {
-    logger.error("unhandled error", { error: err, path: c.req.path });
-    return c.json({ error: "internal server error" }, 500);
+  app.onError((e, c) => {
+    logger.error("unhandled error", { error: e, path: c.req.path });
+    return err(c, "INTERNAL", "internal server error");
   });
 
-  app.notFound((c) => c.json({ error: "not found" }, 404));
+  app.notFound((c) => err(c, "NOT_FOUND", "not found"));
 
   app.get("/", (c) => c.json({ service: "workshop-api" }));
   app.route("/health", healthRoutes);
-  app.route("/auth", authRoutes);
-  app.route("/items", itemsRoutes);
+
+  // /v1 surface lands incrementally per docs/redesign-plan.md. Until OAuth
+  // (Phase 0b) and CRUD (Phase 1) ship, every /v1 path returns 501 so old
+  // clients fail loud rather than silently 404.
+  app.all("/v1/*", (c) => err(c, "INTERNAL", "v1 not implemented yet", undefined, 501));
 
   return app;
 }

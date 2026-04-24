@@ -15,7 +15,6 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "@aws-sdk/client-ses": "3.1035.0",
     "@hono/node-server": "2.0.0",
     "@workshop/shared": "workspace:*",
     "drizzle-orm": "0.45.2",

@@ -1,77 +1,51 @@
-export type RecCategory = "movie" | "tv" | "book";
+// v2 skeleton. Endpoint-specific request/response shapes are added in the
+// phase that introduces the endpoint (see docs/redesign-plan.md).
+
+export type AuthProvider = "apple" | "google";
+
+export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip";
+
+export type MemberRole = "owner" | "member";
+
+export type ActivityEventType =
+  | "list_created"
+  | "member_joined"
+  | "member_left"
+  | "member_removed"
+  | "item_added"
+  | "item_updated"
+  | "item_deleted"
+  | "item_upvoted"
+  | "item_unupvoted"
+  | "item_completed"
+  | "item_uncompleted"
+  | "invite_created"
+  | "invite_revoked";
 
 export interface User {
   id: string;
-  email: string;
-  createdAt: string;
-}
-
-export interface RecItem {
-  id: string;
-  userId: string;
-  title: string;
-  category: RecCategory;
-  count: number;
-  completed: boolean;
+  authProvider: AuthProvider;
+  email: string | null;
+  displayName: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface RequestMagicLinkBody {
-  email: string;
-}
-
-export interface RequestMagicLinkResponse {
-  ok: true;
-}
-
-export interface VerifyMagicLinkBody {
-  email: string;
-  code: string;
-}
-
-export interface VerifyMagicLinkResponse {
-  sessionToken: string;
+export interface Me {
   user: User;
 }
 
-export interface MeResponse {
-  user: User;
-}
-
-export interface CreateRecItemBody {
-  title: string;
-  category: RecCategory;
-}
-
-export interface UpdateRecItemBody {
-  title?: string;
-  completed?: boolean;
-  count?: number;
-}
-
-export interface ListRecItemsResponse {
-  items: RecItem[];
-}
-
-export interface BulkImportBody {
-  category: RecCategory;
-  titles: string[];
-}
-
-export interface ImportCsvBody {
-  csv: string;
-}
-
-export interface ImportCsvResponse {
-  imported: number;
-}
-
-export interface ExportCsvResponse {
-  csv: string;
-}
+export type ErrorCode =
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "NOT_FOUND"
+  | "VALIDATION"
+  | "RATE_LIMITED"
+  | "CONFLICT"
+  | "INTERNAL";
 
 export interface ApiErrorResponse {
   error: string;
-  code?: string;
+  code: ErrorCode;
+  details?: unknown;
 }
