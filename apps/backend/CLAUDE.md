@@ -35,7 +35,8 @@ Terraform sets env vars on the Lambda function. In local dev, `scripts/dev.sh` s
 - `postgres` (the pg driver) is bundled because there's no built-in.
 - Cold start ~300–500ms for a bundled Node.js 20 Hono handler.
 
-## Local dev only
+## Auth (in flight — see `docs/redesign-plan.md`)
 
-When `STAGE=local`, `sendMagicLinkEmail` just logs the code instead of sending via SES. Check the
-backend terminal to see the code printed there.
+The v1 magic-link flow has been removed. OAuth (Apple + Google) lands in Phase 0b; until then
+`/v1/*` returns 501 and there's no working sign-in path. Don't reintroduce SES — `sesFromAddress`
+is gone from `lib/config.ts` and `@aws-sdk/client-ses` is no longer a dependency.
