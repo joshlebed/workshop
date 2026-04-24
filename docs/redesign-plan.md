@@ -57,8 +57,10 @@ contract):
 - **Testing**: `vitest` unit tests on the backend (`lib/session.test.ts`).
   Client has no tests. No Playwright.
 
-Everything above is deleted or rewritten. Infra (Terraform, GitHub Actions,
-SES, SSM, Lambda, API Gateway, Neon, EAS) survives — Phase 0 only adds to it.
+Everything above is deleted or rewritten. Infra survives **except SES**:
+Terraform, GitHub Actions, SSM, Lambda, API Gateway, Neon, EAS stay; SES is
+removed entirely in Phase 0 (see §6 — auth moves to OAuth, invites move to
+share-link only, so nothing in v2 sends email).
 
 ---
 
@@ -92,58 +94,125 @@ capture `display_name`, ship the primitives library skeleton.
 1. **Migrations** (`apps/backend/drizzle/`)
    - `drop_v1_schema` — drops `rec_items`, `magic_tokens`, `users`.
    - `v2_schema` — creates enums (`list_type`, `member_role`,
-     `activity_event_type`), tables (`users`, `magic_tokens`, `lists`,
+     `activity_event_type`, `auth_provider`), tables (`users`, `lists`,
      `list_members`, `list_invites`, `items`, `item_upvotes`,
      `activity_events`, `user_activity_reads`, `metadata_cache`,
-     `rate_limits`). Index set per spec §7.
+     `rate_limits`). Index set per spec §7. `users` carries
+     `auth_provider` (`apple` | `google`), `provider_sub` (unique per
+     provider), `email` nullable (Apple "Hide My Email" relay stored as-is),
+     `display_name`. No `magic_tokens` table — magic-link auth is dropped.
    - `apps/backend/src/db/schema.ts` — Drizzle table definitions for the above.
-2. **Auth rewrite** (`apps/backend/src/routes/v1/auth.ts`, `users.ts`)
-   - `POST /v1/auth/request`, `POST /v1/auth/verify` (returns
-     `needsDisplayName`), `GET /v1/auth/me`, `PATCH /v1/users/me`.
+2. **OAuth auth rewrite** (`apps/backend/src/routes/v1/auth.ts`, `users.ts`)
+   - `POST /v1/auth/apple` — body: `{ identityToken, nonce }`. Verify JWT
+     against Apple's JWKS (`https://appleid.apple.com/auth/keys`), check
+     `aud` matches the iOS bundle ID *or* the Services ID (web), check
+     `nonce` matches. Upsert user by `(apple, sub)`. Returns
+     `{ user, needsDisplayName }`.
+   - `POST /v1/auth/google` — body: `{ idToken }`. Verify JWT against
+     Google's JWKS (`https://www.googleapis.com/oauth2/v3/certs`), check
+     `aud` matches one of the configured client IDs (iOS + web). Upsert user
+     by `(google, sub)`. Returns `{ user, needsDisplayName }`.
+   - `POST /v1/auth/signout`, `GET /v1/auth/me`, `PATCH /v1/users/me`.
+   - `apps/backend/src/lib/oauth/apple.ts` + `google.ts` — JWKS fetch with
+     in-memory caching (refresh on `kid` miss), JWT verify via `jose`.
    - Remove `src/routes/auth.ts` + `items.ts` from `src/app.ts`.
+   - Remove `apps/backend/src/lib/email.ts` and `sendMagicLinkEmail`.
 3. **Rate-limit middleware** (`apps/backend/src/middleware/rate-limit.ts`)
-   - Table-backed by `rate_limits`. Applied to auth routes first; item/search
-     limits wired when those routes land in later phases.
+   - Table-backed by `rate_limits`. Applied to `/v1/auth/*` first (by IP —
+     cheap abuse surface); item/search limits wired when those routes land.
 4. **Response envelope helper** (`apps/backend/src/lib/response.ts`)
    - `ok(data)`, `err(code, message, details?)` — uniform `{ error, code }` per
      spec §8.
 5. **Client — sign-in + display-name capture**
-   - `apps/workshop/app/sign-in.tsx` updated for new endpoints.
+   - `apps/workshop/app/sign-in.tsx` rewritten: two buttons, Sign in with
+     Apple + Sign in with Google. No email field.
+     - iOS: `expo-apple-authentication` for Apple (native sheet);
+       `expo-auth-session` with Google's OAuth endpoints.
+     - Web: Apple "Sign in with Apple JS" for Apple (their mandatory styled
+       button); `expo-auth-session` or Google Identity Services for Google.
+     - Each path produces an identity token sent to the matching backend
+       endpoint.
    - New `apps/workshop/app/onboarding/display-name.tsx` — single-field screen
-     shown when `needsDisplayName === true`.
-   - `useAuth` extended: user includes `displayName`; expose `setDisplayName`.
+     shown when `needsDisplayName === true` (first sign-in, or when Apple
+     "Hide My Email" user has no name yet).
+   - `useAuth` extended: user includes `displayName` + `authProvider`;
+     exposes `signInWithApple()`, `signInWithGoogle()`, `signOut()`,
+     `setDisplayName()`.
 6. **Primitives library skeleton** (`apps/workshop/src/ui/`)
-   - `theme.ts` (token categories per spec §5.1; dark-only initially),
+   - `theme.ts` (palette + tokens per §9 Appendix; dark-only initially),
      `useTheme.ts`, `Text.tsx`, `Button.tsx`, `IconButton.tsx`, `Card.tsx`,
-     `TextField.tsx`, `EmptyState.tsx`. Enough to rebuild sign-in + onboarding.
-   - Old `src/components/theme.ts` — migrate sign-in to tokens, then delete the
-     hex palette exports.
+     `EmptyState.tsx`. Enough to rebuild sign-in + onboarding. (No
+     `TextField` needed for Phase 0 — OAuth has no inputs; defer to Phase 1.)
+   - Old `src/components/theme.ts` — migrate sign-in to tokens, then delete
+     the hex palette exports.
 7. **Infra** (`infra/`)
-   - `ssm.tf` — add `TMDB_API_KEY` + `GOOGLE_BOOKS_API_KEY` parameters
-     (SecureString, placeholder values; real keys set via console).
-   - `lambda.tf` — pass both as Lambda env vars.
+   - `ssm.tf` — add **OAuth verification params** (all SecureString,
+     placeholder values; real values pasted after provider portals are
+     configured):
+     - `/workshop/apple_services_id` (web audience — e.g. `dev.josh.workshop.web`)
+     - `/workshop/apple_bundle_id` (iOS audience — `dev.josh.workshop`)
+     - `/workshop/google_ios_client_id`
+     - `/workshop/google_web_client_id`
+     - Also Phase 2's `TMDB_API_KEY` + `GOOGLE_BOOKS_API_KEY` — landed now
+       so the Terraform churn is one-time.
+   - `lambda.tf` — pass all five OAuth/API params as Lambda env vars.
+     Remove `SES_FROM_ADDRESS` and the SES IAM policy statement (`ses:SendEmail`
+     / `ses:SendRawEmail`).
+   - **Delete** `infra/ses.tf`. Remove `ses_verified_email` from
+     `variables.tf` + `terraform.tfvars.example`. Keep `budget_email_recipient`
+     in `budgets.tf` — AWS Budgets uses SNS, not SES.
+   - `terraform apply` — AWS will delete the verified email identity; no
+     cutover pain because nothing sends mail anymore.
 8. **Shared types** (`packages/shared/src/types.ts`)
-   - Remove `RecItem`, `RecCategory`, related request/response types.
-   - Add `User`, `ListType`, `MemberRole`, `AuthRequest/Verify/Me` shapes.
+   - Remove `RecItem`, `RecCategory`, old auth request/response types.
+   - Add `User` (with `authProvider`, `displayName`), `ListType`,
+     `MemberRole`, `AppleAuthRequest`, `GoogleAuthRequest`,
+     `AuthResponse` (`{ user, needsDisplayName }`), `Me`.
 
-**Dependencies**: None — this is the base of the stack.
+**Dependencies**: None — this is the base of the stack. Prereq setup
+(outside code): Apple Developer portal — enable Sign in with Apple on the
+App ID, create a Services ID + return URL for web, create a Sign in with
+Apple key (.p8) → stored only for *token signing* if we use "Sign in with
+Apple on the server"; for *token verification* (our case, since we only
+receive identity tokens) only the JWKS is needed, so the .p8 is not
+required. Google Cloud Console — create OAuth client IDs (iOS + web).
+Track in `docs/plans/HANDOFF.md`.
 
 **Acceptance**:
-- `pnpm dev` comes up clean; sign-in + display-name capture works end-to-end
-  (magic code from `/tmp/workshop-dev.log`).
+- `pnpm dev` comes up clean; both Sign in with Apple and Sign in with
+  Google work end-to-end on web. iOS tested via Expo Go once Google client
+  ID is wired; Sign in with Apple on iOS tested on a TestFlight build.
+- First sign-in from a "Hide My Email" Apple user lands on the
+  display-name screen, then the empty home.
 - `curl $api_url/health` green in prod.
-- All old routes return 404.
-- Vitest covers `response.ts`, rate-limit middleware, display-name validation.
-- One new Playwright test: sign-in → display-name → land on empty home.
+- All old routes return 404. `/v1/auth/request` and `/v1/auth/verify` do
+  not exist.
+- Vitest covers `response.ts`, rate-limit middleware, display-name
+  validation, Apple/Google JWT verification (mocked JWKS + signed test
+  tokens).
+- One new Playwright test: web Sign in with Google (test account) →
+  display-name → land on empty home.
 
 **Risks**:
 - Home screen (`app/index.tsx`) references deleted types — gate it behind a
   placeholder "Coming soon" screen until Phase 1. Acceptable because Phase 0
   and Phase 1 land close together.
-- Terraform apply that adds SSM params needs the user to paste real API keys
-  *before* Phase 2 routes ship. Track in HANDOFF.md.
+- Apple returns `email` + `name` only on **first** sign-in. The backend
+  must persist both on the initial `auth/apple` call or they're gone
+  forever. Unit test enforces this.
+- Apple Services ID config requires a web **return URL** — locally this is
+  `http://localhost:8081` (Expo web), in prod it's whatever the CF Pages
+  host is. Add both to the Services ID.
+- Google test accounts for Playwright require either a dedicated service
+  account flow or a long-lived refresh token pinned to a test Google
+  account. Cheaper option for P0: mock the backend's Google JWT verifier
+  in E2E with a fixture token; real Google login only tested manually.
 - CLAUDE.md mentions Neon autosuspend adds ~500ms cold-start; keep in mind
   when running tests against remote DB.
+- Terraform apply that removes the SES identity + adds SSM params runs
+  once; real OAuth client IDs and API keys must be pasted into SSM *before*
+  the client hits `/v1/auth/*` or enrichment endpoints. Track in
+  HANDOFF.md.
 
 ---
 
@@ -263,14 +332,16 @@ date-idea / trip lists fetches link previews for pasted URLs.
 ### Phase 3 — Social (sharing, invites, activity feed)
 
 **Goal**: Two users on the same list — upvotes aggregate, activity shows up in
-the bell, removing a member removes their upvotes, email invites work via SES.
+the bell, removing a member removes their upvotes, sharing works via
+copy-link (no email; email invites are explicitly deferred — see §7).
 
 **Deliverables**:
 
 1. **Backend**
    - `apps/backend/src/routes/v1/invites.ts` — `POST /v1/lists/:id/invites`
-     (email or share link), `POST /v1/invites/:token/accept`,
-     `DELETE /v1/lists/:id/invites/:inviteId`.
+     (share link only — generates a single-use or time-bounded token tied
+     to the list), `POST /v1/invites/:token/accept`,
+     `DELETE /v1/lists/:id/invites/:inviteId`. No email sending path.
    - `apps/backend/src/routes/v1/members.ts` —
      `DELETE /v1/lists/:id/members/:userId` (owner-remove or self-leave).
      Self-leave cascades to remove the member's `item_upvotes` rows.
@@ -279,39 +350,41 @@ the bell, removing a member removes their upvotes, email invites work via SES.
    - `apps/backend/src/lib/events.ts` — `recordEvent(listId, actorId, type,
      payload)`. Called from every mutating list/item/member handler.
      Synchronous insert; no queue in v1.
-   - `apps/backend/src/lib/email-templates/invite.tsx` (or plain HTML) —
-     SES template for invites.
 2. **Client**
    - `app/list/[id]/settings.tsx` — list settings sheet (Details, Members,
-     Pending invites, Share link, Activity, Danger).
+     Share link [copy-to-clipboard], Activity, Danger). No "invite by
+     email" input.
    - `app/onboarding/accept-invite.tsx` — deep-link handler
-     (`workshop.dev/invite/:token`) — auto-join after sign-in.
+     (`workshop.dev/invite/:token` on web, `workshop://invite/:token` on
+     iOS) — auto-join after OAuth sign-in.
    - `app/activity.tsx` — cross-list feed, pagination at 50/page.
    - Bell badge in home header showing unread count.
-3. **Create-list flow** — add the previously-skipped invite screen (spec
-   §4.5 step 3).
+3. **Create-list flow** — add the previously-skipped share screen (spec
+   §4.5 step 3, but "copy share link" only — no email field).
 4. **Shared types**: `Invite`, `ListMember` (full), `ActivityEvent`,
    `ActivityEventType`.
-5. **Terraform** — SES identity for the sending domain if not already
-   verified.
+5. **Terraform** — none for this phase. (SES was deleted in Phase 0; no
+   email infra to provision.)
 
-**Dependencies**: Phase 1 (lists + members). Email sending already works (SES
-is wired for magic-link codes).
+**Dependencies**: Phase 1 (lists + members). No email dependencies.
 
 **Acceptance**:
-- Two real users, two phones (or two browsers): A creates a list, invites B
-  by email, B accepts, both see each other's upvotes aggregated.
+- Two real users, two browsers: A creates a list, copies the share link,
+  pastes it to B out-of-band, B opens it and accepts after OAuth sign-in,
+  both see each other's upvotes aggregated.
 - Activity feed shows the join, the add, the complete, ordered correctly.
 - B leaves → B's upvotes vanish from counts but the items they added persist
   with `added_by` intact (spec §2.5).
 - Owner cannot leave, can delete.
 - Unread count is zero after tapping the bell.
-- Playwright: two browser contexts, invite-accept flow.
+- Playwright: two browser contexts, share-link accept flow.
 
 **Risks**:
 - Dual-context Playwright tests are fiddly — one golden path is enough.
-- Invite-email deliverability in SES sandbox — verify recipient addresses
-  ahead of tests, or use a verified test inbox.
+- Share-link leakage: a leaked token lets anyone join. Mitigations: tokens
+  expire in 7 days, owner can revoke from settings, and `accept` requires
+  an authenticated user (joining as a new user is fine — that's the UX —
+  but bots need a valid OAuth session first). Good enough for v1.
 - Activity writes are on every mutation — measure latency impact on the
   upvote endpoint. If it's >50ms, move to an async queue (SQS) in a v1.1.
 
@@ -380,9 +453,10 @@ full Playwright coverage, light-mode tokens, motion.
      current list/item. Modals open centered over the right pane.
    - Mobile (<768px): stack navigation unchanged.
 3. **Playwright E2E** (`apps/workshop/tests/e2e/`)
-   - Sign in, create each of 5 list types, add item (all 4 pathways),
-     upvote/unvote, complete/uncomplete, share link accept, email invite
-     accept (SES stubbed, code read from DB).
+   - Sign in (Google, via mocked JWKS in the test backend — see Phase 0
+     Risks), create each of 5 list types, add item (all 4 pathways),
+     upvote/unvote, complete/uncomplete, share-link accept in a second
+     browser context.
    - Wire into CI on a new workflow job — runs against a local backend +
      local Postgres (spec §13).
 4. **Light theme tokens** in `src/ui/theme.ts`; `useColorScheme` flip.
@@ -443,23 +517,61 @@ Layered, per spec §13:
 
 ---
 
-## 6. Open questions to resolve before Phase 0
+## 6. Resolved decisions + remaining open questions
 
-Pulled from spec §16 plus engineering-side items:
+### Resolved (2026-04-24)
 
-1. **Web hosting target** — Cloudflare Pages / S3+CF / Vercel? Needs a
-   decision in Phase 0's infra PR. Blocks Phase 5's Playwright-in-CI job if
-   CI needs to deploy previews.
-2. **SES identity** — confirm the sending domain (`workshop.dev`?) is
-   verified + out of sandbox mode. Blocks Phase 3.
-3. **Color palette finalization** — pick the named set (spec §16.11) before
-   Phase 1 ships create-list; the API accepts the key and the client renders
-   from tokens.
-4. **Native build budget** — confirm EAS free-tier minutes cover one Phase 4
-   TestFlight build plus a handful of retries.
-5. **Feature-flag strategy** — decide whether to ship behind a single
-   client-side `ENABLE_V2 = true` flag during the cutover, or just burn the
-   bridges. The spec says clean cutover; worth re-confirming.
+1. **Web hosting target → Cloudflare Pages.** Unlimited bandwidth + requests
+   on the free tier, one-click GitHub integration, free custom-domain TLS.
+   Ship on `workshop.pages.dev` until a real domain is purchased; the static
+   bundle (`expo export --platform web` → `dist/`) drops in with no infra
+   changes when the domain cuts over. Phase 0's infra PR wires the CF Pages
+   project; nothing goes into Terraform (CF is out of band from AWS).
+2. **Color palette → placeholder tokens now, designer pass later.** Warm-dark
+   neutral set; semantic tokens in `apps/workshop/src/ui/theme.ts` separate
+   from raw hex values so a designer edits `palette` without touching
+   component code. Light-mode variant is a Phase 5 add. See Appendix §9 for
+   the specific hex values baked into Phase 0.
+3. **EAS build budget → stay on free tier, reduce CI trigger rate.** 30
+   builds/month is plenty for Phase 4 (~3–5 expected builds) *if* CI doesn't
+   spend any on speculative work. Action items baked into Phase 0 / Phase 4
+   deliverables:
+   - Auto-TestFlight build should only run on `main` merges where
+     `@expo/fingerprint` changed — already the setup per CLAUDE.md; re-verify
+     the workflow gates the build step on the fingerprint diff, not just on
+     file paths.
+   - Add a `concurrency: ios-native-build` group to cancel superseded builds
+     if multiple native-change PRs merge back-to-back.
+   - Never trigger a build from PR CI — `EXPO_TOKEN` is only used by the
+     `main`-branch job.
+   - Monitor usage at <https://expo.dev/accounts/joshlebed/settings/billing>
+     after Phase 4 lands; if it crosses 20 builds/month, re-evaluate.
+4. **Feature flags → dropped.** Clean cutover as the spec says. No
+   `ENABLE_V2` toggle. Phase 0 and Phase 1 land in rapid succession so the
+   "Coming soon" placeholder on home is short-lived.
+
+5. **Auth → OAuth-only (Apple + Google). SES dropped entirely.** Magic-link
+   email auth was risking getting `joshlebed@gmail.com` flagged by downstream
+   spam filters, and email infra (SES sandbox exit, verified sending domain,
+   DKIM/SPF/DMARC) is meaningful setup work for v1. Instead:
+   - Sign in with Apple (required by App Store review guideline 4.8 if any
+     OAuth is offered on iOS) + Sign in with Google — both on iOS and web.
+   - List invites become **share-link only** (copy token URL, paste out of
+     band). No email invite path.
+   - SES is removed from Terraform in Phase 0; `SES_FROM_ADDRESS` env var
+     and the SES IAM policy come off the Lambda. `apps/backend/src/lib/email.ts`
+     is deleted. Budget alerts (AWS Budgets → SNS → email) are unaffected.
+   - Effort estimate: ~2 days (one-time; replaces Phase 0's magic-link
+     work rather than adding on top).
+   Phase 0 and Phase 3 deliverables below already reflect this decision.
+
+### Still open (must answer before the phase that needs them)
+
+1. **Domain to own.** The CF Pages custom domain name. Not urgent —
+   `workshop.pages.dev` works until you want a nicer URL. Apple Sign in with
+   Apple web flow requires a configured return URL; `workshop.pages.dev`
+   plus `http://localhost:8081` is fine for Phase 0, updated when a custom
+   domain lands.
 
 Anything not flagged here is assumed to follow the spec's §16 defaults.
 
@@ -478,6 +590,10 @@ plan:
 - WebSockets / realtime collab.
 - Multi-list membership for a single item.
 - Per-user completion (shared boolean only).
+- **Email invites / any transactional email.** v1 ships share-link invites
+  only; re-adds SES (or a managed alternative like Resend / Postmark) + a
+  verified sending domain as a v1.1 item.
+- **Magic-link / email-password auth.** OAuth-only in v1.
 
 These belong in a v1.1+ plan.
 
@@ -485,17 +601,67 @@ These belong in a v1.1+ plan.
 
 ## 8. Appendix — file-level deltas at a glance
 
+(See §9 for the Phase 0 placeholder palette.)
+
+
 | Area | Added | Deleted | Renamed/Rewritten |
 |---|---|---|---|
 | `apps/backend/src/routes/` | `v1/auth.ts`, `v1/users.ts`, `v1/lists.ts`, `v1/items.ts`, `v1/invites.ts`, `v1/members.ts`, `v1/activity.ts`, `v1/search.ts`, `v1/link-preview.ts` | `auth.ts`, `items.ts` | — |
-| `apps/backend/src/db/schema.ts` | — | — | Full rewrite |
+| `apps/backend/src/db/schema.ts` | — | — | Full rewrite (no `magic_tokens`) |
 | `apps/backend/drizzle/` | `drop_v1_schema`, `v2_schema`, per-phase ALTERs | — | — |
-| `apps/backend/src/lib/` | `response.ts`, `metadata-cache.ts`, `events.ts` | — | `email.ts` (add invite template) |
+| `apps/backend/src/lib/` | `response.ts`, `metadata-cache.ts`, `events.ts`, `oauth/apple.ts`, `oauth/google.ts` | `email.ts` | — |
 | `apps/backend/src/middleware/` | `rate-limit.ts`, `authorize.ts` | — | `auth.ts` (now `requireAuth` + `requireListMember` helpers) |
 | `packages/shared/src/types.ts` | All v2 types | `RecItem`, `RecCategory`, old request/response | — |
-| `apps/workshop/app/` | `onboarding/`, `list/[id]/...`, `create-list/`, `activity.tsx`, `share/`, `settings.tsx` | existing `index.tsx`, `sign-in.tsx` | Full rewrite |
+| `apps/workshop/app/` | `onboarding/`, `list/[id]/...`, `create-list/`, `activity.tsx`, `share/`, `settings.tsx` | existing `index.tsx`, `sign-in.tsx` | Full rewrite (OAuth buttons) |
 | `apps/workshop/src/components/` | — | All existing (`ItemCard`, `AddEditModal`, `CategoryDropdown`, `Tabs`, `DataPanel`, `ContextMenu`, `HeaderMenu`, `Header`, `theme.ts`) | — |
 | `apps/workshop/src/ui/` | Full primitives library (§5.3) | — | — |
 | `apps/workshop/plugins/share-extension/` | Phase 4 config plugin + Swift source | — | — |
-| `infra/` | `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY` SSM params | — | `lambda.tf` (env additions) |
+| `infra/` | `ssm.tf` — `apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY` | `ses.tf`; `ses_verified_email` variable; `SES_FROM_ADDRESS` env + SES IAM policy in `lambda.tf` | `lambda.tf` (OAuth + API key env vars) |
 | `docs/` | This file; phase-specific handoff notes as written | — | — |
+
+---
+
+## 9. Appendix — Phase 0 placeholder palette
+
+Arbitrary pick to unblock Phase 0; a designer pass later will revise.
+Structured so that swap-out is a single-file edit.
+
+**Structure in `apps/workshop/src/ui/theme.ts`**:
+
+```ts
+const palette = {
+  // raw hex — edit these to reskin
+  ink: { 900: "#0E0E10", 800: "#16161A", 700: "#1F1F25", 600: "#26262E", 500: "#33333D", 400: "#4A4A56" },
+  paper: { 50: "#F2F2F5", 200: "#A8A8B3", 400: "#6E6E78" },
+  amber: { 500: "#F5A524", 600: "#E89611", muted: "#F5A52422" },
+  green: { 500: "#3DD68C" },
+  red:   { 500: "#F05252" },
+  listColors: {
+    sunset: "#F5A524", ocean: "#4CA7E8", forest: "#3DD68C",
+    grape:  "#A78BFA", rose:  "#F472B6", sand:   "#D4B896", slate: "#94A3B8",
+  },
+} as const;
+
+export const tokens = {
+  // semantic names — components only reference these
+  bg:      { canvas: palette.ink[900], surface: palette.ink[800], elevated: palette.ink[700] },
+  text:    { primary: palette.paper[50], secondary: palette.paper[200], muted: palette.paper[400], onAccent: palette.ink[900] },
+  border:  { subtle: palette.ink[600], default: palette.ink[500], strong: palette.ink[400] },
+  accent:  { default: palette.amber[500], hover: palette.amber[600], muted: palette.amber.muted },
+  status:  { success: palette.green[500], warning: palette.amber[500], danger: palette.red[500] },
+  list:    palette.listColors,
+} as const;
+```
+
+**List color keys** (stored server-side on `lists.color_key`): `sunset`,
+`ocean`, `forest`, `grape`, `rose`, `sand`, `slate`. The backend treats the
+key as opaque; the client maps it via `tokens.list[key]`.
+
+**Tweakability rules**:
+- Components import `tokens`, never `palette` — renaming a hex value in
+  `palette` ripples to every screen.
+- No hex literals in component files (lint rule optional; PR review
+  enforces).
+- Adding light mode later is `tokens = { dark: { ... }, light: { ... } }`
+  plus a `useTheme()` picker — no component changes.
+
