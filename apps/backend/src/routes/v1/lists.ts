@@ -7,6 +7,8 @@ import { type DbList, listMembers, lists, users } from "../../db/schema.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
+import { rateLimit } from "../../middleware/rate-limit.js";
+import { createItem, createItemSchema, fetchItemsForList } from "./items.js";
 
 export const listRoutes = new Hono();
 
@@ -220,3 +222,51 @@ listRoutes.delete("/:id", requireListMember, requireListOwner, async (c) => {
   if (deleted.length === 0) return err(c, "NOT_FOUND", "list not found");
   return ok(c, { ok: true });
 });
+
+// --- List-scoped item routes (Phase 1a-2) ---
+//
+// Mounted under `/v1/lists/:id/items`. The item-id-scoped routes
+// (`/v1/items/:id/...`) live in `items.ts` and ship under their own router.
+
+const completedFilter = z
+  .union([z.literal("true"), z.literal("false")])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v === "true"));
+
+listRoutes.get("/:id/items", requireListMember, async (c) => {
+  const completedParam = completedFilter.safeParse(c.req.query("completed"));
+  if (!completedParam.success) {
+    return err(c, "VALIDATION", "invalid completed filter");
+  }
+  const listId = c.req.param("id");
+  const userId = c.get("userId");
+  const items = await fetchItemsForList(listId, userId, { completed: completedParam.data });
+  return ok(c, { items });
+});
+
+listRoutes.post(
+  "/:id/items",
+  requireListMember,
+  rateLimit({
+    family: "v1.items.create",
+    limit: 60,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return err(c, "VALIDATION", "invalid json body");
+    }
+    const parsed = createItemSchema.safeParse(body);
+    if (!parsed.success) {
+      return err(c, "VALIDATION", "invalid request", parsed.error.issues);
+    }
+    const listId = c.req.param("id");
+    const userId = c.get("userId");
+    const item = await createItem(listId, userId, parsed.data);
+    return ok(c, { item }, 201);
+  },
+);
