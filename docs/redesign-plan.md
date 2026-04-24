@@ -443,23 +443,54 @@ Layered, per spec §13:
 
 ---
 
-## 6. Open questions to resolve before Phase 0
+## 6. Resolved decisions + remaining open questions
 
-Pulled from spec §16 plus engineering-side items:
+### Resolved (2026-04-24)
 
-1. **Web hosting target** — Cloudflare Pages / S3+CF / Vercel? Needs a
-   decision in Phase 0's infra PR. Blocks Phase 5's Playwright-in-CI job if
-   CI needs to deploy previews.
-2. **SES identity** — confirm the sending domain (`workshop.dev`?) is
-   verified + out of sandbox mode. Blocks Phase 3.
-3. **Color palette finalization** — pick the named set (spec §16.11) before
-   Phase 1 ships create-list; the API accepts the key and the client renders
-   from tokens.
-4. **Native build budget** — confirm EAS free-tier minutes cover one Phase 4
-   TestFlight build plus a handful of retries.
-5. **Feature-flag strategy** — decide whether to ship behind a single
-   client-side `ENABLE_V2 = true` flag during the cutover, or just burn the
-   bridges. The spec says clean cutover; worth re-confirming.
+1. **Web hosting target → Cloudflare Pages.** Unlimited bandwidth + requests
+   on the free tier, one-click GitHub integration, free custom-domain TLS.
+   Ship on `workshop.pages.dev` until a real domain is purchased; the static
+   bundle (`expo export --platform web` → `dist/`) drops in with no infra
+   changes when the domain cuts over. Phase 0's infra PR wires the CF Pages
+   project; nothing goes into Terraform (CF is out of band from AWS).
+2. **Color palette → placeholder tokens now, designer pass later.** Warm-dark
+   neutral set; semantic tokens in `apps/workshop/src/ui/theme.ts` separate
+   from raw hex values so a designer edits `palette` without touching
+   component code. Light-mode variant is a Phase 5 add. See Appendix §9 for
+   the specific hex values baked into Phase 0.
+3. **EAS build budget → stay on free tier, reduce CI trigger rate.** 30
+   builds/month is plenty for Phase 4 (~3–5 expected builds) *if* CI doesn't
+   spend any on speculative work. Action items baked into Phase 0 / Phase 4
+   deliverables:
+   - Auto-TestFlight build should only run on `main` merges where
+     `@expo/fingerprint` changed — already the setup per CLAUDE.md; re-verify
+     the workflow gates the build step on the fingerprint diff, not just on
+     file paths.
+   - Add a `concurrency: ios-native-build` group to cancel superseded builds
+     if multiple native-change PRs merge back-to-back.
+   - Never trigger a build from PR CI — `EXPO_TOKEN` is only used by the
+     `main`-branch job.
+   - Monitor usage at <https://expo.dev/accounts/joshlebed/settings/billing>
+     after Phase 4 lands; if it crosses 20 builds/month, re-evaluate.
+4. **Feature flags → dropped.** Clean cutover as the spec says. No
+   `ENABLE_V2` toggle. Phase 0 and Phase 1 land in rapid succession so the
+   "Coming soon" placeholder on home is short-lived.
+
+### Still open (must answer before the phase that needs them)
+
+1. **SES sender identity (blocks Phase 3).** Stop using
+   `joshlebed@gmail.com` as the SES sender — the current setup risks getting
+   that address flagged by downstream spam filters as invites go out. Options
+   being evaluated (see conversation notes): (a) verify a sending domain on
+   SES with DKIM/SPF + request production access, (b) swap magic-link email
+   for OAuth (Apple / Google Sign-In) and keep email only for invites (still
+   needs SES, but volume drops to where a verified subdomain works fine), (c)
+   drop email entirely and use OAuth-only. Decision captured here once made;
+   Phase 0's auth rewrite will reflect whichever path we pick, so this needs
+   resolution *before* Phase 0 ships.
+2. **Domain to own.** Both the CF Pages custom domain and the SES sending
+   domain point at the same name. Not urgent — placeholder subdomains work
+   until an invite feature needs a credible From: address.
 
 Anything not flagged here is assumed to follow the spec's §16 defaults.
 
@@ -485,6 +516,9 @@ These belong in a v1.1+ plan.
 
 ## 8. Appendix — file-level deltas at a glance
 
+(See §9 for the Phase 0 placeholder palette.)
+
+
 | Area | Added | Deleted | Renamed/Rewritten |
 |---|---|---|---|
 | `apps/backend/src/routes/` | `v1/auth.ts`, `v1/users.ts`, `v1/lists.ts`, `v1/items.ts`, `v1/invites.ts`, `v1/members.ts`, `v1/activity.ts`, `v1/search.ts`, `v1/link-preview.ts` | `auth.ts`, `items.ts` | — |
@@ -499,3 +533,50 @@ These belong in a v1.1+ plan.
 | `apps/workshop/plugins/share-extension/` | Phase 4 config plugin + Swift source | — | — |
 | `infra/` | `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY` SSM params | — | `lambda.tf` (env additions) |
 | `docs/` | This file; phase-specific handoff notes as written | — | — |
+
+---
+
+## 9. Appendix — Phase 0 placeholder palette
+
+Arbitrary pick to unblock Phase 0; a designer pass later will revise.
+Structured so that swap-out is a single-file edit.
+
+**Structure in `apps/workshop/src/ui/theme.ts`**:
+
+```ts
+const palette = {
+  // raw hex — edit these to reskin
+  ink: { 900: "#0E0E10", 800: "#16161A", 700: "#1F1F25", 600: "#26262E", 500: "#33333D", 400: "#4A4A56" },
+  paper: { 50: "#F2F2F5", 200: "#A8A8B3", 400: "#6E6E78" },
+  amber: { 500: "#F5A524", 600: "#E89611", muted: "#F5A52422" },
+  green: { 500: "#3DD68C" },
+  red:   { 500: "#F05252" },
+  listColors: {
+    sunset: "#F5A524", ocean: "#4CA7E8", forest: "#3DD68C",
+    grape:  "#A78BFA", rose:  "#F472B6", sand:   "#D4B896", slate: "#94A3B8",
+  },
+} as const;
+
+export const tokens = {
+  // semantic names — components only reference these
+  bg:      { canvas: palette.ink[900], surface: palette.ink[800], elevated: palette.ink[700] },
+  text:    { primary: palette.paper[50], secondary: palette.paper[200], muted: palette.paper[400], onAccent: palette.ink[900] },
+  border:  { subtle: palette.ink[600], default: palette.ink[500], strong: palette.ink[400] },
+  accent:  { default: palette.amber[500], hover: palette.amber[600], muted: palette.amber.muted },
+  status:  { success: palette.green[500], warning: palette.amber[500], danger: palette.red[500] },
+  list:    palette.listColors,
+} as const;
+```
+
+**List color keys** (stored server-side on `lists.color_key`): `sunset`,
+`ocean`, `forest`, `grape`, `rose`, `sand`, `slate`. The backend treats the
+key as opaque; the client maps it via `tokens.list[key]`.
+
+**Tweakability rules**:
+- Components import `tokens`, never `palette` — renaming a hex value in
+  `palette` ripples to every screen.
+- No hex literals in component files (lint rule optional; PR review
+  enforces).
+- Adding light mode later is `tokens = { dark: { ... }, light: { ... } }`
+  plus a `useTheme()` picker — no component changes.
+
