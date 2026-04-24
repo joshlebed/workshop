@@ -97,9 +97,10 @@ apply) being done up front.
 
 | Chunk | What ships | External deps | Status |
 |---|---|---|---|
-| **0a** | Backend foundation: v2 schema + drop_v1 migration, `lib/response.ts` envelope, `middleware/rate-limit.ts` (table-backed, not yet wired), shared types skeleton, deletion of v1 `routes/auth.ts` + `routes/items.ts` + `lib/email.ts`, `/v1/*` returns 501, client neutralized to "v2 in progress" placeholder, `@aws-sdk/client-ses` + `SES_FROM_ADDRESS` config removed. | None | **Done** (this PR) |
-| **0b** | OAuth backend (`routes/v1/auth.ts`, `routes/v1/users.ts`, `lib/oauth/{apple,google}.ts` with JWKS-cached JWT verify), `requireAuth` middleware refactor, rate-limit wired to `/v1/auth/*`, primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten, Vitest mocked-JWKS coverage, one Playwright happy-path. | Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). Track in `docs/plans/HANDOFF.md`. | Pending |
-| **0c** | Infra cutover: SSM SecureString params (`apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`), Lambda env vars updated, **delete `infra/ses.tf`** + `ses_verified_email` variable + SES IAM policy, Cloudflare Pages project wired for the web build. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account. | Pending |
+| **0a** | Backend foundation: v2 schema + drop_v1 migration, `lib/response.ts` envelope, `middleware/rate-limit.ts` (table-backed, not yet wired), shared types skeleton, deletion of v1 `routes/auth.ts` + `routes/items.ts` + `lib/email.ts`, `/v1/*` returns 501, client neutralized to "v2 in progress" placeholder, `@aws-sdk/client-ses` + `SES_FROM_ADDRESS` config removed. | None | **Done** |
+| **0b-1** | Backend OAuth foundation: `lib/oauth/{jwks,apple,google}.ts` with JWKS-cached JWT verify via `jose`, `routes/v1/auth.ts` (`POST /apple`, `POST /google`, `POST /signout`, `GET /me`), `routes/v1/users.ts` (`PATCH /me` with display-name validation), `requireAuth` middleware refactored to the v1 envelope, rate-limit wired to `/v1/auth/*` (per-IP, 30/min), shared types extended (`AppleAuthRequest`, `GoogleAuthRequest`, `AuthResponse`, `UpdateMeRequest`), `config.ts` reads OAuth audiences from env, Vitest mocked-JWKS coverage (43 tests). | None — uses dep-injected JWKS/audiences in tests so no provider portal config required to land the code. | **Done** (this PR) |
+| **0b-2** | Client OAuth surface: primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten (signInWithApple/Google, signOut, setDisplayName), one Playwright happy-path against the local backend with a mocked JWT verifier injected for the test. | Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). Track in `docs/plans/HANDOFF.md`. | Pending |
+| **0c** | Infra cutover: SSM SecureString params (`apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`), Lambda env vars updated (`APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`), **delete `infra/ses.tf`** + `ses_verified_email` variable + SES IAM policy, Cloudflare Pages project wired for the web build. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account. | Pending |
 
 #### 3.2 What 0a actually shipped — start here for 0b
 
@@ -145,15 +146,90 @@ Files that landed in 0a (read these first; they're the foundation 0b builds on):
   only client surface 0b touches.
 - `@aws-sdk/client-ses` removed from `apps/backend/package.json`.
 
-What 0b should do *first*: regenerate `pnpm-lock.yaml` if it complains, then
-add `jose` to `apps/backend/package.json` for JWT/JWKS verification, then
-build out `lib/oauth/{apple,google}.ts` against the spec in the original
-deliverable #2 below.
-
-Open carry-overs for 0c that 0b should NOT touch:
+Open carry-overs for 0c that subsequent chunks should NOT touch:
 - `infra/ses.tf` deletion + `ses_verified_email` variable removal
 - `SES_FROM_ADDRESS` env var removal from `lambda.tf`
 - SSM SecureString params for OAuth client IDs + API keys
+
+#### 3.4 What 0b-1 actually shipped — start here for 0b-2
+
+Files that landed in 0b-1 (read these first; they're the foundation 0b-2
+builds the client against):
+
+- `apps/backend/src/lib/oauth/jwks.ts` — `verifyIdentityToken(token, jwks,
+  opts)` and `getRemoteJwks(url)` (per-URL memoized `createRemoteJWKSet`).
+  `OAuthVerifyError` is the typed failure mode every caller catches.
+- `apps/backend/src/lib/oauth/apple.ts` — `verifyAppleIdentityToken({
+  identityToken, nonce? }, deps?)`. Issuer locked to
+  `https://appleid.apple.com`. Audiences come from
+  `appleAudiences()` (config: `APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`,
+  optional CSV `APPLE_EXTRA_AUDIENCES`). Tests inject `deps.jwks` +
+  `deps.audiences` so no portal config is needed to land code.
+- `apps/backend/src/lib/oauth/google.ts` — same pattern. Accepts both
+  `https://accounts.google.com` and bare `accounts.google.com` issuers.
+  Audiences from `googleAudiences()` (`GOOGLE_IOS_CLIENT_ID`,
+  `GOOGLE_WEB_CLIENT_ID`, optional `GOOGLE_EXTRA_AUDIENCES`).
+- `apps/backend/src/routes/v1/auth.ts` — handlers:
+  - `POST /v1/auth/apple` — body `{ identityToken, nonce?, email?, fullName? }`.
+    `email`/`fullName` come from the Apple SDK on first sign-in only;
+    backend persists both on initial upsert (Apple's first-sign-in trap).
+  - `POST /v1/auth/google` — body `{ idToken }`. Email + name come straight
+    out of the JWT.
+  - `POST /v1/auth/signout` — auth-required no-op (HMAC sessions are
+    stateless; client just discards the token).
+  - `GET /v1/auth/me` — returns `{ user }`.
+  - Response shape on apple/google: `{ user, token, needsDisplayName }` where
+    `needsDisplayName === !user.displayName`. The client's onboarding flow
+    branches on that boolean.
+- `apps/backend/src/routes/v1/users.ts` — `PATCH /v1/users/me` with the
+  exported `displayNameSchema` (trim + 1–40 chars + no newlines, emoji and
+  non-Latin OK). Returns `{ user }`.
+- `apps/backend/src/middleware/auth.ts` — `requireAuth` rewritten to use
+  `err()` envelope. Sets `c.var.userId`. The plan's §6 deliverable #2
+  mentions a future `requireListMember` helper — that's a Phase 1 add when
+  list routes land, not now.
+- `apps/backend/src/app.ts` — `/v1/auth/*` is rate-limited per-IP at 30/min
+  via the `rate_limits` table. `/v1/auth` and `/v1/users` are mounted; the
+  catch-all `/v1/*` 501 is gone.
+- `apps/backend/src/lib/config.ts` — adds `appleBundleId`, `appleServicesId`,
+  `googleIosClientId`, `googleWebClientId`, plus optional CSV `*_EXTRA_AUDIENCES`
+  envs. All default to empty so local dev still boots; the `appleAudiences()` /
+  `googleAudiences()` helpers throw `OAuthVerifyError` at request time if
+  unconfigured. **0c is what wires real values from SSM.**
+- `packages/shared/src/types.ts` — adds `AppleAuthRequest`, `GoogleAuthRequest`,
+  `AuthResponse`, `UpdateMeRequest`. The client should import these.
+- `apps/backend/package.json` — adds `jose@6.2.2`.
+
+Tests landed (43 passing): `jwks.test.ts` (signed-token round-trip,
+issuer/audience/expiry/key/nonce mismatches), `apple.test.ts` +
+`google.test.ts` (issuer + audience + nonce specifics per provider),
+`auth.test.ts` (middleware envelope), `users.test.ts` (display-name
+validation). Pattern for testing OAuth verifiers: `generateKeyPair("RS256")`
++ `SignJWT(...).sign(privateKey)` + a `JWTVerifyGetKey` that returns the
+matching public key — no network involved.
+
+What 0b-2 should do *first*: read `apps/backend/src/lib/oauth/*.ts` and the
+auth routes so the client request shapes match exactly. The
+`AuthResponse.token` is the bearer token for `Authorization: Bearer ...` —
+store it in `expo-secure-store` on iOS / `localStorage` on web (see
+`apps/workshop/src/lib/storage.ts` patterns from CLAUDE.md). Hit
+`GET /v1/auth/me` to revalidate the session on cold start.
+
+Known constraints for 0b-2:
+- The Apple SDK on iOS surfaces `email` + `fullName` *only* on first sign-in.
+  The client must forward both fields to `POST /v1/auth/apple` on every call;
+  the backend ignores them when the user already exists. Web Apple JS
+  surfaces them in the auth callback's `user` field on first sign-in only.
+- Apple Web sign-in requires a Services ID return URL configured per
+  `workshop.pages.dev` and `http://localhost:8081`. Track in
+  `docs/plans/HANDOFF.md` once those are pasted into SSM by 0c.
+- Google's iOS client uses `expo-auth-session` (or `@react-native-google-signin/google-signin`
+  on a native build); web uses Google Identity Services. Both produce an
+  `id_token` to send to `POST /v1/auth/google`.
+- `needsDisplayName` is true after first Apple Hide-My-Email sign-in (no
+  `fullName` was supplied) and after any sign-in where the user's row still
+  has a null `display_name`. Route to `app/onboarding/display-name.tsx` on
+  true; otherwise land on the home placeholder.
 
 #### 3.3 Original Phase 0 deliverable list
 
@@ -172,7 +248,7 @@ Open carry-overs for 0c that 0b should NOT touch:
      provider), `email` nullable (Apple "Hide My Email" relay stored as-is),
      `display_name`. No `magic_tokens` table — magic-link auth is dropped.
    - `apps/backend/src/db/schema.ts` — Drizzle table definitions for the above.
-2. **OAuth auth rewrite** (`apps/backend/src/routes/v1/auth.ts`, `users.ts`) — *0b*
+2. **OAuth auth rewrite** (`apps/backend/src/routes/v1/auth.ts`, `users.ts`) — *0b-1*
    - `POST /v1/auth/apple` — body: `{ identityToken, nonce }`. Verify JWT
      against Apple's JWKS (`https://appleid.apple.com/auth/keys`), check
      `aud` matches the iOS bundle ID *or* the Services ID (web), check
@@ -187,13 +263,13 @@ Open carry-overs for 0c that 0b should NOT touch:
      in-memory caching (refresh on `kid` miss), JWT verify via `jose`.
    - Remove `src/routes/auth.ts` + `items.ts` from `src/app.ts`.
    - Remove `apps/backend/src/lib/email.ts` and `sendMagicLinkEmail`.
-3. **Rate-limit middleware** (`apps/backend/src/middleware/rate-limit.ts`) — *0a* (created), *0b* (wired to `/v1/auth/*`)
+3. **Rate-limit middleware** (`apps/backend/src/middleware/rate-limit.ts`) — *0a* (created), *0b-1* (wired to `/v1/auth/*`, per-IP, 30/min)
    - Table-backed by `rate_limits`. Applied to `/v1/auth/*` first (by IP —
      cheap abuse surface); item/search limits wired when those routes land.
 4. **Response envelope helper** (`apps/backend/src/lib/response.ts`) — *0a*
    - `ok(data)`, `err(code, message, details?)` — uniform `{ error, code }` per
      spec §8.
-5. **Client — sign-in + display-name capture** — *0b*
+5. **Client — sign-in + display-name capture** — *0b-2*
    - `apps/workshop/app/sign-in.tsx` rewritten: two buttons, Sign in with
      Apple + Sign in with Google. No email field.
      - iOS: `expo-apple-authentication` for Apple (native sheet);
@@ -208,7 +284,7 @@ Open carry-overs for 0c that 0b should NOT touch:
    - `useAuth` extended: user includes `displayName` + `authProvider`;
      exposes `signInWithApple()`, `signInWithGoogle()`, `signOut()`,
      `setDisplayName()`.
-6. **Primitives library skeleton** (`apps/workshop/src/ui/`) — *0b*
+6. **Primitives library skeleton** (`apps/workshop/src/ui/`) — *0b-2*
    - `theme.ts` (palette + tokens per §9 Appendix; dark-only initially),
      `useTheme.ts`, `Text.tsx`, `Button.tsx`, `IconButton.tsx`, `Card.tsx`,
      `EmptyState.tsx`. Enough to rebuild sign-in + onboarding. (No
@@ -235,8 +311,9 @@ Open carry-overs for 0c that 0b should NOT touch:
      cutover pain because nothing sends mail anymore.
 8. **Shared types** (`packages/shared/src/types.ts`) — *0a* (skeleton: `User`,
    `AuthProvider`, `ListType`, `MemberRole`, `ActivityEventType`, `Me`,
-   `ApiErrorResponse`, `ErrorCode`); *0b* (`AppleAuthRequest`,
-   `GoogleAuthRequest`, `AuthResponse` `{ user, needsDisplayName }`)
+   `ApiErrorResponse`, `ErrorCode`); *0b-1* (`AppleAuthRequest`,
+   `GoogleAuthRequest`, `AuthResponse` `{ user, token, needsDisplayName }`,
+   `UpdateMeRequest`)
    - Remove `RecItem`, `RecCategory`, old auth request/response types.
 
 **Dependencies**: None — this is the base of the stack. Prereq setup

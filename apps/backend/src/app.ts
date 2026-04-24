@@ -3,7 +3,20 @@ import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "./lib/logger.js";
 import { err } from "./lib/response.js";
+import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
 import { healthRoutes } from "./routes/health.js";
+import { authRoutes } from "./routes/v1/auth.js";
+import { userRoutes } from "./routes/v1/users.js";
+
+const clientIp: RateLimitKeyFn = (c) => {
+  // API Gateway HTTP API + Hono node-server both populate x-forwarded-for.
+  const xff = c.req.header("x-forwarded-for");
+  if (xff) {
+    const first = xff.split(",")[0]?.trim();
+    if (first) return first;
+  }
+  return c.req.header("x-real-ip") ?? "unknown";
+};
 
 export function buildApp() {
   const app = new Hono();
@@ -34,10 +47,20 @@ export function buildApp() {
   app.get("/", (c) => c.json({ service: "workshop-api" }));
   app.route("/health", healthRoutes);
 
-  // /v1 surface lands incrementally per docs/redesign-plan.md. Until OAuth
-  // (Phase 0b) and CRUD (Phase 1) ship, every /v1 path returns 501 so old
-  // clients fail loud rather than silently 404.
-  app.all("/v1/*", (c) => err(c, "INTERNAL", "v1 not implemented yet", undefined, 501));
+  // /v1/auth/* gets a per-IP rate limit — cheap abuse surface, applied before
+  // the JWKS fetch and DB upsert.
+  app.use(
+    "/v1/auth/*",
+    rateLimit({
+      family: "v1.auth",
+      limit: 30,
+      windowSec: 60,
+      key: clientIp,
+    }),
+  );
+
+  app.route("/v1/auth", authRoutes);
+  app.route("/v1/users", userRoutes);
 
   return app;
 }

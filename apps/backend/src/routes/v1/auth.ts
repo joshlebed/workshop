@@ -1,0 +1,178 @@
+import type { AuthProvider } from "@workshop/shared";
+import { and, eq } from "drizzle-orm";
+import { Hono } from "hono";
+import { z } from "zod";
+import { getDb } from "../../db/client.js";
+import { type DbUser, users } from "../../db/schema.js";
+import { logger } from "../../lib/logger.js";
+import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
+import { verifyGoogleIdentityToken } from "../../lib/oauth/google.js";
+import { OAuthVerifyError, type VerifiedClaims } from "../../lib/oauth/jwks.js";
+import { err, ok } from "../../lib/response.js";
+import { signSession } from "../../lib/session.js";
+import { requireAuth } from "../../middleware/auth.js";
+
+export const authRoutes = new Hono();
+
+const appleBodySchema = z.object({
+  identityToken: z.string().min(1),
+  nonce: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+  fullName: z.string().min(1).max(60).optional(),
+});
+
+const googleBodySchema = z.object({
+  idToken: z.string().min(1),
+});
+
+function toUserShape(u: DbUser) {
+  return {
+    id: u.id,
+    authProvider: u.authProvider as AuthProvider,
+    email: u.email,
+    displayName: u.displayName,
+    createdAt: u.createdAt.toISOString(),
+    updatedAt: u.updatedAt.toISOString(),
+  };
+}
+
+interface UpsertInput {
+  provider: AuthProvider;
+  sub: string;
+  email: string | null;
+  displayName: string | null;
+}
+
+async function upsertUser({ provider, sub, email, displayName }: UpsertInput): Promise<DbUser> {
+  const db = getDb();
+  const [existing] = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.authProvider, provider), eq(users.providerSub, sub)))
+    .limit(1);
+
+  if (existing) {
+    // Backfill email/displayName only if we now have a value and didn't before —
+    // never overwrite something the user already set.
+    const patch: Partial<DbUser> = {};
+    if (email && !existing.email) patch.email = email;
+    if (displayName && !existing.displayName) patch.displayName = displayName;
+    if (Object.keys(patch).length === 0) return existing;
+    const [updated] = await db
+      .update(users)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(users.id, existing.id))
+      .returning();
+    return updated ?? existing;
+  }
+
+  const [created] = await db
+    .insert(users)
+    .values({
+      authProvider: provider,
+      providerSub: sub,
+      email,
+      displayName,
+    })
+    .returning();
+  if (!created) throw new Error("user insert returned no row");
+  return created;
+}
+
+authRoutes.post("/apple", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return err(c, "VALIDATION", "invalid json body");
+  }
+  const parsed = appleBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
+  }
+  const { identityToken, nonce, email: clientEmail, fullName } = parsed.data;
+
+  let claims: VerifiedClaims;
+  try {
+    const verifyInput: { identityToken: string; nonce?: string } = { identityToken };
+    if (nonce !== undefined) verifyInput.nonce = nonce;
+    claims = await verifyAppleIdentityToken(verifyInput);
+  } catch (e) {
+    if (e instanceof OAuthVerifyError) {
+      logger.info("apple token rejected", { reason: e.message });
+      return err(c, "UNAUTHORIZED", "invalid apple identity token");
+    }
+    throw e;
+  }
+
+  // Apple includes `email` in the JWT for both real addresses and Hide-My-Email
+  // relays. The client also forwards email/name explicitly because Apple only
+  // emits the human-readable name on first sign-in and not in the JWT itself.
+  const tokenEmail = typeof claims.email === "string" ? claims.email : null;
+  const email = clientEmail ?? tokenEmail;
+
+  const user = await upsertUser({
+    provider: "apple",
+    sub: claims.sub,
+    email,
+    displayName: fullName ?? null,
+  });
+
+  const token = signSession(user.id);
+  return ok(c, {
+    user: toUserShape(user),
+    token,
+    needsDisplayName: !user.displayName,
+  });
+});
+
+authRoutes.post("/google", async (c) => {
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return err(c, "VALIDATION", "invalid json body");
+  }
+  const parsed = googleBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
+  }
+
+  let claims: VerifiedClaims;
+  try {
+    claims = await verifyGoogleIdentityToken({ idToken: parsed.data.idToken });
+  } catch (e) {
+    if (e instanceof OAuthVerifyError) {
+      logger.info("google token rejected", { reason: e.message });
+      return err(c, "UNAUTHORIZED", "invalid google identity token");
+    }
+    throw e;
+  }
+
+  const email = typeof claims.email === "string" ? claims.email : null;
+  const displayName = typeof claims.name === "string" ? claims.name : null;
+
+  const user = await upsertUser({
+    provider: "google",
+    sub: claims.sub,
+    email,
+    displayName,
+  });
+
+  const token = signSession(user.id);
+  return ok(c, {
+    user: toUserShape(user),
+    token,
+    needsDisplayName: !user.displayName,
+  });
+});
+
+authRoutes.post("/signout", requireAuth, (c) => ok(c, { ok: true }));
+
+authRoutes.get("/me", requireAuth, async (c) => {
+  const userId = c.get("userId");
+  const db = getDb();
+  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!u) return err(c, "NOT_FOUND", "user not found");
+  return ok(c, { user: toUserShape(u) });
+});
