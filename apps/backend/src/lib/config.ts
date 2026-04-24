@@ -28,6 +28,12 @@ const configSchema = z.object({
   // Comma-separated extra audiences (e.g. additional web origins). Optional.
   appleExtraAudiences: csv,
   googleExtraAudiences: csv,
+  // Dev-only sign-in route for E2E tests. Must be explicitly opted in —
+  // treated as a production footgun otherwise. See routes/v1/auth.ts.
+  devAuthEnabled: z
+    .string()
+    .optional()
+    .transform((v) => v === "1" || v === "true"),
 });
 
 export type Config = z.infer<typeof configSchema> & { isLocal: boolean };
@@ -48,6 +54,7 @@ export function getConfig(): Config {
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID,
     appleExtraAudiences: process.env.APPLE_EXTRA_AUDIENCES,
     googleExtraAudiences: process.env.GOOGLE_EXTRA_AUDIENCES,
+    devAuthEnabled: process.env.DEV_AUTH_ENABLED,
   });
   cached = { ...parsed, isLocal: parsed.stage === "local" };
   return cached;

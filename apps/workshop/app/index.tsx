@@ -1,27 +1,43 @@
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { useAuth } from "../src/hooks/useAuth";
+import { Button, EmptyState, Text, tokens } from "../src/ui/index";
 
 export default function Home() {
+  const { user, signOut } = useAuth();
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Workshop.dev</Text>
-      <Text style={styles.subtitle}>v2 is being rebuilt.</Text>
-      <Text style={styles.body}>
-        Sign-in and lists land in the next chunks. See docs/redesign-plan.md for the rollout order.
-      </Text>
+    <View style={styles.root}>
+      <View style={styles.header}>
+        <Text variant="heading">Workshop.dev</Text>
+        <Text tone="secondary" testID="home-greeting">
+          {user?.displayName ? `Signed in as ${user.displayName}` : "Signed in"}
+        </Text>
+      </View>
+
+      <View style={styles.body}>
+        <EmptyState
+          title="No lists yet"
+          description="Lists, items, and sharing land in Phase 1. This is the signed-in home placeholder."
+        />
+      </View>
+
+      <View style={styles.footer}>
+        <Button testID="sign-out" label="Sign out" variant="ghost" onPress={signOut} />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-    backgroundColor: "#0a1931",
-    gap: 16,
+    backgroundColor: tokens.bg.canvas,
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.xxl,
+    paddingBottom: tokens.space.xl,
+    gap: tokens.space.xl,
   },
-  title: { color: "#F2F2F5", fontSize: 32, fontWeight: "700" },
-  subtitle: { color: "#A8A8B3", fontSize: 18 },
-  body: { color: "#6E6E78", fontSize: 14, textAlign: "center", maxWidth: 480 },
+  header: { gap: tokens.space.xs },
+  body: { flex: 1, alignItems: "center", justifyContent: "center" },
+  footer: { alignItems: "center" },
 });

@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbUser, users } from "../../db/schema.js";
+import { getConfig } from "../../lib/config.js";
 import { logger } from "../../lib/logger.js";
 import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
 import { verifyGoogleIdentityToken } from "../../lib/oauth/google.js";
@@ -160,6 +161,47 @@ authRoutes.post("/google", async (c) => {
   });
 
   const token = signSession(user.id);
+  return ok(c, {
+    user: toUserShape(user),
+    token,
+    needsDisplayName: !user.displayName,
+  });
+});
+
+const devBodySchema = z.object({
+  email: z.string().email(),
+  displayName: z.string().min(1).max(40).nullable().optional(),
+});
+
+// Dev-only sign-in for E2E tests. Gated on DEV_AUTH_ENABLED=1. Never enable in prod.
+// Uses a stable synthetic `provider_sub` derived from the email so repeat calls
+// resolve to the same user.
+authRoutes.post("/dev", async (c) => {
+  if (!getConfig().devAuthEnabled) {
+    return err(c, "NOT_FOUND", "not found");
+  }
+  let body: unknown;
+  try {
+    body = await c.req.json();
+  } catch {
+    return err(c, "VALIDATION", "invalid json body");
+  }
+  const parsed = devBodySchema.safeParse(body);
+  if (!parsed.success) {
+    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
+  }
+  const { email, displayName } = parsed.data;
+  const sub = `dev:${email}`;
+
+  const user = await upsertUser({
+    provider: "google",
+    sub,
+    email,
+    displayName: displayName ?? null,
+  });
+
+  const token = signSession(user.id);
+  logger.info("dev sign-in issued", { userId: user.id, email });
   return ok(c, {
     user: toUserShape(user),
     token,
