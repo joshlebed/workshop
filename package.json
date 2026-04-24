@@ -17,10 +17,13 @@
     "dev:backend": "pnpm --filter @workshop/backend dev",
     "dev:mobile": "pnpm --filter workshop-app start",
     "dev": "./scripts/dev.sh",
+    "e2e": "./scripts/e2e.sh",
+    "e2e:ui": "playwright test --ui",
     "prepare": "lefthook install || true"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",
+    "@playwright/test": "^1.59.1",
     "@total-typescript/ts-reset": "0.6.1",
     "concurrently": "^9.2.1",
     "knip": "6.6.1",

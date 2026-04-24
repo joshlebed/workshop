@@ -99,8 +99,8 @@ apply) being done up front.
 |---|---|---|---|
 | **0a** | Backend foundation: v2 schema + drop_v1 migration, `lib/response.ts` envelope, `middleware/rate-limit.ts` (table-backed, not yet wired), shared types skeleton, deletion of v1 `routes/auth.ts` + `routes/items.ts` + `lib/email.ts`, `/v1/*` returns 501, client neutralized to "v2 in progress" placeholder, `@aws-sdk/client-ses` + `SES_FROM_ADDRESS` config removed. | None | **Done** |
 | **0b-1** | Backend OAuth foundation: `lib/oauth/{jwks,apple,google}.ts` with JWKS-cached JWT verify via `jose`, `routes/v1/auth.ts` (`POST /apple`, `POST /google`, `POST /signout`, `GET /me`), `routes/v1/users.ts` (`PATCH /me` with display-name validation), `requireAuth` middleware refactored to the v1 envelope, rate-limit wired to `/v1/auth/*` (per-IP, 30/min), shared types extended (`AppleAuthRequest`, `GoogleAuthRequest`, `AuthResponse`, `UpdateMeRequest`), `config.ts` reads OAuth audiences from env, Vitest mocked-JWKS coverage (43 tests). | None — uses dep-injected JWKS/audiences in tests so no provider portal config required to land the code. | **Done** (this PR) |
-| **0b-2** | Client OAuth surface: primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten (signInWithApple/Google, signOut, setDisplayName), one Playwright happy-path against the local backend with a mocked JWT verifier injected for the test. | Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). Track in `docs/plans/HANDOFF.md`. | Pending |
-| **0c** | Infra cutover: SSM SecureString params (`apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`), Lambda env vars updated (`APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`), **delete `infra/ses.tf`** + `ses_verified_email` variable + SES IAM policy, Cloudflare Pages project wired for the web build. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account. | Pending |
+| **0b-2** | Client OAuth surface: primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten (signInWithApple/Google, signOut, setDisplayName), dev-only `POST /v1/auth/dev` backend route gated on `DEV_AUTH_ENABLED=1`, one Playwright happy-path that drives sign-in → display-name → home via the dev route. | None — real OAuth SDK integration is deferred to 0c (requires Apple/Google portal config). | **Done** (this PR) |
+| **0c** | Infra cutover + real OAuth SDK integration: SSM SecureString params (`apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`), Lambda env vars updated (`APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`), **delete `infra/ses.tf`** + `ses_verified_email` variable + SES IAM policy, Cloudflare Pages project wired for the web build, `expo-apple-authentication` + `expo-auth-session` added and wired to the existing `signInWithApple` / `signInWithGoogle` hook methods (replace the warning-dialog stubs in `app/sign-in.tsx`). | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account; Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). All tracked in `docs/plans/HANDOFF.md`. | Pending |
 
 #### 3.2 What 0a actually shipped — start here for 0b
 
@@ -230,6 +230,71 @@ Known constraints for 0b-2:
   `fullName` was supplied) and after any sign-in where the user's row still
   has a null `display_name`. Route to `app/onboarding/display-name.tsx` on
   true; otherwise land on the home placeholder.
+
+#### 3.5 What 0b-2 actually shipped — start here for 0c
+
+Files that landed in 0b-2 (read these before touching 0c):
+
+- `apps/workshop/src/ui/` — primitives library skeleton. Exports `tokens`
+  (see Appendix §9), `useTheme`, `Text`, `Button`, `IconButton`, `Card`,
+  `EmptyState` via `src/ui/index.ts`. **Components import from `src/ui/`,
+  never from `src/components/` (which no longer exists).** No hex literals
+  in new screens.
+- `apps/workshop/src/lib/storage.ts` + `storage.web.ts` — `getItem` /
+  `setItem` / `removeItem`. Native uses `expo-secure-store`; web uses
+  `localStorage`. Metro picks `.web.ts` on web builds.
+- `apps/workshop/src/lib/api.ts` — tiny `apiRequest<T>()` wrapper around
+  `fetch` that parses the v1 envelope and throws a typed `ApiError` on
+  failures. Every new client API call should use it.
+- `apps/workshop/src/hooks/useAuth.tsx` — React context with
+  `signInWithApple`, `signInWithGoogle`, `signInDev`, `signOut`,
+  `setDisplayName`, `refresh`. Status machine:
+  `loading → signed-out | needs-display-name | signed-in`. Bootstraps from
+  storage on mount via `GET /v1/auth/me`; 401/404 clears the stored token.
+- `apps/workshop/app/_layout.tsx` — wraps the tree in `AuthProvider` and
+  uses a segments-aware `AuthGate` to redirect based on status.
+  `sign-in` and `onboarding/display-name` are the only routes reachable
+  while signed out / pre-onboarding; anything else replaces to `/`.
+- `apps/workshop/app/sign-in.tsx` — Continue-with-Apple / Continue-with-Google
+  buttons. Both currently open a `window.alert` / `Alert.alert` explaining
+  that provider config is a 0c deliverable; the plumbing through
+  `useAuth.signInWithApple` / `signInWithGoogle` is live and types match the
+  backend. A **third button — "Dev sign-in (test only)"** — renders only
+  when `process.env.EXPO_PUBLIC_DEV_AUTH === "1"` and calls the backend
+  `/v1/auth/dev` endpoint.
+- `apps/workshop/app/onboarding/display-name.tsx` — single-field screen,
+  enforces 1–40 chars after trim, calls `setDisplayName()` which hits
+  `PATCH /v1/users/me`. The layout routes here automatically when status
+  is `needs-display-name`.
+- `apps/workshop/app/index.tsx` — signed-in home placeholder. Shows the
+  user's display name and a "Sign out" button. Real list surface lands in
+  Phase 1.
+- `apps/backend/src/routes/v1/auth.ts` — new `POST /v1/auth/dev` handler
+  gated on `config.devAuthEnabled`. Returns 404 when disabled; otherwise
+  upserts a user keyed by synthetic `provider_sub = dev:<email>` and signs
+  a normal HMAC session token. **Never enable in prod** — this is the
+  mocked verifier path the Playwright test drives.
+- `apps/backend/src/lib/config.ts` — adds `devAuthEnabled` parsed from
+  `DEV_AUTH_ENABLED`. Accepts `"1"` or `"true"`; anything else is false.
+- `apps/backend/src/routes/v1/auth.test.ts` — new vitest file covering the
+  gating (404 when disabled) and validation (400 on bad body).
+- `playwright.config.ts` + `tests/e2e/sign-in.spec.ts` — one happy-path
+  that navigates to `/`, clicks the dev sign-in button, fills the display
+  name, and asserts the home greeting. Runnable via `pnpm run e2e`, which
+  spins up backend + web with the right env vars. **CI wiring lands in
+  Phase 5** — see §3 Phase 5 deliverable #3.
+- `scripts/e2e.sh` — starts backend (:8787) + web (:8081) with
+  `DEV_AUTH_ENABLED=1` + `EXPO_PUBLIC_DEV_AUTH=1`, waits for health,
+  then runs `playwright test`.
+- `docs/plans/HANDOFF.md` — new file tracking the portal + SSM + Pages work
+  0c has to pick up.
+
+What 0c should do *first*: read `docs/plans/HANDOFF.md`, then work through
+the three fronts (portals → SSM → Cloudflare Pages) mostly independently.
+The only deliberate ordering is that SSM params have to exist before the
+Terraform apply that wires them into Lambda env vars, and real OAuth client
+IDs have to be pasted into SSM *before* the client's Sign-in buttons stop
+showing the warning dialog.
 
 #### 3.3 Original Phase 0 deliverable list
 
