@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ListSummary, ListType } from "@workshop/shared";
+import { useRouter } from "expo-router";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { fetchLists } from "../src/api/lists";
 import { useAuth } from "../src/hooks/useAuth";
@@ -12,7 +13,6 @@ import {
   type ListColorKey,
   Text,
   tokens,
-  useToast,
 } from "../src/ui/index";
 
 const TYPE_LABEL: Record<ListType, string> = {
@@ -25,7 +25,7 @@ const TYPE_LABEL: Record<ListType, string> = {
 
 export default function Home() {
   const { user, token, signOut } = useAuth();
-  const { showToast } = useToast();
+  const router = useRouter();
   const listsQuery = useQuery({
     queryKey: queryKeys.lists.all,
     queryFn: () => fetchLists(token),
@@ -33,11 +33,7 @@ export default function Home() {
   });
 
   const onCreateList = () => {
-    showToast({
-      message: "Create-list flow lands in 1b-2.",
-      tone: "default",
-      actionLabel: "OK",
-    });
+    router.push("/create-list/type");
   };
 
   return (
@@ -85,7 +81,9 @@ export default function Home() {
             keyExtractor={(l) => l.id}
             contentContainerStyle={styles.listContent}
             ItemSeparatorComponent={() => <View style={{ height: tokens.space.md }} />}
-            renderItem={({ item }) => <ListCard list={item} />}
+            renderItem={({ item }) => (
+              <ListCard list={item} onPress={() => router.push(`/list/${item.id}`)} />
+            )}
             refreshing={listsQuery.isRefetching}
             onRefresh={() => listsQuery.refetch()}
           />
@@ -107,41 +105,49 @@ export default function Home() {
   );
 }
 
-function ListCard({ list }: { list: ListSummary }) {
+function ListCard({ list, onPress }: { list: ListSummary; onPress: () => void }) {
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
   return (
-    <Card style={styles.card}>
-      <View style={[styles.cardStripe, { backgroundColor: accent }]} />
-      <View style={styles.cardBody}>
-        <View style={styles.cardHead}>
-          <Text style={styles.cardEmoji}>{list.emoji}</Text>
-          <View style={styles.cardTitleBlock}>
-            <Text variant="heading" numberOfLines={1}>
-              {list.name}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open list ${list.name}`}
+      onPress={onPress}
+      testID={`list-card-${list.id}`}
+      style={({ pressed }) => [pressed && styles.cardPressed]}
+    >
+      <Card style={styles.card}>
+        <View style={[styles.cardStripe, { backgroundColor: accent }]} />
+        <View style={styles.cardBody}>
+          <View style={styles.cardHead}>
+            <Text style={styles.cardEmoji}>{list.emoji}</Text>
+            <View style={styles.cardTitleBlock}>
+              <Text variant="heading" numberOfLines={1}>
+                {list.name}
+              </Text>
+              <Text variant="caption" tone="muted">
+                {TYPE_LABEL[list.type]} · {list.role === "owner" ? "Owner" : "Member"}
+              </Text>
+            </View>
+          </View>
+          {list.description ? (
+            <Text tone="secondary" numberOfLines={2}>
+              {list.description}
+            </Text>
+          ) : null}
+          <View style={styles.cardMeta}>
+            <Text variant="caption" tone="muted">
+              {pluralize(list.itemCount, "item")}
             </Text>
             <Text variant="caption" tone="muted">
-              {TYPE_LABEL[list.type]} · {list.role === "owner" ? "Owner" : "Member"}
+              ·
+            </Text>
+            <Text variant="caption" tone="muted">
+              {pluralize(list.memberCount, "member")}
             </Text>
           </View>
         </View>
-        {list.description ? (
-          <Text tone="secondary" numberOfLines={2}>
-            {list.description}
-          </Text>
-        ) : null}
-        <View style={styles.cardMeta}>
-          <Text variant="caption" tone="muted">
-            {pluralize(list.itemCount, "item")}
-          </Text>
-          <Text variant="caption" tone="muted">
-            ·
-          </Text>
-          <Text variant="caption" tone="muted">
-            {pluralize(list.memberCount, "member")}
-          </Text>
-        </View>
-      </View>
-    </Card>
+      </Card>
+    </Pressable>
   );
 }
 
@@ -174,6 +180,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   listContent: { paddingBottom: tokens.space.xxl * 2 },
   card: { padding: 0, overflow: "hidden", flexDirection: "row" },
+  cardPressed: { opacity: 0.85 },
   cardStripe: { width: 6 },
   cardBody: { flex: 1, padding: tokens.space.lg, gap: tokens.space.sm },
   cardHead: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },

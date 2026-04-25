@@ -34,6 +34,8 @@ function AuthGate() {
     } else if (status === "signed-in" && (onSignIn || onOnboarding)) {
       router.replace("/");
     }
+    // Signed-in users on `/list/...` or `/create-list/...` are left alone —
+    // those flows live under the same root stack and don't trigger redirects.
   }, [status, segments, router]);
 
   if (status === "loading") {
@@ -61,6 +63,11 @@ function AuthGate() {
       <Stack.Screen name="index" />
       <Stack.Screen name="sign-in" />
       <Stack.Screen name="onboarding/display-name" />
+      <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="list/[id]/index" />
+      <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
+      <Stack.Screen name="list/[id]/item/[itemId]" />
     </Stack>
   );
 }
