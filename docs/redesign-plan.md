@@ -857,10 +857,107 @@ client-only.
 
 | Chunk | What ships | External deps | Status |
 |---|---|---|---|
-| **2a-1** | Backend search + metadata cache: `apps/backend/src/routes/v1/search.ts` (`GET /v1/search/media?type=movie\|tv`, `GET /v1/search/books`) proxying TMDB / Google Books behind SSM-sourced API keys, normalising into the spec §9 shapes. New `apps/backend/src/lib/metadata-cache.ts` (`upsert(source, source_id, payload, ttl)` + `lookup(source, source_id)`) backed by a new `metadata_cache` Drizzle migration. Per-type Zod validators for `items.metadata` applied on `POST/PATCH /v1/items` (movie / tv / book shapes; date-idea / trip stay loose for 2a-2). Rate limits on `POST /v1/search/*` at 60/user/min. Vitest coverage of validators + cache TTL + auth gating. | TMDB API key + Google Books API key in SSM (placeholders from Phase 0; production needs real values). | Pending |
+| **2a-1** | Backend search + metadata cache: `apps/backend/src/routes/v1/search.ts` (`GET /v1/search/media?type=movie\|tv`, `GET /v1/search/books`) proxying TMDB / Google Books behind SSM-sourced API keys, normalising into the spec §9 shapes. New `apps/backend/src/lib/metadata-cache.ts` (`upsert(source, source_id, payload, ttl)` + `lookup(source, source_id)`) backed by a new `metadata_cache` Drizzle migration. Per-type Zod validators for `items.metadata` applied on `POST/PATCH /v1/items` (movie / tv / book shapes; date-idea / trip stay loose for 2a-2). Rate limits on `POST /v1/search/*` at 60/user/min. Vitest coverage of validators + cache TTL + auth gating. | TMDB API key + Google Books API key in SSM (placeholders from Phase 0; production needs real values). | Done |
 | **2a-2** | Backend link preview: `apps/backend/src/routes/v1/link-preview.ts` (`GET /v1/link-preview?url=`). SSRF allowlist via `ipaddr.js` (block RFC1918 / loopback / link-local / 169.254.169.254). 3s timeout, 1MB cap, 3 redirects. OG + Twitter card parser. Cached through the 2a-1 `metadata-cache` (7-day TTL). Rate limit 30/user/min. SSRF regression test + parser unit tests. | None — uses the metadata cache from 2a-1. | Pending |
 | **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list. | 2a-1. | Pending |
 | **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save. | 2a-2. | Pending |
+
+#### 3.14 What 2a-1 actually shipped — start here for 2a-2
+
+Files that landed in 2a-1 (read these before touching 2a-2):
+
+- `apps/backend/src/lib/metadata-cache.ts` — `lookupCacheEntry<T>(source,
+  sourceId, db?)` + `upsertCacheEntry<T>(source, sourceId, data,
+  ttlSeconds, db?)`. The `db?` parameter exists so vitest can pass a
+  fake without touching postgres. `expires_at` is computed at write
+  time (`now() + ttl::int * interval '1 second'`) and the lookup
+  filters on `expires_at > now()` — expired rows are left in place for
+  a future cleanup job rather than pruned on the read path. `CacheTtl`
+  exports the per-source TTLs: `tmdb` and `googleBooks` are 30 days,
+  `linkPreview` is 7 days. **2a-2 should reuse `CacheTtl.linkPreview`
+  and `upsertCacheEntry` directly** rather than re-deriving expiry
+  math.
+- `apps/backend/drizzle/0003_add_metadata_cache_expires_at.sql` —
+  `metadata_cache` already had `(source, source_id, data, fetched_at)`
+  from 0a; this migration adds `expires_at TIMESTAMPTZ NOT NULL DEFAULT
+  now()`. The `DEFAULT` is there for safety on existing rows; the
+  insert path always provides an explicit `expires_at`.
+- `apps/backend/src/routes/v1/search.ts` — `GET /media?type=movie|tv&q`
+  and `GET /books?q`. Both are `requireAuth`-gated and rate-limited at
+  60/user/min via `rateLimit({ family: "v1.search.{media,books}", key:
+  userKey })`. Cache key is `tmdb:{type}` + `q-search:<lowercased
+  trimmed q>` for media; `google_books:search` + same key for books.
+  Cache writes are best-effort (`.catch(...)` + `logger.warn`) so a
+  cache outage doesn't fail the response. `__testing.setDeps({
+  fetchTmdb?, fetchGoogleBooks?, lookupCache?, upsertCache? })` is the
+  test seam — all four are typed mocks; tests use them to bypass real
+  upstream calls and the postgres-backed cache. **2a-2 should mirror
+  this `__testing.setDeps` shape on `link-preview.ts`** — the cache
+  test seam in particular (lookup / upsert mocks) is the cleanest way
+  to keep handler tests off postgres.
+- `apps/backend/src/routes/v1/items.ts` — adds per-type Zod schemas
+  (`movieTvMetadataSchema`, `bookMetadataSchema`, `placeMetadataSchema`,
+  all `.strict()` so stray fields reject), a
+  `metadataSchemasByType: Record<ListType, ZodType<ItemMetadata>>`
+  map, an exported `validateMetadataForType(type, metadata)`, and an
+  `ItemMetadataError` class. `createItem()` validates against the
+  parent list's `type` inside the transaction; PATCH `/:id` re-fetches
+  `items.type` (denormalised) and validates the same way when
+  metadata is present. The route handler in `lists.ts` translates
+  `ItemMetadataError` to `err(c, "VALIDATION", …, issues)` so the
+  client gets a structured 400.
+- `packages/shared/src/types.ts` — adds `MediaSearchType`,
+  `MediaResult`, `BookResult`, `MediaSearchResponse`, `BookSearchResponse`,
+  and the per-type metadata shapes (`MovieMetadata`, `TvMetadata =
+  MovieMetadata`, `BookMetadata`, `PlaceMetadata`). 2b-1 should import
+  the result types directly rather than re-declaring them in
+  `src/api/search.ts`.
+- `apps/backend/src/lib/config.ts` — reads `TMDB_API_KEY` and
+  `GOOGLE_BOOKS_API_KEY` from env (both default to empty strings). The
+  search routes return `500 INTERNAL` when the key is empty; locally,
+  drop real keys into `apps/backend/.env` (gitignored) before hitting
+  the routes.
+- `apps/backend/src/app.ts` — mounts `/v1/search` via `app.route`. Auth
+  rate-limit middleware was already global on `/v1/auth/*`; the search
+  routes carry their own per-user rate limit.
+
+What 2a-2 should do *first*: read `apps/backend/src/routes/v1/search.ts`
+end to end (the cache wiring + `__testing.setDeps` test seam is the
+template) and `apps/backend/src/lib/metadata-cache.ts` (`CacheTtl`
+already declares `linkPreview: 7 * 86400`). The new
+`v1/link-preview.ts` route follows the same shape: `requireAuth`
+middleware, Zod query-param validation, response shape declared in
+`@workshop/shared/types` (add `LinkPreview` and `LinkPreviewResponse`
+there). Cache reads/writes go through `lookupCacheEntry<LinkPreview>(
+"link_preview", urlHash)` / `upsertCacheEntry(..., CacheTtl.linkPreview)`.
+
+Known constraints for 2a-2:
+- SSRF is the headline risk per spec §8.5. Use `ipaddr.js` (already on
+  npm; not yet a dep) to parse the resolved IP and block RFC1918,
+  loopback, link-local, and the AWS metadata IP (`169.254.169.254`).
+  Resolve the hostname *yourself* before fetching so a redirect to a
+  blocked IP doesn't slip past — `fetch` won't tell you the IP it
+  actually connected to. Add a regression test that hits
+  `http://169.254.169.254/`.
+- 3s timeout (`AbortSignal.timeout(3000)`), 1MB body cap (read in
+  chunks, abort if exceeded), 3 redirects max. The TMDB / Google Books
+  fetchers in `search.ts` use `AbortSignal.timeout(5000)` — same
+  pattern, tighter window.
+- Rate limit: `rateLimit({ family: "v1.link-preview", limit: 30,
+  windowSec: 60, key: userKey })`. Same `userKey` helper as
+  `search.ts`; user-keyed because the route is auth-only.
+- Cache key: `link_preview` source + a stable hash of the normalised
+  URL (`new URL(input).href`) as `source_id`. Don't store the raw URL
+  as the source_id — `metadata_cache.source_id` is `TEXT NOT NULL` but
+  long URLs make for ugly index keys; `crypto.createHash("sha1")` over
+  the normalised URL is plenty.
+- Per-type Zod metadata validators (spec §9.4) are wired *but the
+  date_idea / trip schemas are still permissive*. 2a-2 should keep the
+  current `placeMetadataSchema` shape compatible with what
+  `link-preview.ts` writes back — the response body will be inserted
+  into `items.metadata` by 2b-2, and the validator runs on every
+  `POST/PATCH /v1/items`. If you add a field to `LinkPreview`, add it
+  to `placeMetadataSchema` in the same PR.
 
 #### 3.9 Original Phase 1 deliverable list
 

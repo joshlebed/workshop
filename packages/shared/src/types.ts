@@ -212,3 +212,75 @@ export interface ItemListResponse {
 export interface ItemResponse {
   item: Item;
 }
+
+// --- Search + enrichment (Phase 2a-1) ---
+//
+// Backend proxies TMDB / Google Books behind SSM-sourced API keys and
+// normalizes responses into the shapes below. See spec §9.
+
+export type MediaSearchType = "movie" | "tv";
+
+/** Normalized TMDB row. `id` is the TMDB id stringified. */
+export interface MediaResult {
+  id: string;
+  title: string;
+  year: number | null;
+  posterUrl: string | null;
+  runtimeMinutes?: number;
+  overview: string | null;
+}
+
+/** Normalized Google Books volume. `id` is the Google Books volume id. */
+export interface BookResult {
+  id: string;
+  title: string;
+  authors: string[];
+  year: number | null;
+  coverUrl: string | null;
+  pageCount?: number;
+  description?: string;
+}
+
+export interface MediaSearchResponse {
+  results: MediaResult[];
+}
+
+export interface BookSearchResponse {
+  results: BookResult[];
+}
+
+// --- Per-type item metadata (Phase 2a-1, spec §9.4) ---
+//
+// Validated at the API boundary on POST/PATCH /v1/items based on the parent
+// list's `type`. Every field is optional so manual entries (no provider
+// match) and provider-enriched entries share the same JSONB shape.
+
+export interface MovieMetadata {
+  source?: "tmdb" | "manual";
+  sourceId?: string;
+  posterUrl?: string;
+  year?: number;
+  runtimeMinutes?: number;
+  overview?: string;
+}
+
+export type TvMetadata = MovieMetadata;
+
+export interface BookMetadata {
+  source?: "google_books" | "manual";
+  sourceId?: string;
+  coverUrl?: string;
+  authors?: string[];
+  year?: number;
+  pageCount?: number;
+  description?: string;
+}
+
+export interface PlaceMetadata {
+  source?: "link_preview" | "manual";
+  sourceId?: string;
+  image?: string;
+  siteName?: string;
+  lat?: number;
+  lng?: number;
+}
