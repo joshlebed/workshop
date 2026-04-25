@@ -488,7 +488,7 @@ on its own and `main` stays deployable between landings.
 |---|---|---|---|
 | **1a-1** | Backend lists CRUD: `GET /v1/lists` (with `role`/`memberCount`/`itemCount` aggregates), `POST` (transactional list + owner-member insert), `GET /:id` (list + members + empty `pendingInvites`), `PATCH /:id` (owner only), `DELETE /:id` (owner only; cascades). `requireListMember` + `requireListOwner` middleware (404 vs 403 — non-members get 404 to avoid leaking existence). Shared types `List`, `ListSummary`, `ListMemberSummary`, `PendingInvite`, `CreateListRequest`, `UpdateListRequest` and the matching response shapes. Vitest coverage of input validation + auth gating (20 tests). | None — runs against the existing local Postgres and v2 schema; doesn't depend on 0c-2's portal/SSM/Cloudflare work. | **Done** (this PR) |
 | **1a-2** | Backend items CRUD + upvote + complete: `GET /v1/lists/:id/items` (with `upvote_count` aggregate via `LEFT JOIN ... COUNT(*)::int` + per-user `has_upvoted`), `POST` (transactional: insert item + insert creator's upvote in one tx — spec §2.3), `GET /v1/items/:id`, `PATCH`, `DELETE`, `POST/:id/upvote` (idempotent), `DELETE/:id/upvote`, `POST/:id/complete`, `POST/:id/uncomplete`. `requireItemMember` helper that resolves the item's list and reuses `requireListMember`'s membership check. Shared types `Item`, `ItemListResponse`, `ItemResponse`, request bodies. Sort order: `upvote_count DESC, created_at DESC` per spec §7.7; completed-only filter sorts by `completed_at DESC` per spec §2.4. Rate limits wired: `POST /lists/:id/items` 60/user/min, upvote endpoints 120/user/min per spec §8. Vitest coverage of input validation + auth gating + UUID bail-out (29 tests). | None. | **Done** (this PR) |
-| **1b-1** | Client TanStack Query foundation + home screen: `apps/workshop/src/lib/query.ts` (`QueryClient` with `refetchOnWindowFocus` / `refetchOnReconnect`), `src/lib/queryKeys.ts` (centralized factory), `src/api/lists.ts` (typed wrappers around `/v1/lists`), `app/index.tsx` rewritten as the rich list-cards home with FAB and empty state. New primitives in `src/ui/`: `Sheet`, `Modal`, `Toast`. | None. | Pending |
+| **1b-1** | Client TanStack Query foundation + home screen: `apps/workshop/src/lib/query.ts` (`QueryClient` with `refetchOnWindowFocus` / `refetchOnReconnect`), `src/lib/queryKeys.ts` (centralized factory), `src/api/lists.ts` (typed wrappers around `/v1/lists`), `app/index.tsx` rewritten as the rich list-cards home with FAB and empty state. New primitives in `src/ui/`: `Sheet`, `Modal`, `Toast`. | None. | **Done** (this PR) |
 | **1b-2** | Client list detail + create-list flow: `app/list/[id]/index.tsx` (filter bar + completed section), `app/list/[id]/item/[itemId].tsx`, `app/list/[id]/add.tsx` (free-form for date-idea / trip; movie/TV/book stubs route to free-form until Phase 2), `app/create-list/_layout.tsx` + `type.tsx` + `customize.tsx`. New primitives: `UpvotePill`, `Avatar`, `Chip`. Optimistic-update helpers for upvote/complete/add with toast rollback. `expo-haptics` wired on upvote/complete/delete (no-op `.web.ts`). One Playwright happy-path: create list → add item → upvote → complete. | None. | Pending |
 
 #### 3.8 What 1a-1 actually shipped — start here for 1a-2
@@ -624,6 +624,91 @@ already wraps the v1 envelope. New work in 1b-1 is purely client side:
 TanStack Query setup, query keys, typed list wrappers, and the home-screen
 rewrite. The backend changes nothing — 1a-2 closed out the Phase 1 server
 surface; 1b-2 will lift in the item-mutation wrappers.
+
+#### 3.11 What 1b-1 actually shipped — start here for 1b-2
+
+Files that landed in 1b-1 (read these before touching 1b-2):
+
+- `apps/workshop/package.json` — adds `@tanstack/react-query@^5.100.1`.
+  Only the new dep; nothing else in the manifest moved.
+- `apps/workshop/src/lib/query.ts` — `createQueryClient()` returns a
+  configured `QueryClient` with `refetchOnWindowFocus: true`,
+  `refetchOnReconnect: true`, `staleTime: 30_000`, and a typed `retry`
+  policy that bails on 401/403/404 and otherwise retries up to twice.
+  Mutations don't auto-retry — 1b-2's optimistic updates own their own
+  rollback path.
+- `apps/workshop/src/lib/queryKeys.ts` — centralized key factory: tuples
+  `["lists"]`, `["lists","detail",id]`, `["items","byList",listId]`,
+  `["items","detail",id]`, `["auth","me"]`. **1b-2 should extend this file
+  rather than define keys inline** — invalidation patterns rely on the
+  prefix structure.
+- `apps/workshop/src/api/lists.ts` — typed wrappers: `fetchLists`,
+  `fetchListDetail`, `createList`, `updateList`, `deleteList`. All take
+  `token: string | null` so callers thread the value from `useAuth()`. The
+  v1 envelope is unwrapped inside `apiRequest`, so the return types are
+  the response shapes from `@workshop/shared` directly. **1b-2's
+  `src/api/items.ts` should mirror this shape** (one function per route,
+  thin wrapper, no caching — TanStack Query owns caching).
+- `apps/workshop/src/ui/Modal.tsx` — `<Modal visible onRequestClose>`,
+  centered card on a translucent backdrop. Wraps RN's built-in `Modal` so
+  it works on web + iOS without extra deps; backdrop-press dismisses,
+  card-press doesn't bubble.
+- `apps/workshop/src/ui/Sheet.tsx` — same pattern but slides up from the
+  bottom and adds a drag-handle indicator. Real spring/drag behavior is
+  deliberately out of scope here — landing it now (1b-2 needs it for
+  swipe gestures + reanimated) requires `react-native-gesture-handler`
+  wiring, which 1b-2 owns.
+- `apps/workshop/src/ui/Toast.tsx` — `<ToastProvider>` + `useToast()`
+  with a `showToast({ message, tone, durationMs, actionLabel, onAction })`
+  API. Auto-dismisses after 3.5s by default; `durationMs: 0` makes it
+  sticky. **This is the rollback surface for optimistic mutations** in
+  1b-2: `onAction` plus `actionLabel: "Undo"` is the spec §5.5 rollback
+  pattern.
+- `apps/workshop/src/ui/index.ts` — exports the three new primitives plus
+  the `useToast` hook and `ToastProvider`.
+- `apps/workshop/app/_layout.tsx` — wraps the tree as
+  `ThemeProvider → QueryClientProvider → ToastProvider → AuthProvider →
+  AuthGate`. **The ordering matters**: AuthProvider sits inside both
+  Query + Toast so 1b-2 can call `useToast()` from auth flows or
+  invalidate query caches on sign-out. `useMemo(createQueryClient, [])`
+  pins the client across renders.
+- `apps/workshop/app/index.tsx` — home screen: header with display name +
+  sign-out icon, `useQuery(queryKeys.lists.all, fetchLists)` driving
+  loading / error / empty / list states, FlatList of `<ListCard>` rows
+  with pull-to-refresh, FAB in the bottom-right. The empty-state and
+  FAB both call `showToast({ actionLabel: "OK" })` as a placeholder until
+  1b-2 wires the real create-list flow. `<ListCard>` reads
+  `tokens.list[colorKey]` for the left-edge stripe and renders
+  `emoji · name · "Type · Role" · description · "N items · M members"`.
+  Sort order matches backend (`updated_at DESC`).
+
+What 1b-2 should do *first*: replace the FAB's toast handler in
+`app/index.tsx` with `router.push("/create-list/type")` once the
+create-list stack lands; route the empty-state CTA the same way. The
+home-screen `useQuery(queryKeys.lists.all)` is already the right cache —
+1b-2's `createListMutation` should `queryClient.invalidateQueries({
+queryKey: queryKeys.lists.all })` on success (or do an `onMutate`
+optimistic insert + `onError` rollback) so the new card appears without
+a refetch. For item mutations on the list-detail screen, the natural
+keys are already in `queryKeys.items.byList(listId)` and
+`queryKeys.items.detail(itemId)`.
+
+Known constraints for 1b-2:
+- The `Modal` and `Sheet` primitives use RN's built-in `Modal`. On web
+  it renders inline (no portal); that's fine for 1b-2's flows but if
+  Phase 5's two-pane layout needs portaled overlays a swap to
+  `react-native-modal` or a custom portal will be needed.
+- `useToast` must be called from inside the React tree under
+  `ToastProvider`. Service-layer code (e.g. mutation `onError`) should
+  receive a callback or use a snapshot of the hook from the component.
+- `react-native-gesture-handler` and `react-native-reanimated` are
+  already in the manifest (Phase 0 deps) but neither is used yet —
+  1b-2's swipe-to-complete gesture is the first real use. Verify on web
+  where gesture-handler is a partial shim (per spec §5.5 Risks).
+- `expo-haptics` is **not** in the manifest yet. 1b-2 deliverable #7
+  (haptics on upvote/complete/delete) needs to add it via
+  `npx expo install expo-haptics` and ship a `.web.ts` no-op shim
+  alongside the native implementation.
 
 #### 3.9 Original Phase 1 deliverable list
 
