@@ -59,3 +59,28 @@ variable "google_books_api_key" {
   sensitive   = true
   description = "Google Books API key for book search enrichment (Phase 2). Empty default lets infra apply before the key is obtained."
 }
+
+variable "spotify_client_id" {
+  type        = string
+  default     = ""
+  description = "Spotify Web API client ID. Register an app at https://developer.spotify.com/dashboard. Empty default lets infra apply before the app is registered."
+}
+
+variable "spotify_client_secret" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Spotify Web API client secret. Used in the Authorization Code token exchange when PKCE is paired with confidential clients."
+}
+
+variable "spotify_redirect_uri" {
+  type        = string
+  default     = ""
+  description = "Redirect URI registered on the Spotify dashboard. Must point at the deployed API: https://<api>/v1/spotify/auth/callback."
+}
+
+variable "spotify_app_redirect_uri" {
+  type        = string
+  default     = ""
+  description = "Where the backend redirects the browser after a successful Spotify callback. Typically the workshop:// deep link or the web app origin."
+}

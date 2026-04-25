@@ -284,3 +284,126 @@ export interface PlaceMetadata {
   lat?: number;
   lng?: number;
 }
+
+// --- Spotify integration ---
+
+/**
+ * Public-facing Spotify connection state. `connected: false` means the user
+ * has never linked an account or revoked access. The mobile/web app uses
+ * this to decide whether to render the "Connect Spotify" CTA or the rest of
+ * the Spotify UI.
+ */
+export interface SpotifyConnectionStatus {
+  connected: boolean;
+  spotifyUserId: string | null;
+  spotifyDisplayName: string | null;
+  scope: string | null;
+  connectedAt: string | null;
+}
+
+export interface SpotifyAuthorizeResponse {
+  /** Browser-openable Spotify consent URL with PKCE challenge already attached. */
+  authorizeUrl: string;
+  /** Opaque correlation id; clients can ignore but it's logged for debugging. */
+  state: string;
+}
+
+export interface SpotifyAlbumSummary {
+  spotifyAlbumId: string;
+  name: string;
+  artists: string[];
+  imageUrl: string | null;
+  releaseDate: string | null;
+  totalTracks: number | null;
+  spotifyUrl: string | null;
+}
+
+/** A saved album row, including the per-user note + save timestamp. */
+export interface SavedAlbum extends SpotifyAlbumSummary {
+  note: string | null;
+  savedAt: string;
+}
+
+export interface SavedAlbumListResponse {
+  albums: SavedAlbum[];
+}
+
+export interface SavedAlbumResponse {
+  album: SavedAlbum;
+}
+
+export interface SpotifyAlbumSearchResponse {
+  query: string;
+  results: SpotifyAlbumSummary[];
+}
+
+export interface SaveAlbumRequest {
+  spotifyAlbumId: string;
+  note?: string;
+}
+
+export interface UpdateSavedAlbumRequest {
+  /** Pass `null` to clear; omit to leave unchanged. */
+  note?: string | null;
+}
+
+/** Trimmed subset of the Spotify track shape the app actually renders. */
+export interface SpotifyTrackSummary {
+  spotifyTrackId: string;
+  name: string;
+  durationMs: number;
+  artists: string[];
+  album: {
+    spotifyAlbumId: string;
+    name: string;
+    imageUrl: string | null;
+  };
+  spotifyUrl: string | null;
+}
+
+export interface SpotifyNowPlaying {
+  isPlaying: boolean;
+  progressMs: number | null;
+  track: SpotifyTrackSummary | null;
+}
+
+export interface SpotifyRecentListen {
+  playedAt: string;
+  track: SpotifyTrackSummary;
+}
+
+export interface SpotifyRecentListensResponse {
+  items: SpotifyRecentListen[];
+}
+
+export interface SpotifyPlaylistSummary {
+  spotifyPlaylistId: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  ownerDisplayName: string | null;
+  trackCount: number;
+  spotifyUrl: string | null;
+}
+
+export interface SpotifyPlaylistListResponse {
+  playlists: SpotifyPlaylistSummary[];
+}
+
+export interface SpotifyPlaylistTracksResponse {
+  playlistId: string;
+  total: number;
+  tracks: SpotifyTrackSummary[];
+}
+
+/**
+ * Result of "syncing" a Spotify playlist into the user's saved albums:
+ * every unique album that appears across the playlist's tracks is added.
+ */
+export interface SyncPlaylistAlbumsResponse {
+  playlistId: string;
+  uniqueAlbumCount: number;
+  newlySavedCount: number;
+  alreadySavedCount: number;
+  albums: SavedAlbum[];
+}

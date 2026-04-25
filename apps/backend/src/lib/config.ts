@@ -38,6 +38,21 @@ const configSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "1" || v === "true"),
+  // Spotify OAuth (Authorization Code + PKCE). Empty defaults so the rest of
+  // the API still boots without Spotify configured — Spotify routes 503 until
+  // these are populated. clientSecret is optional: with PKCE it can be omitted
+  // for public clients, but Spotify still recommends it for confidential ones.
+  spotifyClientId: z.string().optional().default(""),
+  spotifyClientSecret: z.string().optional().default(""),
+  // The redirect URI registered on the Spotify dashboard. Locally, default to
+  // `http://localhost:8787/v1/spotify/auth/callback`. The backend handles the
+  // callback then forwards the user back to the app via the `workshop://`
+  // deep link scheme.
+  spotifyRedirectUri: z.string().optional().default(""),
+  // Where the backend redirects the browser after a successful Spotify
+  // callback — typically a deep link the mobile app or web bundle handles.
+  // Defaults to the local web origin.
+  spotifyAppRedirectUri: z.string().optional().default(""),
 });
 
 export type Config = z.infer<typeof configSchema> & { isLocal: boolean };
@@ -61,6 +76,10 @@ export function getConfig(): Config {
     tmdbApiKey: process.env.TMDB_API_KEY,
     googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY,
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,
+    spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
+    spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    spotifyRedirectUri: process.env.SPOTIFY_REDIRECT_URI,
+    spotifyAppRedirectUri: process.env.SPOTIFY_APP_REDIRECT_URI,
   });
   cached = { ...parsed, isLocal: parsed.stage === "local" };
   return cached;

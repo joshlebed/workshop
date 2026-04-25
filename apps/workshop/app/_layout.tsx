@@ -68,6 +68,11 @@ function AuthGate() {
       <Stack.Screen name="list/[id]/index" />
       <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
       <Stack.Screen name="list/[id]/item/[itemId]" />
+      <Stack.Screen name="spotify/index" />
+      <Stack.Screen name="spotify/albums" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="spotify/now-playing" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="spotify/playlists" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="spotify/playlist/[id]" options={{ animation: "slide_from_right" }} />
     </Stack>
   );
 }

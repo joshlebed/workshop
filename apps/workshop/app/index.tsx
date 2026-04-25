@@ -45,11 +45,20 @@ export default function Home() {
             {user?.displayName ? `Hi, ${user.displayName}` : "Signed in"}
           </Text>
         </View>
-        <IconButton accessibilityLabel="Sign out" onPress={signOut} testID="sign-out">
-          <Text tone="secondary" style={styles.signOutGlyph}>
-            ⎋
-          </Text>
-        </IconButton>
+        <View style={styles.headerActions}>
+          <IconButton
+            accessibilityLabel="Open Spotify"
+            onPress={() => router.push("/spotify")}
+            testID="open-spotify"
+          >
+            <Text style={styles.spotifyGlyph}>🎧</Text>
+          </IconButton>
+          <IconButton accessibilityLabel="Sign out" onPress={signOut} testID="sign-out">
+            <Text tone="secondary" style={styles.signOutGlyph}>
+              ⎋
+            </Text>
+          </IconButton>
+        </View>
       </View>
 
       <View style={styles.body}>
@@ -176,6 +185,8 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   signOutGlyph: { fontSize: tokens.font.size.lg },
+  spotifyGlyph: { fontSize: tokens.font.size.lg },
+  headerActions: { flexDirection: "row", gap: tokens.space.sm, alignItems: "center" },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   listContent: { paddingBottom: tokens.space.xxl * 2 },
