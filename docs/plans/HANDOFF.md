@@ -18,20 +18,32 @@ stacks up unshipped code.
 
 ### 0.1 Backend deploy — baseline the drizzle migration journal (manual, one-off)
 
+**Status: RESOLVED 2026-04-24.** Deploy Backend has been green since the run on PR #40
+merge. Section preserved as a postmortem; the steps below should NOT be re-run.
+
 **Symptom**: `Deploy Backend` workflow fails at `Run DB migrations` with
 `relation "magic_tokens" already exists`.
 
-**Root cause**: The production Neon database has the v1 schema but
-`drizzle.__drizzle_migrations` is missing. On each deploy drizzle re-reads the journal
-from scratch and tries to re-apply `0000_initial_schema`.
+**Root cause (as originally diagnosed)**: The production Neon database had the v1 schema
+but `drizzle.__drizzle_migrations` was missing. On each deploy drizzle re-read the
+journal from scratch and tried to re-apply `0000_initial_schema`.
 
-**Fix (admin, one-time)**:
+**What actually happened during the fix**: The diagnosed-state premise turned out to be
+only partially correct. Prod had `users` and `magic_tokens` (v1) but was missing
+`rec_items`, AND had an orphaned `watchlist_items` table from an earlier abandoned
+attempt. Running the baseline alone made the deploy progress past 0000 but then fail at
+`0001_drop_v1_schema` with `table "rec_items" does not exist`. With user authorization
+(no important data in prod), the resolution was to drop everything in `public` plus
+`drizzle.__drizzle_migrations` and let the workflow apply 0000 → 0001 → 0002 cleanly
+from an empty DB. End state: 3 rows in the journal, full v2 schema, `/health` green.
 
-1. Pull the prod connection string (if you don't already have it):
+**For future similar incidents** (don't re-run for this one):
+
+1. Pull the prod connection string:
 
     ```bash
     AWS_PROFILE=workshop-prod aws ssm get-parameter \
-      --name /workshop/database_url \
+      --name /workshop-prod/db/url \
       --with-decryption --query 'Parameter.Value' --output text
     ```
 
@@ -41,41 +53,40 @@ from scratch and tries to re-apply `0000_initial_schema`.
     AWS_PROFILE=workshop-prod ./scripts/db-connect.sh
     ```
 
-2. Run the backfill SQL against prod. **Review it first** — it creates the `drizzle`
-   schema and inserts exactly one row:
+2. **Verify the actual DB state first** (`\dt public.*` and `\dt drizzle.*` in psql)
+   before assuming any baseline-only fix will work. Compare against
+   `apps/backend/drizzle/*.sql` and `meta/_journal.json`.
+
+3. If the on-disk state matches a clean "v1 schema applied, journal missing" world, run
+   the backfill SQL:
 
     ```bash
     AWS_PROFILE=workshop-prod psql "$DATABASE_URL" \
       -f apps/backend/scripts/2026-04-24-baseline-drizzle-migrations.sql
     ```
 
-    Expected output: a single row with
-    `hash = 210fa360a1e6defb5856138ff724c8842761ed2cb1f0ba935e49406b80f62858`
-    and `created_at = 1776966724611`. The hash and timestamp are pinned to the
-    on-disk inputs drizzle hashes at runtime — do not edit them.
+    Otherwise reconcile state by hand (or, if data is disposable, drop everything and
+    let the migration journal run end-to-end from empty).
 
-3. Re-run the failed `Deploy Backend` workflow. On the next run drizzle will skip
-    0000, apply `0001_drop_v1_schema` (drops v1 tables — irreversible, see §0.1-risks),
-    then apply `0002_v2_schema`.
-
-4. Verify:
+4. Re-run the failed `Deploy Backend` workflow and verify `/health`:
 
     ```bash
     curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)/health
-    # expect: { "ok": true }
     AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 5m --filter error
-    # expect: silent
     ```
 
-**§0.1 risks**:
+**Risks for any future re-run**:
 
-- `0001_drop_v1_schema` drops the `users`, `magic_tokens`, and `rec_items` tables with
-  `CASCADE`. Any v1 user data is gone. That's the intended outcome of the redesign
-  (spec §1, "Starting state") — v1 accounts are being thrown away and v2 rebuilds from
-  OAuth sign-ins — but **snapshot the DB in Neon first** before running step 2 so there's
-  a restore point. Neon: *Branch → Create branch from current state* on the prod branch.
-- If the backfill row already exists (script is idempotent), the script is a no-op and
-  safe to re-run.
+- `0001_drop_v1_schema` drops `users`, `magic_tokens`, `rec_items` with `CASCADE`.
+  Snapshot the Neon branch first (*Branch → Create branch from current state*) unless
+  the data is known-disposable.
+- The backfill SQL is idempotent — safe to re-run.
+
+**Heads-up on `AWS_PROFILE`**: a personal-shell wrapper that auto-substitutes
+`AWS_PROFILE` based on the git remote URL can silently override
+`AWS_PROFILE=workshop-prod` and route SSM calls to the wrong account. If
+`aws ssm get-parameter --name /workshop-prod/db/url` returns `ParameterNotFound`,
+sanity-check `aws sts get-caller-identity` first.
 
 ### 0.2 Mobile (OTA) + TestFlight — RN pinned back to Expo SDK 55 (code, in this PR)
 
