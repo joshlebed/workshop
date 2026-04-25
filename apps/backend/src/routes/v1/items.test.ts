@@ -1,6 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { signSession } from "../../lib/session.js";
-import { createItemSchema, itemRoutes, updateItemSchema } from "./items.js";
+import {
+  createItemSchema,
+  itemRoutes,
+  updateItemSchema,
+  validateMetadataForType,
+} from "./items.js";
 import { listRoutes } from "./lists.js";
 
 beforeAll(() => {
@@ -225,5 +230,82 @@ describe("list-scoped item routes auth gating", () => {
       body: JSON.stringify({ title: "x" }),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("validateMetadataForType (Phase 2a-1, spec §9.4)", () => {
+  it("accepts a TMDB movie metadata blob", () => {
+    const r = validateMetadataForType("movie", {
+      source: "tmdb",
+      sourceId: "603692",
+      posterUrl: "https://image.tmdb.org/...",
+      year: 2023,
+      runtimeMinutes: 169,
+      overview: "the franchise continues",
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts a tv blob with the same shape as movie", () => {
+    const r = validateMetadataForType("tv", { source: "tmdb", year: 2024 });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects movie metadata with a stray field", () => {
+    const r = validateMetadataForType("movie", { unknownField: "x" });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects movie source other than tmdb/manual", () => {
+    const r = validateMetadataForType("movie", { source: "imdb" });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects movie year out of range", () => {
+    const r = validateMetadataForType("movie", { year: 1500 });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts a Google Books book metadata blob", () => {
+    const r = validateMetadataForType("book", {
+      source: "google_books",
+      sourceId: "abc",
+      authors: ["N.K. Jemisin"],
+      year: 2015,
+      pageCount: 512,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects book metadata with a runtimeMinutes field (movie-only)", () => {
+    const r = validateMetadataForType("book", { runtimeMinutes: 90 });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts a date_idea place blob with link_preview source", () => {
+    const r = validateMetadataForType("date_idea", {
+      source: "link_preview",
+      siteName: "Google Maps",
+      image: "https://...",
+      lat: 40.7,
+      lng: -74,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts a trip place blob with the same shape as date_idea", () => {
+    const r = validateMetadataForType("trip", { source: "manual", siteName: "Tokyo" });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects place lat outside [-90, 90]", () => {
+    const r = validateMetadataForType("date_idea", { lat: 100 });
+    expect(r.success).toBe(false);
+  });
+
+  it("accepts an empty object for any list type", () => {
+    expect(validateMetadataForType("movie", {}).success).toBe(true);
+    expect(validateMetadataForType("book", {}).success).toBe(true);
+    expect(validateMetadataForType("trip", {}).success).toBe(true);
   });
 });

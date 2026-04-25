@@ -1,7 +1,7 @@
 import type { Item, ItemMetadata, ListType } from "@workshop/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { z } from "zod";
+import { type ZodType, z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbItem, items, itemUpvotes, lists } from "../../db/schema.js";
 import { err, ok } from "../../lib/response.js";
@@ -31,7 +31,9 @@ const noteSchema = z
   .transform((s) => s.trim())
   .pipe(z.string().max(1000, "note too long"));
 
-// Loose record — Phase 2 introduces per-list-type Zod validators per spec §9.
+// Loose at parse time — the parent list's `type` is only known after a DB
+// lookup, so per-type tightening (spec §9.4) happens in `validateMetadata`
+// before persistence.
 const metadataSchema = z.record(z.string(), z.unknown());
 
 export const createItemSchema = z.object({
@@ -49,6 +51,73 @@ export const updateItemSchema = z
     metadata: metadataSchema.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "at least one field required");
+
+// --- Per-type metadata validators (Phase 2a-1, spec §9.4) ---
+//
+// Every field is optional so manual entries (no provider match) and
+// provider-enriched entries share the same JSONB shape. `.strict()` rejects
+// stray fields so a stale client can't smuggle arbitrary keys past the
+// validator.
+
+const movieTvMetadataSchema = z
+  .object({
+    source: z.union([z.literal("tmdb"), z.literal("manual")]).optional(),
+    sourceId: z.string().max(64).optional(),
+    posterUrl: z.string().max(2048).optional(),
+    year: z.number().int().min(1800).max(2200).optional(),
+    runtimeMinutes: z.number().int().min(0).max(10000).optional(),
+    overview: z.string().max(4000).optional(),
+  })
+  .strict();
+
+const bookMetadataSchema = z
+  .object({
+    source: z.union([z.literal("google_books"), z.literal("manual")]).optional(),
+    sourceId: z.string().max(64).optional(),
+    coverUrl: z.string().max(2048).optional(),
+    authors: z.array(z.string().max(200)).max(20).optional(),
+    year: z.number().int().min(0).max(2200).optional(),
+    pageCount: z.number().int().min(0).max(100000).optional(),
+    description: z.string().max(4000).optional(),
+  })
+  .strict();
+
+// `date_idea` and `trip` stay loose-but-shaped: link-preview lands in 2a-2 so
+// the spec §9.4 fields are sketched here and tightened in that chunk.
+const placeMetadataSchema = z
+  .object({
+    source: z.union([z.literal("link_preview"), z.literal("manual")]).optional(),
+    sourceId: z.string().max(128).optional(),
+    image: z.string().max(2048).optional(),
+    siteName: z.string().max(200).optional(),
+    title: z.string().max(500).optional(),
+    description: z.string().max(2000).optional(),
+    lat: z.number().min(-90).max(90).optional(),
+    lng: z.number().min(-180).max(180).optional(),
+  })
+  .strict();
+
+const metadataSchemasByType: Record<ListType, ZodType<ItemMetadata>> = {
+  movie: movieTvMetadataSchema as ZodType<ItemMetadata>,
+  tv: movieTvMetadataSchema as ZodType<ItemMetadata>,
+  book: bookMetadataSchema as ZodType<ItemMetadata>,
+  date_idea: placeMetadataSchema as ZodType<ItemMetadata>,
+  trip: placeMetadataSchema as ZodType<ItemMetadata>,
+};
+
+/**
+ * Per-list-type validation for `items.metadata`. Returns the parsed metadata
+ * on success or a Zod error to forward through the v1 envelope.
+ */
+export function validateMetadataForType(
+  type: ListType,
+  metadata: unknown,
+): { success: true; data: ItemMetadata } | { success: false; issues: z.ZodIssue[] } {
+  const schema = metadataSchemasByType[type];
+  const r = schema.safeParse(metadata);
+  if (!r.success) return { success: false, issues: r.error.issues };
+  return { success: true, data: r.data };
+}
 
 // --- Shape helpers ---
 
@@ -183,10 +252,21 @@ export async function fetchItemsForList(
   });
 }
 
+/** Thrown by `createItem` when per-type metadata validation fails. */
+export class ItemMetadataError extends Error {
+  readonly issues: z.ZodIssue[];
+  constructor(issues: z.ZodIssue[]) {
+    super("invalid metadata for list type");
+    this.name = "ItemMetadataError";
+    this.issues = issues;
+  }
+}
+
 /**
  * Inserts an item plus the creator's upvote in a single transaction (spec
  * §2.3). Looks up the parent list's `type` first so the denormalized
- * `items.type` matches `lists.type` per schema §7.6.
+ * `items.type` matches `lists.type` per schema §7.6, and so per-type
+ * metadata validation (spec §9.4) runs against the right shape.
  */
 export async function createItem(
   listId: string,
@@ -202,6 +282,13 @@ export async function createItem(
       .limit(1);
     if (!parent) throw new Error("list missing during item insert");
 
+    let metadata: ItemMetadata = {};
+    if (data.metadata !== undefined) {
+      const v = validateMetadataForType(parent.type, data.metadata);
+      if (!v.success) throw new ItemMetadataError(v.issues);
+      metadata = v.data;
+    }
+
     const [row] = await tx
       .insert(items)
       .values({
@@ -210,7 +297,7 @@ export async function createItem(
         title: data.title,
         url: data.url ?? null,
         note: data.note ?? null,
-        metadata: data.metadata ?? {},
+        metadata,
         addedBy: userId,
       })
       .returning();
@@ -253,7 +340,22 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
   if (parsed.data.title !== undefined) patch.title = parsed.data.title;
   if (parsed.data.url !== undefined) patch.url = parsed.data.url;
   if (parsed.data.note !== undefined) patch.note = parsed.data.note;
-  if (parsed.data.metadata !== undefined) patch.metadata = parsed.data.metadata;
+  if (parsed.data.metadata !== undefined) {
+    // Per-type validation needs the parent list's type. The `items.type`
+    // column is denormalized from `lists.type` (schema §7.6), so reading
+    // it here is one extra index lookup vs. joining lists.
+    const [typeRow] = await db
+      .select({ type: items.type })
+      .from(items)
+      .where(eq(items.id, itemId))
+      .limit(1);
+    if (!typeRow) return err(c, "NOT_FOUND", "item not found");
+    const v = validateMetadataForType(typeRow.type, parsed.data.metadata);
+    if (!v.success) {
+      return err(c, "VALIDATION", "invalid metadata for list type", v.issues);
+    }
+    patch.metadata = v.data;
+  }
 
   const [updated] = await db.update(items).set(patch).where(eq(items.id, itemId)).returning();
   if (!updated) return err(c, "NOT_FOUND", "item not found");

@@ -28,6 +28,10 @@ const configSchema = z.object({
   // Comma-separated extra audiences (e.g. additional web origins). Optional.
   appleExtraAudiences: csv,
   googleExtraAudiences: csv,
+  // Enrichment provider API keys (Phase 2). Empty in local dev — search routes
+  // 503 with a clear error until populated. SSM wires the real values in 0c-2.
+  tmdbApiKey: z.string().optional().default(""),
+  googleBooksApiKey: z.string().optional().default(""),
   // Dev-only sign-in route for E2E tests. Must be explicitly opted in —
   // treated as a production footgun otherwise. See routes/v1/auth.ts.
   devAuthEnabled: z
@@ -54,6 +58,8 @@ export function getConfig(): Config {
     googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID,
     appleExtraAudiences: process.env.APPLE_EXTRA_AUDIENCES,
     googleExtraAudiences: process.env.GOOGLE_EXTRA_AUDIENCES,
+    tmdbApiKey: process.env.TMDB_API_KEY,
+    googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY,
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,
   });
   cached = { ...parsed, isLocal: parsed.stage === "local" };

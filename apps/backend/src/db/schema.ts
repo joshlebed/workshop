@@ -207,6 +207,7 @@ export const metadataCache = pgTable(
     sourceId: text("source_id").notNull(),
     data: jsonb("data").notNull(),
     fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().default(sql`now()`),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.source, t.sourceId] }),

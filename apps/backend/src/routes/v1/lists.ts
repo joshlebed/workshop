@@ -8,7 +8,7 @@ import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
-import { createItem, createItemSchema, fetchItemsForList } from "./items.js";
+import { createItem, createItemSchema, fetchItemsForList, ItemMetadataError } from "./items.js";
 
 export const listRoutes = new Hono();
 
@@ -266,7 +266,15 @@ listRoutes.post(
     }
     const listId = c.req.param("id");
     const userId = c.get("userId");
-    const item = await createItem(listId, userId, parsed.data);
+    let item: Awaited<ReturnType<typeof createItem>>;
+    try {
+      item = await createItem(listId, userId, parsed.data);
+    } catch (e) {
+      if (e instanceof ItemMetadataError) {
+        return err(c, "VALIDATION", "invalid metadata for list type", e.issues);
+      }
+      throw e;
+    }
     return ok(c, { item }, 201);
   },
 );
