@@ -1,7 +1,11 @@
+export type { AvatarProps } from "./Avatar";
+export { Avatar } from "./Avatar";
 export type { ButtonProps } from "./Button";
 export { Button } from "./Button";
 export type { CardProps } from "./Card";
 export { Card } from "./Card";
+export type { ChipProps } from "./Chip";
+export { Chip } from "./Chip";
 export type { EmptyStateProps } from "./EmptyState";
 export { EmptyState } from "./EmptyState";
 export type { IconButtonProps } from "./IconButton";
@@ -15,4 +19,6 @@ export { Text } from "./Text";
 export { ToastProvider, useToast } from "./Toast";
 export type { ListColorKey, Tokens } from "./theme";
 export { tokens } from "./theme";
+export type { UpvotePillProps } from "./UpvotePill";
+export { UpvotePill } from "./UpvotePill";
 export { useTheme } from "./useTheme";

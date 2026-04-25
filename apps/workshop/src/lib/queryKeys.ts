@@ -5,6 +5,8 @@ export const queryKeys = {
   },
   items: {
     byList: (listId: string) => ["items", "byList", listId] as const,
+    byListFiltered: (listId: string, completed: boolean | undefined) =>
+      ["items", "byList", listId, { completed: completed ?? "all" }] as const,
     detail: (id: string) => ["items", "detail", id] as const,
   },
   auth: {

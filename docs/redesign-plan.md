@@ -489,7 +489,7 @@ on its own and `main` stays deployable between landings.
 | **1a-1** | Backend lists CRUD: `GET /v1/lists` (with `role`/`memberCount`/`itemCount` aggregates), `POST` (transactional list + owner-member insert), `GET /:id` (list + members + empty `pendingInvites`), `PATCH /:id` (owner only), `DELETE /:id` (owner only; cascades). `requireListMember` + `requireListOwner` middleware (404 vs 403 — non-members get 404 to avoid leaking existence). Shared types `List`, `ListSummary`, `ListMemberSummary`, `PendingInvite`, `CreateListRequest`, `UpdateListRequest` and the matching response shapes. Vitest coverage of input validation + auth gating (20 tests). | None — runs against the existing local Postgres and v2 schema; doesn't depend on 0c-2's portal/SSM/Cloudflare work. | **Done** (this PR) |
 | **1a-2** | Backend items CRUD + upvote + complete: `GET /v1/lists/:id/items` (with `upvote_count` aggregate via `LEFT JOIN ... COUNT(*)::int` + per-user `has_upvoted`), `POST` (transactional: insert item + insert creator's upvote in one tx — spec §2.3), `GET /v1/items/:id`, `PATCH`, `DELETE`, `POST/:id/upvote` (idempotent), `DELETE/:id/upvote`, `POST/:id/complete`, `POST/:id/uncomplete`. `requireItemMember` helper that resolves the item's list and reuses `requireListMember`'s membership check. Shared types `Item`, `ItemListResponse`, `ItemResponse`, request bodies. Sort order: `upvote_count DESC, created_at DESC` per spec §7.7; completed-only filter sorts by `completed_at DESC` per spec §2.4. Rate limits wired: `POST /lists/:id/items` 60/user/min, upvote endpoints 120/user/min per spec §8. Vitest coverage of input validation + auth gating + UUID bail-out (29 tests). | None. | **Done** (this PR) |
 | **1b-1** | Client TanStack Query foundation + home screen: `apps/workshop/src/lib/query.ts` (`QueryClient` with `refetchOnWindowFocus` / `refetchOnReconnect`), `src/lib/queryKeys.ts` (centralized factory), `src/api/lists.ts` (typed wrappers around `/v1/lists`), `app/index.tsx` rewritten as the rich list-cards home with FAB and empty state. New primitives in `src/ui/`: `Sheet`, `Modal`, `Toast`. | None. | **Done** (this PR) |
-| **1b-2** | Client list detail + create-list flow: `app/list/[id]/index.tsx` (filter bar + completed section), `app/list/[id]/item/[itemId].tsx`, `app/list/[id]/add.tsx` (free-form for date-idea / trip; movie/TV/book stubs route to free-form until Phase 2), `app/create-list/_layout.tsx` + `type.tsx` + `customize.tsx`. New primitives: `UpvotePill`, `Avatar`, `Chip`. Optimistic-update helpers for upvote/complete/add with toast rollback. `expo-haptics` wired on upvote/complete/delete (no-op `.web.ts`). One Playwright happy-path: create list → add item → upvote → complete. | None. | Pending |
+| **1b-2** | Client list detail + create-list flow: `app/list/[id]/index.tsx` (filter bar + completed section), `app/list/[id]/item/[itemId].tsx`, `app/list/[id]/add.tsx` (free-form for date-idea / trip; movie/TV/book stubs route to free-form until Phase 2), `app/create-list/type.tsx` + `customize.tsx`. New primitives: `UpvotePill`, `Avatar`, `Chip`. Optimistic-update helpers for upvote/complete/add with toast rollback. `expo-haptics` wired on upvote/complete/delete (no-op `.web.ts`). One Playwright happy-path: create list → add item → upvote → complete. | None. | **Done** (this PR) |
 
 #### 3.8 What 1a-1 actually shipped — start here for 1a-2
 
@@ -709,6 +709,158 @@ Known constraints for 1b-2:
   (haptics on upvote/complete/delete) needs to add it via
   `npx expo install expo-haptics` and ship a `.web.ts` no-op shim
   alongside the native implementation.
+
+#### 3.12 What 1b-2 actually shipped — start here for 2a-1
+
+Files that landed in 1b-2 (read these before touching 2a-1):
+
+- `apps/workshop/src/ui/UpvotePill.tsx` — `<UpvotePill count hasUpvoted
+  onPress disabled />`. Pill with up-arrow glyph + count divided by a 1px
+  rule. `accessibilityState={{ selected: hasUpvoted }}`. Tokens-only
+  styling — `tokens.accent.muted` background + `tokens.accent.default`
+  border when selected; unselected falls back to `tokens.bg.elevated` +
+  `tokens.border.default`. Disabled = 0.5 opacity, pressed = 0.7. Min size
+  56×36 — large enough to land an iOS thumb without crowding adjacent
+  items in a list.
+- `apps/workshop/src/ui/Avatar.tsx` — `<Avatar name size>`. Initials
+  derived from `name` (first + last word's first char). Background colour
+  is hashed deterministically off `name` through `tokens.list.*`, so the
+  same display name renders the same colour in every screen. Three
+  sizes (`sm: 24`, `md: 32`, `lg: 48`) — used at `md` in the list
+  detail header (added-by avatar) and `sm` in completed-section rows.
+- `apps/workshop/src/ui/Chip.tsx` — `<Chip label selected onPress
+  disabled />`. Pressable when `onPress` is provided, otherwise a static
+  pill (no `accessibilityRole`). Same selected/unselected colour pair
+  as `UpvotePill`. Used by the type picker in `create-list/type.tsx`
+  and earmarked for Phase 2's filter sheet.
+- `apps/workshop/src/ui/index.ts` — exports the three new primitives
+  alphabetised.
+- `apps/workshop/src/lib/haptics.ts` — wraps `expo-haptics` with four
+  named verbs: `light()`, `medium()`, `success()`, `warning()`. Callers
+  fire-and-forget — errors are swallowed so a haptics failure can't
+  break a mutation. `apps/workshop/src/lib/haptics.web.ts` is a no-op
+  shim with the same signatures so Metro picks it on the web bundle and
+  upvote/complete handlers don't need a `Platform.OS` branch.
+- `apps/workshop/package.json` — adds `expo-haptics: ~55.0.14` (installed
+  via `npx expo install` so the version matches Expo SDK 55).
+- `apps/workshop/src/api/items.ts` — typed wrappers mirroring the v1
+  envelope: `fetchItems(token, listId, { completed? })`,
+  `fetchItem(token, itemId)`, `createItem(token, listId, body)`,
+  `updateItem`, `deleteItem`, `upvoteItem`, `removeUpvote`,
+  `completeItem`, `uncompleteItem`. All thin — TanStack Query owns
+  caching. **2a-1 should mirror the same shape for `src/api/search.ts`
+  and `src/api/linkPreview.ts`** when the backend lands.
+- `apps/workshop/src/lib/queryKeys.ts` — adds
+  `items.byListFiltered(listId, completed)` so the active and
+  completed FlatLists in `list/[id]/index.tsx` cache separately.
+  Invalidations on item mutations clear the parent
+  `items.byList(listId)` prefix, which matches both filtered keys.
+- `apps/workshop/app/create-list/type.tsx` — five-card type picker
+  (movie / tv / book / date_idea / trip). Each card shows the emoji,
+  label, and one-line subtitle. Tapping a card calls
+  `router.push("/create-list/customize?type=<type>")`.
+- `apps/workshop/app/create-list/customize.tsx` — name field (required,
+  1–100 chars), emoji picker (12 preset glyphs), colour picker (the
+  seven `tokens.list.*` keys), optional description. `useMutation`
+  calls `createList`; `onSuccess` invalidates `queryKeys.lists.all`,
+  then `router.dismissAll()` + `router.replace("/list/<id>")` so the
+  back button on the new list-detail screen returns to home rather
+  than the create flow.
+- `apps/workshop/app/list/[id]/index.tsx` — list detail. Header has a
+  back button + the list's emoji + name + a coloured stripe pulled
+  from `tokens.list[colorKey]`. Three `useQuery`s: list detail, active
+  items, completed items (the second/third use the new
+  `items.byListFiltered` keys). A client-only `<TextInput>` filter bar
+  (spec §4.2 — substring match on `title` only) drives a `useMemo`
+  filter over the active list. Each row is an `ItemRow` with
+  `<UpvotePill>`, the title (line-through when completed), and a
+  complete button. `upvoteMutation` does optimistic
+  `onMutate`/`onError` rollback against both filtered keys; the
+  complete mutation invalidates on success. The completed section
+  renders as `ListFooterComponent` of the active FlatList so a single
+  scroll surface contains both. FAB pushes
+  `/list/<id>/add`.
+- `apps/workshop/app/list/[id]/item/[itemId].tsx` — item detail.
+  Editable `title` / `url` / `note` fields, kept in local state and
+  re-synced from the query whenever the underlying item changes
+  (`useEffect` keyed off `item.updatedAt`). `<UpvotePill>` for the
+  current user, complete toggle, save (dirty-check before firing),
+  delete (calls `router.back()` after success). Tapping the URL
+  preview opens via `Linking.openURL`.
+- `apps/workshop/app/list/[id]/add.tsx` — modal (`presentation:
+  "modal"` on the parent stack). Free-form `title` + optional `url` +
+  optional `note`. Movie/TV/book lists show a banner that says "search
+  lands in Phase 2 — for now, type the title manually." `useMutation`
+  optimistically inserts the new item into
+  `items.byListFiltered(listId, false)`, then invalidates and
+  `router.back()`s.
+- `apps/workshop/app/index.tsx` — wires the FAB and the empty-state
+  CTA to `router.push("/create-list/type")`. List cards are now
+  `<Pressable>` and navigate to `/list/<id>` on press. Removed the
+  `useToast` placeholder import that 1b-1 had stubbed in.
+- `apps/workshop/app/_layout.tsx` — registers the new routes:
+  `create-list/type`, `create-list/customize` (both with
+  `animation: "slide_from_right"`), `list/[id]/index`,
+  `list/[id]/add` (`presentation: "modal"`), `list/[id]/item/[itemId]`.
+  No nested `_layout.tsx` under `create-list/` — the per-screen
+  animation override on the parent stack is enough, and a nested
+  layout caused expo-router to log "no route named create-list in
+  nested children" because it flattens the leaf names into the
+  parent's child registry.
+- `tests/e2e/list-flow.spec.ts` — Playwright happy-path under
+  `EXPO_PUBLIC_DEV_AUTH=1` + `DEV_AUTH_ENABLED=1` (set by
+  `scripts/e2e.sh`): dev sign-in → onboarding (if first-run) → FAB →
+  pick "Date idea" → name + submit → empty state → add item with
+  free-form title → upvote → complete. The test relies on `testID`s
+  added throughout 1b-2's screens (`fab-create-list`,
+  `type-card-<type>`, `list-name-input`, `submit-create-list`,
+  `add-item-fab`, `add-item-title`, `submit-add-item`,
+  `upvote-button-<itemId>`, `complete-button-<itemId>`).
+
+What 2a-1 should do *first*: read `apps/backend/src/routes/v1/items.ts`
+end to end (the loose `metadata: z.record(z.string(), z.unknown())`
+that 1a-2 left as a TODO — Phase 2 swaps in per-list-type validators
+per spec §9.4) and `apps/backend/src/routes/v1/lists.ts` for the
+`requireListMember` + `app.route` mounting pattern. The new
+`v1/search.ts` and `v1/link-preview.ts` routes follow the same shape:
+`requireAuth` middleware, Zod query-param validation, response shape
+declared in `@workshop/shared/types`. The metadata cache table
+(`metadata_cache (source TEXT, source_id TEXT, payload JSONB,
+fetched_at TIMESTAMPTZ, expires_at TIMESTAMPTZ, PRIMARY KEY (source,
+source_id))`) is a new Drizzle migration; `pnpm run db:generate --
+--name=add_metadata_cache` from `apps/backend/`.
+
+Known constraints for 2a-1:
+- TMDB and Google Books API keys live in SSM (Phase 0 placeholders).
+  `apps/backend/src/lib/config.ts` already declares the env vars; the
+  Lambda env-var wiring in `infra/lambda.tf` was set up in 0c-1.
+  Locally, drop real keys into `apps/backend/.env` (gitignored) before
+  hitting the search routes.
+- The link-preview route is the most security-sensitive surface so
+  far. Build the SSRF allowlist with a tested IP-range library
+  (`ipaddr.js`) per spec §8.5 — block RFC1918, loopback, link-local,
+  AWS metadata IP. Add a regression test that hits
+  `http://169.254.169.254/`. 3s timeout, 1MB body cap, 3 redirects max.
+- Per-type metadata Zod validators (spec §9.4): keep the existing
+  `metadata: z.record(...)` as a default fallback so unknown list
+  types don't block writes; layer the per-type validators on top with
+  a discriminated union keyed off the parent list's `type`.
+- Rate limits on `POST /v1/search/*` per spec §8 — wire inline using
+  the existing `rateLimit({ family, key })` middleware with a
+  `userId`-derived key (the search routes are auth-only).
+
+#### 3.13 Phase 2 chunks
+
+Each chunk is independently shippable; CI gates on backend tests +
+Playwright. The split mirrors Phase 1: 2a is backend-only and 2b is
+client-only.
+
+| Chunk | What ships | External deps | Status |
+|---|---|---|---|
+| **2a-1** | Backend search + metadata cache: `apps/backend/src/routes/v1/search.ts` (`GET /v1/search/media?type=movie\|tv`, `GET /v1/search/books`) proxying TMDB / Google Books behind SSM-sourced API keys, normalising into the spec §9 shapes. New `apps/backend/src/lib/metadata-cache.ts` (`upsert(source, source_id, payload, ttl)` + `lookup(source, source_id)`) backed by a new `metadata_cache` Drizzle migration. Per-type Zod validators for `items.metadata` applied on `POST/PATCH /v1/items` (movie / tv / book shapes; date-idea / trip stay loose for 2a-2). Rate limits on `POST /v1/search/*` at 60/user/min. Vitest coverage of validators + cache TTL + auth gating. | TMDB API key + Google Books API key in SSM (placeholders from Phase 0; production needs real values). | Pending |
+| **2a-2** | Backend link preview: `apps/backend/src/routes/v1/link-preview.ts` (`GET /v1/link-preview?url=`). SSRF allowlist via `ipaddr.js` (block RFC1918 / loopback / link-local / 169.254.169.254). 3s timeout, 1MB cap, 3 redirects. OG + Twitter card parser. Cached through the 2a-1 `metadata-cache` (7-day TTL). Rate limit 30/user/min. SSRF regression test + parser unit tests. | None — uses the metadata cache from 2a-1. | Pending |
+| **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list. | 2a-1. | Pending |
+| **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save. | 2a-2. | Pending |
 
 #### 3.9 Original Phase 1 deliverable list
 
