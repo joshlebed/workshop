@@ -1,11 +1,13 @@
 import { DarkTheme, ThemeProvider } from "@react-navigation/native";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
-import { tokens } from "../src/ui/index";
+import { createQueryClient } from "../src/lib/query";
+import { ToastProvider, tokens } from "../src/ui/index";
 
 function useApplyOtaUpdatesOnArrival() {
   const { isUpdatePending } = Updates.useUpdates();
@@ -65,12 +67,17 @@ function AuthGate() {
 
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
+  const queryClient = useMemo(() => createQueryClient(), []);
   return (
     <ThemeProvider value={DarkTheme}>
       <StatusBar style="light" />
-      <AuthProvider>
-        <AuthGate />
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <AuthProvider>
+            <AuthGate />
+          </AuthProvider>
+        </ToastProvider>
+      </QueryClientProvider>
     </ThemeProvider>
   );
 }
