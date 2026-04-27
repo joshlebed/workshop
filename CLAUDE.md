@@ -80,6 +80,14 @@ land as additional routes inside the same app.
   `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`. Dependabot rolls them forward weekly.
   (2) Never interpolate `${{ … }}` inside a shell `run:` block — hoist into the step's `env:`
   and read as `$VAR` in bash. Both patterns are visible throughout `.github/workflows/*`.
+- **Workflow path-filter self-trigger** — if a PR modifies a workflow file and that
+  workflow's own `on.push.paths:` includes its own filename (e.g. `testflight.yml` lists
+  `.github/workflows/testflight.yml` as a path), the merge commit will trigger that
+  workflow on `main` even if no other paths matched. Hit this 2026-04-27: a PR primarily
+  targeting `ci.yml` also touched `testflight.yml` (just to add a step-summary annotation),
+  and the merge inadvertently spun up a real TestFlight run. The behavior is intentional
+  (you usually want to test a workflow change against the workflow itself), but worth
+  checking when a PR's diff spans multiple workflow files.
 - **iOS capabilities are config-as-code.** When adding an iOS capability (App Groups,
   Push Notifications, Associated Domains, etc.), declare it in `apps/workshop/app.json`
   (`ios.entitlements`) or via an Expo config plugin **before** enabling it in the Apple
