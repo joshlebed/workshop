@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (2b-2 client link preview) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (3a-1 share-link invites + member removal) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
@@ -90,7 +90,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   Playwright happy-path (`tests/e2e/add-search.spec.ts`) creates a
   movie list, mocks `/v1/search/media`, types a query, selects a
   result, asserts it lands on the list.
-- **Phase 2** chunk 2b-2 (this PR) — client link preview: free-form
+- **Phase 2** chunk 2b-2 — client link preview: free-form
   `<FreeFormFlow>` in `app/list/[id]/add.tsx` debounces the URL field
   through `useDebouncedQuery`, gates on a client-side `new URL()` parse,
   and calls `GET /v1/link-preview` via TanStack Query (cancellable via
@@ -102,6 +102,20 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   Playwright happy-path (`tests/e2e/add-link-preview.spec.ts`) creates
   a date-idea list, mocks `/v1/link-preview`, pastes a URL, sees the
   card, saves.
+- **Phase 3** chunk 3a-1 (this PR) — backend share-link invites +
+  member removal. New `apps/backend/src/routes/v1/invites.ts`
+  (`POST /v1/lists/:id/invites`, `POST /v1/invites/:token/accept`,
+  `DELETE /v1/lists/:id/invites/:inviteId`) and
+  `apps/backend/src/routes/v1/members.ts`
+  (`DELETE /v1/lists/:id/members/:userId`). Tokens are 32-byte URL-safe
+  base64 with a 7-day expiry; `accept` is idempotent (re-joining is a
+  no-op, the owner can't accept their own list). Owner removal cascades
+  to upvotes via the existing FKs; self-leave is allowed for non-owners.
+  `GET /v1/lists/:id` now returns real `pendingInvites`. Email invites
+  are explicitly out — share-link only per spec §6. Activity events +
+  `events.ts` library defer to 3a-2. Shared types: `Invite`, `ListMember`
+  full shape, request/response envelopes. Vitest validators + auth gating
+  matching the `lists.test.ts` convention.
 
 ### Pending
 
@@ -137,12 +151,13 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 
 ### Next to implement
 
-Phase 2 is complete. **Phase 3** is the next slice (social/sharing,
-groups, share-link invites). Chunk decomposition lives in §3.17 — at the
-time of writing it has not been written yet, so the next agent should
-start by drafting that table along the same shape as §3.13 (chunks +
-deliverables + deps) before picking up code. The first chunks fall out
-of spec §3 (groups + memberships) and §6 (share-link invites).
+Phase 3 is now in flight. The §3.18 chunk table was drafted in this PR;
+3a-1 (share-link invites + member removal backend) lands here. The next
+chunk is **3a-2** — `events.ts` library + `activity.ts` route family +
+retrofit of every mutating list/item/member handler to emit events.
+After that, **3b-1** (list settings sheet + share-link copy + accept
+deep-link) and **3b-2** (activity feed + bell badge) close out Phase 3.
+See §3.18 for the chunk table and §3.19 for what 3a-1 actually shipped.
 
 ---
 
@@ -1492,6 +1507,180 @@ Known constraints for Phase 3:
   granted to other members. The existing test in `items.test.ts`
   asserts this for the single-tenant case; widen the assertion when
   groups land.
+
+#### 3.18 Phase 3 chunks
+
+Each chunk is independently shippable. The split mirrors Phases 1 and 2
+(3a is backend, 3b is client). 3a-1 lands the membership primitives
+(share-link invites + remove/leave) so 3a-2 can wire `recordEvent` into
+every mutating handler against a real membership surface.
+
+| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | External deps                                          | Status         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | -------------- |
+| **3a-1** | Backend share-link invites + member removal: `apps/backend/src/routes/v1/invites.ts` (`POST /v1/lists/:id/invites` owner-only, `POST /v1/invites/:token/accept` auth-only and idempotent, `DELETE /v1/lists/:id/invites/:inviteId` owner-only revoke) and `apps/backend/src/routes/v1/members.ts` (`DELETE /v1/lists/:id/members/:userId` — owner removes anyone but themselves; non-owners can self-leave). Tokens: 32-byte URL-safe base64 with a 7-day `expires_at` per spec §6 risks. `GET /v1/lists/:id` swaps the hardcoded `pendingInvites: []` for the real list. Shared types: `Invite`, `ListMember` full shape, request/response envelopes. Vitest: validator + auth gating + UUID-bail like `lists.test`.    | None — uses existing schema (`list_invites` from 0a).  | Done (this PR) |
+| **3a-2** | Backend activity + events: `apps/backend/src/lib/events.ts` (`recordEvent({ listId, actorId, type, itemId?, payload? })` — synchronous insert, no queue), `apps/backend/src/routes/v1/activity.ts` (`GET /v1/activity?cursor&limit=50`, `POST /v1/activity/read`). Retrofit every existing mutating handler in `lists.ts` / `items.ts` plus the new `invites.ts` / `members.ts` from 3a-1 to call `recordEvent` (see `activityEventTypeEnum` in `db/schema.ts` for the type set). `userActivityReads` table already exists from 0a; `POST /activity/read` upserts a row per `(user_id, list_id)`. Vitest: event recording on each mutation path + cursor pagination + auth scoping (only see events on lists you're in). | None.                                                  | Pending        |
+| **3b-1** | Client list settings + share-link UX: `apps/workshop/app/list/[id]/settings.tsx` modal sheet — Details (rename / emoji / color / description, owner-only), Members (with Leave for non-owners and Remove for owner), Share link (generate + copy + revoke), Danger zone (Delete list, owner-only). New `apps/workshop/app/onboarding/accept-invite.tsx` deep-link handler routed via `expo-linking` (`workshop.dev/invite/:token` on web, `workshop://invite/:token` on iOS). Auto-join after OAuth sign-in; routes to the joined list. New typed wrappers in `src/api/invites.ts` + `src/api/members.ts`. Playwright happy-path: owner generates link → second context accepts via dev sign-in → both see the list.     | 3a-1.                                                  | Pending        |
+| **3b-2** | Client activity feed + bell badge: `apps/workshop/app/activity.tsx` cross-list feed (50/page, infinite scroll). Bell `IconButton` in the home header showing unread count from `GET /v1/activity` (clientside `unreadCount` derived from `lastReadAt` per list). Tapping the bell navigates to `activity.tsx` and fires `POST /v1/activity/read`. Add a "Share link" step to the create-list flow (`apps/workshop/app/create-list/share.tsx`) — copy-link only, no email. Playwright happy-path: actor adds an item → other browser sees the event in the feed → unread count clears after tap.                                                                                                                          | 3a-2 (events) + 3b-1 (share UX surface) for the badge. | Pending        |
+
+#### 3.19 What 3a-1 actually shipped — start here for 3a-2
+
+Files that landed in 3a-1 (read these before touching 3a-2):
+
+- `apps/backend/src/routes/v1/invites.ts` — three handlers on a single
+  router mounted under `/v1`:
+  - `POST /v1/lists/:id/invites` (owner-only via `requireListMember +
+requireListOwner`) — generates a 32-byte URL-safe base64 token
+    (`crypto.randomBytes(32) → b64url`, 43 chars), stamps
+    `expires_at = now() + 7d`, returns the row **with `token` included**
+    so the owner can build the share URL. `email` on the request is
+    accepted (forward-compat per the schema) but ignored at the handler
+    in v1 — share-link only per spec §6.
+  - `DELETE /v1/lists/:id/invites/:inviteId` (owner-only) — soft-revoke
+    via `revoked_at = now()` rather than hard delete, so the audit
+    trail survives. Idempotent: re-revoking already-revoked rows is
+    guarded by an `IS NULL` clause and 404s.
+  - `POST /v1/invites/:token/accept` (any auth user) — single tx:
+    look up the invite by token, reject if revoked / expired / not
+    found, look up the list, idempotent membership upsert (existing
+    member keeps `role + joinedAt`), stamp `accepted_at` only on the
+    first acceptance. **Multiple distinct users accepting the same
+    token is intentional** (it's a share link) — we record the first
+    acceptance for the audit trail and leave the row otherwise
+    unchanged on subsequent accepts. Returns `{ list, member }` where
+    `member` is a `ListMemberSummary` (with the joined user's display
+    name pulled from `users` after the tx).
+  - Exports `fetchPendingInvitesForList(listId)` — used by
+    `lists.ts/GET /v1/lists/:id` to populate `pendingInvites` (token
+    omitted from those shapes; only the `POST /invites` response
+    includes it). Filters: `accepted_at IS NULL AND revoked_at IS NULL
+AND (expires_at IS NULL OR expires_at > now())`.
+- `apps/backend/src/routes/v1/members.ts` — single handler:
+  `DELETE /v1/lists/:id/members/:userId`. Two flows fold into one:
+  - **Owner removes anyone but themselves**: `requireListMember`
+    middleware passes, then the handler checks `requesterRole ===
+"owner"` and `targetRole !== "owner"`.
+  - **Self-leave (non-owner)**: any member with `userId === me` can
+    leave. Owners can't self-leave (must delete the list instead) —
+    spec §2.5.
+
+  Per spec §2.5, removing a member drops their `item_upvotes` rows
+  scoped to items in this list (so the upvote counts re-aggregate
+  correctly), but items they added remain with `added_by` attribution
+  preserved. Both happen inside one transaction. The
+  `users.id ON DELETE CASCADE` FK on `item_upvotes` doesn't help
+  here because we're not deleting the user — only their `list_members`
+  row — so the explicit scoped DELETE is the right move.
+
+- `apps/backend/src/routes/v1/lists.ts` — `GET /:id` now calls
+  `fetchPendingInvitesForList(listId)` when the requester is the
+  owner; non-owners get the empty array (matches spec §4.9, "Pending
+  invites — shown if the list has unaccepted email invites" — the
+  share UX surface is owner-only). The hardcoded `pendingInvites: []`
+  is gone.
+- `apps/backend/src/app.ts` — mounts `memberRoutes` under `/v1/lists`
+  alongside `listRoutes`, and mounts `inviteRoutes` under `/v1`
+  (because the invite handlers split across `/v1/lists/:id/invites/...`
+  and `/v1/invites/:token/accept` URL roots, which a single sub-router
+  needs to span).
+- `packages/shared/src/types.ts` — adds `Invite`,
+  `CreateInviteRequest`, `InviteResponse`, `AcceptInviteResponse`,
+  `MemberRemoveResponse`. Also rewrites the doc comment on
+  `PendingInvite` (was "reserved for Phase 3") since 3a-1 is the phase.
+  The existing `ListDetailResponse` already typed `pendingInvites:
+PendingInvite[]` so no churn there. **`Invite.token` is optional and
+  only populated on the `POST /lists/:id/invites` response** — every
+  other read path omits it so a non-owner glance at `pendingInvites`
+  doesn't leak a usable share token.
+- `apps/backend/src/routes/v1/{invites,members}.test.ts` — 17 new
+  vitest cases (13 + 4) covering the same surface as `lists.test.ts`:
+  schema validation (forward-compat email handling), bearer-token
+  gating (401 on missing/invalid), and UUID-bail (404 before DB on
+  malformed list/user/invite ids). The handler-level DB path
+  (token generation, accept idempotence, owner-only revoke,
+  self-leave cascade-upvotes) is left for Playwright in 3b-1 once a
+  client surface exists to drive it — same convention 1a-1 / 1a-2
+  used.
+
+Test counts: 17 new vitest cases (13 in `invites.test.ts`, 4 in
+`members.test.ts`); previous 174 still green for a total of 191 backend
+vitest tests. `pnpm run typecheck && lint && test` all pass; `knip`
+output is unchanged from the pre-existing baseline.
+
+Surprises / deviations from plan:
+
+- **`Invite.token` is response-only.** The spec §6 storage shape lists
+  `token` on the row, but exposing it on every list-detail fetch
+  would let a non-owner snapshot the share URL out of `pendingInvites`.
+  We solve this in the type layer (`token?` on the shared `Invite`
+  shape) plus the route layer (`toInviteShape({ includeToken: bool })`
+  emits or omits the field). Owners only see the token once — on
+  the `POST /lists/:id/invites` response — and have to copy it then
+  or revoke and regenerate. 3b-1 should mirror this: the share-link
+  modal stores the token in component state on creation and never
+  refetches it.
+- **Email field on `CreateInviteRequest` is accepted but ignored.**
+  Spec §6 explicitly defers email invites to v1.1 (SES is gone).
+  Rather than 400ing on `email`, the route accepts the field for
+  forward-compat and persists `email: null` regardless. Lets a future
+  email-invite chunk land without touching the request type.
+- **`accept` is idempotent and multi-user.** A share-link is by
+  definition shareable — n users accepting one token is the happy
+  path, not a bug. Spec §6 talks about "single-use or time-bounded";
+  v1 went with **time-bounded** (7-day expiry) only. Single-use
+  shareable tokens are an oxymoron; if we want single-use, that's the
+  email-invite flow that doesn't ship in v1.
+- **Owner-removes-anyone-but-themselves uses one handler, not two.**
+  Spec §8 lists `DELETE /v1/lists/:id/members/:userId` once. Folding
+  self-leave + owner-remove into one route + role check is cleaner
+  than two routes; the test coverage flags both. The "owner can't
+  self-leave" rule produces a 403 with a stable message
+  (`"owner cannot leave; delete the list instead"`) that 3b-1 can
+  surface to UI.
+- **`fetchPendingInvitesForList` lives in `invites.ts`, not in
+  `lists.ts`.** Avoids a circular-feeling import where a "list
+  detail" function reaches into invite-row shaping logic that the
+  invites route also owns. `lists.ts` imports the helper from
+  `invites.ts` — same import direction as `lists.ts` ↔ `items.ts`.
+
+What 3a-2 should do _first_: read `apps/backend/src/db/schema.ts` for
+`activityEventTypeEnum` (already declared in 0a; the enum values are
+the canonical list — `list_created`, `member_joined`, `member_left`,
+`member_removed`, `item_added`, `item_updated`, `item_deleted`,
+`item_upvoted`, `item_unupvoted`, `item_completed`, `item_uncompleted`,
+`invite_created`, `invite_revoked`). Build `apps/backend/src/lib/events.ts`
+with `recordEvent({ db?, listId, actorId, type, itemId?, payload? })`
+that's `db?`-injectable for tests (mirror `metadata-cache.ts`).
+Retrofit every mutating handler to call it: `lists.ts` POST/PATCH/DELETE,
+`items.ts` POST/PATCH/DELETE/upvote/complete/uncomplete, `invites.ts`
+POST/DELETE + `accept`'s membership insert, `members.ts` DELETE.
+Synchronous insert is correct for v1 — defer the SQS queue
+optimization to a v1.1 follow-up only if `recordEvent` becomes the
+dominant latency contributor (per phase Risks).
+
+Known constraints for 3a-2:
+
+- **`activity_events.actor_id` is `ON DELETE RESTRICT`** in the
+  schema. If a future "delete account" flow runs, restricted deletes
+  will fail. That's spec-aligned ("activity rows survive deletes")
+  but worth flagging — the cascade story for full user deletion is
+  not yet sketched.
+- **`POST /v1/activity/read`** should upsert `user_activity_reads`
+  per `(user_id, list_id)`. The `list_members` membership of the
+  actor scopes the result — only events on lists the user is a
+  member of are visible per spec §4.7. Handler should reject (or
+  silently skip) `listIds` the requester isn't a member of.
+- **`GET /v1/activity` cursor**: spec §8 shows
+  `?cursor=<ts>&limit=50`. Cursor-based pagination on
+  `(created_at DESC)` with the cursor encoding both `created_at` and
+  `id` avoids duplicate / skipped events at the boundary; just
+  `created_at` is fine but watch for sub-millisecond ties when
+  3a-2's retrofit fires multiple events in one transaction.
+- **The auto-upvote on item create still inserts the creator's vote
+  only.** `item_added` should record event-type but not also fire
+  `item_upvoted` — the auto-upvote is an implementation detail of
+  item creation, not a separate user action. `items.test.ts` already
+  asserts the single-tenant case (creator is the only upvoter on a
+  fresh insert); 3a-2's tests should preserve that.
 
 #### 3.9 Original Phase 1 deliverable list
 

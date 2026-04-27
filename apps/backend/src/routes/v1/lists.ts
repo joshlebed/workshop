@@ -8,6 +8,7 @@ import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
+import { fetchPendingInvitesForList } from "./invites.js";
 import { createItem, createItemSchema, fetchItemsForList, ItemMetadataError } from "./items.js";
 
 export const listRoutes = new Hono();
@@ -179,10 +180,18 @@ listRoutes.get("/:id", requireListMember, async (c) => {
     joinedAt: m.joinedAt.toISOString(),
   }));
 
+  // Owners see real pending-invite rows (token omitted); non-owners
+  // see an empty array. Spec §4.9: "Pending invites — shown if the
+  // list has unaccepted email invites". v1 only has share-link
+  // invites, but the same restriction applies — the share UX surface
+  // is owner-only.
+  const role = c.get("listMemberRole");
+  const pendingInvites = role === "owner" ? await fetchPendingInvitesForList(listId) : [];
+
   return ok(c, {
     list: toListShape(list),
     members,
-    pendingInvites: [],
+    pendingInvites,
   });
 });
 
