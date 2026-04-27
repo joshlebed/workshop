@@ -82,20 +82,22 @@ This phase is what makes the next agent fast. Do not skip it.
     - **Test plan**: checklist of acceptance criteria from the plan, plus any manual verification you did.
     - **Follow-ups**: anything deferred, with a 1-line reason for each.
 
-13. Poll CI:
-    - `gh pr checks <PR>` until all **required** checks pass. (Niteshift's `niteshift-check` is intentionally non-required — it's blocking only on the agent's own session, not on merge.)
-    - Cloudflare Pages preview check is informational; treat it as a hint, not a blocker.
-    - If a required check fails:
-      - Flake (intermittent timeout, network, dependency download) → `gh run rerun <run-id>` once.
-      - Real failure → fix and push another commit.
-      - Two failed attempts from the same root cause → halt and surface to the human.
+13. **Arm auto-merge immediately after opening the PR**: `gh pr merge <PR> --auto --squash --delete-branch`. This queues the merge to fire automatically the moment all required checks pass — no manual round-trip. The project uses squash merges (verify: `git log origin/main --oneline -10`); pass `--squash` explicitly so it's not subject to repo defaults changing.
 
-14. Merge when green: `gh pr merge <PR> --squash --delete-branch`. The project uses squash merges (verify: `git log origin/main --oneline -10`).
+14. Poll CI: `gh pr checks <PR>` until all checks finish.
+    - **Required checks pass** → auto-merge fires; the PR is merged automatically. Move on.
+    - **A required check fails**:
+      - Flake (intermittent timeout, network, dependency download) → `gh run rerun --failed <run-id>` once. Auto-merge stays armed and will fire after a successful rerun.
+      - Real failure → fix the issue and push another commit. Auto-merge stays armed.
+      - Two failed attempts from the same root cause → halt and surface to the human, **and disarm auto-merge** with `gh pr merge <PR> --disable-auto` so it doesn't fire on a future flaky-pass.
+    - Niteshift's `niteshift-check` is intentionally non-required — it's blocking only on the agent's own session, not on merge.
+    - Cloudflare Pages preview check is informational; treat it as a hint, not a blocker.
 
 15. Verify the merge triggered the right downstream workflows:
     - Backend changes → `Deploy Backend` runs.
     - Mobile changes → `Deploy Mobile (OTA)` runs; `TestFlight` may run if the iOS fingerprint changed (`@expo/fingerprint` decides).
     - Use `gh run list --branch=main --limit 5` to confirm.
+    - **Heads-up: workflow path-filter self-trigger.** If the chunk modified a workflow file (e.g. `.github/workflows/foo.yml`) AND that workflow's own `on.push.paths:` includes the workflow file's filename, merging will trigger that workflow on the merge commit even if no other paths matched. Check both directions when reviewing post-merge runs so you don't get confused by a TestFlight run firing on a CI-only PR.
     - If a deploy fails, surface the failure log to the human — don't try to re-trigger blindly.
 
 16. Final message: 1 short paragraph summarizing what shipped, what the next chunk is, and any human attention required.
