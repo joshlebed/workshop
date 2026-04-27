@@ -85,12 +85,35 @@ jobs:
           if [ "$FORCE" = "true" ]; then
             echo "Force build requested"
             echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟢 Build needed"
+              echo ""
+              echo "**Reason**: \`force=true\` workflow_dispatch input."
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+            } >> "$GITHUB_STEP_SUMMARY"
           elif git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "Fingerprint already built ($TAG) — skipping"
             echo "build_needed=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟡 Skipped — no native change"
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+              echo ""
+              echo "Already built (tag \`$TAG\` exists). Did not consume an EAS Build minute."
+              echo "OTA changes ship via \`Deploy Mobile (OTA)\` instead. Force a rebuild via"
+              echo "\`gh workflow run testflight.yml --ref main --field force=true\`."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "New fingerprint — build needed"
             echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟢 Build needed"
+              echo ""
+              echo "**Reason**: new iOS fingerprint."
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
   build:

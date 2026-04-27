@@ -13,8 +13,55 @@ permissions:
   contents: read
 
 jobs:
+  # Compute a per-PR change bitmap so each downstream job can skip when the
+  # diff doesn't touch its area. On `push` to main every job runs unconditionally
+  # (canonical-branch full validation). On `pull_request` jobs gate themselves on
+  # the relevant filter output so a docs-only PR doesn't pay for the Metro
+  # bundle, the migrate smoke, etc. gitleaks stays unconditional — secrets can
+  # leak in any file.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # dorny/paths-filter needs this to enumerate PR commits
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      infra: ${{ steps.filter.outputs.infra }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+      migrations: ${{ steps.filter.outputs.migrations }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'apps/**'
+              - 'packages/**'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - 'tsconfig*.json'
+              - 'biome.json'
+              - 'reset.d.ts'
+            infra:
+              - 'infra/**'
+            workflows:
+              - '.github/workflows/**'
+            mobile:
+              - 'apps/workshop/**'
+              - 'packages/shared/**'
+              - 'pnpm-lock.yaml'
+            migrations:
+              - 'apps/backend/drizzle/**'
+              - 'apps/backend/src/db/**'
+              - 'pnpm-lock.yaml'
+
   lint-typecheck-test:
     name: Lint, typecheck, test
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -53,6 +100,8 @@ jobs:
 
   knip:
     name: Knip (unused code/deps)
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -71,6 +120,8 @@ jobs:
 
   actionlint:
     name: actionlint
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.workflows == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -92,6 +143,8 @@ jobs:
 
   terraform-check:
     name: Terraform fmt + validate
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -114,6 +167,8 @@ jobs:
   #   2. Real iOS bundle — catches any Metro / codegen error the pin check would miss.
   mobile-bundle:
     name: Mobile Metro bundle
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -165,6 +220,8 @@ jobs:
   # run failing = a migration SQL file is out of sync with the journal.
   migrate-smoke:
     name: Migrate smoke (fresh DB + idempotent re-run)
+    needs: changes
+    if: github.event_name == 'push' || needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
