@@ -38,6 +38,11 @@ test("share-link invite: owner generates → guest accepts via deep link", async
   await ownerPage.getByTestId("create-list-name").fill(listName);
   await ownerPage.getByTestId("create-list-submit").click();
 
+  // Skip the share step in the create-list flow; the test exercises the
+  // settings-sheet share path instead.
+  await expect(ownerPage.getByTestId("create-list-share-done")).toBeVisible();
+  await ownerPage.getByTestId("create-list-share-done").click();
+
   await expect(ownerPage.getByTestId("list-settings")).toBeVisible();
   await ownerPage.getByTestId("list-settings").click();
 

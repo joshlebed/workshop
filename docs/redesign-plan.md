@@ -131,7 +131,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   cases (4 events + 21 activity); test convention matches
   `invites.test.ts` (validator + auth gating + UUID-bail) since the
   DB path is covered by Playwright in 3b-2.
-- **Phase 3** chunk 3b-1 (this PR) — client list settings + share-link
+- **Phase 3** chunk 3b-1 — client list settings + share-link
   UX. New `apps/workshop/app/list/[id]/settings.tsx` modal sheet
   (Details / Members / Share link / Danger zone, owner-vs-member gated).
   New `apps/workshop/app/onboarding/accept-invite.tsx` deep-link landing
@@ -145,6 +145,21 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   the modal. Playwright happy-path (`tests/e2e/share-link-accept.spec.ts`)
   - new `signInAsDevUser` helper that seeds two contexts as different
     dev users via `/v1/auth/dev` + `addInitScript` of the session token.
+- **Phase 3** chunk 3b-2 (this PR — Phase 3 complete) — client activity
+  feed + bell badge + create-list share step. New
+  `apps/workshop/app/activity.tsx` (cross-list feed, 50/page,
+  `useInfiniteQuery`, `useFocusEffect` writes `lastViewedAt` and fires
+  `POST /v1/activity/read`). Bell `IconButton` + 18×18 unread badge in
+  the home header (`open-activity` + `activity-unread-badge` testIDs);
+  badge count derives from a client-side `lastViewedAt` stamp + filters
+  out same-actor events. New `apps/workshop/app/create-list/share.tsx`
+  step at the end of the create-list flow — generate / copy a share link
+  (reuses `createInvite` + `buildInviteShareUrl` from 3b-1). Typed
+  wrappers in `src/api/activity.ts`, storage helper in
+  `src/lib/lastViewed.ts`, separate `activity.feedInfinite` cache key
+  (vs the bell's `activity.feed`). Playwright happy-path
+  (`tests/e2e/activity-feed.spec.ts`) — owner adds item → member sees
+  the event in the feed → unread badge clears after a back-nav.
 
 ### Pending
 
@@ -175,18 +190,18 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   `aws ssm put-parameter --overwrite` won't drift Terraform state).
   Link-preview itself doesn't depend on the API keys (it scrapes OG
   tags directly), so the dev wiring works even with placeholder secrets.
-- **Phases 3, 4, 5** — social/sharing, iOS share extension, polish.
-  Not started; chunk decomposition lives further down in §3.
+- **Phases 4, 5** — iOS share extension, polish. Not started; chunk
+  decomposition lives further down in §3. Phase 3 is complete as of
+  3b-2.
 
 ### Next to implement
 
-Phase 3 backend (3a-1 + 3a-2) and the first half of the client (3b-1)
-are now done. The next chunk is **3b-2** — activity feed
-(`apps/workshop/app/activity.tsx`) + bell badge in the home header,
-plus a "Share link" step in the create-list flow
-(`apps/workshop/app/create-list/share.tsx`). After 3b-2 lands, Phase 3
-is complete. See §3.18 for the chunk table, §3.19 for what 3a-1
-shipped, §3.20 for what 3a-2 shipped, and §3.21 for what 3b-1 shipped.
+Phase 3 is complete (3a-1, 3a-2, 3b-1, 3b-2 all landed). The next
+chunk is **Phase 4** — iOS share extension. Phase 4 is a native-first
+chunk that requires iOS capabilities work in `app.json` + an Expo
+config plugin (App Groups), not a Phase 3-style web-flow. See
+§3 Phase 4 for the deliverables and §3.22 for what 3b-2 shipped.
+See §3.19 / §3.20 / §3.21 for what 3a-1 / 3a-2 / 3b-1 shipped.
 
 ---
 
@@ -1549,7 +1564,7 @@ every mutating handler against a real membership surface.
 | **3a-1** | Backend share-link invites + member removal: `apps/backend/src/routes/v1/invites.ts` (`POST /v1/lists/:id/invites` owner-only, `POST /v1/invites/:token/accept` auth-only and idempotent, `DELETE /v1/lists/:id/invites/:inviteId` owner-only revoke) and `apps/backend/src/routes/v1/members.ts` (`DELETE /v1/lists/:id/members/:userId` — owner removes anyone but themselves; non-owners can self-leave). Tokens: 32-byte URL-safe base64 with a 7-day `expires_at` per spec §6 risks. `GET /v1/lists/:id` swaps the hardcoded `pendingInvites: []` for the real list. Shared types: `Invite`, `ListMember` full shape, request/response envelopes. Vitest: validator + auth gating + UUID-bail like `lists.test`.                                                                                                                                                     | None — uses existing schema (`list_invites` from 0a).  | Done (this PR) |
 | **3a-2** | Backend activity + events: `apps/backend/src/lib/events.ts` (`recordEvent({ listId, actorId, type, itemId?, payload?, db? })` — synchronous insert, no queue; `db?` accepts an open tx), `apps/backend/src/routes/v1/activity.ts` (`GET /v1/activity?cursor&limit=50`, `POST /v1/activity/read`). Retrofit every existing mutating handler in `lists.ts` / `items.ts` plus the new `invites.ts` / `members.ts` from 3a-1 to call `recordEvent` (see `activityEventTypeEnum` in `db/schema.ts` for the type set). `userActivityReads` table already exists from 0a; `POST /activity/read` upserts a row per `(user_id, list_id)`. Vitest: event-recording shape, cursor encoding round-trip + DoS guard, mark-read schema, route auth gating + input validation. (DB-path coverage deferred to Playwright in 3b-2 once a client surface exists, matching 3a-1 convention.) | None.                                                  | Done (this PR) |
 | **3b-1** | Client list settings + share-link UX: `apps/workshop/app/list/[id]/settings.tsx` modal sheet — Details (rename / emoji / color / description, owner-only), Members (with Leave for non-owners and Remove for owner), Share link (generate + copy + revoke), Danger zone (Delete list, owner-only). New `apps/workshop/app/onboarding/accept-invite.tsx` deep-link handler routed via `expo-linking` (`workshop.dev/invite/:token` on web, `workshop://invite/:token` on iOS). Auto-join after OAuth sign-in; routes to the joined list. New typed wrappers in `src/api/invites.ts` + `src/api/members.ts`. Playwright happy-path: owner generates link → second context accepts via dev sign-in → both see the list.                                                                                                                                                      | 3a-1.                                                  | Done (this PR) |
-| **3b-2** | Client activity feed + bell badge: `apps/workshop/app/activity.tsx` cross-list feed (50/page, infinite scroll). Bell `IconButton` in the home header showing unread count from `GET /v1/activity` (clientside `unreadCount` derived from `lastReadAt` per list). Tapping the bell navigates to `activity.tsx` and fires `POST /v1/activity/read`. Add a "Share link" step to the create-list flow (`apps/workshop/app/create-list/share.tsx`) — copy-link only, no email. Playwright happy-path: actor adds an item → other browser sees the event in the feed → unread count clears after tap.                                                                                                                                                                                                                                                                           | 3a-2 (events) + 3b-1 (share UX surface) for the badge. | Pending        |
+| **3b-2** | Client activity feed + bell badge: `apps/workshop/app/activity.tsx` cross-list feed (50/page, infinite scroll). Bell `IconButton` in the home header showing unread count from `GET /v1/activity` (clientside `unreadCount` derived from `lastReadAt` per list). Tapping the bell navigates to `activity.tsx` and fires `POST /v1/activity/read`. Add a "Share link" step to the create-list flow (`apps/workshop/app/create-list/share.tsx`) — copy-link only, no email. Playwright happy-path: actor adds an item → other browser sees the event in the feed → unread count clears after tap.                                                                                                                                                                                                                                                                           | 3a-2 (events) + 3b-1 (share UX surface) for the badge. | Done (this PR) |
 
 #### 3.19 What 3a-1 actually shipped — start here for 3a-2
 
@@ -2088,6 +2103,194 @@ Known constraints for 3b-2:
   `pendingInvites`.
 - **Dev-DB drift between specs.** Already covered above; mention here
   so the next agent doesn't re-discover it.
+
+#### 3.22 What 3b-2 actually shipped — Phase 3 complete
+
+Files that landed in 3b-2 (read these before touching Phase 4):
+
+- `apps/workshop/src/api/activity.ts` — typed wrappers for the two
+  3a-2 routes: `fetchActivity({ cursor?, limit? }, token)` and
+  `markActivityRead(body | undefined, token)`. The body arg is
+  optional because `POST /v1/activity/read` with no body marks every
+  membership read at once (the activity-screen-on-focus call uses
+  this; the bell-tap-then-back-home flow does too).
+- `apps/workshop/src/lib/lastViewed.ts` — three thin wrappers around
+  `getItem`/`setItem`/`removeItem` over the
+  `workshop.activity.last-viewed-at` key. The home screen reads this
+  on focus to derive the bell badge count; the activity screen
+  writes it on focus to clear the badge on a back-nav.
+- `apps/workshop/src/lib/queryKeys.ts` — adds `activity.feedInfinite`
+  alongside the existing `activity.feed`. The home screen uses
+  `feed` (single-page `useQuery`); the activity screen uses
+  `feedInfinite` (paginated `useInfiniteQuery`). **Splitting the
+  keys is required**: TanStack Query stores `useQuery` and
+  `useInfiniteQuery` data shapes under the same cache slot keyed by
+  the query key, and reading the wrong shape from a populated cache
+  yields runtime errors / empty pages. Hit this in the first e2e
+  run — `activity-feed` testID never showed up because the cache
+  had `useQuery` shape from the home bell.
+- `apps/workshop/app/activity.tsx` — `useInfiniteQuery` over
+  `fetchActivity` with `PAGE_SIZE = 50`, `getNextPageParam = (last)
+=> last.nextCursor ?? undefined`, `onEndReachedThreshold = 0.5`.
+  `useFocusEffect` writes `lastViewedAt = new Date().toISOString()`
+  AND fires `markActivityRead(undefined, token).catch(() => {})`
+  (best-effort; failures don't disrupt the screen). `describeEvent`
+  is a single switch over all 13 `ActivityEventType` values with a
+  `_exhaustive: never` check at the bottom; reads `payload.title`
+  for `item_*` events because `item_deleted.itemId` is null per
+  3a-2 (the title in the payload is the surviving identifier).
+  Renders `formatRelative(createdAt)` (s/m/h/d ago, then locale
+  date after 14 days). testIDs: `activity-feed` (FlatList),
+  `activity-back` (header back button), `activity-row-${event.id}`.
+- `apps/workshop/app/index.tsx` — adds the bell `IconButton` and an
+  18×18 round badge to the home header. Reuses the existing
+  `useQuery(queryKeys.activity.feed, fetchActivity({ limit: 50 }))`
+  query; counts events where `actorId !== user?.id` AND
+  `createdAt > lastViewedAt`. Cap at "9+" for >9. `useFocusEffect`
+  rehydrates `lastViewedAt` from storage so a back-nav from the
+  activity screen clears the badge immediately. testIDs:
+  `open-activity` (the bell IconButton),
+  `activity-unread-badge` (the badge overlay; only rendered when
+  `unreadCount > 0`).
+- `apps/workshop/app/create-list/share.tsx` — final step of the
+  create-list flow. Calls `createInvite(listId, {}, token)` from
+  3b-1, captures the response in component-scoped `useState`
+  (server only emits `token` on POST; this matches the 3b-1
+  settings-sheet convention). After generate, invalidates BOTH
+  `queryKeys.lists.detail(listId)` AND
+  `queryKeys.invites.forList(listId)` — the invites cache key was
+  declared but unused in 3b-1; this is its first consumer per the
+  §3.21 hint. testIDs: `create-list-share-generate`,
+  `create-list-share-url`, `create-list-share-copy`,
+  `create-list-share-done`, `create-list-share-skip-icon`. The
+  `Done` / `Skip for now` button calls `router.dismissAll()` then
+  `router.replace(\`/list/${listId}\`)` so the create-list stack
+  doesn't sit underneath the list-detail screen.
+- `apps/workshop/app/create-list/customize.tsx` — `onSuccess` now
+  routes to `/create-list/share?listId=...` instead of straight to
+  the list. The previous "list invalidation + replace to list"
+  behaviour is preserved on the share screen's `goToList`.
+- `apps/workshop/app/_layout.tsx` — two new Stack.Screen
+  registrations: `create-list/share` and `activity` (both
+  `animation: "slide_from_right"`). No AuthGate changes — both
+  screens are part of the signed-in stack and AuthGate already
+  leaves signed-in users alone outside `sign-in` / `onboarding`.
+- `tests/e2e/activity-feed.spec.ts` — happy-path. Two contexts (owner
+  - member) signed in as distinct users via `signInAsDevUser` from
+    3b-1. Owner creates a trip list, generates a share link via the
+    new create-list-share step, and reads the URL out of
+    `create-list-share-url`. Member accepts via the share path,
+    lands on list-detail. Owner clicks `create-list-share-done`,
+    lands on the same list, adds an item via the empty-state CTA.
+    Member reloads home, expects `activity-unread-badge` to appear
+    (filtering out the member's own `member_joined` event as
+    same-actor). Member taps `open-activity`, expects the feed +
+    the item title to be visible. Member taps `activity-back`,
+    expects the badge cleared (`toHaveCount(0)`).
+- `tests/e2e/{add-link-preview,add-search,list-flow,share-link-accept}.spec.ts`
+  — each gets a 2-line patch to dismiss the new share step
+  (`expect(create-list-share-done).toBeVisible()` + click) before
+  asserting on `empty-add-item` / `list-settings`. The share step
+  is now the canonical create-list landing surface; the existing
+  specs treat it as a transient step.
+
+Test counts: 1 new Playwright happy-path (`activity-feed.spec.ts`); 4
+existing specs touched with 2-line dismiss-step patches. Backend
+vitest count is the same 216 across 19 files (no backend changes in
+3b-2). `pnpm run typecheck && pnpm run lint && pnpm run test` all
+pass. `pnpm run e2e` runs 7 specs — 6 pass green; the 7th
+(`sign-in.spec.ts`) hits the documented §3.21 known-flake (dirty
+`dev@workshop.local.display_name` from prior specs in the same batch),
+unrelated to 3b-2. Reset via `UPDATE users SET display_name = NULL
+WHERE email = 'dev@workshop.local'` and the spec passes.
+
+Surprises / deviations from plan:
+
+- **Client-side `lastViewedAt` instead of per-list `lastReadAt`.** The
+  plan said "clientside `unreadCount` derived from `lastReadAt` per
+  list." But `GET /v1/lists` doesn't surface
+  `user_activity_reads.last_read_at` per list — the field exists in
+  the schema (3a-2) but the list-detail / list-summary shapes don't
+  expose it. Rather than expand the API in this chunk, we store a
+  single client-side `lastViewedAt` ISO timestamp in localStorage
+  and compare every event's `createdAt` against it. The activity
+  screen's `useFocusEffect` also fires `POST /v1/activity/read` for
+  cross-device parity (so a device that opens the feed clears the
+  read marker on the server too — another device can then re-derive
+  unread from any future `lastReadAt` exposure). Trade-off: a user
+  signing in on a fresh device sees every event since the dawn of
+  time as "unread" until they tap the bell once. Acceptable for v1
+  since the feed itself is unbounded and showing it that way is
+  technically correct. **A future Phase 4 polish chunk should
+  surface `lastReadAt` on `GET /v1/lists` (per-list) and switch the
+  bell badge to per-list math** — that's the spec'd model and
+  matches the spec §4.7 "unread count per list" behaviour.
+- **`useQuery` and `useInfiniteQuery` cache slots conflict on shared
+  keys.** Hit this in the first e2e run — `activity-feed` testID was
+  invisible because the home bell's `useQuery` had populated the cache
+  with `ActivityFeedResponse` shape, then the activity screen's
+  `useInfiniteQuery` read the wrong shape and rendered the empty
+  state. Fix: separate query keys (`activity.feed` for the bell,
+  `activity.feedInfinite` for the screen). Worth a note in
+  CLAUDE.md? Not really — this is a TanStack Query default, not a
+  Workshop-specific gotcha.
+- **No native `expo-clipboard`.** Same as 3b-1 — `copyToClipboard`
+  returns `false` on native; the toast says "generated" instead of
+  "copied". Phase 4 should land `expo-clipboard` once and unblock
+  both the settings sheet and the create-list share step.
+- **No new `expo-clipboard`, no new migrations, no new backend
+  routes.** All deliverables sat on top of 3a-1 / 3a-2 / 3b-1
+  primitives.
+- **`list_renamed` / `list_deleted` activity events still missing.**
+  3a-2 marked these as a deviation — the `activityEventTypeEnum` only
+  has `list_created`. 3b-2 doesn't add them either; that's a Phase 4
+  follow-up (requires a Drizzle migration to extend the enum, which
+  is out of scope for a client-only chunk).
+- **The unread filter excludes the user's own actions.** Spec §4.7
+  doesn't say it explicitly but it's the obvious UX rule: if you
+  add an item, your own bell shouldn't ping. `activity-feed.spec.ts`
+  exercises this — the member's own `member_joined` event from
+  invite-accept does NOT cause the badge to appear; only the
+  owner's subsequent `item_added` does.
+- **Existing specs needed dismiss-step patches.** The plan didn't
+  call this out, but routing the create-list flow through the share
+  step is a backwards-incompatible UX change for the 4 specs that
+  use the create-list flow. Fix is mechanical (2 lines per spec).
+  Worth noting so future create-list-flow extensions know to update
+  these specs in lockstep.
+
+What Phase 4 should do _first_: Phase 4 is the **iOS share extension**
+— it's a native-first chunk, not a client UI feature. Read §3 Phase
+4 and §3 (Phase 4 chunks table, when one lands) for the
+decomposition. The activity feed UI is feature-complete for v1; the
+only outstanding follow-up specifically for the activity surface is
+**surfacing `lastReadAt` per-list on `GET /v1/lists`** (Phase 4 polish
+or a Phase 5 cleanup chunk) so the bell badge can switch from the
+single-stamp client model to the per-list model the spec describes.
+
+Known constraints for Phase 4 / future chunks:
+
+- **Activity feed bell uses `staleTime: 30_000`.** The home query
+  doesn't auto-refetch every render; cross-device unread propagation
+  is not real-time. A future Phase 4 chunk that wants live updates
+  should reach for `refetchInterval` or websockets — both out of
+  scope for v1.
+- **Create-list share step assumes `listId` is in the route params.**
+  The customize step's `onSuccess` invalidates `queryKeys.lists.all`
+  and routes via `router.replace`, so the share screen lands with the
+  list freshly cached. If a future chunk changes how the create-list
+  flow ends (e.g. routing through a "verify" step first), make sure
+  `?listId=` survives the round-trip.
+- **`activity.tsx`'s `markActivityRead(undefined, token)` call is
+  best-effort.** Failures are intentionally swallowed because a
+  missed read marker isn't user-facing — the next focus retries.
+  If a Phase 4 polish chunk wants to surface "mark all read" failures
+  (e.g. retry-with-toast), the existing call site is the place to
+  hook it.
+- **The bell badge filter excludes same-actor events.** If a future
+  chunk wants per-event preferences (e.g. "notify me when someone
+  upvotes my item even if I'm the actor"), the filter in
+  `app/index.tsx`'s `events.reduce` is the place to extend.
 
 #### 3.9 Original Phase 1 deliverable list
 

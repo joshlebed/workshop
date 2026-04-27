@@ -67,6 +67,10 @@ test("create movie list → search → add via search result", async ({ page }) 
   await page.getByTestId("create-list-name").fill(listName);
   await page.getByTestId("create-list-submit").click();
 
+  // Skip the share step in the create-list flow.
+  await expect(page.getByTestId("create-list-share-done")).toBeVisible();
+  await page.getByTestId("create-list-share-done").click();
+
   // Land on list detail; open the add flow.
   await expect(page.getByTestId("empty-add-item")).toBeVisible();
   await page.getByTestId("empty-add-item").click();
