@@ -3,8 +3,8 @@
 Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (2b-2 client link preview) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
-[`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the *what*; this
-document defines the *how* — phases, PR decomposition, file-level deliverables,
+[`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
+document defines the _how_ — phases, PR decomposition, file-level deliverables,
 dependencies, and risks.
 
 The foundation stays (pnpm monorepo, Expo + expo-router, Hono on Lambda, Neon
@@ -30,7 +30,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
     `dev.josh.workshop.web` Domain + Return URL `workshop-a2v.pages.dev`).
   - Google Cloud project `workshop` set up — OAuth consent screen
     (Testing, External, scopes `openid email profile`), iOS client ID
-    + Web client ID created.
+    - Web client ID created.
   - `terraform apply` on `workshop-prod` ran cleanly: 6 new SSM
     SecureString params (`apple_bundle_id`, `apple_services_id`,
     `google_ios_client_id`, `google_web_client_id`, `tmdb_api_key`,
@@ -54,7 +54,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
     `Alert.alert` / `window.alert` warning dialogs deleted.
   - `expo-apple-authentication` added to `app.json` plugins; deps
     pinned via `pnpm exec expo install` (`expo-apple-authentication
-    ~55.0.13`, `expo-auth-session ~55.0.15`, `expo-crypto ~55.0.14`,
+~55.0.13`, `expo-auth-session ~55.0.15`, `expo-crypto ~55.0.14`,
     `expo-web-browser ~55.0.14`).
   - `useAuth.tsx` — auto-dev-sign-in (#33) is now skippable per-test
     via a `workshop.disable-auto-dev` localStorage flag so the sign-in
@@ -76,7 +76,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 - **Phase 2** chunk 2a-1 — TMDB + Google Books search routes, metadata
   cache, per-type `items.metadata` Zod validators.
 - **Phase 2** chunk 2a-2 — link-preview backend (`GET
-  /v1/link-preview?url=`) with SSRF allowlist via `ipaddr.js`, manual
+/v1/link-preview?url=`) with SSRF allowlist via `ipaddr.js`, manual
   per-redirect-hop hostname re-validation, 3s timeout, 1 MB body cap,
   OG/Twitter card parser, 7-day metadata cache reuse, 30/user/min rate
   limit. 45 vitest cases (24 SSRF guard + 21 route).
@@ -123,8 +123,8 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
     bundles' OAuth audiences fresh from a secret rotation, the three
     new `EXPO_PUBLIC_*` env vars need GitHub Actions secrets + a
     matching `env:` block.
-  Web is unaffected — Cloudflare Pages reads those env vars from its
-  own project config at build time.
+    Web is unaffected — Cloudflare Pages reads those env vars from its
+    own project config at build time.
 - Production search + link-preview will need real `TMDB_API_KEY` /
   `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently `PHASE_2_NOT_SET`
   placeholder strings — applied in 0c-2 so the SSM resources could be
@@ -157,7 +157,7 @@ of spec §3 (groups + memberships) and §6 (share-link invites).
 - **Ship phases independently.** Each phase in §3 lands as its own PR (or small
   stack). Between phases, `main` is always deployable even if the client UI is
   partially new. Use local feature flags in the client (`const ENABLE_V2 =
-  false`) only where strictly needed to avoid broken screens on `main`.
+false`) only where strictly needed to avoid broken screens on `main`.
 - **Shared types first.** Every API change starts by editing
   `packages/shared/src/types.ts`. Backend and client both depend on it, so the
   type error is the to-do list.
@@ -198,14 +198,14 @@ share-link only, so nothing in v2 sends email).
 
 These flow through every phase and are not separate PRs:
 
-| Workstream | Owner | What it means per phase |
-|---|---|---|
-| Shared types | `packages/shared` | Every new endpoint gets its request/response types added here first. |
-| Zod at the boundary | `apps/backend/src/routes/*` | Every route validates input via Zod before touching the DB. `as` casts on `JSON.parse` / `Response.json()` are banned (ts-reset is on — see CLAUDE.md). |
-| Logger discipline | `apps/backend/src/lib/logger.ts` | Always pass the full `error` object, never `error.message`. |
-| Drizzle migrations | `apps/backend/drizzle/` | `pnpm run db:generate -- --name=<desc>` for every schema change. Never hand-edit generated SQL. |
-| Biome + knip + typecheck gates | CI | Each PR green on `pnpm run typecheck && test && lint && knip`. |
-| Theme tokens | `apps/workshop/src/ui/theme.ts` | No hex literals in component files after Phase 0. Lint rule optional; code review enforces. |
+| Workstream                     | Owner                            | What it means per phase                                                                                                                                 |
+| ------------------------------ | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared types                   | `packages/shared`                | Every new endpoint gets its request/response types added here first.                                                                                    |
+| Zod at the boundary            | `apps/backend/src/routes/*`      | Every route validates input via Zod before touching the DB. `as` casts on `JSON.parse` / `Response.json()` are banned (ts-reset is on — see CLAUDE.md). |
+| Logger discipline              | `apps/backend/src/lib/logger.ts` | Always pass the full `error` object, never `error.message`.                                                                                             |
+| Drizzle migrations             | `apps/backend/drizzle/`          | `pnpm run db:generate -- --name=<desc>` for every schema change. Never hand-edit generated SQL.                                                         |
+| Biome + knip + typecheck gates | CI                               | Each PR green on `pnpm run typecheck && test && lint && knip`.                                                                                          |
+| Theme tokens                   | `apps/workshop/src/ui/theme.ts`  | No hex literals in component files after Phase 0. Lint rule optional; code review enforces.                                                             |
 
 ---
 
@@ -225,12 +225,12 @@ apply) being done up front.
 
 #### 3.1 Phase 0 chunks
 
-| Chunk | What ships | External deps | Status |
-|---|---|---|---|
-| **0a** | Backend foundation: v2 schema + drop_v1 migration, `lib/response.ts` envelope, `middleware/rate-limit.ts` (table-backed, not yet wired), shared types skeleton, deletion of v1 `routes/auth.ts` + `routes/items.ts` + `lib/email.ts`, `/v1/*` returns 501, client neutralized to "v2 in progress" placeholder, `@aws-sdk/client-ses` + `SES_FROM_ADDRESS` config removed. | None | **Done** |
-| **0b-1** | Backend OAuth foundation: `lib/oauth/{jwks,apple,google}.ts` with JWKS-cached JWT verify via `jose`, `routes/v1/auth.ts` (`POST /apple`, `POST /google`, `POST /signout`, `GET /me`), `routes/v1/users.ts` (`PATCH /me` with display-name validation), `requireAuth` middleware refactored to the v1 envelope, rate-limit wired to `/v1/auth/*` (per-IP, 30/min), shared types extended (`AppleAuthRequest`, `GoogleAuthRequest`, `AuthResponse`, `UpdateMeRequest`), `config.ts` reads OAuth audiences from env, Vitest mocked-JWKS coverage (43 tests). | None — uses dep-injected JWKS/audiences in tests so no provider portal config required to land the code. | **Done** (this PR) |
-| **0b-2** | Client OAuth surface: primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten (signInWithApple/Google, signOut, setDisplayName), dev-only `POST /v1/auth/dev` backend route gated on `DEV_AUTH_ENABLED=1`, one Playwright happy-path that drives sign-in → display-name → home via the dev route. | None — real OAuth SDK integration is deferred to 0c (requires Apple/Google portal config). | **Done** (this PR) |
-| **0c-1** | Infra Terraform code only (no apply): delete `infra/ses.tf` + `ses_verified_email` variable + SES IAM policy + `SES_FROM_ADDRESS` from Lambda + `SES_FROM_ADDRESS` from the deploy-backend migrate job; add six `aws_ssm_parameter` SecureString resources (`apple_bundle_id`, `apple_services_id`, `google_ios_client_id`, `google_web_client_id`, `tmdb_api_key`, `google_books_api_key`) with empty defaults and `lifecycle { ignore_changes = [value] }`; wire six matching env vars into `aws_lambda_function.api`; update `terraform.tfvars.example`; create `docs/plans/HANDOFF.md` tracking the remaining external work. | None — zero cloud actions; `terraform plan` is informational until 0c-2 applies. | **Done** (this PR) |
+| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | External deps                                                                                                                                                                                                     | Status                                                                                                                                                                                                                                                                                                                            |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **0a**   | Backend foundation: v2 schema + drop_v1 migration, `lib/response.ts` envelope, `middleware/rate-limit.ts` (table-backed, not yet wired), shared types skeleton, deletion of v1 `routes/auth.ts` + `routes/items.ts` + `lib/email.ts`, `/v1/*` returns 501, client neutralized to "v2 in progress" placeholder, `@aws-sdk/client-ses` + `SES_FROM_ADDRESS` config removed.                                                                                                                                                                                                                                                                            | None                                                                                                                                                                                                              | **Done**                                                                                                                                                                                                                                                                                                                          |
+| **0b-1** | Backend OAuth foundation: `lib/oauth/{jwks,apple,google}.ts` with JWKS-cached JWT verify via `jose`, `routes/v1/auth.ts` (`POST /apple`, `POST /google`, `POST /signout`, `GET /me`), `routes/v1/users.ts` (`PATCH /me` with display-name validation), `requireAuth` middleware refactored to the v1 envelope, rate-limit wired to `/v1/auth/*` (per-IP, 30/min), shared types extended (`AppleAuthRequest`, `GoogleAuthRequest`, `AuthResponse`, `UpdateMeRequest`), `config.ts` reads OAuth audiences from env, Vitest mocked-JWKS coverage (43 tests).                                                                                            | None — uses dep-injected JWKS/audiences in tests so no provider portal config required to land the code.                                                                                                          | **Done** (this PR)                                                                                                                                                                                                                                                                                                                |
+| **0b-2** | Client OAuth surface: primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten (signInWithApple/Google, signOut, setDisplayName), dev-only `POST /v1/auth/dev` backend route gated on `DEV_AUTH_ENABLED=1`, one Playwright happy-path that drives sign-in → display-name → home via the dev route.                                                                                                                                                                                                                                                                | None — real OAuth SDK integration is deferred to 0c (requires Apple/Google portal config).                                                                                                                        | **Done** (this PR)                                                                                                                                                                                                                                                                                                                |
+| **0c-1** | Infra Terraform code only (no apply): delete `infra/ses.tf` + `ses_verified_email` variable + SES IAM policy + `SES_FROM_ADDRESS` from Lambda + `SES_FROM_ADDRESS` from the deploy-backend migrate job; add six `aws_ssm_parameter` SecureString resources (`apple_bundle_id`, `apple_services_id`, `google_ios_client_id`, `google_web_client_id`, `tmdb_api_key`, `google_books_api_key`) with empty defaults and `lifecycle { ignore_changes = [value] }`; wire six matching env vars into `aws_lambda_function.api`; update `terraform.tfvars.example`; create `docs/plans/HANDOFF.md` tracking the remaining external work.                     | None — zero cloud actions; `terraform plan` is informational until 0c-2 applies.                                                                                                                                  | **Done** (this PR)                                                                                                                                                                                                                                                                                                                |
 | **0c-2** | Apply the infra + wire real OAuth SDKs: `AWS_PROFILE=workshop-prod terraform apply`; paste real values into SSM via `aws ssm put-parameter --overwrite`; stand up the Cloudflare Pages project wired to `main`; add `expo-apple-authentication` + `expo-auth-session` + `expo-crypto` + `expo-web-browser` to `apps/workshop`; replace the warning-dialog stubs in `app/sign-in.tsx` + `useAuth.signInWithApple` / `signInWithGoogle` with real SDK calls reading `EXPO_PUBLIC_APPLE_SERVICES_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`; add a second Playwright happy-path that stubs Google Identity Services. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account; Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). All tracked in `docs/plans/HANDOFF.md`. | **Done** — portal + SSM + Terraform apply + CF Pages env vars landed 2026-04-27. Client SDK wiring + Playwright GIS-stub happy-path landed in PR #56 (this session). iOS-only follow-up (`eas.json` env, `app.json` reverse-client URL scheme, GH Actions secrets) tracked in §"Pending" above and in `docs/plans/HANDOFF.md` §7. |
 
 #### 3.2 What 0a actually shipped — start here for 0b
@@ -242,18 +242,18 @@ Files that landed in 0a (read these first; they're the foundation 0b builds on):
   merge. Drops `users`/`magic_tokens`/`rec_items`; creates the full v2 set
   (`users`, `lists`, `list_members`, `list_invites`, `items`, `item_upvotes`,
   `activity_events`, `user_activity_reads`, `metadata_cache`, `rate_limits`)
-  + four enums (`list_type`, `member_role`, `auth_provider`,
-  `activity_event_type`).
+  - four enums (`list_type`, `member_role`, `auth_provider`,
+    `activity_event_type`).
 - `apps/backend/src/db/schema.ts` — Drizzle definitions for all of the above,
   including the partial unique index `list_members_one_owner_idx` that
   enforces "exactly one owner per list" at the DB layer.
 - `apps/backend/src/lib/response.ts` — `ok(c, data, status?)` and
   `err(c, code, message, details?, status?)`. `code` is the `ErrorCode` enum
   (`UNAUTHORIZED | FORBIDDEN | NOT_FOUND | VALIDATION | RATE_LIMITED |
-  CONFLICT | INTERNAL`) and is mirrored in `@workshop/shared`.
+CONFLICT | INTERNAL`) and is mirrored in `@workshop/shared`.
   **Use these in every new route — don't `c.json` raw.**
 - `apps/backend/src/middleware/rate-limit.ts` — `rateLimit({ family, limit,
-  windowSec, key })` middleware + `consume(db, bucketKey, windowStart)`
+windowSec, key })` middleware + `consume(db, bucketKey, windowStart)`
   primitive. Fixed-window counter against the `rate_limits` table; race-safe
   via the `(bucket_key, window_start)` PK upsert. Fail-open on DB error so a
   rate-limiter outage doesn't take the API down. **Created but not yet wired
@@ -278,6 +278,7 @@ Files that landed in 0a (read these first; they're the foundation 0b builds on):
 - `@aws-sdk/client-ses` removed from `apps/backend/package.json`.
 
 Open carry-overs for 0c that subsequent chunks should NOT touch:
+
 - `infra/ses.tf` deletion + `ses_verified_email` variable removal
 - `SES_FROM_ADDRESS` env var removal from `lambda.tf`
 - SSM SecureString params for OAuth client IDs + API keys
@@ -288,10 +289,10 @@ Files that landed in 0b-1 (read these first; they're the foundation 0b-2
 builds the client against):
 
 - `apps/backend/src/lib/oauth/jwks.ts` — `verifyIdentityToken(token, jwks,
-  opts)` and `getRemoteJwks(url)` (per-URL memoized `createRemoteJWKSet`).
+opts)` and `getRemoteJwks(url)` (per-URL memoized `createRemoteJWKSet`).
   `OAuthVerifyError` is the typed failure mode every caller catches.
 - `apps/backend/src/lib/oauth/apple.ts` — `verifyAppleIdentityToken({
-  identityToken, nonce? }, deps?)`. Issuer locked to
+identityToken, nonce? }, deps?)`. Issuer locked to
   `https://appleid.apple.com`. Audiences come from
   `appleAudiences()` (config: `APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`,
   optional CSV `APPLE_EXTRA_AUDIENCES`). Tests inject `deps.jwks` +
@@ -336,10 +337,11 @@ issuer/audience/expiry/key/nonce mismatches), `apple.test.ts` +
 `google.test.ts` (issuer + audience + nonce specifics per provider),
 `auth.test.ts` (middleware envelope), `users.test.ts` (display-name
 validation). Pattern for testing OAuth verifiers: `generateKeyPair("RS256")`
-+ `SignJWT(...).sign(privateKey)` + a `JWTVerifyGetKey` that returns the
-matching public key — no network involved.
 
-What 0b-2 should do *first*: read `apps/backend/src/lib/oauth/*.ts` and the
+- `SignJWT(...).sign(privateKey)` + a `JWTVerifyGetKey` that returns the
+  matching public key — no network involved.
+
+What 0b-2 should do _first_: read `apps/backend/src/lib/oauth/*.ts` and the
 auth routes so the client request shapes match exactly. The
 `AuthResponse.token` is the bearer token for `Authorization: Bearer ...` —
 store it in `expo-secure-store` on iOS / `localStorage` on web (see
@@ -347,7 +349,8 @@ store it in `expo-secure-store` on iOS / `localStorage` on web (see
 `GET /v1/auth/me` to revalidate the session on cold start.
 
 Known constraints for 0b-2:
-- The Apple SDK on iOS surfaces `email` + `fullName` *only* on first sign-in.
+
+- The Apple SDK on iOS surfaces `email` + `fullName` _only_ on first sign-in.
   The client must forward both fields to `POST /v1/auth/apple` on every call;
   the backend ignores them when the user already exists. Web Apple JS
   surfaces them in the auth callback's `user` field on first sign-in only.
@@ -420,11 +423,11 @@ Files that landed in 0b-2 (read these before touching 0c):
 - `docs/plans/HANDOFF.md` — new file tracking the portal + SSM + Pages work
   0c has to pick up.
 
-What 0c should do *first*: read `docs/plans/HANDOFF.md`, then work through
+What 0c should do _first_: read `docs/plans/HANDOFF.md`, then work through
 the three fronts (portals → SSM → Cloudflare Pages) mostly independently.
 The only deliberate ordering is that SSM params have to exist before the
 Terraform apply that wires them into Lambda env vars, and real OAuth client
-IDs have to be pasted into SSM *before* the client's Sign-in buttons stop
+IDs have to be pasted into SSM _before_ the client's Sign-in buttons stop
 showing the warning dialog.
 
 #### 3.6 What 0c-1 actually shipped — start here for 0c-2
@@ -443,7 +446,7 @@ Files that landed in 0c-1 (read these first before touching 0c-2):
 - `infra/ssm.tf` — six new `aws_ssm_parameter` SecureString resources
   matching the variables above, each with
   `lifecycle { ignore_changes = [value] }` so `aws ssm put-parameter
-  --overwrite` doesn't drift state.
+--overwrite` doesn't drift state.
 - `infra/lambda.tf` — SES IAM policy (`aws_iam_role_policy.lambda_inline`
   with `ses:SendEmail` / `ses:SendRawEmail`) removed. `SES_FROM_ADDRESS`
   env var removed from `aws_lambda_function.api`. Six new env vars added:
@@ -465,7 +468,7 @@ Nothing was applied — this PR is pure code. `terraform plan` after
 merge will show the SES identity + IAM policy removal and the six new
 SSM params created with empty values.
 
-What 0c-2 should do *first*: read `docs/plans/HANDOFF.md` top to bottom.
+What 0c-2 should do _first_: read `docs/plans/HANDOFF.md` top to bottom.
 The ordering there is deliberate: portals produce identifiers, identifiers
 get pasted into SSM, SSM must exist before `terraform apply` wires the
 Lambda env vars, and real client IDs must be in SSM before the client
@@ -481,16 +484,16 @@ above). The client SDK PR (#56, this session) closed out Phase 0:
   hook. Generates a UUID raw nonce, hashes via
   `Crypto.digestStringAsync(SHA256, …)`, calls
   `AppleAuthentication.signInAsync({ requestedScopes: [FULL_NAME, EMAIL],
-  nonce: hashedNonce })`. Returns `{ identityToken, nonce: hashedNonce,
-  email?, fullName? }`. **Nonce semantics**: Apple emits
+nonce: hashedNonce })`. Returns `{ identityToken, nonce: hashedNonce,
+email?, fullName? }`. **Nonce semantics**: Apple emits
   `claims.nonce = sha256(suppliedNonce)`, so the client forwards the
-  *hashed* value to the backend — `verifyAppleIdentityToken` compares
+  _hashed_ value to the backend — `verifyAppleIdentityToken` compares
   the hashed value the client sent against the (already hashed) claim.
   Don't forward the raw nonce or verification fails.
 - `apps/workshop/src/lib/oauth/apple.web.ts` — lazy-loads
   `https://appleid.cdn-apple.com/.../appleid.auth.js`,
   `init({ clientId: EXPO_PUBLIC_APPLE_SERVICES_ID, scope: "name email",
-  redirectURI: window.location.origin, usePopup: true })`,
+redirectURI: window.location.origin, usePopup: true })`,
   `signIn()` returns `{ identityToken, email?, fullName? }`. Cancels
   (`popup_closed_by_user`) resolve `null`. **No nonce roundtrip** —
   Apple JS in popup mode doesn't surface one to the caller; the
@@ -499,7 +502,7 @@ above). The client SDK PR (#56, this session) closed out Phase 0:
 - `apps/workshop/src/lib/oauth/google.ts` (native) — `useGoogleSignIn()`
   hook. Calls `WebBrowser.maybeCompleteAuthSession()` at module load,
   uses `Google.useAuthRequest({ iosClientId:
-  EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID })`. `signIn()` awaits
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID })`. `signIn()` awaits
   `promptAsync()`, extracts `params.id_token` (preferred) or
   `authentication.idToken` (fallback). Returns `{ idToken }`.
   **iOS native gotcha**: Google's iOS OAuth client redirects via the
@@ -510,11 +513,11 @@ above). The client SDK PR (#56, this session) closed out Phase 0:
 - `apps/workshop/src/lib/oauth/google.web.ts` — lazy-loads GIS
   (`https://accounts.google.com/gsi/client`), initializes
   `google.accounts.id.initialize({ client_id, callback, auto_select: false
-  })` with a `resolveRef` pattern so each call resolves a single
+})` with a `resolveRef` pattern so each call resolves a single
   Promise. Renders an off-screen button host (`-9999px`, opacity 0)
   via `renderButton(host, { type: "standard", size: "large" })` and on
   `signIn()` finds the inner clickable (`div[role='button'], button,
-  span`), clicks it, and falls back to `google.accounts.id.prompt()`
+span`), clicks it, and falls back to `google.accounts.id.prompt()`
   if no inner is found yet — that fallback is what the Playwright
   stub exercises.
 - `apps/workshop/app/sign-in.tsx` — uses both hooks, disables a
@@ -558,9 +561,9 @@ above). The client SDK PR (#56, this session) closed out Phase 0:
 - `tests/e2e/sign-in-google.spec.ts` (new) — drives the GIS-stub flow
   through display-name → home. Uses `request.post("/v1/auth/dev")` for
   the AuthResponse, `disableAutoDevSignIn` + `stubGoogleIdentityServices`
-  + `mockGoogleAuthEndpoint` before `page.goto("/")`, then
-  `getByTestId("sign-in-google").click()` and asserts on the
-  display-name input + home greeting.
+  - `mockGoogleAuthEndpoint` before `page.goto("/")`, then
+    `getByTestId("sign-in-google").click()` and asserts on the
+    display-name input + home greeting.
 - `tests/e2e/{sign-in,list-flow}.spec.ts` (modified) — add
   `await disableAutoDevSignIn(page)` before `page.goto("/")` so they
   still pass with `EXPO_PUBLIC_DEV_AUTH=1` set globally.
@@ -570,7 +573,7 @@ above). The client SDK PR (#56, this session) closed out Phase 0:
   stub the SDK callbacks directly so no value ever leaves the browser.
 
 What the next chunk (2b-1 client search modal — see §3.13) should do
-*first*: read `apps/backend/src/routes/v1/search.ts` for the response
+_first_: read `apps/backend/src/routes/v1/search.ts` for the response
 shapes (`MediaSearchResponse`, `BookSearchResponse` in
 `@workshop/shared`) and `apps/workshop/app/list/[id]/add.tsx` for the
 current "search lands in Phase 2" stub banner. The new
@@ -585,7 +588,7 @@ the deliverable list.
 
 **Deliverables**:
 
-1. **Migrations** (`apps/backend/drizzle/`) — *0a*
+1. **Migrations** (`apps/backend/drizzle/`) — _0a_
    - `drop_v1_schema` — drops `rec_items`, `magic_tokens`, `users`.
    - `v2_schema` — creates enums (`list_type`, `member_role`,
      `activity_event_type`, `auth_provider`), tables (`users`, `lists`,
@@ -596,10 +599,10 @@ the deliverable list.
      provider), `email` nullable (Apple "Hide My Email" relay stored as-is),
      `display_name`. No `magic_tokens` table — magic-link auth is dropped.
    - `apps/backend/src/db/schema.ts` — Drizzle table definitions for the above.
-2. **OAuth auth rewrite** (`apps/backend/src/routes/v1/auth.ts`, `users.ts`) — *0b-1*
+2. **OAuth auth rewrite** (`apps/backend/src/routes/v1/auth.ts`, `users.ts`) — _0b-1_
    - `POST /v1/auth/apple` — body: `{ identityToken, nonce }`. Verify JWT
      against Apple's JWKS (`https://appleid.apple.com/auth/keys`), check
-     `aud` matches the iOS bundle ID *or* the Services ID (web), check
+     `aud` matches the iOS bundle ID _or_ the Services ID (web), check
      `nonce` matches. Upsert user by `(apple, sub)`. Returns
      `{ user, needsDisplayName }`.
    - `POST /v1/auth/google` — body: `{ idToken }`. Verify JWT against
@@ -611,13 +614,13 @@ the deliverable list.
      in-memory caching (refresh on `kid` miss), JWT verify via `jose`.
    - Remove `src/routes/auth.ts` + `items.ts` from `src/app.ts`.
    - Remove `apps/backend/src/lib/email.ts` and `sendMagicLinkEmail`.
-3. **Rate-limit middleware** (`apps/backend/src/middleware/rate-limit.ts`) — *0a* (created), *0b-1* (wired to `/v1/auth/*`, per-IP, 30/min)
+3. **Rate-limit middleware** (`apps/backend/src/middleware/rate-limit.ts`) — _0a_ (created), _0b-1_ (wired to `/v1/auth/*`, per-IP, 30/min)
    - Table-backed by `rate_limits`. Applied to `/v1/auth/*` first (by IP —
      cheap abuse surface); item/search limits wired when those routes land.
-4. **Response envelope helper** (`apps/backend/src/lib/response.ts`) — *0a*
+4. **Response envelope helper** (`apps/backend/src/lib/response.ts`) — _0a_
    - `ok(data)`, `err(code, message, details?)` — uniform `{ error, code }` per
      spec §8.
-5. **Client — sign-in + display-name capture** — *0b-2*
+5. **Client — sign-in + display-name capture** — _0b-2_
    - `apps/workshop/app/sign-in.tsx` rewritten: two buttons, Sign in with
      Apple + Sign in with Google. No email field.
      - iOS: `expo-apple-authentication` for Apple (native sheet);
@@ -632,14 +635,14 @@ the deliverable list.
    - `useAuth` extended: user includes `displayName` + `authProvider`;
      exposes `signInWithApple()`, `signInWithGoogle()`, `signOut()`,
      `setDisplayName()`.
-6. **Primitives library skeleton** (`apps/workshop/src/ui/`) — *0b-2*
+6. **Primitives library skeleton** (`apps/workshop/src/ui/`) — _0b-2_
    - `theme.ts` (palette + tokens per §9 Appendix; dark-only initially),
      `useTheme.ts`, `Text.tsx`, `Button.tsx`, `IconButton.tsx`, `Card.tsx`,
      `EmptyState.tsx`. Enough to rebuild sign-in + onboarding. (No
      `TextField` needed for Phase 0 — OAuth has no inputs; defer to Phase 1.)
    - Old `src/components/theme.ts` — migrate sign-in to tokens, then delete
      the hex palette exports.
-7. **Infra** (`infra/`) — *0c*
+7. **Infra** (`infra/`) — _0c_
    - `ssm.tf` — add **OAuth verification params** (all SecureString,
      placeholder values; real values pasted after provider portals are
      configured):
@@ -657,9 +660,9 @@ the deliverable list.
      in `budgets.tf` — AWS Budgets uses SNS, not SES.
    - `terraform apply` — AWS will delete the verified email identity; no
      cutover pain because nothing sends mail anymore.
-8. **Shared types** (`packages/shared/src/types.ts`) — *0a* (skeleton: `User`,
+8. **Shared types** (`packages/shared/src/types.ts`) — _0a_ (skeleton: `User`,
    `AuthProvider`, `ListType`, `MemberRole`, `ActivityEventType`, `Me`,
-   `ApiErrorResponse`, `ErrorCode`); *0b-1* (`AppleAuthRequest`,
+   `ApiErrorResponse`, `ErrorCode`); _0b-1_ (`AppleAuthRequest`,
    `GoogleAuthRequest`, `AuthResponse` `{ user, token, needsDisplayName }`,
    `UpdateMeRequest`)
    - Remove `RecItem`, `RecCategory`, old auth request/response types.
@@ -667,13 +670,14 @@ the deliverable list.
 **Dependencies**: None — this is the base of the stack. Prereq setup
 (outside code): Apple Developer portal — enable Sign in with Apple on the
 App ID, create a Services ID + return URL for web, create a Sign in with
-Apple key (.p8) → stored only for *token signing* if we use "Sign in with
-Apple on the server"; for *token verification* (our case, since we only
+Apple key (.p8) → stored only for _token signing_ if we use "Sign in with
+Apple on the server"; for _token verification_ (our case, since we only
 receive identity tokens) only the JWKS is needed, so the .p8 is not
 required. Google Cloud Console — create OAuth client IDs (iOS + web).
 Track in `docs/plans/HANDOFF.md`.
 
 **Acceptance**:
+
 - `pnpm dev` comes up clean; both Sign in with Apple and Sign in with
   Google work end-to-end on web. iOS tested via Expo Go once Google client
   ID is wired; Sign in with Apple on iOS tested on a TestFlight build.
@@ -689,6 +693,7 @@ Track in `docs/plans/HANDOFF.md`.
   display-name → land on empty home.
 
 **Risks**:
+
 - Home screen (`app/index.tsx`) references deleted types — gate it behind a
   placeholder "Coming soon" screen until Phase 1. Acceptable because Phase 0
   and Phase 1 land close together.
@@ -705,7 +710,7 @@ Track in `docs/plans/HANDOFF.md`.
 - CLAUDE.md mentions Neon autosuspend adds ~500ms cold-start; keep in mind
   when running tests against remote DB.
 - Terraform apply that removes the SES identity + adds SSM params runs
-  once; real OAuth client IDs and API keys must be pasted into SSM *before*
+  once; real OAuth client IDs and API keys must be pasted into SSM _before_
   the client hits `/v1/auth/*` or enrichment endpoints. Track in
   HANDOFF.md.
 
@@ -722,12 +727,12 @@ on its own and `main` stays deployable between landings.
 
 #### 3.7 Phase 1 chunks
 
-| Chunk | What ships | External deps | Status |
-|---|---|---|---|
-| **1a-1** | Backend lists CRUD: `GET /v1/lists` (with `role`/`memberCount`/`itemCount` aggregates), `POST` (transactional list + owner-member insert), `GET /:id` (list + members + empty `pendingInvites`), `PATCH /:id` (owner only), `DELETE /:id` (owner only; cascades). `requireListMember` + `requireListOwner` middleware (404 vs 403 — non-members get 404 to avoid leaking existence). Shared types `List`, `ListSummary`, `ListMemberSummary`, `PendingInvite`, `CreateListRequest`, `UpdateListRequest` and the matching response shapes. Vitest coverage of input validation + auth gating (20 tests). | None — runs against the existing local Postgres and v2 schema; doesn't depend on 0c-2's portal/SSM/Cloudflare work. | **Done** (this PR) |
-| **1a-2** | Backend items CRUD + upvote + complete: `GET /v1/lists/:id/items` (with `upvote_count` aggregate via `LEFT JOIN ... COUNT(*)::int` + per-user `has_upvoted`), `POST` (transactional: insert item + insert creator's upvote in one tx — spec §2.3), `GET /v1/items/:id`, `PATCH`, `DELETE`, `POST/:id/upvote` (idempotent), `DELETE/:id/upvote`, `POST/:id/complete`, `POST/:id/uncomplete`. `requireItemMember` helper that resolves the item's list and reuses `requireListMember`'s membership check. Shared types `Item`, `ItemListResponse`, `ItemResponse`, request bodies. Sort order: `upvote_count DESC, created_at DESC` per spec §7.7; completed-only filter sorts by `completed_at DESC` per spec §2.4. Rate limits wired: `POST /lists/:id/items` 60/user/min, upvote endpoints 120/user/min per spec §8. Vitest coverage of input validation + auth gating + UUID bail-out (29 tests). | None. | **Done** (this PR) |
-| **1b-1** | Client TanStack Query foundation + home screen: `apps/workshop/src/lib/query.ts` (`QueryClient` with `refetchOnWindowFocus` / `refetchOnReconnect`), `src/lib/queryKeys.ts` (centralized factory), `src/api/lists.ts` (typed wrappers around `/v1/lists`), `app/index.tsx` rewritten as the rich list-cards home with FAB and empty state. New primitives in `src/ui/`: `Sheet`, `Modal`, `Toast`. | None. | **Done** (this PR) |
-| **1b-2** | Client list detail + create-list flow: `app/list/[id]/index.tsx` (filter bar + completed section), `app/list/[id]/item/[itemId].tsx`, `app/list/[id]/add.tsx` (free-form for date-idea / trip; movie/TV/book stubs route to free-form until Phase 2), `app/create-list/type.tsx` + `customize.tsx`. New primitives: `UpvotePill`, `Avatar`, `Chip`. Optimistic-update helpers for upvote/complete/add with toast rollback. `expo-haptics` wired on upvote/complete/delete (no-op `.web.ts`). One Playwright happy-path: create list → add item → upvote → complete. | None. | **Done** (this PR) |
+| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | External deps                                                                                                       | Status             |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| **1a-1** | Backend lists CRUD: `GET /v1/lists` (with `role`/`memberCount`/`itemCount` aggregates), `POST` (transactional list + owner-member insert), `GET /:id` (list + members + empty `pendingInvites`), `PATCH /:id` (owner only), `DELETE /:id` (owner only; cascades). `requireListMember` + `requireListOwner` middleware (404 vs 403 — non-members get 404 to avoid leaking existence). Shared types `List`, `ListSummary`, `ListMemberSummary`, `PendingInvite`, `CreateListRequest`, `UpdateListRequest` and the matching response shapes. Vitest coverage of input validation + auth gating (20 tests).                                                                                                                                                                                                                                                                                             | None — runs against the existing local Postgres and v2 schema; doesn't depend on 0c-2's portal/SSM/Cloudflare work. | **Done** (this PR) |
+| **1a-2** | Backend items CRUD + upvote + complete: `GET /v1/lists/:id/items` (with `upvote_count` aggregate via `LEFT JOIN ... COUNT(*)::int` + per-user `has_upvoted`), `POST` (transactional: insert item + insert creator's upvote in one tx — spec §2.3), `GET /v1/items/:id`, `PATCH`, `DELETE`, `POST/:id/upvote` (idempotent), `DELETE/:id/upvote`, `POST/:id/complete`, `POST/:id/uncomplete`. `requireItemMember` helper that resolves the item's list and reuses `requireListMember`'s membership check. Shared types `Item`, `ItemListResponse`, `ItemResponse`, request bodies. Sort order: `upvote_count DESC, created_at DESC` per spec §7.7; completed-only filter sorts by `completed_at DESC` per spec §2.4. Rate limits wired: `POST /lists/:id/items` 60/user/min, upvote endpoints 120/user/min per spec §8. Vitest coverage of input validation + auth gating + UUID bail-out (29 tests). | None.                                                                                                               | **Done** (this PR) |
+| **1b-1** | Client TanStack Query foundation + home screen: `apps/workshop/src/lib/query.ts` (`QueryClient` with `refetchOnWindowFocus` / `refetchOnReconnect`), `src/lib/queryKeys.ts` (centralized factory), `src/api/lists.ts` (typed wrappers around `/v1/lists`), `app/index.tsx` rewritten as the rich list-cards home with FAB and empty state. New primitives in `src/ui/`: `Sheet`, `Modal`, `Toast`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | None.                                                                                                               | **Done** (this PR) |
+| **1b-2** | Client list detail + create-list flow: `app/list/[id]/index.tsx` (filter bar + completed section), `app/list/[id]/item/[itemId].tsx`, `app/list/[id]/add.tsx` (free-form for date-idea / trip; movie/TV/book stubs route to free-form until Phase 2), `app/create-list/type.tsx` + `customize.tsx`. New primitives: `UpvotePill`, `Avatar`, `Chip`. Optimistic-update helpers for upvote/complete/add with toast rollback. `expo-haptics` wired on upvote/complete/delete (no-op `.web.ts`). One Playwright happy-path: create list → add item → upvote → complete.                                                                                                                                                                                                                                                                                                                                 | None.                                                                                                               | **Done** (this PR) |
 
 #### 3.8 What 1a-1 actually shipped — start here for 1a-2
 
@@ -743,14 +748,12 @@ Files that landed in 1a-1 (read these before touching 1a-2):
   `requireAuth`. The list shape comes back from `toListShape(DbList)` so
   enum widening + date-to-ISO is in one place; reuse for items in 1a-2 by
   building an analogous `toItemShape` helper.
-  - `GET /` uses `db.execute(sql\`...\`)` for the aggregate query (member +
-    item count subselects). The Drizzle relational API can do this but the
-    raw SQL is shorter and easier to audit. The result is cast through
-    `Array<Record<string, unknown>> | { rows: ... }` because `postgres-js`
-    sometimes returns one shape and sometimes the other depending on the
-    statement; do the same in 1a-2's `GET /lists/:id/items` aggregate.
+  - `GET /` uses `db.execute(sql\`...\`)`for the aggregate query (member +
+item count subselects). The Drizzle relational API can do this but the
+raw SQL is shorter and easier to audit. The result is cast through`Array<Record<string, unknown>> | { rows: ... }`because`postgres-js`sometimes returns one shape and sometimes the other depending on the
+statement; do the same in 1a-2's`GET /lists/:id/items` aggregate.
   - `POST /` opens a `db.transaction(async tx => ...)`. 1a-2's `POST
-    /lists/:id/items` should use the same pattern to insert the item + the
+/lists/:id/items` should use the same pattern to insert the item + the
     creator's upvote atomically.
   - `PATCH` uses `Partial<DbList>` + `if (parsed.data.foo !== undefined)`
     so a field can be cleared with `null` (description) without hitting the
@@ -773,11 +776,11 @@ Files that landed in 1a-1 (read these before touching 1a-2):
   comes from the 1b Playwright run; smoke-tested locally during
   development against the docker postgres.
 
-What 1a-2 should do *first*: read `apps/backend/src/routes/v1/lists.ts` end
+What 1a-2 should do _first_: read `apps/backend/src/routes/v1/lists.ts` end
 to end (especially `toListShape`, the `db.transaction` shape, and the raw
 SQL aggregate) and `apps/backend/src/middleware/authorize.ts`. Items reuse
 the same helpers — `requireListMember` already reads `:id` from the path,
-so the natural URL shape for the *item-keyed* routes (`GET /v1/items/:id`,
+so the natural URL shape for the _item-keyed_ routes (`GET /v1/items/:id`,
 `PATCH`, `DELETE`, `POST /:id/upvote`, etc.) is to add a sibling
 `requireItemMember` middleware that resolves the item's list and then
 delegates to the same membership check. Don't duplicate the role-gating
@@ -811,15 +814,15 @@ Files that landed in 1a-2 (read these before touching 1b-1):
   - `fetchItemsForList(listId, userId, { completed })` — the list-scoped
     aggregate query. Default sort `upvote_count DESC, created_at DESC` per
     spec §7.7; `?completed=true` filter sorts by `completed_at DESC NULLS
-    LAST, created_at DESC` per spec §2.4. Uses a `LEFT JOIN (SELECT
-    item_id, COUNT(*)::int AS upvote_count, BOOL_OR(user_id = $userId) AS
-    has_upvoted FROM item_upvotes GROUP BY item_id)` derived table — one
+LAST, created_at DESC` per spec §2.4. Uses a `LEFT JOIN (SELECT
+item_id, COUNT(*)::int AS upvote_count, BOOL_OR(user_id = $userId) AS
+has_upvoted FROM item_upvotes GROUP BY item_id)` derived table — one
     round-trip, computes both aggregates in the same scan.
   - `createItem(listId, userId, data)` — opens a transaction, looks up the
     parent list's `type` so `items.type` matches `lists.type` (denormalized
     per schema §7.6), inserts the item, then inserts the creator's upvote
     in the same tx (spec §2.3). Returns the shape with `upvoteCount: 1,
-    hasUpvoted: true` directly — no extra SELECT.
+hasUpvoted: true` directly — no extra SELECT.
   - Item-id-scoped handlers: `GET`, `PATCH`, `DELETE`,
     `POST/DELETE /:id/upvote`, `POST /:id/complete`, `POST /:id/uncomplete`.
     Upvote handlers use `INSERT ... ON CONFLICT DO NOTHING` for idempotency.
@@ -831,8 +834,8 @@ Files that landed in 1a-2 (read these before touching 1b-1):
     that transforms to `boolean | undefined`.
   - `POST /v1/lists/:id/items` calls `createItem`. Rate-limited inline at
     60/user/min (`family: "v1.items.create"`, `key: c.get("userId")`).
-  Both layered on top of the existing `requireListMember` so non-members
-  hit 404 before the handler runs.
+    Both layered on top of the existing `requireListMember` so non-members
+    hit 404 before the handler runs.
 - `apps/backend/src/app.ts` — mounts `app.route("/v1/items", itemRoutes)`.
   Upvote rate-limits live inline on the upvote handlers (120/user/min,
   `family: "v1.items.upvote"`) — applied after `requireItemMember` so the
@@ -853,7 +856,7 @@ Files that landed in 1a-2 (read these before touching 1b-1):
   the 1b Playwright run. End-to-end smoke-tested locally against the
   docker postgres during development.
 
-What 1b-1 should do *first*: read `apps/backend/src/routes/v1/items.ts`
+What 1b-1 should do _first_: read `apps/backend/src/routes/v1/items.ts`
 end-to-end (request/response shapes for the typed client wrappers) and
 `apps/backend/src/routes/v1/lists.ts` for the `GET /v1/lists` shape — that's
 the home-screen card data. The shared types (`Item`, `ListSummary`,
@@ -906,7 +909,7 @@ Files that landed in 1b-1 (read these before touching 1b-2):
   the `useToast` hook and `ToastProvider`.
 - `apps/workshop/app/_layout.tsx` — wraps the tree as
   `ThemeProvider → QueryClientProvider → ToastProvider → AuthProvider →
-  AuthGate`. **The ordering matters**: AuthProvider sits inside both
+AuthGate`. **The ordering matters**: AuthProvider sits inside both
   Query + Toast so 1b-2 can call `useToast()` from auth flows or
   invalidate query caches on sign-out. `useMemo(createQueryClient, [])`
   pins the client across renders.
@@ -920,7 +923,7 @@ Files that landed in 1b-1 (read these before touching 1b-2):
   `emoji · name · "Type · Role" · description · "N items · M members"`.
   Sort order matches backend (`updated_at DESC`).
 
-What 1b-2 should do *first*: replace the FAB's toast handler in
+What 1b-2 should do _first_: replace the FAB's toast handler in
 `app/index.tsx` with `router.push("/create-list/type")` once the
 create-list stack lands; route the empty-state CTA the same way. The
 home-screen `useQuery(queryKeys.lists.all)` is already the right cache —
@@ -932,6 +935,7 @@ keys are already in `queryKeys.items.byList(listId)` and
 `queryKeys.items.detail(itemId)`.
 
 Known constraints for 1b-2:
+
 - The `Modal` and `Sheet` primitives use RN's built-in `Modal`. On web
   it renders inline (no portal); that's fine for 1b-2's flows but if
   Phase 5's two-pane layout needs portaled overlays a swap to
@@ -953,7 +957,7 @@ Known constraints for 1b-2:
 Files that landed in 1b-2 (read these before touching 2a-1):
 
 - `apps/workshop/src/ui/UpvotePill.tsx` — `<UpvotePill count hasUpvoted
-  onPress disabled />`. Pill with up-arrow glyph + count divided by a 1px
+onPress disabled />`. Pill with up-arrow glyph + count divided by a 1px
   rule. `accessibilityState={{ selected: hasUpvoted }}`. Tokens-only
   styling — `tokens.accent.muted` background + `tokens.accent.default`
   border when selected; unselected falls back to `tokens.bg.elevated` +
@@ -967,7 +971,7 @@ Files that landed in 1b-2 (read these before touching 2a-1):
   sizes (`sm: 24`, `md: 32`, `lg: 48`) — used at `md` in the list
   detail header (added-by avatar) and `sm` in completed-section rows.
 - `apps/workshop/src/ui/Chip.tsx` — `<Chip label selected onPress
-  disabled />`. Pressable when `onPress` is provided, otherwise a static
+disabled />`. Pressable when `onPress` is provided, otherwise a static
   pill (no `accessibilityRole`). Same selected/unselected colour pair
   as `UpvotePill`. Used by the type picker in `create-list/type.tsx`
   and earmarked for Phase 2's filter sheet.
@@ -1026,7 +1030,7 @@ Files that landed in 1b-2 (read these before touching 2a-1):
   delete (calls `router.back()` after success). Tapping the URL
   preview opens via `Linking.openURL`.
 - `apps/workshop/app/list/[id]/add.tsx` — modal (`presentation:
-  "modal"` on the parent stack). Free-form `title` + optional `url` +
+"modal"` on the parent stack). Free-form `title` + optional `url` +
   optional `note`. Movie/TV/book lists show a banner that says "search
   lands in Phase 2 — for now, type the title manually." `useMutation`
   optimistically inserts the new item into
@@ -1055,7 +1059,7 @@ Files that landed in 1b-2 (read these before touching 2a-1):
   `add-item-fab`, `add-item-title`, `submit-add-item`,
   `upvote-button-<itemId>`, `complete-button-<itemId>`).
 
-What 2a-1 should do *first*: read `apps/backend/src/routes/v1/items.ts`
+What 2a-1 should do _first_: read `apps/backend/src/routes/v1/items.ts`
 end to end (the loose `metadata: z.record(z.string(), z.unknown())`
 that 1a-2 left as a TODO — Phase 2 swaps in per-list-type validators
 per spec §9.4) and `apps/backend/src/routes/v1/lists.ts` for the
@@ -1069,6 +1073,7 @@ source_id))`) is a new Drizzle migration; `pnpm run db:generate --
 --name=add_metadata_cache` from `apps/backend/`.
 
 Known constraints for 2a-1:
+
 - TMDB and Google Books API keys live in SSM (Phase 0 placeholders).
   `apps/backend/src/lib/config.ts` already declares the env vars; the
   Lambda env-var wiring in `infra/lambda.tf` was set up in 0c-1.
@@ -1093,20 +1098,20 @@ Each chunk is independently shippable; CI gates on backend tests +
 Playwright. The split mirrors Phase 1: 2a is backend-only and 2b is
 client-only.
 
-| Chunk | What ships | External deps | Status |
-|---|---|---|---|
-| **2a-1** | Backend search + metadata cache: `apps/backend/src/routes/v1/search.ts` (`GET /v1/search/media?type=movie\|tv`, `GET /v1/search/books`) proxying TMDB / Google Books behind SSM-sourced API keys, normalising into the spec §9 shapes. New `apps/backend/src/lib/metadata-cache.ts` (`upsert(source, source_id, payload, ttl)` + `lookup(source, source_id)`) backed by a new `metadata_cache` Drizzle migration. Per-type Zod validators for `items.metadata` applied on `POST/PATCH /v1/items` (movie / tv / book shapes; date-idea / trip stay loose for 2a-2). Rate limits on `POST /v1/search/*` at 60/user/min. Vitest coverage of validators + cache TTL + auth gating. | TMDB API key + Google Books API key in SSM (placeholders from Phase 0; production needs real values). | Done |
-| **2a-2** | Backend link preview: `apps/backend/src/routes/v1/link-preview.ts` (`GET /v1/link-preview?url=`). SSRF allowlist via `ipaddr.js` (block RFC1918 / loopback / link-local / 169.254.169.254). 3s timeout, 1MB cap, 3 redirects. OG + Twitter card parser. Cached through the 2a-1 `metadata-cache` (7-day TTL). Rate limit 30/user/min. SSRF regression test + parser unit tests. | None — uses the metadata cache from 2a-1. | Done |
-| **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list. | 2a-1. | Done (this PR) |
-| **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save. | 2a-2. | Done (this PR) |
+| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | External deps                                                                                         | Status         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- | -------------- |
+| **2a-1** | Backend search + metadata cache: `apps/backend/src/routes/v1/search.ts` (`GET /v1/search/media?type=movie\|tv`, `GET /v1/search/books`) proxying TMDB / Google Books behind SSM-sourced API keys, normalising into the spec §9 shapes. New `apps/backend/src/lib/metadata-cache.ts` (`upsert(source, source_id, payload, ttl)` + `lookup(source, source_id)`) backed by a new `metadata_cache` Drizzle migration. Per-type Zod validators for `items.metadata` applied on `POST/PATCH /v1/items` (movie / tv / book shapes; date-idea / trip stay loose for 2a-2). Rate limits on `POST /v1/search/*` at 60/user/min. Vitest coverage of validators + cache TTL + auth gating. | TMDB API key + Google Books API key in SSM (placeholders from Phase 0; production needs real values). | Done           |
+| **2a-2** | Backend link preview: `apps/backend/src/routes/v1/link-preview.ts` (`GET /v1/link-preview?url=`). SSRF allowlist via `ipaddr.js` (block RFC1918 / loopback / link-local / 169.254.169.254). 3s timeout, 1MB cap, 3 redirects. OG + Twitter card parser. Cached through the 2a-1 `metadata-cache` (7-day TTL). Rate limit 30/user/min. SSRF regression test + parser unit tests.                                                                                                                                                                                                                                                                                                | None — uses the metadata cache from 2a-1.                                                             | Done           |
+| **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list.                                                                                                                                                                                                                                                  | 2a-1.                                                                                                 | Done (this PR) |
+| **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save.                                                                                                                                                                                                                                                                                                     | 2a-2.                                                                                                 | Done (this PR) |
 
 #### 3.14 What 2a-1 actually shipped — start here for 2a-2
 
 Files that landed in 2a-1 (read these before touching 2a-2):
 
 - `apps/backend/src/lib/metadata-cache.ts` — `lookupCacheEntry<T>(source,
-  sourceId, db?)` + `upsertCacheEntry<T>(source, sourceId, data,
-  ttlSeconds, db?)`. The `db?` parameter exists so vitest can pass a
+sourceId, db?)` + `upsertCacheEntry<T>(source, sourceId, data,
+ttlSeconds, db?)`. The `db?` parameter exists so vitest can pass a
   fake without touching postgres. `expires_at` is computed at write
   time (`now() + ttl::int * interval '1 second'`) and the lookup
   filters on `expires_at > now()` — expired rows are left in place for
@@ -1118,16 +1123,16 @@ Files that landed in 2a-1 (read these before touching 2a-2):
 - `apps/backend/drizzle/0003_add_metadata_cache_expires_at.sql` —
   `metadata_cache` already had `(source, source_id, data, fetched_at)`
   from 0a; this migration adds `expires_at TIMESTAMPTZ NOT NULL DEFAULT
-  now()`. The `DEFAULT` is there for safety on existing rows; the
+now()`. The `DEFAULT` is there for safety on existing rows; the
   insert path always provides an explicit `expires_at`.
 - `apps/backend/src/routes/v1/search.ts` — `GET /media?type=movie|tv&q`
   and `GET /books?q`. Both are `requireAuth`-gated and rate-limited at
   60/user/min via `rateLimit({ family: "v1.search.{media,books}", key:
-  userKey })`. Cache key is `tmdb:{type}` + `q-search:<lowercased
-  trimmed q>` for media; `google_books:search` + same key for books.
+userKey })`. Cache key is `tmdb:{type}` + `q-search:<lowercased
+trimmed q>` for media; `google_books:search` + same key for books.
   Cache writes are best-effort (`.catch(...)` + `logger.warn`) so a
   cache outage doesn't fail the response. `__testing.setDeps({
-  fetchTmdb?, fetchGoogleBooks?, lookupCache?, upsertCache? })` is the
+fetchTmdb?, fetchGoogleBooks?, lookupCache?, upsertCache? })` is the
   test seam — all four are typed mocks; tests use them to bypass real
   upstream calls and the postgres-backed cache. **2a-2 should mirror
   this `__testing.setDeps` shape on `link-preview.ts`** — the cache
@@ -1147,7 +1152,7 @@ Files that landed in 2a-1 (read these before touching 2a-2):
 - `packages/shared/src/types.ts` — adds `MediaSearchType`,
   `MediaResult`, `BookResult`, `MediaSearchResponse`, `BookSearchResponse`,
   and the per-type metadata shapes (`MovieMetadata`, `TvMetadata =
-  MovieMetadata`, `BookMetadata`, `PlaceMetadata`). 2b-1 should import
+MovieMetadata`, `BookMetadata`, `PlaceMetadata`). 2b-1 should import
   the result types directly rather than re-declaring them in
   `src/api/search.ts`.
 - `apps/backend/src/lib/config.ts` — reads `TMDB_API_KEY` and
@@ -1159,7 +1164,7 @@ Files that landed in 2a-1 (read these before touching 2a-2):
   rate-limit middleware was already global on `/v1/auth/*`; the search
   routes carry their own per-user rate limit.
 
-What 2a-2 should do *first*: read `apps/backend/src/routes/v1/search.ts`
+What 2a-2 should do _first_: read `apps/backend/src/routes/v1/search.ts`
 end to end (the cache wiring + `__testing.setDeps` test seam is the
 template) and `apps/backend/src/lib/metadata-cache.ts` (`CacheTtl`
 already declares `linkPreview: 7 * 86400`). The new
@@ -1170,10 +1175,11 @@ there). Cache reads/writes go through `lookupCacheEntry<LinkPreview>(
 "link_preview", urlHash)` / `upsertCacheEntry(..., CacheTtl.linkPreview)`.
 
 Known constraints for 2a-2:
+
 - SSRF is the headline risk per spec §8.5. Use `ipaddr.js` (already on
   npm; not yet a dep) to parse the resolved IP and block RFC1918,
   loopback, link-local, and the AWS metadata IP (`169.254.169.254`).
-  Resolve the hostname *yourself* before fetching so a redirect to a
+  Resolve the hostname _yourself_ before fetching so a redirect to a
   blocked IP doesn't slip past — `fetch` won't tell you the IP it
   actually connected to. Add a regression test that hits
   `http://169.254.169.254/`.
@@ -1182,15 +1188,15 @@ Known constraints for 2a-2:
   fetchers in `search.ts` use `AbortSignal.timeout(5000)` — same
   pattern, tighter window.
 - Rate limit: `rateLimit({ family: "v1.link-preview", limit: 30,
-  windowSec: 60, key: userKey })`. Same `userKey` helper as
+windowSec: 60, key: userKey })`. Same `userKey` helper as
   `search.ts`; user-keyed because the route is auth-only.
 - Cache key: `link_preview` source + a stable hash of the normalised
   URL (`new URL(input).href`) as `source_id`. Don't store the raw URL
   as the source_id — `metadata_cache.source_id` is `TEXT NOT NULL` but
   long URLs make for ugly index keys; `crypto.createHash("sha1")` over
   the normalised URL is plenty.
-- Per-type Zod metadata validators (spec §9.4) are wired *but the
-  date_idea / trip schemas are still permissive*. 2a-2 should keep the
+- Per-type Zod metadata validators (spec §9.4) are wired _but the
+  date_idea / trip schemas are still permissive_. 2a-2 should keep the
   current `placeMetadataSchema` shape compatible with what
   `link-preview.ts` writes back — the response body will be inserted
   into `items.metadata` by 2b-2, and the validator runs on every
@@ -1204,17 +1210,17 @@ Files that landed in 2a-2 (read these before touching 2b-1 or 2b-2):
 - `apps/backend/src/lib/ssrf-guard.ts` — the standalone SSRF guard
   module. Three exports: `class SsrfBlockedError extends Error` (carries
   `host` + `reason`), `classifyIp(ip)` (`{ ok: true } | { ok: false;
-  reason }` — only `ipaddr.js` `unicast` is allowed; `169.254.169.254`
+reason }` — only `ipaddr.js` `unicast` is allowed; `169.254.169.254`
   is also explicitly denied as a belt-and-suspenders catch even though
   `link-local` already covers it), `parseAndValidateUrl(input)` (parses
-  + checks http(s) protocol, no userinfo, IP-literal classification),
-  and `assertHostnameSafe(hostname, deps?)` (resolves via
-  `dns.lookup({ all: true, verbatim: true })` and rejects if *any*
-  returned address is in a blocked range). Handles IPv4-mapped IPv6
-  (`::ffff:a.b.c.d`) by rechecking against the v4 deny list. **Reuse
-  this module unchanged** for any future outbound fetch — the route
-  wires it in two places (URL validation up-front + per-redirect-hop
-  inside the fetcher).
+  - checks http(s) protocol, no userinfo, IP-literal classification),
+    and `assertHostnameSafe(hostname, deps?)` (resolves via
+    `dns.lookup({ all: true, verbatim: true })` and rejects if _any_
+    returned address is in a blocked range). Handles IPv4-mapped IPv6
+    (`::ffff:a.b.c.d`) by rechecking against the v4 deny list. **Reuse
+    this module unchanged** for any future outbound fetch — the route
+    wires it in two places (URL validation up-front + per-redirect-hop
+    inside the fetcher).
 - `apps/backend/src/lib/ssrf-guard.test.ts` — 24 cases covering v4/v6
   loopback / RFC1918 / link-local / multicast / broadcast /
   ipv4-mapped, plus literal-vs-DNS paths and the mixed-answers (one
@@ -1222,7 +1228,7 @@ Files that landed in 2a-2 (read these before touching 2b-1 or 2b-2):
   not just the first."
 - `apps/backend/src/routes/v1/link-preview.ts` — `GET /` route
   (`requireAuth` + `rateLimit({ family: "v1.link-preview", limit: 30,
-  windowSec: 60, key: userKey })`). Pipeline: Zod-validate the `url`
+windowSec: 60, key: userKey })`). Pipeline: Zod-validate the `url`
   query param → `parseAndValidateUrl` (throws `SsrfBlockedError` →
   400 `VALIDATION` for IP literals) → cache lookup (sha1 of
   `parsedUrl.href` as `source_id`, source `link_preview`) → on miss,
@@ -1232,13 +1238,13 @@ Files that landed in 2a-2 (read these before touching 2b-1 or 2b-2):
   1 MB → `parseOgMeta` extracts og:/twitter:/`<title>` from the `<head>`
   block → `buildPreview` resolves relative `og:image` against
   `finalUrl` and falls back `siteName` to the host of `finalUrl`. SSRF
-  errors thrown *during* fetch (e.g. a redirect that resolves to a
+  errors thrown _during_ fetch (e.g. a redirect that resolves to a
   private IP) are caught and returned as 400 `VALIDATION`, not 500 —
   same shape as the up-front URL check. Cache writes are best-effort
   (`.catch(...)` + `logger.warn`) — same pattern as `search.ts`.
   `__testing.setDeps({ fetchPage?, lookupCache?, upsertCache? })` is
   the test seam; `__internal = { parseOgMeta, cacheKeyFor, buildPreview
-  }` exposes the pure helpers for unit tests without leaking them into
+}` exposes the pure helpers for unit tests without leaking them into
   the route's public surface.
 - `apps/backend/src/routes/v1/link-preview.test.ts` — 21 cases:
   `parseOgMeta` (og preferred over twitter and `<title>`, fallback
@@ -1271,7 +1277,7 @@ Live smoke-tested against the running dev backend: blocks
 `http://user:pw@example.com/` all with 400 `VALIDATION`; happy-path on
 `https://example.com/` returns 200 with parsed title.
 
-What 2b-1 should do *first*: read `apps/workshop/app/list/[id]/add.tsx`
+What 2b-1 should do _first_: read `apps/workshop/app/list/[id]/add.tsx`
 (the current "stub" banner from 1b-2) plus the search shapes in
 `packages/shared/src/types.ts` (`MediaResult`, `BookResult`,
 `MediaSearchResponse`, `BookSearchResponse`). The new
@@ -1282,7 +1288,7 @@ inline beside the modal if it's the only call site for now). The
 client doesn't need any new backend work for 2b-1 — `/v1/search/*` is
 already live and rate-limited.
 
-What 2b-2 should do *first*: read this section's summary of
+What 2b-2 should do _first_: read this section's summary of
 `link-preview.ts` (especially the `LinkPreviewResponse` shape) and the
 per-type Zod metadata validators in `apps/backend/src/routes/v1/items.ts`
 to confirm `placeMetadataSchema` accepts everything `LinkPreview`
@@ -1297,7 +1303,7 @@ no new backend work needed.
 Files that landed in 2b-1 (read these before touching 2b-2):
 
 - `apps/workshop/src/api/search.ts` — typed wrappers `searchMedia(type,
-  q, token, signal?)` and `searchBooks(q, token, signal?)`. Both return
+q, token, signal?)` and `searchBooks(q, token, signal?)`. Both return
   `MediaSearchResponse` / `BookSearchResponse` from
   `@workshop/shared`; no re-declared types. Both accept an optional
   `AbortSignal` so TanStack Query can cancel inflight searches when the
@@ -1312,12 +1318,12 @@ Files that landed in 2b-1 (read these before touching 2b-2):
   with TanStack Query's built-in `signal` for cancellation when the
   URL changes mid-flight.
 - `apps/workshop/src/ui/SearchResultRow.tsx` — poster (56×84) + title
-  + year + secondary subtitle + Add button. `testID` defaults to
-  `search-result-${id}` and the button to `search-result-${id}-add`;
-  the Playwright spec relies on those exact IDs. Exported via
-  `src/ui/index.ts`. The image falls back to a `?` placeholder card
-  when no URL is provided so book covers and movie posters render
-  consistently.
+  - year + secondary subtitle + Add button. `testID` defaults to
+    `search-result-${id}` and the button to `search-result-${id}-add`;
+    the Playwright spec relies on those exact IDs. Exported via
+    `src/ui/index.ts`. The image falls back to a `?` placeholder card
+    when no URL is provided so book covers and movie posters render
+    consistently.
 - `apps/workshop/app/list/[id]/add.tsx` — full rewrite. The screen
   fetches `fetchListDetail` to get the list type (cached by the list
   detail screen, so the read is instant in normal navigation). For
@@ -1346,12 +1352,13 @@ Files that landed in 2b-1 (read these before touching 2b-2):
   pre-existing `tests/e2e/sign-in.spec.ts` does NOT use this race and
   flakes on a dirty DB; that's an unrelated pre-existing issue.)
 
-What 2b-2 should do *first*: read this section's `add.tsx` summary
+What 2b-2 should do _first_: read this section's `add.tsx` summary
 (especially the `<FreeFormFlow>` branch — that's where the link-preview
 fetch + inline card go). The 2b-1 search flow only fires on
 movie/tv/book; 2b-2 only fires on date_idea/trip — they don't overlap.
 
 Known constraints for 2b-2:
+
 - The `placeMetadataSchema` in `apps/backend/src/routes/v1/items.ts` is
   `.strict()` and accepts `source`, `sourceId`, `image`, `siteName`,
   `title`, `description`, `lat`, `lng`. The `LinkPreview` response has
@@ -1413,7 +1420,7 @@ Files that landed in 2b-2 (read these before touching the next chunk):
     allows: `source: "link_preview"`, `sourceId: preview.finalUrl`
     (the canonicalized URL after redirects, served by the backend),
     `image`, `siteName`, `title`, `description`. `url` and `fetchedAt`
-    from the response are *not* sent — `url` would collide with the
+    from the response are _not_ sent — `url` would collide with the
     schema (no `url` key in `placeMetadataSchema`) and `fetchedAt`
     isn't allowed either. The schema is `.strict()` so any stray field
     would 400; this is the constraint §3.16 flagged.
@@ -1421,11 +1428,11 @@ Files that landed in 2b-2 (read these before touching the next chunk):
   dev-sign-in (`Promise.race(displayName, homeGreeting)` for dirty-DB
   resilience, same as `add-search.spec.ts`) → create date-idea list →
   open add flow → mock `/v1/link-preview` with a fixture → fill title
-  + URL → assert `link-preview-card` is visible and contains the
-  fixture title → submit → assert the new item appears on the list.
-  No backend dependencies beyond the running dev server (the
-  link-preview route doesn't need any third-party API key — see
-  `apps/backend/src/routes/v1/link-preview.ts`).
+  - URL → assert `link-preview-card` is visible and contains the
+    fixture title → submit → assert the new item appears on the list.
+    No backend dependencies beyond the running dev server (the
+    link-preview route doesn't need any third-party API key — see
+    `apps/backend/src/routes/v1/link-preview.ts`).
 - `docs/redesign-plan.md` — this section, the §3.13 status flip, the
   top-of-doc status snapshot, and the rewritten "Next to implement"
   pointer to Phase 3.
@@ -1454,7 +1461,7 @@ Surprises / deviations from plan:
   intentional.
 - **`sourceId` is `finalUrl`, not a sha1 hash.** §3.16 said
   `sourceId: <hash>` — but the route already hashes the URL
-  internally (cache key) and the *client-facing* `LinkPreview` exposes
+  internally (cache key) and the _client-facing_ `LinkPreview` exposes
   `finalUrl` (post-redirect canonical URL). Storing the canonical URL
   in `items.metadata.sourceId` is more useful than a hash that the
   client can't invert; `placeMetadataSchema` accepts `sourceId` as
@@ -1462,8 +1469,8 @@ Surprises / deviations from plan:
   reject — if that becomes a problem in production, switch to a hash
   here AND widen the schema in the same PR.
 
-What Phase 3 should do *first*: §3.17 (this section) used the chunk
-slot that future phases used for the chunk *table*. Phase 3 needs to
+What Phase 3 should do _first_: §3.17 (this section) used the chunk
+slot that future phases used for the chunk _table_. Phase 3 needs to
 draft a §3.18 chunks table (§3.13 / §3.7 are good templates) before
 picking up code. The first chunks come straight out of spec
 [§3 (groups + memberships)](redesign-spec.md) and §6 (share-link
@@ -1481,7 +1488,7 @@ Known constraints for Phase 3:
   Phase 0 cutover), so the share UX is "copy link," not "send
   email." Match the spec.
 - The auto-upvote on item create (§3.10's behavior) is single-tenant —
-  in a group list, it should still be the *creator's* vote, not auto-
+  in a group list, it should still be the _creator's_ vote, not auto-
   granted to other members. The existing test in `items.test.ts`
   asserts this for the single-tenant case; widen the assertion when
   groups land.
@@ -1493,41 +1500,42 @@ Known constraints for Phase 3:
 **Deliverables**:
 
 1. **Backend routes** (`apps/backend/src/routes/v1/`)
-   - `lists.ts` — `GET /v1/lists`, `POST`, `GET /:id`, `PATCH /:id`, `DELETE /:id`. — *1a-1*
+   - `lists.ts` — `GET /v1/lists`, `POST`, `GET /:id`, `PATCH /:id`, `DELETE /:id`. — _1a-1_
    - `items.ts` — `GET /v1/lists/:id/items`, `POST`, `GET /v1/items/:id`,
      `PATCH`, `DELETE`, `POST /:id/upvote`, `DELETE /:id/upvote`,
-     `POST /:id/complete`, `POST /:id/uncomplete`. — *1a-2*
+     `POST /:id/complete`, `POST /:id/uncomplete`. — _1a-2_
    - Helpers: `requireListMember` / `requireListOwner` middleware (1a-1)
      plus `requireItemMember` (1a-2) used by every item-keyed route.
-2. **Item creation transactionally inserts the creator's upvote** (spec §2.3). — *1a-2*
+2. **Item creation transactionally inserts the creator's upvote** (spec §2.3). — _1a-2_
 3. **List query returns `upvote_count` as a computed column** via
    `LEFT JOIN ... COUNT(...)::int` (spec §7.7). Sort: `upvote_count DESC,
-   created_at DESC`. — *1a-2*
+created_at DESC`. — _1a-2_
 4. **Client**
-   - `app/index.tsx` — Home with rich list cards, empty state, FAB. — *1b-1*
+   - `app/index.tsx` — Home with rich list cards, empty state, FAB. — _1b-1_
    - `app/create-list/_layout.tsx` + `type.tsx` + `customize.tsx` —
-     create-list modal stack (skip the Invite screen in P1; added in P3). — *1b-2*
+     create-list modal stack (skip the Invite screen in P1; added in P3). — _1b-2_
    - `app/list/[id]/index.tsx` — list detail with filter bar, upvote pill,
-     completed section. — *1b-2*
-   - `app/list/[id]/item/[itemId].tsx` — item detail. — *1b-2*
+     completed section. — _1b-2_
+   - `app/list/[id]/item/[itemId].tsx` — item detail. — _1b-2_
    - `app/list/[id]/add.tsx` — free-form add (date-idea/trip type only).
-     Movie/TV/Book add pathway is a stub that routes to free-form until P2. — *1b-2*
+     Movie/TV/Book add pathway is a stub that routes to free-form until P2. — _1b-2_
    - New primitives: `Sheet`, `Modal`, `Toast` (1b-1); `UpvotePill`,
      `Avatar`, `Chip` (1b-2).
-5. **TanStack Query integration** (`apps/workshop/src/lib/query.ts`) — *1b-1*
+5. **TanStack Query integration** (`apps/workshop/src/lib/query.ts`) — _1b-1_
    - `QueryClient` setup with `refetchOnWindowFocus`, `refetchOnReconnect`.
    - `queryKeys.ts` — centralized key factory (`lists.all`, `lists.detail(id)`,
      `items.byList(id)`, `items.detail(id)`).
-   - Optimistic update helpers for upvote, complete, add — *1b-2*. Rollback
+   - Optimistic update helpers for upvote, complete, add — _1b-2_. Rollback
      with toast on error (spec §5.5).
-6. **Shared types**: `List`, `ListMemberSummary`, list CRUD request bodies — *1a-1*;
-   `Item`, item CRUD request bodies — *1a-2*.
+6. **Shared types**: `List`, `ListMemberSummary`, list CRUD request bodies — _1a-1_;
+   `Item`, item CRUD request bodies — _1a-2_.
 7. **Haptics**: wire `expo-haptics` on upvote / complete / delete (no-op on
-   web — handle via `.web.ts` override). — *1b-2*
+   web — handle via `.web.ts` override). — _1b-2_
 
 **Dependencies**: Phase 0.
 
 **Acceptance**:
+
 - Create-list → add 3 items → upvote two → complete one → they sort and grey
   correctly.
 - Edit title + note inline on item detail persists.
@@ -1537,6 +1545,7 @@ Known constraints for Phase 3:
 - Unit coverage: item sort order, optimistic upvote rollback.
 
 **Risks**:
+
 - TanStack Query's optimistic update pattern is new to the codebase —
   non-trivial first time. Budget a small spike at the start of the phase.
 - The client-side "filter bar" (spec §4.2) is literal substring match on
@@ -1563,7 +1572,7 @@ date-idea / trip lists fetches link previews for pasted URLs.
      RFC1918 / loopback / link-local / metadata service IPs). OG + Twitter
      card parsing.
    - `apps/backend/src/lib/metadata-cache.ts` — upsert by `(source,
-     source_id)`; TTL enforcement (30 days / 7 days).
+source_id)`; TTL enforcement (30 days / 7 days).
 2. **Per-type Zod validators** for `items.metadata` (spec §9.4), applied on
    POST/PATCH `/v1/items`.
 3. **Client**
@@ -1579,6 +1588,7 @@ date-idea / trip lists fetches link previews for pasted URLs.
 **Dependencies**: Phase 1. API keys must be in SSM (Phase 0 left placeholders).
 
 **Acceptance**:
+
 - TMDB search returns normalized rows; selecting one adds an item with poster
   URL populated.
 - Pasting a URL into a date-idea add form fetches the OG image + site name
@@ -1589,10 +1599,11 @@ date-idea / trip lists fetches link previews for pasted URLs.
 - Playwright: add a movie via search on a movie list.
 
 **Risks**:
+
 - TMDB + Google Books rate-limits in free tier. Cache aggressively; back off
   on 429.
 - Link-preview is the most security-sensitive surface added so far. SSRF
-  allowlist must block *all* private ranges, not just the obvious ones — use
+  allowlist must block _all_ private ranges, not just the obvious ones — use
   a tested IP-range library (`ipaddr.js` or equivalent).
 - Metadata cache could grow unbounded without retention — nightly cleanup job
   is acceptable v1.1; just log size in CloudWatch.
@@ -1618,7 +1629,7 @@ copy-link (no email; email invites are explicitly deferred — see §7).
    - `apps/backend/src/routes/v1/activity.ts` — `GET /v1/activity`,
      `POST /v1/activity/read`.
    - `apps/backend/src/lib/events.ts` — `recordEvent(listId, actorId, type,
-     payload)`. Called from every mutating list/item/member handler.
+payload)`. Called from every mutating list/item/member handler.
      Synchronous insert; no queue in v1.
 2. **Client**
    - `app/list/[id]/settings.tsx` — list settings sheet (Details, Members,
@@ -1639,6 +1650,7 @@ copy-link (no email; email invites are explicitly deferred — see §7).
 **Dependencies**: Phase 1 (lists + members). No email dependencies.
 
 **Acceptance**:
+
 - Two real users, two browsers: A creates a list, copies the share link,
   pastes it to B out-of-band, B opens it and accepts after OAuth sign-in,
   both see each other's upvotes aggregated.
@@ -1650,6 +1662,7 @@ copy-link (no email; email invites are explicitly deferred — see §7).
 - Playwright: two browser contexts, share-link accept flow.
 
 **Risks**:
+
 - Dual-context Playwright tests are fiddly — one golden path is enough.
 - Share-link leakage: a leaked token lets anyone join. Mitigations: tokens
   expire in 7 days, owner can revoke from settings, and `accept` requires
@@ -1687,6 +1700,7 @@ lands in the add-item confirm screen with preview already fetched.
 it for enrichment).
 
 **Acceptance**:
+
 - TestFlight build installs. Safari share sheet shows "Workshop." Tapping
   routes into the picker, then the confirm screen, with the URL prefilled and
   a preview rendered.
@@ -1695,13 +1709,14 @@ it for enrichment).
   share.
 
 **Risks**:
+
 - Native changes = TestFlight build. Costs EAS free-tier build minutes. Merge
   this phase separately from other native changes so a revert doesn't mean
   another native rebuild.
 - App group entitlements require Apple Developer portal configuration — the
   plugin can inject them into the project but Apple's side needs a manual
   capability enable (once). Track in HANDOFF.md.
-- Deep-link handling on app *resume* (not just launch) is easy to miss —
+- Deep-link handling on app _resume_ (not just launch) is easy to miss —
   hook both the initial URL and `Linking.addEventListener('url', ...)`.
 
 ---
@@ -1739,12 +1754,14 @@ full Playwright coverage, light-mode tokens, motion.
 E2E is fine; share extension is iOS-only).
 
 **Acceptance**:
+
 - Kill the dev server, reload the app: last-seen list renders from cache.
 - Resize a browser across 768px: layout reflows.
 - All Playwright flows green in CI.
 - Dark → light flip works without remounts.
 
 **Risks**:
+
 - `persistQueryClient` mis-hydration can show stale data indefinitely; set a
   `maxAge` (24h) and a buster key that bumps on schema changes.
 - Two-pane layout introduces divergent navigation paths; verify back-button
@@ -1803,7 +1820,7 @@ Layered, per spec §13:
    component code. Light-mode variant is a Phase 5 add. See Appendix §9 for
    the specific hex values baked into Phase 0.
 3. **EAS build budget → stay on free tier, reduce CI trigger rate.** 30
-   builds/month is plenty for Phase 4 (~3–5 expected builds) *if* CI doesn't
+   builds/month is plenty for Phase 4 (~3–5 expected builds) _if_ CI doesn't
    spend any on speculative work. Action items baked into Phase 0 / Phase 4
    deliverables:
    - Auto-TestFlight build should only run on `main` merges where
@@ -1833,7 +1850,7 @@ Layered, per spec §13:
      is deleted. Budget alerts (AWS Budgets → SNS → email) are unaffected.
    - Effort estimate: ~2 days (one-time; replaces Phase 0's magic-link
      work rather than adding on top).
-   Phase 0 and Phase 3 deliverables below already reflect this decision.
+     Phase 0 and Phase 3 deliverables below already reflect this decision.
 
 ### Still open (must answer before the phase that needs them)
 
@@ -1873,21 +1890,20 @@ These belong in a v1.1+ plan.
 
 (See §9 for the Phase 0 placeholder palette.)
 
-
-| Area | Added | Deleted | Renamed/Rewritten |
-|---|---|---|---|
-| `apps/backend/src/routes/` | `v1/auth.ts`, `v1/users.ts`, `v1/lists.ts`, `v1/items.ts`, `v1/invites.ts`, `v1/members.ts`, `v1/activity.ts`, `v1/search.ts`, `v1/link-preview.ts` | `auth.ts`, `items.ts` | — |
-| `apps/backend/src/db/schema.ts` | — | — | Full rewrite (no `magic_tokens`) |
-| `apps/backend/drizzle/` | `drop_v1_schema`, `v2_schema`, per-phase ALTERs | — | — |
-| `apps/backend/src/lib/` | `response.ts`, `metadata-cache.ts`, `events.ts`, `oauth/apple.ts`, `oauth/google.ts` | `email.ts` | — |
-| `apps/backend/src/middleware/` | `rate-limit.ts`, `authorize.ts` | — | `auth.ts` (now `requireAuth` + `requireListMember` helpers) |
-| `packages/shared/src/types.ts` | All v2 types | `RecItem`, `RecCategory`, old request/response | — |
-| `apps/workshop/app/` | `onboarding/`, `list/[id]/...`, `create-list/`, `activity.tsx`, `share/`, `settings.tsx` | existing `index.tsx`, `sign-in.tsx` | Full rewrite (OAuth buttons) |
-| `apps/workshop/src/components/` | — | All existing (`ItemCard`, `AddEditModal`, `CategoryDropdown`, `Tabs`, `DataPanel`, `ContextMenu`, `HeaderMenu`, `Header`, `theme.ts`) | — |
-| `apps/workshop/src/ui/` | Full primitives library (§5.3) | — | — |
-| `apps/workshop/plugins/share-extension/` | Phase 4 config plugin + Swift source | — | — |
-| `infra/` | `ssm.tf` — `apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY` | `ses.tf`; `ses_verified_email` variable; `SES_FROM_ADDRESS` env + SES IAM policy in `lambda.tf` | `lambda.tf` (OAuth + API key env vars) |
-| `docs/` | This file; phase-specific handoff notes as written | — | — |
+| Area                                     | Added                                                                                                                                               | Deleted                                                                                                                               | Renamed/Rewritten                                           |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `apps/backend/src/routes/`               | `v1/auth.ts`, `v1/users.ts`, `v1/lists.ts`, `v1/items.ts`, `v1/invites.ts`, `v1/members.ts`, `v1/activity.ts`, `v1/search.ts`, `v1/link-preview.ts` | `auth.ts`, `items.ts`                                                                                                                 | —                                                           |
+| `apps/backend/src/db/schema.ts`          | —                                                                                                                                                   | —                                                                                                                                     | Full rewrite (no `magic_tokens`)                            |
+| `apps/backend/drizzle/`                  | `drop_v1_schema`, `v2_schema`, per-phase ALTERs                                                                                                     | —                                                                                                                                     | —                                                           |
+| `apps/backend/src/lib/`                  | `response.ts`, `metadata-cache.ts`, `events.ts`, `oauth/apple.ts`, `oauth/google.ts`                                                                | `email.ts`                                                                                                                            | —                                                           |
+| `apps/backend/src/middleware/`           | `rate-limit.ts`, `authorize.ts`                                                                                                                     | —                                                                                                                                     | `auth.ts` (now `requireAuth` + `requireListMember` helpers) |
+| `packages/shared/src/types.ts`           | All v2 types                                                                                                                                        | `RecItem`, `RecCategory`, old request/response                                                                                        | —                                                           |
+| `apps/workshop/app/`                     | `onboarding/`, `list/[id]/...`, `create-list/`, `activity.tsx`, `share/`, `settings.tsx`                                                            | existing `index.tsx`, `sign-in.tsx`                                                                                                   | Full rewrite (OAuth buttons)                                |
+| `apps/workshop/src/components/`          | —                                                                                                                                                   | All existing (`ItemCard`, `AddEditModal`, `CategoryDropdown`, `Tabs`, `DataPanel`, `ContextMenu`, `HeaderMenu`, `Header`, `theme.ts`) | —                                                           |
+| `apps/workshop/src/ui/`                  | Full primitives library (§5.3)                                                                                                                      | —                                                                                                                                     | —                                                           |
+| `apps/workshop/plugins/share-extension/` | Phase 4 config plugin + Swift source                                                                                                                | —                                                                                                                                     | —                                                           |
+| `infra/`                                 | `ssm.tf` — `apple_services_id`, `apple_bundle_id`, `google_ios_client_id`, `google_web_client_id`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`           | `ses.tf`; `ses_verified_email` variable; `SES_FROM_ADDRESS` env + SES IAM policy in `lambda.tf`                                       | `lambda.tf` (OAuth + API key env vars)                      |
+| `docs/`                                  | This file; phase-specific handoff notes as written                                                                                                  | —                                                                                                                                     | —                                                           |
 
 ---
 
@@ -1901,25 +1917,42 @@ Structured so that swap-out is a single-file edit.
 ```ts
 const palette = {
   // raw hex — edit these to reskin
-  ink: { 900: "#0E0E10", 800: "#16161A", 700: "#1F1F25", 600: "#26262E", 500: "#33333D", 400: "#4A4A56" },
+  ink: {
+    900: "#0E0E10",
+    800: "#16161A",
+    700: "#1F1F25",
+    600: "#26262E",
+    500: "#33333D",
+    400: "#4A4A56",
+  },
   paper: { 50: "#F2F2F5", 200: "#A8A8B3", 400: "#6E6E78" },
   amber: { 500: "#F5A524", 600: "#E89611", muted: "#F5A52422" },
   green: { 500: "#3DD68C" },
-  red:   { 500: "#F05252" },
+  red: { 500: "#F05252" },
   listColors: {
-    sunset: "#F5A524", ocean: "#4CA7E8", forest: "#3DD68C",
-    grape:  "#A78BFA", rose:  "#F472B6", sand:   "#D4B896", slate: "#94A3B8",
+    sunset: "#F5A524",
+    ocean: "#4CA7E8",
+    forest: "#3DD68C",
+    grape: "#A78BFA",
+    rose: "#F472B6",
+    sand: "#D4B896",
+    slate: "#94A3B8",
   },
 } as const;
 
 export const tokens = {
   // semantic names — components only reference these
-  bg:      { canvas: palette.ink[900], surface: palette.ink[800], elevated: palette.ink[700] },
-  text:    { primary: palette.paper[50], secondary: palette.paper[200], muted: palette.paper[400], onAccent: palette.ink[900] },
-  border:  { subtle: palette.ink[600], default: palette.ink[500], strong: palette.ink[400] },
-  accent:  { default: palette.amber[500], hover: palette.amber[600], muted: palette.amber.muted },
-  status:  { success: palette.green[500], warning: palette.amber[500], danger: palette.red[500] },
-  list:    palette.listColors,
+  bg: { canvas: palette.ink[900], surface: palette.ink[800], elevated: palette.ink[700] },
+  text: {
+    primary: palette.paper[50],
+    secondary: palette.paper[200],
+    muted: palette.paper[400],
+    onAccent: palette.ink[900],
+  },
+  border: { subtle: palette.ink[600], default: palette.ink[500], strong: palette.ink[400] },
+  accent: { default: palette.amber[500], hover: palette.amber[600], muted: palette.amber.muted },
+  status: { success: palette.green[500], warning: palette.amber[500], danger: palette.red[500] },
+  list: palette.listColors,
 } as const;
 ```
 
@@ -1928,10 +1961,10 @@ export const tokens = {
 key as opaque; the client maps it via `tokens.list[key]`.
 
 **Tweakability rules**:
+
 - Components import `tokens`, never `palette` — renaming a hex value in
   `palette` ripples to every screen.
 - No hex literals in component files (lint rule optional; PR review
   enforces).
 - Adding light mode later is `tokens = { dark: { ... }, light: { ... } }`
   plus a `useTheme()` picker — no component changes.
-

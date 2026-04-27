@@ -41,17 +41,17 @@ from an empty DB. End state: 3 rows in the journal, full v2 schema, `/health` gr
 
 1. Pull the prod connection string:
 
-    ```bash
-    AWS_PROFILE=workshop-prod aws ssm get-parameter \
-      --name /workshop-prod/db/url \
-      --with-decryption --query 'Parameter.Value' --output text
-    ```
+   ```bash
+   AWS_PROFILE=workshop-prod aws ssm get-parameter \
+     --name /workshop-prod/db/url \
+     --with-decryption --query 'Parameter.Value' --output text
+   ```
 
-    Or use the repo helper:
+   Or use the repo helper:
 
-    ```bash
-    AWS_PROFILE=workshop-prod ./scripts/db-connect.sh
-    ```
+   ```bash
+   AWS_PROFILE=workshop-prod ./scripts/db-connect.sh
+   ```
 
 2. **Verify the actual DB state first** (`\dt public.*` and `\dt drizzle.*` in psql)
    before assuming any baseline-only fix will work. Compare against
@@ -60,25 +60,25 @@ from an empty DB. End state: 3 rows in the journal, full v2 schema, `/health` gr
 3. If the on-disk state matches a clean "v1 schema applied, journal missing" world, run
    the backfill SQL:
 
-    ```bash
-    AWS_PROFILE=workshop-prod psql "$DATABASE_URL" \
-      -f apps/backend/scripts/2026-04-24-baseline-drizzle-migrations.sql
-    ```
+   ```bash
+   AWS_PROFILE=workshop-prod psql "$DATABASE_URL" \
+     -f apps/backend/scripts/2026-04-24-baseline-drizzle-migrations.sql
+   ```
 
-    Otherwise reconcile state by hand (or, if data is disposable, drop everything and
-    let the migration journal run end-to-end from empty).
+   Otherwise reconcile state by hand (or, if data is disposable, drop everything and
+   let the migration journal run end-to-end from empty).
 
 4. Re-run the failed `Deploy Backend` workflow and verify `/health`:
 
-    ```bash
-    curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)/health
-    AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 5m --filter error
-    ```
+   ```bash
+   curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)/health
+   AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 5m --filter error
+   ```
 
 **Risks for any future re-run**:
 
 - `0001_drop_v1_schema` drops `users`, `magic_tokens`, `rec_items` with `CASCADE`.
-  Snapshot the Neon branch first (*Branch → Create branch from current state*) unless
+  Snapshot the Neon branch first (_Branch → Create branch from current state_) unless
   the data is known-disposable.
 - The backfill SQL is idempotent — safe to re-run.
 
@@ -164,14 +164,15 @@ Required:
       `dev.josh.workshop.web`. This identifier becomes the `aud` claim on web identity
       tokens and must be pasted into SSM as `apple_services_id`.
 - [ ] On that Services ID, configure **Return URLs**. For Phase 0c:
-    - `http://localhost:8081` (Expo web dev)
-    - `https://workshop.pages.dev` (temporary Cloudflare Pages URL; add the custom
-      domain later when it lands)
+  - `http://localhost:8081` (Expo web dev)
+  - `https://workshop.pages.dev` (temporary Cloudflare Pages URL; add the custom
+    domain later when it lands)
 - [ ] Create a **Sign in with Apple key** (`.p8`). Not strictly required for the
       identity-token verification path the backend uses, but keep the key and Key ID
       in 1Password in case we later need to issue our own Apple client secrets.
 
 Outputs to paste into SSM:
+
 - `apple_bundle_id` → `dev.josh.workshop`
 - `apple_services_id` → `dev.josh.workshop.web`
 
@@ -192,6 +193,7 @@ Required:
       Copy the client ID — it is the `aud` for web Google tokens.
 
 Outputs to paste into SSM:
+
 - `google_ios_client_id` → `<ios-client-id>.apps.googleusercontent.com`
 - `google_web_client_id` → `<web-client-id>.apps.googleusercontent.com`
 
@@ -204,6 +206,7 @@ Outputs to paste into SSM:
       enable the **Books API** service first.
 
 Outputs to paste into SSM:
+
 - `tmdb_api_key` → `<v3 auth API key>` (not the v4 Read Access Token)
 - `google_books_api_key` → `<api key>`
 
@@ -263,14 +266,14 @@ AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 5m --filter OAuthVerifyError
       **Connect to Git** → pick `joshlebed/workshop`.
 - [ ] Project name: `workshop`. Production branch: `main`.
 - [ ] Build config:
-    - Build command: `pnpm install --frozen-lockfile && pnpm --filter workshop-app exec expo export --platform web`
-    - Build output directory: `apps/workshop/dist`
-    - Root directory: (repo root)
-    - Node version: `20.19` (env var `NODE_VERSION`)
+  - Build command: `pnpm install --frozen-lockfile && pnpm --filter workshop-app exec expo export --platform web`
+  - Build output directory: `apps/workshop/dist`
+  - Root directory: (repo root)
+  - Node version: `20.19` (env var `NODE_VERSION`)
 - [ ] Environment variables (Production):
-    - `EXPO_PUBLIC_API_URL` → the Lambda's API Gateway URL from
-      `terraform output -raw api_url`
-    - `NODE_VERSION` → `20.19`
+  - `EXPO_PUBLIC_API_URL` → the Lambda's API Gateway URL from
+    `terraform output -raw api_url`
+  - `NODE_VERSION` → `20.19`
 - [ ] First build runs automatically on push to `main`. URL lands at
       `https://workshop.pages.dev`.
 - [ ] Once live, add that URL to Apple Services ID return URLs (§2) and Google OAuth
@@ -301,24 +304,25 @@ Wiring:
   (it needs a config plugin to enable the iOS entitlement). Expo prebuild will pick
   it up when we eventually need a native build.
 - `apps/workshop/src/hooks/useAuth.tsx`:
-    - `signInWithApple` (iOS native): `AppleAuthentication.signInAsync({ requestedScopes: [FULL_NAME, EMAIL], nonce })`,
-      POST `{ identityToken, nonce, email, fullName }` to `/v1/auth/apple`.
-    - `signInWithApple` (web): load Sign in with Apple JS, render the required styled
-      button (an AppleJS constraint — Apple reviews the login UI), wire the
-      `onSuccess` to POST the token. The `.web.tsx` split applies here; don't try
-      to run `AppleAuthentication` on web.
-    - `signInWithGoogle` (iOS): `expo-auth-session`'s `Google.useAuthRequest` with
-      `iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`. Prompt returns an
-      `idToken`; POST to `/v1/auth/google`.
-    - `signInWithGoogle` (web): Google Identity Services' `google.accounts.id`
-      button, same idea — yields an `idToken`, POST to `/v1/auth/google`.
-- Add EXPO_PUBLIC_ env wiring:
-    - `EXPO_PUBLIC_APPLE_SERVICES_ID`
-    - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
-    - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+  - `signInWithApple` (iOS native): `AppleAuthentication.signInAsync({ requestedScopes: [FULL_NAME, EMAIL], nonce })`,
+    POST `{ identityToken, nonce, email, fullName }` to `/v1/auth/apple`.
+  - `signInWithApple` (web): load Sign in with Apple JS, render the required styled
+    button (an AppleJS constraint — Apple reviews the login UI), wire the
+    `onSuccess` to POST the token. The `.web.tsx` split applies here; don't try
+    to run `AppleAuthentication` on web.
+  - `signInWithGoogle` (iOS): `expo-auth-session`'s `Google.useAuthRequest` with
+    `iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`. Prompt returns an
+    `idToken`; POST to `/v1/auth/google`.
+  - `signInWithGoogle` (web): Google Identity Services' `google.accounts.id`
+    button, same idea — yields an `idToken`, POST to `/v1/auth/google`.
+- Add EXPO*PUBLIC* env wiring:
+  - `EXPO_PUBLIC_APPLE_SERVICES_ID`
+  - `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
+  - `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
 
   Set the web values via the Cloudflare Pages env (§6). Set the iOS values via the
   EAS Secret store if/when a native build is needed (deferred; Phase 4-ish).
+
 - Delete the `window.alert` / `Alert.alert` warning dialogs in
   `apps/workshop/app/sign-in.tsx`. Keep the dev-auth button behind
   `EXPO_PUBLIC_DEV_AUTH === "1"`.

@@ -97,7 +97,7 @@ land as additional routes inside the same app.
   drift waiting to happen. Currently declared: Sign In with Apple (via the
   `expo-apple-authentication` plugin).
 - **GitHub Actions `permissions:` blocks aren't least-privilege by default** — `permissions:
-  contents: read` *replicates* GitHub's default for push events, doesn't restrict it. Any new
+contents: read` _replicates_ GitHub's default for push events, doesn't restrict it. Any new
   action that needs PR metadata (e.g. `dorny/paths-filter`, label-on-PR, comment-on-PR) needs
   an explicit grant like `pull-requests: read`. Failure mode is opaque at runtime
   (`"Resource not accessible by integration"`) and isn't caught by `actionlint`.
@@ -169,7 +169,7 @@ they break in different ways and need different recovery.
 - **Submit failures** are usually Apple/EAS infrastructure transients. App Store Connect
   was 5xxing; the EAS free-tier submission worker pool was exhausted ("Failed to create
   worker instance"); a network blip mid-upload. Recovery: `gh run rerun --failed <run-id>`
-  re-runs *only* the submit job against the existing IPA — no rebuild, no extra build minute
+  re-runs _only_ the submit job against the existing IPA — no rebuild, no extra build minute
   burned. The submit job also has an internal 3× retry with 60s backoff for one-shot
   transients.
 
@@ -192,7 +192,7 @@ EAS reflects Apple Developer Portal capability state from your code, **one-way**
 
 - Capability declared in code (via `app.json` `ios.entitlements` or via an Expo config plugin)
   → EAS enables it in the portal on the next build.
-- Capability enabled in the portal **but not declared in code** → EAS *disables* it on the
+- Capability enabled in the portal **but not declared in code** → EAS _disables_ it on the
   next `eas credentials` or build.
 
 Practical implication: any capability you toggle directly in the Apple Developer Portal will
@@ -202,13 +202,13 @@ get reverted unless you also declare it in code. Currently declared:
 
 Phase 4's share extension will declare **App Groups** (`group.dev.josh.workshop`) via a config
 plugin. The App Group identifier was registered in the Apple portal during this session as
-preventive setup — but the *capability* on the App ID was auto-disabled by EAS sync because
+preventive setup — but the _capability_ on the App ID was auto-disabled by EAS sync because
 no code declaration exists yet. That's expected and self-corrects when Phase 4 ships.
 
 ### Capability changes invalidate provisioning profiles
 
 When you toggle a capability on an App ID (e.g. enabling Sign In with Apple, App Groups,
-Push Notifications), Apple invalidates existing provisioning profiles. EAS *should* detect
+Push Notifications), Apple invalidates existing provisioning profiles. EAS _should_ detect
 this and regenerate, but doesn't always. Symptom: TestFlight build fails with
 `"Provisioning profile ... doesn't include the <foo> capability"`.
 
@@ -229,7 +229,7 @@ succeeds.
 ### ASC API key role scoping
 
 EAS auto-creates an App Store Connect API key for the **submit** step the first time you
-submit (it shows in `eas credentials -p ios` as `[Expo] EAS Submit ...`). That key is *not*
+submit (it shows in `eas credentials -p ios` as `[Expo] EAS Submit ...`). That key is _not_
 automatically usable for the **build** step's credential operations (regenerating provisioning
 profiles non-interactively in CI). Without a build-side key registered, CI fails with
 `"In order to configure your Provisioning Profile, authentication with an ASC API key is
@@ -272,18 +272,18 @@ The IPA URL is in the EAS build details page (`https://expo.dev/accounts/joshleb
 This map lives here because state is scattered across many systems and an agent
 otherwise has to re-derive "where do I look for X?" every session.
 
-| System | URL | What it owns |
-|---|---|---|
-| **EAS dashboard** | <https://expo.dev/accounts/joshlebed/projects/workshop> | iOS build history + IPAs, submission queue status, fingerprint tags, EAS Update channels, monthly build-minute quota |
-| **App Store Connect** | <https://appstoreconnect.apple.com> | TestFlight builds, app metadata, App Store listings, ASC API keys |
-| **Apple Developer Portal** | <https://developer.apple.com/account/resources/identifiers/list> | App IDs, capabilities, App Groups, provisioning profiles, signing certificates |
-| **Google Cloud Console** | <https://console.cloud.google.com/apis/credentials?project=workshop-494616&authuser=1> | OAuth client IDs (iOS, web), API keys (Books), enabled APIs |
-| **TMDB** | <https://www.themoviedb.org/settings/api> | TMDB v3 API key (movies/TV enrichment) |
-| **AWS SSM Parameter Store** | `aws ssm describe-parameters` (region us-east-1, prefix `/workshop-prod/`) | Lambda env values (DATABASE_URL, OAuth audiences, API keys); `lifecycle { ignore_changes = [value] }` so direct `put-parameter --overwrite` doesn't drift Terraform state |
-| **HCP Terraform** | <https://app.terraform.io/app/josh-personal-org/workspaces/workshop-prod> | All AWS infra state (Lambda, IAM, SSM resources, API Gateway, etc.) |
-| **Cloudflare Pages** | <https://dash.cloudflare.com/?to=/:account/pages/view/workshop> | Web build env vars (the `EXPO_PUBLIC_*` audience values), build logs, production URL `workshop-a2v.pages.dev` |
-| **GitHub Actions** | <https://github.com/joshlebed/workshop/actions> | CI workflow runs, deploy workflow runs, fingerprint tags (as git tags) |
-| **Neon** | (managed; connection string in SSM `/workshop-prod/db/url`) | Production Postgres data |
+| System                      | URL                                                                                    | What it owns                                                                                                                                                              |
+| --------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **EAS dashboard**           | <https://expo.dev/accounts/joshlebed/projects/workshop>                                | iOS build history + IPAs, submission queue status, fingerprint tags, EAS Update channels, monthly build-minute quota                                                      |
+| **App Store Connect**       | <https://appstoreconnect.apple.com>                                                    | TestFlight builds, app metadata, App Store listings, ASC API keys                                                                                                         |
+| **Apple Developer Portal**  | <https://developer.apple.com/account/resources/identifiers/list>                       | App IDs, capabilities, App Groups, provisioning profiles, signing certificates                                                                                            |
+| **Google Cloud Console**    | <https://console.cloud.google.com/apis/credentials?project=workshop-494616&authuser=1> | OAuth client IDs (iOS, web), API keys (Books), enabled APIs                                                                                                               |
+| **TMDB**                    | <https://www.themoviedb.org/settings/api>                                              | TMDB v3 API key (movies/TV enrichment)                                                                                                                                    |
+| **AWS SSM Parameter Store** | `aws ssm describe-parameters` (region us-east-1, prefix `/workshop-prod/`)             | Lambda env values (DATABASE_URL, OAuth audiences, API keys); `lifecycle { ignore_changes = [value] }` so direct `put-parameter --overwrite` doesn't drift Terraform state |
+| **HCP Terraform**           | <https://app.terraform.io/app/josh-personal-org/workspaces/workshop-prod>              | All AWS infra state (Lambda, IAM, SSM resources, API Gateway, etc.)                                                                                                       |
+| **Cloudflare Pages**        | <https://dash.cloudflare.com/?to=/:account/pages/view/workshop>                        | Web build env vars (the `EXPO_PUBLIC_*` audience values), build logs, production URL `workshop-a2v.pages.dev`                                                             |
+| **GitHub Actions**          | <https://github.com/joshlebed/workshop/actions>                                        | CI workflow runs, deploy workflow runs, fingerprint tags (as git tags)                                                                                                    |
+| **Neon**                    | (managed; connection string in SSM `/workshop-prod/db/url`)                            | Production Postgres data                                                                                                                                                  |
 
 If you need to **change** something, change it in the system listed above. If you need to
 **read** the current value, read it there too — don't trust caches in code or Terraform that
@@ -297,6 +297,7 @@ HCP's state lock doesn't auto-release when a terraform process is killed (Ctrl-C
 runner crash). Symptoms: `terraform apply` hangs or fails with `Error acquiring the state lock`.
 
 Fix:
+
 1. Open <https://app.terraform.io/app/josh-personal-org/workspaces/workshop-prod>.
 2. Click **Unlock** (top right).
 3. Retry the operation.
@@ -313,7 +314,7 @@ cleanly.
   var gets updated, in-flight requests may fail briefly).
 - **Ask first**: deleting DB data, changing the Lambda runtime major version, rotating the OIDC
   provider, adding a new AWS service (every service has a free-tier implication), touching
-  anything in a *different* AWS account than Workshop's.
+  anything in a _different_ AWS account than Workshop's.
 
 ## Local development
 

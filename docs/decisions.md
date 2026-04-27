@@ -43,6 +43,7 @@ reads `DATABASE_URL` from an SSM SecureString populated from the `database_url` 
 (value in `terraform.tfvars.local`, gitignored).
 
 **Why**:
+
 - Free tier covers realistic personal-project usage (0.5 GB storage, 100 CU-hours/mo,
   autosuspend after 5 min idle). RDS `db.t4g.micro` is free only for the first 12 months, then
   ~$13-15/mo. Savings after year 1: ~$180/yr.
@@ -52,6 +53,7 @@ reads `DATABASE_URL` from an SSM SecureString populated from the `database_url` 
 - Wire-compatible Postgres 17. Drizzle + `postgres-js` driver works unchanged.
 
 **Tradeoffs**:
+
 - New vendor to manage (console, billing, API tokens) outside AWS.
 - First query after 5 min idle pays a cold-start (~500ms-1s). Acceptable for a personal watchlist.
 - Free-tier compute suspension is per-project; if this grows into multiple tenants, re-evaluate.
@@ -87,7 +89,7 @@ outgrow HCP free tier.
 
 ## 2026-04 — Email magic codes (not magic links)
 
-**Context**: MVP needs passwordless auth. Magic *links* require universal-link configuration on
+**Context**: MVP needs passwordless auth. Magic _links_ require universal-link configuration on
 iOS, which is finicky in Expo Go (dev) and requires Apple App Site Association files.
 
 **Decision**: 6-digit numeric codes sent via SES. User types the code into the app.
@@ -138,7 +140,7 @@ a single "TestFlight failure," and **the only retry path was rebuilding** — bu
 
 **Decision**: Split into independent jobs (`fingerprint` → `build` → `submit` → tag-on-success).
 The `submit` job has an internal 3× retry with 60s backoff for one-shot transients. If the
-internal retries exhaust, `gh run rerun --failed <run-id>` re-runs *only* `submit` against the
+internal retries exhaust, `gh run rerun --failed <run-id>` re-runs _only_ `submit` against the
 existing IPA — no rebuild.
 
 **Why**: We hit this exact failure on 2026-04-27 — an EAS submission worker timed out after
@@ -147,10 +149,10 @@ was a rebuild. The split costs ~10s of cold-start overhead per workflow run (the
 duplicates checkout + node setup) but eliminates the rebuild-on-submit-failure cost. With
 EAS free tier capped at 30 build minutes/month, that's worth a lot.
 
-**Tradeoffs**: The retry loop will burn ~3 minutes on a *real* Apple rejection (it can't
+**Tradeoffs**: The retry loop will burn ~3 minutes on a _real_ Apple rejection (it can't
 distinguish transient from real from exit code alone). Rare; cost acceptable.
 
-**Out of scope** (deferred): splitting into two *workflows* (rather than two jobs) for
+**Out of scope** (deferred): splitting into two _workflows_ (rather than two jobs) for
 cleaner per-workflow run history. The job split gets ~80% of the value.
 
 ## 2026-04 — Stay on EAS free tier; manual recovery for queue contention
@@ -161,6 +163,7 @@ timeouts. EAS paid tier ($99/yr) gives dedicated submission workers and generall
 response times.
 
 **Decision**: Stay on free tier. When queue contention happens, recovery options are:
+
 1. Cancel the stuck workflow run + queued submissions, retry later when the queue is less
    congested.
 2. Bypass EAS submit entirely: download the IPA from the EAS build dashboard, upload via
@@ -188,7 +191,7 @@ build.
 **Why**: 30 build minutes/month is the free-tier ceiling. We typically expect ~3–5 native
 builds/month based on phase-level estimates. Running on PRs would consume far more.
 
-**Tradeoffs**: TestFlight failures only surface *post-merge*. A PR that breaks the iOS
+**Tradeoffs**: TestFlight failures only surface _post-merge_. A PR that breaks the iOS
 build will reach `main`, fail testflight.yml, and require a follow-up fix PR. Mitigation:
 the `Mobile Metro bundle` PR check catches most native-side problems (Metro codegen
 errors, RN-drift past the SDK matrix) before merge.

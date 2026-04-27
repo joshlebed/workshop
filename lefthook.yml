@@ -5,6 +5,10 @@ pre-commit:
       glob: "*.{js,jsx,ts,tsx,cjs,mjs,json,jsonc}"
       run: pnpm exec biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
       stage_fixed: true
+    prettier-md:
+      glob: "*.md"
+      run: pnpm exec prettier --write {staged_files}
+      stage_fixed: true
     gitleaks:
       # Skip silently if gitleaks isn't installed — CI enforces regardless.
       skip:

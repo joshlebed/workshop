@@ -12,6 +12,8 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
+    "format:md": "prettier --write \"**/*.md\"",
+    "format:md:check": "prettier --check \"**/*.md\"",
     "test": "pnpm -r --parallel test",
     "knip": "knip",
     "dev:backend": "pnpm --filter @workshop/backend dev",
@@ -28,6 +30,7 @@
     "concurrently": "^9.2.1",
     "knip": "6.6.3",
     "lefthook": "2.1.6",
+    "prettier": "^3.8.3",
     "typescript": "5.9.3"
   }
 }
