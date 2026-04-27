@@ -80,6 +80,13 @@ land as additional routes inside the same app.
   `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`. Dependabot rolls them forward weekly.
   (2) Never interpolate `${{ … }}` inside a shell `run:` block — hoist into the step's `env:`
   and read as `$VAR` in bash. Both patterns are visible throughout `.github/workflows/*`.
+- **iOS capabilities are config-as-code.** When adding an iOS capability (App Groups,
+  Push Notifications, Associated Domains, etc.), declare it in `apps/workshop/app.json`
+  (`ios.entitlements`) or via an Expo config plugin **before** enabling it in the Apple
+  Developer portal. EAS Build's capability sync silently reverts any portal-only changes
+  on the next build, so a manual portal toggle without a matching code declaration is
+  drift waiting to happen. Currently declared: Sign In with Apple (via the
+  `expo-apple-authentication` plugin).
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
   unless there's a specific reason (security fix, unblocking work). Weekly PRs on Mondays.
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full error objects:
