@@ -27,6 +27,12 @@ fi
 export DEV_AUTH_ENABLED=1
 export EXPO_PUBLIC_DEV_AUTH=1
 export EXPO_PUBLIC_API_URL="$BACKEND_URL"
+# Stub OAuth audiences so the sign-in screen treats Apple + Google as
+# available. Tests stub the SDK callbacks directly — the values are never
+# sent to the real providers.
+export EXPO_PUBLIC_APPLE_SERVICES_ID="${EXPO_PUBLIC_APPLE_SERVICES_ID:-dev.josh.workshop.web}"
+export EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID="${EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID:-test-google-client.apps.googleusercontent.com}"
+export EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID="${EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID:-test-google-ios-client.apps.googleusercontent.com}"
 
 cleanup() {
   if [[ -n "${BACKEND_PID:-}" ]] && kill -0 "$BACKEND_PID" 2>/dev/null; then

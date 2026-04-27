@@ -1,33 +1,45 @@
 import { useState } from "react";
-import { Alert, Platform, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { useAuth } from "../src/hooks/useAuth";
+import { useAppleSignIn } from "../src/lib/oauth/apple";
+import { useGoogleSignIn } from "../src/lib/oauth/google";
 import { Button, Card, Text, tokens } from "../src/ui/index";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 
-function warn(message: string) {
-  if (Platform.OS === "web") {
-    if (typeof window !== "undefined" && typeof window.alert === "function") {
-      window.alert(message);
-    }
-  } else {
-    Alert.alert("Sign in", message);
-  }
-}
-
 export default function SignIn() {
-  // Phase 0c destructures signInWithApple / signInWithGoogle here and drops
-  // them into the SDK callbacks — see docs/plans/HANDOFF.md.
-  const { signInDev } = useAuth();
+  const { signInWithApple, signInWithGoogle, signInDev } = useAuth();
+  const apple = useAppleSignIn();
+  const google = useGoogleSignIn();
   const [busy, setBusy] = useState<"apple" | "google" | "dev" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleApple() {
-    warn("Apple Sign-In is wired to the backend but requires provider portal config (Phase 0c).");
+    try {
+      setBusy("apple");
+      setError(null);
+      const result = await apple.signIn();
+      if (!result) return;
+      await signInWithApple(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "apple sign-in failed");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function handleGoogle() {
-    warn("Google Sign-In is wired to the backend but requires provider portal config (Phase 0c).");
+    try {
+      setBusy("google");
+      setError(null);
+      const result = await google.signIn();
+      if (!result) return;
+      await signInWithGoogle(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "google sign-in failed");
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function handleDev() {
@@ -58,7 +70,7 @@ export default function SignIn() {
           variant="secondary"
           size="lg"
           loading={busy === "apple"}
-          disabled={busy !== null}
+          disabled={busy !== null || !apple.available}
           onPress={handleApple}
         />
         <Button
@@ -67,7 +79,7 @@ export default function SignIn() {
           variant="secondary"
           size="lg"
           loading={busy === "google"}
-          disabled={busy !== null}
+          disabled={busy !== null || !google.available}
           onPress={handleGoogle}
         />
         {DEV_AUTH_ENABLED ? (
@@ -80,6 +92,11 @@ export default function SignIn() {
             disabled={busy !== null}
             onPress={handleDev}
           />
+        ) : null}
+        {!apple.available && !google.available && !DEV_AUTH_ENABLED ? (
+          <Text tone="muted" style={styles.help} testID="sign-in-providers-unconfigured">
+            Sign-in providers are still being configured.
+          </Text>
         ) : null}
         {error ? (
           <Text tone="danger" style={styles.error}>
@@ -107,5 +124,6 @@ const styles = StyleSheet.create({
   tagline: { textAlign: "center", maxWidth: 420 },
   card: { gap: tokens.space.md, maxWidth: 420, width: "100%", alignSelf: "center" },
   error: { textAlign: "center" },
+  help: { textAlign: "center" },
   footer: { textAlign: "center", maxWidth: 420, alignSelf: "center" },
 });
