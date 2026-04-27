@@ -82,12 +82,21 @@ This phase is what makes the next agent fast. Do not skip it.
     - **Test plan**: checklist of acceptance criteria from the plan, plus any manual verification you did.
     - **Follow-ups**: anything deferred, with a 1-line reason for each.
 
-13. **Try to arm auto-merge** so the PR self-merges when checks pass:
+13. **Post a short report to the user before merging.** Before arming auto-merge or merging manually, send a message (under 150 words) summarizing:
+    - The chunk that shipped and the PR URL
+    - What landed, in 2–3 bullets (file/area level, not line-by-line)
+    - Acceptance criteria verified (typecheck/lint/test/manual checks)
+    - Any deviations from the plan, follow-ups, or things the human should glance at
+    - That you're about to arm auto-merge (or merge manually) unless they say otherwise
+
+    This is the human's last chance to catch a framing issue before the PR lands. If running fully autonomously, still post the report — it lands in the transcript and PR description for after-the-fact review. Don't wait for confirmation in autonomous mode; proceed to step 14 immediately after posting.
+
+14. **Try to arm auto-merge** so the PR self-merges when checks pass:
     `gh pr merge <PR> --auto --squash --delete-branch`. The project uses squash merges (verify: `git log origin/main --oneline -10`); pass `--squash` explicitly so it's not subject to repo defaults changing.
 
-    Auto-merge requires GitHub branch protection to be configured, which on a private repo on the free GitHub plan is unavailable. **If the command fails with `"Auto merge is not allowed for this repository"` or similar, that's the cause — silently fall back to manual merge in step 14.** Don't surface this as a problem; it's just a config gap.
+    Auto-merge requires GitHub branch protection to be configured, which on a private repo on the free GitHub plan is unavailable. **If the command fails with `"Auto merge is not allowed for this repository"` or similar, that's the cause — silently fall back to manual merge in step 15.** Don't surface this as a problem; it's just a config gap.
 
-14. Poll CI: `gh pr checks <PR>` until all checks finish.
+15. Poll CI: `gh pr checks <PR>` until all checks finish.
     - **If auto-merge is armed and required checks pass**: GitHub fires the merge automatically. Verify with `gh pr view <PR> --json state` (should be `MERGED`). Move on.
     - **If auto-merge is NOT armed and required checks pass**: run `gh pr merge <PR> --squash --delete-branch` manually.
     - **A required check fails**:
@@ -97,14 +106,14 @@ This phase is what makes the next agent fast. Do not skip it.
     - Niteshift's `niteshift-check` is intentionally non-required — it's blocking only on the agent's own session, not on merge.
     - Cloudflare Pages preview check is informational; treat it as a hint, not a blocker.
 
-15. Verify the merge triggered the right downstream workflows:
+16. Verify the merge triggered the right downstream workflows:
     - Backend changes → `Deploy Backend` runs.
     - Mobile changes → `Deploy Mobile (OTA)` runs; `TestFlight` may run if the iOS fingerprint changed (`@expo/fingerprint` decides).
     - Use `gh run list --branch=main --limit 5` to confirm.
     - **Heads-up: workflow path-filter self-trigger.** If the chunk modified a workflow file (e.g. `.github/workflows/foo.yml`) AND that workflow's own `on.push.paths:` includes the workflow file's filename, merging will trigger that workflow on the merge commit even if no other paths matched. Check both directions when reviewing post-merge runs so you don't get confused by a TestFlight run firing on a CI-only PR.
     - If a deploy fails, surface the failure log to the human — don't try to re-trigger blindly.
 
-16. Final message: 1 short paragraph summarizing what shipped, what the next chunk is, and any human attention required.
+17. Final message: 1 short paragraph summarizing what shipped, what the next chunk is, and any human attention required.
 
 ---
 
