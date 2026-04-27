@@ -118,8 +118,10 @@ export interface ListMemberSummary {
 }
 
 /**
- * Reserved for Phase 3 — `GET /v1/lists/:id` returns it now as an empty array
- * so the response shape doesn't churn when invites land.
+ * `GET /v1/lists/:id` returns one of these per still-pending invite (not
+ * yet accepted, not revoked, not expired). Email invites are explicitly
+ * deferred — `email` is always `null` in v1; the field is kept on the
+ * shape so the schema doesn't churn if email invites land later.
  */
 export interface PendingInvite {
   id: string;
@@ -211,6 +213,63 @@ export interface ItemListResponse {
 
 export interface ItemResponse {
   item: Item;
+}
+
+// --- Invites + members (Phase 3a-1) ---
+//
+// v1 ships share-link invites only — `email` is always `null` on the
+// returned shape. Tokens are 32-byte URL-safe base64 with a 7-day
+// `expiresAt`; the owner can revoke at any time. `accept` requires an
+// authenticated user and is idempotent (re-accepting a still-valid
+// token while already a member is a no-op).
+
+export interface Invite {
+  id: string;
+  listId: string;
+  email: string | null;
+  /**
+   * Token is only returned to the inviter on `POST /v1/lists/:id/invites`
+   * so they can build the share URL. Subsequent reads (`pendingInvites`
+   * on `GET /v1/lists/:id`) omit it — exposing it on every list-detail
+   * fetch would leak the token to non-owners.
+   */
+  token?: string;
+  invitedBy: string;
+  createdAt: string;
+  expiresAt: string | null;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+}
+
+/**
+ * Body of `POST /v1/lists/:id/invites`. `email` is reserved for a future
+ * email-invite flow; v1 ignores it (always treats the request as
+ * share-link-only) so the field doesn't churn when email invites land.
+ */
+export interface CreateInviteRequest {
+  email?: string | null;
+}
+
+export interface InviteResponse {
+  invite: Invite;
+}
+
+/**
+ * `POST /v1/invites/:token/accept` returns the joined list and the
+ * member row that was created (or already existed). Idempotent on
+ * re-accept while already a member.
+ */
+export interface AcceptInviteResponse {
+  list: List;
+  member: ListMemberSummary;
+}
+
+/**
+ * `DELETE /v1/lists/:id/members/:userId` shape — owner-removes-anyone or
+ * non-owner-self-leaves. Returned `{ ok: true }` on success.
+ */
+export interface MemberRemoveResponse {
+  ok: true;
 }
 
 // --- Search + enrichment (Phase 2a-1) ---
