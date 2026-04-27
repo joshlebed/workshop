@@ -11,7 +11,14 @@
       "bundleIdentifier": "dev.josh.workshop",
       "icon": "./assets/Workshop.dev.icon",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33"
+            ]
+          }
+        ]
       }
     },
     "android": {

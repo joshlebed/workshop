@@ -18,7 +18,10 @@
       "autoIncrement": true,
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://flaqpucm3f.execute-api.us-east-1.amazonaws.com"
+        "EXPO_PUBLIC_API_URL": "https://flaqpucm3f.execute-api.us-east-1.amazonaws.com",
+        "EXPO_PUBLIC_APPLE_SERVICES_ID": "dev.josh.workshop.web",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com"
       }
     }
   },
