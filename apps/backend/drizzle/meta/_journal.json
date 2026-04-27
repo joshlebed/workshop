@@ -29,6 +29,13 @@
       "when": 1777139340493,
       "tag": "0003_add_metadata_cache_expires_at",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777308191288,
+      "tag": "0004_spotify_integration",
+      "breakpoints": true
     }
   ]
 }

@@ -84,3 +84,43 @@ resource "aws_ssm_parameter" "google_books_api_key" {
     ignore_changes = [value]
   }
 }
+
+resource "aws_ssm_parameter" "spotify_client_id" {
+  name  = "/${local.prefix}/spotify_client_id"
+  type  = "SecureString"
+  value = var.spotify_client_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "spotify_client_secret" {
+  name  = "/${local.prefix}/spotify_client_secret"
+  type  = "SecureString"
+  value = var.spotify_client_secret
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "spotify_redirect_uri" {
+  name  = "/${local.prefix}/spotify_redirect_uri"
+  type  = "SecureString"
+  value = var.spotify_redirect_uri
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "spotify_app_redirect_uri" {
+  name  = "/${local.prefix}/spotify_app_redirect_uri"
+  type  = "SecureString"
+  value = var.spotify_app_redirect_uri
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
