@@ -172,7 +172,13 @@ export default function ListDetail() {
             <Text variant="heading">List</Text>
           )}
         </View>
-        <View style={styles.headerSpacer} />
+        <IconButton
+          accessibilityLabel="Open list settings"
+          onPress={() => router.push(`/list/${id}/settings`)}
+          testID="list-settings"
+        >
+          <Text style={styles.headerGlyph}>⋯</Text>
+        </IconButton>
       </View>
 
       <View style={styles.toolbar}>
@@ -373,7 +379,6 @@ const styles = StyleSheet.create({
   headerEmoji: { fontSize: tokens.font.size.lg },
   headerName: { maxWidth: 240 },
   headerStripe: { height: 3, width: 48, borderRadius: 2 },
-  headerSpacer: { width: 40 },
   toolbar: {
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,

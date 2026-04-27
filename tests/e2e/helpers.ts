@@ -1,8 +1,9 @@
 // Shared Playwright helpers for the workshop E2E suite.
 
-import type { Page, Route } from "@playwright/test";
+import type { APIRequestContext, Page, Route } from "@playwright/test";
 
 const AUTO_DEV_OPT_OUT_KEY = "workshop.disable-auto-dev";
+const SESSION_TOKEN_KEY = "workshop.session.v1";
 
 /**
  * Disable the boot-time auto-dev-sign-in. With EXPO_PUBLIC_DEV_AUTH=1 the
@@ -71,4 +72,43 @@ export async function mockGoogleAuthEndpoint(page: Page, authResponse: unknown):
       body: JSON.stringify(authResponse),
     });
   });
+}
+
+interface DevAuthResponse {
+  token: string;
+  user: { id: string; email: string | null; displayName: string | null };
+  needsDisplayName: boolean;
+}
+
+/**
+ * Mint a session for an arbitrary dev user via the backend's /v1/auth/dev
+ * backdoor and seed the resulting token into localStorage so the next
+ * page.goto skips sign-in entirely. The dev-sign-in button on the UI
+ * hardcodes a single email — this helper is what lets one Playwright
+ * test sign in TWO different users (owner + invitee) in two contexts.
+ */
+export async function signInAsDevUser(
+  page: Page,
+  request: APIRequestContext,
+  opts: { email: string; displayName: string },
+): Promise<DevAuthResponse> {
+  const resp = await request.post("http://localhost:8787/v1/auth/dev", {
+    data: { email: opts.email, displayName: opts.displayName },
+  });
+  if (!resp.ok()) {
+    throw new Error(`/v1/auth/dev failed: ${resp.status()} ${await resp.text()}`);
+  }
+  const body = (await resp.json()) as DevAuthResponse;
+  await disableAutoDevSignIn(page);
+  await page.addInitScript(
+    ([key, token]: string[]) => {
+      try {
+        window.localStorage.setItem(key, token);
+      } catch {
+        // best-effort
+      }
+    },
+    [SESSION_TOKEN_KEY, body.token],
+  );
+  return body;
 }

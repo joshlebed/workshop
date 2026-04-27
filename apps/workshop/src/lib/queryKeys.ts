@@ -12,6 +12,12 @@ export const queryKeys = {
   auth: {
     me: ["auth", "me"] as const,
   },
+  invites: {
+    forList: (listId: string) => ["invites", "forList", listId] as const,
+  },
+  members: {
+    forList: (listId: string) => ["members", "forList", listId] as const,
+  },
   spotify: {
     status: ["spotify", "status"] as const,
     savedAlbums: ["spotify", "savedAlbums"] as const,
