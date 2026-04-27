@@ -3,6 +3,8 @@ import type {
   BookResult,
   BookSearchResponse,
   CreateItemRequest,
+  LinkPreview,
+  LinkPreviewResponse,
   ListType,
   MediaResult,
   MediaSearchResponse,
@@ -10,8 +12,9 @@ import type {
 } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { createItem } from "../../../src/api/items";
+import { fetchLinkPreview } from "../../../src/api/linkPreview";
 import { fetchListDetail } from "../../../src/api/lists";
 import { searchBooks, searchMedia } from "../../../src/api/search";
 import { useAuth } from "../../../src/hooks/useAuth";
@@ -56,6 +59,20 @@ export default function AddItem() {
   const [note, setNote] = useState("");
   const trimmedTitle = title.trim();
   const canSubmitFreeForm = trimmedTitle.length >= 1 && trimmedTitle.length <= 500;
+
+  // Link preview (date_idea / trip): debounce the URL and resolve to a stable
+  // http(s) URL before firing. TanStack Query auto-cancels in-flight requests
+  // via `signal` when the key changes.
+  const debouncedUrl = useDebouncedQuery(url, 300);
+  const normalizedUrl = normalizeHttpUrl(debouncedUrl);
+  const previewEnabled = !!token && !!listType && !isSearchType && normalizedUrl !== null;
+  const previewQuery = useQuery<LinkPreviewResponse, Error>({
+    queryKey: ["link-preview", normalizedUrl ?? ""],
+    queryFn: ({ signal }) => fetchLinkPreview(normalizedUrl as string, token, signal),
+    enabled: previewEnabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
 
   // Search field (movie / tv / book).
   const [query, setQuery] = useState("");
@@ -141,10 +158,18 @@ export default function AddItem() {
   const submitFreeForm = () => {
     const trimmedUrl = url.trim();
     const trimmedNote = note.trim();
+    // Only attach metadata when the preview matches the URL the user is
+    // actually submitting — the debounced fetch could be stale or have failed.
+    const preview =
+      previewQuery.data?.preview && normalizedUrl !== null && trimmedUrl === debouncedUrl.trim()
+        ? previewQuery.data.preview
+        : null;
+    const metadata = preview ? buildLinkPreviewMetadata(preview) : undefined;
     const body: CreateItemRequest = {
       title: trimmedTitle,
       ...(trimmedUrl.length > 0 ? { url: trimmedUrl } : {}),
       ...(trimmedNote.length > 0 ? { note: trimmedNote } : {}),
+      ...(metadata ? { metadata } : {}),
     };
     addMutation.mutate({ resultId: "free-form", body });
   };
@@ -181,6 +206,10 @@ export default function AddItem() {
           canSubmit={canSubmitFreeForm}
           loading={addMutation.isPending}
           onSubmit={submitFreeForm}
+          preview={previewQuery.data?.preview ?? null}
+          previewLoading={previewQuery.isFetching}
+          previewFailed={!!previewQuery.error}
+          previewActive={previewEnabled}
         />
       )}
     </View>
@@ -204,6 +233,32 @@ function buildBookMetadata(r: BookResult): CreateItemRequest["metadata"] {
   if (typeof r.pageCount === "number") meta.pageCount = r.pageCount;
   if (r.description) meta.description = r.description;
   return meta;
+}
+
+// Only the keys that `placeMetadataSchema` (apps/backend/src/routes/v1/items.ts)
+// accepts; passing anything else with a `.strict()` validator would 400.
+function buildLinkPreviewMetadata(p: LinkPreview): CreateItemRequest["metadata"] {
+  const meta: Record<string, unknown> = { source: "link_preview", sourceId: p.finalUrl };
+  if (p.image) meta.image = p.image;
+  if (p.siteName) meta.siteName = p.siteName;
+  if (p.title) meta.title = p.title;
+  if (p.description) meta.description = p.description;
+  return meta;
+}
+
+// Returns a normalised http(s) URL (trimmed, single-pass through `URL`) or
+// null when the input doesn't parse or isn't http(s). Used to gate the
+// link-preview fetch so we never hit `/v1/link-preview?url=` with garbage.
+function normalizeHttpUrl(input: string): string | null {
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
 }
 
 interface SearchFlowProps {
@@ -321,6 +376,11 @@ interface FreeFormFlowProps {
   canSubmit: boolean;
   loading: boolean;
   onSubmit: () => void;
+  preview: LinkPreview | null;
+  previewLoading: boolean;
+  previewFailed: boolean;
+  /** True when a parseable http(s) URL is in flight (debounced). */
+  previewActive: boolean;
 }
 
 function FreeFormFlow({
@@ -333,6 +393,10 @@ function FreeFormFlow({
   canSubmit,
   loading,
   onSubmit,
+  preview,
+  previewLoading,
+  previewFailed,
+  previewActive,
 }: FreeFormFlowProps) {
   return (
     <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
@@ -368,6 +432,12 @@ function FreeFormFlow({
             maxLength={2048}
             style={styles.input}
           />
+          <LinkPreviewSection
+            preview={preview}
+            loading={previewLoading}
+            failed={previewFailed}
+            active={previewActive}
+          />
         </View>
 
         <View style={styles.field}>
@@ -396,6 +466,66 @@ function FreeFormFlow({
         />
       </Card>
     </ScrollView>
+  );
+}
+
+interface LinkPreviewSectionProps {
+  preview: LinkPreview | null;
+  loading: boolean;
+  failed: boolean;
+  active: boolean;
+}
+
+function LinkPreviewSection({ preview, loading, failed, active }: LinkPreviewSectionProps) {
+  if (!active) return null;
+  if (loading && !preview) {
+    return (
+      <View style={styles.previewLoading} testID="link-preview-loading">
+        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <Text tone="secondary" variant="caption">
+          Fetching preview…
+        </Text>
+      </View>
+    );
+  }
+  if (failed) {
+    return (
+      <Text
+        tone="secondary"
+        variant="caption"
+        testID="link-preview-error"
+        style={styles.previewHelper}
+      >
+        Couldn't fetch preview.
+      </Text>
+    );
+  }
+  if (!preview) return null;
+  const heading = preview.title ?? preview.siteName ?? preview.finalUrl;
+  return (
+    <View testID="link-preview-card" style={styles.previewCard}>
+      {preview.image ? (
+        <Image
+          source={{ uri: preview.image }}
+          style={styles.previewImage}
+          accessibilityIgnoresInvertColors
+        />
+      ) : (
+        <View style={[styles.previewImage, styles.previewImagePlaceholder]}>
+          <Text tone="muted">🔗</Text>
+        </View>
+      )}
+      <View style={styles.previewBody}>
+        {preview.siteName ? (
+          <Text tone="secondary" variant="caption" numberOfLines={1}>
+            {preview.siteName}
+          </Text>
+        ) : null}
+        <Text variant="body" numberOfLines={2} testID="link-preview-title">
+          {heading}
+        </Text>
+      </View>
+    </View>
   );
 }
 
@@ -432,4 +562,28 @@ const styles = StyleSheet.create({
   inputMultiline: { minHeight: 80, textAlignVertical: "top" },
   helper: { textAlign: "center", paddingVertical: tokens.space.lg },
   center: { alignItems: "center", justifyContent: "center", paddingVertical: tokens.space.xl },
+  previewCard: {
+    flexDirection: "row",
+    gap: tokens.space.md,
+    padding: tokens.space.md,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.bg.canvas,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+  },
+  previewImage: {
+    width: 64,
+    height: 64,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.bg.elevated,
+  },
+  previewImagePlaceholder: { alignItems: "center", justifyContent: "center" },
+  previewBody: { flex: 1, gap: 2, justifyContent: "center" },
+  previewLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    paddingVertical: tokens.space.sm,
+  },
+  previewHelper: { paddingVertical: tokens.space.sm },
 });
