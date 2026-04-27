@@ -281,8 +281,32 @@ export interface PlaceMetadata {
   sourceId?: string;
   image?: string;
   siteName?: string;
+  title?: string;
+  description?: string;
   lat?: number;
   lng?: number;
+}
+
+// --- Link preview (Phase 2a-2) ---
+
+/**
+ * Normalized OG / Twitter card scrape from `GET /v1/link-preview?url=`.
+ * `image` is resolved to an absolute URL relative to `finalUrl` so the
+ * client can render it directly. `siteName` falls back to the host of
+ * `finalUrl` when the page omits `og:site_name`.
+ */
+export interface LinkPreview {
+  url: string;
+  finalUrl: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  siteName: string | null;
+  fetchedAt: string;
+}
+
+export interface LinkPreviewResponse {
+  preview: LinkPreview;
 }
 
 // --- Spotify integration ---
