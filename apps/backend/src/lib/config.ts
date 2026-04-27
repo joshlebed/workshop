@@ -55,7 +55,7 @@ const configSchema = z.object({
   spotifyAppRedirectUri: z.string().optional().default(""),
 });
 
-export type Config = z.infer<typeof configSchema> & { isLocal: boolean };
+type Config = z.infer<typeof configSchema> & { isLocal: boolean };
 
 let cached: Config | null = null;
 

@@ -33,7 +33,7 @@ export function deriveCodeChallenge(verifier: string): string {
   return b64url(createHash("sha256").update(verifier).digest());
 }
 
-export interface BuildAuthorizeUrlOptions {
+interface BuildAuthorizeUrlOptions {
   state: string;
   codeChallenge: string;
 }

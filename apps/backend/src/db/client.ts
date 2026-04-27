@@ -18,11 +18,3 @@ export function getDb() {
   cached = drizzle(cachedClient, { schema });
   return cached;
 }
-
-export async function closeDb() {
-  if (cachedClient) {
-    await cachedClient.end();
-    cachedClient = null;
-    cached = null;
-  }
-}
