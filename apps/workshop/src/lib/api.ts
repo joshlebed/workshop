@@ -20,6 +20,7 @@ interface ApiRequest {
   path: string;
   body?: unknown;
   token?: string | null;
+  signal?: AbortSignal;
 }
 
 function isApiError(value: unknown): value is ApiErrorResponse {
@@ -28,12 +29,13 @@ function isApiError(value: unknown): value is ApiErrorResponse {
   return typeof v.error === "string" && typeof v.code === "string";
 }
 
-export async function apiRequest<T>({ method, path, body, token }: ApiRequest): Promise<T> {
+export async function apiRequest<T>({ method, path, body, token, signal }: ApiRequest): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const init: RequestInit = { method, headers };
   if (body !== undefined) init.body = JSON.stringify(body);
+  if (signal) init.signal = signal;
 
   const res = await fetch(`${API_URL}${path}`, init);
   const text = await res.text();

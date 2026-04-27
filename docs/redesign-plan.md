@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (0c-2 client SDK PR) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (2b-1 client search modal) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the *what*; this
@@ -80,6 +80,16 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   per-redirect-hop hostname re-validation, 3s timeout, 1 MB body cap,
   OG/Twitter card parser, 7-day metadata cache reuse, 30/user/min rate
   limit. 45 vitest cases (24 SSRF guard + 21 route).
+- **Phase 2** chunk 2b-1 (this PR) — client search modal: type-aware
+  rewrite of `app/list/[id]/add.tsx` (movie/tv/book → search flow,
+  date_idea/trip → free-form). New `src/api/search.ts` typed wrappers,
+  `useDebouncedQuery(value, 300)` hook, `<SearchResultRow>` primitive.
+  Selecting a result POSTs `/v1/lists/:id/items` with normalised
+  metadata pre-filled (`source: "tmdb"|"google_books"`, sourceId,
+  posterUrl/coverUrl, year, runtime/pageCount, overview/description).
+  Playwright happy-path (`tests/e2e/add-search.spec.ts`) creates a
+  movie list, mocks `/v1/search/media`, types a query, selects a
+  result, asserts it lands on the list.
 
 ### Pending
 
@@ -103,40 +113,28 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
     matching `env:` block.
   Web is unaffected — Cloudflare Pages reads those env vars from its
   own project config at build time.
-- **Phase 2** chunks 2b-1, 2b-2 — client search modal, client URL
-  link-preview wiring. Production search will also need real
-  `TMDB_API_KEY` / `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently
-  `PHASE_2_NOT_SET` placeholder strings — applied in this session so
-  the SSM resources could be created; `lifecycle { ignore_changes =
-  [value] }` means a later `aws ssm put-parameter --overwrite` won't
-  drift Terraform state).
+- **Phase 2** chunk 2b-2 — client URL link-preview wiring (still
+  pending). Production search will also need real `TMDB_API_KEY` /
+  `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently `PHASE_2_NOT_SET`
+  placeholder strings — applied in 0c-2 so the SSM resources could be
+  created; `lifecycle { ignore_changes = [value] }` means a later
+  `aws ssm put-parameter --overwrite` won't drift Terraform state).
 - **Phases 3, 4, 5** — social/sharing, iOS share extension, polish.
   Not started; chunk decomposition lives further down in §3.
 
 ### Next to implement
 
-**Phase 2 chunks 2b-1 and 2b-2** are the immediate next slices — both
-are pure-client and can land in parallel now that 0c-2's sign-in flow,
-2a-1 (search), and 2a-2 (link-preview) are all green on `main`.
+**Phase 2 chunk 2b-2** is the only remaining slice for Phase 2 now that
+2b-1 has landed.
 
-- **2b-1** (client search modal): rewrite `app/list/[id]/add.tsx` for
-  movie / TV / book lists into a real type-aware add flow that hits
-  `/v1/search/{media,books}`. New `<SearchResultRow>` primitive,
-  `useDebouncedQuery(input, 300)` hook, `src/api/search.ts` typed
-  wrappers. Selecting a result calls the existing `createItem` with
-  the normalised metadata pre-filled. Playwright: add a movie via
-  search on a movie list. See §3.13 for the chunk row.
 - **2b-2** (client URL link preview): for date-idea / trip lists,
   fetch `/v1/link-preview?url=` on URL `onBlur` (debounced + cancellable
   via `AbortController`). New `src/api/linkPreview.ts`, inline preview
   card under the URL field with the OG image + site name + title;
   "couldn't fetch preview" fallback after 3s. Playwright: paste a URL,
   see the preview, save. See §3.13 + §3.15 for the constraints already
-  worked through in 2a-2.
-
-Pick whichever fits the next session's scope; neither blocks the other.
-2b-1 is the more visible slice (movies are the canonical Workshop list
-type) and is the recommended first pick.
+  worked through in 2a-2 and §3.16 for the 2b-1 hooks/primitives that
+  are reusable here (debounce hook, search API pattern).
 
 ---
 
@@ -1091,7 +1089,7 @@ client-only.
 |---|---|---|---|
 | **2a-1** | Backend search + metadata cache: `apps/backend/src/routes/v1/search.ts` (`GET /v1/search/media?type=movie\|tv`, `GET /v1/search/books`) proxying TMDB / Google Books behind SSM-sourced API keys, normalising into the spec §9 shapes. New `apps/backend/src/lib/metadata-cache.ts` (`upsert(source, source_id, payload, ttl)` + `lookup(source, source_id)`) backed by a new `metadata_cache` Drizzle migration. Per-type Zod validators for `items.metadata` applied on `POST/PATCH /v1/items` (movie / tv / book shapes; date-idea / trip stay loose for 2a-2). Rate limits on `POST /v1/search/*` at 60/user/min. Vitest coverage of validators + cache TTL + auth gating. | TMDB API key + Google Books API key in SSM (placeholders from Phase 0; production needs real values). | Done |
 | **2a-2** | Backend link preview: `apps/backend/src/routes/v1/link-preview.ts` (`GET /v1/link-preview?url=`). SSRF allowlist via `ipaddr.js` (block RFC1918 / loopback / link-local / 169.254.169.254). 3s timeout, 1MB cap, 3 redirects. OG + Twitter card parser. Cached through the 2a-1 `metadata-cache` (7-day TTL). Rate limit 30/user/min. SSRF regression test + parser unit tests. | None — uses the metadata cache from 2a-1. | Done |
-| **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list. | 2a-1. | Pending |
+| **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list. | 2a-1. | Done (this PR) |
 | **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save. | 2a-2. | Pending |
 
 #### 3.14 What 2a-1 actually shipped — start here for 2a-2
@@ -1285,6 +1283,81 @@ returns. The new `src/api/linkPreview.ts` is a typed wrapper around
 URL()` client-side first to fail fast on garbage. The `onBlur`
 debounce + `AbortController` pattern is described in the §3.13 row;
 no new backend work needed.
+
+#### 3.16 What 2b-1 actually shipped — start here for 2b-2
+
+Files that landed in 2b-1 (read these before touching 2b-2):
+
+- `apps/workshop/src/api/search.ts` — typed wrappers `searchMedia(type,
+  q, token, signal?)` and `searchBooks(q, token, signal?)`. Both return
+  `MediaSearchResponse` / `BookSearchResponse` from
+  `@workshop/shared`; no re-declared types. Both accept an optional
+  `AbortSignal` so TanStack Query can cancel inflight searches when the
+  query key changes — **2b-2's `linkPreview.ts` should mirror this
+  exact shape** (signal forwarded to `apiRequest`).
+- `apps/workshop/src/lib/api.ts` — `apiRequest({ ..., signal })` now
+  forwards an optional `AbortSignal` into `fetch`. Reuse this rather
+  than building a parallel fetcher in 2b-2.
+- `apps/workshop/src/hooks/useDebouncedQuery.ts` — trailing-edge
+  300ms debounce. Pure value-debounce, no cancellation. **2b-2 should
+  reuse this hook unchanged** for the URL-on-blur debounce; combine
+  with TanStack Query's built-in `signal` for cancellation when the
+  URL changes mid-flight.
+- `apps/workshop/src/ui/SearchResultRow.tsx` — poster (56×84) + title
+  + year + secondary subtitle + Add button. `testID` defaults to
+  `search-result-${id}` and the button to `search-result-${id}-add`;
+  the Playwright spec relies on those exact IDs. Exported via
+  `src/ui/index.ts`. The image falls back to a `?` placeholder card
+  when no URL is provided so book covers and movie posters render
+  consistently.
+- `apps/workshop/app/list/[id]/add.tsx` — full rewrite. The screen
+  fetches `fetchListDetail` to get the list type (cached by the list
+  detail screen, so the read is instant in normal navigation). For
+  movie/tv/book it renders `<SearchFlow>` with a TextInput + debounced
+  TanStack Query + result rows. For date_idea/trip it renders the
+  previous `<FreeFormFlow>` (title + url + note) — **2b-2 attaches the
+  link-preview UI inside this branch.** Both flows share one
+  `addMutation` that POSTs to `createItem` and invalidates
+  `queryKeys.items.byListFiltered(id, false)` + `queryKeys.lists.all`
+  on success; the previous hand-rolled `setQueryData` was removed
+  because the multi-result path is simpler with pure invalidation.
+  Selecting a search result builds metadata via `buildMediaMetadata` /
+  `buildBookMetadata` — both omit absent fields (the per-type Zod
+  schemas in `items.ts` are `.strict()`, so passing `posterUrl: null`
+  would reject; use omission, not null).
+- `tests/e2e/add-search.spec.ts` — Playwright happy-path:
+  dev-sign-in → create movie list → mock `/v1/search/media` →
+  type "matrix" → click `search-result-603-add` → assert the new item
+  on the list. The mock fixture intentionally includes one row with
+  `posterUrl: null` to exercise the placeholder branch, even though
+  the test only adds the first row. Adopts the same
+  `Promise.race(displayName, homeGreeting)` pattern that the existing
+  `sign-in-google.spec.ts` uses for the post-sign-in branch — **2b-2's
+  Playwright spec should use the same race so it survives a dirty dev
+  DB where dev@workshop.local already has a displayName**. (The
+  pre-existing `tests/e2e/sign-in.spec.ts` does NOT use this race and
+  flakes on a dirty DB; that's an unrelated pre-existing issue.)
+
+What 2b-2 should do *first*: read this section's `add.tsx` summary
+(especially the `<FreeFormFlow>` branch — that's where the link-preview
+fetch + inline card go). The 2b-1 search flow only fires on
+movie/tv/book; 2b-2 only fires on date_idea/trip — they don't overlap.
+
+Known constraints for 2b-2:
+- The `placeMetadataSchema` in `apps/backend/src/routes/v1/items.ts` is
+  `.strict()` and accepts `source`, `sourceId`, `image`, `siteName`,
+  `title`, `description`, `lat`, `lng`. The `LinkPreview` response has
+  `url`, `finalUrl`, `title`, `description`, `image`, `siteName`,
+  `fetchedAt` — when 2b-2 copies the response into `items.metadata`,
+  pass only the keys that overlap (`source: "link_preview"`,
+  `sourceId: <hash>`, `image`, `siteName`, `title`, `description`).
+  Everything else needs explicit handling in items.ts before 2b-2 can
+  send it.
+- The free-form `url` field still POSTs as the item's `url` column;
+  metadata image is separate. Both can coexist on one item.
+- Reuse the `useDebouncedQuery` hook (300ms is a fine default; the
+  `onBlur` pattern in §3.13 is also valid — pick whichever feels
+  right but don't reinvent the debounce primitive).
 
 #### 3.9 Original Phase 1 deliverable list
 
