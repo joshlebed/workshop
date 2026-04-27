@@ -53,9 +53,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const autoDevSignIn = useCallback(async (): Promise<boolean> => {
+    if (process.env.EXPO_PUBLIC_DEV_AUTH !== "1") return false;
+    try {
+      const res = await apiRequest<AuthResponse>({
+        method: "POST",
+        path: "/v1/auth/dev",
+        body: { email: "preview@workshop.local", displayName: "Preview User" },
+      });
+      await applyAuth(res);
+      return true;
+    } catch (e) {
+      console.warn("auto dev sign-in failed", e);
+      return false;
+    }
+  }, [applyAuth]);
+
   const bootstrap = useCallback(async () => {
     const token = await getItem(TOKEN_KEY);
     if (!token) {
+      if (await autoDevSignIn()) return;
       setState({ status: "signed-out", user: null, token: null });
       return;
     }
@@ -69,12 +86,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 404)) {
         await removeItem(TOKEN_KEY);
+        if (await autoDevSignIn()) return;
         setState({ status: "signed-out", user: null, token: null });
         return;
       }
       throw e;
     }
-  }, []);
+  }, [autoDevSignIn]);
 
   useEffect(() => {
     bootstrap().catch((e) => {
