@@ -122,3 +122,77 @@ The trust policy is scoped to specific branches (`main`, PRs from this repo only
 
 **Why**: Cost and complexity. For this scale, feature branches + manual testing on PR preview is
 enough. We'll add staging if/when prod outages happen during deploys.
+
+## 2026-04 — TestFlight build and submit are separate jobs
+
+**Context**: EAS Build (compile + sign + produce .ipa) and EAS Submit (upload to App Store
+Connect → TestFlight) are two distinct pipelines on Apple/EAS infrastructure. They fail in
+different ways: build failures are usually code/signing/capability issues we caused; submit
+failures are usually Apple/EAS infrastructure transients (App Store Connect 5xx, EAS
+free-tier submission worker pool exhaustion, network).
+
+The original `testflight.yml` ran them as a single `eas build --auto-submit --wait` step
+inside one job. When submit failed, the IPA was already built but the workflow looked like
+a single "TestFlight failure," and **the only retry path was rebuilding** — burning another
+~15-min EAS build minute on a build we already had.
+
+**Decision**: Split into independent jobs (`fingerprint` → `build` → `submit` → tag-on-success).
+The `submit` job has an internal 3× retry with 60s backoff for one-shot transients. If the
+internal retries exhaust, `gh run rerun --failed <run-id>` re-runs *only* `submit` against the
+existing IPA — no rebuild.
+
+**Why**: We hit this exact failure on 2026-04-27 — an EAS submission worker timed out after
+10 minutes ("Failed to create worker instance"), and the only "fix" with the old workflow
+was a rebuild. The split costs ~10s of cold-start overhead per workflow run (the submit job
+duplicates checkout + node setup) but eliminates the rebuild-on-submit-failure cost. With
+EAS free tier capped at 30 build minutes/month, that's worth a lot.
+
+**Tradeoffs**: The retry loop will burn ~3 minutes on a *real* Apple rejection (it can't
+distinguish transient from real from exit code alone). Rare; cost acceptable.
+
+**Out of scope** (deferred): splitting into two *workflows* (rather than two jobs) for
+cleaner per-workflow run history. The job split gets ~80% of the value.
+
+## 2026-04 — Stay on EAS free tier; manual recovery for queue contention
+
+**Context**: EAS submission workers are pooled across the free tier. When demand spikes,
+submissions queue. We've seen 10+ minute waits ending in "Failed to create worker instance"
+timeouts. EAS paid tier ($99/yr) gives dedicated submission workers and generally faster
+response times.
+
+**Decision**: Stay on free tier. When queue contention happens, recovery options are:
+1. Cancel the stuck workflow run + queued submissions, retry later when the queue is less
+   congested.
+2. Bypass EAS submit entirely: download the IPA from the EAS build dashboard, upload via
+   `xcrun altool --upload-app` (Apple's CLI tool, ships with Xcode). 2 minutes vs an
+   indefinite wait.
+
+**Why**: This is a personal project; EAS submit queue contention has happened once during
+intense iteration. $99/year for "rarely faster" submissions isn't worth it. The bypass via
+altool is a 30-second runbook.
+
+**Revisit when**: Submit queue contention happens >1×/month for two months in a row, or
+when the project ships to a real userbase and TestFlight delays are blocking testers.
+
+## 2026-04 — TestFlight workflow runs only on `main`, not on PRs
+
+**Context**: TestFlight builds cost EAS minutes (~15-20 min each on the free tier's monthly
+quota). Running them on every PR would burn the quota in a week and add 15+ min of CI to
+every mobile-touching PR.
+
+**Decision**: `testflight.yml` triggers only on `push: branches: [main]` (gated on
+`@expo/fingerprint` to skip when the iOS native fingerprint hasn't changed). PRs get the
+`Mobile Metro bundle` job in `ci.yml` (a fast Metro export smoke test) but no actual EAS
+build.
+
+**Why**: 30 build minutes/month is the free-tier ceiling. We typically expect ~3–5 native
+builds/month based on phase-level estimates. Running on PRs would consume far more.
+
+**Tradeoffs**: TestFlight failures only surface *post-merge*. A PR that breaks the iOS
+build will reach `main`, fail testflight.yml, and require a follow-up fix PR. Mitigation:
+the `Mobile Metro bundle` PR check catches most native-side problems (Metro codegen
+errors, RN-drift past the SDK matrix) before merge.
+
+**Revisit when**: If we hit a "broke main, can't ship" incident from this gap. Likely fix:
+add a faster pre-merge native check (a stripped-down `expo prebuild` validation) without
+running full EAS Build.
