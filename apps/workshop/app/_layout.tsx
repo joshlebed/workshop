@@ -110,6 +110,8 @@ function AuthGate() {
       <Stack.Screen name="onboarding/display-name" />
       <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="create-list/share" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="list/[id]/index" />
       <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
       <Stack.Screen name="list/[id]/settings" options={{ presentation: "modal" }} />

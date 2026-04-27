@@ -18,6 +18,10 @@ export const queryKeys = {
   members: {
     forList: (listId: string) => ["members", "forList", listId] as const,
   },
+  activity: {
+    feed: ["activity", "feed"] as const,
+    feedInfinite: ["activity", "feedInfinite"] as const,
+  },
   spotify: {
     status: ["spotify", "status"] as const,
     savedAlbums: ["spotify", "savedAlbums"] as const,
