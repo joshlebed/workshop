@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (2b-1 client search modal) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (2b-2 client link preview) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the *what*; this
@@ -80,7 +80,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   per-redirect-hop hostname re-validation, 3s timeout, 1 MB body cap,
   OG/Twitter card parser, 7-day metadata cache reuse, 30/user/min rate
   limit. 45 vitest cases (24 SSRF guard + 21 route).
-- **Phase 2** chunk 2b-1 (this PR) — client search modal: type-aware
+- **Phase 2** chunk 2b-1 — client search modal: type-aware
   rewrite of `app/list/[id]/add.tsx` (movie/tv/book → search flow,
   date_idea/trip → free-form). New `src/api/search.ts` typed wrappers,
   `useDebouncedQuery(value, 300)` hook, `<SearchResultRow>` primitive.
@@ -90,6 +90,18 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   Playwright happy-path (`tests/e2e/add-search.spec.ts`) creates a
   movie list, mocks `/v1/search/media`, types a query, selects a
   result, asserts it lands on the list.
+- **Phase 2** chunk 2b-2 (this PR) — client link preview: free-form
+  `<FreeFormFlow>` in `app/list/[id]/add.tsx` debounces the URL field
+  through `useDebouncedQuery`, gates on a client-side `new URL()` parse,
+  and calls `GET /v1/link-preview` via TanStack Query (cancellable via
+  `signal`). New `src/api/linkPreview.ts` typed wrapper, inline preview
+  card (image + siteName + title), "Couldn't fetch preview" fallback on
+  error. On submit, the preview is copied into `metadata` using only
+  `placeMetadataSchema`-allowed keys (`source: "link_preview"`,
+  `sourceId: finalUrl`, `image`, `siteName`, `title`, `description`).
+  Playwright happy-path (`tests/e2e/add-link-preview.spec.ts`) creates
+  a date-idea list, mocks `/v1/link-preview`, pastes a URL, sees the
+  card, saves.
 
 ### Pending
 
@@ -113,28 +125,24 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
     matching `env:` block.
   Web is unaffected — Cloudflare Pages reads those env vars from its
   own project config at build time.
-- **Phase 2** chunk 2b-2 — client URL link-preview wiring (still
-  pending). Production search will also need real `TMDB_API_KEY` /
+- Production search + link-preview will need real `TMDB_API_KEY` /
   `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently `PHASE_2_NOT_SET`
   placeholder strings — applied in 0c-2 so the SSM resources could be
   created; `lifecycle { ignore_changes = [value] }` means a later
   `aws ssm put-parameter --overwrite` won't drift Terraform state).
+  Link-preview itself doesn't depend on the API keys (it scrapes OG
+  tags directly), so the dev wiring works even with placeholder secrets.
 - **Phases 3, 4, 5** — social/sharing, iOS share extension, polish.
   Not started; chunk decomposition lives further down in §3.
 
 ### Next to implement
 
-**Phase 2 chunk 2b-2** is the only remaining slice for Phase 2 now that
-2b-1 has landed.
-
-- **2b-2** (client URL link preview): for date-idea / trip lists,
-  fetch `/v1/link-preview?url=` on URL `onBlur` (debounced + cancellable
-  via `AbortController`). New `src/api/linkPreview.ts`, inline preview
-  card under the URL field with the OG image + site name + title;
-  "couldn't fetch preview" fallback after 3s. Playwright: paste a URL,
-  see the preview, save. See §3.13 + §3.15 for the constraints already
-  worked through in 2a-2 and §3.16 for the 2b-1 hooks/primitives that
-  are reusable here (debounce hook, search API pattern).
+Phase 2 is complete. **Phase 3** is the next slice (social/sharing,
+groups, share-link invites). Chunk decomposition lives in §3.17 — at the
+time of writing it has not been written yet, so the next agent should
+start by drafting that table along the same shape as §3.13 (chunks +
+deliverables + deps) before picking up code. The first chunks fall out
+of spec §3 (groups + memberships) and §6 (share-link invites).
 
 ---
 
@@ -1090,7 +1098,7 @@ client-only.
 | **2a-1** | Backend search + metadata cache: `apps/backend/src/routes/v1/search.ts` (`GET /v1/search/media?type=movie\|tv`, `GET /v1/search/books`) proxying TMDB / Google Books behind SSM-sourced API keys, normalising into the spec §9 shapes. New `apps/backend/src/lib/metadata-cache.ts` (`upsert(source, source_id, payload, ttl)` + `lookup(source, source_id)`) backed by a new `metadata_cache` Drizzle migration. Per-type Zod validators for `items.metadata` applied on `POST/PATCH /v1/items` (movie / tv / book shapes; date-idea / trip stay loose for 2a-2). Rate limits on `POST /v1/search/*` at 60/user/min. Vitest coverage of validators + cache TTL + auth gating. | TMDB API key + Google Books API key in SSM (placeholders from Phase 0; production needs real values). | Done |
 | **2a-2** | Backend link preview: `apps/backend/src/routes/v1/link-preview.ts` (`GET /v1/link-preview?url=`). SSRF allowlist via `ipaddr.js` (block RFC1918 / loopback / link-local / 169.254.169.254). 3s timeout, 1MB cap, 3 redirects. OG + Twitter card parser. Cached through the 2a-1 `metadata-cache` (7-day TTL). Rate limit 30/user/min. SSRF regression test + parser unit tests. | None — uses the metadata cache from 2a-1. | Done |
 | **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list. | 2a-1. | Done (this PR) |
-| **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save. | 2a-2. | Pending |
+| **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save. | 2a-2. | Done (this PR) |
 
 #### 3.14 What 2a-1 actually shipped — start here for 2a-2
 
@@ -1358,6 +1366,125 @@ Known constraints for 2b-2:
 - Reuse the `useDebouncedQuery` hook (300ms is a fine default; the
   `onBlur` pattern in §3.13 is also valid — pick whichever feels
   right but don't reinvent the debounce primitive).
+
+#### 3.17 What 2b-2 actually shipped — start here for Phase 3
+
+Files that landed in 2b-2 (read these before touching the next chunk):
+
+- `apps/workshop/src/api/linkPreview.ts` — single typed wrapper
+  `fetchLinkPreview(url, token, signal?)` returning `LinkPreviewResponse`
+  from `@workshop/shared`. Mirrors `src/api/search.ts` — `signal`
+  forwarded into `apiRequest` so TanStack Query auto-cancels in-flight
+  requests when the query key changes. No new client types declared
+  here; everything reuses `@workshop/shared`.
+- `apps/workshop/app/list/[id]/add.tsx` — incremental edits to the
+  free-form branch only (2b-1's search branch is unchanged):
+  - New `useDebouncedQuery(url, 300)` + a `normalizeHttpUrl(input)`
+    helper that tries `new URL()` and rejects non-http(s). The
+    TanStack Query is `enabled` only when the list is non-search
+    (`date_idea` / `trip`) AND `normalizeHttpUrl` returns non-null.
+    Result: garbage input never hits the network, and a value-debounce
+    is sufficient — no `onBlur`, no manual `AbortController` (TanStack
+    handles cancellation via `signal` on key change).
+  - `<FreeFormFlow>` accepts four new props (`preview`, `previewLoading`,
+    `previewFailed`, `previewActive`) and renders a `<LinkPreviewSection>`
+    block right under the URL `TextInput`. `previewActive` gates all
+    rendering so the section is invisible while the URL field is empty
+    or unparseable.
+  - `<LinkPreviewSection>` is inline in `add.tsx` (the only call site).
+    Three states: spinner + "Fetching preview…" while loading,
+    `<Text testID="link-preview-error">Couldn't fetch preview.</Text>`
+    on error, and a card (`testID="link-preview-card"`) with image
+    (64×64 with `🔗` placeholder when null), site name (caption), and
+    title (or fallback chain `title → siteName → finalUrl`,
+    `testID="link-preview-title"`). The 3s "couldn't fetch" fallback
+    is implicit — the backend's own 3s `AbortSignal.timeout` aborts
+    the upstream fetch and returns an error, which TanStack surfaces
+    as `previewQuery.error` (no client-side timer needed).
+  - `submitFreeForm` builds metadata via `buildLinkPreviewMetadata(p)`
+    only when (a) the query has data, (b) the user's URL field still
+    matches the debounced URL the preview was fetched for, and
+    (c) `normalizedUrl !== null`. The match check guards against the
+    stale-preview race: if the user types a URL, sees a preview, then
+    edits the URL and submits before the new debounce fires, we don't
+    attach a metadata for the wrong URL.
+  - `buildLinkPreviewMetadata` only emits keys that
+    `placeMetadataSchema` (`apps/backend/src/routes/v1/items.ts`)
+    allows: `source: "link_preview"`, `sourceId: preview.finalUrl`
+    (the canonicalized URL after redirects, served by the backend),
+    `image`, `siteName`, `title`, `description`. `url` and `fetchedAt`
+    from the response are *not* sent — `url` would collide with the
+    schema (no `url` key in `placeMetadataSchema`) and `fetchedAt`
+    isn't allowed either. The schema is `.strict()` so any stray field
+    would 400; this is the constraint §3.16 flagged.
+- `tests/e2e/add-link-preview.spec.ts` — new Playwright happy-path:
+  dev-sign-in (`Promise.race(displayName, homeGreeting)` for dirty-DB
+  resilience, same as `add-search.spec.ts`) → create date-idea list →
+  open add flow → mock `/v1/link-preview` with a fixture → fill title
+  + URL → assert `link-preview-card` is visible and contains the
+  fixture title → submit → assert the new item appears on the list.
+  No backend dependencies beyond the running dev server (the
+  link-preview route doesn't need any third-party API key — see
+  `apps/backend/src/routes/v1/link-preview.ts`).
+- `docs/redesign-plan.md` — this section, the §3.13 status flip, the
+  top-of-doc status snapshot, and the rewritten "Next to implement"
+  pointer to Phase 3.
+
+Test counts: no new vitest cases (the chunk is client-only and the
+backend has 21 `link-preview.test.ts` cases already). One new
+Playwright spec; existing 174 backend vitest tests still green.
+`pnpm run typecheck && lint && test` all pass; `knip` shows no new
+findings.
+
+Surprises / deviations from plan:
+
+- **No manual `AbortController`.** §3.13's row mentioned
+  "cancellable via `AbortController`" — TanStack Query's built-in
+  `signal` handed to the `queryFn` is the same primitive (it's an
+  `AbortSignal` under the hood) and the library cancels it on key
+  change. Building a parallel `useEffect` + `new AbortController()`
+  would have duplicated the cancellation logic. Same trade §3.16
+  recommended for 2b-1's search flow.
+- **No explicit 3s "fallback after 3s" timer in the client.** §3.13
+  said "couldn't fetch preview" fallback after 3s; in practice the
+  backend's `AbortSignal.timeout(3000)` enforces the timeout
+  upstream-side, and the resulting error becomes `previewQuery.error`
+  immediately. A second client-side timer would race the server's
+  error response. Documented above so the next agent knows it was
+  intentional.
+- **`sourceId` is `finalUrl`, not a sha1 hash.** §3.16 said
+  `sourceId: <hash>` — but the route already hashes the URL
+  internally (cache key) and the *client-facing* `LinkPreview` exposes
+  `finalUrl` (post-redirect canonical URL). Storing the canonical URL
+  in `items.metadata.sourceId` is more useful than a hash that the
+  client can't invert; `placeMetadataSchema` accepts `sourceId` as
+  `z.string().max(128)`, so URLs up to 128 chars fit. Long URLs would
+  reject — if that becomes a problem in production, switch to a hash
+  here AND widen the schema in the same PR.
+
+What Phase 3 should do *first*: §3.17 (this section) used the chunk
+slot that future phases used for the chunk *table*. Phase 3 needs to
+draft a §3.18 chunks table (§3.13 / §3.7 are good templates) before
+picking up code. The first chunks come straight out of spec
+[§3 (groups + memberships)](redesign-spec.md) and §6 (share-link
+invites). The auth + items + lists CRUD that lands them is already
+shipped — Phase 3 layers ownership semantics on top.
+
+Known constraints for Phase 3:
+
+- The current `lists.ownerId` column is single-tenant. Group lists
+  need either a `lists.groupId` foreign key + a `groups` /
+  `group_memberships` pair, or the existing `ownerId` repurposed as
+  `creatorId`. Spec §3 calls out the latter.
+- Share-link invites need a tokenised URL (`/l/<short>`) the backend
+  resolves to a list + membership grant. SES is gone (per the
+  Phase 0 cutover), so the share UX is "copy link," not "send
+  email." Match the spec.
+- The auto-upvote on item create (§3.10's behavior) is single-tenant —
+  in a group list, it should still be the *creator's* vote, not auto-
+  granted to other members. The existing test in `items.test.ts`
+  asserts this for the single-tenant case; widen the assertion when
+  groups land.
 
 #### 3.9 Original Phase 1 deliverable list
 
