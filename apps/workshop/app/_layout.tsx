@@ -20,7 +20,10 @@ function useApplyOtaUpdatesOnArrival() {
 
 function AuthGate() {
   const { status } = useAuth();
-  const segments = useSegments();
+  // Widen to `string[]` so segments[1] typechecks without the typed-routes
+  // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
+  // generated in CI.
+  const segments: string[] = useSegments();
   const router = useRouter();
   // After sign-in we ask once whether a pending invite token is stashed and
   // bounce the user to the accept-invite handler. The ref keeps the check

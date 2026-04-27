@@ -30,13 +30,15 @@ land as additional routes inside the same app.
   `AWS_ROLE_ARN`, `EXPO_TOKEN`, `EXPO_PUBLIC_API_URL`.
 - **EAS Update** for JS-only OTA updates to iPhones within ~60s of merge. TestFlight builds
   auto-trigger on merge when `@expo/fingerprint` detects a native change (new native dep, config
-  plugin, bundle id, etc.) and auto-submit to TestFlight; otherwise skipped. Manual dispatch with
-  `force=true` bypasses the fingerprint check. Last-built fingerprint is stored as a git tag
-  (`ios-fp-<hash>`).
+  plugin, bundle id, etc.) and use `eas build --no-wait --auto-submit` so the build + submit
+  happen entirely on EAS infra (no GH Actions polling time). Manual dispatch with `force=true`
+  bypasses the fingerprint check. Last-built fingerprint is stored as a git tag (`ios-fp-<hash>`),
+  written on successful enqueue (see iOS deploy pipeline section for the trade-off).
 - **Tooling baseline**: Biome (lint + format), Vitest, Zod (for API-boundary validation),
   `@total-typescript/ts-reset` (globally enabled), knip (unused code/deps), lefthook (pre-commit),
-  actionlint + gitleaks in CI. Dependabot opens grouped npm/Actions/Terraform PRs weekly on
-  Mondays. `.mise.toml` pins node, pnpm, terraform, actionlint, gitleaks — `mise install` gets
+  actionlint + gitleaks in CI. Dependabot opens aggressively-grouped npm/Actions/Terraform PRs
+  monthly on the first Monday (~3 PRs/month total — combined into native/aws-sdk/tooling for
+  npm, single grouped PRs for Actions and Terraform). `.mise.toml` pins node, pnpm, terraform, actionlint, gitleaks — `mise install` gets
   you the exact versions CI uses.
 
 ## AWS
@@ -78,7 +80,7 @@ land as additional routes inside the same app.
   have already hit this once.
 - **Editing GitHub Actions workflows** — two CI-blocking rules enforced by actionlint:
   (1) SHA-pin every `uses:` (`owner/repo@<40-char-sha> # v4`); fetch fresh SHAs with
-  `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`. Dependabot rolls them forward weekly.
+  `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`. Dependabot rolls them forward monthly.
   (2) Never interpolate `${{ … }}` inside a shell `run:` block — hoist into the step's `env:`
   and read as `$VAR` in bash. Both patterns are visible throughout `.github/workflows/*`.
 - **Workflow path-filter self-trigger** — if a PR modifies a workflow file and that
@@ -109,7 +111,8 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   to manual merge cleanly. To unlock auto-merge: make the repo public (free) OR upgrade to
   Pro (\$4/mo). Worth it if rate-of-PR-merges is high enough; not currently.
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
-  unless there's a specific reason (security fix, unblocking work). Weekly PRs on Mondays.
+  unless there's a specific reason (security fix, unblocking work). Monthly PRs on the first
+  Monday, aggressively grouped.
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full error objects:
   `logger.error("failed to x", { error })`, not `{ error: error.message }` — you lose the stack.
 - **Postgres connection pool**: `postgres({ max: 1 })` is correct for Lambda. Each container has
@@ -152,26 +155,41 @@ Apple Developer Portal  ←→  EAS Build infrastructure  ←→  GitHub Actions
   config that EAS reflects/syncs.
 - **EAS Build/Submit** runs the actual iOS build on Apple Silicon, signs with the certs/profiles
   it manages, then submits the IPA to App Store Connect for TestFlight processing.
-- **GitHub Actions** orchestrates: computes fingerprint, calls `eas build`, captures build ID,
-  calls `eas submit --id <build_id>`, tags fingerprint on success. Lives in `testflight.yml`.
+- **GitHub Actions** orchestrates: computes fingerprint, calls
+  `eas build --no-wait --auto-submit` (fire-and-forget), tags the fingerprint immediately on
+  successful enqueue. The actual build + TestFlight submit run on EAS infra; GH Actions does
+  not poll. Lives in `testflight.yml`.
 - **Code/config** is what EAS Build packages: `app.json` plugins/entitlements, `eas.json` build
   profile, source code.
 
-### Build vs Submit are independent failure modes
+### Fire-and-forget enqueue model
 
-`testflight.yml` runs them as **separate jobs** (`build` → `submit`) for exactly this reason:
-they break in different ways and need different recovery.
+`testflight.yml` uses `eas build --no-wait --auto-submit`. The workflow exits in ~1–2 minutes
+once EAS accepts the job; the build (~30 min) and TestFlight submit (~5 min) happen entirely
+on EAS infra. This avoids burning ~400–500 GH Actions minutes/month on polling.
+
+Fingerprint tag (`ios-fp-<hash>`) is written **immediately on successful enqueue**, not after
+build success. Trade-off: if the build or submit fails on EAS's side, the fingerprint stays
+tagged — the next push with the same fingerprint won't auto-rebuild. Manual recovery:
+
+```bash
+git tag -d ios-fp-<hash>
+git push origin :refs/tags/ios-fp-<hash>
+gh workflow run testflight.yml --ref main --field force=true
+```
+
+This is a deliberate trade — EAS-side failures are rare and the alternative (polling-wait or
+webhook-driven tagging) costs either Actions minutes or operational complexity.
 
 - **Build failures** are usually code, signing, or capability mismatches. The provisioning
   profile got out of sync with the App ID's capabilities; an entitlement was added in
   `app.json` but EAS hasn't seen it yet; a native dep got bumped past the SDK. Recovery:
-  fix the underlying issue, push, rebuild.
+  fix the underlying issue, delete the stale tag (above), push.
 - **Submit failures** are usually Apple/EAS infrastructure transients. App Store Connect
   was 5xxing; the EAS free-tier submission worker pool was exhausted ("Failed to create
-  worker instance"); a network blip mid-upload. Recovery: `gh run rerun --failed <run-id>`
-  re-runs _only_ the submit job against the existing IPA — no rebuild, no extra build minute
-  burned. The submit job also has an internal 3× retry with 60s backoff for one-shot
-  transients.
+  worker instance"); a network blip mid-upload. Recovery: from the EAS dashboard, click
+  "Resubmit" on the failed submission — it reuses the existing IPA, no rebuild needed. EAS
+  handles internal retries already; manual retry is rarely required.
 
 If the actual built IPA is fine but Apple/EAS won't accept it, **bypass entirely**: download
 the IPA from the EAS build details page and upload directly via `xcrun altool`:

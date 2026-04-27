@@ -1,9 +1,13 @@
 version: 2
+# Monthly cadence (down from weekly) — combined with aggressive grouping this
+# keeps Dependabot CI churn under ~50 Actions minutes/month for ~3 grouped PRs.
+# Bump to weekly when the dep matrix grows or when a security advisory window
+# matters more than minutes.
 updates:
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "09:00"
       timezone: America/Los_Angeles
@@ -37,6 +41,8 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
+      # Native-side: anything that touches the iOS bundle. Kept separate so a
+      # broken Metro/codegen bump can be reverted without dragging tooling.
       expo:
         patterns:
           - "expo"
@@ -44,30 +50,53 @@ updates:
           - "@expo/*"
           - "react-native"
           - "react-native-*"
+      # Backend SDK family — gets bumped every release of the AWS SDK, easy
+      # to verify in one diff.
       aws-sdk:
         patterns:
           - "@aws-sdk/*"
-      types:
+      # Catch-all for everything that isn't native or AWS SDK. Includes
+      # vitest, knip, biome, prettier, hono, zod, drizzle-*, @types/*,
+      # tanstack, etc. — combining them avoids the per-dep PR fan-out that
+      # was driving CI minute spend.
+      tooling:
         patterns:
-          - "@types/*"
-      drizzle:
-        patterns:
-          - "drizzle-*"
+          - "*"
+        exclude-patterns:
+          - "expo"
+          - "expo-*"
+          - "@expo/*"
+          - "react-native"
+          - "react-native-*"
+          - "@aws-sdk/*"
+          - "react"
+          - "react-dom"
+          - "typescript"
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "09:00"
       timezone: America/Los_Angeles
     open-pull-requests-limit: 10
+    groups:
+      # All GH Actions bumps in one PR — they're SHA-pinned and Dependabot
+      # produces one PR per action otherwise (high noise, low value).
+      actions:
+        patterns:
+          - "*"
 
   - package-ecosystem: terraform
     directory: /infra
     schedule:
-      interval: weekly
+      interval: monthly
       day: monday
       time: "09:00"
       timezone: America/Los_Angeles
     open-pull-requests-limit: 5
+    groups:
+      terraform:
+        patterns:
+          - "*"
