@@ -1,8 +1,9 @@
 # workshop — coding agent guide
 
 Read this before editing anything. Also read `docs/decisions.md` for the constraints behind the
-design, and check `docs/plans/HANDOFF.md` if it exists — it describes in-flight setup work that
-may not be complete.
+design, `docs/recovery-runbook.md` when something is broken (flat symptom → fix lookup), and
+check `docs/plans/HANDOFF.md` if it exists — it describes in-flight setup work that may not be
+complete.
 
 ## What this repo is
 
@@ -95,6 +96,18 @@ land as additional routes inside the same app.
   on the next build, so a manual portal toggle without a matching code declaration is
   drift waiting to happen. Currently declared: Sign In with Apple (via the
   `expo-apple-authentication` plugin).
+- **GitHub Actions `permissions:` blocks aren't least-privilege by default** — `permissions:
+  contents: read` *replicates* GitHub's default for push events, doesn't restrict it. Any new
+  action that needs PR metadata (e.g. `dorny/paths-filter`, label-on-PR, comment-on-PR) needs
+  an explicit grant like `pull-requests: read`. Failure mode is opaque at runtime
+  (`"Resource not accessible by integration"`) and isn't caught by `actionlint`.
+- **Auto-merge requires GitHub Pro on private repos.** `gh pr merge --auto` is the cleanest
+  pattern for autonomous agents (skill-driven Niteshift sessions, etc.) — it queues the merge
+  to fire when checks pass. But on a private repo on the free GitHub plan, branch protection
+  is unavailable, and auto-merge requires branch protection. So the gh command fails with
+  `"Auto merge is not allowed for this repository"`. The `/continue-redesign` skill falls back
+  to manual merge cleanly. To unlock auto-merge: make the repo public (free) OR upgrade to
+  Pro (\$4/mo). Worth it if rate-of-PR-merges is high enough; not currently.
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
   unless there's a specific reason (security fix, unblocking work). Weekly PRs on Mondays.
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full error objects:
@@ -121,6 +134,162 @@ The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
 `APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
 `GOOGLE_BOOKS_API_KEY`, `LOG_LEVEL` from env vars set by Terraform. If behavior seems wrong,
 `aws lambda get-function-configuration` shows what's actually running.
+
+## iOS deploy pipeline
+
+The iOS pipeline has more moving parts than the backend, and the failure modes
+need different recovery paths. Read this before trying to debug a TestFlight
+problem — the wrong fix at the wrong layer wastes EAS build minutes (free-tier:
+30/month).
+
+### The four layers
+
+```
+Apple Developer Portal  ←→  EAS Build infrastructure  ←→  GitHub Actions  ←→  Code/config
+```
+
+- **Apple Developer Portal** owns identifiers, capabilities, certificates, profiles. Manual
+  config that EAS reflects/syncs.
+- **EAS Build/Submit** runs the actual iOS build on Apple Silicon, signs with the certs/profiles
+  it manages, then submits the IPA to App Store Connect for TestFlight processing.
+- **GitHub Actions** orchestrates: computes fingerprint, calls `eas build`, captures build ID,
+  calls `eas submit --id <build_id>`, tags fingerprint on success. Lives in `testflight.yml`.
+- **Code/config** is what EAS Build packages: `app.json` plugins/entitlements, `eas.json` build
+  profile, source code.
+
+### Build vs Submit are independent failure modes
+
+`testflight.yml` runs them as **separate jobs** (`build` → `submit`) for exactly this reason:
+they break in different ways and need different recovery.
+
+- **Build failures** are usually code, signing, or capability mismatches. The provisioning
+  profile got out of sync with the App ID's capabilities; an entitlement was added in
+  `app.json` but EAS hasn't seen it yet; a native dep got bumped past the SDK. Recovery:
+  fix the underlying issue, push, rebuild.
+- **Submit failures** are usually Apple/EAS infrastructure transients. App Store Connect
+  was 5xxing; the EAS free-tier submission worker pool was exhausted ("Failed to create
+  worker instance"); a network blip mid-upload. Recovery: `gh run rerun --failed <run-id>`
+  re-runs *only* the submit job against the existing IPA — no rebuild, no extra build minute
+  burned. The submit job also has an internal 3× retry with 60s backoff for one-shot
+  transients.
+
+If the actual built IPA is fine but Apple/EAS won't accept it, **bypass entirely**: download
+the IPA from the EAS build details page and upload directly via `xcrun altool`:
+
+```bash
+read -s "ASP?Paste app-specific password: " && echo "" && \
+  xcrun altool --upload-app --type ios -f ~/Downloads/workshop.ipa \
+    -u joshlebed@gmail.com -p "$ASP" && unset ASP
+```
+
+Generate the app-specific password at <https://appleid.apple.com> → Sign-In and Security →
+App-Specific Passwords. The IPA hits App Store Connect in ~2 minutes; appears in TestFlight
+~10 minutes later. This is the fastest path when the EAS submit queue is congested.
+
+### EAS capability sync semantics
+
+EAS reflects Apple Developer Portal capability state from your code, **one-way**:
+
+- Capability declared in code (via `app.json` `ios.entitlements` or via an Expo config plugin)
+  → EAS enables it in the portal on the next build.
+- Capability enabled in the portal **but not declared in code** → EAS *disables* it on the
+  next `eas credentials` or build.
+
+Practical implication: any capability you toggle directly in the Apple Developer Portal will
+get reverted unless you also declare it in code. Currently declared:
+
+- **Sign In with Apple** — via the `expo-apple-authentication` plugin in `app.json`.
+
+Phase 4's share extension will declare **App Groups** (`group.dev.josh.workshop`) via a config
+plugin. The App Group identifier was registered in the Apple portal during this session as
+preventive setup — but the *capability* on the App ID was auto-disabled by EAS sync because
+no code declaration exists yet. That's expected and self-corrects when Phase 4 ships.
+
+### Capability changes invalidate provisioning profiles
+
+When you toggle a capability on an App ID (e.g. enabling Sign In with Apple, App Groups,
+Push Notifications), Apple invalidates existing provisioning profiles. EAS *should* detect
+this and regenerate, but doesn't always. Symptom: TestFlight build fails with
+`"Provisioning profile ... doesn't include the <foo> capability"`.
+
+Recovery:
+
+```bash
+cd apps/workshop && npx eas-cli@latest credentials --platform ios
+# → production
+# → Build Credentials: Manage everything needed to build your project
+# → Provisioning Profile: Delete one from your project
+# → confirm
+```
+
+Then trigger a fresh build (`gh workflow run testflight.yml --ref main --field force=true`).
+EAS sees the missing profile, regenerates it with the current capabilities, and the build
+succeeds.
+
+### ASC API key role scoping
+
+EAS auto-creates an App Store Connect API key for the **submit** step the first time you
+submit (it shows in `eas credentials -p ios` as `[Expo] EAS Submit ...`). That key is *not*
+automatically usable for the **build** step's credential operations (regenerating provisioning
+profiles non-interactively in CI). Without a build-side key registered, CI fails with
+`"In order to configure your Provisioning Profile, authentication with an ASC API key is
+required in non-interactive mode."`
+
+The fix is registering an ASC API key for build via:
+
+```bash
+npx eas-cli@latest credentials --platform ios
+# → production → App Store Connect: Manage your API Key
+# → Set up an App Store Connect API Key for your project
+# → reuse the existing ADMIN-role key, or create a new one in App Store Connect
+```
+
+See `docs/manual-setup.md` §5 for the full runbook.
+
+### GitHub Actions concurrency
+
+`testflight.yml` uses `concurrency: testflight, cancel-in-progress: false`. This is the right
+default — never abandon an in-flight EAS build minute by cancelling it for a new push. But it
+becomes a hostage-taker when the in-flight run is stuck (Apple outage, EAS submit queue
+exhaustion). New runs queue behind the stuck one and pile up.
+
+Recovery when stuck: cancel the stuck run with `gh run cancel <run-id>`. This frees the
+GitHub Actions runner and the concurrency lock; the queued runs proceed. The EAS build itself
+keeps running on EAS's servers regardless — cancelling the workflow only stops the GitHub
+runner from waiting for it.
+
+### When to bypass CI entirely
+
+Roughly: if the IPA itself is correct (build succeeded on EAS) but downstream is broken
+(submit queue contention, App Store Connect 5xx, etc.), **bypass** with `xcrun altool`.
+Don't keep retrying the workflow — it'll keep getting stuck on the same external issue.
+The IPA URL is in the EAS build details page (`https://expo.dev/accounts/joshlebed/projects/workshop/builds`).
+
+---
+
+## Sources of truth — where each piece of state lives
+
+This map lives here because state is scattered across many systems and an agent
+otherwise has to re-derive "where do I look for X?" every session.
+
+| System | URL | What it owns |
+|---|---|---|
+| **EAS dashboard** | <https://expo.dev/accounts/joshlebed/projects/workshop> | iOS build history + IPAs, submission queue status, fingerprint tags, EAS Update channels, monthly build-minute quota |
+| **App Store Connect** | <https://appstoreconnect.apple.com> | TestFlight builds, app metadata, App Store listings, ASC API keys |
+| **Apple Developer Portal** | <https://developer.apple.com/account/resources/identifiers/list> | App IDs, capabilities, App Groups, provisioning profiles, signing certificates |
+| **Google Cloud Console** | <https://console.cloud.google.com/apis/credentials?project=workshop-494616&authuser=1> | OAuth client IDs (iOS, web), API keys (Books), enabled APIs |
+| **TMDB** | <https://www.themoviedb.org/settings/api> | TMDB v3 API key (movies/TV enrichment) |
+| **AWS SSM Parameter Store** | `aws ssm describe-parameters` (region us-east-1, prefix `/workshop-prod/`) | Lambda env values (DATABASE_URL, OAuth audiences, API keys); `lifecycle { ignore_changes = [value] }` so direct `put-parameter --overwrite` doesn't drift Terraform state |
+| **HCP Terraform** | <https://app.terraform.io/app/josh-personal-org/workspaces/workshop-prod> | All AWS infra state (Lambda, IAM, SSM resources, API Gateway, etc.) |
+| **Cloudflare Pages** | <https://dash.cloudflare.com/?to=/:account/pages/view/workshop> | Web build env vars (the `EXPO_PUBLIC_*` audience values), build logs, production URL `workshop-a2v.pages.dev` |
+| **GitHub Actions** | <https://github.com/joshlebed/workshop/actions> | CI workflow runs, deploy workflow runs, fingerprint tags (as git tags) |
+| **Neon** | (managed; connection string in SSM `/workshop-prod/db/url`) | Production Postgres data |
+
+If you need to **change** something, change it in the system listed above. If you need to
+**read** the current value, read it there too — don't trust caches in code or Terraform that
+might be stale.
+
+---
 
 ## Known gotcha: HCP Terraform state lock
 

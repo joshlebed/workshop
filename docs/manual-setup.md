@@ -121,6 +121,128 @@ In repo settings → **Branches** → Branch protection rules → Add rule for `
 - [ ] Sign in with your verified email. 6-digit code arrives via SES.
 - [ ] Add a movie. Success.
 
+## 10. Rotation playbooks
+
+The values below are scattered across multiple systems by design (each system is the source of
+truth for its slice — see `CLAUDE.md` "Sources of truth"). Rotation means updating *each*
+location. Easy to forget one, so use these checklists.
+
+### 10.1 Apple/Google OAuth client ID rotation
+
+If you regenerate the Apple Services ID, the Google iOS OAuth client, or the Google web OAuth
+client (typical reasons: portal cleanup, security incident, switching accounts), the new
+client ID has to be propagated to **six** places. Lambda + web bundle reject auth with the
+old audience until all six are in sync.
+
+1. **AWS SSM** — Lambda reads from here:
+   ```bash
+   AWS_PROFILE=workshop-prod aws ssm put-parameter \
+     --name /workshop-prod/<apple_services_id|google_ios_client_id|google_web_client_id> \
+     --type SecureString --overwrite --value '<new value>'
+   ```
+2. **Bounce the Lambda** so the new env value takes effect:
+   ```bash
+   cd infra && AWS_PROFILE=workshop-prod terraform apply
+   ```
+   (Re-applies with the same SSM-resolved values; Lambda env vars get refreshed.)
+3. **Cloudflare Pages env vars** — web bundle reads from here at build time. Dashboard →
+   Pages → workshop → Settings → Variables and Secrets → edit
+   `EXPO_PUBLIC_APPLE_SERVICES_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` /
+   `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`. Trigger a redeploy from the dashboard or push a no-op
+   commit to refresh.
+4. **`apps/workshop/eas.json`** — iOS native build reads from here:
+   `build.production.env` has the same three vars. Edit and commit.
+5. **`apps/workshop/app.json`** — only the **iOS Google client ID** matters here, in
+   `ios.infoPlist.CFBundleURLTypes` as the reverse scheme
+   (`com.googleusercontent.apps.<iOS-client-suffix>`). Edit and commit.
+6. **`.github/workflows/{deploy-mobile,testflight}.yml`** — both inject the three vars at
+   the EAS Update / EAS Build step. Edit and commit.
+
+Once the commit lands on `main`, `Deploy Mobile (OTA)` ships the new audience to existing
+TestFlight users via EAS Update; `TestFlight (native iOS build)` rebuilds (because the
+fingerprint changed) only if app.json is in the diff.
+
+Verify with:
+```bash
+AWS_PROFILE=workshop-prod aws lambda get-function-configuration --function-name workshop-prod-api \
+  --query 'Environment.Variables.{APPLE:APPLE_SERVICES_ID,GIOS:GOOGLE_IOS_CLIENT_ID,GWEB:GOOGLE_WEB_CLIENT_ID}'
+```
+
+### 10.2 TMDB / Google Books API key rotation
+
+Simpler than OAuth — only one location:
+
+```bash
+AWS_PROFILE=workshop-prod aws ssm put-parameter \
+  --name /workshop-prod/<tmdb_api_key|google_books_api_key> \
+  --type SecureString --overwrite --value '<new value>'
+
+cd infra && AWS_PROFILE=workshop-prod terraform apply  # bounces Lambda
+```
+
+The keys live only in Lambda env (no client-side use), so no EAS / CF Pages / workflow
+updates needed.
+
+### 10.3 ASC API key rotation
+
+```bash
+cd apps/workshop && npx eas-cli@latest credentials --platform ios
+# → production → App Store Connect: Manage your API Key
+# → "Remove App Store Connect API Key" then "Set up an App Store Connect API Key"
+```
+
+Generate the new key in App Store Connect (<https://appstoreconnect.apple.com/access/api>)
+with role **App Manager** or higher; download the `.p8` once at creation time (Apple won't
+re-show it), paste into the eas-cli prompt. EAS stores it server-side; nothing to commit.
+
+### 10.4 Database connection string rotation
+
+**Careful** (see `CLAUDE.md` Safe vs careful changes). In-flight requests may briefly fail.
+
+```bash
+AWS_PROFILE=workshop-prod aws ssm put-parameter \
+  --name /workshop-prod/db/url \
+  --type SecureString --overwrite --value '<new connection string>'
+
+cd infra && AWS_PROFILE=workshop-prod terraform apply  # Lambda env updates
+```
+
+Verify with `curl /health` and `./scripts/logs.sh --since 5m --filter error`.
+
+## 11. Adding an iOS capability
+
+When adding a capability to the App ID — App Groups, Push Notifications, Associated Domains,
+HealthKit, etc. — follow this order. Skipping a step usually leaves the app unable to build
+or use the capability at runtime.
+
+1. **Declare in code first.** Either:
+   - In `apps/workshop/app.json` `ios.entitlements`:
+     ```json
+     "entitlements": {
+       "com.apple.security.application-groups": ["group.dev.josh.workshop"]
+     }
+     ```
+   - Or via an Expo config plugin (e.g. `expo-apple-authentication` enables Sign In with Apple
+     this way). Plugin in `app.json` `expo.plugins` array.
+2. **Enable the matching capability in the Apple Developer Portal** (<https://developer.apple.com/account/resources/identifiers/list>):
+   - App ID → Edit → check the capability checkbox → Configure if needed → Save modal → Save
+     top-right of App ID page → Confirm "Modify App Capabilities" warning.
+3. **Regenerate the provisioning profile** (Apple invalidates existing ones on capability
+   changes):
+   ```bash
+   cd apps/workshop && npx eas-cli@latest credentials --platform ios
+   # → production → Build Credentials → Provisioning Profile: Delete one from your project
+   ```
+4. **Trigger a fresh TestFlight build**:
+   ```bash
+   gh workflow run testflight.yml --ref main --field force=true
+   ```
+5. **Verify** on the next TestFlight build — should not fail with
+   `"Provisioning profile doesn't include the <capability>"`.
+
+The order matters: declaring in code first means EAS's capability sync (which reverts
+portal-only changes) won't undo your portal toggle on the next build.
+
 ## Troubleshooting first-run
 
 - **"Lambda returns 503 'not deployed yet'"**: the placeholder zip is still there. CI didn't run
