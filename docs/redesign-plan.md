@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: proposed · Date: 2026-04-24 · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the *what*; this
@@ -13,6 +13,69 @@ data model, API, client screens, and design system.
 
 See [`CLAUDE.md`](../CLAUDE.md) for operational conventions and
 [`docs/decisions.md`](./decisions.md) for infra rationale.
+
+---
+
+## Current status (2026-04-27)
+
+Per-chunk status lives in the §3 tables; this is the orientation snapshot.
+
+### Done
+
+- **Phase 0** chunks 0a, 0b-1, 0b-2, 0c-1 — backend + client foundations,
+  primitives skeleton, OAuth verifier code, infra code (no apply).
+- **0c-2 portal + infra** (this session, 2026-04-27):
+  - Apple Services ID Web Auth saved (`dev.josh.workshop` configured as
+    primary App ID with Sign In with Apple; Services ID
+    `dev.josh.workshop.web` Domain + Return URL `workshop-a2v.pages.dev`).
+  - Google Cloud project `workshop` set up — OAuth consent screen
+    (Testing, External, scopes `openid email profile`), iOS client ID
+    + Web client ID created.
+  - `terraform apply` on `workshop-prod` ran cleanly: 6 new SSM
+    SecureString params (`apple_bundle_id`, `apple_services_id`,
+    `google_ios_client_id`, `google_web_client_id`, `tmdb_api_key`,
+    `google_books_api_key`); Lambda env vars wired to those params;
+    GH Actions IAM role updated; `aws_sesv2_email_identity.sender` +
+    `aws_iam_role_policy.lambda_inline` destroyed.
+  - Lambda `/health` green with new audiences live in env.
+  - Cloudflare Pages production env vars set
+    (`EXPO_PUBLIC_APPLE_SERVICES_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`,
+    `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`) so the next CF build picks up
+    the audiences for the web bundle.
+- **Phase 1** chunks 1a-1, 1a-2, 1b-1, 1b-2 — full lists/items CRUD,
+  upvote, complete, home + detail + create-list flows, optimistic-update
+  plumbing, one Playwright happy-path.
+- **Phase 2** chunk 2a-1 — TMDB + Google Books search routes, metadata
+  cache, per-type `items.metadata` Zod validators.
+
+### Pending
+
+- **0c-2 client SDK PR** (the only remaining piece of Phase 0): replace
+  the warning-dialog stubs in `apps/workshop/app/sign-in.tsx` and
+  `useAuth.signInWithApple` / `signInWithGoogle` with real
+  `expo-apple-authentication` / `expo-auth-session` / Google Identity
+  Services calls; add `expo-apple-authentication` to `app.json` plugins;
+  add a Playwright happy-path that stubs Google Identity Services with
+  a known JWT. No further external setup needed — all portal, SSM, CF
+  Pages env, and Lambda env state is in place.
+- **Phase 2** chunks 2a-2, 2b-1, 2b-2 — link-preview backend with SSRF
+  allowlist, client search modal, client URL link-preview wiring.
+  Production search will also need real `TMDB_API_KEY` /
+  `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently `PHASE_2_NOT_SET`
+  placeholder strings — applied in this session so the SSM resources
+  could be created; `lifecycle { ignore_changes = [value] }` means a
+  later `aws ssm put-parameter --overwrite` won't drift Terraform
+  state).
+- **Phases 3, 4, 5** — social/sharing, iOS share extension, polish.
+  Not started; chunk decomposition lives further down in §3.
+
+### Next to implement
+
+**0c-2 client SDK PR.** It's the immediate next task — without it the
+sign-in screen still shows a warning dialog, and Phase 1's UI is
+unreachable in production. After that, **Phase 2 chunk 2a-2**
+(link-preview backend with SSRF allowlist) is the natural next backend
+slice; **2b-1** and **2b-2** can land in parallel once 2a-2 is in.
 
 ---
 
@@ -101,7 +164,7 @@ apply) being done up front.
 | **0b-1** | Backend OAuth foundation: `lib/oauth/{jwks,apple,google}.ts` with JWKS-cached JWT verify via `jose`, `routes/v1/auth.ts` (`POST /apple`, `POST /google`, `POST /signout`, `GET /me`), `routes/v1/users.ts` (`PATCH /me` with display-name validation), `requireAuth` middleware refactored to the v1 envelope, rate-limit wired to `/v1/auth/*` (per-IP, 30/min), shared types extended (`AppleAuthRequest`, `GoogleAuthRequest`, `AuthResponse`, `UpdateMeRequest`), `config.ts` reads OAuth audiences from env, Vitest mocked-JWKS coverage (43 tests). | None — uses dep-injected JWKS/audiences in tests so no provider portal config required to land the code. | **Done** (this PR) |
 | **0b-2** | Client OAuth surface: primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten (signInWithApple/Google, signOut, setDisplayName), dev-only `POST /v1/auth/dev` backend route gated on `DEV_AUTH_ENABLED=1`, one Playwright happy-path that drives sign-in → display-name → home via the dev route. | None — real OAuth SDK integration is deferred to 0c (requires Apple/Google portal config). | **Done** (this PR) |
 | **0c-1** | Infra Terraform code only (no apply): delete `infra/ses.tf` + `ses_verified_email` variable + SES IAM policy + `SES_FROM_ADDRESS` from Lambda + `SES_FROM_ADDRESS` from the deploy-backend migrate job; add six `aws_ssm_parameter` SecureString resources (`apple_bundle_id`, `apple_services_id`, `google_ios_client_id`, `google_web_client_id`, `tmdb_api_key`, `google_books_api_key`) with empty defaults and `lifecycle { ignore_changes = [value] }`; wire six matching env vars into `aws_lambda_function.api`; update `terraform.tfvars.example`; create `docs/plans/HANDOFF.md` tracking the remaining external work. | None — zero cloud actions; `terraform plan` is informational until 0c-2 applies. | **Done** (this PR) |
-| **0c-2** | Apply the infra + wire real OAuth SDKs: `AWS_PROFILE=workshop-prod terraform apply`; paste real values into SSM via `aws ssm put-parameter --overwrite`; stand up the Cloudflare Pages project wired to `main`; add `expo-apple-authentication` + `expo-auth-session` + `expo-crypto` + `expo-web-browser` to `apps/workshop`; replace the warning-dialog stubs in `app/sign-in.tsx` + `useAuth.signInWithApple` / `signInWithGoogle` with real SDK calls reading `EXPO_PUBLIC_APPLE_SERVICES_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`; add a second Playwright happy-path that stubs Google Identity Services. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account; Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). All tracked in `docs/plans/HANDOFF.md`. | Pending |
+| **0c-2** | Apply the infra + wire real OAuth SDKs: `AWS_PROFILE=workshop-prod terraform apply`; paste real values into SSM via `aws ssm put-parameter --overwrite`; stand up the Cloudflare Pages project wired to `main`; add `expo-apple-authentication` + `expo-auth-session` + `expo-crypto` + `expo-web-browser` to `apps/workshop`; replace the warning-dialog stubs in `app/sign-in.tsx` + `useAuth.signInWithApple` / `signInWithGoogle` with real SDK calls reading `EXPO_PUBLIC_APPLE_SERVICES_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`; add a second Playwright happy-path that stubs Google Identity Services. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account; Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). All tracked in `docs/plans/HANDOFF.md`. | **Partial** — portal + SSM + Terraform apply + CF Pages env vars all done as of 2026-04-27 (see Current status above). Client SDK PR (replace sign-in warning stubs, add `expo-apple-authentication` plugin, second Playwright happy-path) is the only piece left. |
 
 #### 3.2 What 0a actually shipped — start here for 0b
 
