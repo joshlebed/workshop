@@ -12,6 +12,7 @@ import {
   lists,
   users,
 } from "../../db/schema.js";
+import { recordEvent } from "../../lib/events.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
@@ -108,6 +109,13 @@ inviteRoutes.post("/lists/:id/invites", requireListMember, requireListOwner, asy
     .returning();
   if (!row) throw new Error("invite insert returned no row");
 
+  await recordEvent({
+    listId,
+    actorId: userId,
+    type: "invite_created",
+    payload: { inviteId: row.id },
+  });
+
   // Owner generated this token; it's safe to return on this single
   // response so they can build the share URL. `pendingInvites` on
   // `GET /v1/lists/:id` deliberately omits it.
@@ -146,6 +154,14 @@ inviteRoutes.delete(
     if (updated.length === 0) {
       return err(c, "NOT_FOUND", "invite not found");
     }
+
+    const userId = c.get("userId");
+    await recordEvent({
+      listId,
+      actorId: userId,
+      type: "invite_revoked",
+      payload: { inviteId },
+    });
     return ok(c, { ok: true });
   },
 );
@@ -198,6 +214,7 @@ inviteRoutes.post("/invites/:token/accept", async (c) => {
       .limit(1);
 
     let memberRow = existing;
+    let newlyJoined = false;
     if (!memberRow) {
       const [inserted] = await tx
         .insert(listMembers)
@@ -205,6 +222,7 @@ inviteRoutes.post("/invites/:token/accept", async (c) => {
         .returning();
       if (!inserted) throw new Error("member insert returned no row");
       memberRow = inserted;
+      newlyJoined = true;
     }
 
     // Stamp acceptedAt the first time a user accepts the link. Multiple
@@ -216,6 +234,19 @@ inviteRoutes.post("/invites/:token/accept", async (c) => {
         .update(listInvites)
         .set({ acceptedAt: new Date() })
         .where(eq(listInvites.id, invite.id));
+    }
+
+    // `member_joined` only fires on a fresh membership row — re-accepting
+    // a token while already a member is a no-op event-wise, matching
+    // the idempotent membership behavior.
+    if (newlyJoined) {
+      await recordEvent({
+        db: tx,
+        listId: list.id,
+        actorId: userId,
+        type: "member_joined",
+        payload: { inviteId: invite.id },
+      });
     }
 
     return { kind: "ok" as const, list, member: memberRow };

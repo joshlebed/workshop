@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbItem, items, itemUpvotes, lists } from "../../db/schema.js";
+import { recordEvent } from "../../lib/events.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireItemMember } from "../../middleware/authorize.js";
@@ -304,6 +305,16 @@ export async function createItem(
     if (!row) throw new Error("item insert returned no row");
 
     await tx.insert(itemUpvotes).values({ itemId: row.id, userId });
+    // Auto-upvote is an implementation detail of item creation, not a
+    // user-visible action — emit `item_added` only.
+    await recordEvent({
+      db: tx,
+      listId,
+      actorId: userId,
+      type: "item_added",
+      itemId: row.id,
+      payload: { title: row.title, type: row.type },
+    });
     return row;
   });
 
@@ -360,6 +371,14 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
   const [updated] = await db.update(items).set(patch).where(eq(items.id, itemId)).returning();
   if (!updated) return err(c, "NOT_FOUND", "item not found");
 
+  await recordEvent({
+    listId: updated.listId,
+    actorId: userId,
+    type: "item_updated",
+    itemId: updated.id,
+    payload: { title: updated.title },
+  });
+
   const item = await fetchItemShape(itemId, userId);
   if (!item) return err(c, "NOT_FOUND", "item not found");
   return ok(c, { item });
@@ -367,10 +386,29 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
 
 itemRoutes.delete("/:id", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
+  const userId = c.get("userId");
+  const listId = c.get("itemListId");
   const db = getDb();
-  // ON DELETE CASCADE on item_upvotes / activity_events handles dependents.
-  const deleted = await db.delete(items).where(eq(items.id, itemId)).returning({ id: items.id });
-  if (deleted.length === 0) return err(c, "NOT_FOUND", "item not found");
+  // ON DELETE CASCADE on item_upvotes / activity_events handles dependents
+  // (including this very event row's `item_id` pointer — recording it
+  // before the delete keeps `item_id` populated for the brief window
+  // before the cascade fires).
+  const [deleted] = await db
+    .delete(items)
+    .where(eq(items.id, itemId))
+    .returning({ id: items.id, title: items.title });
+  if (!deleted) return err(c, "NOT_FOUND", "item not found");
+
+  // `item_id` is intentionally null — the row is gone by the time this
+  // event is read, and the FK is `ON DELETE CASCADE` so a non-null
+  // pointer would cascade-delete this very event row on the next
+  // delete pass.
+  await recordEvent({
+    listId,
+    actorId: userId,
+    type: "item_deleted",
+    payload: { title: deleted.title },
+  });
   return ok(c, { ok: true });
 });
 
@@ -386,14 +424,29 @@ itemRoutes.post(
   async (c) => {
     const itemId = c.req.param("id");
     const userId = c.get("userId");
+    const listId = c.get("itemListId");
     const db = getDb();
 
     // Idempotent: ON CONFLICT DO NOTHING means a second upvote is a no-op.
-    await db.execute(sql`
+    // `RETURNING` only emits a row on a fresh insert — a conflict returns
+    // nothing — so we use the row count to decide whether to record an
+    // event (don't spam the feed on repeat clicks).
+    const inserted = (await db.execute(sql`
       INSERT INTO item_upvotes (item_id, user_id)
       VALUES (${itemId}, ${userId})
       ON CONFLICT (item_id, user_id) DO NOTHING
-    `);
+      RETURNING item_id
+    `)) as Array<Record<string, unknown>> | { rows: Array<Record<string, unknown>> };
+
+    const insertedRows = Array.isArray(inserted) ? inserted : inserted.rows;
+    if (insertedRows.length > 0) {
+      await recordEvent({
+        listId,
+        actorId: userId,
+        type: "item_upvoted",
+        itemId,
+      });
+    }
 
     const item = await fetchItemShape(itemId, userId);
     if (!item) return err(c, "NOT_FOUND", "item not found");
@@ -413,11 +466,25 @@ itemRoutes.delete(
   async (c) => {
     const itemId = c.req.param("id");
     const userId = c.get("userId");
+    const listId = c.get("itemListId");
     const db = getDb();
 
-    await db
+    // RETURNING tells us whether a row actually existed — only then do we
+    // record the un-upvote event (no spam from repeat clicks on an
+    // already-unupvoted item).
+    const removed = await db
       .delete(itemUpvotes)
-      .where(and(eq(itemUpvotes.itemId, itemId), eq(itemUpvotes.userId, userId)));
+      .where(and(eq(itemUpvotes.itemId, itemId), eq(itemUpvotes.userId, userId)))
+      .returning({ itemId: itemUpvotes.itemId });
+
+    if (removed.length > 0) {
+      await recordEvent({
+        listId,
+        actorId: userId,
+        type: "item_unupvoted",
+        itemId,
+      });
+    }
 
     const item = await fetchItemShape(itemId, userId);
     if (!item) return err(c, "NOT_FOUND", "item not found");
@@ -428,6 +495,7 @@ itemRoutes.delete(
 itemRoutes.post("/:id/complete", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
   const userId = c.get("userId");
+  const listId = c.get("itemListId");
   const db = getDb();
 
   const [updated] = await db
@@ -442,6 +510,13 @@ itemRoutes.post("/:id/complete", requireItemMember, async (c) => {
     .returning({ id: items.id });
   if (!updated) return err(c, "NOT_FOUND", "item not found");
 
+  await recordEvent({
+    listId,
+    actorId: userId,
+    type: "item_completed",
+    itemId,
+  });
+
   const item = await fetchItemShape(itemId, userId);
   if (!item) return err(c, "NOT_FOUND", "item not found");
   return ok(c, { item });
@@ -450,6 +525,7 @@ itemRoutes.post("/:id/complete", requireItemMember, async (c) => {
 itemRoutes.post("/:id/uncomplete", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
   const userId = c.get("userId");
+  const listId = c.get("itemListId");
   const db = getDb();
 
   const [updated] = await db
@@ -463,6 +539,13 @@ itemRoutes.post("/:id/uncomplete", requireItemMember, async (c) => {
     .where(eq(items.id, itemId))
     .returning({ id: items.id });
   if (!updated) return err(c, "NOT_FOUND", "item not found");
+
+  await recordEvent({
+    listId,
+    actorId: userId,
+    type: "item_uncompleted",
+    itemId,
+  });
 
   const item = await fetchItemShape(itemId, userId);
   if (!item) return err(c, "NOT_FOUND", "item not found");

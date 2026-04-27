@@ -368,6 +368,51 @@ export interface LinkPreviewResponse {
   preview: LinkPreview;
 }
 
+// --- Activity feed (Phase 3a-2) ---
+//
+// Cross-list chronological feed of events on lists the requester is a
+// member of (spec §4.7). Events are recorded synchronously by mutating
+// handlers via `recordEvent` (`apps/backend/src/lib/events.ts`); the
+// `activity_event_type` enum lives in `db/schema.ts` and is the
+// canonical set.
+
+export interface ActivityEvent {
+  id: string;
+  listId: string;
+  actorId: string;
+  /** Joined from `users.display_name`; null when the actor has none yet. */
+  actorDisplayName: string | null;
+  type: ActivityEventType;
+  /** Set on item-scoped events; null on list/member/invite events. */
+  itemId: string | null;
+  /** Event-specific details (e.g. item title at the time of the event). */
+  payload: Record<string, unknown>;
+  createdAt: string;
+}
+
+/**
+ * Opaque cursor for `GET /v1/activity?cursor=...`. Encodes `(createdAt, id)`
+ * so events recorded inside the same transaction don't get duplicated or
+ * skipped at the page boundary. Clients should treat the value as opaque.
+ */
+export interface ActivityFeedResponse {
+  events: ActivityEvent[];
+  nextCursor: string | null;
+}
+
+/**
+ * `POST /v1/activity/read`. Omit `listIds` to mark every list the user is
+ * a member of as read. Pass a subset to mark only those (the backend
+ * silently skips lists the user isn't a member of).
+ */
+export interface MarkActivityReadRequest {
+  listIds?: string[];
+}
+
+export interface MarkActivityReadResponse {
+  ok: true;
+}
+
 // --- Spotify integration ---
 
 /**

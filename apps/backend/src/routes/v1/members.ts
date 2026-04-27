@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { listMembers } from "../../db/schema.js";
+import { recordEvent } from "../../lib/events.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember } from "../../middleware/authorize.js";
@@ -64,6 +65,18 @@ memberRoutes.delete("/:id/members/:userId", requireListMember, async (c) => {
     await tx
       .delete(listMembers)
       .where(and(eq(listMembers.listId, listId), eq(listMembers.userId, targetUserId)));
+
+    // Self-leave vs owner-removal is the same handler but different
+    // event types: `member_left` for the actor leaving themselves,
+    // `member_removed` when an owner kicks someone else. Payload
+    // captures the target so the feed can render "X removed Y".
+    await recordEvent({
+      db: tx,
+      listId,
+      actorId: requesterId,
+      type: isSelfLeave ? "member_left" : "member_removed",
+      payload: { targetUserId },
+    });
 
     return { kind: "ok" as const };
   });
