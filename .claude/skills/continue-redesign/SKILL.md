@@ -82,14 +82,18 @@ This phase is what makes the next agent fast. Do not skip it.
     - **Test plan**: checklist of acceptance criteria from the plan, plus any manual verification you did.
     - **Follow-ups**: anything deferred, with a 1-line reason for each.
 
-13. **Arm auto-merge immediately after opening the PR**: `gh pr merge <PR> --auto --squash --delete-branch`. This queues the merge to fire automatically the moment all required checks pass — no manual round-trip. The project uses squash merges (verify: `git log origin/main --oneline -10`); pass `--squash` explicitly so it's not subject to repo defaults changing.
+13. **Try to arm auto-merge** so the PR self-merges when checks pass:
+    `gh pr merge <PR> --auto --squash --delete-branch`. The project uses squash merges (verify: `git log origin/main --oneline -10`); pass `--squash` explicitly so it's not subject to repo defaults changing.
+
+    Auto-merge requires GitHub branch protection to be configured, which on a private repo on the free GitHub plan is unavailable. **If the command fails with `"Auto merge is not allowed for this repository"` or similar, that's the cause — silently fall back to manual merge in step 14.** Don't surface this as a problem; it's just a config gap.
 
 14. Poll CI: `gh pr checks <PR>` until all checks finish.
-    - **Required checks pass** → auto-merge fires; the PR is merged automatically. Move on.
+    - **If auto-merge is armed and required checks pass**: GitHub fires the merge automatically. Verify with `gh pr view <PR> --json state` (should be `MERGED`). Move on.
+    - **If auto-merge is NOT armed and required checks pass**: run `gh pr merge <PR> --squash --delete-branch` manually.
     - **A required check fails**:
-      - Flake (intermittent timeout, network, dependency download) → `gh run rerun --failed <run-id>` once. Auto-merge stays armed and will fire after a successful rerun.
-      - Real failure → fix the issue and push another commit. Auto-merge stays armed.
-      - Two failed attempts from the same root cause → halt and surface to the human, **and disarm auto-merge** with `gh pr merge <PR> --disable-auto` so it doesn't fire on a future flaky-pass.
+      - Flake (intermittent timeout, network, dependency download) → `gh run rerun --failed <run-id>` once. If auto-merge was armed, it stays armed and will fire after a successful rerun.
+      - Real failure → fix the issue and push another commit. If auto-merge was armed, it stays armed.
+      - Two failed attempts from the same root cause → halt and surface to the human. If auto-merge was armed, **disarm it** with `gh pr merge <PR> --disable-auto` so it doesn't fire on a future flaky-pass.
     - Niteshift's `niteshift-check` is intentionally non-required — it's blocking only on the agent's own session, not on merge.
     - Cloudflare Pages preview check is informational; treat it as a hint, not a blocker.
 
