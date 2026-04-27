@@ -3,10 +3,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
+import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { createQueryClient } from "../src/lib/query";
+import { getItem } from "../src/lib/storage";
 import { ToastProvider, tokens } from "../src/ui/index";
 
 function useApplyOtaUpdatesOnArrival() {
@@ -20,22 +22,65 @@ function AuthGate() {
   const { status } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  // After sign-in we ask once whether a pending invite token is stashed and
+  // bounce the user to the accept-invite handler. The ref keeps the check
+  // from re-firing every time `segments` updates while the user is already
+  // signed-in.
+  const inviteCheckedRef = useRef(false);
 
   useEffect(() => {
     if (status === "loading") return;
     const first = segments[0];
     const onSignIn = first === "sign-in";
     const onOnboarding = first === "onboarding";
+    const onAcceptInvite = onOnboarding && segments[1] === "accept-invite";
+    const onInvite = first === "invite";
 
-    if (status === "signed-out" && !onSignIn) {
-      router.replace("/sign-in");
-    } else if (status === "needs-display-name" && !onOnboarding) {
+    if (status === "signed-out") {
+      // Let `/invite/:token` and `/onboarding/accept-invite` mount briefly so
+      // they can stash the token before AuthGate forwards to /sign-in.
+      if (!onSignIn && !onInvite && !onAcceptInvite) {
+        router.replace("/sign-in");
+      }
+      return;
+    }
+    if (status === "needs-display-name" && !onOnboarding) {
       router.replace("/onboarding/display-name");
-    } else if (status === "signed-in" && (onSignIn || onOnboarding)) {
+      return;
+    }
+    if (status === "signed-in" && (onSignIn || (onOnboarding && !onAcceptInvite))) {
       router.replace("/");
     }
-    // Signed-in users on `/list/...` or `/create-list/...` are left alone —
-    // those flows live under the same root stack and don't trigger redirects.
+    // Signed-in users on `/list/...`, `/create-list/...`, or
+    // `/onboarding/accept-invite` are left alone — those flows live under
+    // the same root stack and don't trigger redirects.
+  }, [status, segments, router]);
+
+  // Post-sign-in invite redirect: when status flips to signed-in, consult the
+  // stashed invite token (set by the accept-invite screen before the user
+  // bounced through sign-in) and forward there if present. Run once per
+  // sign-in transition to avoid loops.
+  useEffect(() => {
+    if (status !== "signed-in") {
+      inviteCheckedRef.current = false;
+      return;
+    }
+    if (inviteCheckedRef.current) return;
+    inviteCheckedRef.current = true;
+    let cancelled = false;
+    (async () => {
+      const stashed = await getItem(PENDING_INVITE_TOKEN_KEY).catch(() => null);
+      if (cancelled || !stashed) return;
+      const first = segments[0];
+      const onAcceptInvite = first === "onboarding" && segments[1] === "accept-invite";
+      if (onAcceptInvite) return;
+      // The accept-invite screen owns the eventual `removeItem` call so we
+      // only need to redirect here.
+      router.replace(`/onboarding/accept-invite?token=${encodeURIComponent(stashed)}`);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [status, segments, router]);
 
   if (status === "loading") {
@@ -65,9 +110,14 @@ function AuthGate() {
       <Stack.Screen name="onboarding/display-name" />
       <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="create-list/share" options={{ animation: "slide_from_right" }} />
+      <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="list/[id]/index" />
       <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
+      <Stack.Screen name="list/[id]/settings" options={{ presentation: "modal" }} />
       <Stack.Screen name="list/[id]/item/[itemId]" />
+      <Stack.Screen name="onboarding/accept-invite" />
+      <Stack.Screen name="invite/[token]" />
       <Stack.Screen name="spotify/index" />
       <Stack.Screen name="spotify/albums" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="spotify/now-playing" options={{ animation: "slide_from_right" }} />

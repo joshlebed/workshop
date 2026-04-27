@@ -57,6 +57,10 @@ test("create date-idea list → paste URL → see preview → save", async ({ pa
   await page.getByTestId("create-list-name").fill(listName);
   await page.getByTestId("create-list-submit").click();
 
+  // Skip the share step in the create-list flow.
+  await expect(page.getByTestId("create-list-share-done")).toBeVisible();
+  await page.getByTestId("create-list-share-done").click();
+
   await expect(page.getByTestId("empty-add-item")).toBeVisible();
   await page.getByTestId("empty-add-item").click();
 

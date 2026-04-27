@@ -1,9 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ListSummary, ListType } from "@workshop/shared";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { fetchActivity } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
 import { useAuth } from "../src/hooks/useAuth";
+import { getActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
 import {
   Button,
@@ -32,6 +35,41 @@ export default function Home() {
     enabled: !!token,
   });
 
+  // Bell badge: re-derive unread count from the first page of the activity
+  // feed. Server-side `lastReadAt` per list isn't surfaced on `GET /v1/lists`
+  // yet, so we compare each event's `createdAt` against a client-side
+  // `lastViewedAt` stamped by the activity screen on focus. The activity
+  // screen also fires `POST /v1/activity/read` for cross-device parity.
+  const activityFeedQuery = useQuery({
+    queryKey: queryKeys.activity.feed,
+    queryFn: () => fetchActivity({ limit: 50 }, token),
+    enabled: !!token,
+    staleTime: 30_000,
+  });
+  const [lastViewedAt, setLastViewedAt] = useState<string | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getActivityLastViewedAt()
+        .then((v) => {
+          if (!cancelled) setLastViewedAt(v);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+  const events = activityFeedQuery.data?.events ?? [];
+  const unreadCount = events.reduce((acc, e) => {
+    if (e.actorId === user?.id) return acc;
+    if (lastViewedAt && new Date(e.createdAt).getTime() <= new Date(lastViewedAt).getTime()) {
+      return acc;
+    }
+    return acc + 1;
+  }, 0);
+  const cappedUnread = unreadCount > 9 ? "9+" : String(unreadCount);
+
   const onCreateList = () => {
     router.push("/create-list/type");
   };
@@ -46,6 +84,22 @@ export default function Home() {
           </Text>
         </View>
         <View style={styles.headerActions}>
+          <View>
+            <IconButton
+              accessibilityLabel={unreadCount > 0 ? `Activity, ${unreadCount} unread` : "Activity"}
+              onPress={() => router.push("/activity")}
+              testID="open-activity"
+            >
+              <Text style={styles.bellGlyph}>🔔</Text>
+            </IconButton>
+            {unreadCount > 0 ? (
+              <View style={styles.bellBadge} testID="activity-unread-badge" pointerEvents="none">
+                <Text style={styles.bellBadgeText} tone="onAccent">
+                  {cappedUnread}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <IconButton
             accessibilityLabel="Open Spotify"
             onPress={() => router.push("/spotify")}
@@ -186,6 +240,20 @@ const styles = StyleSheet.create({
   },
   signOutGlyph: { fontSize: tokens.font.size.lg },
   spotifyGlyph: { fontSize: tokens.font.size.lg },
+  bellGlyph: { fontSize: tokens.font.size.lg },
+  bellBadge: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: tokens.accent.default,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellBadgeText: { fontSize: 10, fontWeight: tokens.font.weight.bold },
   headerActions: { flexDirection: "row", gap: tokens.space.sm, alignItems: "center" },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
