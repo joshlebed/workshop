@@ -68,6 +68,25 @@ In SES sandbox mode, you can only send mail to *verified* addresses. So for solo
       `eas.json`.
 - [ ] `npx eas-cli@latest credentials` — interactively generate push certs + provisioning profile.
       EAS manages these going forward.
+- [ ] **Register an App Store Connect API key with EAS Build for non-interactive credential ops.**
+      EAS sets up an ASC API key automatically for the *submit* step (`[Expo] EAS Submit ...`),
+      but the *build* step needs its own registration so it can regenerate provisioning profiles
+      in CI without prompting for Apple credentials. Without this, any future capability change
+      on the App ID (e.g. enabling Sign In with Apple, App Groups, Push Notifications) breaks
+      `testflight.yml` until someone runs `eas credentials` interactively from a laptop with an
+      active Apple session.
+
+      Setup:
+        1. Open `eas credentials --platform ios` (CWD: `apps/workshop`), pick `production`.
+        2. Pick **`App Store Connect: Manage your API Key`** → **Set up an App Store Connect API Key for your project**.
+        3. Either reuse the existing `[Expo] EAS Submit` key (it has the ADMIN role, which is
+           sufficient) or create a new one at
+           <https://appstoreconnect.apple.com/access/api> with role **App Manager** or higher.
+        4. Confirm. Key is stored on EAS's servers — nothing to commit.
+
+      Verify with: trigger `gh workflow run testflight.yml --ref main --field force=true`
+      after a capability change. The build should auto-regenerate the profile without asking
+      for Apple auth.
 - [ ] Create an **Expo access token** at <https://expo.dev/settings/access-tokens> (for CI).
 
 ## 6. GitHub repo + secrets
