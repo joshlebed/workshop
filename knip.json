@@ -10,7 +10,8 @@
     },
     "apps/workshop": {
       "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"],
-      "ignoreBinaries": ["eas"]
+      "ignoreBinaries": ["eas"],
+      "ignoreDependencies": ["@react-navigation/native"]
     },
     "packages/*": {}
   }
