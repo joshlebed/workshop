@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (3a-1 share-link invites + member removal) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (3a-2 activity events + recordEvent retrofit) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
@@ -102,8 +102,8 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   Playwright happy-path (`tests/e2e/add-link-preview.spec.ts`) creates
   a date-idea list, mocks `/v1/link-preview`, pastes a URL, sees the
   card, saves.
-- **Phase 3** chunk 3a-1 (this PR) — backend share-link invites +
-  member removal. New `apps/backend/src/routes/v1/invites.ts`
+- **Phase 3** chunk 3a-1 — backend share-link invites + member removal.
+  New `apps/backend/src/routes/v1/invites.ts`
   (`POST /v1/lists/:id/invites`, `POST /v1/invites/:token/accept`,
   `DELETE /v1/lists/:id/invites/:inviteId`) and
   `apps/backend/src/routes/v1/members.ts`
@@ -112,10 +112,25 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   no-op, the owner can't accept their own list). Owner removal cascades
   to upvotes via the existing FKs; self-leave is allowed for non-owners.
   `GET /v1/lists/:id` now returns real `pendingInvites`. Email invites
-  are explicitly out — share-link only per spec §6. Activity events +
-  `events.ts` library defer to 3a-2. Shared types: `Invite`, `ListMember`
-  full shape, request/response envelopes. Vitest validators + auth gating
-  matching the `lists.test.ts` convention.
+  are explicitly out — share-link only per spec §6.
+- **Phase 3** chunk 3a-2 (this PR) — backend activity events +
+  `recordEvent` retrofit. New `apps/backend/src/lib/events.ts`
+  (`recordEvent({ listId, actorId, type, itemId?, payload?, db? })` —
+  synchronous insert; the optional `db` param accepts an open
+  transaction so events roll back with the parent op, mirroring
+  `metadata-cache.ts`). New `apps/backend/src/routes/v1/activity.ts`:
+  `GET /v1/activity?cursor&limit=50` (cross-list feed scoped via JOIN
+  on `list_members`, base64url cursor encoding `(created_at, id)` to
+  disambiguate same-tx ties), `POST /v1/activity/read` (upserts
+  `user_activity_reads` per `(user_id, list_id)`; omit `listIds` to
+  mark every membership read at once). Every mutating handler in
+  `lists.ts` / `items.ts` / `invites.ts` / `members.ts` retrofitted to
+  emit the matching `activityEventTypeEnum` value inside the existing
+  transaction. Shared types: `ActivityEvent`, `ActivityFeedResponse`,
+  `MarkActivityReadRequest`, `MarkActivityReadResponse`. 25 new vitest
+  cases (4 events + 21 activity); test convention matches
+  `invites.test.ts` (validator + auth gating + UUID-bail) since the
+  DB path is covered by Playwright in 3b-2.
 
 ### Pending
 
@@ -151,13 +166,14 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 
 ### Next to implement
 
-Phase 3 is now in flight. The §3.18 chunk table was drafted in this PR;
-3a-1 (share-link invites + member removal backend) lands here. The next
-chunk is **3a-2** — `events.ts` library + `activity.ts` route family +
-retrofit of every mutating list/item/member handler to emit events.
-After that, **3b-1** (list settings sheet + share-link copy + accept
-deep-link) and **3b-2** (activity feed + bell badge) close out Phase 3.
-See §3.18 for the chunk table and §3.19 for what 3a-1 actually shipped.
+Phase 3 backend (3a-1 + 3a-2) is now done. The next chunk is **3b-1** —
+client list settings sheet + share-link UX (`apps/workshop/app/list/[id]/settings.tsx`,
+`apps/workshop/app/onboarding/accept-invite.tsx`, deep-link routing,
+typed wrappers in `src/api/{invites,members}.ts`, Playwright happy-path
+for the share-link accept flow). After that, **3b-2** (activity feed +
+bell badge, plus the Share-link step in create-list) closes out Phase 3.
+See §3.18 for the chunk table, §3.19 for what 3a-1 shipped, and §3.20
+for what 3a-2 shipped.
 
 ---
 
@@ -1515,12 +1531,12 @@ Each chunk is independently shippable. The split mirrors Phases 1 and 2
 (share-link invites + remove/leave) so 3a-2 can wire `recordEvent` into
 every mutating handler against a real membership surface.
 
-| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | External deps                                          | Status         |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ | -------------- |
-| **3a-1** | Backend share-link invites + member removal: `apps/backend/src/routes/v1/invites.ts` (`POST /v1/lists/:id/invites` owner-only, `POST /v1/invites/:token/accept` auth-only and idempotent, `DELETE /v1/lists/:id/invites/:inviteId` owner-only revoke) and `apps/backend/src/routes/v1/members.ts` (`DELETE /v1/lists/:id/members/:userId` — owner removes anyone but themselves; non-owners can self-leave). Tokens: 32-byte URL-safe base64 with a 7-day `expires_at` per spec §6 risks. `GET /v1/lists/:id` swaps the hardcoded `pendingInvites: []` for the real list. Shared types: `Invite`, `ListMember` full shape, request/response envelopes. Vitest: validator + auth gating + UUID-bail like `lists.test`.    | None — uses existing schema (`list_invites` from 0a).  | Done (this PR) |
-| **3a-2** | Backend activity + events: `apps/backend/src/lib/events.ts` (`recordEvent({ listId, actorId, type, itemId?, payload? })` — synchronous insert, no queue), `apps/backend/src/routes/v1/activity.ts` (`GET /v1/activity?cursor&limit=50`, `POST /v1/activity/read`). Retrofit every existing mutating handler in `lists.ts` / `items.ts` plus the new `invites.ts` / `members.ts` from 3a-1 to call `recordEvent` (see `activityEventTypeEnum` in `db/schema.ts` for the type set). `userActivityReads` table already exists from 0a; `POST /activity/read` upserts a row per `(user_id, list_id)`. Vitest: event recording on each mutation path + cursor pagination + auth scoping (only see events on lists you're in). | None.                                                  | Pending        |
-| **3b-1** | Client list settings + share-link UX: `apps/workshop/app/list/[id]/settings.tsx` modal sheet — Details (rename / emoji / color / description, owner-only), Members (with Leave for non-owners and Remove for owner), Share link (generate + copy + revoke), Danger zone (Delete list, owner-only). New `apps/workshop/app/onboarding/accept-invite.tsx` deep-link handler routed via `expo-linking` (`workshop.dev/invite/:token` on web, `workshop://invite/:token` on iOS). Auto-join after OAuth sign-in; routes to the joined list. New typed wrappers in `src/api/invites.ts` + `src/api/members.ts`. Playwright happy-path: owner generates link → second context accepts via dev sign-in → both see the list.     | 3a-1.                                                  | Pending        |
-| **3b-2** | Client activity feed + bell badge: `apps/workshop/app/activity.tsx` cross-list feed (50/page, infinite scroll). Bell `IconButton` in the home header showing unread count from `GET /v1/activity` (clientside `unreadCount` derived from `lastReadAt` per list). Tapping the bell navigates to `activity.tsx` and fires `POST /v1/activity/read`. Add a "Share link" step to the create-list flow (`apps/workshop/app/create-list/share.tsx`) — copy-link only, no email. Playwright happy-path: actor adds an item → other browser sees the event in the feed → unread count clears after tap.                                                                                                                          | 3a-2 (events) + 3b-1 (share UX surface) for the badge. | Pending        |
+| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                | External deps                                          | Status         |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | -------------- |
+| **3a-1** | Backend share-link invites + member removal: `apps/backend/src/routes/v1/invites.ts` (`POST /v1/lists/:id/invites` owner-only, `POST /v1/invites/:token/accept` auth-only and idempotent, `DELETE /v1/lists/:id/invites/:inviteId` owner-only revoke) and `apps/backend/src/routes/v1/members.ts` (`DELETE /v1/lists/:id/members/:userId` — owner removes anyone but themselves; non-owners can self-leave). Tokens: 32-byte URL-safe base64 with a 7-day `expires_at` per spec §6 risks. `GET /v1/lists/:id` swaps the hardcoded `pendingInvites: []` for the real list. Shared types: `Invite`, `ListMember` full shape, request/response envelopes. Vitest: validator + auth gating + UUID-bail like `lists.test`.                                                                                                                                                     | None — uses existing schema (`list_invites` from 0a).  | Done (this PR) |
+| **3a-2** | Backend activity + events: `apps/backend/src/lib/events.ts` (`recordEvent({ listId, actorId, type, itemId?, payload?, db? })` — synchronous insert, no queue; `db?` accepts an open tx), `apps/backend/src/routes/v1/activity.ts` (`GET /v1/activity?cursor&limit=50`, `POST /v1/activity/read`). Retrofit every existing mutating handler in `lists.ts` / `items.ts` plus the new `invites.ts` / `members.ts` from 3a-1 to call `recordEvent` (see `activityEventTypeEnum` in `db/schema.ts` for the type set). `userActivityReads` table already exists from 0a; `POST /activity/read` upserts a row per `(user_id, list_id)`. Vitest: event-recording shape, cursor encoding round-trip + DoS guard, mark-read schema, route auth gating + input validation. (DB-path coverage deferred to Playwright in 3b-2 once a client surface exists, matching 3a-1 convention.) | None.                                                  | Done (this PR) |
+| **3b-1** | Client list settings + share-link UX: `apps/workshop/app/list/[id]/settings.tsx` modal sheet — Details (rename / emoji / color / description, owner-only), Members (with Leave for non-owners and Remove for owner), Share link (generate + copy + revoke), Danger zone (Delete list, owner-only). New `apps/workshop/app/onboarding/accept-invite.tsx` deep-link handler routed via `expo-linking` (`workshop.dev/invite/:token` on web, `workshop://invite/:token` on iOS). Auto-join after OAuth sign-in; routes to the joined list. New typed wrappers in `src/api/invites.ts` + `src/api/members.ts`. Playwright happy-path: owner generates link → second context accepts via dev sign-in → both see the list.                                                                                                                                                      | 3a-1.                                                  | Pending        |
+| **3b-2** | Client activity feed + bell badge: `apps/workshop/app/activity.tsx` cross-list feed (50/page, infinite scroll). Bell `IconButton` in the home header showing unread count from `GET /v1/activity` (clientside `unreadCount` derived from `lastReadAt` per list). Tapping the bell navigates to `activity.tsx` and fires `POST /v1/activity/read`. Add a "Share link" step to the create-list flow (`apps/workshop/app/create-list/share.tsx`) — copy-link only, no email. Playwright happy-path: actor adds an item → other browser sees the event in the feed → unread count clears after tap.                                                                                                                                                                                                                                                                           | 3a-2 (events) + 3b-1 (share UX surface) for the badge. | Pending        |
 
 #### 3.19 What 3a-1 actually shipped — start here for 3a-2
 
@@ -1681,6 +1697,177 @@ Known constraints for 3a-2:
   item creation, not a separate user action. `items.test.ts` already
   asserts the single-tenant case (creator is the only upvoter on a
   fresh insert); 3a-2's tests should preserve that.
+
+#### 3.20 What 3a-2 actually shipped — start here for 3b-1 / 3b-2
+
+Files that landed in 3a-2 (read these before touching 3b-1 / 3b-2):
+
+- `apps/backend/src/lib/events.ts` — new `recordEvent({ listId,
+actorId, type, itemId?, payload?, db? })` helper. `db?` defaults to
+  the cached Drizzle client but accepts an open transaction (`tx`) so
+  callers inside a `db.transaction(async (tx) => ...)` block can pass
+  `tx` and the event row joins the same transaction (rolls back
+  together on failure). Mirrors the `metadata-cache.ts` pattern.
+  Synchronous insert per spec §4.7 — v1 traffic doesn't justify SQS;
+  swap to a queue producer later if `recordEvent` becomes the dominant
+  latency contributor.
+- `apps/backend/src/routes/v1/activity.ts` — Hono router under
+  `/v1/activity`:
+  - `GET /` — cursor-paginated cross-list feed scoped to the
+    requester's `list_members` rows. Cursor is base64url(`<ISO
+ts>|<uuid>`); we encode **both** `(created_at, id)` so events from
+    the same transaction don't collapse into a single boundary row.
+    Postgres row-value comparison (`(e.created_at, e.id) < ($1, $2)`)
+    handles the tuple natively. Fetches `limit + 1` to detect
+    `nextCursor` without a separate COUNT.
+  - `POST /read` — body `{ listIds? }`. Omit `listIds` to mark every
+    membership read at once; provide `listIds` to scope the upsert.
+    The `INSERT ... SELECT FROM list_members WHERE lm.user_id = $me`
+    pattern guarantees we never write a row the requester isn't a
+    member of — silent skip rather than 403, so non-membership
+    isn't leaked.
+  - Cursor decoder is defensive: 256-char DoS cap, base64-decode in a
+    try, requires `|` separator, parseable timestamp, and UUID-shaped
+    id segment. Garbage inputs return `null` (treated as "no cursor")
+    rather than 400ing — a stale client refresh shouldn't error.
+  - Test-only `__test = { encodeCursor, decodeCursor }` export so the
+    cursor logic can be exercised without HTTP.
+- `apps/backend/src/app.ts` — mounts `activityRoutes` at
+  `/v1/activity` alongside the rest of the v1 router family.
+- `apps/backend/src/routes/v1/lists.ts` — `POST /` (createList) emits
+  `list_created` with `payload: { name, type }` inside the existing tx.
+  PATCH/DELETE on lists.ts is **not** retrofitted yet — see "Surprises"
+  below for the `list_renamed` / `list_deleted` enum gap.
+- `apps/backend/src/routes/v1/items.ts` — `POST /` emits `item_added`
+  inside tx (auto-upvote is intentionally not a separate event); PATCH
+  emits `item_updated`; DELETE returns `id, title` and emits
+  `item_deleted` with **`itemId: null`** because
+  `activity_events.item_id` has `ON DELETE CASCADE` — populating it
+  would cascade-delete the very event row we just wrote (title kept in
+  `payload` for feed rendering). Upvote uses `RETURNING item_id` to
+  detect a fresh insert and emit `item_upvoted` only then; unupvote
+  uses Drizzle `.returning()` similarly. Complete / uncomplete emit
+  unconditionally. Idempotency on upvote/unupvote means repeat-clicks
+  don't spam the feed.
+- `apps/backend/src/routes/v1/invites.ts` — POST emits `invite_created`
+  with `payload: { inviteId, expiresAt }`; DELETE emits
+  `invite_revoked` with `payload: { inviteId }`. The `accept` handler
+  emits `member_joined` only when `newlyJoined` (fresh `list_members`
+  insert) inside its existing tx, so re-accepting a token by the same
+  user isn't recorded again.
+- `apps/backend/src/routes/v1/members.ts` — folds self-leave and
+  owner-removal into one event-type branch:
+  `isSelfLeave ? "member_left" : "member_removed"`, with `payload: {
+targetUserId }` so the feed can render "X removed Y" or "Y left".
+- `packages/shared/src/types.ts` — adds `ActivityEvent` (with
+  `actorDisplayName` populated server-side via the `users` LEFT JOIN),
+  `ActivityFeedResponse` (`{ events, nextCursor }`),
+  `MarkActivityReadRequest`, `MarkActivityReadResponse`. Note:
+  `ActivityEventType` was already exported from 0a — we reuse it.
+- `apps/backend/src/lib/events.test.ts` + `apps/backend/src/routes/v1/activity.test.ts`
+  — 25 new vitest cases.
+
+Test counts: 25 new vitest cases (4 in `events.test.ts`, 21 in
+`activity.test.ts`); 191 previous tests still green for a total of 216
+backend vitest tests across 19 files. `pnpm run typecheck && lint &&
+test` all pass; `knip` baseline unchanged.
+
+Surprises / deviations from plan:
+
+- **`itemId` is null on `item_deleted` events.** Plan implied
+  populating `itemId` for every item-scoped event. But
+  `activity_events.item_id` has `ON DELETE CASCADE` from the 0a
+  migration, so writing the just-deleted item's id would cascade-delete
+  the event we just wrote (or, worse, race against the cascade and
+  leave a stale FK). We store `itemId: null` and put `title` in
+  `payload` instead so the feed can render "X deleted 'Foo'" without
+  re-querying. 3b-2 should treat `item_deleted` events as
+  payload-only.
+- **`list_renamed` and `list_deleted` enum values don't exist.** Spec
+  §4.7 mentions both, but the 0a migration only enumerated 13 types
+  (no rename/delete for lists). The plan ("retrofit `lists.ts`
+  POST/PATCH/DELETE") was overstated — only POST has a matching enum.
+  Adding the missing values needs a new Drizzle migration with
+  `ALTER TYPE ... ADD VALUE`; deferred to a follow-up to keep this
+  chunk migration-free. Tracked in PR description.
+- **Idempotent upvote/unupvote gate event emission on `RETURNING` row
+  count.** Otherwise repeat-click on the same upvote button would emit
+  duplicate `item_upvoted` events into the feed. The handler already
+  used `ON CONFLICT DO NOTHING`; we now read the returned row count
+  to decide whether to record. Same approach for unupvote (Drizzle
+  `.returning({ id })` length).
+- **Event recording rides existing transactions; no new ones
+  introduced.** All retrofits pass `db: tx` from the parent op so
+  events roll back if the parent fails. The two handlers that
+  weren't already transactional (POST upvote, POST/DELETE
+  complete/uncomplete) wrap their event call inside the same single
+  query path — we don't open a new tx just to record the event when
+  the parent op is itself a single statement.
+- **`accept` only emits `member_joined` on fresh joins.** Re-accepting
+  a still-valid token by the same user is intentionally idempotent
+  (the `INSERT ... ON CONFLICT DO NOTHING` returns no row), so we
+  don't record a second `member_joined` for the same membership. The
+  invite row's `accepted_at` only stamps on first acceptance anyway,
+  so the feed and the audit trail agree.
+- **Cursor encodes `(createdAt, id)` not just `createdAt`.** Spec §8
+  shows `?cursor=<ts>` but a tuple cursor is necessary because the
+  retrofit can fire multiple events in a single tx (e.g. accept →
+  `member_joined` is one event, but a future "auto-add invite acceptor
+  to N lists" feature might fire several at once). Postgres handles
+  the row-value comparison natively. Cursor is opaque to the client
+  either way, so no API surface change.
+- **`POST /read` accepts an empty `listIds: []` as a no-op.** Rather
+  than 400ing, we generate `AND FALSE` in the WHERE clause so the
+  upsert affects zero rows. This lets the client safely send an
+  empty array on screens where the unread count is computed from a
+  filtered list that happened to be empty.
+- **`z.string().uuid()` quirk under zod 4.** v4's UUID regex requires
+  a real version digit (1–8); the all-zero UUID sentinel that other
+  tests use as a placeholder fails parse. `activity.test.ts` uses
+  `00000000-0000-4000-8000-000000000001` (a valid v4 shape) instead.
+  Worth knowing if any future test uses `z.string().uuid()` on a
+  hardcoded UUID literal.
+
+What 3b-1 should do _first_: it doesn't directly depend on 3a-2 — its
+deliverable is the list-settings sheet + share-link UX + accept
+deep-link, all of which use 3a-1 routes (invites + members). Read
+`apps/workshop/src/api/lists.ts` for the typed-wrapper convention,
+mirror it for `src/api/invites.ts` + `src/api/members.ts`, then build
+the settings sheet under `apps/workshop/app/list/[id]/settings.tsx`.
+The existing `useAuth` flow plus `expo-linking` config covers the
+deep-link plumbing.
+
+What 3b-2 should do _first_: read `apps/backend/src/routes/v1/activity.ts`
+for the cursor + read-marker shapes, then mirror the 1b-2 TanStack
+Query infinite-scroll pattern (see `app/list/[id]/index.tsx` for the
+optimistic-update precedent). Add `src/api/activity.ts` typed
+wrapper, then `apps/workshop/app/activity.tsx`. The bell badge in the
+home header derives `unreadCount` clientside from `lastReadAt` per
+list; tap → navigate → `POST /v1/activity/read` (no body to mark all,
+or `{ listIds: [...] }` to scope).
+
+Known constraints for 3b-1 / 3b-2:
+
+- **`Invite.token` is response-only on `POST /lists/:id/invites`.**
+  The 3a-1 doc above explains this; `pendingInvites` in
+  `ListDetailResponse` omits the token. The settings sheet must store
+  the token in component state on creation (or revoke + regenerate to
+  recover it).
+- **`item_deleted` events have `itemId: null`** — the feed renderer
+  in 3b-2 must read `title` from `payload`, not try to re-fetch by
+  `itemId`. Same goes for `member_removed` / `member_left` reading
+  `targetUserId` from `payload`.
+- **`list_renamed` / `list_deleted` events don't fire yet.** A future
+  migration adds the enum values; until then the activity feed won't
+  show list renames or deletions. 3b-2 should not assume they exist
+  in the type set (the union type covers them only because spec §4.7
+  listed them — the runtime emits the 13 currently-enumerated values).
+- **`GET /v1/activity` is membership-scoped via JOIN, not WHERE.**
+  Don't add a client-side filter for "lists I'm in" — the server
+  already does it.
+- **`POST /v1/activity/read` is idempotent and silently skips
+  non-member listIds.** Surface only one Toast per user gesture, not
+  per skipped list.
 
 #### 3.9 Original Phase 1 deliverable list
 

@@ -5,6 +5,7 @@ import { logger } from "./lib/logger.js";
 import { err } from "./lib/response.js";
 import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
 import { healthRoutes } from "./routes/health.js";
+import { activityRoutes } from "./routes/v1/activity.js";
 import { authRoutes } from "./routes/v1/auth.js";
 import { inviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
@@ -74,6 +75,7 @@ export function buildApp() {
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/spotify", spotifyRoutes);
+  app.route("/v1/activity", activityRoutes);
   // Invite routes split across two URL roots (`/v1/lists/:id/invites/...`
   // and `/v1/invites/:token/accept`). Mount under `/v1` so both shapes
   // resolve from a single Hono sub-router.

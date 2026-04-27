@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbList, listMembers, lists, users } from "../../db/schema.js";
+import { recordEvent } from "../../lib/events.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
@@ -149,6 +150,13 @@ listRoutes.post("/", async (c) => {
       listId: list.id,
       userId,
       role: "owner",
+    });
+    await recordEvent({
+      db: tx,
+      listId: list.id,
+      actorId: userId,
+      type: "list_created",
+      payload: { name: list.name, type: list.type },
     });
     return list;
   });
