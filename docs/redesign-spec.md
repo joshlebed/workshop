@@ -317,7 +317,7 @@ Located in `apps/workshop/src/ui/`. Each primitive owns its own styles via
 `StyleSheet.create` and consumes theme tokens:
 
 - `Text` — wraps RN `Text` with variant (`display | headline | title | body |
-  label | caption`), color token, and weight.
+label | caption`), color token, and weight.
 - `Button` — variants `primary | secondary | ghost | danger`; sizes `sm | md | lg`;
   loading + disabled states.
 - `IconButton` — square tap target, icon-only.
@@ -421,13 +421,13 @@ drop existing data). The new schema:
 
 ### 7.1 `users`
 
-| column         | type                      | notes                       |
-|----------------|---------------------------|-----------------------------|
-| id             | UUID PK                   | `gen_random_uuid()`         |
-| email          | text NOT NULL             | UNIQUE on `lower(email)`    |
-| display_name   | text NOT NULL             | collected on first sign-in  |
-| created_at     | timestamptz NOT NULL      | default `now()`             |
-| updated_at     | timestamptz NOT NULL      | default `now()`             |
+| column       | type                 | notes                      |
+| ------------ | -------------------- | -------------------------- |
+| id           | UUID PK              | `gen_random_uuid()`        |
+| email        | text NOT NULL        | UNIQUE on `lower(email)`   |
+| display_name | text NOT NULL        | collected on first sign-in |
+| created_at   | timestamptz NOT NULL | default `now()`            |
+| updated_at   | timestamptz NOT NULL | default `now()`            |
 
 ### 7.2 `magic_tokens`
 
@@ -436,30 +436,30 @@ Same shape as today. Consumed single-use, 15-min TTL. Add a nightly cleanup job
 
 ### 7.3 `lists`
 
-| column         | type                          | notes                               |
-|----------------|-------------------------------|-------------------------------------|
-| id             | UUID PK                       |                                     |
-| type           | list_type enum NOT NULL       | `movie\|tv\|book\|date_idea\|trip`  |
-| name           | text NOT NULL                 | ≤100 chars (app-layer)              |
-| emoji          | text NOT NULL                 | single grapheme                     |
-| color          | text NOT NULL                 | palette key (e.g., `indigo`)        |
-| description    | text                          | nullable, ≤280 chars                |
-| owner_id       | UUID NOT NULL                 | FK `users.id` ON DELETE RESTRICT    |
-| metadata       | jsonb NOT NULL DEFAULT '{}'   | future type-specific list fields    |
-| created_at     | timestamptz NOT NULL          |                                     |
-| updated_at     | timestamptz NOT NULL          |                                     |
+| column      | type                        | notes                              |
+| ----------- | --------------------------- | ---------------------------------- |
+| id          | UUID PK                     |                                    |
+| type        | list_type enum NOT NULL     | `movie\|tv\|book\|date_idea\|trip` |
+| name        | text NOT NULL               | ≤100 chars (app-layer)             |
+| emoji       | text NOT NULL               | single grapheme                    |
+| color       | text NOT NULL               | palette key (e.g., `indigo`)       |
+| description | text                        | nullable, ≤280 chars               |
+| owner_id    | UUID NOT NULL               | FK `users.id` ON DELETE RESTRICT   |
+| metadata    | jsonb NOT NULL DEFAULT '{}' | future type-specific list fields   |
+| created_at  | timestamptz NOT NULL        |                                    |
+| updated_at  | timestamptz NOT NULL        |                                    |
 
 Indexes: `owner_id`, `(owner_id, updated_at DESC)`.
 
 ### 7.4 `list_members`
 
-| column         | type                      | notes                                     |
-|----------------|---------------------------|-------------------------------------------|
-| list_id        | UUID NOT NULL             | FK `lists.id` ON DELETE CASCADE           |
-| user_id        | UUID NOT NULL             | FK `users.id` ON DELETE CASCADE           |
-| role           | member_role NOT NULL      | `owner \| member`                         |
-| joined_at      | timestamptz NOT NULL      |                                           |
-| PK             | (list_id, user_id)        |                                           |
+| column    | type                 | notes                           |
+| --------- | -------------------- | ------------------------------- |
+| list_id   | UUID NOT NULL        | FK `lists.id` ON DELETE CASCADE |
+| user_id   | UUID NOT NULL        | FK `users.id` ON DELETE CASCADE |
+| role      | member_role NOT NULL | `owner \| member`               |
+| joined_at | timestamptz NOT NULL |                                 |
+| PK        | (list_id, user_id)   |                                 |
 
 Indexes: `user_id` (for "lists I'm a member of" query).
 
@@ -468,36 +468,36 @@ constraint is a partial unique index on `(list_id) WHERE role = 'owner'`.
 
 ### 7.5 `list_invites`
 
-| column         | type                      | notes                                     |
-|----------------|---------------------------|-------------------------------------------|
-| id             | UUID PK                   |                                           |
-| list_id        | UUID NOT NULL             | FK `lists.id` ON DELETE CASCADE           |
-| email          | text                      | null if this is a share-link invite       |
-| token          | text NOT NULL             | UNIQUE; used in the share/email URL       |
-| invited_by     | UUID NOT NULL             | FK `users.id`                             |
-| accepted_at    | timestamptz               | null while pending                        |
-| revoked_at     | timestamptz               | null unless revoked                       |
-| created_at     | timestamptz NOT NULL      |                                           |
+| column      | type                 | notes                               |
+| ----------- | -------------------- | ----------------------------------- |
+| id          | UUID PK              |                                     |
+| list_id     | UUID NOT NULL        | FK `lists.id` ON DELETE CASCADE     |
+| email       | text                 | null if this is a share-link invite |
+| token       | text NOT NULL        | UNIQUE; used in the share/email URL |
+| invited_by  | UUID NOT NULL        | FK `users.id`                       |
+| accepted_at | timestamptz          | null while pending                  |
+| revoked_at  | timestamptz          | null unless revoked                 |
+| created_at  | timestamptz NOT NULL |                                     |
 
 Indexes: `list_id`, `email`, `token` (unique).
 
 ### 7.6 `items`
 
-| column         | type                          | notes                                   |
-|----------------|-------------------------------|-----------------------------------------|
-| id             | UUID PK                       |                                         |
-| list_id        | UUID NOT NULL                 | FK `lists.id` ON DELETE CASCADE         |
-| type           | list_type NOT NULL            | denormalized; must equal `lists.type`   |
-| title          | text NOT NULL                 | ≤500 chars                              |
-| url            | text                          | ≤2048 chars                             |
-| note           | text                          | ≤1000 chars                             |
-| metadata       | jsonb NOT NULL DEFAULT '{}'   | per-type shape (see §9)                 |
-| added_by       | UUID NOT NULL                 | FK `users.id` ON DELETE RESTRICT        |
-| completed      | boolean NOT NULL DEFAULT false|                                         |
-| completed_at   | timestamptz                   | null unless completed                   |
-| completed_by   | UUID                          | FK `users.id`; null unless completed    |
-| created_at     | timestamptz NOT NULL          |                                         |
-| updated_at     | timestamptz NOT NULL          |                                         |
+| column       | type                           | notes                                 |
+| ------------ | ------------------------------ | ------------------------------------- |
+| id           | UUID PK                        |                                       |
+| list_id      | UUID NOT NULL                  | FK `lists.id` ON DELETE CASCADE       |
+| type         | list_type NOT NULL             | denormalized; must equal `lists.type` |
+| title        | text NOT NULL                  | ≤500 chars                            |
+| url          | text                           | ≤2048 chars                           |
+| note         | text                           | ≤1000 chars                           |
+| metadata     | jsonb NOT NULL DEFAULT '{}'    | per-type shape (see §9)               |
+| added_by     | UUID NOT NULL                  | FK `users.id` ON DELETE RESTRICT      |
+| completed    | boolean NOT NULL DEFAULT false |                                       |
+| completed_at | timestamptz                    | null unless completed                 |
+| completed_by | UUID                           | FK `users.id`; null unless completed  |
+| created_at   | timestamptz NOT NULL           |                                       |
+| updated_at   | timestamptz NOT NULL           |                                       |
 
 Indexes: `list_id`, `(list_id, completed, created_at DESC)`.
 
@@ -506,12 +506,12 @@ No unique constraint on title within a list — users can intentionally duplicat
 
 ### 7.7 `item_upvotes`
 
-| column         | type                      | notes                                     |
-|----------------|---------------------------|-------------------------------------------|
-| item_id        | UUID NOT NULL             | FK `items.id` ON DELETE CASCADE           |
-| user_id        | UUID NOT NULL             | FK `users.id` ON DELETE CASCADE           |
-| created_at     | timestamptz NOT NULL      |                                           |
-| PK             | (item_id, user_id)        |                                           |
+| column     | type                 | notes                           |
+| ---------- | -------------------- | ------------------------------- |
+| item_id    | UUID NOT NULL        | FK `items.id` ON DELETE CASCADE |
+| user_id    | UUID NOT NULL        | FK `users.id` ON DELETE CASCADE |
+| created_at | timestamptz NOT NULL |                                 |
+| PK         | (item_id, user_id)   |                                 |
 
 Indexes: `user_id`.
 
@@ -523,15 +523,15 @@ column with a trigger later.
 
 ### 7.8 `activity_events`
 
-| column         | type                      | notes                                     |
-|----------------|---------------------------|-------------------------------------------|
-| id             | UUID PK                   |                                           |
-| list_id        | UUID NOT NULL             | FK `lists.id` ON DELETE CASCADE           |
-| actor_id       | UUID NOT NULL             | FK `users.id`                             |
-| event_type     | activity_event_type enum  | see §4.7                                  |
-| item_id        | UUID                      | FK `items.id` ON DELETE CASCADE; nullable |
-| payload        | jsonb NOT NULL DEFAULT '{}'| event-specific details                   |
-| created_at     | timestamptz NOT NULL      |                                           |
+| column     | type                        | notes                                     |
+| ---------- | --------------------------- | ----------------------------------------- |
+| id         | UUID PK                     |                                           |
+| list_id    | UUID NOT NULL               | FK `lists.id` ON DELETE CASCADE           |
+| actor_id   | UUID NOT NULL               | FK `users.id`                             |
+| event_type | activity_event_type enum    | see §4.7                                  |
+| item_id    | UUID                        | FK `items.id` ON DELETE CASCADE; nullable |
+| payload    | jsonb NOT NULL DEFAULT '{}' | event-specific details                    |
+| created_at | timestamptz NOT NULL        |                                           |
 
 Indexes: `(list_id, created_at DESC)`, `(actor_id, created_at DESC)`.
 
@@ -541,13 +541,13 @@ list_id, last_read_at)`; unread count = events on the list newer than
 
 ### 7.9 `metadata_cache`
 
-| column         | type                      | notes                                     |
-|----------------|---------------------------|-------------------------------------------|
-| source         | text NOT NULL             | `tmdb \| books \| link_preview`           |
-| source_id      | text NOT NULL             | TMDB id, Google Books id, or URL hash     |
-| data           | jsonb NOT NULL            | normalized payload                        |
-| fetched_at     | timestamptz NOT NULL      |                                           |
-| PK             | (source, source_id)       |                                           |
+| column     | type                 | notes                                 |
+| ---------- | -------------------- | ------------------------------------- |
+| source     | text NOT NULL        | `tmdb \| books \| link_preview`       |
+| source_id  | text NOT NULL        | TMDB id, Google Books id, or URL hash |
+| data       | jsonb NOT NULL       | normalized payload                    |
+| fetched_at | timestamptz NOT NULL |                                       |
+| PK         | (source, source_id)  |                                       |
 
 TTL policy: TMDB/Books cached for 30 days; link previews for 7. Refetch on demand
 when stale.
@@ -618,8 +618,8 @@ Implemented as a tiny middleware backed by a Postgres rate-limit table keyed by
 `(ip, route_family)`:
 
 - `POST /auth/request` — 5/email/hour, 10/IP/hour.
-- `POST /auth/verify`  — 10/code, rejected on the 11th.
-- `POST /items`        — 60/user/minute.
+- `POST /auth/verify` — 10/code, rejected on the 11th.
+- `POST /items` — 60/user/minute.
 - `POST /items/:id/upvote` + delete — 120/user/minute.
 - Search endpoints — 60/user/minute.
 
@@ -635,19 +635,31 @@ Implemented as a tiny middleware backed by a Postgres rate-limit table keyed by
 - When an item is added with a TMDB match, we cache the full metadata in
   `metadata_cache`. The item's `metadata` JSONB is then:
   ```json
-  { "source": "tmdb", "sourceId": "603692", "posterUrl": "...", "year": 2024,
-    "runtimeMinutes": 166, "overview": "..." }
+  {
+    "source": "tmdb",
+    "sourceId": "603692",
+    "posterUrl": "...",
+    "year": 2024,
+    "runtimeMinutes": 166,
+    "overview": "..."
+  }
   ```
 
 ### 9.2 Google Books
 
 - Backend proxies Google Books `volumes` endpoint. API key in SSM.
 - Normalized result: `{ id, title, authors, year, coverUrl, pageCount?,
-  description? }`.
+description? }`.
 - Item metadata JSONB:
   ```json
-  { "source": "google_books", "sourceId": "...", "coverUrl": "...",
-    "authors": ["..."], "year": 1999, "pageCount": 300 }
+  {
+    "source": "google_books",
+    "sourceId": "...",
+    "coverUrl": "...",
+    "authors": ["..."],
+    "year": 1999,
+    "pageCount": 300
+  }
   ```
 
 ### 9.3 Link preview
@@ -661,8 +673,7 @@ Implemented as a tiny middleware backed by a Postgres rate-limit table keyed by
 - Cached in `metadata_cache` keyed by a hash of the normalized URL.
 - Item metadata JSONB for a free-form item with URL:
   ```json
-  { "source": "link_preview", "sourceId": "<url-hash>", "image": "...",
-    "siteName": "Google Maps" }
+  { "source": "link_preview", "sourceId": "<url-hash>", "image": "...", "siteName": "Google Maps" }
   ```
 
 ### 9.4 Type validation
@@ -670,11 +681,11 @@ Implemented as a tiny middleware backed by a Postgres rate-limit table keyed by
 Each list type has a Zod schema for the `items.metadata` JSONB:
 
 - `movie` / `tv` → `{ source: "tmdb" | "manual", sourceId?: string, posterUrl?:
-  string, year?: number, runtimeMinutes?: number, overview?: string }`.
+string, year?: number, runtimeMinutes?: number, overview?: string }`.
 - `book` → `{ source: "google_books" | "manual", sourceId?: string, coverUrl?:
-  string, authors?: string[], year?: number, pageCount?: number }`.
+string, authors?: string[], year?: number, pageCount?: number }`.
 - `date_idea` / `trip` → `{ source?: "link_preview" | "manual", sourceId?:
-  string, image?: string, siteName?: string, lat?: number, lng?: number }`.
+string, image?: string, siteName?: string, lat?: number, lng?: number }`.
 
 Applied on POST/PATCH of items at the API boundary.
 
@@ -760,7 +771,7 @@ Applied on POST/PATCH of items at the API boundary.
    routes gone, Lambda deployed). Clients talking to the old routes start
    failing immediately — acceptable given wipe. Ship the rewritten client via
    EAS build (share extension is a native change → forces a TestFlight build)
-   + web deploy.
+   - web deploy.
 7. **Rollback**: git revert + redeploy. No data to preserve.
 
 ---

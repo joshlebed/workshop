@@ -19,12 +19,12 @@ green deploy. Work through it top to bottom — each step depends on the ones ab
       org name, update `versions.tf` accordingly.
 - [ ] Inside the org, create workspace **`workshop-prod`**, "CLI-driven" workflow.
 - [ ] In the workspace's Variables tab, add these as **Terraform variables** (not env):
-    - `ses_verified_email` — the email that SES will verify as sender (e.g. `joshlebed@gmail.com`)
-    - `budget_email_recipient` — usually the same
+  - `ses_verified_email` — the email that SES will verify as sender (e.g. `joshlebed@gmail.com`)
+  - `budget_email_recipient` — usually the same
 - [ ] Add as **Environment variables**, marked sensitive:
-    - `AWS_ACCESS_KEY_ID`
-    - `AWS_SECRET_ACCESS_KEY`
-    - (Create an IAM user "terraform-cloud" with PowerUserAccess for this)
+  - `AWS_ACCESS_KEY_ID`
+  - `AWS_SECRET_ACCESS_KEY`
+  - (Create an IAM user "terraform-cloud" with PowerUserAccess for this)
 - [ ] On your laptop: `terraform login` — browser opens, paste the token.
 
 ## 3. First `terraform apply`
@@ -36,6 +36,7 @@ terraform apply
 ```
 
 After the first apply:
+
 - [ ] **Check your email for an AWS SES verification link** (sender: no-reply-aws@amazon.com)
       and click it. Until this is done, the Lambda can't send magic codes.
 - [ ] **Check your email for a budget subscription confirmation** and click it.
@@ -44,7 +45,7 @@ After the first apply:
 
 ## 4. SES sandbox → production access (optional for MVP)
 
-In SES sandbox mode, you can only send mail to *verified* addresses. So for solo dev:
+In SES sandbox mode, you can only send mail to _verified_ addresses. So for solo dev:
 
 - [ ] Your own email is already verified (it's the `ses_verified_email`).
 - [ ] To test with friends: verify each friend's email manually in the SES console ("Verified
@@ -69,8 +70,8 @@ In SES sandbox mode, you can only send mail to *verified* addresses. So for solo
 - [ ] `npx eas-cli@latest credentials` — interactively generate push certs + provisioning profile.
       EAS manages these going forward.
 - [ ] **Register an App Store Connect API key with EAS Build for non-interactive credential ops.**
-      EAS sets up an ASC API key automatically for the *submit* step (`[Expo] EAS Submit ...`),
-      but the *build* step needs its own registration so it can regenerate provisioning profiles
+      EAS sets up an ASC API key automatically for the _submit_ step (`[Expo] EAS Submit ...`),
+      but the _build_ step needs its own registration so it can regenerate provisioning profiles
       in CI without prompting for Apple credentials. Without this, any future capability change
       on the App ID (e.g. enabling Sign In with Apple, App Groups, Push Notifications) breaks
       `testflight.yml` until someone runs `eas credentials` interactively from a laptop with an
@@ -87,6 +88,7 @@ In SES sandbox mode, you can only send mail to *verified* addresses. So for solo
       Verify with: trigger `gh workflow run testflight.yml --ref main --field force=true`
       after a capability change. The build should auto-regenerate the profile without asking
       for Apple auth.
+
 - [ ] Create an **Expo access token** at <https://expo.dev/settings/access-tokens> (for CI).
 
 ## 6. GitHub repo + secrets
@@ -94,16 +96,17 @@ In SES sandbox mode, you can only send mail to *verified* addresses. So for solo
 - [ ] `gh repo create joshlebed/workshop --public --source . --push` (this repo does step 9 for
       you).
 - [ ] In repo settings → **Secrets and variables → Actions**, add:
-    - `AWS_ROLE_ARN` — value from the `github_actions_role_arn` Terraform output
-    - `TF_API_TOKEN` — an HCP Terraform user API token
-      (<https://app.terraform.io/app/settings/tokens>)
-    - `EXPO_TOKEN` — the Expo access token from step 5
-    - `EXPO_PUBLIC_API_URL` — value from the `api_url` Terraform output (e.g.
-      `https://abc123.execute-api.us-east-1.amazonaws.com`)
+  - `AWS_ROLE_ARN` — value from the `github_actions_role_arn` Terraform output
+  - `TF_API_TOKEN` — an HCP Terraform user API token
+    (<https://app.terraform.io/app/settings/tokens>)
+  - `EXPO_TOKEN` — the Expo access token from step 5
+  - `EXPO_PUBLIC_API_URL` — value from the `api_url` Terraform output (e.g.
+    `https://abc123.execute-api.us-east-1.amazonaws.com`)
 
 ## 7. Branch protection
 
 In repo settings → **Branches** → Branch protection rules → Add rule for `main`:
+
 - [ ] Require status checks to pass: `lint-typecheck-test`, `terraform-check`
 - [ ] Require pull request before merging (1 approval if you're solo, optional)
 - [ ] Do **not** require signed commits (friction for casual contributors)
@@ -124,7 +127,7 @@ In repo settings → **Branches** → Branch protection rules → Add rule for `
 ## 10. Rotation playbooks
 
 The values below are scattered across multiple systems by design (each system is the source of
-truth for its slice — see `CLAUDE.md` "Sources of truth"). Rotation means updating *each*
+truth for its slice — see `CLAUDE.md` "Sources of truth"). Rotation means updating _each_
 location. Easy to forget one, so use these checklists.
 
 ### 10.1 Apple/Google OAuth client ID rotation
@@ -163,6 +166,7 @@ TestFlight users via EAS Update; `TestFlight (native iOS build)` rebuilds (becau
 fingerprint changed) only if app.json is in the diff.
 
 Verify with:
+
 ```bash
 AWS_PROFILE=workshop-prod aws lambda get-function-configuration --function-name workshop-prod-api \
   --query 'Environment.Variables.{APPLE:APPLE_SERVICES_ID,GIOS:GOOGLE_IOS_CLIENT_ID,GWEB:GOOGLE_WEB_CLIENT_ID}'

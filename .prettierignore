@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.expo
+.next
+.terraform
+test-results
+playwright-report
+pnpm-lock.yaml
+apps/backend/drizzle

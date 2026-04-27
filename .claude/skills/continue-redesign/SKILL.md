@@ -7,7 +7,7 @@ description: Pick up the next chunk in `docs/redesign-plan.md`, implement it, do
 
 You are continuing the Workshop.dev redesign described in `docs/redesign-plan.md`. Your job is to take **exactly one chunk** of work to "Done", document what shipped so the next agent has a head start, and ship the PR cleanly.
 
-The plan is the source of truth — but it should also *learn*. If you discover the plan was wrong about something, fix the plan in this PR. Future agents read the same plan you read.
+The plan is the source of truth — but it should also _learn_. If you discover the plan was wrong about something, fix the plan in this PR. Future agents read the same plan you read.
 
 ---
 
@@ -60,7 +60,7 @@ This phase is what makes the next agent fast. Do not skip it.
      - File-level list of what landed (paths + 1–2 lines explaining each)
      - Test counts and pattern (e.g. "29 tests landed; same convention as `lists.test.ts`")
      - Surprises, deviations from plan, gotchas the next agent should know
-     - "What [next chunk] should do *first*: ..." pointer
+     - "What [next chunk] should do _first_: ..." pointer
      - "Known constraints for [next chunk]: ..." if applicable
    - Update the "Current status" section at the top: move this chunk Done → Done block, mention the next chunk in "Next to implement".
 
@@ -123,6 +123,7 @@ This phase is what makes the next agent fast. Do not skip it.
 ## When to halt and surface
 
 Halt and ask the human when:
+
 - The chunk requires external setup (Apple/Google portal, AWS, Cloudflare, third-party API keys) the plan doesn't already track in `docs/plans/HANDOFF.md`.
 - The plan and code disagree fatally about the prior chunk's state (e.g. the plan claims `1a-2` shipped a route that doesn't exist on `main`).
 - A required check fails twice in a row from the same root cause.
@@ -133,4 +134,4 @@ Halt and ask the human when:
 
 ## Why this matters
 
-The plan is read by every future agent. Each chunk that lands well — with a clean "What [chunk] actually shipped" section — saves 15–30 minutes of context-rebuilding for the next agent. Each chunk that lands poorly (Status flipped, no detail) costs the next agent that time *and* introduces drift between code and plan. Treat the plan as a living artifact; leave it better than you found it.
+The plan is read by every future agent. Each chunk that lands well — with a clean "What [chunk] actually shipped" section — saves 15–30 minutes of context-rebuilding for the next agent. Each chunk that lands poorly (Status flipped, no detail) costs the next agent that time _and_ introduces drift between code and plan. Treat the plan as a living artifact; leave it better than you found it.

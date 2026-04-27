@@ -6,6 +6,7 @@ stack as `workshop`: Expo (SDK 55+) + Hono on Lambda + Postgres on Neon +
 Terraform on HCP + GitHub Actions.
 
 The user shows up with:
+
 - An **AWS account** (any billing status; you'll keep inside free tier).
 - An **Apple Developer account** (paid, $99/yr, enrolled).
 - Nothing else.
@@ -67,13 +68,13 @@ In parallel, have them create accounts while you scaffold the repo:
 
 ### Accounts they need to create (give them all URLs at once)
 
-| Account | URL | Login method | Why |
-|---|---|---|---|
-| **Neon** | https://console.neon.tech/signup | "Continue with GitHub" | Postgres |
-| **HCP Terraform** | https://portal.cloud.hashicorp.com/sign-up | GitHub or email | TF state |
-| **Expo** | https://expo.dev/signup | GitHub recommended | EAS Build / Update |
-| **GitHub repo** | `gh repo create <slug> --private --source=. --push` (later) | — | CI + source |
-| **Domain registrar** | cloudflare.com/products/registrar/ or namecheap.com | — | SES, branded sender |
+| Account              | URL                                                         | Login method           | Why                 |
+| -------------------- | ----------------------------------------------------------- | ---------------------- | ------------------- |
+| **Neon**             | https://console.neon.tech/signup                            | "Continue with GitHub" | Postgres            |
+| **HCP Terraform**    | https://portal.cloud.hashicorp.com/sign-up                  | GitHub or email        | TF state            |
+| **Expo**             | https://expo.dev/signup                                     | GitHub recommended     | EAS Build / Update  |
+| **GitHub repo**      | `gh repo create <slug> --private --source=. --push` (later) | —                      | CI + source         |
+| **Domain registrar** | cloudflare.com/products/registrar/ or namecheap.com         | —                      | SES, branded sender |
 
 ### Neon project setup (30 sec of their time)
 
@@ -228,6 +229,7 @@ gh repo create <slug> --private --source=. --push
 ### Gotcha: SESSION_SECRET validator
 
 If you put zod validation on env vars (you should), write:
+
 ```ts
 SESSION_SECRET: z.string().min(32, "must be ≥32 chars"),
 ```
@@ -252,7 +254,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 
 const client = postgres(DATABASE_URL, {
   ssl: isLocal ? false : "require",
-  max: 1,         // correct for Lambda: one connection per container
+  max: 1, // correct for Lambda: one connection per container
   idle_timeout: 20,
   connect_timeout: 10,
 });
@@ -304,7 +306,7 @@ Avoid duplicate `WatchlistItem` definitions — subtle drift will bite.
 
 **At time of writing, the Expo Go app in the App Store does NOT support
 SDK 55+.** Scanning a Metro QR code with App Store Expo Go produces:
-*"Project is incompatible with this version of Expo Go."*
+_"Project is incompatible with this version of Expo Go."_
 
 **Pick one:**
 
@@ -323,11 +325,11 @@ support first.** That's a 5-min question that saves ~20 min of confusion.
 
 If you use ANY of these, explicit peer deps matter:
 
-| If you use... | You also need | Why |
-|---|---|---|
-| `react-native-reanimated@4+` | `react-native-worklets` | Split out in RN-Reanimated 4.x. `pod install` fails without it. |
-| `expo-secure-store` | nothing extra | Works on iOS via Keychain. |
-| `expo-router` | `react-native-screens`, `react-native-safe-area-context`, `react-native-gesture-handler` | All handled by `npx expo install` |
+| If you use...                | You also need                                                                            | Why                                                             |
+| ---------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `react-native-reanimated@4+` | `react-native-worklets`                                                                  | Split out in RN-Reanimated 4.x. `pod install` fails without it. |
+| `expo-secure-store`          | nothing extra                                                                            | Works on iOS via Keychain.                                      |
+| `expo-router`                | `react-native-screens`, `react-native-safe-area-context`, `react-native-gesture-handler` | All handled by `npx expo install`                               |
 
 **Always run `npx expo install <dep>` instead of `pnpm add <dep>`** — Expo
 picks the SDK-compatible version. Then do `npx expo install --check` to
@@ -337,7 +339,7 @@ verify all installed versions match the SDK.
 
 - **SDK 55+**: DO NOT put `newArchEnabled: true` at the root. It's the
   default now, and expo-doctor rejects it as an unknown field, which
-  causes EAS Build to warn and *sometimes* fail before `pod install`.
+  causes EAS Build to warn and _sometimes_ fail before `pod install`.
   Remove it.
 - `scheme: "<slug>"` — picked up by expo-router for deep links.
 - `runtimeVersion: { "policy": "appVersion" }` — this governs which OTA
@@ -543,6 +545,7 @@ output "ses_dkim_records" {
 ```
 
 From the generated output, the user creates:
+
 - 3 DKIM CNAMEs (the ones in the output)
 - SPF TXT at root: `v=spf1 include:amazonses.com ~all`
 - DMARC TXT at `_dmarc`: `v=DMARC1; p=none; rua=mailto:<their email>`
@@ -617,6 +620,7 @@ AWS_PROFILE=<slug>-prod terraform output ses_dkim_records
 ```
 
 Paste to user:
+
 1. The DKIM CNAME records for their domain registrar (they set these up in
    DNS).
 2. The API URL (goes in the `eas.json` production env + a GitHub secret).
@@ -660,13 +664,13 @@ the standard auth schema (magic_tokens, users, watchlist_items).
 echo -n "<value>" | gh secret set <NAME> --repo <owner>/<slug>
 ```
 
-| Secret | Value | Used by |
-|---|---|---|
-| `TF_API_TOKEN` | HCP user API token | all workflows (to read state) |
-| `AWS_ROLE_ARN` | `arn:aws:iam::<acct>:role/<prefix>-github-actions` | backend deploy |
-| `DATABASE_URL` | Neon pooled URL | (unused by CI since no `terraform apply`, but keep for future workflows that need it) |
-| `EXPO_TOKEN` | Expo CI access token | mobile deploys |
-| `EXPO_PUBLIC_API_URL` | API Gateway URL from tf output | mobile OTA (baked into the JS bundle) |
+| Secret                | Value                                              | Used by                                                                               |
+| --------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `TF_API_TOKEN`        | HCP user API token                                 | all workflows (to read state)                                                         |
+| `AWS_ROLE_ARN`        | `arn:aws:iam::<acct>:role/<prefix>-github-actions` | backend deploy                                                                        |
+| `DATABASE_URL`        | Neon pooled URL                                    | (unused by CI since no `terraform apply`, but keep for future workflows that need it) |
+| `EXPO_TOKEN`          | Expo CI access token                               | mobile deploys                                                                        |
+| `EXPO_PUBLIC_API_URL` | API Gateway URL from tf output                     | mobile OTA (baked into the JS bundle)                                                 |
 
 ### `ci.yml` — lint/typecheck/test + terraform validate
 
@@ -774,16 +778,16 @@ npx eas-cli@latest build --platform ios --profile production
 
 Prompts, in order:
 
-1. *"iOS app only uses standard/exempt encryption?"* → **Yes** (HTTPS +
+1. _"iOS app only uses standard/exempt encryption?"_ → **Yes** (HTTPS +
    Keychain only).
-2. *"Do you want to log in to your Apple account?"* → **Yes**.
+2. _"Do you want to log in to your Apple account?"_ → **Yes**.
 3. Apple ID → their email.
 4. Apple password.
 5. Apple 2FA → 6-digit code from their trusted devices.
-6. *"Select a team:"* → their team.
-7. *"Generate a new Apple Distribution Certificate?"* → **Yes**.
-8. *"Generate a new Apple Provisioning Profile?"* → **Yes**.
-9. *"Push notification key?"* → **No** (add later if needed).
+6. _"Select a team:"_ → their team.
+7. _"Generate a new Apple Distribution Certificate?"_ → **Yes**.
+8. _"Generate a new Apple Provisioning Profile?"_ → **Yes**.
+9. _"Push notification key?"_ → **No** (add later if needed).
 
 EAS caches Apple creds in the macOS Keychain after this. Future
 `eas build` + `eas submit` can run `--non-interactive`.
@@ -799,7 +803,7 @@ npx eas-cli@latest submit --platform ios --latest
 
 Prompts:
 
-1. *"Generate a new App Store Connect API Key?"* → **Yes**. (Cached for
+1. _"Generate a new App Store Connect API Key?"_ → **Yes**. (Cached for
    every future submit.)
 2. Apple login again (different cached session).
 3. 2FA code.
@@ -852,21 +856,21 @@ SDK.
 Each of these cost 5-15 min of debug time the first time it happened.
 Check for them proactively.
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| EAS build: `[Reanimated] Failed to validate worklets version` | Missing `react-native-worklets` peer | `npx expo install react-native-worklets` |
-| EAS build: `should NOT have additional property 'newArchEnabled'` | SDK 55 default | Remove from `app.json` |
-| Expo Go: *"Project is incompatible with this version of Expo Go"* | Latest SDK > App Store Expo Go SDK | Use dev client or downgrade to App Store SDK |
-| `Updates.addListener is not a function` | SDK ≤52 API called on SDK 55+ | Use `Updates.useUpdates()` hook |
-| Magic-code emails in spam | SES email identity on a non-owned domain | Switch to domain identity + DKIM + SPF + DMARC |
-| CI `terraform apply` fails with "No valid credential sources" | Missing `aws-actions/configure-aws-credentials` | Either add it, or (recommended) move apply to dev laptop |
-| CI migrate step fails with zod "too_small" | `SESSION_SECRET` dummy < 32 chars | Pad to 32+ |
-| CI `lambda wait function-updated` fails AccessDenied | Missing `lambda:GetFunctionConfiguration` | Add to IAM policy |
-| Apply hangs on state lock | Prior CI kill left stale HCP lock | `terraform force-unlock <org>/<workspace>` or click Unlock in HCP UI |
-| `aws` CLI ignores `AWS_PROFILE=` in interactive shell | User has a shell function wrapping `aws` | Use `command aws` to bypass |
-| TestFlight build opens to white screen | `EXPO_PUBLIC_API_URL` not baked into build | Add to `eas.json` production profile's `env` |
-| OTA updates don't reach phone | `branch` in `eas update` ≠ `channel` in build profile | Make them match (both `production`) |
-| Expo-doctor warns about metro.config | Monorepo disableHierarchicalLookup override | Expected — ignore |
+| Symptom                                                           | Cause                                                 | Fix                                                                  |
+| ----------------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------- |
+| EAS build: `[Reanimated] Failed to validate worklets version`     | Missing `react-native-worklets` peer                  | `npx expo install react-native-worklets`                             |
+| EAS build: `should NOT have additional property 'newArchEnabled'` | SDK 55 default                                        | Remove from `app.json`                                               |
+| Expo Go: _"Project is incompatible with this version of Expo Go"_ | Latest SDK > App Store Expo Go SDK                    | Use dev client or downgrade to App Store SDK                         |
+| `Updates.addListener is not a function`                           | SDK ≤52 API called on SDK 55+                         | Use `Updates.useUpdates()` hook                                      |
+| Magic-code emails in spam                                         | SES email identity on a non-owned domain              | Switch to domain identity + DKIM + SPF + DMARC                       |
+| CI `terraform apply` fails with "No valid credential sources"     | Missing `aws-actions/configure-aws-credentials`       | Either add it, or (recommended) move apply to dev laptop             |
+| CI migrate step fails with zod "too_small"                        | `SESSION_SECRET` dummy < 32 chars                     | Pad to 32+                                                           |
+| CI `lambda wait function-updated` fails AccessDenied              | Missing `lambda:GetFunctionConfiguration`             | Add to IAM policy                                                    |
+| Apply hangs on state lock                                         | Prior CI kill left stale HCP lock                     | `terraform force-unlock <org>/<workspace>` or click Unlock in HCP UI |
+| `aws` CLI ignores `AWS_PROFILE=` in interactive shell             | User has a shell function wrapping `aws`              | Use `command aws` to bypass                                          |
+| TestFlight build opens to white screen                            | `EXPO_PUBLIC_API_URL` not baked into build            | Add to `eas.json` production profile's `env`                         |
+| OTA updates don't reach phone                                     | `branch` in `eas update` ≠ `channel` in build profile | Make them match (both `production`)                                  |
+| Expo-doctor warns about metro.config                              | Monorepo disableHierarchicalLookup override           | Expected — ignore                                                    |
 
 ---
 
@@ -892,13 +896,13 @@ Check for them proactively.
 
 Total user-active time: **~25-30 min**, across these checkpoints:
 
-| Checkpoint | Time |
-|---|---|
-| Phase 0 interview | 5 min |
-| Phase 1 account signups | 10 min |
-| Phase 7 DNS records at registrar | 3 min |
+| Checkpoint                                      | Time   |
+| ----------------------------------------------- | ------ |
+| Phase 0 interview                               | 5 min  |
+| Phase 1 account signups                         | 10 min |
+| Phase 7 DNS records at registrar                | 3 min  |
 | Phase 9 Apple 2FA × 2 + App Store Connect setup | 10 min |
-| Phase 10 phone E2E verification | 3 min |
+| Phase 10 phone E2E verification                 | 3 min  |
 
 Wall-clock: **~2 hours** assuming no pivots. Major waits you can't shrink:
 
@@ -917,6 +921,7 @@ three phases downstream.
 ## Things you (the agent) can and can't do
 
 ### Can do without user:
+
 - Write / edit all source code
 - Run terraform (once user has SSO'd into their account and passed you
   the profile name)
@@ -925,6 +930,7 @@ three phases downstream.
 - Clean up SES domain verification by `aws sesv2 get-email-identity`
 
 ### Cannot do without user:
+
 - Register accounts (Neon, HCP, Expo, domain registrar, GitHub)
 - Interactive Apple 2FA (required for first `eas build` and first
   `eas submit`)
@@ -934,6 +940,7 @@ three phases downstream.
 - Create App Store Connect testing groups (web UI)
 
 ### Should never do:
+
 - Commit without `pnpm run typecheck && pnpm run lint && pnpm run test`
   passing locally
 - Push to main without having watched the previous push succeed

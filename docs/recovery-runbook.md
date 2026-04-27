@@ -3,7 +3,7 @@
 Flat lookup table for "this thing is broken, what do I do?" Each entry is a symptom you'd
 actually see, plus the fix path. Ordered by frequency we've hit them.
 
-For deeper context on *why* a system is shaped the way it is, see `docs/decisions.md`. For
+For deeper context on _why_ a system is shaped the way it is, see `docs/decisions.md`. For
 day-to-day patterns, see `CLAUDE.md`.
 
 ---
@@ -45,7 +45,7 @@ might also be flaky.
 gh run rerun --failed <run-id>
 ```
 
-This re-runs *only* the failed `submit` job against the existing IPA. The `testflight.yml`
+This re-runs _only_ the failed `submit` job against the existing IPA. The `testflight.yml`
 split (since 2026-04-27) makes this work. Internal retry loop in the submit job gives 3×
 attempts with 60s backoff before giving up.
 
@@ -280,6 +280,7 @@ the `ns-<port>-<id>` rewrite logic. See `CLAUDE.md` "Known sandbox gotcha".
 ## When this runbook can be deleted
 
 When all entries above either:
+
 1. Have happened so rarely (less than 1×/year) that the cost of keeping the entry exceeds the
    savings from the entry, or
 2. Have been refactored out by code/infra changes (e.g. the EAS submission queue contention
