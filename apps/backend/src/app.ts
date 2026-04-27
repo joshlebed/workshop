@@ -7,6 +7,7 @@ import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./routes/v1/auth.js";
 import { itemRoutes } from "./routes/v1/items.js";
+import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
 import { listRoutes } from "./routes/v1/lists.js";
 import { searchRoutes } from "./routes/v1/search.js";
 import { spotifyRoutes } from "./routes/v1/spotify.js";
@@ -68,6 +69,7 @@ export function buildApp() {
   app.route("/v1/lists", listRoutes);
   app.route("/v1/items", itemRoutes);
   app.route("/v1/search", searchRoutes);
+  app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/spotify", spotifyRoutes);
 
   return app;

@@ -47,6 +47,11 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   plumbing, one Playwright happy-path.
 - **Phase 2** chunk 2a-1 — TMDB + Google Books search routes, metadata
   cache, per-type `items.metadata` Zod validators.
+- **Phase 2** chunk 2a-2 — link-preview backend (`GET
+  /v1/link-preview?url=`) with SSRF allowlist via `ipaddr.js`, manual
+  per-redirect-hop hostname re-validation, 3s timeout, 1 MB body cap,
+  OG/Twitter card parser, 7-day metadata cache reuse, 30/user/min rate
+  limit. 45 vitest cases (24 SSRF guard + 21 route).
 
 ### Pending
 
@@ -58,14 +63,13 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   add a Playwright happy-path that stubs Google Identity Services with
   a known JWT. No further external setup needed — all portal, SSM, CF
   Pages env, and Lambda env state is in place.
-- **Phase 2** chunks 2a-2, 2b-1, 2b-2 — link-preview backend with SSRF
-  allowlist, client search modal, client URL link-preview wiring.
-  Production search will also need real `TMDB_API_KEY` /
-  `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently `PHASE_2_NOT_SET`
-  placeholder strings — applied in this session so the SSM resources
-  could be created; `lifecycle { ignore_changes = [value] }` means a
-  later `aws ssm put-parameter --overwrite` won't drift Terraform
-  state).
+- **Phase 2** chunks 2b-1, 2b-2 — client search modal, client URL
+  link-preview wiring. Production search will also need real
+  `TMDB_API_KEY` / `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently
+  `PHASE_2_NOT_SET` placeholder strings — applied in this session so
+  the SSM resources could be created; `lifecycle { ignore_changes =
+  [value] }` means a later `aws ssm put-parameter --overwrite` won't
+  drift Terraform state).
 - **Phases 3, 4, 5** — social/sharing, iOS share extension, polish.
   Not started; chunk decomposition lives further down in §3.
 
@@ -73,9 +77,10 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 
 **0c-2 client SDK PR.** It's the immediate next task — without it the
 sign-in screen still shows a warning dialog, and Phase 1's UI is
-unreachable in production. After that, **Phase 2 chunk 2a-2**
-(link-preview backend with SSRF allowlist) is the natural next backend
-slice; **2b-1** and **2b-2** can land in parallel once 2a-2 is in.
+unreachable in production. After that, **Phase 2 chunks 2b-1 and 2b-2**
+(client search modal + client URL link-preview wiring) are the natural
+next slices; both are pure-client and can land in parallel now that
+2a-1 (search) and 2a-2 (link-preview) are both in.
 
 ---
 
@@ -921,7 +926,7 @@ client-only.
 | Chunk | What ships | External deps | Status |
 |---|---|---|---|
 | **2a-1** | Backend search + metadata cache: `apps/backend/src/routes/v1/search.ts` (`GET /v1/search/media?type=movie\|tv`, `GET /v1/search/books`) proxying TMDB / Google Books behind SSM-sourced API keys, normalising into the spec §9 shapes. New `apps/backend/src/lib/metadata-cache.ts` (`upsert(source, source_id, payload, ttl)` + `lookup(source, source_id)`) backed by a new `metadata_cache` Drizzle migration. Per-type Zod validators for `items.metadata` applied on `POST/PATCH /v1/items` (movie / tv / book shapes; date-idea / trip stay loose for 2a-2). Rate limits on `POST /v1/search/*` at 60/user/min. Vitest coverage of validators + cache TTL + auth gating. | TMDB API key + Google Books API key in SSM (placeholders from Phase 0; production needs real values). | Done |
-| **2a-2** | Backend link preview: `apps/backend/src/routes/v1/link-preview.ts` (`GET /v1/link-preview?url=`). SSRF allowlist via `ipaddr.js` (block RFC1918 / loopback / link-local / 169.254.169.254). 3s timeout, 1MB cap, 3 redirects. OG + Twitter card parser. Cached through the 2a-1 `metadata-cache` (7-day TTL). Rate limit 30/user/min. SSRF regression test + parser unit tests. | None — uses the metadata cache from 2a-1. | Pending |
+| **2a-2** | Backend link preview: `apps/backend/src/routes/v1/link-preview.ts` (`GET /v1/link-preview?url=`). SSRF allowlist via `ipaddr.js` (block RFC1918 / loopback / link-local / 169.254.169.254). 3s timeout, 1MB cap, 3 redirects. OG + Twitter card parser. Cached through the 2a-1 `metadata-cache` (7-day TTL). Rate limit 30/user/min. SSRF regression test + parser unit tests. | None — uses the metadata cache from 2a-1. | Done |
 | **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list. | 2a-1. | Pending |
 | **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save. | 2a-2. | Pending |
 
@@ -1021,6 +1026,101 @@ Known constraints for 2a-2:
   into `items.metadata` by 2b-2, and the validator runs on every
   `POST/PATCH /v1/items`. If you add a field to `LinkPreview`, add it
   to `placeMetadataSchema` in the same PR.
+
+#### 3.15 What 2a-2 actually shipped — start here for 2b-1 / 2b-2
+
+Files that landed in 2a-2 (read these before touching 2b-1 or 2b-2):
+
+- `apps/backend/src/lib/ssrf-guard.ts` — the standalone SSRF guard
+  module. Three exports: `class SsrfBlockedError extends Error` (carries
+  `host` + `reason`), `classifyIp(ip)` (`{ ok: true } | { ok: false;
+  reason }` — only `ipaddr.js` `unicast` is allowed; `169.254.169.254`
+  is also explicitly denied as a belt-and-suspenders catch even though
+  `link-local` already covers it), `parseAndValidateUrl(input)` (parses
+  + checks http(s) protocol, no userinfo, IP-literal classification),
+  and `assertHostnameSafe(hostname, deps?)` (resolves via
+  `dns.lookup({ all: true, verbatim: true })` and rejects if *any*
+  returned address is in a blocked range). Handles IPv4-mapped IPv6
+  (`::ffff:a.b.c.d`) by rechecking against the v4 deny list. **Reuse
+  this module unchanged** for any future outbound fetch — the route
+  wires it in two places (URL validation up-front + per-redirect-hop
+  inside the fetcher).
+- `apps/backend/src/lib/ssrf-guard.test.ts` — 24 cases covering v4/v6
+  loopback / RFC1918 / link-local / multicast / broadcast /
+  ipv4-mapped, plus literal-vs-DNS paths and the mixed-answers (one
+  public + one private) regression that proves "all addresses checked,
+  not just the first."
+- `apps/backend/src/routes/v1/link-preview.ts` — `GET /` route
+  (`requireAuth` + `rateLimit({ family: "v1.link-preview", limit: 30,
+  windowSec: 60, key: userKey })`). Pipeline: Zod-validate the `url`
+  query param → `parseAndValidateUrl` (throws `SsrfBlockedError` →
+  400 `VALIDATION` for IP literals) → cache lookup (sha1 of
+  `parsedUrl.href` as `source_id`, source `link_preview`) → on miss,
+  `fetchPage(url)` runs a manual redirect loop (max 3 hops, each calls
+  `assertHostnameSafe` first; `redirect: "manual"` so we control every
+  hop) → `readCappedBody` reads chunks via `getReader()` and aborts at
+  1 MB → `parseOgMeta` extracts og:/twitter:/`<title>` from the `<head>`
+  block → `buildPreview` resolves relative `og:image` against
+  `finalUrl` and falls back `siteName` to the host of `finalUrl`. SSRF
+  errors thrown *during* fetch (e.g. a redirect that resolves to a
+  private IP) are caught and returned as 400 `VALIDATION`, not 500 —
+  same shape as the up-front URL check. Cache writes are best-effort
+  (`.catch(...)` + `logger.warn`) — same pattern as `search.ts`.
+  `__testing.setDeps({ fetchPage?, lookupCache?, upsertCache? })` is
+  the test seam; `__internal = { parseOgMeta, cacheKeyFor, buildPreview
+  }` exposes the pure helpers for unit tests without leaking them into
+  the route's public surface.
+- `apps/backend/src/routes/v1/link-preview.test.ts` — 21 cases:
+  `parseOgMeta` (og preferred over twitter and `<title>`, fallback
+  chain, HTML-entity decoding, single/unquoted attrs, all-null
+  defaults), `cacheKeyFor` (stable + collision-safe + sha1 shape),
+  `buildPreview` (relative-image resolution, hostname fallback for
+  `siteName`), auth + validation (401 without bearer, 400 on empty /
+  unparseable / non-http(s)), SSRF blocks (AWS metadata / loopback /
+  RFC1918 literals — fetcher mock asserts it's never called),
+  userinfo-URL block, happy-path (returns parsed preview), cache hit
+  (fetcher not called), 500 on non-SSRF fetcher errors, 400 on
+  `SsrfBlockedError` thrown from inside `fetchPage` (the
+  redirect-rebind regression), and best-effort cache writes (200
+  preserved when `upsertCache` rejects).
+- `apps/backend/package.json` — adds `ipaddr.js` (pinned at `2.3.0` to
+  match the existing exact-pin convention for backend deps).
+- `apps/backend/src/app.ts` — mounts `/v1/link-preview` via
+  `app.route`. Same per-route rate-limit pattern as `/v1/search/*`.
+- `packages/shared/src/types.ts` — adds `LinkPreview` (url, finalUrl,
+  title, description, image, siteName, fetchedAt) and
+  `LinkPreviewResponse` (`{ preview: LinkPreview }`). `PlaceMetadata`
+  was widened with optional `title` + `description` so 2b-2 can copy
+  the link-preview response body straight into `items.metadata` for
+  date_idea / trip lists without the per-type Zod validator rejecting
+  it (the schema already accepted those keys via the existing
+  `placeMetadataSchema` in `items.ts` — the type now matches).
+
+Live smoke-tested against the running dev backend: blocks
+`http://169.254.169.254/`, `http://127.0.0.1/`, `http://10.0.0.1/`, and
+`http://user:pw@example.com/` all with 400 `VALIDATION`; happy-path on
+`https://example.com/` returns 200 with parsed title.
+
+What 2b-1 should do *first*: read `apps/workshop/app/list/[id]/add.tsx`
+(the current "stub" banner from 1b-2) plus the search shapes in
+`packages/shared/src/types.ts` (`MediaResult`, `BookResult`,
+`MediaSearchResponse`, `BookSearchResponse`). The new
+`src/api/search.ts` should import the result types directly rather
+than re-declaring them. The `useDebouncedQuery(input, 300)` hook is a
+new primitive — `apps/workshop/src/hooks/` is the right home (or
+inline beside the modal if it's the only call site for now). The
+client doesn't need any new backend work for 2b-1 — `/v1/search/*` is
+already live and rate-limited.
+
+What 2b-2 should do *first*: read this section's summary of
+`link-preview.ts` (especially the `LinkPreviewResponse` shape) and the
+per-type Zod metadata validators in `apps/backend/src/routes/v1/items.ts`
+to confirm `placeMetadataSchema` accepts everything `LinkPreview`
+returns. The new `src/api/linkPreview.ts` is a typed wrapper around
+`GET /v1/link-preview?url=…` — pass the user's input through `new
+URL()` client-side first to fail fast on garbage. The `onBlur`
+debounce + `AbortController` pattern is described in the §3.13 row;
+no new backend work needed.
 
 #### 3.9 Original Phase 1 deliverable list
 
