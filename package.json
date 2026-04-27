@@ -28,6 +28,6 @@
     "concurrently": "^9.2.1",
     "knip": "6.6.3",
     "lefthook": "2.1.6",
-    "typescript": "6.0.3"
+    "typescript": "5.9.3"
   }
 }

@@ -12,6 +12,8 @@ updates:
     # `expo install --check` defines the supported matrix for the iOS app.
     # Dependabot must not move RN or its satellites past the SDK-pinned major —
     # it breaks Metro codegen (see docs/plans/HANDOFF.md §CI/CD unblock).
+    # react/react-dom are pinned exact (e.g. 19.2.0); even patch bumps fail
+    # expo-doctor, so ignore patches too. typescript follows expo's `~5.9.x`.
     # Re-open these ignores when the Expo SDK itself is bumped.
     ignore:
       - dependency-name: "react-native"
@@ -25,6 +27,14 @@ updates:
       - dependency-name: "react-native-screens"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "react-native-worklets"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react"
+        update-types:
+          ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types:
+          ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "typescript"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
     groups:
       expo:
