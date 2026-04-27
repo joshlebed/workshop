@@ -3,11 +3,21 @@ name: TestFlight (native iOS build)
 # Runs on main. @expo/fingerprint hashes everything that affects the native
 # binary (native deps, config plugins, app.json, assets wired up as icons/
 # splash, etc.). If the hash differs from the last successful build, this
-# builds a new .ipa and auto-submits to TestFlight. Otherwise it's a no-op
-# and deploy-mobile.yml ships the change via EAS Update.
+# builds a new .ipa and submits to TestFlight via two separate jobs:
 #
-# Last-built fingerprint is stored as a git tag (ios-fp-<hash>) — durable,
-# free, and visible in the repo.
+#   fingerprint  →  build  →  submit  →  tag fingerprint
+#
+# The split lets `gh run rerun --failed` re-run *only* the submit job when
+# Apple/EAS has a transient hiccup (Apple Developer Portal 5xx, EAS submission
+# worker pool exhaustion, etc.) without re-burning an EAS build minute. The
+# `submit` job also retries up to 3× internally for one-shot transient flakes
+# that don't even need a manual rerun.
+#
+# Last-built fingerprint is stored as a git tag (ios-fp-<hash>) only after a
+# successful submit. A build that succeeds but fails to submit will not get
+# tagged, and the next workflow run will rebuild from scratch — that's the
+# safe default; flip the tag job's `needs:` if you decide the submit failure
+# isn't worth a rebuild.
 
 on:
   push:
@@ -31,7 +41,13 @@ concurrency:
   cancel-in-progress: false # in-flight builds cost EAS minutes — never cancel
 
 permissions:
-  contents: write # push fingerprint tag after a successful build
+  contents: write # push fingerprint tag after a successful build+submit
+
+# Pin eas-cli to a known-good version so EAS releases don't silently change
+# the JSON schema of `eas build --json` (which the build job parses) or the
+# behaviour of `--non-interactive`. Bump deliberately.
+env:
+  EAS_CLI_VERSION: "18.8.1"
 
 jobs:
   fingerprint:
@@ -117,9 +133,77 @@ jobs:
           fi
 
   build:
-    name: EAS Build + TestFlight submit
+    name: EAS Build (no submit)
     needs: fingerprint
     if: needs.fingerprint.outputs.build_needed == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      build_id: ${{ steps.build.outputs.build_id }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        with: { version: 10.19.0 }
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Cache hoisted node_modules
+        id: nm-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install deps
+        if: steps.nm-cache.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (no auto-submit)
+        id: build
+        working-directory: apps/workshop
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_APPLE_SERVICES_ID: dev.josh.workshop.web
+          EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33.apps.googleusercontent.com
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com
+          CLI_VERSION: ${{ env.EAS_CLI_VERSION }}
+        run: |
+          set -euo pipefail
+          BUILD_JSON=$(npx "eas-cli@$CLI_VERSION" build \
+            --platform ios \
+            --profile production \
+            --non-interactive \
+            --wait \
+            --json)
+          # `eas build --json` returns an array; the [0]th element is this build.
+          BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id')
+          if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
+            echo "Failed to extract build ID from eas build output:"
+            echo "$BUILD_JSON"
+            exit 1
+          fi
+          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          {
+            echo "## 🟢 Build complete"
+            echo ""
+            echo "**Build ID**: \`$BUILD_ID\`"
+            echo ""
+            echo "[View build on EAS](https://expo.dev/accounts/joshlebed/projects/workshop/builds/$BUILD_ID)"
+            echo ""
+            echo "Submit will run as a separate job. If it fails transiently,"
+            echo "\`gh run rerun --failed <run-id>\` re-runs only the submit step."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  submit:
+    name: TestFlight submit
+    needs: [fingerprint, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -146,21 +230,42 @@ jobs:
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Build and auto-submit to TestFlight
+      # Retry submit on transient failures (Apple Developer Portal 5xx, EAS
+      # submission worker exhaustion, etc.). 3 attempts × 60s backoff covers
+      # the 10-minute "Failed to create worker instance" timeout we hit on
+      # 2026-04-27. A real Apple rejection (invalid IPA, missing keys, etc.)
+      # will fail every retry; that's fine — the cost is 3 minutes wasted on
+      # genuine bad submits, which is rare. The retry loop is internal to the
+      # job; `gh run rerun --failed` is for after this exhausts.
+      - name: Submit to TestFlight (retry on transient failures)
         working-directory: apps/workshop
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
-          EXPO_PUBLIC_APPLE_SERVICES_ID: dev.josh.workshop.web
-          EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33.apps.googleusercontent.com
-          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com
+          BUILD_ID: ${{ needs.build.outputs.build_id }}
+          CLI_VERSION: ${{ env.EAS_CLI_VERSION }}
         run: |
-          npx eas-cli@latest build \
-            --platform ios \
-            --profile production \
-            --auto-submit \
-            --non-interactive \
-            --wait
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            echo "Submit attempt $attempt/3 for build $BUILD_ID"
+            if npx "eas-cli@$CLI_VERSION" submit \
+                 --platform ios \
+                 --id "$BUILD_ID" \
+                 --non-interactive \
+                 --wait; then
+              echo "Submit succeeded on attempt $attempt"
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Submit failed (attempt $attempt/3); waiting 60s before retry..."
+              sleep 60
+            fi
+          done
+          echo "Submit failed after 3 attempts — giving up. Check the EAS"
+          echo "submission page linked in the EAS dashboard for the underlying"
+          echo "error. If transient (5xx, worker timeout), \`gh run rerun"
+          echo "--failed <run-id>\` re-runs only this submit job without a"
+          echo "rebuild."
+          exit 1
 
       - name: Tag successful fingerprint
         env:
