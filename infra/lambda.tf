@@ -45,20 +45,20 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      STAGE                = "prod"
-      DATABASE_URL         = aws_ssm_parameter.db_url.value
-      SESSION_SECRET       = random_password.session_secret.result
-      APPLE_BUNDLE_ID      = aws_ssm_parameter.apple_bundle_id.value
-      APPLE_SERVICES_ID    = aws_ssm_parameter.apple_services_id.value
-      GOOGLE_IOS_CLIENT_ID = aws_ssm_parameter.google_ios_client_id.value
-      GOOGLE_WEB_CLIENT_ID = aws_ssm_parameter.google_web_client_id.value
-      TMDB_API_KEY         = aws_ssm_parameter.tmdb_api_key.value
-      GOOGLE_BOOKS_API_KEY = aws_ssm_parameter.google_books_api_key.value
-      SPOTIFY_CLIENT_ID    = aws_ssm_parameter.spotify_client_id.value
-      SPOTIFY_CLIENT_SECRET = aws_ssm_parameter.spotify_client_secret.value
-      SPOTIFY_REDIRECT_URI = aws_ssm_parameter.spotify_redirect_uri.value
+      STAGE                    = "prod"
+      DATABASE_URL             = aws_ssm_parameter.db_url.value
+      SESSION_SECRET           = random_password.session_secret.result
+      APPLE_BUNDLE_ID          = aws_ssm_parameter.apple_bundle_id.value
+      APPLE_SERVICES_ID        = aws_ssm_parameter.apple_services_id.value
+      GOOGLE_IOS_CLIENT_ID     = aws_ssm_parameter.google_ios_client_id.value
+      GOOGLE_WEB_CLIENT_ID     = aws_ssm_parameter.google_web_client_id.value
+      TMDB_API_KEY             = aws_ssm_parameter.tmdb_api_key.value
+      GOOGLE_BOOKS_API_KEY     = aws_ssm_parameter.google_books_api_key.value
+      SPOTIFY_CLIENT_ID        = aws_ssm_parameter.spotify_client_id.value
+      SPOTIFY_CLIENT_SECRET    = aws_ssm_parameter.spotify_client_secret.value
+      SPOTIFY_REDIRECT_URI     = aws_ssm_parameter.spotify_redirect_uri.value
       SPOTIFY_APP_REDIRECT_URI = aws_ssm_parameter.spotify_app_redirect_uri.value
-      LOG_LEVEL            = "info"
+      LOG_LEVEL                = "info"
     }
   }
 
