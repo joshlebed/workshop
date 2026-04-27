@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { disableAutoDevSignIn } from "./helpers";
 
 // Happy-path for chunk 1b-2: dev-sign-in → create list → add item → upvote → complete.
 //
@@ -7,6 +8,7 @@ import { expect, test } from "@playwright/test";
 // conflict with prior runs.
 
 test("create list → add item → upvote → complete", async ({ page }) => {
+  await disableAutoDevSignIn(page);
   await page.goto("/");
 
   // Sign in via the dev backdoor + onboard if needed.

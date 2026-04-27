@@ -4,6 +4,7 @@ import { ApiError, apiRequest } from "../lib/api";
 import { getItem, removeItem, setItem } from "../lib/storage";
 
 const TOKEN_KEY = "workshop.session.v1";
+const AUTO_DEV_OPT_OUT_KEY = "workshop.disable-auto-dev";
 
 export type AuthStatus = "loading" | "signed-out" | "needs-display-name" | "signed-in";
 
@@ -55,6 +56,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const autoDevSignIn = useCallback(async (): Promise<boolean> => {
     if (process.env.EXPO_PUBLIC_DEV_AUTH !== "1") return false;
+    // Tests opt out of the boot-time auto-sign-in so the sign-in screen
+    // renders for OAuth-button assertions.
+    if ((await getItem(AUTO_DEV_OPT_OUT_KEY)) === "1") return false;
     try {
       const res = await apiRequest<AuthResponse>({
         method: "POST",
