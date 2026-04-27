@@ -130,7 +130,7 @@ describe("GET /v1/link-preview auth + validation", () => {
 
   it("rejects non-http(s) protocol", async () => {
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("file:///etc/passwd"),
+      `/?url=${encodeURIComponent("file:///etc/passwd")}`,
       {
         headers: authHeaders(),
       },
@@ -150,7 +150,7 @@ describe("GET /v1/link-preview SSRF blocks", () => {
       },
     });
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("http://169.254.169.254/latest/meta-data/"),
+      `/?url=${encodeURIComponent("http://169.254.169.254/latest/meta-data/")}`,
       { headers: authHeaders() },
     );
     expect(res.status).toBe(400);
@@ -166,7 +166,7 @@ describe("GET /v1/link-preview SSRF blocks", () => {
       },
     });
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("http://127.0.0.1/"),
+      `/?url=${encodeURIComponent("http://127.0.0.1/")}`,
       {
         headers: authHeaders(),
       },
@@ -176,7 +176,7 @@ describe("GET /v1/link-preview SSRF blocks", () => {
 
   it("blocks RFC1918 literal at validation", async () => {
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("http://10.0.0.1/admin"),
+      `/?url=${encodeURIComponent("http://10.0.0.1/admin")}`,
       {
         headers: authHeaders(),
       },
@@ -186,7 +186,7 @@ describe("GET /v1/link-preview SSRF blocks", () => {
 
   it("blocks userinfo URLs", async () => {
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("http://user:pw@example.com/"),
+      `/?url=${encodeURIComponent("http://user:pw@example.com/")}`,
       { headers: authHeaders() },
     );
     expect(res.status).toBe(400);
@@ -210,7 +210,7 @@ describe("GET /v1/link-preview happy paths", () => {
       }),
     });
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("https://example.com/p"),
+      `/?url=${encodeURIComponent("https://example.com/p")}`,
       {
         headers: authHeaders(),
       },
@@ -248,7 +248,7 @@ describe("GET /v1/link-preview happy paths", () => {
       },
     });
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("https://example.com/x"),
+      `/?url=${encodeURIComponent("https://example.com/x")}`,
       {
         headers: authHeaders(),
       },
@@ -267,7 +267,7 @@ describe("GET /v1/link-preview happy paths", () => {
       },
     });
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("https://example.com/y"),
+      `/?url=${encodeURIComponent("https://example.com/y")}`,
       {
         headers: authHeaders(),
       },
@@ -285,7 +285,7 @@ describe("GET /v1/link-preview happy paths", () => {
       },
     });
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("https://attacker.example/"),
+      `/?url=${encodeURIComponent("https://attacker.example/")}`,
       { headers: authHeaders() },
     );
     expect(res.status).toBe(400);
@@ -305,7 +305,7 @@ describe("GET /v1/link-preview happy paths", () => {
       }),
     });
     const res = await linkPreviewRoutes.request(
-      "/?url=" + encodeURIComponent("https://example.com/z"),
+      `/?url=${encodeURIComponent("https://example.com/z")}`,
       {
         headers: authHeaders(),
       },
