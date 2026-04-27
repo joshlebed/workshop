@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (0c-2 client SDK PR) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the *what*; this
@@ -24,7 +24,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 
 - **Phase 0** chunks 0a, 0b-1, 0b-2, 0c-1 — backend + client foundations,
   primitives skeleton, OAuth verifier code, infra code (no apply).
-- **0c-2 portal + infra** (this session, 2026-04-27):
+- **0c-2 portal + infra** (2026-04-27):
   - Apple Services ID Web Auth saved (`dev.josh.workshop` configured as
     primary App ID with Sign In with Apple; Services ID
     `dev.josh.workshop.web` Domain + Return URL `workshop-a2v.pages.dev`).
@@ -42,6 +42,34 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
     (`EXPO_PUBLIC_APPLE_SERVICES_ID`, `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`,
     `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`) so the next CF build picks up
     the audiences for the web bundle.
+- **0c-2 client SDK PR** (#56, this session — closes Phase 0):
+  - `apps/workshop/src/lib/oauth/{apple,google}.{ts,web.ts}` —
+    platform-split hooks with a uniform `{ available, signIn }` shape.
+    Native uses `expo-apple-authentication` (Apple) + `expo-auth-session/providers/google`
+    (Google). Web lazy-loads Apple JS (`appleid.cdn-apple.com/...`) +
+    Google Identity Services (`accounts.google.com/gsi/client`).
+  - `apps/workshop/app/sign-in.tsx` rewritten — real Apple/Google
+    buttons (each disabled when `EXPO_PUBLIC_*` audience env is unset),
+    `sign-in-providers-unconfigured` empty-state copy, all
+    `Alert.alert` / `window.alert` warning dialogs deleted.
+  - `expo-apple-authentication` added to `app.json` plugins; deps
+    pinned via `pnpm exec expo install` (`expo-apple-authentication
+    ~55.0.13`, `expo-auth-session ~55.0.15`, `expo-crypto ~55.0.14`,
+    `expo-web-browser ~55.0.14`).
+  - `useAuth.tsx` — auto-dev-sign-in (#33) is now skippable per-test
+    via a `workshop.disable-auto-dev` localStorage flag so the sign-in
+    screen actually renders for E2E.
+  - `tests/e2e/helpers.ts` + `tests/e2e/sign-in-google.spec.ts` — new
+    Playwright happy-path that stubs Google Identity Services with a
+    known JWT and mocks `POST /v1/auth/google` to return a
+    backend-signed `AuthResponse` (sourced via `/v1/auth/dev` so the
+    subsequent display-name PATCH actually works). Existing
+    `sign-in.spec.ts` + `list-flow.spec.ts` adopt the disable-auto-dev
+    helper.
+  - `scripts/e2e.sh` exports stub `EXPO_PUBLIC_APPLE_SERVICES_ID` /
+    `EXPO_PUBLIC_GOOGLE_*_CLIENT_ID` so the sign-in screen treats both
+    providers as available; tests stub the SDK callbacks directly so
+    no value ever leaves the browser.
 - **Phase 1** chunks 1a-1, 1a-2, 1b-1, 1b-2 — full lists/items CRUD,
   upvote, complete, home + detail + create-list flows, optimistic-update
   plumbing, one Playwright happy-path.
@@ -55,14 +83,26 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 
 ### Pending
 
-- **0c-2 client SDK PR** (the only remaining piece of Phase 0): replace
-  the warning-dialog stubs in `apps/workshop/app/sign-in.tsx` and
-  `useAuth.signInWithApple` / `signInWithGoogle` with real
-  `expo-apple-authentication` / `expo-auth-session` / Google Identity
-  Services calls; add `expo-apple-authentication` to `app.json` plugins;
-  add a Playwright happy-path that stubs Google Identity Services with
-  a known JWT. No further external setup needed — all portal, SSM, CF
-  Pages env, and Lambda env state is in place.
+- **iOS-only follow-up for 0c-2** (not blocking web; carry into the
+  next native-build PR or whenever Phase 4 starts):
+  - `eas.json` `build.production.env` is missing
+    `EXPO_PUBLIC_APPLE_SERVICES_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
+    / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`. iOS native builds today only
+    bake `EXPO_PUBLIC_API_URL`. Native Apple sign-in falls back to the
+    bundle-id audience (already in Lambda env) but native Google
+    sign-in needs `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` at build time.
+  - `app.json` `ios.infoPlist.CFBundleURLTypes` is empty. Native
+    Google sign-in via `expo-auth-session/providers/google` redirects
+    back through the **reverse iOS client ID** URL scheme
+    (`com.googleusercontent.apps.<suffix>://`); without a registered
+    URL type the browser hands back to Safari instead of the app.
+  - `.github/workflows/{deploy-mobile,testflight}.yml` only inject
+    `EXPO_PUBLIC_API_URL`. If we want OTA (deploy-mobile) to keep the
+    bundles' OAuth audiences fresh from a secret rotation, the three
+    new `EXPO_PUBLIC_*` env vars need GitHub Actions secrets + a
+    matching `env:` block.
+  Web is unaffected — Cloudflare Pages reads those env vars from its
+  own project config at build time.
 - **Phase 2** chunks 2b-1, 2b-2 — client search modal, client URL
   link-preview wiring. Production search will also need real
   `TMDB_API_KEY` / `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently
@@ -75,12 +115,28 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 
 ### Next to implement
 
-**0c-2 client SDK PR.** It's the immediate next task — without it the
-sign-in screen still shows a warning dialog, and Phase 1's UI is
-unreachable in production. After that, **Phase 2 chunks 2b-1 and 2b-2**
-(client search modal + client URL link-preview wiring) are the natural
-next slices; both are pure-client and can land in parallel now that
-2a-1 (search) and 2a-2 (link-preview) are both in.
+**Phase 2 chunks 2b-1 and 2b-2** are the immediate next slices — both
+are pure-client and can land in parallel now that 0c-2's sign-in flow,
+2a-1 (search), and 2a-2 (link-preview) are all green on `main`.
+
+- **2b-1** (client search modal): rewrite `app/list/[id]/add.tsx` for
+  movie / TV / book lists into a real type-aware add flow that hits
+  `/v1/search/{media,books}`. New `<SearchResultRow>` primitive,
+  `useDebouncedQuery(input, 300)` hook, `src/api/search.ts` typed
+  wrappers. Selecting a result calls the existing `createItem` with
+  the normalised metadata pre-filled. Playwright: add a movie via
+  search on a movie list. See §3.13 for the chunk row.
+- **2b-2** (client URL link preview): for date-idea / trip lists,
+  fetch `/v1/link-preview?url=` on URL `onBlur` (debounced + cancellable
+  via `AbortController`). New `src/api/linkPreview.ts`, inline preview
+  card under the URL field with the OG image + site name + title;
+  "couldn't fetch preview" fallback after 3s. Playwright: paste a URL,
+  see the preview, save. See §3.13 + §3.15 for the constraints already
+  worked through in 2a-2.
+
+Pick whichever fits the next session's scope; neither blocks the other.
+2b-1 is the more visible slice (movies are the canonical Workshop list
+type) and is the recommended first pick.
 
 ---
 
@@ -169,7 +225,7 @@ apply) being done up front.
 | **0b-1** | Backend OAuth foundation: `lib/oauth/{jwks,apple,google}.ts` with JWKS-cached JWT verify via `jose`, `routes/v1/auth.ts` (`POST /apple`, `POST /google`, `POST /signout`, `GET /me`), `routes/v1/users.ts` (`PATCH /me` with display-name validation), `requireAuth` middleware refactored to the v1 envelope, rate-limit wired to `/v1/auth/*` (per-IP, 30/min), shared types extended (`AppleAuthRequest`, `GoogleAuthRequest`, `AuthResponse`, `UpdateMeRequest`), `config.ts` reads OAuth audiences from env, Vitest mocked-JWKS coverage (43 tests). | None — uses dep-injected JWKS/audiences in tests so no provider portal config required to land the code. | **Done** (this PR) |
 | **0b-2** | Client OAuth surface: primitives library skeleton (`apps/workshop/src/ui/`), `app/sign-in.tsx` + `app/onboarding/display-name.tsx` rewritten, `useAuth` rewritten (signInWithApple/Google, signOut, setDisplayName), dev-only `POST /v1/auth/dev` backend route gated on `DEV_AUTH_ENABLED=1`, one Playwright happy-path that drives sign-in → display-name → home via the dev route. | None — real OAuth SDK integration is deferred to 0c (requires Apple/Google portal config). | **Done** (this PR) |
 | **0c-1** | Infra Terraform code only (no apply): delete `infra/ses.tf` + `ses_verified_email` variable + SES IAM policy + `SES_FROM_ADDRESS` from Lambda + `SES_FROM_ADDRESS` from the deploy-backend migrate job; add six `aws_ssm_parameter` SecureString resources (`apple_bundle_id`, `apple_services_id`, `google_ios_client_id`, `google_web_client_id`, `tmdb_api_key`, `google_books_api_key`) with empty defaults and `lifecycle { ignore_changes = [value] }`; wire six matching env vars into `aws_lambda_function.api`; update `terraform.tfvars.example`; create `docs/plans/HANDOFF.md` tracking the remaining external work. | None — zero cloud actions; `terraform plan` is informational until 0c-2 applies. | **Done** (this PR) |
-| **0c-2** | Apply the infra + wire real OAuth SDKs: `AWS_PROFILE=workshop-prod terraform apply`; paste real values into SSM via `aws ssm put-parameter --overwrite`; stand up the Cloudflare Pages project wired to `main`; add `expo-apple-authentication` + `expo-auth-session` + `expo-crypto` + `expo-web-browser` to `apps/workshop`; replace the warning-dialog stubs in `app/sign-in.tsx` + `useAuth.signInWithApple` / `signInWithGoogle` with real SDK calls reading `EXPO_PUBLIC_APPLE_SERVICES_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`; add a second Playwright happy-path that stubs Google Identity Services. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account; Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). All tracked in `docs/plans/HANDOFF.md`. | **Partial** — portal + SSM + Terraform apply + CF Pages env vars all done as of 2026-04-27 (see Current status above). Client SDK PR (replace sign-in warning stubs, add `expo-apple-authentication` plugin, second Playwright happy-path) is the only piece left. |
+| **0c-2** | Apply the infra + wire real OAuth SDKs: `AWS_PROFILE=workshop-prod terraform apply`; paste real values into SSM via `aws ssm put-parameter --overwrite`; stand up the Cloudflare Pages project wired to `main`; add `expo-apple-authentication` + `expo-auth-session` + `expo-crypto` + `expo-web-browser` to `apps/workshop`; replace the warning-dialog stubs in `app/sign-in.tsx` + `useAuth.signInWithApple` / `signInWithGoogle` with real SDK calls reading `EXPO_PUBLIC_APPLE_SERVICES_ID` / `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`; add a second Playwright happy-path that stubs Google Identity Services. | AWS SSO into `workshop-prod`; Terraform apply; Cloudflare account; Apple Developer portal (Services ID + return URLs); Google Cloud Console (iOS + web OAuth client IDs). All tracked in `docs/plans/HANDOFF.md`. | **Done** — portal + SSM + Terraform apply + CF Pages env vars landed 2026-04-27. Client SDK wiring + Playwright GIS-stub happy-path landed in PR #56 (this session). iOS-only follow-up (`eas.json` env, `app.json` reverse-client URL scheme, GH Actions secrets) tracked in §"Pending" above and in `docs/plans/HANDOFF.md` §7. |
 
 #### 3.2 What 0a actually shipped — start here for 0b
 
@@ -408,6 +464,114 @@ The ordering there is deliberate: portals produce identifiers, identifiers
 get pasted into SSM, SSM must exist before `terraform apply` wires the
 Lambda env vars, and real client IDs must be in SSM before the client
 sign-in buttons stop showing warning dialogs.
+
+#### 3.6.1 What 0c-2 actually shipped — start here for the next chunk
+
+The portal + SSM + Terraform apply + Cloudflare Pages env vars landed
+ahead of the client PR (notes inlined in §"Current status" → "Done"
+above). The client SDK PR (#56, this session) closed out Phase 0:
+
+- `apps/workshop/src/lib/oauth/apple.ts` (native) — `useAppleSignIn()`
+  hook. Generates a UUID raw nonce, hashes via
+  `Crypto.digestStringAsync(SHA256, …)`, calls
+  `AppleAuthentication.signInAsync({ requestedScopes: [FULL_NAME, EMAIL],
+  nonce: hashedNonce })`. Returns `{ identityToken, nonce: hashedNonce,
+  email?, fullName? }`. **Nonce semantics**: Apple emits
+  `claims.nonce = sha256(suppliedNonce)`, so the client forwards the
+  *hashed* value to the backend — `verifyAppleIdentityToken` compares
+  the hashed value the client sent against the (already hashed) claim.
+  Don't forward the raw nonce or verification fails.
+- `apps/workshop/src/lib/oauth/apple.web.ts` — lazy-loads
+  `https://appleid.cdn-apple.com/.../appleid.auth.js`,
+  `init({ clientId: EXPO_PUBLIC_APPLE_SERVICES_ID, scope: "name email",
+  redirectURI: window.location.origin, usePopup: true })`,
+  `signIn()` returns `{ identityToken, email?, fullName? }`. Cancels
+  (`popup_closed_by_user`) resolve `null`. **No nonce roundtrip** —
+  Apple JS in popup mode doesn't surface one to the caller; the
+  backend's `verifyAppleIdentityToken` already accepts an optional
+  nonce.
+- `apps/workshop/src/lib/oauth/google.ts` (native) — `useGoogleSignIn()`
+  hook. Calls `WebBrowser.maybeCompleteAuthSession()` at module load,
+  uses `Google.useAuthRequest({ iosClientId:
+  EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID })`. `signIn()` awaits
+  `promptAsync()`, extracts `params.id_token` (preferred) or
+  `authentication.idToken` (fallback). Returns `{ idToken }`.
+  **iOS native gotcha**: Google's iOS OAuth client redirects via the
+  reverse client ID URL scheme; `app.json` is missing
+  `ios.infoPlist.CFBundleURLTypes` — a TestFlight build needs that
+  before the redirect lands back in the app. Tracked under "Pending"
+  in §"Current status".
+- `apps/workshop/src/lib/oauth/google.web.ts` — lazy-loads GIS
+  (`https://accounts.google.com/gsi/client`), initializes
+  `google.accounts.id.initialize({ client_id, callback, auto_select: false
+  })` with a `resolveRef` pattern so each call resolves a single
+  Promise. Renders an off-screen button host (`-9999px`, opacity 0)
+  via `renderButton(host, { type: "standard", size: "large" })` and on
+  `signIn()` finds the inner clickable (`div[role='button'], button,
+  span`), clicks it, and falls back to `google.accounts.id.prompt()`
+  if no inner is found yet — that fallback is what the Playwright
+  stub exercises.
+- `apps/workshop/app/sign-in.tsx` — uses both hooks, disables a
+  provider button when its `available` flag is false (audience env
+  unset or SDK didn't load), shows
+  `sign-in-providers-unconfigured` empty-state copy when neither is
+  configured. All `Alert.alert` / `window.alert` warning paths are
+  gone. The dev-auth button (`testID="sign-in-dev"`) still renders
+  behind `EXPO_PUBLIC_DEV_AUTH === "1"`.
+- `apps/workshop/src/hooks/useAuth.tsx` — adds
+  `AUTO_DEV_OPT_OUT_KEY = "workshop.disable-auto-dev"`. The
+  `autoDevSignIn` boot path early-returns when that key is set in
+  storage, which is how Playwright keeps the sign-in screen rendered
+  even with `EXPO_PUBLIC_DEV_AUTH=1`.
+- `apps/workshop/app.json` — `expo-apple-authentication` added to
+  the `plugins` array. iOS prebuild will pick this up once a native
+  build runs (Expo fingerprint will detect the change and auto-trigger
+  a TestFlight build on the next merge to `main`).
+- `apps/workshop/package.json` — `expo-apple-authentication ~55.0.13`,
+  `expo-auth-session ~55.0.15`, `expo-crypto ~55.0.14`,
+  `expo-web-browser ~55.0.14` (all pinned via
+  `pnpm exec expo install`).
+- `tests/e2e/helpers.ts` (new) — three helpers:
+  - `disableAutoDevSignIn(page)` — `addInitScript` that sets
+    `localStorage["workshop.disable-auto-dev"] = "1"` so the
+    AuthProvider doesn't auto-sign-in.
+  - `stubGoogleIdentityServices(page, jwt)` — `addInitScript` that
+    defines `window.google.accounts.id` with `initialize` (stores
+    the callback), `prompt` (queueMicrotask invokes the callback with
+    `{ credential: jwt }`), and no-op `renderButton` / `cancel` /
+    `disableAutoSelect`. The production `google.web.ts` falls back to
+    `prompt()` when the rendered button has no inner clickable, so
+    the stub is reachable end-to-end.
+  - `mockGoogleAuthEndpoint(page, authResponse)` —
+    `page.route("**/v1/auth/google", ...)` returns the supplied
+    response body verbatim. The backend's `ok(c, data)` returns the
+    body directly (no `{ data: ... }` wrapper), so the test fetches a
+    real `/v1/auth/dev` response and forwards it unchanged — the
+    session token is therefore signed by the running server's
+    `SESSION_SECRET` and the subsequent `PATCH /v1/users/me` works.
+- `tests/e2e/sign-in-google.spec.ts` (new) — drives the GIS-stub flow
+  through display-name → home. Uses `request.post("/v1/auth/dev")` for
+  the AuthResponse, `disableAutoDevSignIn` + `stubGoogleIdentityServices`
+  + `mockGoogleAuthEndpoint` before `page.goto("/")`, then
+  `getByTestId("sign-in-google").click()` and asserts on the
+  display-name input + home greeting.
+- `tests/e2e/{sign-in,list-flow}.spec.ts` (modified) — add
+  `await disableAutoDevSignIn(page)` before `page.goto("/")` so they
+  still pass with `EXPO_PUBLIC_DEV_AUTH=1` set globally.
+- `scripts/e2e.sh` — exports stub `EXPO_PUBLIC_APPLE_SERVICES_ID` /
+  `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` / `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
+  so the sign-in screen treats both providers as available; tests
+  stub the SDK callbacks directly so no value ever leaves the browser.
+
+What the next chunk (2b-1 client search modal — see §3.13) should do
+*first*: read `apps/backend/src/routes/v1/search.ts` for the response
+shapes (`MediaSearchResponse`, `BookSearchResponse` in
+`@workshop/shared`) and `apps/workshop/app/list/[id]/add.tsx` for the
+current "search lands in Phase 2" stub banner. The new
+`src/api/search.ts` should mirror the existing `src/api/items.ts`
+shape (one function per route, thin wrapper, no caching — TanStack
+Query owns caching). The 2b-1 row in §3.13 is the source of truth for
+the deliverable list.
 
 #### 3.3 Original Phase 0 deliverable list
 
