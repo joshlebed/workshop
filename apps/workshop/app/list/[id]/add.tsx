@@ -1,60 +1,91 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ItemListResponse, ListType } from "@workshop/shared";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type {
+  BookResult,
+  BookSearchResponse,
+  CreateItemRequest,
+  ListType,
+  MediaResult,
+  MediaSearchResponse,
+  MediaSearchType,
+} from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { createItem } from "../../../src/api/items";
+import { fetchListDetail } from "../../../src/api/lists";
+import { searchBooks, searchMedia } from "../../../src/api/search";
 import { useAuth } from "../../../src/hooks/useAuth";
+import { useDebouncedQuery } from "../../../src/hooks/useDebouncedQuery";
 import { ApiError } from "../../../src/lib/api";
 import { haptics } from "../../../src/lib/haptics";
 import { queryKeys } from "../../../src/lib/queryKeys";
-import { Button, Card, IconButton, Text, tokens, useToast } from "../../../src/ui/index";
+import {
+  Button,
+  Card,
+  IconButton,
+  SearchResultRow,
+  Text,
+  tokens,
+  useToast,
+} from "../../../src/ui/index";
 
-const STUB_TYPES: readonly ListType[] = ["movie", "tv", "book"];
+const SEARCH_TYPES: readonly ListType[] = ["movie", "tv", "book"];
 
 export default function AddItem() {
-  const params = useLocalSearchParams<{ id: string; type?: string }>();
+  const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const type = (Array.isArray(params.type) ? params.type[0] : params.type) as ListType | undefined;
   const router = useRouter();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
+  // Fetch the parent list so the screen knows whether to render the search
+  // flow (movie/tv/book) or the free-form flow (date_idea/trip). The list
+  // detail screen already populates this query; the cached read is instant.
+  const listQuery = useQuery({
+    queryKey: queryKeys.lists.detail(id ?? ""),
+    queryFn: () => fetchListDetail(id ?? "", token),
+    enabled: !!token && !!id,
+  });
+  const listType = listQuery.data?.list.type;
+  const isSearchType = !!listType && SEARCH_TYPES.includes(listType);
+
+  // Free-form fields (date_idea / trip).
   const [title, setTitle] = useState("");
   const [url, setUrl] = useState("");
   const [note, setNote] = useState("");
-
   const trimmedTitle = title.trim();
-  const canSubmit = trimmedTitle.length >= 1 && trimmedTitle.length <= 500;
+  const canSubmitFreeForm = trimmedTitle.length >= 1 && trimmedTitle.length <= 500;
 
-  const showsStubBanner = type ? STUB_TYPES.includes(type) : false;
+  // Search field (movie / tv / book).
+  const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedQuery(query, 300);
+  const trimmedDebounced = debouncedQuery.trim();
+  const searchEnabled = !!token && !!listType && isSearchType && trimmedDebounced.length >= 2;
 
-  const addMutation = useMutation({
-    mutationFn: () => {
-      if (!id) throw new Error("missing list id");
-      const trimmedUrl = url.trim();
-      const trimmedNote = note.trim();
-      return createItem(
-        id,
-        {
-          title: trimmedTitle,
-          ...(trimmedUrl.length > 0 ? { url: trimmedUrl } : {}),
-          ...(trimmedNote.length > 0 ? { note: trimmedNote } : {}),
-        },
-        token,
-      );
+  const searchQuery = useQuery<MediaSearchResponse | BookSearchResponse, Error>({
+    queryKey: ["search", listType ?? "", trimmedDebounced],
+    queryFn: ({ signal }) => {
+      if (listType === "book") return searchBooks(trimmedDebounced, token, signal);
+      return searchMedia(listType as MediaSearchType, trimmedDebounced, token, signal);
     },
-    onSuccess: async (res) => {
+    enabled: searchEnabled,
+    staleTime: 30_000,
+  });
+
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  const addMutation = useMutation<unknown, Error, { resultId: string; body: CreateItemRequest }>({
+    mutationFn: ({ body }) => {
+      if (!id) throw new Error("missing list id");
+      return createItem(id, body, token);
+    },
+    onMutate: ({ resultId }) => {
+      setPendingId(resultId);
+    },
+    onSuccess: async () => {
       haptics.medium();
       if (id) {
-        const activeKey = queryKeys.items.byListFiltered(id, false);
-        const previous = queryClient.getQueryData<ItemListResponse>(activeKey);
-        if (previous) {
-          queryClient.setQueryData<ItemListResponse>(activeKey, {
-            items: [res.item, ...previous.items],
-          });
-        }
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.items.byListFiltered(id, false) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
@@ -63,6 +94,7 @@ export default function AddItem() {
       router.back();
     },
     onError: (e) => {
+      setPendingId(null);
       showToast({
         message: e instanceof ApiError ? e.message : "Couldn't add item",
         tone: "danger",
@@ -78,6 +110,45 @@ export default function AddItem() {
     );
   }
 
+  // The list query is loading — show a placeholder rather than picking a UI
+  // before we know the list's type.
+  if (listQuery.isPending) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.center}>
+          <ActivityIndicator color={tokens.accent.default} />
+        </View>
+      </View>
+    );
+  }
+
+  const onAddMedia = (r: MediaResult) => {
+    const body: CreateItemRequest = {
+      title: r.title,
+      metadata: buildMediaMetadata(r),
+    };
+    addMutation.mutate({ resultId: r.id, body });
+  };
+
+  const onAddBook = (r: BookResult) => {
+    const body: CreateItemRequest = {
+      title: r.title,
+      metadata: buildBookMetadata(r),
+    };
+    addMutation.mutate({ resultId: r.id, body });
+  };
+
+  const submitFreeForm = () => {
+    const trimmedUrl = url.trim();
+    const trimmedNote = note.trim();
+    const body: CreateItemRequest = {
+      title: trimmedTitle,
+      ...(trimmedUrl.length > 0 ? { url: trimmedUrl } : {}),
+      ...(trimmedNote.length > 0 ? { note: trimmedNote } : {}),
+    };
+    addMutation.mutate({ resultId: "free-form", body });
+  };
+
   return (
     <View style={styles.root}>
       <View style={styles.header}>
@@ -88,77 +159,243 @@ export default function AddItem() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {showsStubBanner ? (
-          <Card style={styles.banner}>
-            <Text tone="secondary" variant="caption">
-              Search-driven adding for movies, TV, and books lands in Phase 2. For now, type the
-              title manually.
-            </Text>
-          </Card>
-        ) : null}
-
-        <Card style={styles.card} elevated>
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Title
-            </Text>
-            <TextInput
-              testID="add-item-title"
-              value={title}
-              onChangeText={setTitle}
-              placeholder="What is it?"
-              placeholderTextColor={tokens.text.muted}
-              autoFocus
-              maxLength={500}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              URL (optional)
-            </Text>
-            <TextInput
-              testID="add-item-url"
-              value={url}
-              onChangeText={setUrl}
-              placeholder="https://"
-              placeholderTextColor={tokens.text.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={2048}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Note (optional)
-            </Text>
-            <TextInput
-              testID="add-item-note"
-              value={note}
-              onChangeText={setNote}
-              placeholder="Anything to remember?"
-              placeholderTextColor={tokens.text.muted}
-              multiline
-              maxLength={1000}
-              style={[styles.input, styles.inputMultiline]}
-            />
-          </View>
-
-          <Button
-            testID="add-item-submit"
-            label="Add"
-            size="lg"
-            disabled={!canSubmit || addMutation.isPending}
-            loading={addMutation.isPending}
-            onPress={() => addMutation.mutate()}
-          />
-        </Card>
-      </ScrollView>
+      {isSearchType ? (
+        <SearchFlow
+          listType={listType as "movie" | "tv" | "book"}
+          query={query}
+          onChangeQuery={setQuery}
+          searchQuery={searchQuery}
+          trimmedDebounced={trimmedDebounced}
+          pendingId={pendingId}
+          onAddMedia={onAddMedia}
+          onAddBook={onAddBook}
+        />
+      ) : (
+        <FreeFormFlow
+          title={title}
+          onChangeTitle={setTitle}
+          url={url}
+          onChangeUrl={setUrl}
+          note={note}
+          onChangeNote={setNote}
+          canSubmit={canSubmitFreeForm}
+          loading={addMutation.isPending}
+          onSubmit={submitFreeForm}
+        />
+      )}
     </View>
+  );
+}
+
+function buildMediaMetadata(r: MediaResult): CreateItemRequest["metadata"] {
+  const meta: Record<string, unknown> = { source: "tmdb", sourceId: r.id };
+  if (r.posterUrl) meta.posterUrl = r.posterUrl;
+  if (typeof r.year === "number") meta.year = r.year;
+  if (typeof r.runtimeMinutes === "number") meta.runtimeMinutes = r.runtimeMinutes;
+  if (r.overview) meta.overview = r.overview;
+  return meta;
+}
+
+function buildBookMetadata(r: BookResult): CreateItemRequest["metadata"] {
+  const meta: Record<string, unknown> = { source: "google_books", sourceId: r.id };
+  if (r.coverUrl) meta.coverUrl = r.coverUrl;
+  if (r.authors.length > 0) meta.authors = r.authors;
+  if (typeof r.year === "number") meta.year = r.year;
+  if (typeof r.pageCount === "number") meta.pageCount = r.pageCount;
+  if (r.description) meta.description = r.description;
+  return meta;
+}
+
+interface SearchFlowProps {
+  listType: "movie" | "tv" | "book";
+  query: string;
+  onChangeQuery: (v: string) => void;
+  searchQuery: ReturnType<typeof useQuery<MediaSearchResponse | BookSearchResponse, Error>>;
+  trimmedDebounced: string;
+  pendingId: string | null;
+  onAddMedia: (r: MediaResult) => void;
+  onAddBook: (r: BookResult) => void;
+}
+
+function SearchFlow({
+  listType,
+  query,
+  onChangeQuery,
+  searchQuery,
+  trimmedDebounced,
+  pendingId,
+  onAddMedia,
+  onAddBook,
+}: SearchFlowProps) {
+  const placeholder =
+    listType === "book" ? "Search books" : listType === "tv" ? "Search TV shows" : "Search movies";
+
+  const data = searchQuery.data;
+  const showPrompt = trimmedDebounced.length < 2;
+  const showLoading = !showPrompt && searchQuery.isFetching && !data;
+  const showError = !showPrompt && !!searchQuery.error;
+
+  return (
+    <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <Card style={styles.searchCard} elevated>
+        <TextInput
+          testID="add-item-search"
+          value={query}
+          onChangeText={onChangeQuery}
+          placeholder={placeholder}
+          placeholderTextColor={tokens.text.muted}
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={200}
+          style={styles.input}
+        />
+      </Card>
+
+      {showPrompt ? (
+        <Text tone="secondary" style={styles.helper} testID="add-item-search-prompt">
+          Type at least 2 characters to search.
+        </Text>
+      ) : null}
+
+      {showLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={tokens.accent.default} />
+        </View>
+      ) : null}
+
+      {showError ? (
+        <Text tone="danger" style={styles.helper} testID="add-item-search-error">
+          Search failed. Try again.
+        </Text>
+      ) : null}
+
+      {data && listType === "book" && "results" in data
+        ? (data as BookSearchResponse).results.map((r) => (
+            <SearchResultRow
+              key={r.id}
+              id={r.id}
+              title={r.title}
+              year={r.year}
+              imageUrl={r.coverUrl}
+              subtitle={r.authors.length > 0 ? r.authors.join(", ") : null}
+              loading={pendingId === r.id}
+              disabled={pendingId !== null && pendingId !== r.id}
+              onAdd={() => onAddBook(r)}
+            />
+          ))
+        : null}
+
+      {data && listType !== "book" && "results" in data
+        ? (data as MediaSearchResponse).results.map((r) => (
+            <SearchResultRow
+              key={r.id}
+              id={r.id}
+              title={r.title}
+              year={r.year}
+              imageUrl={r.posterUrl}
+              subtitle={r.overview}
+              loading={pendingId === r.id}
+              disabled={pendingId !== null && pendingId !== r.id}
+              onAdd={() => onAddMedia(r)}
+            />
+          ))
+        : null}
+
+      {data && !showPrompt && !showLoading && data.results.length === 0 ? (
+        <Text tone="secondary" style={styles.helper} testID="add-item-search-empty">
+          No matches.
+        </Text>
+      ) : null}
+    </ScrollView>
+  );
+}
+
+interface FreeFormFlowProps {
+  title: string;
+  onChangeTitle: (v: string) => void;
+  url: string;
+  onChangeUrl: (v: string) => void;
+  note: string;
+  onChangeNote: (v: string) => void;
+  canSubmit: boolean;
+  loading: boolean;
+  onSubmit: () => void;
+}
+
+function FreeFormFlow({
+  title,
+  onChangeTitle,
+  url,
+  onChangeUrl,
+  note,
+  onChangeNote,
+  canSubmit,
+  loading,
+  onSubmit,
+}: FreeFormFlowProps) {
+  return (
+    <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <Card style={styles.card} elevated>
+        <View style={styles.field}>
+          <Text variant="label" tone="secondary">
+            Title
+          </Text>
+          <TextInput
+            testID="add-item-title"
+            value={title}
+            onChangeText={onChangeTitle}
+            placeholder="What is it?"
+            placeholderTextColor={tokens.text.muted}
+            autoFocus
+            maxLength={500}
+            style={styles.input}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text variant="label" tone="secondary">
+            URL (optional)
+          </Text>
+          <TextInput
+            testID="add-item-url"
+            value={url}
+            onChangeText={onChangeUrl}
+            placeholder="https://"
+            placeholderTextColor={tokens.text.muted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={2048}
+            style={styles.input}
+          />
+        </View>
+
+        <View style={styles.field}>
+          <Text variant="label" tone="secondary">
+            Note (optional)
+          </Text>
+          <TextInput
+            testID="add-item-note"
+            value={note}
+            onChangeText={onChangeNote}
+            placeholder="Anything to remember?"
+            placeholderTextColor={tokens.text.muted}
+            multiline
+            maxLength={1000}
+            style={[styles.input, styles.inputMultiline]}
+          />
+        </View>
+
+        <Button
+          testID="add-item-submit"
+          label="Add"
+          size="lg"
+          disabled={!canSubmit || loading}
+          loading={loading}
+          onPress={onSubmit}
+        />
+      </Card>
+    </ScrollView>
   );
 }
 
@@ -177,9 +414,9 @@ const styles = StyleSheet.create({
   body: {
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
-    gap: tokens.space.lg,
+    gap: tokens.space.md,
   },
-  banner: { backgroundColor: tokens.bg.elevated },
+  searchCard: { paddingVertical: tokens.space.sm },
   card: { gap: tokens.space.lg },
   field: { gap: tokens.space.sm },
   input: {
@@ -193,4 +430,6 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
   },
   inputMultiline: { minHeight: 80, textAlignVertical: "top" },
+  helper: { textAlign: "center", paddingVertical: tokens.space.lg },
+  center: { alignItems: "center", justifyContent: "center", paddingVertical: tokens.space.xl },
 });

@@ -12,6 +12,8 @@ export type { IconButtonProps } from "./IconButton";
 export { IconButton } from "./IconButton";
 export type { ModalProps } from "./Modal";
 export { Modal } from "./Modal";
+export type { SearchResultRowProps } from "./SearchResultRow";
+export { SearchResultRow } from "./SearchResultRow";
 export type { SheetProps } from "./Sheet";
 export { Sheet } from "./Sheet";
 export type { UITextProps } from "./Text";
