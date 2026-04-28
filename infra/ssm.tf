@@ -10,7 +10,7 @@ resource "aws_ssm_parameter" "session_secret" {
 }
 
 # DATABASE_URL points at an externally-managed Postgres (Neon). The connection
-# string is set via `var.database_url` in terraform.tfvars.local — never in git.
+# string is set via `var.database_url` in terraform.tfvars — never in git.
 resource "aws_ssm_parameter" "db_url" {
   name  = "/${local.prefix}/db/url"
   type  = "SecureString"

@@ -21,7 +21,7 @@ land as additional routes inside the same app.
   project `@joshlebed/workshop` (id `e395fb39-54cc-4841-a40a-c8d074f5db60`).
 - **Hono on AWS Lambda behind API Gateway HTTP API** for the backend. PostgreSQL on **Neon**
   (managed, free tier, see `docs/decisions.md` for the switch from RDS). Drizzle ORM, `postgres-js`
-  driver. Connection string lives in `infra/terraform.tfvars.local` (gitignored) → SSM SecureString
+  driver. Connection string lives in `infra/terraform.tfvars` (gitignored) → SSM SecureString
   → Lambda env var.
 - **Terraform** for all infra. State in HCP Terraform (free tier), org `josh-personal-org`,
   workspace `workshop-prod`, execution mode **Local** (plans/applies run on the client, state
@@ -43,7 +43,7 @@ land as additional routes inside the same app.
 
 ## AWS
 
-- **Account for Workshop**: see `infra/terraform.tfvars.local` (gitignored). During the initial
+- **Account for Workshop**: see `infra/terraform.tfvars` (gitignored). During the initial
   setup the project ran inside a multi-tenant "messenger-weight-bot" account; the intent is to
   isolate it into a dedicated `workshop` account under the same AWS Organization
   (`o-m515tekbvf`). If `docs/plans/HANDOFF.md` exists, that migration is in progress.
@@ -60,7 +60,7 @@ land as additional routes inside the same app.
   before pushing — CI runs the same.
 - **No secrets in the repo.** The DB password, session secret, and DATABASE_URL all live in SSM
   Parameter Store and are read by Terraform (baked into Lambda env vars at deploy time). GitHub
-  Actions reads SSM via OIDC — never hardcoded access keys. `terraform.tfvars.local` and
+  Actions reads SSM via OIDC — never hardcoded access keys. `terraform.tfvars` and
   `.env` files are gitignored.
 - **Share types in `@workshop/shared`.** When you add or change an API shape, put the type there
   and import it from both backend (`apps/backend`) and mobile (`apps/workshop`). No manually-kept
