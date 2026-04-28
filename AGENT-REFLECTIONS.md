@@ -439,3 +439,89 @@ reading the plan vs. the code and realizing they disagreed.
 | Primitives still bind to dark `tokens` after 5b                    | New chunk: migrate each `src/ui/*.tsx` primitive to `useTheme()` in render   | ~6h  |
 | `useColorScheme()` returns `null` on web first render              | One-line note in `CLAUDE.md` under "Conventions" or "Local development"      | ~3m  |
 | `@react-navigation/native` ThemeProvider name collision            | One-shot rename happened cleanly; no codebase-wide fix needed                | n/a  |
+
+## 2026-04-28 — list-detail "new items" pill (Phase 5c)
+
+Context: implementing `apps/workshop/src/ui/NewItemsPill.tsx` +
+wiring into `app/list/[id]/index.tsx` for the spec §12 polish item.
+Self-contained chunk; no infra or external services touched.
+
+### What went well
+
+- **§3.28's "Known constraints for 5c" was load-bearing.** It
+  spelled out that primitives still bind to the static `tokens`
+  export and that new visible color in 5c+ should use
+  `useTheme()`. Without that hint I'd have copy-pasted the
+  `import { tokens } from "./theme"` pattern from `Chip.tsx` and
+  shipped a primitive that doesn't flip with theme. ~10m saved
+  by reading the prior chunk's "Known constraints" block before
+  writing code. This is the §3 hand-off pattern paying off — keep
+  it up.
+- **`computeNewItemsDelta` as a pure helper made vitest trivial.**
+  4 cases, no React, no mocks. Same convention as `query.test.ts`.
+  `apps/workshop/vitest.config.ts` already globs
+  `src/**/*.test.ts`, so no config edits needed — the test ran
+  immediately.
+- **Biome's `useExhaustiveDependencies` rule caught the spurious
+  `dataUpdatedAt` dep.** The plan said to use it; reality didn't
+  need it. Lint flagged it before I had to think about it.
+  Saved a follow-up "why is this effect spinning" debugging
+  session.
+- **`pnpm run typecheck && pnpm run lint && pnpm run test` is
+  fast enough to run after every edit.** ~12s typecheck + ~1s
+  lint + ~7s test. Tightens the inner loop.
+
+### What didn't go well
+
+- **`pillViewport` `top: 140` is a magic number derived by
+  adding up paddings + line heights from memory.** A
+  `<View onLayout>` measure on the toolbar would be the right
+  primitive ("position 8px below my actual rendered bottom"), but
+  it adds a render cycle for a single tweakable constant. Made
+  it a magic number with a code comment in the §3.29 doc, but
+  flagging here as a concrete spot where RN's lack of
+  `position: sticky` (web) bites — sticky positioning would have
+  let me drop the absolute viewport entirely. ~5m of fiddling.
+- **No good way to E2E this without driving FlatList scroll +
+  invalidating a TanStack Query cache mid-render.** Playwright
+  can drive scroll, but synthesizing a refetch that lands new
+  items requires either bumping the mock + waiting for
+  refetch-on-window-focus or hijacking the QueryClient — both
+  brittle. Punted to 5f's full sweep, where the test harness
+  could expose `__queryClient` as a window global for tests.
+  ~10m of "is this worth a spec?" deliberation; would help to
+  have a documented testing policy for this kind of internal-state
+  primitive.
+
+### Actionable feedback
+
+1. **Add a `useScrollSticky` hook to `apps/workshop/src/lib/`.**
+   Wraps the `scrollYRef` + `onScroll` + threshold pattern that
+   the pill needed; future chunks (5d sheet enter/exit, 5e
+   two-pane sticky pane) probably need the same shape. ~30m,
+   one helper + one vitest. Fits as part of 5d or as a tiny
+   "5c.1" follow-up.
+2. **Document in `CLAUDE.md` the "test what's pure, leave
+   integration to E2E or manual" rule explicitly.** Implicit in
+   the codebase but not written down; "pure helper goes next to
+   its consumer with a vitest, FlatList scroll + query interaction
+   gets a Playwright" would have saved ~10m of "should I write a
+   spec?" deliberation. ~5m doc edit.
+3. **`scripts/check-redesign-plan-status.mjs` ran cleanly and
+   caught the format I cared about.** No friction here — this
+   is a positive note. The skill loop already calls it.
+4. **Phase 5 chunks really are "one PR each" — keep that
+   discipline.** It was tempting to also migrate `UpvotePill` to
+   `useTheme()` while in the area (it's right there in the
+   imports), but that's part of the §3.28 follow-up not 5c.
+   Easier to resist when the "What X shipped" section explicitly
+   pins scope.
+
+### Friction → fix sketches (size estimates)
+
+| Friction                                                                  | Fix                                                                             | Size |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ---- |
+| `pillViewport` `top: 140` is a measured magic number                      | Replace with `<View onLayout>` measure on toolbar; expose offset via context    | ~30m |
+| FlatList scroll + query refetch interaction is awkward to E2E             | Expose `window.__queryClient` in dev/E2E builds; use it from Playwright         | ~1h  |
+| Pattern "ref scroll-Y + threshold" likely repeats in 5d/5e                | Extract `useScrollSticky({ threshold })` hook + vitest                          | ~30m |
+| "Should I write an E2E spec for this primitive?" decision is undocumented | Add a `CLAUDE.md` line: "pure helper → vitest; FlatList/query interaction → 5f" | ~5m  |
