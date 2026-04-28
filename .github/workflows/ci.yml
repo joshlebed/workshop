@@ -78,7 +78,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
 
       - name: Cache hoisted node_modules
         id: nm-cache
@@ -116,12 +115,19 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # Non-blocking while we tune the config. Step-level continue-on-error keeps
-      # the job green; flip this off once the baseline is clean.
+      - name: Cache hoisted node_modules
+        id: nm-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install deps
+        if: steps.nm-cache.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - run: pnpm run knip
-        continue-on-error: true
 
   actionlint:
     name: actionlint
@@ -145,7 +151,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
       - name: Cache hoisted node_modules
         id: nm-cache
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
@@ -213,7 +218,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
 
       - name: Cache hoisted node_modules
         id: nm-cache
@@ -286,7 +290,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version-file: .nvmrc
-          cache: pnpm
 
       - name: Cache hoisted node_modules
         id: nm-cache

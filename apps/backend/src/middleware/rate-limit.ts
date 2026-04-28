@@ -6,7 +6,7 @@ import { err } from "../lib/response.js";
 
 export type RateLimitKeyFn = (c: Parameters<MiddlewareHandler>[0]) => string | null;
 
-export interface RateLimitOptions {
+interface RateLimitOptions {
   /** Stable identifier for the route family — combined with the per-request key. */
   family: string;
   /** Max requests permitted per window. */

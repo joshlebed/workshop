@@ -18,7 +18,7 @@ interface DbLike {
   execute: (q: ReturnType<typeof sql>) => Promise<unknown>;
 }
 
-export interface CacheEntry<T = unknown> {
+interface CacheEntry<T = unknown> {
   source: string;
   sourceId: string;
   data: T;

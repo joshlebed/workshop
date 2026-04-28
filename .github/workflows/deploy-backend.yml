@@ -21,6 +21,27 @@ permissions:
   contents: read
 
 jobs:
+  # Skip the migrate job when this push doesn't touch a migration. Migrations
+  # are idempotent so re-running them is safe, but it costs ~30s per deploy and
+  # widens the window for a transient SSM/Postgres failure to fail an unrelated
+  # code-only deploy. workflow_dispatch always runs migrate (safe default).
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      migrations: ${{ steps.filter.outputs.migrations }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            migrations:
+              - 'apps/backend/drizzle/**'
+              - 'apps/backend/src/db/**'
+
   terraform:
     name: Read Terraform outputs
     runs-on: ubuntu-latest
@@ -57,7 +78,8 @@ jobs:
 
   migrate:
     name: Run DB migrations
-    needs: terraform
+    needs: [terraform, changes]
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -113,6 +135,10 @@ jobs:
   deploy:
     name: Build + upload Lambda
     needs: [terraform, migrate]
+    # Run when terraform succeeded and migrate either succeeded or was skipped
+    # (no migration changes). Without `always()` a skipped migrate would also
+    # skip deploy, blocking every code-only push.
+    if: always() && needs.terraform.result == 'success' && needs.migrate.result != 'failure' && needs.migrate.result != 'cancelled'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

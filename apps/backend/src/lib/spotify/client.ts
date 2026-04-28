@@ -73,7 +73,7 @@ interface SpotifyRequestInit {
  * Returns `null` for 204 responses; otherwise returns parsed JSON. The caller
  * is responsible for type-narrowing the result (zod or a hand-rolled guard).
  */
-export async function spotifyRequest<T>(
+async function spotifyRequest<T>(
   userId: string,
   path: string,
   init: SpotifyRequestInit = {},
@@ -82,7 +82,7 @@ export async function spotifyRequest<T>(
   return spotifyRequestWithToken<T>(account.accessToken, path, init);
 }
 
-export async function spotifyRequestWithToken<T>(
+async function spotifyRequestWithToken<T>(
   accessToken: string,
   path: string,
   init: SpotifyRequestInit = {},
@@ -121,13 +121,13 @@ export async function spotifyRequestWithToken<T>(
 //
 // These cover only the fields this app reads. Extend as features grow.
 
-export interface SpotifyImage {
+interface SpotifyImage {
   url: string;
   height: number | null;
   width: number | null;
 }
 
-export interface SpotifyArtistRef {
+interface SpotifyArtistRef {
   id: string;
   name: string;
 }
@@ -165,12 +165,12 @@ export interface SpotifyPlaylistApi {
   external_urls: { spotify: string };
 }
 
-export interface SpotifyPlaylistTrackItem {
+interface SpotifyPlaylistTrackItem {
   added_at: string | null;
   track: SpotifyTrackApi | null;
 }
 
-export interface SpotifyPaging<T> {
+interface SpotifyPaging<T> {
   items: T[];
   total: number;
   limit: number;
@@ -184,22 +184,18 @@ export interface SpotifyMe {
   email: string | null;
 }
 
-export interface SpotifyCurrentlyPlaying {
+interface SpotifyCurrentlyPlaying {
   is_playing: boolean;
   progress_ms: number | null;
   item: SpotifyTrackApi | null;
 }
 
-export interface SpotifyRecentlyPlayedItem {
+interface SpotifyRecentlyPlayedItem {
   played_at: string;
   track: SpotifyTrackApi;
 }
 
 // --- High-level helpers ---
-
-export function fetchMe(userId: string): Promise<SpotifyMe> {
-  return spotifyRequest<SpotifyMe>(userId, "/me");
-}
 
 export function fetchMeWithToken(accessToken: string): Promise<SpotifyMe> {
   return spotifyRequestWithToken<SpotifyMe>(accessToken, "/me");
@@ -259,8 +255,4 @@ export function fetchPlaylistTracks(
     `/playlists/${playlistId}/tracks`,
     { query: { limit, offset } },
   );
-}
-
-export function loadAccountForUser(userId: string): Promise<DbSpotifyAccount> {
-  return loadAccount(userId);
 }

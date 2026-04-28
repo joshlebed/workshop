@@ -4,7 +4,7 @@
 //
 // Spotify shows the user this exact list during consent; keep it as small as
 // the features actually need.
-export const SPOTIFY_SCOPES: readonly string[] = [
+const SPOTIFY_SCOPES: readonly string[] = [
   "user-read-email",
   "user-library-read",
   "user-library-modify",
