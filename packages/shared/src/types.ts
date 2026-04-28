@@ -1,12 +1,10 @@
 // v2 skeleton. Endpoint-specific request/response shapes are added in the
 // phase that introduces the endpoint (see docs/redesign-plan.md).
-
-// Version stamp the client uses to bust persisted query cache when shapes
-// change. Bump on any breaking edit to a request/response type below — the
-// offline persister keys cached state by this string and discards anything
-// older on cold start. Pure addition (new optional field, new endpoint type)
-// doesn't require a bump.
-export const SHARED_TYPES_VERSION = "1";
+//
+// `SHARED_TYPES_VERSION` lives in `./constants.ts` so the mobile bundle can
+// import it at runtime via `@workshop/shared/constants` without dragging the
+// type barrel through Metro. Bump it on any breaking edit to a request/
+// response type below.
 
 export type AuthProvider = "apple" | "google";
 

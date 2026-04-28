@@ -1,19 +1,13 @@
 import { QueryClient } from "@tanstack/react-query";
 import type { PersistQueryClientOptions } from "@tanstack/react-query-persist-client";
+import { SHARED_TYPES_VERSION } from "@workshop/shared/constants";
 import { createPersister } from "./persister";
 
 const PERSIST_STORAGE_KEY = "workshop.query-cache.v1";
 
 export const PERSIST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
-// Mirror of `SHARED_TYPES_VERSION` in `packages/shared/src/types.ts`. Kept
-// inline (rather than imported) so Metro doesn't have to resolve the shared
-// package at runtime — only `import type` from `@workshop/shared` is safe in
-// the bundle. `query.test.ts` asserts these two stay in lock-step, so a
-// missed bump fails CI before it ships stale persisted state.
-export const PERSIST_TYPES_VERSION = "1";
-
-export function getPersistBusterKey(typesVersion: string = PERSIST_TYPES_VERSION): string {
+export function getPersistBusterKey(typesVersion: string = SHARED_TYPES_VERSION): string {
   return `workshop:${typesVersion}`;
 }
 

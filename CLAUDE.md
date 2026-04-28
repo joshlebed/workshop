@@ -117,6 +117,19 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   `logger.error("failed to x", { error })`, not `{ error: error.message }` — you lose the stack.
 - **Postgres connection pool**: `postgres({ max: 1 })` is correct for Lambda. Each container has
   its own connection.
+- **Runtime imports from `@workshop/shared` go through a subpath, not the barrel.** The barrel
+  (`packages/shared/src/index.ts`) re-exports `./types.js` because `apps/backend` runs on
+  `moduleResolution: "NodeNext"` and would otherwise break with TS2835. Metro can't resolve
+  those `.js` extensions at runtime — `import type` from `@workshop/shared` is fine (Metro
+  elides it), but a value import from the bare specifier crashes with `Unable to resolve
+"./types.js"`. Pure-runtime constants live in `packages/shared/src/constants.ts` and are
+  exported via `"./constants": "./src/constants.ts"` in the package's `exports` map. Import
+  them with `import { SHARED_TYPES_VERSION } from "@workshop/shared/constants"`. Add new
+  pure-runtime exports to `constants.ts` (or another non-barrel subpath), not to `types.ts`.
+- **`scripts/e2e.sh` collides with the running dev servers.** It spawns its own backend
+  (`:8787`) and web (`:8081`) on the same ports `pnpm dev` (and the Niteshift sandbox) use.
+  Kill anything bound to those ports before running it; don't rely on `--kill-others-on-fail`
+  to clean up — that's the e2e script's own children, not the pre-existing dev servers.
 
 ## Debugging production
 
