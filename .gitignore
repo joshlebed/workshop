@@ -10,6 +10,7 @@ build/
 .expo/
 .expo-shared/
 web-build/
+*.ipa
 
 # Env + secrets (never commit)
 .env
