@@ -121,6 +121,8 @@ function AuthGate() {
       <Stack.Screen name="list/[id]/item/[itemId]" />
       <Stack.Screen name="onboarding/accept-invite" />
       <Stack.Screen name="invite/[token]" />
+      <Stack.Screen name="share/index" />
+      <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="spotify/index" />
       <Stack.Screen name="spotify/albums" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="spotify/now-playing" options={{ animation: "slide_from_right" }} />
