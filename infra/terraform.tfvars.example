@@ -1,4 +1,4 @@
-# Copy to terraform.tfvars.local and fill in. tfvars files are gitignored.
+# Copy to terraform.tfvars and fill in. tfvars files are gitignored.
 # For CI deploys, set these as HCP Terraform workspace variables instead.
 
 budget_email_recipient = "joshlebed@gmail.com"

@@ -40,7 +40,7 @@ min each way) became the slow part of every infra change. Revisited vendor choic
 
 **Decision**: Managed Postgres on **Neon** (`aws-us-east-1`, Connection Pooling on). Lambda
 reads `DATABASE_URL` from an SSM SecureString populated from the `database_url` TF variable
-(value in `terraform.tfvars.local`, gitignored).
+(value in `terraform.tfvars`, gitignored).
 
 **Why**:
 

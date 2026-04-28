@@ -19,7 +19,7 @@ variable "budget_email_recipient" {
 variable "database_url" {
   type        = string
   sensitive   = true
-  description = "Full Postgres connection string (Neon). Must include sslmode=require. Set in terraform.tfvars.local; never committed."
+  description = "Full Postgres connection string (Neon). Must include sslmode=require. Set in terraform.tfvars; never committed."
 }
 
 variable "apple_bundle_id" {

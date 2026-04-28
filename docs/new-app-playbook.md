@@ -580,11 +580,11 @@ connection string:
 resource "aws_ssm_parameter" "db_url" {
   name  = "/${local.prefix}/db/url"
   type  = "SecureString"
-  value = var.database_url  # passed in via terraform.tfvars.local, gitignored
+  value = var.database_url  # passed in via terraform.tfvars, gitignored
 }
 ```
 
-Set `var.database_url` in `infra/terraform.tfvars.local` locally (the file
+Set `var.database_url` in `infra/terraform.tfvars` locally (the file
 is gitignored) and as a GitHub Actions secret `DATABASE_URL` for any CI
 operation that needs it.
 
@@ -595,7 +595,7 @@ operation that needs it.
 ```bash
 cd infra
 AWS_PROFILE=<slug>-prod terraform init
-AWS_PROFILE=<slug>-prod terraform apply -var-file=terraform.tfvars.local
+AWS_PROFILE=<slug>-prod terraform apply
 ```
 
 **Before proceeding, verify real resources exist** (don't trust the
@@ -644,7 +644,7 @@ Result should be `[true, "SUCCESS"]`. Until then, auth emails bounce.
 ```bash
 cd apps/backend
 STAGE=prod \
-  DATABASE_URL="<neon url from terraform.tfvars.local>" \
+  DATABASE_URL="<neon url from terraform.tfvars>" \
   SESSION_SECRET="dummy_session_secret_for_migrations_only_32chars" \
   SES_FROM_ADDRESS="noreply@<sending_domain>" \
   AWS_REGION=us-east-1 \
