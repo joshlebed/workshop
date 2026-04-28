@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
@@ -103,33 +104,35 @@ function AuthGate() {
   }
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: tokens.bg.canvas },
-      }}
-    >
-      <Stack.Screen name="index" />
-      <Stack.Screen name="sign-in" />
-      <Stack.Screen name="onboarding/display-name" />
-      <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
-      <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
-      <Stack.Screen name="create-list/share" options={{ animation: "slide_from_right" }} />
-      <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
-      <Stack.Screen name="list/[id]/index" />
-      <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
-      <Stack.Screen name="list/[id]/settings" options={{ presentation: "modal" }} />
-      <Stack.Screen name="list/[id]/item/[itemId]" />
-      <Stack.Screen name="onboarding/accept-invite" />
-      <Stack.Screen name="invite/[token]" />
-      <Stack.Screen name="share/index" />
-      <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
-      <Stack.Screen name="spotify/index" />
-      <Stack.Screen name="spotify/albums" options={{ animation: "slide_from_right" }} />
-      <Stack.Screen name="spotify/now-playing" options={{ animation: "slide_from_right" }} />
-      <Stack.Screen name="spotify/playlists" options={{ animation: "slide_from_right" }} />
-      <Stack.Screen name="spotify/playlist/[id]" options={{ animation: "slide_from_right" }} />
-    </Stack>
+    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: tokens.bg.canvas },
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="sign-in" />
+        <Stack.Screen name="onboarding/display-name" />
+        <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="create-list/share" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="list/[id]/index" />
+        <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
+        <Stack.Screen name="list/[id]/settings" options={{ presentation: "modal" }} />
+        <Stack.Screen name="list/[id]/item/[itemId]" />
+        <Stack.Screen name="onboarding/accept-invite" />
+        <Stack.Screen name="invite/[token]" />
+        <Stack.Screen name="share/index" />
+        <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="spotify/index" />
+        <Stack.Screen name="spotify/albums" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="spotify/now-playing" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="spotify/playlists" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="spotify/playlist/[id]" options={{ animation: "slide_from_right" }} />
+      </Stack>
+    </SafeAreaView>
   );
 }
 
@@ -138,16 +141,18 @@ export default function RootLayout() {
   const queryClient = useMemo(() => createQueryClient(), []);
   const persistOptions = useMemo(() => getPersistOptions(), []);
   return (
-    <ThemeProvider value={DarkTheme}>
-      <StatusBar style="light" />
-      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
-        <ToastProvider>
-          <OfflineRetryWatcher />
-          <AuthProvider>
-            <AuthGate />
-          </AuthProvider>
-        </ToastProvider>
-      </PersistQueryClientProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider value={DarkTheme}>
+        <StatusBar style="light" />
+        <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+          <ToastProvider>
+            <OfflineRetryWatcher />
+            <AuthProvider>
+              <AuthGate />
+            </AuthProvider>
+          </ToastProvider>
+        </PersistQueryClientProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
