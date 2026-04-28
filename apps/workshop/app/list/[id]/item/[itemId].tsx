@@ -88,7 +88,7 @@ export default function ItemDetail() {
     mutationFn: (nextCompleted: boolean) =>
       nextCompleted ? completeItem(itemId ?? "", token) : uncompleteItem(itemId ?? "", token),
     onSuccess: async () => {
-      haptics.success();
+      haptics.medium();
       await invalidateItem();
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
     },
@@ -128,7 +128,7 @@ export default function ItemDetail() {
   const deleteMutation = useMutation({
     mutationFn: () => deleteItem(itemId ?? "", token),
     onSuccess: async () => {
-      haptics.warning();
+      haptics.medium();
       if (listId) {
         await Promise.all([
           queryClient.invalidateQueries({

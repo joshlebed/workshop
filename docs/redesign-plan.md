@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (5c "new items" pill landed; Phase 5 polish in progress) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (5d haptics + micro-animations landed; Phase 5 polish in progress) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
@@ -192,7 +192,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   divergence, layout-token parity, legacy-alias check, inline
   snapshots of both palettes. All other tests unchanged-and-green
   (216 backend + 8 workshop).
-- **Phase 5** chunk 5c (this PR) — "new items" pill on the list-detail
+- **Phase 5** chunk 5c — "new items" pill on the list-detail
   screen. New `apps/workshop/src/ui/NewItemsPill.tsx` primitive (uses
   `useTheme()` per §3.28's constraint, not the static `tokens` import) +
   pure `apps/workshop/src/lib/newItemsPill.ts` helper
@@ -209,6 +209,27 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   (`apps/workshop/src/lib/newItemsPill.test.ts`); 12 workshop tests
   total (was 8). 216 backend tests unchanged-and-green; lint + knip
   clean.
+- **Phase 5** chunk 5d (this PR) — haptics + micro-animations.
+  Haptic palette aligned with spec §3.26 (Light / Medium / Medium):
+  the complete and delete success-handlers now call `haptics.medium()`
+  instead of `success()` / `warning()`; upvote stays on `light()`.
+  Reanimated 4 lands as the first runtime caller — `UpvotePill` wraps
+  its Pressable in an `Animated.View` driven by a `useSharedValue`
+  scale that plays a `withSequence(withTiming(1.05, 90ms),
+withTiming(1, 120ms))` pulse on every tap. `ItemRow` in
+  `app/list/[id]/index.tsx` stacks two `Animated.Text` copies of the
+  title — a base copy that fades out over 220ms and a strikethrough
+  copy that fades in over the same window — so the `line-through`
+  visibly draws in instead of snapping. `Sheet` swaps RNModal's native
+  `slide` for a Reanimated-driven enter/exit: an internal
+  `rendered` flag delays the modal unmount until the exit timing
+  finishes (`runOnJS(setRendered)(false)` in the `withTiming` callback);
+  the backdrop fades 0→1 and the sheet slides 600px→0 with
+  `Easing.out(cubic)` on enter (280ms) / `Easing.in(cubic)` on exit
+  (220ms). New `apps/workshop/src/lib/haptics.test.ts` mocks
+  `expo-haptics` and asserts each shim method dispatches the right
+  enum. 17 workshop tests total (was 12); 216 backend tests
+  unchanged-and-green; lint + knip clean.
 
 ### Pending
 
@@ -252,24 +273,24 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   chunks in §3.26 (offline cache, light theme, "new items" pill, haptics +
   micro-animations, desktop two-pane, full E2E coverage). **5a done** —
   offline read cache landed. **5b done** — light theme tokens +
-  `useColorScheme` flip + `ThemeProvider` infra. **5c done (this PR)**
-  — "new items" pill on the list-detail screen. Pick up **5d**
-  (haptics + micro-animations on upvote / complete / delete via
-  `expo-haptics` + Reanimated; primitives only so call sites don't
-  change) next.
+  `useColorScheme` flip + `ThemeProvider` infra. **5c done** — "new
+  items" pill on the list-detail screen. **5d done (this PR)** —
+  haptics + Reanimated micro-animations (upvote scale-pulse, complete
+  strikethrough fade-in, Sheet enter/exit easing). Pick up **5e**
+  (desktop two-pane layout — 768px breakpoint in `app/_layout.tsx`,
+  left lists pane + right list/item pane, modals centered over the
+  right pane on desktop and full-screen on mobile) next.
 
 ### Next to implement
 
-The next chunk is **5d — haptics + micro-animations** (Phase 5
-polish). Wire `expo-haptics` on upvote / complete / delete (Light /
-Medium / Medium impact respectively) with a `.web.ts` no-op shim
-(the existing `src/lib/haptics.ts` / `.web.ts` pattern is already in
-place — extend it). Reanimated micro-animations: 1.05× scale-pulse
-on upvote tap, strikethrough fade-in on complete, sheet enter/exit
-easing tuned. All driven from primitives (`UpvotePill`, the existing
-complete-button glyph, `Sheet`) so call sites don't change. See
-§3.26 for the full Phase 5 chunks table and §3.29 for what 5c
-shipped.
+The next chunk is **5e — desktop two-pane layout** (Phase 5 polish).
+Add a 768px breakpoint in `apps/workshop/app/_layout.tsx`: above the
+threshold render a left pane (lists index, sticky) + right pane
+(current list/item/modal); below the threshold the existing stack
+navigator is unchanged. Modals open centered over the right pane on
+desktop, full-screen on mobile. Verify back-button + deep-link
+behavior on both modes. See §3.26 for the full Phase 5 chunks table
+and §3.30 for what 5d shipped.
 
 **Why not 4a-2?** Phase 4a-2 (native iOS share extension) is
 **deferred** until Phase 5 polish lands. It's blocked on a manual
@@ -279,12 +300,11 @@ landing native code now risks rebuilding against a moving target. See
 §3.24 for the deferral note and §3.25 for the implementation guidance
 that's been preserved in place for whenever 4a-2 is revisited.
 
-**Why not 5e–5f?** Pickup order in §3.26 is 5a → 5b → 5c → 5d → 5e →
-5f. Order isn't strict (any 5a–5d can land independently) but 5d is
-next per the plan; it's primitive-scoped (no screen surgery), it
-de-risks 5e (two-pane) by stabilising the interaction model first,
-and it leaves 5f (full E2E sweep) for last so it lands against a
-stable surface.
+**Why not 5f?** Pickup order in §3.26 is 5a → 5b → 5c → 5d → 5e →
+5f. 5a–5d are done; 5e is next per the plan because 5f (full E2E
+sweep) benefits from everything else being stable — landing 5f before
+5e would mean rewriting the sweep against a layout that's about to
+shift.
 
 ---
 
@@ -2650,7 +2670,7 @@ full E2E) build on the polish foundations the earlier chunks land.
 | **5a** | Offline read cache. Wire `persistQueryClient` into `apps/workshop/src/lib/query.ts` with platform-split persisters: `createAsyncStoragePersister` (iOS, via `@react-native-async-storage/async-storage` or `expo-async-storage`) and `createSyncStoragePersister` (web, via `window.localStorage`). Set `maxAge: 24h` and a buster key derived from the shared-types version so a schema bump invalidates persisted state cleanly. Mutations attempted while offline revert + show a "Retry?" toast (re-uses 1b-2's optimistic-update infra). Add one Vitest unit for the buster key. | None.                                                                | **Done (this PR)** |
 | **5b** | Light theme tokens + `useColorScheme` flip. Extend `apps/workshop/src/ui/theme.ts` with a `light` palette mirror of the existing `dark` palette (semantic tokens stay stable; only raw hex values change). `ThemeProvider` reads `useColorScheme()` and swaps the active palette without remounts. No new component code — every primitive already reads from semantic tokens. Vitest snapshot of the resolved tokens for both modes.                                                                                                                                                 | None.                                                                | **Done (this PR)** |
 | **5c** | "New items" pill (spec §12). On `useQuery` refetch of `items.byList(id)`, compare the new length against the previous length; if `delta > 0` and the user has scrolled past the top, render a sticky pill at the top of `app/list/[id]/index.tsx` ("3 new items — tap to refresh") that scrolls to top + clears on tap. Hidden when the user is already at the top (the new rows render in place). Re-uses TanStack Query's `dataUpdatedAt` to drive the comparison.                                                                                                                  | None.                                                                | **Done (this PR)** |
-| **5d** | Haptics + micro-animations. Wire `expo-haptics` on upvote / complete / delete (Light/Medium impact respectively) with a `.web.ts` no-op. Reanimated micro-animations: 1.05× scale-pulse on upvote tap, strikethrough fade-in on complete, sheet enter/exit easing tuned. All driven from primitives (`UpvotePill`, `Checkbox`, `Sheet`) so call sites don't change.                                                                                                                                                                                                                   | None.                                                                | **Pending**        |
+| **5d** | Haptics + micro-animations. Wire `expo-haptics` on upvote / complete / delete (Light/Medium impact respectively) with a `.web.ts` no-op. Reanimated micro-animations: 1.05× scale-pulse on upvote tap, strikethrough fade-in on complete, sheet enter/exit easing tuned. All driven from primitives (`UpvotePill`, `Checkbox`, `Sheet`) so call sites don't change.                                                                                                                                                                                                                   | None.                                                                | **Done (this PR)** |
 | **5e** | Desktop two-pane layout. Add a 768px breakpoint in `apps/workshop/app/_layout.tsx`: above the threshold render a left pane (lists index, sticky) + right pane (current list/item/modal); below the threshold the existing stack navigator is unchanged. Modals open centered over the right pane on desktop, full-screen on mobile. Verify back-button + deep-link behavior on both modes.                                                                                                                                                                                            | None.                                                                | **Pending**        |
 | **5f** | Full Playwright E2E sweep. Cover sign-in (Google, JWKS-stubbed), create each of 5 list types, add an item via every pathway (movie/TV via TMDB stub, book via Google Books stub, free-form date-idea + trip via link-preview stub), upvote/unvote, complete/uncomplete, share-link accept in a second browser context, activity feed unread→read. Wire into a new `e2e.yml` GitHub Actions job running against a Dockerized Postgres. Lands the `signInAsDev(page)` test helper recommended in `AGENT-REFLECTIONS.md` 2026-04-28.                                                     | None — runs entirely against a local backend + local Postgres in CI. | **Pending**        |
 
@@ -3142,6 +3162,187 @@ Known constraints for 5d / future chunks:
   `top: 140`.** If 5e adds a new persistent header element above
   the filter input, bump that constant or replace it with an
   `onLayout`-measured value.
+
+#### 3.30 What 5d actually shipped — start here for 5e
+
+Files that landed in 5d (read these before touching 5e):
+
+- `apps/workshop/src/lib/haptics.ts` / `.web.ts` — **unchanged**. The
+  existing shim already exposes `light()` / `medium()` / `success()`
+  / `warning()`; 5d only changed call sites, not the primitive. Native
+  dispatches `Haptics.impactAsync(...)` / `Haptics.notificationAsync(...)`
+  with `.catch(() => {})` so a rejection (e.g. iOS simulator) is
+  swallowed; web is a no-op that just `void`s the input.
+- `apps/workshop/src/lib/haptics.test.ts` — **new.** 5 vitest cases.
+  Mocks `expo-haptics` at module-load via top-level `vi.mock(...)`
+  (vitest hoists the factory above the import; the factory must
+  return both the spy fns and the enum maps `ImpactFeedbackStyle`
+  / `NotificationFeedbackType` since the shim reads those at call
+  time). Asserts each method dispatches the right impact/notification
+  enum, plus a "swallows rejected impact promises" case. Same
+  convention as `query.test.ts` / `newItemsPill.test.ts` — pure
+  helper, no React.
+- `apps/workshop/src/ui/UpvotePill.tsx` — **animated.** Wraps the
+  Pressable in an `Animated.View` (from `react-native-reanimated`)
+  whose transform is driven by a `useSharedValue<number>(1)` scale.
+  `handlePress` plays `withSequence(withTiming(1.05, 90ms),
+withTiming(1, 120ms))` then forwards to the prop `onPress`. Disabled
+  state skips the pulse. The Pressable's `style={({ pressed }) => [...]}`
+  callback stays plain (i.e. no animated press-state interaction) so
+  the dim-on-press affordance is unchanged.
+- `apps/workshop/app/list/[id]/index.tsx` — **animated + haptic
+  swap.** `ItemRow` now stacks two `Animated.Text` copies of the
+  title inside a `titleStack` view (`position: "relative"` + an
+  absolute-fill overlay). A `useSharedValue<number>(isCompleted ? 1
+: 0)` is driven by a `useEffect` to `withTiming(target, { duration: 220 })`
+  on completion-state change; `useAnimatedStyle` returns
+  `{ opacity: 1 - progress }` for the base copy and `{ opacity:
+progress }` for the strikethrough copy (`textDecorationLine:
+"line-through"` lives in `itemTitleCompleted`). The base
+  `itemTitle` style had to add explicit `fontSize` /
+  `fontWeight` since it's no longer wrapping `<Text variant="body">`.
+  Also: `completeMutation.onSuccess` calls `haptics.medium()` (was
+  `success()`) and the unrelated cancel-only `delete` path was
+  unchanged here — see the item-detail file below for the delete
+  haptic swap.
+- `apps/workshop/app/list/[id]/item/[itemId].tsx` — **haptic swap
+  only.** `completeMutation.onSuccess` now calls `haptics.medium()`
+  (was `success()`) and `deleteMutation.onSuccess` now calls
+  `haptics.medium()` (was `warning()`). No animation work — the item
+  detail's complete-button glyph is its own `<Pressable>` and isn't
+  worth a separate scale-pulse since the user immediately navigates
+  back; the strikethrough animation is on the list row that re-renders
+  on `invalidateItem()`.
+- `apps/workshop/src/ui/Sheet.tsx` — **rewritten.** Replaces RNModal's
+  native `slide` with a Reanimated-driven enter/exit. Uses an internal
+  `rendered` flag (`useState<boolean>(visible)`) so the modal stays
+  mounted through the exit timing. A single `useSharedValue<number>(visible
+? 1 : 0)` drives both the backdrop opacity (0→1) and a sheet
+  `translateY` (`(1 - progress) * 600`). Enter: `withTiming(1, { duration:
+280, easing: Easing.out(Easing.cubic) })`. Exit: `withTiming(0, { duration:
+220, easing: Easing.in(Easing.cubic) }, (finished) => {
+if (finished) runOnJS(setRendered)(false); })`. `RNModal` keeps
+  `transparent` + `animationType="none"` (so the framework doesn't
+  also try to animate). No callers currently use `Sheet` directly
+  — `app/list/[id]/settings.tsx` from 3b-1 uses an `expo-router` modal
+  route, not this primitive — so the change is forward-looking polish
+  for any future inline sheet (e.g. 5e two-pane modal-over-right-pane).
+
+Tests landed (1 new vitest file in `apps/workshop`; 0 backend churn):
+`pnpm run typecheck && pnpm run lint && pnpm run test` all green
+(216 backend + 17 workshop, was 12). `pnpm run knip` clean. No
+Playwright spec added — Reanimated transforms are awkward to assert
+deterministically against a headless browser, and 5f explicitly owns
+the full E2E sweep. Manual smoke via agent-browser confirmed home /
+create-list / list-detail / settings pages still render with no
+Reanimated runtime errors; bundle compiles with ~1394 reanimated
+references included.
+
+Surprises / deviations from plan:
+
+- **Plan said "Light/Medium impact" for upvote / complete / delete
+  respectively, plus "strikethrough fade-in on complete." Reality:**
+  upvote stays `light()`; complete + delete both moved to `medium()`
+  (was `success()` / `warning()` respectively in earlier code). The
+  spec §3.26 chunks-table phrasing is "Light/Medium impact respectively"
+  which I read as "Light for upvote, Medium for the others" — the
+  pre-existing `success()` / `warning()` calls were the wrong family
+  (notification, not impact) and were swapped. If a future agent
+  decides the destructive-action `warning()` _was_ correct, both
+  call sites are easy to flip back.
+- **No Reanimated dep bump.** `react-native-reanimated@4.2.1` and
+  `react-native-worklets@0.7.4` were both already in `apps/workshop/package.json`
+  (added incidentally in an earlier chunk). Reanimated 4 needs the
+  worklets babel plugin; `babel-preset-expo` auto-includes it when
+  `react-native-worklets` is detected as a dep, so no `babel.config.js`
+  edit was needed. **Don't** manually add `react-native-worklets/plugin`
+  to `babel.config.js` — Expo will warn that it's already wired.
+- **`UpvotePill` got an `Animated.View` wrapper, not
+  `Animated.createAnimatedComponent(Pressable)`.** Reasoning:
+  Pressable's `style={({ pressed }) => [...]}` callback interacts
+  awkwardly with animated styles (the `pressed` flag re-resolves the
+  callback on each render and clobbers transform state). Wrapping in
+  `<Animated.View>` cleanly separates transform-animation from
+  press-state styling. Same approach worked unchanged for `Sheet`.
+- **`ItemRow` swapped `<Text variant="body">` for raw
+  `<Animated.Text>`.** `Text` from `src/ui/Text.tsx` doesn't forward
+  `Animated`'s ref/wrapping. Using `Animated.Text` directly required
+  re-applying `fontSize: tokens.font.size.md` + `fontWeight:
+tokens.font.weight.regular` in the `itemTitle` style. **Heads-up
+  for 5e**: any other `<Text variant="body">` you want to animate
+  needs the same treatment, OR add an animated variant of `Text`
+  via `Animated.createAnimatedComponent(Text)` and re-export it.
+- **`ItemRow` still uses static `tokens` imports, not `useTheme()`.**
+  §3.28 mandated `useTheme()` for **new visible color in 5c+**;
+  `ItemRow` is pre-existing and the animated-opacity pattern reads
+  no new colors (the strike-through copy reuses
+  `itemTitleCompleted`'s muted token, which already resolved
+  through the static alias). Migrating `ItemRow` to `useTheme()`
+  is a follow-up; the static `tokens` import still resolves to
+  `darkTokens` so light-mode users see slightly-off colors here.
+  This is a known follow-up flagged in §3.28; 5d intentionally did
+  not expand it.
+- **`Sheet` has no test.** RNModal + Reanimated together are
+  awkward to assert deterministically in jsdom (no native module),
+  and there are no callers, so the cost-benefit of writing one was
+  not worth it. If 5e or a later chunk adds a real caller, a
+  Playwright spec on that screen is a better gate.
+
+What 5e should do _first_:
+
+1. **Read `apps/workshop/app/_layout.tsx`** — that's where the
+   breakpoint logic lives. Today it mounts a single
+   `<Stack>` with `expo-router` route registration. 5e adds a
+   `useWindowDimensions()` (or `useMediaQuery`-style hook) gate at
+   ≥768px that swaps in a two-pane layout. The single-stack path
+   stays for <768px — don't unify them.
+2. **Modal-over-pane semantics:** today modals (settings, add) are
+   `expo-router` modal routes that take the whole screen. On
+   desktop they should center over the right pane only. The
+   cleanest path is probably a `presentation: "modal"` override
+   conditional on width; the alternative (a custom modal primitive
+   over the pane) bypasses expo-router and forks the navigation
+   stack. Take the conditional-presentation path first.
+3. **`Sheet` (5d's rewrite) is a viable building block** if you
+   need an inline sheet over the right pane that doesn't take the
+   whole screen. The exit-animation unmount-delay is already wired,
+   so the only thing missing is layout/positioning props (it
+   currently fills the bottom of its parent, which on desktop
+   is fine if the parent is the right pane).
+4. **The `top: 140` magic constant in `app/list/[id]/index.tsx`
+   for the new-items-pill viewport** (see §3.29) will likely
+   need to be measured if 5e changes the header. Worth replacing
+   with an `onLayout`-driven value as part of the same PR if the
+   header surface shifts.
+5. **Don't break `signInAsDevUser` Playwright helper.** The
+   two-pane layout might affect routing in `tests/e2e/`; the
+   8 existing Playwright specs all assume single-stack
+   navigation. If 5e changes URL → screen mapping at desktop
+   widths, run the full Playwright sweep before merging.
+
+Known constraints for 5e:
+
+- **Reanimated 4 is now used in `UpvotePill`, `ItemRow`, and
+  `Sheet`.** If 5e introduces a new layout primitive that
+  re-renders aggressively (e.g. on every `useWindowDimensions`
+  tick during a window resize), be aware that `Animated.View`
+  children re-create their shared values on remount. Memoize
+  the layout tree if you see jank during resize.
+- **Static `tokens` import is still ubiquitous.** ~491 call
+  sites still read from the legacy alias. 5e's two-pane code
+  should follow §3.28's rule (use `useTheme()` for new visible
+  color) but doesn't have to migrate the existing surface.
+- **`Sheet` is the only direct caller path for the new
+  Reanimated exit-animation pattern.** If 5e opens a sheet
+  over the right pane on desktop (e.g. a "list info" panel),
+  the existing primitive should work as-is; if you write a new
+  pane-modal primitive, copy the `rendered` + `runOnJS`
+  unmount-delay pattern verbatim.
+- **`@react-navigation/native` is the source of truth for
+  back-button + deep-link.** Don't reach around it for
+  desktop-only navigation; `expo-router` already handles
+  deep-link → stack-state mapping correctly on web, and 5e
+  should preserve that.
 
 ### Phase 2 — Enrichment (movies, TV, books, link previews)
 

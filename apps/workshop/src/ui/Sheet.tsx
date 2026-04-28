@@ -1,4 +1,12 @@
+import { useEffect, useState } from "react";
 import { Pressable, Modal as RNModal, StyleSheet, View, type ViewStyle } from "react-native";
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { tokens } from "./theme";
 
 export interface SheetProps {
@@ -9,35 +17,69 @@ export interface SheetProps {
   testID?: string;
 }
 
+const ENTER_DURATION_MS = 280;
+const EXIT_DURATION_MS = 220;
+const SHEET_OFFSCREEN_PX = 600;
+
 /**
- * Bottom sheet — slides up on iOS via RN Modal's `slide` animation. On web,
- * RN Modal renders inline so the slide degrades to a static bottom panel.
- * Real spring/drag behavior lands with the haptics + reanimated work in 1b-2.
+ * Bottom sheet with Reanimated-driven enter/exit. The internal `rendered`
+ * state delays unmount until the exit animation completes; otherwise RNModal
+ * would tear the view down immediately on `visible={false}`.
  */
 export function Sheet({ visible, onRequestClose, children, contentStyle, testID }: SheetProps) {
+  const [rendered, setRendered] = useState(visible);
+  const progress = useSharedValue(visible ? 1 : 0);
+
+  useEffect(() => {
+    if (visible) {
+      setRendered(true);
+      progress.value = withTiming(1, {
+        duration: ENTER_DURATION_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+      return;
+    }
+    progress.value = withTiming(
+      0,
+      { duration: EXIT_DURATION_MS, easing: Easing.in(Easing.cubic) },
+      (finished) => {
+        if (finished) runOnJS(setRendered)(false);
+      },
+    );
+  }, [visible, progress]);
+
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - progress.value) * SHEET_OFFSCREEN_PX }],
+  }));
+
   return (
     <RNModal
-      visible={visible}
+      visible={rendered}
       onRequestClose={onRequestClose}
       transparent
-      animationType="slide"
+      animationType="none"
       testID={testID}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Close sheet"
-        style={styles.backdrop}
-        onPress={onRequestClose}
-      >
+      <Animated.View style={[styles.backdrop, backdropStyle]}>
         <Pressable
-          accessibilityRole="none"
-          onPress={(e) => e.stopPropagation()}
-          style={[styles.sheet, contentStyle]}
+          accessibilityRole="button"
+          accessibilityLabel="Close sheet"
+          style={styles.backdropPress}
+          onPress={onRequestClose}
         >
-          <View style={styles.handle} />
-          {children}
+          <Animated.View style={sheetStyle}>
+            <Pressable
+              accessibilityRole="none"
+              onPress={(e) => e.stopPropagation()}
+              style={[styles.sheet, contentStyle]}
+            >
+              <View style={styles.handle} />
+              {children}
+            </Pressable>
+          </Animated.View>
         </Pressable>
-      </Pressable>
+      </Animated.View>
     </RNModal>
   );
 }
@@ -46,6 +88,9 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  backdropPress: {
+    flex: 1,
     justifyContent: "flex-end",
   },
   sheet: {

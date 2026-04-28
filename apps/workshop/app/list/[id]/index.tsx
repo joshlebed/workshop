@@ -12,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import {
   completeItem,
   fetchItems,
@@ -124,7 +125,7 @@ export default function ListDetail() {
     mutationFn: ({ itemId, nextCompleted }) =>
       nextCompleted ? completeItem(itemId, token) : uncompleteItem(itemId, token),
     onSuccess: async () => {
-      haptics.success();
+      haptics.medium();
       if (id) {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.items.byListFiltered(id, false) }),
@@ -360,6 +361,15 @@ interface ItemRowProps {
 }
 
 function ItemRow({ item, onUpvote, onComplete, onPress, isCompleted = false }: ItemRowProps) {
+  const completedProgress = useSharedValue(isCompleted ? 1 : 0);
+
+  useEffect(() => {
+    completedProgress.value = withTiming(isCompleted ? 1 : 0, { duration: 220 });
+  }, [isCompleted, completedProgress]);
+
+  const baseTitleStyle = useAnimatedStyle(() => ({ opacity: 1 - completedProgress.value }));
+  const strikeTitleStyle = useAnimatedStyle(() => ({ opacity: completedProgress.value }));
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -376,13 +386,29 @@ function ItemRow({ item, onUpvote, onComplete, onPress, isCompleted = false }: I
           testID={`item-upvote-${item.id}`}
         />
         <View style={styles.itemBody}>
-          <Text
-            variant="body"
-            numberOfLines={2}
-            style={[styles.itemTitle, isCompleted && styles.itemTitleCompleted]}
-          >
-            {item.title}
-          </Text>
+          <View style={styles.titleStack}>
+            <Animated.Text
+              numberOfLines={2}
+              style={[styles.itemTitle, baseTitleStyle]}
+              testID={`item-title-${item.id}`}
+            >
+              {item.title}
+            </Animated.Text>
+            <Animated.Text
+              numberOfLines={2}
+              pointerEvents="none"
+              style={[
+                styles.itemTitle,
+                styles.itemTitleCompleted,
+                styles.titleOverlay,
+                strikeTitleStyle,
+              ]}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            >
+              {item.title}
+            </Animated.Text>
+          </View>
           {item.note ? (
             <Text variant="caption" tone="muted" numberOfLines={1}>
               {item.note}
@@ -466,7 +492,13 @@ const styles = StyleSheet.create({
     padding: tokens.space.md,
   },
   itemBody: { flex: 1, gap: 2 },
-  itemTitle: { color: tokens.text.primary },
+  titleStack: { position: "relative" },
+  titleOverlay: { ...StyleSheet.absoluteFillObject },
+  itemTitle: {
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.md,
+    fontWeight: tokens.font.weight.regular,
+  },
   itemTitleCompleted: { textDecorationLine: "line-through", color: tokens.text.muted },
   completeBtn: {
     width: 36,

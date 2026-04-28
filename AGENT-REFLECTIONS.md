@@ -525,3 +525,122 @@ Self-contained chunk; no infra or external services touched.
 | FlatList scroll + query refetch interaction is awkward to E2E             | Expose `window.__queryClient` in dev/E2E builds; use it from Playwright         | ~1h  |
 | Pattern "ref scroll-Y + threshold" likely repeats in 5d/5e                | Extract `useScrollSticky({ threshold })` hook + vitest                          | ~30m |
 | "Should I write an E2E spec for this primitive?" decision is undocumented | Add a `CLAUDE.md` line: "pure helper → vitest; FlatList/query interaction → 5f" | ~5m  |
+
+---
+
+## 2026-04-28 — haptics + Reanimated micro-animations (Phase 5d)
+
+Context: shipping 5d (haptic family swap + Reanimated `withSequence`
+scale-pulse on `UpvotePill`, strikethrough crossfade in `ItemRow`,
+Reanimated-driven enter/exit on `Sheet`). One file added
+(`haptics.test.ts`); four files edited.
+
+### What went well
+
+- **Reanimated 4 + worklets babel auto-wiring** —
+  `react-native-reanimated@4.2.1` and `react-native-worklets@0.7.4`
+  were already in `apps/workshop/package.json` from an earlier
+  chunk, and `babel-preset-expo` auto-includes the worklets plugin
+  when it detects the package on disk. Zero `babel.config.js` edits
+  required. Verified via `grep -r "react-native-worklets/plugin"
+node_modules/babel-preset-expo/build/`. ~5 min vs. the rabbit
+  hole I was bracing for.
+- **`vitest.mock` + `vi.mocked` pattern for `expo-haptics`** — the
+  module-level mock factory must return both the spy fns _and_ the
+  enum maps (`ImpactFeedbackStyle.Light` / `NotificationFeedbackType.Success`)
+  because the shim reads the enum at call time. Once that was
+  understood, `vi.mocked(Haptics.impactAsync).toHaveBeenCalledWith("light")`
+  is clean. Same convention as `query.test.ts` /
+  `newItemsPill.test.ts`.
+- **`Animated.View` wrapper > `Animated.createAnimatedComponent(Pressable)`**
+  for `UpvotePill`. Reasoning: Pressable's `style={({ pressed }) =>
+[...]}` callback re-resolves on each render and clobbers transform
+  state when both are routed through the same animated component.
+  Wrapping in `<Animated.View>` outside a plain `<Pressable>` cleanly
+  separates transform-animation from press-state styling. First
+  attempt picked the wrong path; second was clean. ~10 min lost to
+  the wrong call, would have been zero with a documented "wrap
+  Pressable, don't replace it" rule.
+- **`runOnJS(setRendered)(false)` callback in `withTiming`'s exit
+  handler** — clean way to delay RNModal unmount until the exit
+  animation finishes. Avoids the snap-on-close that the native
+  `animationType` would otherwise produce. Pattern is reusable for
+  any "deferred unmount" scenario in 5e.
+- **`scripts/check-redesign-plan-status.mjs`** — caught nothing
+  this time, but the "Done + Next to implement prose agrees with
+  tables" assertion gave me confidence that the §3.26 status flip
+  - §3.30 addition + "Next to implement" rewrite were all
+    internally consistent before pushing. ~2s runtime.
+
+### What didn't go well
+
+- **`<Text variant="body">` doesn't forward `Animated`'s
+  ref/wrapping.** Switching `ItemRow`'s title to
+  `<Animated.Text>` required re-applying `fontSize` /
+  `fontWeight` since the wrapped `Text` primitive was no longer in
+  the tree. Caught by manual smoke-test (the title got smaller),
+  not by typecheck or lint — `style` is a `TextStyle`-typed prop
+  either way. ~5 min to diagnose + fix. Would benefit from an
+  `AnimatedText` re-export in `src/ui/Text.tsx` that just wraps
+  `Animated.createAnimatedComponent(Text)` and forwards the same
+  `variant` / `tone` props.
+- **Plan said "complete: Medium impact, delete: Medium impact" but
+  the existing code was on `success()` / `warning()`** (notification
+  family, not impact). Spent ~3 min re-reading §3.26 to confirm the
+  swap was intentional vs. accidental. Pre-existing code rolled in
+  during 1b-2 was the wrong family by spec. Re-checking the spec
+  is the right reflex but a pre-mortem on "current haptic family
+  vs. spec mandate" in the chunk's table cell would have been
+  faster.
+- **`Sheet` has no test and no callers.** Spent ~5 min deciding
+  whether to add either (a unit test in jsdom, a Playwright spec on
+  a synthetic page that mounts Sheet, or just smoke-test the
+  primitive standalone). Punted to "manual smoke + Playwright
+  catches it on the next caller in 5e". Documented testing-policy
+  rule from the 5c reflection ("pure helper → vitest, FlatList/
+  query interaction → 5f") could extend to "Reanimated-driven
+  primitive → manual + add Playwright when first real caller
+  lands."
+- **Bundle compile + agent-browser smoke loop is slow.** Each
+  smoke required ~30s of waiting for the Metro bundle to
+  recompile (~6.7MB output, 1394 reanimated symbols). With three
+  smoke iterations that's ~90s of dead time per debug pass. A
+  `--lazy`-style web bundle target or a smoke-test script that
+  hits a known-good URL set without rebundling would shave most
+  of this.
+
+### Actionable feedback
+
+1. **Add `AnimatedText` to `apps/workshop/src/ui/Text.tsx`.**
+   `export const AnimatedText = Animated.createAnimatedComponent(Text);`
+   plus a brief usage note. Future agents wiring opacity/transform
+   animations on text don't have to drop to raw `<Animated.Text>`
+   and re-apply variant styles. ~10m + 1 vitest.
+2. **Document the "wrap Pressable, don't replace it" rule for
+   Reanimated press-feedback in `apps/workshop/CLAUDE.md` (or a
+   new `apps/workshop/src/ui/CLAUDE.md`).** The first instinct of
+   `Animated.createAnimatedComponent(Pressable)` is wrong because
+   the press-state callback fights the animated style. ~5m doc
+   edit.
+3. **`react-native-worklets` → `babel-preset-expo` auto-wiring is
+   non-obvious.** Add a one-line note in `CLAUDE.md` under "Tooling
+   baseline": "Reanimated 4 + worklets babel plugin is wired
+   automatically by `babel-preset-expo` when `react-native-worklets`
+   is a dep — don't add it to `babel.config.js` manually." Saves
+   the next agent a 10-minute spelunk. ~3m doc edit.
+4. **Surface a `scripts/dev-smoke.sh`** that hits home / list-detail
+   / settings / activity / sign-in over `localhost:8081` and reports
+   non-200s + console errors. The agent-browser CLI does this
+   piecemeal, but a single command with a clear pass/fail is faster
+   for "did my Reanimated change break a screen" smoke-tests.
+   ~30m + a tiny shell script.
+
+### Friction → fix sketches (size estimates)
+
+| Friction                                                                  | Fix                                                                                 | Size |
+| ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | ---- |
+| `<Text variant="body">` doesn't forward to `Animated.Text` cleanly        | Add `AnimatedText` re-export in `src/ui/Text.tsx` (`createAnimatedComponent(Text)`) | ~10m |
+| `Animated.createAnimatedComponent(Pressable)` fights press-state callback | Doc rule in `apps/workshop/CLAUDE.md`: "wrap, don't replace"                        | ~5m  |
+| Worklets babel plugin auto-wiring is non-obvious                          | One-line note in top-level `CLAUDE.md` under "Tooling baseline"                     | ~3m  |
+| Bundle recompile cost on each smoke pass                                  | `scripts/dev-smoke.sh` that hits N URLs and reports errors                          | ~30m |
+| Reanimated primitive without callers tempting to skip-test                | Extend §3.29's testing-policy line: "primitive → manual + Playwright at 1st caller" | ~5m  |
