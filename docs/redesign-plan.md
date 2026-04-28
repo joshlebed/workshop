@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-27 (3a-2 activity events + recordEvent retrofit) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (4a-1 share-flow JS plumbing + Phase 4 chunk decomposition) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
@@ -16,7 +16,7 @@ See [`CLAUDE.md`](../CLAUDE.md) for operational conventions and
 
 ---
 
-## Current status (2026-04-27)
+## Current status (2026-04-28)
 
 Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 
@@ -190,18 +190,26 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   `aws ssm put-parameter --overwrite` won't drift Terraform state).
   Link-preview itself doesn't depend on the API keys (it scrapes OG
   tags directly), so the dev wiring works even with placeholder secrets.
-- **Phases 4, 5** — iOS share extension, polish. Not started; chunk
-  decomposition lives further down in §3. Phase 3 is complete as of
-  3b-2.
+- **Phase 4** — iOS share extension. **4a-1 done** (this PR — JS-only
+  share-flow plumbing: `app/share/pick-list.tsx`, `app/share/index.tsx`
+  redirect, `?prefillUrl=` on `app/list/[id]/add.tsx`, Playwright
+  happy-path). **4a-2 pending** — native config plugin + Swift
+  extension + App Group entitlement + EAS native build. See §3.23
+  Phase 4 chunks table.
+- **Phase 5** — polish. Not started.
 
 ### Next to implement
 
-Phase 3 is complete (3a-1, 3a-2, 3b-1, 3b-2 all landed). The next
-chunk is **Phase 4** — iOS share extension. Phase 4 is a native-first
-chunk that requires iOS capabilities work in `app.json` + an Expo
-config plugin (App Groups), not a Phase 3-style web-flow. See
-§3 Phase 4 for the deliverables and §3.22 for what 3b-2 shipped.
-See §3.19 / §3.20 / §3.21 for what 3a-1 / 3a-2 / 3b-1 shipped.
+The next chunk is **4a-2** — native iOS share extension. It requires
+an Expo config plugin (`apps/workshop/plugins/share-extension/`),
+Swift code for the extension target, App Group entitlement
+(`group.dev.josh.workshop`), and triggers a TestFlight build via
+`@expo/fingerprint`. The JS landing surface (`/share?url=…` →
+`/share/pick-list?url=…` → `/list/:id/add?prefillUrl=…`) is already
+in place from 4a-1, so 4a-2's deliverable is purely the native plumbing
+that hands a shared URL to the existing JS flow. See §3.24 for what
+4a-1 shipped and §3.19 / §3.20 / §3.21 / §3.22 for the Phase 3
+chunks before that.
 
 ---
 
@@ -2291,6 +2299,166 @@ Known constraints for Phase 4 / future chunks:
   chunk wants per-event preferences (e.g. "notify me when someone
   upvotes my item even if I'm the actor"), the filter in
   `app/index.tsx`'s `events.reduce` is the place to extend.
+
+#### 3.23 Phase 4 chunks
+
+Phase 4 splits into a JS-only chunk (web-testable, no native build) followed
+by a native chunk (config plugin + Swift + EAS build). Splitting in this order
+means the JS landing surface lands on `main` first; the native extension just
+needs to hand off a URL to the existing flow.
+
+| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | External deps                                                                                                                                                                                                                           | Status             |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| **4a-1** | JS-only share-flow plumbing. New `app/share/pick-list.tsx` (list picker, accepts `?url=…`, "Create new list" row, on pick routes to `/list/[id]/add?prefillUrl=…`). New `app/share/index.tsx` thin redirect so `workshop://share?url=…` (4a-2 native) and `https://…/share?url=…` (web) both land on pick-list. `app/list/[id]/add.tsx` accepts `?prefillUrl=` and seeds the free-form URL field (search-flow lists ignore it). Two new Stack.Screen registrations in `app/_layout.tsx`. One Playwright happy-path.                                                                                                                               | None — pure code, web-testable.                                                                                                                                                                                                         | **Done (this PR)** |
+| **4a-2** | Native iOS share extension. New `apps/workshop/plugins/share-extension/` Expo config plugin (or vendored equivalent) that injects a Share Extension target, App Group entitlement (`group.dev.josh.workshop`), and the `public.url` / `public.plain-text` UTI declarations into the iOS project at prebuild. Minimal Swift extension code that writes the shared payload to app-group `UserDefaults` and opens `workshop://share?url=…`. `app/_layout.tsx` adds an `expo-linking` listener for app-resume cases (the initial URL is already covered by expo-router's file-based routing). EAS native build auto-triggers via `@expo/fingerprint`. | App Group `group.dev.josh.workshop` — already _registered_ in the Apple portal (see CLAUDE.md "iOS capabilities are config-as-code"); EAS sync re-enables the App ID capability when the config plugin lands a code declaration for it. | Pending            |
+
+#### 3.24 What 4a-1 actually shipped — start here for 4a-2
+
+Files that landed in 4a-1 (read these before touching 4a-2):
+
+- `apps/workshop/app/share/pick-list.tsx` — list picker. Reads
+  `?url=` via `useLocalSearchParams`, fetches `GET /v1/lists` via the
+  existing `queryKeys.lists.all` cache slot, renders a row per list +
+  a dashed-border "Create new list" footer card. On pick,
+  `router.replace`s to `/list/${list.id}/add?prefillUrl=${url}`. The
+  picker `replace`s rather than `push`es so the share-flow stack
+  doesn't pile up under the add screen — the share entry-point is
+  treated as transient. Free-form list rows (`date_idea`, `trip`)
+  render at full opacity; search-flow rows (`movie`, `tv`, `book`)
+  render at `opacity: 0.6` because `add.tsx` ignores `prefillUrl` for
+  search-flow lists today. testIDs: `share-pick-cancel`,
+  `share-pick-url`, `share-pick-list`, `share-pick-row-${list.id}`,
+  `share-pick-create-new`.
+- `apps/workshop/app/share/index.tsx` — thin `<Redirect>` shim.
+  Forwards `/share?url=…` to `/share/pick-list?url=…` so both web
+  (`https://workshop.dev/share?url=…`) and the future native share
+  extension (`workshop://share?url=…`) hit the same picker via
+  expo-router's file-based routing. Mirrors the
+  `app/invite/[token].tsx` pattern.
+- `apps/workshop/app/list/[id]/add.tsx` — accepts a new
+  `prefillUrl?: string` search param via `useLocalSearchParams`.
+  Seeds the free-form `url` `useState` initial value with it (and
+  only it — search-flow lists' `query` field is unaffected). The
+  existing 300ms `useDebouncedQuery` + `useQuery<LinkPreviewResponse>`
+  chain auto-fires off the seeded URL, so the link-preview card
+  renders without further user input. The submit-time
+  `trimmedUrl === debouncedUrl.trim()` gate already in place from
+  2b-2 keeps stale previews from being attached.
+- `apps/workshop/app/_layout.tsx` — two new Stack.Screen
+  registrations: `share/index` (no animation; it's a redirect) and
+  `share/pick-list` (`animation: "slide_from_right"`, matching the
+  `create-list/*` and `activity` screens). No AuthGate changes —
+  the share flow is signed-in-only by default; a signed-out user
+  arriving at `/share?url=…` (web) gets bounced to `/sign-in` and
+  the URL is dropped. Stashing the share URL through sign-in (à la
+  the invite token in `inviteStash.ts`) is a follow-up if the
+  flow ever needs to support signed-out arrival.
+- `tests/e2e/share-pick-list.spec.ts` — happy-path. Dev-sign-in →
+  create date-idea list → skip create-list-share step → simulate the
+  share-extension hand-off via `page.goto('/share?url=…')` → assert
+  the picker renders + URL is visible → click the row by accessibility
+  name (`Add to ${listName}`) → land on add-item with
+  `add-item-url` populated and `link-preview-card` visible (mocked
+  `/v1/link-preview` per the 2b-2 fixture pattern).
+
+Test counts: 1 new Playwright happy-path
+(`tests/e2e/share-pick-list.spec.ts`); 0 new vitest (no backend
+changes). `pnpm run typecheck && pnpm run lint && pnpm run test` all
+pass (216 backend tests; same as 3b-2). `pnpm run e2e` runs 8 specs
+— 7 pass green; the 8th (`sign-in.spec.ts`) hits the documented
+§3.21 / §3.22 known-flake (dirty `dev@workshop.local.display_name`
+from prior specs in the same batch), unrelated to 4a-1.
+
+Surprises / deviations from plan:
+
+- **Plan said "deep-link handler in `_layout.tsx`"; we use file-based
+  routing instead.** expo-router with `scheme: "workshop"` already
+  maps `workshop://share?url=…` to `app/share/index.tsx`
+  automatically — same machinery that powers `workshop://invite/:token`
+  → `app/invite/[token].tsx` (3b-1). No `Linking.addEventListener`
+  call is needed for app-launch deep links. The plan's wording is
+  pre-3b-1 and reflects a more manual approach. **For app-_resume_
+  deep links** (the share extension fires while the app is already
+  open), expo-router's listener should still fire — but if 4a-2 sees
+  app-resume drops, fall back to `Linking.addEventListener('url', …)`
+  in `_layout.tsx` as the plan originally suggested.
+- **`/share` (no query string) is also a valid entry point.** The
+  plan implied `?url=…` is required, but the share extension may
+  carry the payload via app-group `UserDefaults` instead of the URL
+  query. 4a-1's `app/share/index.tsx` redirects `/share` → `/share/pick-list`
+  even with no `url` param, so 4a-2 can either pass `?url=` _or_ stash
+  the URL via UserDefaults (the latter requires a small read in the
+  pick-list screen — currently it just renders without a URL header).
+- **`router.replace` (not `push`) on pick.** Avoids piling the share
+  stack under the add screen. The share entry-point is treated as
+  transient; the user's "back" from the add screen goes to home, not
+  to the picker. Matches `app/invite/[token].tsx`'s redirect
+  semantics.
+- **Search-flow list rows are dimmed but still tappable.** A
+  `movie`/`tv`/`book` list pick will land on `add.tsx` with
+  `prefillUrl` ignored — the search input takes focus and the URL
+  param is silently dropped. Considered hiding search-flow lists
+  entirely from the picker; rejected because (a) the user might
+  share into a movie list to remember "watch this trailer URL"
+  (defer to 4a-2 follow-up if needed) and (b) hiding rows would
+  make the picker inconsistent with the home screen's list view.
+  The dim-opacity hint signals "this list won't use the URL"
+  without removing it.
+
+What 4a-2 should do _first_:
+
+1. Add `apps/workshop/plugins/share-extension/` as an Expo config
+   plugin. There are off-the-shelf options (e.g.
+   `expo-share-extension`, `react-native-share-menu`) — vet the
+   maintenance state before adopting; otherwise vendor a minimal
+   plugin that injects the Share Extension target + App Group
+   entitlement. The App Group identifier `group.dev.josh.workshop`
+   is already registered in the Apple portal per CLAUDE.md
+   ("iOS capabilities are config-as-code") — the capability on the
+   App ID auto-re-enables when the code declaration lands.
+2. Add the Swift extension target (kept minimal). Read
+   `extensionContext?.inputItems` for `public.url` / `public.plain-text`,
+   write to `UserDefaults(suiteName: "group.dev.josh.workshop")`,
+   then open `workshop://share?url=<encoded>`.
+3. Add `expo-linking` `addEventListener('url', …)` in
+   `apps/workshop/app/_layout.tsx` for app-resume cases (initial
+   URL is already covered by expo-router file-based routing —
+   verified in 4a-1 by the Playwright happy-path).
+4. Confirm `@expo/fingerprint` sees the native change and the
+   `testflight.yml` workflow auto-fires on merge. The
+   `eas.json` `build.production.env` follow-up from §"Pending"
+   (`EXPO_PUBLIC_APPLE_SERVICES_ID` /
+   `EXPO_PUBLIC_GOOGLE_*_CLIENT_ID`) belongs in 4a-2's PR since
+   that's the next native build; native Google sign-in needs
+   `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` baked at build time.
+5. Manual TestFlight smoke test: install the build, share a URL
+   from Safari → "Workshop" → list picker → land on add-item with
+   the URL pre-filled. The web app remains unchanged.
+
+Known constraints for 4a-2 / future chunks:
+
+- **The share flow is signed-in-only.** AuthGate redirects
+  signed-out users on `/share*` to `/sign-in`, dropping the URL.
+  Stashing the share URL through sign-in (à la
+  `PENDING_INVITE_TOKEN_KEY` in `src/lib/inviteStash.ts`) is a
+  follow-up if the share extension can fire from a logged-out
+  iOS app. Today the iOS app boots into the auth flow if no
+  session is cached, so this is rare but possible.
+- **`prefillUrl` is silently ignored on search-flow lists.** If
+  4a-2 wants to surface "you can't share URLs into book/movie/TV
+  lists" UI feedback, the place to wire it is `app/list/[id]/add.tsx`
+  — currently it just drops the param when `isSearchType`. The
+  picker dims those rows visually but doesn't block the tap.
+- **Web-side `/share?url=…` is a public URL.** Anyone with the
+  Cloudflare Pages deploy URL can hit `/share?url=…`; AuthGate
+  redirects them but the param is logged in the browser history.
+  Not a security issue (the URL itself is what was shared) but
+  worth noting.
+- **`router.replace` semantics matter for back-nav.** A future
+  chunk that wants the share picker to remain in history (e.g.
+  "back" from add returns to the picker) needs to flip to
+  `router.push`. 4a-2's native extension flow assumes `replace`
+  (the picker is transient).
 
 #### 3.9 Original Phase 1 deliverable list
 

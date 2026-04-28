@@ -35,8 +35,11 @@ import {
 const SEARCH_TYPES: readonly ListType[] = ["movie", "tv", "book"];
 
 export default function AddItem() {
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; prefillUrl?: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const prefillUrlParam = Array.isArray(params.prefillUrl)
+    ? params.prefillUrl[0]
+    : params.prefillUrl;
   const router = useRouter();
   const { token } = useAuth();
   const queryClient = useQueryClient();
@@ -53,9 +56,12 @@ export default function AddItem() {
   const listType = listQuery.data?.list.type;
   const isSearchType = !!listType && SEARCH_TYPES.includes(listType);
 
-  // Free-form fields (date_idea / trip).
+  // Free-form fields (date_idea / trip). When the screen is reached via the
+  // share flow (`?prefillUrl=…`), seed the URL field so the user just picks
+  // a title + saves; the link-preview debounce auto-fires off the seeded URL.
+  // The seed only applies to free-form lists — search-flow lists ignore it.
   const [title, setTitle] = useState("");
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(prefillUrlParam ?? "");
   const [note, setNote] = useState("");
   const trimmedTitle = title.trim();
   const canSubmitFreeForm = trimmedTitle.length >= 1 && trimmedTitle.length <= 500;
