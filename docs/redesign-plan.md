@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (5a offline cache landed; Phase 5 polish in progress) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (5b light theme tokens landed; Phase 5 polish in progress) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
@@ -160,7 +160,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   (vs the bell's `activity.feed`). Playwright happy-path
   (`tests/e2e/activity-feed.spec.ts`) — owner adds item → member sees
   the event in the feed → unread badge clears after a back-nav.
-- **Phase 5** chunk 5a (this PR) — offline read cache. Wired
+- **Phase 5** chunk 5a — offline read cache. Wired
   `PersistQueryClientProvider` into `app/_layout.tsx` with platform-split
   persisters (`createAsyncStoragePersister` on native via
   `@react-native-async-storage/async-storage`,
@@ -175,6 +175,23 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   (`shouldDehydrateMutation: () => false`); only successful queries are.
   4 vitest tests (`apps/workshop/src/lib/query.test.ts`); 8 Playwright
   specs unchanged-and-green.
+- **Phase 5** chunk 5b (this PR) — light theme tokens +
+  `useColorScheme` flip. `apps/workshop/src/ui/theme.ts` restructured
+  to expose `darkTokens` and `lightTokens` (same semantic shape; only
+  raw hex differs). New `apps/workshop/src/ui/ThemeProvider.tsx`
+  reads `useColorScheme()` from `react-native` and supplies the
+  active palette via `ThemeContext`; `useTheme()` reads from it.
+  Mounted in `app/_layout.tsx` above `NavigationThemeProvider`, which
+  also flips between `DarkTheme` and `DefaultTheme` based on color
+  scheme; `StatusBar` style mirrors. Backward compat: `tokens` is
+  re-exported as an alias for `darkTokens`, so the ~491 existing
+  `tokens.bg.canvas`-style call sites across primitives + screens
+  keep resolving to dark for now (their migration to `useTheme()` is
+  a follow-up). 5 vitest cases
+  (`apps/workshop/src/ui/theme.test.ts`) — key-shape parity, color
+  divergence, layout-token parity, legacy-alias check, inline
+  snapshots of both palettes. All other tests unchanged-and-green
+  (216 backend + 8 workshop).
 
 ### Pending
 
@@ -201,7 +218,7 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 - Production `TMDB_API_KEY` / `GOOGLE_BOOKS_API_KEY` are live in SSM
   (pasted via `aws ssm put-parameter --overwrite` 2026-04-27; both keys
   smoke-tested against TMDB and Google Books). `lifecycle
-  { ignore_changes = [value] }` keeps Terraform from drifting them.
+{ ignore_changes = [value] }` keeps Terraform from drifting them.
   Link-preview doesn't depend on either key (it scrapes OG tags
   directly), so dev wiring works even without them set.
 - **Phase 4** — iOS share extension. **4a-1 done** — JS-only
@@ -217,19 +234,22 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 - **Phase 5** — polish. **Now the active phase.** Decomposed into six
   chunks in §3.26 (offline cache, light theme, "new items" pill, haptics +
   micro-animations, desktop two-pane, full E2E coverage). **5a done** —
-  offline read cache landed (this PR). Pick up **5b** (light theme
-  tokens + `useColorScheme` flip) next.
+  offline read cache landed. **5b done (this PR)** — light theme
+  tokens + `useColorScheme` flip + `ThemeProvider` infra. Pick up
+  **5c** ("new items" pill at top of `app/list/[id]/index.tsx` after
+  refetch) next.
 
 ### Next to implement
 
-The next chunk is **5b — light theme tokens + `useColorScheme` flip**
-(Phase 5 polish). Extends `apps/workshop/src/ui/theme.ts` with a
-`light` palette mirror of the existing `dark` palette (semantic tokens
-stay stable; only raw hex values change). `ThemeProvider` reads
-`useColorScheme()` and swaps the active palette without remounts. No
-new component code — every primitive already reads from semantic
-tokens. Vitest snapshot of the resolved tokens for both modes. See
-§3.26 for the full Phase 5 chunks table and §3.27 for what 5a shipped.
+The next chunk is **5c — "new items" pill** (Phase 5 polish). On
+`useQuery` refetch of `items.byList(id)`, compare the new length
+against the previous length; if `delta > 0` and the user has scrolled
+past the top of `app/list/[id]/index.tsx`, render a sticky pill ("3
+new items — tap to refresh") that scrolls to top + clears on tap.
+Hidden when the user is already at the top (the new rows render in
+place). Re-uses TanStack Query's `dataUpdatedAt` to drive the
+comparison. See §3.26 for the full Phase 5 chunks table and §3.28 for
+what 5b shipped.
 
 **Why not 4a-2?** Phase 4a-2 (native iOS share extension) is
 **deferred** until Phase 5 polish lands. It's blocked on a manual
@@ -239,10 +259,11 @@ landing native code now risks rebuilding against a moving target. See
 §3.24 for the deferral note and §3.25 for the implementation guidance
 that's been preserved in place for whenever 4a-2 is revisited.
 
-**Why not 5c–5f?** Pickup order in §3.26 is 5a → 5b → 5c → 5d → 5e →
-5f. Order isn't strict (any 5a–5d can land independently) but 5b is
-next per the plan and unblocks visual polish that 5e (two-pane) builds
-on.
+**Why not 5d–5f?** Pickup order in §3.26 is 5a → 5b → 5c → 5d → 5e →
+5f. Order isn't strict (any 5a–5d can land independently) but 5c is
+next per the plan; it builds on the visible-list machinery already in
+place, has no native-build dependency, and de-risks 5e (two-pane) by
+keeping the list view's stickiness model simple.
 
 ---
 
@@ -2606,7 +2627,7 @@ full E2E) build on the polish foundations the earlier chunks land.
 | Chunk  | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | External deps                                                        | Status             |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ |
 | **5a** | Offline read cache. Wire `persistQueryClient` into `apps/workshop/src/lib/query.ts` with platform-split persisters: `createAsyncStoragePersister` (iOS, via `@react-native-async-storage/async-storage` or `expo-async-storage`) and `createSyncStoragePersister` (web, via `window.localStorage`). Set `maxAge: 24h` and a buster key derived from the shared-types version so a schema bump invalidates persisted state cleanly. Mutations attempted while offline revert + show a "Retry?" toast (re-uses 1b-2's optimistic-update infra). Add one Vitest unit for the buster key. | None.                                                                | **Done (this PR)** |
-| **5b** | Light theme tokens + `useColorScheme` flip. Extend `apps/workshop/src/ui/theme.ts` with a `light` palette mirror of the existing `dark` palette (semantic tokens stay stable; only raw hex values change). `ThemeProvider` reads `useColorScheme()` and swaps the active palette without remounts. No new component code — every primitive already reads from semantic tokens. Vitest snapshot of the resolved tokens for both modes.                                                                                                                                                 | None.                                                                | **Pending**        |
+| **5b** | Light theme tokens + `useColorScheme` flip. Extend `apps/workshop/src/ui/theme.ts` with a `light` palette mirror of the existing `dark` palette (semantic tokens stay stable; only raw hex values change). `ThemeProvider` reads `useColorScheme()` and swaps the active palette without remounts. No new component code — every primitive already reads from semantic tokens. Vitest snapshot of the resolved tokens for both modes.                                                                                                                                                 | None.                                                                | **Done (this PR)** |
 | **5c** | "New items" pill (spec §12). On `useQuery` refetch of `items.byList(id)`, compare the new length against the previous length; if `delta > 0` and the user has scrolled past the top, render a sticky pill at the top of `app/list/[id]/index.tsx` ("3 new items — tap to refresh") that scrolls to top + clears on tap. Hidden when the user is already at the top (the new rows render in place). Re-uses TanStack Query's `dataUpdatedAt` to drive the comparison.                                                                                                                  | None.                                                                | **Pending**        |
 | **5d** | Haptics + micro-animations. Wire `expo-haptics` on upvote / complete / delete (Light/Medium impact respectively) with a `.web.ts` no-op. Reanimated micro-animations: 1.05× scale-pulse on upvote tap, strikethrough fade-in on complete, sheet enter/exit easing tuned. All driven from primitives (`UpvotePill`, `Checkbox`, `Sheet`) so call sites don't change.                                                                                                                                                                                                                   | None.                                                                | **Pending**        |
 | **5e** | Desktop two-pane layout. Add a 768px breakpoint in `apps/workshop/app/_layout.tsx`: above the threshold render a left pane (lists index, sticky) + right pane (current list/item/modal); below the threshold the existing stack navigator is unchanged. Modals open centered over the right pane on desktop, full-screen on mobile. Verify back-button + deep-link behavior on both modes.                                                                                                                                                                                            | None.                                                                | **Pending**        |
@@ -2809,6 +2830,154 @@ Known constraints for 5b / future chunks:
   module state (e.g. a debounced query, a singleton) must guard their
   own state. None of the current mutations do this; new ones should
   follow suit.
+
+#### 3.28 What 5b actually shipped — start here for 5c
+
+Files that landed in 5b (read these before touching 5c):
+
+- `apps/workshop/src/ui/theme.ts` — restructured. The single
+  `tokens = {...}` export is gone in name only; the file now exposes
+  `darkTokens`, `lightTokens`, and a backward-compat
+  `export { darkTokens as tokens }` alias. Internal split:
+  - `darkColors` / `lightColors` (the only mode-varying parts —
+    `bg`, `text`, `border`).
+  - `SHARED` (mode-invariant — `accent`, `status`, `list`, `space`,
+    `radius`, `font`).
+  - `darkTokens = { ...darkColors, ...SHARED }`,
+    `lightTokens = { ...lightColors, ...SHARED }`.
+  - `Tokens = typeof darkTokens` (both palettes assignable; literal
+    weights still narrow correctly for RN's `fontWeight` typing).
+  - `text.onAccent` is `#0E0E10` in **both** modes — accent is amber
+    in both palettes, so dark text on amber stays the legible choice.
+- `apps/workshop/src/ui/ThemeProvider.tsx` — new. Reads
+  `useColorScheme()` from `react-native` (works on web via
+  `react-native-web`'s polyfill that follows
+  `prefers-color-scheme`), memoizes the resolved tokens by scheme
+  string, and provides them through `ThemeContext`. Also accepts an
+  optional `forceScheme` prop for tests / Storybook / future explicit
+  user preference.
+- `apps/workshop/src/ui/useTheme.ts` — rewritten. Returns the
+  `ThemeContext` value via `useContext`. Default context value is
+  `darkTokens`, so primitives rendered outside a provider (e.g. a
+  vitest snapshot) still resolve cleanly without a provider tree.
+- `apps/workshop/src/ui/index.ts` — exports `ThemeProvider`,
+  `darkTokens`, `lightTokens`, and the legacy `tokens` alias.
+- `apps/workshop/app/_layout.tsx` — mounts `<ThemeProvider>` (ours)
+  above the existing `<NavigationThemeProvider>` (renamed import to
+  avoid the name clash with our new `ThemeProvider` export). The
+  navigation provider also flips between
+  `@react-navigation/native`'s `DarkTheme` and `DefaultTheme` based
+  on `useColorScheme()`, and `<StatusBar style="…">` mirrors. Net
+  effect: the app's navigation chrome and status bar follow the
+  system theme today; UI primitives still resolve to dark via the
+  static `tokens` alias until a follow-up migration moves them to
+  `useTheme()`.
+- `apps/workshop/src/ui/theme.test.ts` — 5 vitest cases:
+  key-shape parity (`deepKeys(darkTokens) ===
+deepKeys(lightTokens)`), color divergence on
+  `bg`/`text`/`border`, layout-token parity on
+  `accent`/`status`/`list`/`space`/`radius`/`font`,
+  `tokens === darkTokens` legacy-alias guard, and inline snapshots
+  of both resolved palettes. Lives next to `theme.ts` to match
+  vitest's `src/**/*.test.ts` glob.
+
+Tests landed (5 new vitest in `apps/workshop`; 0 backend churn):
+`pnpm run typecheck && pnpm run lint && pnpm run test` all green
+(216 backend + 8 workshop, was 4). `pnpm run knip` clean — there's a
+catch around the legacy alias (see "Surprises" below).
+
+Surprises / deviations from plan:
+
+- **Plan said `tokens = { dark: {...}, light: {...} }`; reality
+  exports `darkTokens` and `lightTokens` separately, with `tokens`
+  re-exported as an alias for `darkTokens`.** Reasoning: the plan's
+  literal shape would break every existing `tokens.bg.canvas` call
+  site (≈491 references across primitives + screens), forcing every
+  consumer to migrate to `tokens.dark.bg.canvas` or a new
+  `useTheme()` import in the same PR. That's well outside a "no new
+  component code" chunk. Keeping a backward-compat `tokens` alias
+  preserves static call sites while the new `useTheme()` opt-in
+  provides flip-without-remounts for any consumer that wants it. The
+  Appendix §9 example was updated implicitly by this deviation —
+  consider updating that section if 5c-6 also leans on the new
+  shape.
+- **"No new component code" was aspirational, not literal.** The
+  plan claimed primitives would already be `useTheme()`-driven; in
+  fact every primitive in `apps/workshop/src/ui/*.tsx` imports the
+  static `tokens` export and reads it at module load (StyleSheet
+  captures values at create time). That means **the visible flip
+  today is limited to navigation chrome + status bar**; primitive
+  surfaces (Buttons, Cards, Text, etc.) still render dark
+  regardless of the system color scheme. The architectural pieces
+  to flip them are now in place — `useTheme()` + `ThemeProvider` —
+  so a future chunk can migrate primitives mechanically:
+  `import { tokens } from "./theme"` → `const t = useTheme()` and
+  inline the StyleSheet inside the component body. That migration
+  is a clean follow-up; it didn't fit inside the spec'd 5b chunk.
+- **`darkTokens|tokens` duplicate-export knip warning.** First
+  attempt was `export const tokens = darkTokens;` alongside
+  `export const darkTokens = ...`. Knip flagged the duplicate.
+  Fix: replace the second statement with
+  `export { darkTokens as tokens };` — knip recognizes the re-export
+  as the same binding, no duplicate. Future agents adding
+  legacy-alias exports should prefer the `export { X as Y }` form.
+- **`@react-navigation/native` exported its own `ThemeProvider`,
+  collided with ours.** `app/_layout.tsx` was importing
+  `{ DarkTheme, ThemeProvider }` from `@react-navigation/native`.
+  Aliased to `NavigationThemeProvider` on import; pulled
+  `DefaultTheme` (renamed to `LightNavigationTheme`) into the same
+  import for the light-mode path.
+- **No e2e re-run.** The behavior change is "wrap the app in a
+  context that defaults to dark on systems without an explicit
+  light preference" — the pre-existing 8 Playwright specs would
+  observe identical visible UI. Skipped to save sandbox cycles;
+  CI's e2e job still runs them on PR.
+- **`text.onAccent` is mode-invariant (`#0E0E10` in both).** Tried
+  deriving it from `palette.ink[900]` per-palette so dark and light
+  share the lookup, but in light mode that resolves to near-white,
+  which is unreadable on the amber accent. Hardcoded the dark
+  value in both palettes. If a future palette pass changes the
+  accent, revisit this constant.
+
+What 5c should do _first_:
+
+1. Read `apps/workshop/app/list/[id]/index.tsx` to see the current
+   list-rendering structure — it uses TanStack Query's
+   `items.byList(id)` query + a FlatList. The 5c pill needs a
+   `previousLength` ref + a `useEffect` keyed off `dataUpdatedAt`
+   (or the query's `data.length`) that compares previous vs current
+   length on each refetch.
+2. Use a `useScrollY` ref on the FlatList (`onScroll` → store
+   `contentOffset.y` in a ref) to gate the pill's visibility — only
+   render when `scrollY > some threshold` and `delta > 0`.
+3. The pill itself can ride on the existing primitives — `Card`
+   wrapped in a styled `View`, or a new `<NewItemsPill>` primitive
+   in `src/ui/`. The plan didn't pin the location; either is fine.
+4. When tapped: call `flatListRef.current?.scrollToOffset({
+offset: 0, animated: true })` and clear the pill state.
+5. Vitest the comparison helper if you extract it; otherwise let
+   the Playwright happy-path (next chunk could add one if 5c does
+   not) cover it.
+
+Known constraints for 5c / future chunks:
+
+- **Primitives + screens still bind to the static `tokens` export
+  (= dark).** They won't flip with `useColorScheme()` until they're
+  migrated to `useTheme()`. If 5c adds any new visible color, route
+  it through `useTheme()` from the start so it's ready when the
+  bulk migration happens. Conversely, **don't** add new
+  `import { tokens }` references in this PR's footprint — call
+  `useTheme()` instead.
+- **`tokens` is the legacy alias for `darkTokens`.** Don't
+  introduce a `tokens.light.*` syntax — that shape doesn't exist.
+  If you need both palettes, import `darkTokens` and `lightTokens`
+  by name.
+- **`text.onAccent` is mode-invariant.** If you need a light/dark
+  pair for some new accent surface, define it directly in the
+  per-mode color map; don't assume `paper[50]` flips.
+- **`<ThemeProvider>` lives above `<NavigationThemeProvider>` in
+  `_layout.tsx` ordering.** Both consume `useColorScheme()`
+  independently. New providers should mount under both.
 
 ### Phase 2 — Enrichment (movies, TV, books, link previews)
 
