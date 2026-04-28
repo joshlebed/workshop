@@ -68,35 +68,45 @@ This phase is what makes the next agent fast. Do not skip it.
 
 10. **If the plan was wrong**, fix it in the same PR. Examples: chunk dependencies that turned out to be wrong, file paths that drifted, deliverables that didn't make sense. Note the correction in the PR description. The plan should learn from each chunk.
 
+11. **Reflect on dev-environment friction in `AGENT-REFLECTIONS.md`** (at the repo root). This file is a running log written **for the human supervisor** — it's how the supervisor learns what to optimize about the dev environment, what tools agents are missing, and where the agent workflow loses time. Append a new dated section at the bottom of the doc; the intro lays out the contribution shape (`What went well` / `What didn't go well` / `Actionable feedback`). What belongs in your section:
+    - **Anything a supervisor should know about making the agent loop more efficient**: missing env vars, broken or absent tools, slow steps, undocumented gotchas, redundant manual recovery rituals, friction in the verification gates, places the plan disagreed with reality.
+    - **Concrete observations, not vague complaints.** Cite the path / command / error. "Took ~10 min to root-cause because the sandbox didn't bake `EXPO_PUBLIC_DEV_AUTH=1`" is useful; "the env is bad" is not.
+    - **Actionable fixes with rough size estimates** — a one-line `niteshift-setup.sh` edit, a `CLAUDE.md` clarification, a new test helper, a documented env-var matrix. The supervisor uses the size column to triage.
+    - **What went well, too.** Saves the supervisor from "fixing" something that's already working, and gives them positive signal about which existing investments paid off.
+
+    Keep it scoped to your session — one chunk's worth of observations. If your session was genuinely uneventful (no friction worth recording), write a one-line section saying so explicitly. That signals "no new findings" rather than leaving the next agent wondering whether you skipped the step. **Don't edit prior sections** — they're a snapshot of how things worked at that point in time.
+
+    AGENT-REFLECTIONS.md is one of the few places where you should think beyond the chunk: report up about the meta-process, not just the deliverables.
+
 ---
 
 ## Phase 4 — Ship
 
-11. Open a PR. Title format (match prior PR titles in `git log --oneline origin/main`):
+12. Open a PR. Title format (match prior PR titles in `git log --oneline origin/main`):
     - `feat(<area>): land Phase <X-N> — <one-line summary>`
     - or `feat(<area>): <feature> (Phase <X-N>)` for less-template-shaped chunks
 
-12. PR description structure:
+13. PR description structure:
     - **Summary**: 2–3 bullets on what landed.
     - **Plan reference**: "Lands chunk X-N from `docs/redesign-plan.md` §3.X."
     - **Test plan**: checklist of acceptance criteria from the plan, plus any manual verification you did.
     - **Follow-ups**: anything deferred, with a 1-line reason for each.
 
-13. **Post a short report to the user before merging.** Before arming auto-merge or merging manually, send a message (under 150 words) summarizing:
+14. **Post a short report to the user before merging.** Before arming auto-merge or merging manually, send a message (under 150 words) summarizing:
     - The chunk that shipped and the PR URL
     - What landed, in 2–3 bullets (file/area level, not line-by-line)
     - Acceptance criteria verified (typecheck/lint/test/manual checks)
     - Any deviations from the plan, follow-ups, or things the human should glance at
     - That you're about to arm auto-merge (or merge manually) unless they say otherwise
 
-    This is the human's last chance to catch a framing issue before the PR lands. If running fully autonomously, still post the report — it lands in the transcript and PR description for after-the-fact review. Don't wait for confirmation in autonomous mode; proceed to step 14 immediately after posting.
+    This is the human's last chance to catch a framing issue before the PR lands. If running fully autonomously, still post the report — it lands in the transcript and PR description for after-the-fact review. Don't wait for confirmation in autonomous mode; proceed to step 15 immediately after posting.
 
-14. **Try to arm auto-merge** so the PR self-merges when checks pass:
+15. **Try to arm auto-merge** so the PR self-merges when checks pass:
     `gh pr merge <PR> --auto --squash --delete-branch`. The project uses squash merges (verify: `git log origin/main --oneline -10`); pass `--squash` explicitly so it's not subject to repo defaults changing.
 
-    Auto-merge requires GitHub branch protection to be configured, which on a private repo on the free GitHub plan is unavailable. **If the command fails with `"Auto merge is not allowed for this repository"` or similar, that's the cause — silently fall back to manual merge in step 15.** Don't surface this as a problem; it's just a config gap.
+    Auto-merge requires GitHub branch protection to be configured, which on a private repo on the free GitHub plan is unavailable. **If the command fails with `"Auto merge is not allowed for this repository"` or similar, that's the cause — silently fall back to manual merge in step 16.** Don't surface this as a problem; it's just a config gap.
 
-15. Poll CI: `gh pr checks <PR>` until all checks finish.
+16. Poll CI: `gh pr checks <PR>` until all checks finish.
     - **If auto-merge is armed and required checks pass**: GitHub fires the merge automatically. Verify with `gh pr view <PR> --json state` (should be `MERGED`). Move on.
     - **If auto-merge is NOT armed and required checks pass**: run `gh pr merge <PR> --squash --delete-branch` manually.
     - **A required check fails**:
@@ -106,14 +116,14 @@ This phase is what makes the next agent fast. Do not skip it.
     - Niteshift's `niteshift-check` is intentionally non-required — it's blocking only on the agent's own session, not on merge.
     - Cloudflare Pages preview check is informational; treat it as a hint, not a blocker.
 
-16. Verify the merge triggered the right downstream workflows:
+17. Verify the merge triggered the right downstream workflows:
     - Backend changes → `Deploy Backend` runs.
     - Mobile changes → `Deploy Mobile (OTA)` runs; `TestFlight` may run if the iOS fingerprint changed (`@expo/fingerprint` decides).
     - Use `gh run list --branch=main --limit 5` to confirm.
     - **Heads-up: workflow path-filter self-trigger.** If the chunk modified a workflow file (e.g. `.github/workflows/foo.yml`) AND that workflow's own `on.push.paths:` includes the workflow file's filename, merging will trigger that workflow on the merge commit even if no other paths matched. Check both directions when reviewing post-merge runs so you don't get confused by a TestFlight run firing on a CI-only PR.
     - If a deploy fails, surface the failure log to the human — don't try to re-trigger blindly.
 
-17. Final message: 1 short paragraph summarizing what shipped, what the next chunk is, and any human attention required.
+18. Final message: 1 short paragraph summarizing what shipped, what the next chunk is, and any human attention required.
 
 ---
 
