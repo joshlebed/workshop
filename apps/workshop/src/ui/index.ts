@@ -12,6 +12,8 @@ export type { IconButtonProps } from "./IconButton";
 export { IconButton } from "./IconButton";
 export type { ModalProps } from "./Modal";
 export { Modal } from "./Modal";
+export type { NewItemsPillProps } from "./NewItemsPill";
+export { NewItemsPill } from "./NewItemsPill";
 export type { SearchResultRowProps } from "./SearchResultRow";
 export { SearchResultRow } from "./SearchResultRow";
 export type { SheetProps } from "./Sheet";

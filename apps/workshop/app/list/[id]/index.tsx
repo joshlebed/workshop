@@ -1,8 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Item, ItemListResponse, ItemResponse } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 import {
   completeItem,
   fetchItems,
@@ -14,6 +23,7 @@ import { fetchListDetail } from "../../../src/api/lists";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { ApiError } from "../../../src/lib/api";
 import { haptics } from "../../../src/lib/haptics";
+import { computeNewItemsDelta } from "../../../src/lib/newItemsPill";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import {
   Button,
@@ -22,11 +32,14 @@ import {
   EmptyState,
   IconButton,
   type ListColorKey,
+  NewItemsPill,
   Text,
   tokens,
   UpvotePill,
   useToast,
 } from "../../../src/ui/index";
+
+const NEW_ITEMS_SCROLL_THRESHOLD = 120;
 
 export default function ListDetail() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -36,6 +49,10 @@ export default function ListDetail() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [filter, setFilter] = useState("");
+  const [newItemsCount, setNewItemsCount] = useState(0);
+  const previousLengthRef = useRef<number | null>(null);
+  const scrollYRef = useRef(0);
+  const flatListRef = useRef<FlatList<Item>>(null);
 
   const listQuery = useQuery({
     queryKey: queryKeys.lists.detail(id ?? ""),
@@ -123,6 +140,33 @@ export default function ListDetail() {
       });
     },
   });
+
+  const activeCount = activeQuery.data?.items.length;
+
+  useEffect(() => {
+    if (activeCount === undefined) return;
+    const delta = computeNewItemsDelta({
+      previousLength: previousLengthRef.current,
+      currentLength: activeCount,
+      scrollY: scrollYRef.current,
+      threshold: NEW_ITEMS_SCROLL_THRESHOLD,
+    });
+    if (delta > 0) setNewItemsCount((c) => c + delta);
+    previousLengthRef.current = activeCount;
+  }, [activeCount]);
+
+  const onListScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const y = e.nativeEvent.contentOffset.y;
+    scrollYRef.current = y;
+    if (y <= NEW_ITEMS_SCROLL_THRESHOLD && newItemsCount > 0) {
+      setNewItemsCount(0);
+    }
+  };
+
+  const onPillPress = () => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+    setNewItemsCount(0);
+  };
 
   const filteredActive = useMemo(() => {
     const items = activeQuery.data?.items ?? [];
@@ -223,10 +267,13 @@ export default function ListDetail() {
         </View>
       ) : (
         <FlatList
+          ref={flatListRef}
           data={filteredActive}
           keyExtractor={(it) => it.id}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={{ height: tokens.space.sm }} />}
+          onScroll={onListScroll}
+          scrollEventThrottle={16}
           renderItem={({ item }) => (
             <ItemRow
               item={item}
@@ -282,6 +329,12 @@ export default function ListDetail() {
           }
         />
       )}
+
+      {newItemsCount > 0 ? (
+        <View pointerEvents="box-none" style={styles.pillViewport}>
+          <NewItemsPill count={newItemsCount} onPress={onPillPress} testID="new-items-pill" />
+        </View>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"
@@ -431,6 +484,13 @@ const styles = StyleSheet.create({
   completedSection: { marginTop: tokens.space.xl, gap: tokens.space.md },
   completedHeader: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   completedList: { gap: tokens.space.sm },
+  pillViewport: {
+    position: "absolute",
+    top: 140,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
   fab: {
     position: "absolute",
     right: tokens.space.xl,

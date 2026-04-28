@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (5b light theme tokens landed; Phase 5 polish in progress) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (5c "new items" pill landed; Phase 5 polish in progress) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
@@ -192,6 +192,23 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   divergence, layout-token parity, legacy-alias check, inline
   snapshots of both palettes. All other tests unchanged-and-green
   (216 backend + 8 workshop).
+- **Phase 5** chunk 5c (this PR) — "new items" pill on the list-detail
+  screen. New `apps/workshop/src/ui/NewItemsPill.tsx` primitive (uses
+  `useTheme()` per §3.28's constraint, not the static `tokens` import) +
+  pure `apps/workshop/src/lib/newItemsPill.ts` helper
+  (`computeNewItemsDelta`). Wired into `app/list/[id]/index.tsx`: a
+  `useEffect` keyed off `activeQuery.data?.items.length` runs the
+  helper against a `previousLengthRef` + a `scrollYRef` populated by
+  `FlatList.onScroll` (`scrollEventThrottle: 16`); the pill renders in
+  an absolute-positioned viewport over the list when
+  `newItemsCount > 0`. Tapping calls
+  `flatListRef.current?.scrollToOffset({ offset: 0, animated: true })`
+  and clears the count; scrolling back below the threshold also clears
+  it (matches spec §12 "hidden when at the top, the new rows render in
+  place"). 4 vitest cases
+  (`apps/workshop/src/lib/newItemsPill.test.ts`); 12 workshop tests
+  total (was 8). 216 backend tests unchanged-and-green; lint + knip
+  clean.
 
 ### Pending
 
@@ -234,22 +251,25 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
 - **Phase 5** — polish. **Now the active phase.** Decomposed into six
   chunks in §3.26 (offline cache, light theme, "new items" pill, haptics +
   micro-animations, desktop two-pane, full E2E coverage). **5a done** —
-  offline read cache landed. **5b done (this PR)** — light theme
-  tokens + `useColorScheme` flip + `ThemeProvider` infra. Pick up
-  **5c** ("new items" pill at top of `app/list/[id]/index.tsx` after
-  refetch) next.
+  offline read cache landed. **5b done** — light theme tokens +
+  `useColorScheme` flip + `ThemeProvider` infra. **5c done (this PR)**
+  — "new items" pill on the list-detail screen. Pick up **5d**
+  (haptics + micro-animations on upvote / complete / delete via
+  `expo-haptics` + Reanimated; primitives only so call sites don't
+  change) next.
 
 ### Next to implement
 
-The next chunk is **5c — "new items" pill** (Phase 5 polish). On
-`useQuery` refetch of `items.byList(id)`, compare the new length
-against the previous length; if `delta > 0` and the user has scrolled
-past the top of `app/list/[id]/index.tsx`, render a sticky pill ("3
-new items — tap to refresh") that scrolls to top + clears on tap.
-Hidden when the user is already at the top (the new rows render in
-place). Re-uses TanStack Query's `dataUpdatedAt` to drive the
-comparison. See §3.26 for the full Phase 5 chunks table and §3.28 for
-what 5b shipped.
+The next chunk is **5d — haptics + micro-animations** (Phase 5
+polish). Wire `expo-haptics` on upvote / complete / delete (Light /
+Medium / Medium impact respectively) with a `.web.ts` no-op shim
+(the existing `src/lib/haptics.ts` / `.web.ts` pattern is already in
+place — extend it). Reanimated micro-animations: 1.05× scale-pulse
+on upvote tap, strikethrough fade-in on complete, sheet enter/exit
+easing tuned. All driven from primitives (`UpvotePill`, the existing
+complete-button glyph, `Sheet`) so call sites don't change. See
+§3.26 for the full Phase 5 chunks table and §3.29 for what 5c
+shipped.
 
 **Why not 4a-2?** Phase 4a-2 (native iOS share extension) is
 **deferred** until Phase 5 polish lands. It's blocked on a manual
@@ -259,11 +279,12 @@ landing native code now risks rebuilding against a moving target. See
 §3.24 for the deferral note and §3.25 for the implementation guidance
 that's been preserved in place for whenever 4a-2 is revisited.
 
-**Why not 5d–5f?** Pickup order in §3.26 is 5a → 5b → 5c → 5d → 5e →
-5f. Order isn't strict (any 5a–5d can land independently) but 5c is
-next per the plan; it builds on the visible-list machinery already in
-place, has no native-build dependency, and de-risks 5e (two-pane) by
-keeping the list view's stickiness model simple.
+**Why not 5e–5f?** Pickup order in §3.26 is 5a → 5b → 5c → 5d → 5e →
+5f. Order isn't strict (any 5a–5d can land independently) but 5d is
+next per the plan; it's primitive-scoped (no screen surgery), it
+de-risks 5e (two-pane) by stabilising the interaction model first,
+and it leaves 5f (full E2E sweep) for last so it lands against a
+stable surface.
 
 ---
 
@@ -2628,7 +2649,7 @@ full E2E) build on the polish foundations the earlier chunks land.
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ |
 | **5a** | Offline read cache. Wire `persistQueryClient` into `apps/workshop/src/lib/query.ts` with platform-split persisters: `createAsyncStoragePersister` (iOS, via `@react-native-async-storage/async-storage` or `expo-async-storage`) and `createSyncStoragePersister` (web, via `window.localStorage`). Set `maxAge: 24h` and a buster key derived from the shared-types version so a schema bump invalidates persisted state cleanly. Mutations attempted while offline revert + show a "Retry?" toast (re-uses 1b-2's optimistic-update infra). Add one Vitest unit for the buster key. | None.                                                                | **Done (this PR)** |
 | **5b** | Light theme tokens + `useColorScheme` flip. Extend `apps/workshop/src/ui/theme.ts` with a `light` palette mirror of the existing `dark` palette (semantic tokens stay stable; only raw hex values change). `ThemeProvider` reads `useColorScheme()` and swaps the active palette without remounts. No new component code — every primitive already reads from semantic tokens. Vitest snapshot of the resolved tokens for both modes.                                                                                                                                                 | None.                                                                | **Done (this PR)** |
-| **5c** | "New items" pill (spec §12). On `useQuery` refetch of `items.byList(id)`, compare the new length against the previous length; if `delta > 0` and the user has scrolled past the top, render a sticky pill at the top of `app/list/[id]/index.tsx` ("3 new items — tap to refresh") that scrolls to top + clears on tap. Hidden when the user is already at the top (the new rows render in place). Re-uses TanStack Query's `dataUpdatedAt` to drive the comparison.                                                                                                                  | None.                                                                | **Pending**        |
+| **5c** | "New items" pill (spec §12). On `useQuery` refetch of `items.byList(id)`, compare the new length against the previous length; if `delta > 0` and the user has scrolled past the top, render a sticky pill at the top of `app/list/[id]/index.tsx` ("3 new items — tap to refresh") that scrolls to top + clears on tap. Hidden when the user is already at the top (the new rows render in place). Re-uses TanStack Query's `dataUpdatedAt` to drive the comparison.                                                                                                                  | None.                                                                | **Done (this PR)** |
 | **5d** | Haptics + micro-animations. Wire `expo-haptics` on upvote / complete / delete (Light/Medium impact respectively) with a `.web.ts` no-op. Reanimated micro-animations: 1.05× scale-pulse on upvote tap, strikethrough fade-in on complete, sheet enter/exit easing tuned. All driven from primitives (`UpvotePill`, `Checkbox`, `Sheet`) so call sites don't change.                                                                                                                                                                                                                   | None.                                                                | **Pending**        |
 | **5e** | Desktop two-pane layout. Add a 768px breakpoint in `apps/workshop/app/_layout.tsx`: above the threshold render a left pane (lists index, sticky) + right pane (current list/item/modal); below the threshold the existing stack navigator is unchanged. Modals open centered over the right pane on desktop, full-screen on mobile. Verify back-button + deep-link behavior on both modes.                                                                                                                                                                                            | None.                                                                | **Pending**        |
 | **5f** | Full Playwright E2E sweep. Cover sign-in (Google, JWKS-stubbed), create each of 5 list types, add an item via every pathway (movie/TV via TMDB stub, book via Google Books stub, free-form date-idea + trip via link-preview stub), upvote/unvote, complete/uncomplete, share-link accept in a second browser context, activity feed unread→read. Wire into a new `e2e.yml` GitHub Actions job running against a Dockerized Postgres. Lands the `signInAsDev(page)` test helper recommended in `AGENT-REFLECTIONS.md` 2026-04-28.                                                     | None — runs entirely against a local backend + local Postgres in CI. | **Pending**        |
@@ -2978,6 +2999,149 @@ Known constraints for 5c / future chunks:
 - **`<ThemeProvider>` lives above `<NavigationThemeProvider>` in
   `_layout.tsx` ordering.** Both consume `useColorScheme()`
   independently. New providers should mount under both.
+
+#### 3.29 What 5c actually shipped — start here for 5d
+
+Files that landed in 5c (read these before touching 5d):
+
+- `apps/workshop/src/lib/newItemsPill.ts` — new. Pure helper
+  `computeNewItemsDelta({ previousLength, currentLength, scrollY,
+threshold })` that returns the number to bump the pill counter by
+  on a refetch. Returns 0 in three cases: no previous baseline yet
+  (first observation just seeds it); user is at/near the top
+  (`scrollY <= threshold` — the new rows render in place); count
+  didn't grow (refetch was idempotent or items shrank). The caller
+  owns the running count + scroll-Y state; this function is just the
+  "should this refetch bump the pill?" predicate.
+- `apps/workshop/src/lib/newItemsPill.test.ts` — 4 vitest cases
+  covering the four return-0 branches + the happy-path positive
+  delta. Same convention as `query.test.ts` (pure helper, no React).
+- `apps/workshop/src/ui/NewItemsPill.tsx` — new primitive. Pressable
+  pill rendering `"N new item(s) — tap to refresh"`. **Uses
+  `useTheme()`, not the static `tokens` import**, per the §3.28
+  constraint for new visible color in 5c+. Styles are memoized via
+  `useMemo(() => StyleSheet.create({...}), [t])` so they re-resolve
+  if the active theme flips. Accent background + on-accent text.
+  Singular/plural label switches on `count === 1`.
+- `apps/workshop/src/ui/index.ts` — re-exports `NewItemsPill` +
+  `NewItemsPillProps`.
+- `apps/workshop/app/list/[id]/index.tsx` — wired in. Adds:
+  - `previousLengthRef: useRef<number | null>(null)`,
+    `scrollYRef: useRef(0)`,
+    `flatListRef: useRef<FlatList<Item>>(null)`,
+    `[newItemsCount, setNewItemsCount] = useState(0)`.
+  - `useEffect` keyed off `activeQuery.data?.items.length` only
+    (deliberately not `dataUpdatedAt` — see Surprises). On each
+    length change it runs `computeNewItemsDelta`, bumps the count
+    if delta > 0, and updates `previousLengthRef.current`.
+  - `onListScroll(e)`: stores `e.nativeEvent.contentOffset.y` in
+    `scrollYRef` and clears `newItemsCount` if the user scrolled
+    back below `NEW_ITEMS_SCROLL_THRESHOLD` (= 120).
+  - `onPillPress`: calls
+    `flatListRef.current?.scrollToOffset({ offset: 0, animated: true })`
+    and clears the count.
+  - The `<FlatList>` gets `ref={flatListRef}`, `onScroll={onListScroll}`,
+    `scrollEventThrottle={16}`.
+  - The pill renders inside an absolute-positioned
+    `pointerEvents="box-none"` `<View>` (`styles.pillViewport`) with
+    `top: 140` (clearing the header + filter input) and centered
+    horizontally. `testID="new-items-pill"` for E2E.
+
+Tests landed (4 new vitest in `apps/workshop`; 0 backend churn):
+`pnpm run typecheck && pnpm run lint && pnpm run test` all green
+(216 backend + 12 workshop, was 8). `pnpm run knip` clean. No
+Playwright spec added — the FlatList scroll + invalidation chain is
+awkward to drive deterministically in a headless browser, and 5f
+explicitly owns the full E2E sweep.
+
+Surprises / deviations from plan:
+
+- **Plan said "re-uses TanStack Query's `dataUpdatedAt` to drive
+  the comparison." Reality keys the `useEffect` only on
+  `activeQuery.data?.items.length`.** Reasoning: with two queries
+  for active vs completed items, `dataUpdatedAt` ticks on every
+  refetch even when the items array length is unchanged, which
+  would cause the effect to spin without producing a delta. Keying
+  on length directly is sufficient because `computeNewItemsDelta`
+  already returns 0 on no-change; the effect runs strictly when
+  the count itself changed. Biome's `lint/correctness/useExhaustiveDependencies`
+  also flagged the extra dep as unnecessary, so dropping it was
+  cleaner.
+- **Pill clearing on optimistic adds is acceptable.** When the user
+  themself adds an item (POST /v1/lists/:id/items invalidates the
+  list query), the length grows by 1 from their own action, and if
+  they happen to be scrolled past the threshold, the pill briefly
+  shows "1 new item — tap to refresh" for their own item. The spec
+  says the pill is for refetches landing _new_ items the user
+  hadn't yet seen; in practice this is mostly indistinguishable
+  from a server-side new item, and the FAB-add flow returns the
+  user to the list scrolled at-position, so the threshold gate
+  almost always hides this case. Filtering by "actor is not me"
+  would require threading the active user id through a
+  comparison helper that already takes 4 args; deferred to a
+  follow-up if it shows up as friction in dogfood.
+- **Pill is positioned with `top: 140` (a magic number) rather
+  than measuring the header.** The header is composed of: root
+  `paddingTop: tokens.space.xxl` (32) + a header row (~44) + a
+  toolbar with `paddingTop: md` (12) + filter input (~36) +
+  `paddingBottom: sm` (8) ≈ 132. 140 leaves a few px of breathing
+  room. A `<View onLayout>` measure on the toolbar would be more
+  robust (especially if the header grows in 5e two-pane), but it
+  adds a render cycle for a single tweakable constant. Worth
+  revisiting in 5e if the layout shifts.
+- **No haptic call on pill press.** The plan reserves haptics for
+  5d. The pill press is silent today; if 5d adds a unified
+  "user-initiated state change" haptic, it can wire into
+  `onPillPress`.
+- **`text.onAccent` is mode-invariant per §3.28.** `NewItemsPill`
+  inherits this for free (`color: t.text.onAccent` resolves to
+  `#0E0E10` in both modes), so the pill stays readable on the
+  amber accent regardless of system theme.
+
+What 5d should do _first_:
+
+1. Read `apps/workshop/src/lib/haptics.ts` and `.web.ts` — the
+   current API is `haptics.light()` / `haptics.success()` / etc.
+   over `expo-haptics` on native and a no-op on web. Extend it
+   with a `medium()` shim if the spec wants Medium impact for
+   complete + delete; today there's `light` / `success` /
+   `warning` / `error` / `selection` (or whatever's actually
+   exported — re-verify before assuming).
+2. The visible animation surface is small: `UpvotePill` (scale
+   pulse on tap), the complete-button glyph in
+   `app/list/[id]/index.tsx`'s `ItemRow` (strikethrough fade-in on
+   the title — currently `textDecorationLine: "line-through"`
+   resolves instantly via `styles.itemTitleCompleted`), and
+   `Sheet` (enter/exit easing). Reanimated 3 is the right tool;
+   check whether `react-native-reanimated` is already a dep
+   (`apps/workshop/package.json`) before adding it.
+3. Don't change `ItemRow`'s public props — animations should be
+   internal to the primitive. The plan says "all driven from
+   primitives so call sites don't change."
+4. If you do extract a tiny vitest for haptic-call gating
+   (e.g. "doesn't fire haptics when offline"), put it next to
+   `haptics.ts` like `query.test.ts` lives next to `query.ts`.
+
+Known constraints for 5d / future chunks:
+
+- **Don't import `tokens` in new components.** Use `useTheme()`
+  per §3.28's constraint. `NewItemsPill` is the first primitive
+  that already follows this rule — copy that pattern.
+- **`computeNewItemsDelta` is pure and threshold-parametrised.**
+  If 5e (two-pane) needs a different scroll threshold for
+  desktop, pass it in via the existing `threshold` arg rather
+  than hardcoding a second constant.
+- **`previousLengthRef` resets on remount.** Navigating away
+  from a list and back resets the baseline, which is the right
+  behavior — we don't want to surface "you were last here 3 days
+  ago, here are 47 new items." If 5e two-pane keeps the
+  list-detail mounted across navigation, that invariant changes;
+  consider keying the ref off `id` (i.e. reset when the list id
+  changes) explicitly.
+- **The pill viewport is absolutely positioned with a magic
+  `top: 140`.** If 5e adds a new persistent header element above
+  the filter input, bump that constant or replace it with an
+  `onLayout`-measured value.
 
 ### Phase 2 — Enrichment (movies, TV, books, link previews)
 
