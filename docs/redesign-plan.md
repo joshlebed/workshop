@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (4a-1 share-flow JS plumbing + Phase 4 chunk decomposition) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (4a-2 deferred until Phase 5 polish lands; Phase 5 decomposed into chunks) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
@@ -190,26 +190,41 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   `aws ssm put-parameter --overwrite` won't drift Terraform state).
   Link-preview itself doesn't depend on the API keys (it scrapes OG
   tags directly), so the dev wiring works even with placeholder secrets.
-- **Phase 4** — iOS share extension. **4a-1 done** (this PR — JS-only
-  share-flow plumbing: `app/share/pick-list.tsx`, `app/share/index.tsx`
+- **Phase 4** — iOS share extension. **4a-1 done** — JS-only
+  share-flow plumbing landed (`app/share/pick-list.tsx`, `app/share/index.tsx`
   redirect, `?prefillUrl=` on `app/list/[id]/add.tsx`, Playwright
-  happy-path). **4a-2 pending** — native config plugin + Swift
-  extension + App Group entitlement + EAS native build. See §3.23
-  Phase 4 chunks table.
-- **Phase 5** — polish. Not started.
+  happy-path). **4a-2 deferred** until Phase 5 polish completes — see
+  §3.23 for rationale. The native config plugin + Swift extension + App
+  Group entitlement + EAS native build are blocked on a manual TestFlight
+  smoke test (real iPhone) and burn EAS free-tier minutes; landing them
+  before the rest of the app is polished risks rebuilds against a
+  still-shifting JS surface. Implementation guidance for whenever 4a-2
+  is picked up lives in §3.24 ("What 4a-2 should do _first_").
+- **Phase 5** — polish. **Now the active phase.** Decomposed into six
+  chunks in §3.25 (offline cache, light theme, "new items" pill, haptics +
+  micro-animations, desktop two-pane, full E2E coverage). Pick up **5a**
+  (offline cache) next.
 
 ### Next to implement
 
-The next chunk is **4a-2** — native iOS share extension. It requires
-an Expo config plugin (`apps/workshop/plugins/share-extension/`),
-Swift code for the extension target, App Group entitlement
-(`group.dev.josh.workshop`), and triggers a TestFlight build via
-`@expo/fingerprint`. The JS landing surface (`/share?url=…` →
-`/share/pick-list?url=…` → `/list/:id/add?prefillUrl=…`) is already
-in place from 4a-1, so 4a-2's deliverable is purely the native plumbing
-that hands a shared URL to the existing JS flow. See §3.24 for what
-4a-1 shipped and §3.19 / §3.20 / §3.21 / §3.22 for the Phase 3
-chunks before that.
+The next chunk is **5a — offline cache** (Phase 5 polish). It wires
+`persistQueryClient` into `apps/workshop/src/lib/query.ts` with
+platform-split storage persisters (`createAsyncStoragePersister` on
+iOS via `expo-async-storage`, `createSyncStoragePersister` on web via
+`window.localStorage`), so cold starts rehydrate from cache while
+queries revalidate in the background. Mutations attempted while
+offline revert with a "Retry?" toast. Sets a `maxAge` (24h) and a
+buster key bumped on shared-types changes to prevent stale-data
+hydration after schema shifts. See §3.25 for the full Phase 5 chunks
+table and §3.24 for what 4a-1 shipped.
+
+**Why not 4a-2?** Phase 4a-2 (native iOS share extension) is
+**deferred** until Phase 5 polish lands. It's blocked on a manual
+TestFlight smoke test (real iPhone), it consumes EAS free-tier build
+minutes, and the JS surface it hands off to is still being polished —
+landing native code now risks rebuilding against a moving target. See
+§3.23 for the deferral note and §3.24 for the implementation guidance
+that's been preserved in place for whenever 4a-2 is revisited.
 
 ---
 
@@ -2307,12 +2322,47 @@ by a native chunk (config plugin + Swift + EAS build). Splitting in this order
 means the JS landing surface lands on `main` first; the native extension just
 needs to hand off a URL to the existing flow.
 
-| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | External deps                                                                                                                                                                                                                           | Status             |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| **4a-1** | JS-only share-flow plumbing. New `app/share/pick-list.tsx` (list picker, accepts `?url=…`, "Create new list" row, on pick routes to `/list/[id]/add?prefillUrl=…`). New `app/share/index.tsx` thin redirect so `workshop://share?url=…` (4a-2 native) and `https://…/share?url=…` (web) both land on pick-list. `app/list/[id]/add.tsx` accepts `?prefillUrl=` and seeds the free-form URL field (search-flow lists ignore it). Two new Stack.Screen registrations in `app/_layout.tsx`. One Playwright happy-path.                                                                                                                               | None — pure code, web-testable.                                                                                                                                                                                                         | **Done (this PR)** |
-| **4a-2** | Native iOS share extension. New `apps/workshop/plugins/share-extension/` Expo config plugin (or vendored equivalent) that injects a Share Extension target, App Group entitlement (`group.dev.josh.workshop`), and the `public.url` / `public.plain-text` UTI declarations into the iOS project at prebuild. Minimal Swift extension code that writes the shared payload to app-group `UserDefaults` and opens `workshop://share?url=…`. `app/_layout.tsx` adds an `expo-linking` listener for app-resume cases (the initial URL is already covered by expo-router's file-based routing). EAS native build auto-triggers via `@expo/fingerprint`. | App Group `group.dev.josh.workshop` — already _registered_ in the Apple portal (see CLAUDE.md "iOS capabilities are config-as-code"); EAS sync re-enables the App ID capability when the config plugin lands a code declaration for it. | Pending            |
+**4a-2 is deferred until Phase 5 polish lands** — see "Deferral rationale"
+below the table. Pick up Phase 5 chunks (§3.25) before revisiting 4a-2.
+
+| Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | External deps                                                                                                                                                                                                                           | Status                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **4a-1** | JS-only share-flow plumbing. New `app/share/pick-list.tsx` (list picker, accepts `?url=…`, "Create new list" row, on pick routes to `/list/[id]/add?prefillUrl=…`). New `app/share/index.tsx` thin redirect so `workshop://share?url=…` (4a-2 native) and `https://…/share?url=…` (web) both land on pick-list. `app/list/[id]/add.tsx` accepts `?prefillUrl=` and seeds the free-form URL field (search-flow lists ignore it). Two new Stack.Screen registrations in `app/_layout.tsx`. One Playwright happy-path.                                                                                                                               | None — pure code, web-testable.                                                                                                                                                                                                         | **Done**                              |
+| **4a-2** | Native iOS share extension. New `apps/workshop/plugins/share-extension/` Expo config plugin (or vendored equivalent) that injects a Share Extension target, App Group entitlement (`group.dev.josh.workshop`), and the `public.url` / `public.plain-text` UTI declarations into the iOS project at prebuild. Minimal Swift extension code that writes the shared payload to app-group `UserDefaults` and opens `workshop://share?url=…`. `app/_layout.tsx` adds an `expo-linking` listener for app-resume cases (the initial URL is already covered by expo-router's file-based routing). EAS native build auto-triggers via `@expo/fingerprint`. | App Group `group.dev.josh.workshop` — already _registered_ in the Apple portal (see CLAUDE.md "iOS capabilities are config-as-code"); EAS sync re-enables the App ID capability when the config plugin lands a code declaration for it. | **Deferred** — pick up after Phase 5. |
+
+**Deferral rationale (decided 2026-04-28):** the share extension is the
+last native-only feature left in the redesign. Landing it before Phase 5
+polish has three concrete drawbacks:
+
+1. **Verification needs a real iPhone.** Acceptance ends with a manual
+   TestFlight smoke test (Safari → Share → "Workshop" → list picker). No
+   sandbox can close that loop, so the chunk would land code-complete but
+   functionally unverified — opposite of every other chunk in the plan.
+2. **EAS free-tier minutes are scarce (30/month).** Iterating on Swift +
+   the config plugin against a moving JS surface (Phase 5 still polishing
+   the screens the share extension hands off to) means rebuilds against
+   targets that change, burning minutes for no shipped value.
+3. **The JS landing surface (4a-1) already works on web.** The
+   `workshop://share?url=…` → `/share/pick-list?url=…` →
+   `/list/:id/add?prefillUrl=…` chain is verified end-to-end in
+   `tests/e2e/share-pick-list.spec.ts`. Whenever 4a-2 lands, it just
+   plugs into the existing flow — nothing about the wait costs us.
+
+Phase 5 polish (offline cache, light theme, "new items" pill, haptics,
+two-pane, full E2E) is mostly web-shippable, doesn't need native builds,
+and stabilizes the surface 4a-2 will hand off to. Implementation guidance
+for 4a-2 stays parked in §3.24 ("What 4a-2 should do _first_"); when the
+chunk is revisited, that section is still the right starting point —
+the App Group identifier remains registered in the Apple portal and the
+JS plumbing hasn't moved.
 
 #### 3.24 What 4a-1 actually shipped — start here for 4a-2
+
+> **Note (2026-04-28):** 4a-2 is **deferred** until Phase 5 polish
+> completes — see §3.23 "Deferral rationale" and §3.25 for the
+> active Phase 5 chunks. The implementation guidance below is
+> preserved verbatim because nothing about 4a-1's deliverables has
+> moved; pick up here whenever 4a-2 is revisited.
 
 Files that landed in 4a-1 (read these before touching 4a-2):
 
@@ -2459,6 +2509,46 @@ Known constraints for 4a-2 / future chunks:
   "back" from add returns to the picker) needs to flip to
   `router.push`. 4a-2's native extension flow assumes `replace`
   (the picker is transient).
+
+#### 3.25 Phase 5 chunks
+
+Phase 5 is the active phase as of 2026-04-28. The §3 narrative for
+Phase 5 (further down in this doc) lists six deliverables; this table
+decomposes them into shippable chunks. Each chunk is web-shippable —
+no native build required — so they can land back-to-back without EAS
+minutes or TestFlight smoke tests.
+
+The order below is the recommended pickup order. Earlier chunks have
+fewer dependencies and lower blast radius; later chunks (two-pane,
+full E2E) build on the polish foundations the earlier chunks land.
+
+| Chunk  | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | External deps                                                        | Status      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ----------- |
+| **5a** | Offline read cache. Wire `persistQueryClient` into `apps/workshop/src/lib/query.ts` with platform-split persisters: `createAsyncStoragePersister` (iOS, via `@react-native-async-storage/async-storage` or `expo-async-storage`) and `createSyncStoragePersister` (web, via `window.localStorage`). Set `maxAge: 24h` and a buster key derived from the shared-types version so a schema bump invalidates persisted state cleanly. Mutations attempted while offline revert + show a "Retry?" toast (re-uses 1b-2's optimistic-update infra). Add one Vitest unit for the buster key. | None.                                                                | **Pending** |
+| **5b** | Light theme tokens + `useColorScheme` flip. Extend `apps/workshop/src/ui/theme.ts` with a `light` palette mirror of the existing `dark` palette (semantic tokens stay stable; only raw hex values change). `ThemeProvider` reads `useColorScheme()` and swaps the active palette without remounts. No new component code — every primitive already reads from semantic tokens. Vitest snapshot of the resolved tokens for both modes.                                                                                                                                                 | None.                                                                | **Pending** |
+| **5c** | "New items" pill (spec §12). On `useQuery` refetch of `items.byList(id)`, compare the new length against the previous length; if `delta > 0` and the user has scrolled past the top, render a sticky pill at the top of `app/list/[id]/index.tsx` ("3 new items — tap to refresh") that scrolls to top + clears on tap. Hidden when the user is already at the top (the new rows render in place). Re-uses TanStack Query's `dataUpdatedAt` to drive the comparison.                                                                                                                  | None.                                                                | **Pending** |
+| **5d** | Haptics + micro-animations. Wire `expo-haptics` on upvote / complete / delete (Light/Medium impact respectively) with a `.web.ts` no-op. Reanimated micro-animations: 1.05× scale-pulse on upvote tap, strikethrough fade-in on complete, sheet enter/exit easing tuned. All driven from primitives (`UpvotePill`, `Checkbox`, `Sheet`) so call sites don't change.                                                                                                                                                                                                                   | None.                                                                | **Pending** |
+| **5e** | Desktop two-pane layout. Add a 768px breakpoint in `apps/workshop/app/_layout.tsx`: above the threshold render a left pane (lists index, sticky) + right pane (current list/item/modal); below the threshold the existing stack navigator is unchanged. Modals open centered over the right pane on desktop, full-screen on mobile. Verify back-button + deep-link behavior on both modes.                                                                                                                                                                                            | None.                                                                | **Pending** |
+| **5f** | Full Playwright E2E sweep. Cover sign-in (Google, JWKS-stubbed), create each of 5 list types, add an item via every pathway (movie/TV via TMDB stub, book via Google Books stub, free-form date-idea + trip via link-preview stub), upvote/unvote, complete/uncomplete, share-link accept in a second browser context, activity feed unread→read. Wire into a new `e2e.yml` GitHub Actions job running against a Dockerized Postgres. Lands the `signInAsDev(page)` test helper recommended in `AGENT-REFLECTIONS.md` 2026-04-28.                                                     | None — runs entirely against a local backend + local Postgres in CI. | **Pending** |
+
+**Pickup order:** 5a → 5b → 5c → 5d → 5e → 5f. The order is not strict —
+any 5a–5d chunk can land independently and in any order — but 5e
+benefits from light-mode tokens being in place (it touches layout
+primitives), and 5f benefits from everything else being stable
+(otherwise the test sweep churns). Within each chunk, follow the same
+"acceptance criteria from §3 Phase 5 narrative" verification gate the
+existing chunks use.
+
+**Notes for the next agent:**
+
+- **Don't pick up 4a-2 unless explicitly asked.** It's deferred; see
+  §3.23 "Deferral rationale". If the human asks to revisit it before
+  Phase 5 is done, fine — but don't take it as the default next pick.
+- **Phase 5 chunks are still chunks.** Apply the `/continue-redesign`
+  skill the same way: one chunk per PR, "What 5x actually shipped"
+  section after, plan-update in the same PR.
+- **The "Original Phase 5 deliverable list" further down in this doc
+  is the source narrative**; this table is the chunked PR plan.
 
 #### 3.9 Original Phase 1 deliverable list
 
