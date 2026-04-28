@@ -136,3 +136,84 @@ sign-in, which surfaced the auth-config friction below.
 | `dev@workshop.local` sticky state | New `POST /v1/auth/dev/reset` route + `beforeEach` call | ~1h  |
 | Each spec re-implements sign-in   | `signInAsDev(page)` helper                              | ~30m |
 | Env-var matrix not documented     | 8-line table in `apps/workshop/CLAUDE.md`               | ~15m |
+
+---
+
+## 2026-04-28 — deferring Phase 4a-2 (planning-doc-only PR)
+
+Context: `/continue-redesign` selected 4a-2 (native iOS share extension)
+as the next pickup per the "first Pending chunk with no unmet External
+deps" rule. Halted before writing code; the human confirmed the chunk
+should be deferred until Phase 5 polish lands. This PR is plan-doc
+edits only — no code, no tests, no CI hooks.
+
+### What went well
+
+- **The skill's "Halt and surface" rubric was the right gate.** The
+  rubric in `/continue-redesign` ("requires external setup", "much
+  bigger than scoped") matched 4a-2 cleanly: manual TestFlight smoke
+  test on a real iPhone, EAS free-tier minute consumption, and an
+  architectural choice (off-the-shelf vs vendor a config plugin).
+  Posting the summary _before_ writing any code saved the session
+  from burning ~1–2h of native-iOS work that would have landed
+  unverified.
+- **The §3.24 ("What 4a-2 should do _first_") section preserved
+  full implementation context.** Deferring didn't require deleting
+  the guidance — it stays parked in place for whenever 4a-2 is
+  revisited. Net: no information lost.
+- **Phase decomposition pattern was easy to extend.** §3.23 already
+  had the chunks-table format; adding §3.25 for Phase 5 chunks took
+  a single Edit using the same column shape (Chunk / What ships /
+  External deps / Status). The next agent gets a clear pickup target
+  (5a — offline cache) without me having to write any of the polish
+  code.
+
+### What didn't go well
+
+- **Section numbering in `docs/redesign-plan.md` is non-sequential
+  and getting confusing.** §3.9 ("Original Phase 1 deliverable list")
+  appears _after_ §3.24 in document order; the §3.x numbers reflect
+  insertion order rather than narrative position. I added §3.25 for
+  Phase 5 chunks; it's adjacent to §3.24 in document order but the
+  out-of-order §3.9 still sits between §3.25 and the Phase 5
+  narrative further down. Not blocking, but a future agent looking
+  for Phase 5 has to scroll past three unrelated sections to find
+  the chunks table → narrative → acceptance criteria flow.
+- **No automated way to verify "Status" cells in the chunks tables
+  match reality.** I changed 4a-2 from `Pending` to `Deferred` by
+  hand-editing the table. A typo or stale Status would not be caught
+  by `pnpm typecheck` / `lint` / `test`. The "Current status" prose
+  near the top of the doc and the §3.x table for the same chunk can
+  drift silently.
+
+### Actionable feedback
+
+1. **One-time renumber pass on §3 subsections.** Renumber the §3.x
+   sections so document order matches narrative order
+   (Phase 0 chunks → Phase 0 retros → Phase 1 chunks → Phase 1
+   retros → ... → Phase 5 chunks → Phase 5 retros). Not urgent;
+   becomes painful around Phase 5 if 5a–5f all land back-to-back
+   with their own retro sections at the bottom.
+2. **Add a status-consistency lint to CI.** A small Node script
+   (~30 lines) that parses the chunks tables in §3 and the
+   "Current status" / "Pending" / "Next to implement" sections at
+   the top, then asserts they reference the same chunks with the
+   same Status. Drops a class of plan-vs-reality drift bugs that
+   only get caught by the next agent reading the plan from cold.
+3. **Document the "defer" precedent in `/continue-redesign`.** The
+   skill currently has "Halt and surface" but doesn't describe the
+   _outcome_ shape when a chunk is deferred (plan edit, no code).
+   Adding a one-paragraph note like "If the human chooses to defer
+   the chunk, the PR is plan-doc-only: mark the chunk's Status as
+   `Deferred` in its §3.x table with a rationale subsection, update
+   the top-level pointers, and pick a new next chunk in the same
+   PR" would shrink the mental load for a future "halt → defer"
+   loop.
+
+### Friction → fix sketches (size estimates)
+
+| Friction                           | Fix                                                      | Size |
+| ---------------------------------- | -------------------------------------------------------- | ---- |
+| §3 subsection numbers out of order | One-time renumber pass on `docs/redesign-plan.md` §3.x   | ~30m |
+| Chunks-table Status drift          | Node script in `scripts/lint-redesign-plan.ts` + CI step | ~1h  |
+| "Defer" outcome shape undocumented | Add a paragraph to `/continue-redesign` skill            | ~10m |
