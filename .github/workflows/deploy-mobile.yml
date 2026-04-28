@@ -23,28 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
-        with: { version: 10.19.0 }
+      - uses: ./.github/actions/setup-pnpm
 
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: .nvmrc
-          cache: pnpm
-
-      - name: Cache hoisted node_modules
-        id: nm-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install deps
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
-
+      # eas-cli is pinned in apps/workshop devDependencies — no `npx eas-cli@latest`
+      # round-trip per run, and the version is now lockfile-pinned alongside the
+      # rest of the project deps.
       - name: Publish JS bundle via EAS Update
         working-directory: apps/workshop
         env:
@@ -55,7 +38,7 @@ jobs:
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          npx eas-cli@latest update \
+          pnpm exec eas update \
             --auto \
             --branch production \
             --message "ci: $COMMIT_SHA"

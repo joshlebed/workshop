@@ -1,0 +1,41 @@
+name: Setup pnpm + Node + cached deps
+description: |
+  Pin pnpm 10.19.0, set up Node from .nvmrc, restore the hoisted node_modules
+  cache, and install via `pnpm fetch && pnpm install --offline` on cache miss.
+  Pulls the same 5-step block out of every workflow so a pnpm/Node bump is one
+  edit instead of seven.
+outputs:
+  cache-hit:
+    description: Whether the node_modules cache was a hit (caller can skip its own install).
+    value: ${{ steps.nm-cache.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+      with:
+        version: 10.19.0
+
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+      with:
+        node-version-file: .nvmrc
+
+    - name: Cache hoisted node_modules
+      id: nm-cache
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: |
+          node_modules
+          apps/*/node_modules
+          packages/*/node_modules
+        key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+    # `pnpm fetch` populates the content-addressable store from pnpm-lock.yaml
+    # in parallel; `pnpm install --offline` then symlinks from the store. ~20–30%
+    # faster than a single `pnpm install` on cold cache because fetch parallelizes
+    # downloads independently of the install graph.
+    - name: Install deps (fetch + offline)
+      if: steps.nm-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        pnpm fetch
+        pnpm install --frozen-lockfile --offline

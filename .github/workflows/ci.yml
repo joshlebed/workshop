@@ -14,9 +14,13 @@ name: CI
 #     concerns (gitleaks always, migrate-smoke on migration changes). Skipping
 #     the duplicate full PR re-run on merge cuts roughly half the CI bill.
 #   - Docs-only PRs skip the workflow entirely via `paths-ignore`.
+#   - Draft PRs skip the heavy jobs entirely. Agents (Niteshift,
+#     /continue-redesign) push 2–10 commits to a draft before flipping to
+#     ready-for-review; each push otherwise burned ~2 billable min on `quality`.
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths-ignore:
       - "**/*.md"
       - "docs/**"
@@ -40,7 +44,7 @@ jobs:
   # when a deploy doesn't touch migrations.
   changes:
     name: Detect changes
-    if: github.event_name != 'schedule'
+    if: github.event_name != 'schedule' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -69,32 +73,12 @@ jobs:
   # don't change file content), the next PR will catch it.
   quality:
     name: Quality (lint, typecheck, test, knip, format, terraform, actionlint)
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
-        with:
-          version: 10.19.0
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: .nvmrc
-
-      - name: Cache hoisted node_modules
-        id: nm-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install deps
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-pnpm
 
       - name: Lint (biome)
         run: pnpm run lint
@@ -121,13 +105,26 @@ jobs:
         with:
           terraform_version: 1.14.7
 
+      # Cache provider plugins (~8 MB AWS provider) keyed on the lock file.
+      # Without this, every run re-downloads on `terraform init`. Saves
+      # ~10–15s per quality run, which often tips a 60s+10s run back under
+      # the 60s billable boundary.
+      - name: Cache Terraform plugins
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: tf-plugins-${{ runner.os }}-${{ hashFiles('infra/.terraform.lock.hcl') }}
+
       - name: terraform fmt
         working-directory: infra
         run: terraform fmt -check -recursive
 
       - name: terraform validate (offline, no backend)
         working-directory: infra
+        env:
+          TF_PLUGIN_CACHE_DIR: ~/.terraform.d/plugin-cache
         run: |
+          mkdir -p ~/.terraform.d/plugin-cache
           # Skip HCP backend for validation so PRs from forks can run.
           terraform init -backend=false
           terraform validate
@@ -137,32 +134,12 @@ jobs:
   mobile-bundle:
     name: Mobile Metro bundle
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.mobile == 'true'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
-        with:
-          version: 10.19.0
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: .nvmrc
-
-      - name: Cache hoisted node_modules
-        id: nm-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install deps
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-pnpm
 
       # Scoped on purpose — a full `expo install --check` also flags react/
       # typescript, which the monorepo intentionally pins above the SDK-preferred
@@ -188,7 +165,7 @@ jobs:
   migrate-smoke:
     name: Migrate smoke (fresh DB + idempotent re-run)
     needs: changes
-    if: needs.changes.outputs.migrations == 'true'
+    if: github.event.pull_request.draft != true && needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -213,27 +190,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
-        with:
-          version: 10.19.0
-
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: .nvmrc
-
-      - name: Cache hoisted node_modules
-        id: nm-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install deps
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-pnpm
 
       - name: Journal ↔ file consistency
         working-directory: apps/backend
