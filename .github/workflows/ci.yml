@@ -164,6 +164,8 @@ jobs:
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
       - run: pnpm run format:md:check
+      - name: Redesign-plan status consistency
+        run: node scripts/check-redesign-plan-status.mjs
 
   gitleaks:
     name: gitleaks
