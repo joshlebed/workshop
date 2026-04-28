@@ -338,3 +338,104 @@ false` because failed mutations don't need to survive a cold
 | `DATABASE_URL` unbound on restart    | `source /.env.setup` at top of `niteshift-setup.sh`         | ~2m  |
 | e2e/dev port conflict undocumented   | 3-line note in `apps/workshop/CLAUDE.md` (or new e2e guide) | ~5m  |
 | ↑ same                               | `scripts/e2e.sh` detect-and-reuse logic                     | ~30m |
+
+---
+
+## 2026-04-28 — Phase 5b light theme tokens chunk
+
+Context: chunk 5b of the redesign — restructure
+`apps/workshop/src/ui/theme.ts` to support `darkTokens` / `lightTokens`,
+add a `ThemeProvider` driven by `useColorScheme()`, and snapshot both
+palettes. Quick chunk in absolute terms; most of the friction was
+reading the plan vs. the code and realizing they disagreed.
+
+### What went well
+
+- **Vitest config + script were already in place from 5a.** The
+  `vitest.config.ts` glob (`src/**/*.test.ts`) picked up
+  `src/ui/theme.test.ts` with zero ceremony — `pnpm test` from
+  `apps/workshop/` ran the new file plus the existing `query.test.ts`
+  in ~3s. No config edits, no jest-vs-vitest fight.
+- **Inline snapshots in vitest are nicer than separate snapshot
+  files for tiny resolved-token objects.** `toMatchInlineSnapshot()`
+  keeps the expected hex values right next to the test, so a future
+  designer pass that tweaks `palette` will see the diff in the same
+  PR as the test update. Used here for both `darkTokens` and
+  `lightTokens`.
+- **`scripts/check-redesign-plan-status.mjs` caught my framing
+  draft.** Ran it after rewriting "Next to implement" prose; it
+  validated that the §3.26 chunks table and the prose now both name
+  5c. Took 200ms. Worth running before every plan-doc PR — it's
+  faster than mental cross-referencing.
+- **Knip's "duplicate exports" warning is precise enough to fix in
+  one edit.** Knip output `darkTokens|tokens apps/workshop/src/ui/theme.ts`
+  pinpointed the exact problem: `export const tokens = darkTokens;`
+  alongside `export const darkTokens = ...`. Switching to
+  `export { darkTokens as tokens };` made knip happy without changing
+  any consumer call sites. Took ~3 min from warning to clean.
+
+### What didn't go well
+
+- **The plan and the code disagreed about a foundational invariant.**
+  §3.26 says "no new component code — every primitive already reads
+  from semantic tokens" and §3.27's "What 5b should do _first_"
+  says `tokens = { dark: {...}, light: {...} }`. In reality, every
+  primitive imports the static `tokens` export at module load
+  (StyleSheet captures values on `create()`); switching to
+  `tokens.dark.bg.canvas` would require migrating ~491 call sites
+  across primitives + screens, well outside a "no new component
+  code" chunk. Spent ~15 min re-reading the plan to convince myself
+  the deviation was right, ~10 min implementing the
+  backward-compat alias, and ~10 min documenting the deviation in
+  §3.28. The architectural plumbing landed; the visible flip
+  (primitives reading `useTheme()` at render time) is now a
+  follow-up chunk that doesn't exist in §3.26 yet.
+- **Provider name collision with `@react-navigation/native`.** The
+  `_layout.tsx` already imported `ThemeProvider` from
+  `@react-navigation/native`. Adding our own meant aliasing one of
+  them; chose `NavigationThemeProvider` for the navigation one and
+  `ThemeProvider` for ours (matches the spec naming). Easy fix
+  (~5 min) but the kind of thing static-analyzers would catch as a
+  shadowed import — would help to flag at PR time.
+- **`useColorScheme` returning literal `null` on web during the
+  first render.** `react-native`'s typing has it as `"light" |
+"dark" | null | undefined`; my first cut did
+  `scheme === "dark" ? darkTokens : lightTokens` which silently
+  flipped the app to light on web until `prefers-color-scheme`
+  resolved. Defaulted to dark explicitly on null/undefined to
+  preserve the existing visual baseline. Worth a one-line note in
+  any future "useColorScheme on web" gotcha doc.
+
+### Actionable feedback
+
+1. **Update the §3.26 plan to drop the "no new component code"
+   claim or re-scope 5b to include primitive migration.** As shipped,
+   5b lands the architecture but doesn't visibly flip primitives —
+   it ships the door and leaves the wiring to a follow-up. If the
+   intent was a visible flip, the chunk needs a primitive-migration
+   sibling (call it 5b'). ~5m doc edit.
+2. **Add a `useTheme()`-based primitive migration chunk to §3.26.**
+   Concrete deliverable: rewrite each `apps/workshop/src/ui/*.tsx`
+   primitive to call `useTheme()` in render and inline its
+   StyleSheet (or memoize via `useMemo`). Mechanical change; ~30m
+   per primitive × 12 primitives ≈ 6h. Could also include screen
+   migration (491 → fewer call sites once primitives stop
+   importing `tokens` directly). Fits between 5b and 5c if the
+   visible flip matters.
+3. **CLAUDE.md "useColorScheme on web returns null first" note.**
+   2 lines: "On web, `useColorScheme()` resolves to `null` on the
+   first render before `prefers-color-scheme` hydrates. Always
+   default to your baseline mode rather than treating `null` as
+   light." ~3m edit, prevents one specific footgun.
+4. **No friction around `scripts/check-redesign-plan-status.mjs`.**
+   Already documented; ran cleanly. Nothing to change here, just
+   keep it in the skill loop.
+
+### Friction → fix sketches (size estimates)
+
+| Friction                                                           | Fix                                                                          | Size |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------- | ---- |
+| Plan said "no new component code" but primitives use static tokens | Update §3.26 5b deliverable wording or scope a 5b' primitive-migration chunk | ~5m  |
+| Primitives still bind to dark `tokens` after 5b                    | New chunk: migrate each `src/ui/*.tsx` primitive to `useTheme()` in render   | ~6h  |
+| `useColorScheme()` returns `null` on web first render              | One-line note in `CLAUDE.md` under "Conventions" or "Local development"      | ~3m  |
+| `@react-navigation/native` ThemeProvider name collision            | One-shot rename happened cleanly; no codebase-wide fix needed                | n/a  |
