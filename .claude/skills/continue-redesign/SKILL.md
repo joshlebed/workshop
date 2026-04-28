@@ -97,24 +97,38 @@ This phase is what makes the next agent fast. Do not skip it.
     - What landed, in 2–3 bullets (file/area level, not line-by-line)
     - Acceptance criteria verified (typecheck/lint/test/manual checks)
     - Any deviations from the plan, follow-ups, or things the human should glance at
-    - That you're about to arm auto-merge (or merge manually) unless they say otherwise
+    - That you're about to poll CI and merge manually once green, unless they say otherwise
 
     This is the human's last chance to catch a framing issue before the PR lands. If running fully autonomously, still post the report — it lands in the transcript and PR description for after-the-fact review. Don't wait for confirmation in autonomous mode; proceed to step 15 immediately after posting.
 
-15. **Try to arm auto-merge** so the PR self-merges when checks pass:
-    `gh pr merge <PR> --auto --squash --delete-branch`. The project uses squash merges (verify: `git log origin/main --oneline -10`); pass `--squash` explicitly so it's not subject to repo defaults changing.
+15. **Auto-merge is disabled on this repo** (private repo on the free GitHub plan — see `CLAUDE.md`).
+    Don't waste a turn trying to arm it; the canonical path here is **poll CI to green, then manually merge**.
 
-    Auto-merge requires GitHub branch protection to be configured, which on a private repo on the free GitHub plan is unavailable. **If the command fails with `"Auto merge is not allowed for this repository"` or similar, that's the cause — silently fall back to manual merge in step 16.** Don't surface this as a problem; it's just a config gap.
+    (If you _want_ to try the optimistic shortcut anyway: `gh pr merge <PR> --auto --squash --delete-branch`.
+    It will fail with `"Auto merge is not allowed for this repository"`. Treat that failure as expected
+    and proceed to step 16. Do not retry. Do not pretend it succeeded.)
 
-16. Poll CI: `gh pr checks <PR>` until all checks finish.
-    - **If auto-merge is armed and required checks pass**: GitHub fires the merge automatically. Verify with `gh pr view <PR> --json state` (should be `MERGED`). Move on.
-    - **If auto-merge is NOT armed and required checks pass**: run `gh pr merge <PR> --squash --delete-branch` manually.
+16. **Poll CI in a blocking wait** until all checks finish — do not exit this step early.
+    Use `gh pr checks <PR> --watch --interval 30 --fail-fast=false`. The `--watch` flag blocks
+    until every check has a terminal status (success/failure/skipped); the command exits 0 if
+    all required checks pass and non-zero otherwise. **Single-shot `gh pr checks <PR>` is not
+    polling — it returns immediately with whatever's running. If you find yourself looking at
+    a "pending" output and moving on, you skipped this step.**
+
+    Then act on the result:
+    - **All required checks pass**: run `gh pr merge <PR> --squash --delete-branch` and verify
+      with `gh pr view <PR> --json state` (should be `MERGED`). Squash is explicit so it's not
+      subject to repo defaults changing — verify project convention with `git log origin/main --oneline -10`.
     - **A required check fails**:
-      - Flake (intermittent timeout, network, dependency download) → `gh run rerun --failed <run-id>` once. If auto-merge was armed, it stays armed and will fire after a successful rerun.
-      - Real failure → fix the issue and push another commit. If auto-merge was armed, it stays armed.
-      - Two failed attempts from the same root cause → halt and surface to the human. If auto-merge was armed, **disarm it** with `gh pr merge <PR> --disable-auto` so it doesn't fire on a future flaky-pass.
+      - Flake (intermittent timeout, network, dependency download) → `gh run rerun --failed <run-id>`
+        once, then re-run `gh pr checks <PR> --watch` to wait for the rerun.
+      - Real failure → fix the issue, push another commit, then re-run `gh pr checks <PR> --watch`.
+      - Two failed attempts from the same root cause → halt and surface to the human.
     - Niteshift's `niteshift-check` is intentionally non-required — it's blocking only on the agent's own session, not on merge.
     - Cloudflare Pages preview check is informational; treat it as a hint, not a blocker.
+
+    **Never merge before `gh pr checks --watch` exits 0 for the required check set.** "I think it'll
+    pass" is not the same as "it passed."
 
 17. Verify the merge triggered the right downstream workflows:
     - Backend changes → `Deploy Backend` runs.
