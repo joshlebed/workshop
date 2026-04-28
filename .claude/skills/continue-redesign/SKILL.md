@@ -14,7 +14,7 @@ The plan is the source of truth — but it should also _learn_. If you discover 
 ## Phase 1 — Discover and scope
 
 1. Read these in order:
-   - `docs/redesign-plan.md`. The "Current status" section near the top is your map. Per-chunk tables in §3.1, §3.7, §3.13 etc. show Status.
+   - `docs/redesign-plan.md`. The "Current status" section near the top is your map. Per-chunk tables in §3.1, §3.8, §3.14 etc. show Status.
    - `CLAUDE.md` (top-level conventions, deploy gotchas).
    - The relevant per-area `CLAUDE.md` (e.g. `apps/backend/CLAUDE.md`).
    - The "What [previous chunk] actually shipped" section for the chunk that lands just before yours. That's your real context.
@@ -56,7 +56,7 @@ This phase is what makes the next agent fast. Do not skip it.
 
 8. Update `docs/redesign-plan.md`:
    - In the chunk table, change the Status from `Pending` to `Done (this PR)`.
-   - Add a new `#### What [chunk-id] actually shipped — start here for [next chunk]` section, **mirroring the format of existing such sections** in the plan (look at §3.6, §3.8, §3.10, §3.12, §3.14 for templates). Include:
+   - Add a new `#### What [chunk-id] actually shipped — start here for [next chunk]` section, **mirroring the format of existing such sections** in the plan (look at §3.5, §3.9, §3.10, §3.12, §3.15 for templates). Include:
      - File-level list of what landed (paths + 1–2 lines explaining each)
      - Test counts and pattern (e.g. "29 tests landed; same convention as `lists.test.ts`")
      - Surprises, deviations from plan, gotchas the next agent should know
@@ -148,6 +148,10 @@ Halt and ask the human when:
 - A required check fails twice in a row from the same root cause.
 - You discover the chunk is much bigger than scoped (>2× estimated effort, or requires architectural decisions not in the plan).
 - A migration or destructive operation is implied by the plan but not spelled out.
+
+### If the human chooses to defer the chunk
+
+The PR becomes **plan-doc-only** — no code changes. In the same PR: flip the chunk's Status in its §3.x chunks table from `Pending` to `Deferred`; add a "Deferral rationale" subsection right under that table capturing _why_ and _what unblocks revisiting it_ (so the next agent doesn't re-litigate the decision); update the top-level pointers in "Current status" → "Pending" and "Next to implement" so they point at the new active chunk; and pick that new chunk per the Phase 1 selection rule. Run `node scripts/check-redesign-plan-status.mjs` before pushing — it catches the drift case where the prose still names the deferred chunk as "Next to implement". Then ship the PR through the normal Phase 4 flow; auto-merge applies the same way.
 
 ---
 

@@ -194,14 +194,14 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   share-flow plumbing landed (`app/share/pick-list.tsx`, `app/share/index.tsx`
   redirect, `?prefillUrl=` on `app/list/[id]/add.tsx`, Playwright
   happy-path). **4a-2 deferred** until Phase 5 polish completes — see
-  §3.23 for rationale. The native config plugin + Swift extension + App
+  §3.24 for rationale. The native config plugin + Swift extension + App
   Group entitlement + EAS native build are blocked on a manual TestFlight
   smoke test (real iPhone) and burn EAS free-tier minutes; landing them
   before the rest of the app is polished risks rebuilds against a
   still-shifting JS surface. Implementation guidance for whenever 4a-2
-  is picked up lives in §3.24 ("What 4a-2 should do _first_").
+  is picked up lives in §3.25 ("What 4a-2 should do _first_").
 - **Phase 5** — polish. **Now the active phase.** Decomposed into six
-  chunks in §3.25 (offline cache, light theme, "new items" pill, haptics +
+  chunks in §3.26 (offline cache, light theme, "new items" pill, haptics +
   micro-animations, desktop two-pane, full E2E coverage). Pick up **5a**
   (offline cache) next.
 
@@ -215,15 +215,15 @@ iOS via `expo-async-storage`, `createSyncStoragePersister` on web via
 queries revalidate in the background. Mutations attempted while
 offline revert with a "Retry?" toast. Sets a `maxAge` (24h) and a
 buster key bumped on shared-types changes to prevent stale-data
-hydration after schema shifts. See §3.25 for the full Phase 5 chunks
-table and §3.24 for what 4a-1 shipped.
+hydration after schema shifts. See §3.26 for the full Phase 5 chunks
+table and §3.25 for what 4a-1 shipped.
 
 **Why not 4a-2?** Phase 4a-2 (native iOS share extension) is
 **deferred** until Phase 5 polish lands. It's blocked on a manual
 TestFlight smoke test (real iPhone), it consumes EAS free-tier build
 minutes, and the JS surface it hands off to is still being polished —
 landing native code now risks rebuilding against a moving target. See
-§3.23 for the deferral note and §3.24 for the implementation guidance
+§3.24 for the deferral note and §3.25 for the implementation guidance
 that's been preserved in place for whenever 4a-2 is revisited.
 
 ---
@@ -365,7 +365,7 @@ Open carry-overs for 0c that subsequent chunks should NOT touch:
 - `SES_FROM_ADDRESS` env var removal from `lambda.tf`
 - SSM SecureString params for OAuth client IDs + API keys
 
-#### 3.4 What 0b-1 actually shipped — start here for 0b-2
+#### 3.3 What 0b-1 actually shipped — start here for 0b-2
 
 Files that landed in 0b-1 (read these first; they're the foundation 0b-2
 builds the client against):
@@ -447,7 +447,7 @@ Known constraints for 0b-2:
   has a null `display_name`. Route to `app/onboarding/display-name.tsx` on
   true; otherwise land on the home placeholder.
 
-#### 3.5 What 0b-2 actually shipped — start here for 0c
+#### 3.4 What 0b-2 actually shipped — start here for 0c
 
 Files that landed in 0b-2 (read these before touching 0c):
 
@@ -512,7 +512,7 @@ Terraform apply that wires them into Lambda env vars, and real OAuth client
 IDs have to be pasted into SSM _before_ the client's Sign-in buttons stop
 showing the warning dialog.
 
-#### 3.6 What 0c-1 actually shipped — start here for 0c-2
+#### 3.5 What 0c-1 actually shipped — start here for 0c-2
 
 Files that landed in 0c-1 (read these first before touching 0c-2):
 
@@ -556,7 +556,7 @@ get pasted into SSM, SSM must exist before `terraform apply` wires the
 Lambda env vars, and real client IDs must be in SSM before the client
 sign-in buttons stop showing warning dialogs.
 
-#### 3.6.1 What 0c-2 actually shipped — start here for the next chunk
+#### 3.6 What 0c-2 actually shipped — start here for the next chunk
 
 The portal + SSM + Terraform apply + Cloudflare Pages env vars landed
 ahead of the client PR (notes inlined in §"Current status" → "Done"
@@ -654,17 +654,17 @@ span`), clicks it, and falls back to `google.accounts.id.prompt()`
   so the sign-in screen treats both providers as available; tests
   stub the SDK callbacks directly so no value ever leaves the browser.
 
-What the next chunk (2b-1 client search modal — see §3.13) should do
+What the next chunk (2b-1 client search modal — see §3.14) should do
 _first_: read `apps/backend/src/routes/v1/search.ts` for the response
 shapes (`MediaSearchResponse`, `BookSearchResponse` in
 `@workshop/shared`) and `apps/workshop/app/list/[id]/add.tsx` for the
 current "search lands in Phase 2" stub banner. The new
 `src/api/search.ts` should mirror the existing `src/api/items.ts`
 shape (one function per route, thin wrapper, no caching — TanStack
-Query owns caching). The 2b-1 row in §3.13 is the source of truth for
+Query owns caching). The 2b-1 row in §3.14 is the source of truth for
 the deliverable list.
 
-#### 3.3 Original Phase 0 deliverable list
+#### 3.7 Original Phase 0 deliverable list
 
 (Each item is now annotated with the chunk that lands it.)
 
@@ -807,7 +807,7 @@ is Phase 3.
 Phase 1 ships as a stack of chunks (mirroring Phase 0) so each PR is reviewable
 on its own and `main` stays deployable between landings.
 
-#### 3.7 Phase 1 chunks
+#### 3.8 Phase 1 chunks
 
 | Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | External deps                                                                                                       | Status             |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------ |
@@ -816,7 +816,7 @@ on its own and `main` stays deployable between landings.
 | **1b-1** | Client TanStack Query foundation + home screen: `apps/workshop/src/lib/query.ts` (`QueryClient` with `refetchOnWindowFocus` / `refetchOnReconnect`), `src/lib/queryKeys.ts` (centralized factory), `src/api/lists.ts` (typed wrappers around `/v1/lists`), `app/index.tsx` rewritten as the rich list-cards home with FAB and empty state. New primitives in `src/ui/`: `Sheet`, `Modal`, `Toast`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | None.                                                                                                               | **Done** (this PR) |
 | **1b-2** | Client list detail + create-list flow: `app/list/[id]/index.tsx` (filter bar + completed section), `app/list/[id]/item/[itemId].tsx`, `app/list/[id]/add.tsx` (free-form for date-idea / trip; movie/TV/book stubs route to free-form until Phase 2), `app/create-list/type.tsx` + `customize.tsx`. New primitives: `UpvotePill`, `Avatar`, `Chip`. Optimistic-update helpers for upvote/complete/add with toast rollback. `expo-haptics` wired on upvote/complete/delete (no-op `.web.ts`). One Playwright happy-path: create list → add item → upvote → complete.                                                                                                                                                                                                                                                                                                                                 | None.                                                                                                               | **Done** (this PR) |
 
-#### 3.8 What 1a-1 actually shipped — start here for 1a-2
+#### 3.9 What 1a-1 actually shipped — start here for 1a-2
 
 Files that landed in 1a-1 (read these before touching 1a-2):
 
@@ -1174,7 +1174,70 @@ Known constraints for 2a-1:
   the existing `rateLimit({ family, key })` middleware with a
   `userId`-derived key (the search routes are auth-only).
 
-#### 3.13 Phase 2 chunks
+#### 3.13 Original Phase 1 deliverable list
+
+(Each item is annotated with the chunk that lands it.)
+
+**Deliverables**:
+
+1. **Backend routes** (`apps/backend/src/routes/v1/`)
+   - `lists.ts` — `GET /v1/lists`, `POST`, `GET /:id`, `PATCH /:id`, `DELETE /:id`. — _1a-1_
+   - `items.ts` — `GET /v1/lists/:id/items`, `POST`, `GET /v1/items/:id`,
+     `PATCH`, `DELETE`, `POST /:id/upvote`, `DELETE /:id/upvote`,
+     `POST /:id/complete`, `POST /:id/uncomplete`. — _1a-2_
+   - Helpers: `requireListMember` / `requireListOwner` middleware (1a-1)
+     plus `requireItemMember` (1a-2) used by every item-keyed route.
+2. **Item creation transactionally inserts the creator's upvote** (spec §2.3). — _1a-2_
+3. **List query returns `upvote_count` as a computed column** via
+   `LEFT JOIN ... COUNT(...)::int` (spec §7.7). Sort: `upvote_count DESC,
+created_at DESC`. — _1a-2_
+4. **Client**
+   - `app/index.tsx` — Home with rich list cards, empty state, FAB. — _1b-1_
+   - `app/create-list/_layout.tsx` + `type.tsx` + `customize.tsx` —
+     create-list modal stack (skip the Invite screen in P1; added in P3). — _1b-2_
+   - `app/list/[id]/index.tsx` — list detail with filter bar, upvote pill,
+     completed section. — _1b-2_
+   - `app/list/[id]/item/[itemId].tsx` — item detail. — _1b-2_
+   - `app/list/[id]/add.tsx` — free-form add (date-idea/trip type only).
+     Movie/TV/Book add pathway is a stub that routes to free-form until P2. — _1b-2_
+   - New primitives: `Sheet`, `Modal`, `Toast` (1b-1); `UpvotePill`,
+     `Avatar`, `Chip` (1b-2).
+5. **TanStack Query integration** (`apps/workshop/src/lib/query.ts`) — _1b-1_
+   - `QueryClient` setup with `refetchOnWindowFocus`, `refetchOnReconnect`.
+   - `queryKeys.ts` — centralized key factory (`lists.all`, `lists.detail(id)`,
+     `items.byList(id)`, `items.detail(id)`).
+   - Optimistic update helpers for upvote, complete, add — _1b-2_. Rollback
+     with toast on error (spec §5.5).
+6. **Shared types**: `List`, `ListMemberSummary`, list CRUD request bodies — _1a-1_;
+   `Item`, item CRUD request bodies — _1a-2_.
+7. **Haptics**: wire `expo-haptics` on upvote / complete / delete (no-op on
+   web — handle via `.web.ts` override). — _1b-2_
+
+**Dependencies**: Phase 0.
+
+**Acceptance**:
+
+- Create-list → add 3 items → upvote two → complete one → they sort and grey
+  correctly.
+- Edit title + note inline on item detail persists.
+- Delete list cascades (verified by a `DELETE /v1/lists/:id` integration test
+  that then queries `items` by list_id — zero rows).
+- Playwright: create list → add item → upvote → complete, all on web.
+- Unit coverage: item sort order, optimistic upvote rollback.
+
+**Risks**:
+
+- TanStack Query's optimistic update pattern is new to the codebase —
+  non-trivial first time. Budget a small spike at the start of the phase.
+- The client-side "filter bar" (spec §4.2) is literal substring match on
+  rendered list — keep it client-only; don't add a server query param.
+- Swipe gestures (spec §5.5) depend on `react-native-gesture-handler` +
+  `reanimated`. Already in deps, but first real use — verify on web where
+  gesture-handler is a partial shim.
+
+---
+
+#### 3.14 Phase 2 chunks
 
 Each chunk is independently shippable; CI gates on backend tests +
 Playwright. The split mirrors Phase 1: 2a is backend-only and 2b is
@@ -1187,7 +1250,7 @@ client-only.
 | **2b-1** | Client search modal: `app/list/[id]/add.tsx` rewrites the movie/TV/book "stub" banner from 1b-2 into a real type-aware add flow. New primitive `<SearchResultRow>` (poster + title + year + add button). New `useDebouncedQuery(input, 300)` hook. New `src/api/search.ts` typed wrappers. Selecting a result calls `createItem` with the normalised metadata pre-filled. Playwright: add a movie via search on a movie list.                                                                                                                                                                                                                                                  | 2a-1.                                                                                                 | Done (this PR) |
 | **2b-2** | Client URL link preview: `app/list/[id]/add.tsx` for date-idea / trip lists fetches `/v1/link-preview` on URL `onBlur` (debounced + cancellable via `AbortController`). New `src/api/linkPreview.ts`. Inline preview card under the URL field with poster + site name + title; "couldn't fetch preview" fallback after 3s. Playwright: paste a URL, see the preview, save.                                                                                                                                                                                                                                                                                                     | 2a-2.                                                                                                 | Done (this PR) |
 
-#### 3.14 What 2a-1 actually shipped — start here for 2a-2
+#### 3.15 What 2a-1 actually shipped — start here for 2a-2
 
 Files that landed in 2a-1 (read these before touching 2a-2):
 
@@ -1285,7 +1348,7 @@ windowSec: 60, key: userKey })`. Same `userKey` helper as
   `POST/PATCH /v1/items`. If you add a field to `LinkPreview`, add it
   to `placeMetadataSchema` in the same PR.
 
-#### 3.15 What 2a-2 actually shipped — start here for 2b-1 / 2b-2
+#### 3.16 What 2a-2 actually shipped — start here for 2b-1 / 2b-2
 
 Files that landed in 2a-2 (read these before touching 2b-1 or 2b-2):
 
@@ -1377,10 +1440,10 @@ to confirm `placeMetadataSchema` accepts everything `LinkPreview`
 returns. The new `src/api/linkPreview.ts` is a typed wrapper around
 `GET /v1/link-preview?url=…` — pass the user's input through `new
 URL()` client-side first to fail fast on garbage. The `onBlur`
-debounce + `AbortController` pattern is described in the §3.13 row;
+debounce + `AbortController` pattern is described in the §3.14 row;
 no new backend work needed.
 
-#### 3.16 What 2b-1 actually shipped — start here for 2b-2
+#### 3.17 What 2b-1 actually shipped — start here for 2b-2
 
 Files that landed in 2b-1 (read these before touching 2b-2):
 
@@ -1453,10 +1516,10 @@ Known constraints for 2b-2:
 - The free-form `url` field still POSTs as the item's `url` column;
   metadata image is separate. Both can coexist on one item.
 - Reuse the `useDebouncedQuery` hook (300ms is a fine default; the
-  `onBlur` pattern in §3.13 is also valid — pick whichever feels
+  `onBlur` pattern in §3.14 is also valid — pick whichever feels
   right but don't reinvent the debounce primitive).
 
-#### 3.17 What 2b-2 actually shipped — start here for Phase 3
+#### 3.18 What 2b-2 actually shipped — start here for Phase 3
 
 Files that landed in 2b-2 (read these before touching the next chunk):
 
@@ -1505,7 +1568,7 @@ Files that landed in 2b-2 (read these before touching the next chunk):
     from the response are _not_ sent — `url` would collide with the
     schema (no `url` key in `placeMetadataSchema`) and `fetchedAt`
     isn't allowed either. The schema is `.strict()` so any stray field
-    would 400; this is the constraint §3.16 flagged.
+    would 400; this is the constraint §3.17 flagged.
 - `tests/e2e/add-link-preview.spec.ts` — new Playwright happy-path:
   dev-sign-in (`Promise.race(displayName, homeGreeting)` for dirty-DB
   resilience, same as `add-search.spec.ts`) → create date-idea list →
@@ -1515,7 +1578,7 @@ Files that landed in 2b-2 (read these before touching the next chunk):
     No backend dependencies beyond the running dev server (the
     link-preview route doesn't need any third-party API key — see
     `apps/backend/src/routes/v1/link-preview.ts`).
-- `docs/redesign-plan.md` — this section, the §3.13 status flip, the
+- `docs/redesign-plan.md` — this section, the §3.14 status flip, the
   top-of-doc status snapshot, and the rewritten "Next to implement"
   pointer to Phase 3.
 
@@ -1527,21 +1590,21 @@ findings.
 
 Surprises / deviations from plan:
 
-- **No manual `AbortController`.** §3.13's row mentioned
+- **No manual `AbortController`.** §3.14's row mentioned
   "cancellable via `AbortController`" — TanStack Query's built-in
   `signal` handed to the `queryFn` is the same primitive (it's an
   `AbortSignal` under the hood) and the library cancels it on key
   change. Building a parallel `useEffect` + `new AbortController()`
-  would have duplicated the cancellation logic. Same trade §3.16
+  would have duplicated the cancellation logic. Same trade §3.17
   recommended for 2b-1's search flow.
-- **No explicit 3s "fallback after 3s" timer in the client.** §3.13
+- **No explicit 3s "fallback after 3s" timer in the client.** §3.14
   said "couldn't fetch preview" fallback after 3s; in practice the
   backend's `AbortSignal.timeout(3000)` enforces the timeout
   upstream-side, and the resulting error becomes `previewQuery.error`
   immediately. A second client-side timer would race the server's
   error response. Documented above so the next agent knows it was
   intentional.
-- **`sourceId` is `finalUrl`, not a sha1 hash.** §3.16 said
+- **`sourceId` is `finalUrl`, not a sha1 hash.** §3.17 said
   `sourceId: <hash>` — but the route already hashes the URL
   internally (cache key) and the _client-facing_ `LinkPreview` exposes
   `finalUrl` (post-redirect canonical URL). Storing the canonical URL
@@ -1551,9 +1614,9 @@ Surprises / deviations from plan:
   reject — if that becomes a problem in production, switch to a hash
   here AND widen the schema in the same PR.
 
-What Phase 3 should do _first_: §3.17 (this section) used the chunk
+What Phase 3 should do _first_: §3.18 (this section) used the chunk
 slot that future phases used for the chunk _table_. Phase 3 needs to
-draft a §3.18 chunks table (§3.13 / §3.7 are good templates) before
+draft a §3.19 chunks table (§3.14 / §3.8 are good templates) before
 picking up code. The first chunks come straight out of spec
 [§3 (groups + memberships)](redesign-spec.md) and §6 (share-link
 invites). The auth + items + lists CRUD that lands them is already
@@ -1575,7 +1638,7 @@ Known constraints for Phase 3:
   asserts this for the single-tenant case; widen the assertion when
   groups land.
 
-#### 3.18 Phase 3 chunks
+#### 3.19 Phase 3 chunks
 
 Each chunk is independently shippable. The split mirrors Phases 1 and 2
 (3a is backend, 3b is client). 3a-1 lands the membership primitives
@@ -1589,7 +1652,7 @@ every mutating handler against a real membership surface.
 | **3b-1** | Client list settings + share-link UX: `apps/workshop/app/list/[id]/settings.tsx` modal sheet — Details (rename / emoji / color / description, owner-only), Members (with Leave for non-owners and Remove for owner), Share link (generate + copy + revoke), Danger zone (Delete list, owner-only). New `apps/workshop/app/onboarding/accept-invite.tsx` deep-link handler routed via `expo-linking` (`workshop.dev/invite/:token` on web, `workshop://invite/:token` on iOS). Auto-join after OAuth sign-in; routes to the joined list. New typed wrappers in `src/api/invites.ts` + `src/api/members.ts`. Playwright happy-path: owner generates link → second context accepts via dev sign-in → both see the list.                                                                                                                                                      | 3a-1.                                                  | Done (this PR) |
 | **3b-2** | Client activity feed + bell badge: `apps/workshop/app/activity.tsx` cross-list feed (50/page, infinite scroll). Bell `IconButton` in the home header showing unread count from `GET /v1/activity` (clientside `unreadCount` derived from `lastReadAt` per list). Tapping the bell navigates to `activity.tsx` and fires `POST /v1/activity/read`. Add a "Share link" step to the create-list flow (`apps/workshop/app/create-list/share.tsx`) — copy-link only, no email. Playwright happy-path: actor adds an item → other browser sees the event in the feed → unread count clears after tap.                                                                                                                                                                                                                                                                           | 3a-2 (events) + 3b-1 (share UX surface) for the badge. | Done (this PR) |
 
-#### 3.19 What 3a-1 actually shipped — start here for 3a-2
+#### 3.20 What 3a-1 actually shipped — start here for 3a-2
 
 Files that landed in 3a-1 (read these before touching 3a-2):
 
@@ -1749,7 +1812,7 @@ Known constraints for 3a-2:
   asserts the single-tenant case (creator is the only upvoter on a
   fresh insert); 3a-2's tests should preserve that.
 
-#### 3.20 What 3a-2 actually shipped — start here for 3b-1 / 3b-2
+#### 3.21 What 3a-2 actually shipped — start here for 3b-1 / 3b-2
 
 Files that landed in 3a-2 (read these before touching 3b-1 / 3b-2):
 
@@ -1920,7 +1983,7 @@ Known constraints for 3b-1 / 3b-2:
   non-member listIds.** Surface only one Toast per user gesture, not
   per skipped list.
 
-#### 3.21 What 3b-1 actually shipped — start here for 3b-2
+#### 3.22 What 3b-1 actually shipped — start here for 3b-2
 
 Files that landed in 3b-1 (read these before touching 3b-2):
 
@@ -2093,7 +2156,7 @@ Surprises / deviations from plan:
   add a beforeAll that nulls `display_name` for `dev@workshop.local`.
 
 What 3b-2 should do _first_: read `apps/backend/src/routes/v1/activity.ts`
-for the cursor + read-marker shapes (already documented in §3.20),
+for the cursor + read-marker shapes (already documented in §3.21),
 then mirror the TanStack Query infinite-scroll pattern from
 `app/list/[id]/index.tsx`. Add `src/api/activity.ts`, then
 `apps/workshop/app/activity.tsx`. The bell badge in the home header
@@ -2127,7 +2190,7 @@ Known constraints for 3b-2:
 - **Dev-DB drift between specs.** Already covered above; mention here
   so the next agent doesn't re-discover it.
 
-#### 3.22 What 3b-2 actually shipped — Phase 3 complete
+#### 3.23 What 3b-2 actually shipped — Phase 3 complete
 
 Files that landed in 3b-2 (read these before touching Phase 4):
 
@@ -2183,7 +2246,7 @@ Files that landed in 3b-2 (read these before touching Phase 4):
   `queryKeys.lists.detail(listId)` AND
   `queryKeys.invites.forList(listId)` — the invites cache key was
   declared but unused in 3b-1; this is its first consumer per the
-  §3.21 hint. testIDs: `create-list-share-generate`,
+  §3.22 hint. testIDs: `create-list-share-generate`,
   `create-list-share-url`, `create-list-share-copy`,
   `create-list-share-done`, `create-list-share-skip-icon`. The
   `Done` / `Skip for now` button calls `router.dismissAll()` then
@@ -2222,7 +2285,7 @@ existing specs touched with 2-line dismiss-step patches. Backend
 vitest count is the same 216 across 19 files (no backend changes in
 3b-2). `pnpm run typecheck && pnpm run lint && pnpm run test` all
 pass. `pnpm run e2e` runs 7 specs — 6 pass green; the 7th
-(`sign-in.spec.ts`) hits the documented §3.21 known-flake (dirty
+(`sign-in.spec.ts`) hits the documented §3.22 known-flake (dirty
 `dev@workshop.local.display_name` from prior specs in the same batch),
 unrelated to 3b-2. Reset via `UPDATE users SET display_name = NULL
 WHERE email = 'dev@workshop.local'` and the spec passes.
@@ -2315,7 +2378,7 @@ Known constraints for Phase 4 / future chunks:
   upvotes my item even if I'm the actor"), the filter in
   `app/index.tsx`'s `events.reduce` is the place to extend.
 
-#### 3.23 Phase 4 chunks
+#### 3.24 Phase 4 chunks
 
 Phase 4 splits into a JS-only chunk (web-testable, no native build) followed
 by a native chunk (config plugin + Swift + EAS build). Splitting in this order
@@ -2323,7 +2386,7 @@ means the JS landing surface lands on `main` first; the native extension just
 needs to hand off a URL to the existing flow.
 
 **4a-2 is deferred until Phase 5 polish lands** — see "Deferral rationale"
-below the table. Pick up Phase 5 chunks (§3.25) before revisiting 4a-2.
+below the table. Pick up Phase 5 chunks (§3.26) before revisiting 4a-2.
 
 | Chunk    | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | External deps                                                                                                                                                                                                                           | Status                                |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
@@ -2351,15 +2414,15 @@ polish has three concrete drawbacks:
 Phase 5 polish (offline cache, light theme, "new items" pill, haptics,
 two-pane, full E2E) is mostly web-shippable, doesn't need native builds,
 and stabilizes the surface 4a-2 will hand off to. Implementation guidance
-for 4a-2 stays parked in §3.24 ("What 4a-2 should do _first_"); when the
+for 4a-2 stays parked in §3.25 ("What 4a-2 should do _first_"); when the
 chunk is revisited, that section is still the right starting point —
 the App Group identifier remains registered in the Apple portal and the
 JS plumbing hasn't moved.
 
-#### 3.24 What 4a-1 actually shipped — start here for 4a-2
+#### 3.25 What 4a-1 actually shipped — start here for 4a-2
 
 > **Note (2026-04-28):** 4a-2 is **deferred** until Phase 5 polish
-> completes — see §3.23 "Deferral rationale" and §3.25 for the
+> completes — see §3.24 "Deferral rationale" and §3.26 for the
 > active Phase 5 chunks. The implementation guidance below is
 > preserved verbatim because nothing about 4a-1's deliverables has
 > moved; pick up here whenever 4a-2 is revisited.
@@ -2416,7 +2479,7 @@ Test counts: 1 new Playwright happy-path
 changes). `pnpm run typecheck && pnpm run lint && pnpm run test` all
 pass (216 backend tests; same as 3b-2). `pnpm run e2e` runs 8 specs
 — 7 pass green; the 8th (`sign-in.spec.ts`) hits the documented
-§3.21 / §3.22 known-flake (dirty `dev@workshop.local.display_name`
+§3.22 / §3.23 known-flake (dirty `dev@workshop.local.display_name`
 from prior specs in the same batch), unrelated to 4a-1.
 
 Surprises / deviations from plan:
@@ -2510,7 +2573,7 @@ Known constraints for 4a-2 / future chunks:
   `router.push`. 4a-2's native extension flow assumes `replace`
   (the picker is transient).
 
-#### 3.25 Phase 5 chunks
+#### 3.26 Phase 5 chunks
 
 Phase 5 is the active phase as of 2026-04-28. The §3 narrative for
 Phase 5 (further down in this doc) lists six deliverables; this table
@@ -2542,76 +2605,13 @@ existing chunks use.
 **Notes for the next agent:**
 
 - **Don't pick up 4a-2 unless explicitly asked.** It's deferred; see
-  §3.23 "Deferral rationale". If the human asks to revisit it before
+  §3.24 "Deferral rationale". If the human asks to revisit it before
   Phase 5 is done, fine — but don't take it as the default next pick.
 - **Phase 5 chunks are still chunks.** Apply the `/continue-redesign`
   skill the same way: one chunk per PR, "What 5x actually shipped"
   section after, plan-update in the same PR.
 - **The "Original Phase 5 deliverable list" further down in this doc
   is the source narrative**; this table is the chunked PR plan.
-
-#### 3.9 Original Phase 1 deliverable list
-
-(Each item is annotated with the chunk that lands it.)
-
-**Deliverables**:
-
-1. **Backend routes** (`apps/backend/src/routes/v1/`)
-   - `lists.ts` — `GET /v1/lists`, `POST`, `GET /:id`, `PATCH /:id`, `DELETE /:id`. — _1a-1_
-   - `items.ts` — `GET /v1/lists/:id/items`, `POST`, `GET /v1/items/:id`,
-     `PATCH`, `DELETE`, `POST /:id/upvote`, `DELETE /:id/upvote`,
-     `POST /:id/complete`, `POST /:id/uncomplete`. — _1a-2_
-   - Helpers: `requireListMember` / `requireListOwner` middleware (1a-1)
-     plus `requireItemMember` (1a-2) used by every item-keyed route.
-2. **Item creation transactionally inserts the creator's upvote** (spec §2.3). — _1a-2_
-3. **List query returns `upvote_count` as a computed column** via
-   `LEFT JOIN ... COUNT(...)::int` (spec §7.7). Sort: `upvote_count DESC,
-created_at DESC`. — _1a-2_
-4. **Client**
-   - `app/index.tsx` — Home with rich list cards, empty state, FAB. — _1b-1_
-   - `app/create-list/_layout.tsx` + `type.tsx` + `customize.tsx` —
-     create-list modal stack (skip the Invite screen in P1; added in P3). — _1b-2_
-   - `app/list/[id]/index.tsx` — list detail with filter bar, upvote pill,
-     completed section. — _1b-2_
-   - `app/list/[id]/item/[itemId].tsx` — item detail. — _1b-2_
-   - `app/list/[id]/add.tsx` — free-form add (date-idea/trip type only).
-     Movie/TV/Book add pathway is a stub that routes to free-form until P2. — _1b-2_
-   - New primitives: `Sheet`, `Modal`, `Toast` (1b-1); `UpvotePill`,
-     `Avatar`, `Chip` (1b-2).
-5. **TanStack Query integration** (`apps/workshop/src/lib/query.ts`) — _1b-1_
-   - `QueryClient` setup with `refetchOnWindowFocus`, `refetchOnReconnect`.
-   - `queryKeys.ts` — centralized key factory (`lists.all`, `lists.detail(id)`,
-     `items.byList(id)`, `items.detail(id)`).
-   - Optimistic update helpers for upvote, complete, add — _1b-2_. Rollback
-     with toast on error (spec §5.5).
-6. **Shared types**: `List`, `ListMemberSummary`, list CRUD request bodies — _1a-1_;
-   `Item`, item CRUD request bodies — _1a-2_.
-7. **Haptics**: wire `expo-haptics` on upvote / complete / delete (no-op on
-   web — handle via `.web.ts` override). — _1b-2_
-
-**Dependencies**: Phase 0.
-
-**Acceptance**:
-
-- Create-list → add 3 items → upvote two → complete one → they sort and grey
-  correctly.
-- Edit title + note inline on item detail persists.
-- Delete list cascades (verified by a `DELETE /v1/lists/:id` integration test
-  that then queries `items` by list_id — zero rows).
-- Playwright: create list → add item → upvote → complete, all on web.
-- Unit coverage: item sort order, optimistic upvote rollback.
-
-**Risks**:
-
-- TanStack Query's optimistic update pattern is new to the codebase —
-  non-trivial first time. Budget a small spike at the start of the phase.
-- The client-side "filter bar" (spec §4.2) is literal substring match on
-  rendered list — keep it client-only; don't add a server query param.
-- Swipe gestures (spec §5.5) depend on `react-native-gesture-handler` +
-  `reanimated`. Already in deps, but first real use — verify on web where
-  gesture-handler is a partial shim.
-
----
 
 ### Phase 2 — Enrichment (movies, TV, books, link previews)
 
