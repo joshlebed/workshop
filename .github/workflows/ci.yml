@@ -1,9 +1,31 @@
 name: CI
 
+# CI bills by job-minute (Ubuntu standard, rounded up). The previous fan-out
+# (8–9 parallel jobs each paying ~30s of pnpm/node setup) cost ~9 billable
+# minutes per run for ~30s of actual checking. This shape is collapsed:
+#   - One `quality` job installs deps once and runs every node-based check
+#     sequentially: lint, typecheck, test, knip, prettier (md), redesign-plan
+#     consistency, actionlint, terraform fmt+validate.
+#   - `mobile-bundle` and `migrate-smoke` stay separate (heavier or different
+#     deps — Metro export and a Postgres service container).
+#   - `gitleaks` only runs on push-to-main and a weekly schedule (pre-commit
+#     lefthook is the PR-time guard; CI is the safety net).
+#   - PRs own full validation; push-to-main only re-checks the canonical-branch
+#     concerns (gitleaks always, migrate-smoke on migration changes). Skipping
+#     the duplicate full PR re-run on merge cuts roughly half the CI bill.
+#   - Docs-only PRs skip the workflow entirely via `paths-ignore`.
+
 on:
   pull_request:
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".prettierrc.json"
+      - ".prettierignore"
   push:
     branches: [main]
+  schedule:
+    - cron: "0 12 * * 1" # Mondays 12:00 UTC — weekly gitleaks sweep
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -13,43 +35,25 @@ permissions:
   contents: read
 
 jobs:
-  # Compute a per-PR change bitmap so each downstream job can skip when the
-  # diff doesn't touch its area. On `push` to main every job runs unconditionally
-  # (canonical-branch full validation). On `pull_request` jobs gate themselves on
-  # the relevant filter output so a docs-only PR doesn't pay for the Metro
-  # bundle, the migrate smoke, etc. gitleaks stays unconditional — secrets can
-  # leak in any file.
+  # paths-filter outputs gate `mobile-bundle` and `migrate-smoke`. Runs on
+  # both pull_request and push so push-to-main can also skip migrate-smoke
+  # when a deploy doesn't touch migrations.
   changes:
     name: Detect changes
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read # dorny/paths-filter needs this to enumerate PR commits
+      pull-requests: read # dorny/paths-filter needs this on PRs
     outputs:
-      code: ${{ steps.filter.outputs.code }}
-      infra: ${{ steps.filter.outputs.infra }}
-      workflows: ${{ steps.filter.outputs.workflows }}
       mobile: ${{ steps.filter.outputs.mobile }}
       migrations: ${{ steps.filter.outputs.migrations }}
-      markdown: ${{ steps.filter.outputs.markdown }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: filter
         with:
           filters: |
-            code:
-              - 'apps/**'
-              - 'packages/**'
-              - 'pnpm-lock.yaml'
-              - 'package.json'
-              - 'tsconfig*.json'
-              - 'biome.json'
-              - 'reset.d.ts'
-            infra:
-              - 'infra/**'
-            workflows:
-              - '.github/workflows/**'
             mobile:
               - 'apps/workshop/**'
               - 'packages/shared/**'
@@ -58,15 +62,14 @@ jobs:
               - 'apps/backend/drizzle/**'
               - 'apps/backend/src/db/**'
               - 'pnpm-lock.yaml'
-            markdown:
-              - '**/*.md'
-              - '.prettierrc.json'
-              - '.prettierignore'
 
-  lint-typecheck-test:
-    name: Lint, typecheck, test
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.code == 'true'
+  # Combined quality job — install deps once, run every node-based check.
+  # PR-only: push-to-main relies on the merge being a fast-forward of an
+  # already-green PR head. If the merge introduces drift (rare; merge commits
+  # don't change file content), the next PR will catch it.
+  quality:
+    name: Quality (lint, typecheck, test, knip, format, terraform, actionlint)
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -93,7 +96,7 @@ jobs:
         if: steps.nm-cache.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
+      - name: Lint (biome)
         run: pnpm run lint
 
       - name: Typecheck
@@ -102,98 +105,26 @@ jobs:
       - name: Test
         run: pnpm run test
 
-  knip:
-    name: Knip (unused code/deps)
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
-        with:
-          version: 10.19.0
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: .nvmrc
-      - name: Cache hoisted node_modules
-        id: nm-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install deps
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
-      - run: pnpm run knip
+      - name: Knip (unused code/deps)
+        run: pnpm run knip
 
-  actionlint:
-    name: actionlint
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.workflows == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
+      - name: Prettier (markdown)
+        run: pnpm run format:md:check
 
-  prettier-md:
-    name: Prettier (markdown)
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.markdown == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
-        with:
-          version: 10.19.0
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version-file: .nvmrc
-      - name: Cache hoisted node_modules
-        id: nm-cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            node_modules
-            apps/*/node_modules
-            packages/*/node_modules
-          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install deps
-        if: steps.nm-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
-      - run: pnpm run format:md:check
       - name: Redesign-plan status consistency
         run: node scripts/check-redesign-plan-status.mjs
 
-  gitleaks:
-    name: gitleaks
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read # gitleaks-action lists PR commits via the GitHub API
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: actionlint
+        uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
 
-  terraform-check:
-    name: Terraform fmt + validate
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.infra == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
         with:
           terraform_version: 1.14.7
+
       - name: terraform fmt
         working-directory: infra
         run: terraform fmt -check -recursive
+
       - name: terraform validate (offline, no backend)
         working-directory: infra
         run: |
@@ -201,14 +132,12 @@ jobs:
           terraform init -backend=false
           terraform validate
 
-  # Guards against the RN-drift bug class (Dependabot bumped RN past Expo SDK,
-  # breaking Metro codegen). Two layers:
-  #   1. Dependency pin check — fail if RN or a satellite drifts off the SDK matrix.
-  #   2. Real iOS bundle — catches any Metro / codegen error the pin check would miss.
+  # Guards against the RN-drift bug class. Heavy enough (Expo export) to
+  # justify its own job. PR-only — the merge commit doesn't change content.
   mobile-bundle:
     name: Mobile Metro bundle
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.mobile == 'true'
+    if: github.event_name == 'pull_request' && needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -253,14 +182,13 @@ jobs:
         working-directory: apps/workshop
         run: pnpm exec expo export --platform ios --output-dir dist-ci
 
-  # Guards against the migration-drift bug class (0000_initial_schema re-applied
-  # to a prod DB that already had v1 tables). Spins up a fresh Postgres, runs
-  # migrations, then re-runs to confirm drizzle skips every entry. The second
-  # run failing = a migration SQL file is out of sync with the journal.
+  # Guards against the migration-drift bug class. Spins up Postgres, applies,
+  # re-applies (must be a no-op). Runs on PRs that touch migrations AND on
+  # push-to-main when migrations changed (canonical-branch safety net).
   migrate-smoke:
     name: Migrate smoke (fresh DB + idempotent re-run)
     needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.migrations == 'true'
+    if: needs.changes.outputs.migrations == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -329,3 +257,22 @@ jobs:
           expected=$(find apps/backend/drizzle -maxdepth 1 -name '*.sql' | wc -l)
           echo "applied=$applied expected=$expected"
           test "$applied" = "$expected"
+
+  # Pre-commit lefthook runs gitleaks on staged files for any developer with
+  # the binary installed. CI is the safety net: scan on every push to main
+  # (catches anything that bypassed pre-commit) and weekly to catch drift /
+  # rule-set updates against the full history.
+  gitleaks:
+    name: gitleaks
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # gitleaks-action lists commits via the GitHub API
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

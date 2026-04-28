@@ -38,9 +38,16 @@ on:
         type: choice
         options: ["true", "false"]
 
-concurrency:
-  group: testflight
-  cancel-in-progress: false # in-flight EAS enqueues are quick — never cancel
+# Concurrency is split per-job:
+#   - fingerprint: cheap to redo. cancel-in-progress=true so a rapid-fire
+#     stack of pushes only runs the fingerprint check once (the latest one).
+#     This was the source of stuck-queue minute-burn (11 cancelled runs /
+#     154 min wall-clock in a 6-day window): rapid pushes piled up behind
+#     a slow fingerprint and each waited for its turn before being killed.
+#   - enqueue: NEVER cancel — once `eas build` returns, the EAS-side build
+#     is already queued on EAS infra. Cancelling the GH job orphans the tag
+#     write, but the build itself proceeds.
+# No workflow-level concurrency; the job-level groups are what matter.
 
 permissions:
   contents: write # push fingerprint tag after successful enqueue
@@ -55,7 +62,15 @@ jobs:
   fingerprint:
     name: Check fingerprint
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # Fingerprint is cheap and idempotent. Bursty merges should collapse to
+    # one fingerprint run on the latest SHA, not pile up.
+    concurrency:
+      group: testflight-fingerprint
+      cancel-in-progress: true
+    # Hard cap: a fingerprint job that hasn't completed in 4 minutes is
+    # almost certainly stuck (Expo registry / pnpm install hang). Kill it
+    # rather than letting it block enqueues for 10 minutes.
+    timeout-minutes: 4
     outputs:
       hash: ${{ steps.fp.outputs.hash }}
       build_needed: ${{ steps.decide.outputs.build_needed }}
@@ -139,9 +154,16 @@ jobs:
     needs: fingerprint
     if: needs.fingerprint.outputs.build_needed == 'true'
     runs-on: ubuntu-latest
-    # Stop-loss: if an enqueue ever hangs (EAS API outage), this caps the
-    # damage. A successful enqueue completes in ~1–2 minutes.
-    timeout-minutes: 10
+    # NEVER cancel an in-flight enqueue: once `eas build` returns, the build
+    # is already queued on EAS, and cancelling here only loses the fingerprint
+    # tag write. New pushes wait their turn behind any active enqueue.
+    concurrency:
+      group: testflight-enqueue
+      cancel-in-progress: false
+    # Stop-loss: a successful enqueue completes in ~1–2 minutes. 5 minutes
+    # is enough headroom for slow EAS API responses without burning Actions
+    # minutes when EAS is down.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
