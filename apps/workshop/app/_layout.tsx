@@ -1,5 +1,5 @@
 import { DarkTheme, ThemeProvider } from "@react-navigation/native";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
@@ -7,7 +7,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
-import { createQueryClient } from "../src/lib/query";
+import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
+import { createQueryClient, getPersistOptions } from "../src/lib/query";
 import { getItem } from "../src/lib/storage";
 import { ToastProvider, tokens } from "../src/ui/index";
 
@@ -135,16 +136,18 @@ function AuthGate() {
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
+  const persistOptions = useMemo(() => getPersistOptions(), []);
   return (
     <ThemeProvider value={DarkTheme}>
       <StatusBar style="light" />
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
         <ToastProvider>
+          <OfflineRetryWatcher />
           <AuthProvider>
             <AuthGate />
           </AuthProvider>
         </ToastProvider>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ThemeProvider>
   );
 }

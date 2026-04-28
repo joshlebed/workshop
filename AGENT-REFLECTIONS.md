@@ -217,3 +217,124 @@ edits only — no code, no tests, no CI hooks.
 | §3 subsection numbers out of order | One-time renumber pass on `docs/redesign-plan.md` §3.x   | ~30m |
 | Chunks-table Status drift          | Node script in `scripts/lint-redesign-plan.ts` + CI step | ~1h  |
 | "Defer" outcome shape undocumented | Add a paragraph to `/continue-redesign` skill            | ~10m |
+
+---
+
+## 2026-04-28 — Phase 5a offline cache (TanStack persist + Metro/NodeNext fight)
+
+Context: implementing chunk 5a — wire `persistQueryClient` into the app
+so previously-fetched query data survives a cold start, plus a global
+"You're offline. Retry?" toast. New files in `apps/workshop/src/lib/`
+(`persister.ts`, `persister.web.ts`, `offline.ts`, `OfflineRetryWatcher.tsx`),
+edits to `query.ts` + `app/_layout.tsx`, 4 vitest cases for the buster
+key, and an export of `SHARED_TYPES_VERSION` from `@workshop/shared`.
+
+### What went well
+
+- **`@tanstack/query-async-storage-persister` +
+  `@tanstack/query-sync-storage-persister` dropped in cleanly via
+  `npx expo install`.** Once I pinned the versions to match the
+  existing `@tanstack/react-query@5.100.1` (the persister packages
+  default to `5.100.5` which has a strict peer-dep), the install was
+  one shot. No native rebuild required for AsyncStorage either — the
+  package was already implicitly available via the Expo SDK.
+- **The platform-split file pattern (`persister.ts` for native,
+  `persister.web.ts` for web) made the storage divergence trivial.**
+  Metro picks the right one per bundle; no `Platform.OS` branches in
+  shared code. Mirrors the existing `storage.ts` / `storage.web.ts`
+  split for `expo-secure-store` vs `localStorage`. ~5 min to wire.
+- **Existing optimistic-update infra (1b-2) plugged into the new
+  offline path with zero per-component churn.** The
+  `MutationCache.subscribe()` listener in `OfflineRetryWatcher.tsx`
+  picks up _any_ failed mutation and surfaces a global "Retry?" toast
+  — the per-mutation `onMutate` / `onError(ctx.previous)` logic
+  already in place handled the rollback cleanly. No need to edit
+  every mutation site.
+- **Vitest `2.1.9` matched backend's pin exactly.** No version
+  alignment work; `pnpm run test` worked first try in
+  `apps/workshop/`.
+- **e2e suite stayed green (8/8).** Once the bundling break (below)
+  was fixed, the full Playwright run passed in ~12s including the
+  previously-flaky `sign-in.spec.ts`.
+
+### What didn't go well
+
+- **Metro vs NodeNext `.js`-extension fight burned ~10 min.** The
+  most painful part of the chunk. My first cut put a
+  `import { SHARED_TYPES_VERSION } from "@workshop/shared"` at module
+  scope in `apps/workshop/src/lib/query.ts`. Metro then tried to
+  resolve `packages/shared/src/index.ts`'s `export * from "./types.js"`
+  and failed with `Unable to resolve "./types.js"`. The shared
+  package's barrel uses `.js` because `apps/backend` is on
+  `moduleResolution: "NodeNext"` which _requires_ explicit
+  extensions. Drop the `.js` and backend typecheck breaks (TS2835).
+  The trap was invisible from the existing code because every other
+  importer of `@workshop/shared` from the mobile app uses
+  `import type` only (which Metro elides). Diagnosis path: read the
+  Metro stack trace → check `packages/shared/src/index.ts` → cross-
+  check `apps/backend/tsconfig.json` `moduleResolution`. Fix: revert
+  the shared barrel; mirror the constant locally in
+  `query.ts` as `PERSIST_TYPES_VERSION = "1"`; add a vitest
+  lock-step assertion (`expect(PERSIST_TYPES_VERSION).toBe(SHARED_TYPES_VERSION)`)
+  that runs in Node where the import _does_ work. Solid workaround,
+  but the next agent who tries to runtime-import from
+  `@workshop/shared` will hit the same wall.
+- **Dev server died mid-`pnpm install`.** The background
+  `niteshift-setup.sh` was running `concurrently` with `tsx watch` /
+  `expo start`; my `pnpm install` for the new persister packages
+  raced node_modules and killed both. Recovery required
+  `source /.env.setup && nohup bash ~/.niteshift/niteshift-setup.sh`
+  — the env vars don't auto-source in fresh shell sessions, and the
+  first restart attempt without sourcing failed with
+  `DATABASE_URL: unbound variable`. ~3 min of wasted recovery.
+- **`scripts/e2e.sh` conflicts with running dev servers.** The e2e
+  script spawns its own backend (8787) and web (8081) on the same
+  ports the Niteshift sandbox is already using for the live preview.
+  Required killing the sandbox servers before running e2e, then
+  restarting them after. Same pattern as the prior session's auth-in-
+  dev friction; still no clean detect-and-reuse path.
+
+### Actionable feedback
+
+1. **Add a Metro/NodeNext gotcha to `CLAUDE.md`.** A short section
+   under "Conventions" along the lines of: "Don't add runtime
+   imports from `@workshop/shared` to mobile/web packages — the
+   barrel uses `.js` extensions for backend's NodeNext requirement,
+   but Metro can't resolve them. Mirror the constant locally and
+   gate with a vitest lock-step test (see `query.ts` /
+   `query.test.ts` for the pattern)." ~5 min edit, prevents the
+   exact 10-min trap I hit.
+2. **Add an `exports` map to `packages/shared/package.json`** that
+   exposes a `.ts` subpath alias resolvable by Metro (e.g.
+   `"./constants": "./src/constants.ts"`). Then runtime imports
+   of pure-JS constants from shared become possible without the
+   extension dance. Bigger fix (~30m) but unlocks the natural
+   pattern instead of working around it.
+3. **Have `niteshift-setup.sh` source `/.env.setup` itself.** One
+   line at the top: `source /.env.setup`. Removes the recovery
+   ritual where a fresh shell can't restart the dev servers because
+   `DATABASE_URL` isn't set. ~2 min.
+4. **Document the e2e/dev-server port conflict in
+   `apps/workshop/CLAUDE.md` (or wherever the e2e flow gets a
+   dedicated guide).** A 3-line note: "e2e uses the same 8787 / 8081
+   ports as `pnpm dev`; kill any running dev server first or e2e
+   will hang on port-in-use." ~5 min. Better fix: have
+   `scripts/e2e.sh` detect the conflict and either kill or reuse,
+   but that's ~30m and behavior-changing.
+5. **Consider auto-skipping mutation persistence in
+   `getPersistOptions()`.** I set `shouldDehydrateMutation: () =>
+false` because failed mutations don't need to survive a cold
+   start (they're transient; serializing variables is messy). This
+   is the right default for this app and probably for most apps.
+   The TanStack docs don't make it the default, so an inline comment
+   in `query.ts` explaining why is worth keeping. (Already present.)
+
+### Friction → fix sketches (size estimates)
+
+| Friction                             | Fix                                                         | Size |
+| ------------------------------------ | ----------------------------------------------------------- | ---- |
+| Metro can't resolve `.js` re-exports | `CLAUDE.md` gotcha note                                     | ~5m  |
+| ↑ same                               | Add `exports` map to `packages/shared/package.json`         | ~30m |
+| `DATABASE_URL` unbound on restart    | `source /.env.setup` at top of `niteshift-setup.sh`         | ~2m  |
+| e2e/dev port conflict undocumented   | 3-line note in `apps/workshop/CLAUDE.md` (or new e2e guide) | ~5m  |
+| ↑ same                               | `scripts/e2e.sh` detect-and-reuse logic                     | ~30m |
