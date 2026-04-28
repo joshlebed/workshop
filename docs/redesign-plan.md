@@ -1,6 +1,6 @@
 # Workshop.dev — Redesign Implementation Plan
 
-Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (4a-2 deferred until Phase 5 polish lands; Phase 5 decomposed into chunks) · Owner: @joshlebed
+Status: in progress · Opened: 2026-04-24 · Last touched: 2026-04-28 (5a offline cache landed; Phase 5 polish in progress) · Owner: @joshlebed
 
 This is the engineering plan for executing the rewrite described in
 [`docs/redesign-spec.md`](./redesign-spec.md). The spec defines the _what_; this
@@ -160,6 +160,21 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   (vs the bell's `activity.feed`). Playwright happy-path
   (`tests/e2e/activity-feed.spec.ts`) — owner adds item → member sees
   the event in the feed → unread badge clears after a back-nav.
+- **Phase 5** chunk 5a (this PR) — offline read cache. Wired
+  `PersistQueryClientProvider` into `app/_layout.tsx` with platform-split
+  persisters (`createAsyncStoragePersister` on native via
+  `@react-native-async-storage/async-storage`,
+  `createSyncStoragePersister` on web via `window.localStorage`). 24h
+  `maxAge`; buster key derived from a local `PERSIST_TYPES_VERSION`
+  constant kept in lock-step with `SHARED_TYPES_VERSION` in
+  `packages/shared/src/types.ts` (vitest enforces the lock-step). Failed
+  mutations whose error matches `isOfflineError` surface a "Retry?"
+  toast via a global `OfflineRetryWatcher` that subscribes to the
+  `MutationCache`; per-component `onError` handlers still revert
+  optimistic updates as before. Mutations are not persisted
+  (`shouldDehydrateMutation: () => false`); only successful queries are.
+  4 vitest tests (`apps/workshop/src/lib/query.test.ts`); 8 Playwright
+  specs unchanged-and-green.
 
 ### Pending
 
@@ -202,21 +217,20 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
   is picked up lives in §3.25 ("What 4a-2 should do _first_").
 - **Phase 5** — polish. **Now the active phase.** Decomposed into six
   chunks in §3.26 (offline cache, light theme, "new items" pill, haptics +
-  micro-animations, desktop two-pane, full E2E coverage). Pick up **5a**
-  (offline cache) next.
+  micro-animations, desktop two-pane, full E2E coverage). **5a done** —
+  offline read cache landed (this PR). Pick up **5b** (light theme
+  tokens + `useColorScheme` flip) next.
 
 ### Next to implement
 
-The next chunk is **5a — offline cache** (Phase 5 polish). It wires
-`persistQueryClient` into `apps/workshop/src/lib/query.ts` with
-platform-split storage persisters (`createAsyncStoragePersister` on
-iOS via `expo-async-storage`, `createSyncStoragePersister` on web via
-`window.localStorage`), so cold starts rehydrate from cache while
-queries revalidate in the background. Mutations attempted while
-offline revert with a "Retry?" toast. Sets a `maxAge` (24h) and a
-buster key bumped on shared-types changes to prevent stale-data
-hydration after schema shifts. See §3.26 for the full Phase 5 chunks
-table and §3.25 for what 4a-1 shipped.
+The next chunk is **5b — light theme tokens + `useColorScheme` flip**
+(Phase 5 polish). Extends `apps/workshop/src/ui/theme.ts` with a
+`light` palette mirror of the existing `dark` palette (semantic tokens
+stay stable; only raw hex values change). `ThemeProvider` reads
+`useColorScheme()` and swaps the active palette without remounts. No
+new component code — every primitive already reads from semantic
+tokens. Vitest snapshot of the resolved tokens for both modes. See
+§3.26 for the full Phase 5 chunks table and §3.27 for what 5a shipped.
 
 **Why not 4a-2?** Phase 4a-2 (native iOS share extension) is
 **deferred** until Phase 5 polish lands. It's blocked on a manual
@@ -225,6 +239,11 @@ minutes, and the JS surface it hands off to is still being polished —
 landing native code now risks rebuilding against a moving target. See
 §3.24 for the deferral note and §3.25 for the implementation guidance
 that's been preserved in place for whenever 4a-2 is revisited.
+
+**Why not 5c–5f?** Pickup order in §3.26 is 5a → 5b → 5c → 5d → 5e →
+5f. Order isn't strict (any 5a–5d can land independently) but 5b is
+next per the plan and unblocks visual polish that 5e (two-pane) builds
+on.
 
 ---
 
@@ -2585,14 +2604,14 @@ The order below is the recommended pickup order. Earlier chunks have
 fewer dependencies and lower blast radius; later chunks (two-pane,
 full E2E) build on the polish foundations the earlier chunks land.
 
-| Chunk  | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | External deps                                                        | Status      |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ----------- |
-| **5a** | Offline read cache. Wire `persistQueryClient` into `apps/workshop/src/lib/query.ts` with platform-split persisters: `createAsyncStoragePersister` (iOS, via `@react-native-async-storage/async-storage` or `expo-async-storage`) and `createSyncStoragePersister` (web, via `window.localStorage`). Set `maxAge: 24h` and a buster key derived from the shared-types version so a schema bump invalidates persisted state cleanly. Mutations attempted while offline revert + show a "Retry?" toast (re-uses 1b-2's optimistic-update infra). Add one Vitest unit for the buster key. | None.                                                                | **Pending** |
-| **5b** | Light theme tokens + `useColorScheme` flip. Extend `apps/workshop/src/ui/theme.ts` with a `light` palette mirror of the existing `dark` palette (semantic tokens stay stable; only raw hex values change). `ThemeProvider` reads `useColorScheme()` and swaps the active palette without remounts. No new component code — every primitive already reads from semantic tokens. Vitest snapshot of the resolved tokens for both modes.                                                                                                                                                 | None.                                                                | **Pending** |
-| **5c** | "New items" pill (spec §12). On `useQuery` refetch of `items.byList(id)`, compare the new length against the previous length; if `delta > 0` and the user has scrolled past the top, render a sticky pill at the top of `app/list/[id]/index.tsx` ("3 new items — tap to refresh") that scrolls to top + clears on tap. Hidden when the user is already at the top (the new rows render in place). Re-uses TanStack Query's `dataUpdatedAt` to drive the comparison.                                                                                                                  | None.                                                                | **Pending** |
-| **5d** | Haptics + micro-animations. Wire `expo-haptics` on upvote / complete / delete (Light/Medium impact respectively) with a `.web.ts` no-op. Reanimated micro-animations: 1.05× scale-pulse on upvote tap, strikethrough fade-in on complete, sheet enter/exit easing tuned. All driven from primitives (`UpvotePill`, `Checkbox`, `Sheet`) so call sites don't change.                                                                                                                                                                                                                   | None.                                                                | **Pending** |
-| **5e** | Desktop two-pane layout. Add a 768px breakpoint in `apps/workshop/app/_layout.tsx`: above the threshold render a left pane (lists index, sticky) + right pane (current list/item/modal); below the threshold the existing stack navigator is unchanged. Modals open centered over the right pane on desktop, full-screen on mobile. Verify back-button + deep-link behavior on both modes.                                                                                                                                                                                            | None.                                                                | **Pending** |
-| **5f** | Full Playwright E2E sweep. Cover sign-in (Google, JWKS-stubbed), create each of 5 list types, add an item via every pathway (movie/TV via TMDB stub, book via Google Books stub, free-form date-idea + trip via link-preview stub), upvote/unvote, complete/uncomplete, share-link accept in a second browser context, activity feed unread→read. Wire into a new `e2e.yml` GitHub Actions job running against a Dockerized Postgres. Lands the `signInAsDev(page)` test helper recommended in `AGENT-REFLECTIONS.md` 2026-04-28.                                                     | None — runs entirely against a local backend + local Postgres in CI. | **Pending** |
+| Chunk  | What ships                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | External deps                                                        | Status             |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------ |
+| **5a** | Offline read cache. Wire `persistQueryClient` into `apps/workshop/src/lib/query.ts` with platform-split persisters: `createAsyncStoragePersister` (iOS, via `@react-native-async-storage/async-storage` or `expo-async-storage`) and `createSyncStoragePersister` (web, via `window.localStorage`). Set `maxAge: 24h` and a buster key derived from the shared-types version so a schema bump invalidates persisted state cleanly. Mutations attempted while offline revert + show a "Retry?" toast (re-uses 1b-2's optimistic-update infra). Add one Vitest unit for the buster key. | None.                                                                | **Done (this PR)** |
+| **5b** | Light theme tokens + `useColorScheme` flip. Extend `apps/workshop/src/ui/theme.ts` with a `light` palette mirror of the existing `dark` palette (semantic tokens stay stable; only raw hex values change). `ThemeProvider` reads `useColorScheme()` and swaps the active palette without remounts. No new component code — every primitive already reads from semantic tokens. Vitest snapshot of the resolved tokens for both modes.                                                                                                                                                 | None.                                                                | **Pending**        |
+| **5c** | "New items" pill (spec §12). On `useQuery` refetch of `items.byList(id)`, compare the new length against the previous length; if `delta > 0` and the user has scrolled past the top, render a sticky pill at the top of `app/list/[id]/index.tsx` ("3 new items — tap to refresh") that scrolls to top + clears on tap. Hidden when the user is already at the top (the new rows render in place). Re-uses TanStack Query's `dataUpdatedAt` to drive the comparison.                                                                                                                  | None.                                                                | **Pending**        |
+| **5d** | Haptics + micro-animations. Wire `expo-haptics` on upvote / complete / delete (Light/Medium impact respectively) with a `.web.ts` no-op. Reanimated micro-animations: 1.05× scale-pulse on upvote tap, strikethrough fade-in on complete, sheet enter/exit easing tuned. All driven from primitives (`UpvotePill`, `Checkbox`, `Sheet`) so call sites don't change.                                                                                                                                                                                                                   | None.                                                                | **Pending**        |
+| **5e** | Desktop two-pane layout. Add a 768px breakpoint in `apps/workshop/app/_layout.tsx`: above the threshold render a left pane (lists index, sticky) + right pane (current list/item/modal); below the threshold the existing stack navigator is unchanged. Modals open centered over the right pane on desktop, full-screen on mobile. Verify back-button + deep-link behavior on both modes.                                                                                                                                                                                            | None.                                                                | **Pending**        |
+| **5f** | Full Playwright E2E sweep. Cover sign-in (Google, JWKS-stubbed), create each of 5 list types, add an item via every pathway (movie/TV via TMDB stub, book via Google Books stub, free-form date-idea + trip via link-preview stub), upvote/unvote, complete/uncomplete, share-link accept in a second browser context, activity feed unread→read. Wire into a new `e2e.yml` GitHub Actions job running against a Dockerized Postgres. Lands the `signInAsDev(page)` test helper recommended in `AGENT-REFLECTIONS.md` 2026-04-28.                                                     | None — runs entirely against a local backend + local Postgres in CI. | **Pending**        |
 
 **Pickup order:** 5a → 5b → 5c → 5d → 5e → 5f. The order is not strict —
 any 5a–5d chunk can land independently and in any order — but 5e
@@ -2612,6 +2631,185 @@ existing chunks use.
   section after, plan-update in the same PR.
 - **The "Original Phase 5 deliverable list" further down in this doc
   is the source narrative**; this table is the chunked PR plan.
+
+#### 3.27 What 5a actually shipped — start here for 5b
+
+Files that landed in 5a (read these before touching 5b):
+
+- `apps/workshop/src/lib/query.ts` — refactored. Adds
+  `PERSIST_MAX_AGE_MS` (24h), `PERSIST_TYPES_VERSION` (a local mirror
+  of `SHARED_TYPES_VERSION`; see "Surprises" below), pure
+  `getPersistBusterKey(typesVersion?)`, and `getPersistOptions()`
+  which packages a `Persister`, `maxAge`, `buster`, and a
+  `dehydrateOptions` filter (skip mutations + skip non-success
+  queries). `createQueryClient` also gains a `gcTime: 24h` so the
+  in-memory cache outlives the persisted snapshot's `maxAge`.
+- `apps/workshop/src/lib/persister.ts` (native) — wraps
+  `createAsyncStoragePersister` from
+  `@tanstack/query-async-storage-persister` over
+  `@react-native-async-storage/async-storage`.
+- `apps/workshop/src/lib/persister.web.ts` (web) — wraps
+  `createSyncStoragePersister` from
+  `@tanstack/query-sync-storage-persister` over `window.localStorage`,
+  with a Map-backed in-memory fallback for environments where
+  `window` is undefined (SSR safety; not currently used).
+- `apps/workshop/src/lib/offline.ts` — pure `isOfflineError(err)`
+  helper. Detects offline by:
+  1. `error instanceof ApiError` → not offline (the request reached
+     the server, just got a 4xx/5xx).
+  2. `navigator.onLine === false` → offline.
+  3. `error instanceof TypeError` whose message matches
+     `failed to fetch` (web) / `network request failed` (RN) /
+     `networkerror` (Firefox).
+- `apps/workshop/src/lib/OfflineRetryWatcher.tsx` — small
+  component-shaped subscriber. Wires `useQueryClient` →
+  `mutationCache.subscribe()`, dedupes per `mutation.mutationId`, and
+  on the first `error` transition with `isOfflineError(error)` true,
+  shows a `tone: "danger"` toast with `actionLabel: "Retry?"`. The
+  retry calls `mutation.execute(mutation.state.variables)` so the
+  same payload re-fires once the network is back. Mounted under
+  `<ToastProvider>` (so `useToast()` resolves) and inside
+  `<PersistQueryClientProvider>` (so `useQueryClient()` resolves).
+  Per-component `onError` handlers still fire first and revert their
+  optimistic updates — the global toast is purely additive.
+- `apps/workshop/app/_layout.tsx` — swap
+  `<QueryClientProvider client={queryClient}>` for
+  `<PersistQueryClientProvider client={queryClient} persistOptions={...}>`
+  and mount `<OfflineRetryWatcher />` directly under `<ToastProvider>`.
+  The `useMemo` for the queryClient is unchanged; a sibling
+  `useMemo(() => getPersistOptions(), [])` keeps the `Persister`
+  instance stable across renders.
+- `packages/shared/src/types.ts` — adds the
+  `SHARED_TYPES_VERSION = "1"` constant. Bump on any breaking edit to
+  a request/response type. Pure additions (new optional field, new
+  endpoint) don't require a bump.
+- `apps/workshop/src/lib/query.test.ts` — 4 vitest cases:
+  `getPersistBusterKey` returns a stable key, changes when the
+  version changes, defaults to `PERSIST_TYPES_VERSION`, and the
+  in-package `PERSIST_TYPES_VERSION` matches `SHARED_TYPES_VERSION`
+  (the lock-step gate).
+- `apps/workshop/vitest.config.ts` — new; matches
+  `apps/backend/vitest.config.ts` (Node env, `src/**/*.test.ts`).
+- `apps/workshop/package.json` — `test` script flipped from
+  `echo "no tests yet"` to `vitest run`. Adds devDep
+  `vitest@2.1.9` (matches backend's pin) and runtime deps
+  `@react-native-async-storage/async-storage@2.2.0` (via
+  `npx expo install`),
+  `@tanstack/react-query-persist-client@5.100.1`,
+  `@tanstack/query-async-storage-persister@5.100.1`,
+  `@tanstack/query-sync-storage-persister@5.100.1` (all pinned to
+  match the existing `@tanstack/react-query@5.100.1` peer to avoid
+  the peer-mismatch warning).
+
+Tests landed (4 new vitest in apps/workshop; 0 backend churn):
+`pnpm run typecheck && pnpm run lint && pnpm run test` all green
+(216 backend + 4 workshop). `pnpm run knip` clean. `pnpm run e2e` —
+all 8 specs pass (the `sign-in.spec.ts` flake from §3.22 / §3.23
+didn't reproduce in this run; possibly fixed by the dev-server reset
+midway through, possibly still flaky on cold runs).
+
+Surprises / deviations from plan:
+
+- **Buster key is a local constant, not a runtime import from
+  `@workshop/shared`.** The plan said "buster key derived from the
+  shared-types version." Implementing that as
+  `import { SHARED_TYPES_VERSION } from "@workshop/shared"` at runtime
+  in `query.ts` broke Metro bundling — `packages/shared/src/index.ts`
+  uses `export * from "./types.js"` (the `.js` extension is required
+  by the backend's NodeNext tsconfig), which Metro doesn't resolve.
+  Existing app code only `import type`s from `@workshop/shared`, so
+  Metro elides those imports during bundling and never tripped on the
+  re-export. Workaround: keep `PERSIST_TYPES_VERSION` as a local
+  constant in `query.ts` and gate the lock-step in vitest (which runs
+  in Node with normal extension resolution). This is a one-time
+  bookkeeping cost — bumping the version requires editing two files —
+  but the test fails CI loudly if anyone forgets, and it sidesteps a
+  Metro-resolver fight that doesn't belong in this chunk.
+- **`SHARED_TYPES_VERSION` is exported but only consumed from tests.**
+  At runtime nothing reads it (per the bullet above). Future chunks
+  that need a shared runtime constant should wire a Metro extension
+  override (`metro.config.js` `resolver.sourceExts` shenanigans) or
+  add an `exports` map to `packages/shared/package.json` that exposes
+  a `.ts` subpath bypassing the `.js` re-export. Out of scope for 5a.
+- **`shouldDehydrateMutation: () => false`.** The plan said
+  "mutations attempted while offline revert + show a 'Retry?' toast"
+  but didn't say whether failed mutations should survive a cold
+  start. Persisting them would mean a user's failed-while-offline
+  mutation resurfaces a "Retry?" toast on the next app launch — but
+  it would also race the live refetch, and the cached error doesn't
+  carry the original variables in a way that survives serialization
+  cleanly. Decision: don't persist mutations. The retry toast is an
+  in-session affordance only.
+- **`shouldDehydrateQuery: status === "success"`.** Persisting an
+  error-shaped cache entry would render an error UI on cold start
+  before the live refetch finishes. Tests + dev didn't show this in
+  practice, but skipping non-success queries is the conservative
+  default.
+- **No `useIsRestoring()` hydration UX.** TanStack ships a hook for
+  showing a spinner during cache restore; on web localStorage is
+  synchronous so restore lands on the first render frame, and on
+  native AsyncStorage restore typically completes within a few
+  hundred ms. Adding the spinner felt out of scope; revisit if 5b's
+  light-theme work shows visible flash-of-stale.
+- **The "Retry?" toast surfaces on every offline-failed mutation,
+  even ones that already had a per-component `onError` toast.** Two
+  toasts on offline (component's "Couldn't update item" + global
+  "You're offline. Couldn't save change. Retry?") is a tolerable
+  cost for the alternative — coordinating per-component handlers
+  against `isOfflineError` would touch every mutation site. The
+  per-component toast disappears on its 3.5s timer; the Retry toast
+  stays slightly shorter and offers the action. 5d's haptics work
+  could revisit this if it adds a unified mutation feedback layer.
+- **`packages/shared/src/index.ts` was NOT changed.** An
+  intermediate edit replaced `./types.js` with `./types` to fix the
+  Metro break — that breaks the backend's NodeNext typecheck. The
+  edit was reverted; the bundler-vs-NodeNext extension fight is the
+  trigger for the local-mirror constant approach above.
+
+What 5b should do _first_:
+
+1. Read `apps/workshop/src/ui/theme.ts` and the consumers in
+   `apps/workshop/src/ui/*` — every primitive should already
+   reference `tokens.bg.canvas` / `tokens.text.primary` / etc.
+   without raw hex literals. If anything imports `palette.*`
+   directly, fix that first (the spec calls it out as a v1 rule).
+2. Restructure `theme.ts` from `tokens = {...}` to
+   `tokens = { dark: {...}, light: {...} }` per Appendix §9
+   "Tweakability rules". Keep the dark palette byte-identical to
+   today's so this chunk is a strict superset.
+3. Wire `useColorScheme` from `react-native` (works on web via
+   `react-native-web`) into a small `ThemeProvider` in
+   `src/ui/theme.ts` that exposes the active palette via a
+   context. `useTheme()` already exists (`src/ui/useTheme.ts`) —
+   extend it rather than introducing a parallel hook.
+4. Snapshot test in vitest: resolve both palettes and assert the
+   semantic-token keys match (no drift between dark and light).
+5. Manual verification: toggle macOS / iOS appearance and confirm
+   the app flips without remounts.
+
+Known constraints for 5b / future chunks:
+
+- **Don't import `SHARED_TYPES_VERSION` at runtime in
+  `apps/workshop`.** Metro can't resolve the `.js` re-export in
+  `packages/shared/src/index.ts`. Use `import type` (Metro elides
+  it) or mirror the value locally with a vitest lock-step gate, like
+  `PERSIST_TYPES_VERSION` does in `query.ts`.
+- **`PersistQueryClientProvider` replaces `QueryClientProvider`.**
+  Don't double-wrap; `PersistQueryClientProvider` already provides
+  the QueryClient context. New providers should mount under it (see
+  the `_layout.tsx` ordering: `PersistQueryClientProvider` →
+  `ToastProvider` → `OfflineRetryWatcher` + `AuthProvider`).
+- **Bump `PERSIST_TYPES_VERSION` (and `SHARED_TYPES_VERSION`)
+  on breaking shape edits in `packages/shared/src/types.ts`.**
+  Pure additions (new optional field, new endpoint) don't require a
+  bump; renames, removed fields, or changed semantics do. The
+  vitest lock-step test catches half-bumps.
+- **`OfflineRetryWatcher` calls `mutation.execute(variables)`.**
+  This re-fires the same mutation function with the original
+  variables. Mutations whose `mutationFn` reads from non-deterministic
+  module state (e.g. a debounced query, a singleton) must guard their
+  own state. None of the current mutations do this; new ones should
+  follow suit.
 
 ### Phase 2 — Enrichment (movies, TV, books, link previews)
 
