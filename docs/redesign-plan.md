@@ -198,13 +198,12 @@ Per-chunk status lives in the §3 tables; this is the orientation snapshot.
     matching `env:` block.
     Web is unaffected — Cloudflare Pages reads those env vars from its
     own project config at build time.
-- Production search + link-preview will need real `TMDB_API_KEY` /
-  `GOOGLE_BOOKS_API_KEY` pasted into SSM (currently `PHASE_2_NOT_SET`
-  placeholder strings — applied in 0c-2 so the SSM resources could be
-  created; `lifecycle { ignore_changes = [value] }` means a later
-  `aws ssm put-parameter --overwrite` won't drift Terraform state).
-  Link-preview itself doesn't depend on the API keys (it scrapes OG
-  tags directly), so the dev wiring works even with placeholder secrets.
+- Production `TMDB_API_KEY` / `GOOGLE_BOOKS_API_KEY` are live in SSM
+  (pasted via `aws ssm put-parameter --overwrite` 2026-04-27; both keys
+  smoke-tested against TMDB and Google Books). `lifecycle
+  { ignore_changes = [value] }` keeps Terraform from drifting them.
+  Link-preview doesn't depend on either key (it scrapes OG tags
+  directly), so dev wiring works even without them set.
 - **Phase 4** — iOS share extension. **4a-1 done** — JS-only
   share-flow plumbing landed (`app/share/pick-list.tsx`, `app/share/index.tsx`
   redirect, `?prefillUrl=` on `app/list/[id]/add.tsx`, Playwright
