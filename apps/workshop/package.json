@@ -53,5 +53,13 @@
     "eas-cli": "18.8.1",
     "typescript": "5.9.3",
     "vitest": "2.1.9"
+  },
+  "expo": {
+    "install": {
+      "exclude": [
+        "react-native",
+        "react-native-reanimated"
+      ]
+    }
   }
 }

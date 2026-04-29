@@ -103,13 +103,12 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   action that needs PR metadata (e.g. `dorny/paths-filter`, label-on-PR, comment-on-PR) needs
   an explicit grant like `pull-requests: read`. Failure mode is opaque at runtime
   (`"Resource not accessible by integration"`) and isn't caught by `actionlint`.
-- **Auto-merge requires GitHub Pro on private repos.** `gh pr merge --auto` is the cleanest
-  pattern for autonomous agents (skill-driven Niteshift sessions, etc.) — it queues the merge
-  to fire when checks pass. But on a private repo on the free GitHub plan, branch protection
-  is unavailable, and auto-merge requires branch protection. So the gh command fails with
-  `"Auto merge is not allowed for this repository"`. The `/continue-redesign` skill falls back
-  to manual merge cleanly. To unlock auto-merge: make the repo public (free) OR upgrade to
-  Pro (\$4/mo). Worth it if rate-of-PR-merges is high enough; not currently.
+- **Auto-merge is on.** The repo is public (which gives us free branch protection + unlimited
+  Actions minutes) and `main` requires the `Quality (lint, typecheck, test, knip, format,
+terraform, actionlint)` check to pass. `gh pr merge <PR> --auto --squash --delete-branch` is
+  the canonical merge path: it arms a queued merge that fires when the required check goes green,
+  including across reruns and force-pushes. The `/continue-redesign` skill uses this by default.
+  Don't claim merged without verifying with `gh pr view <PR> --json state` — armed ≠ merged.
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
   unless there's a specific reason (security fix, unblocking work). Monthly PRs on the first
   Monday, aggressively grouped.
