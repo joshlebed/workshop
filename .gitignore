@@ -59,6 +59,10 @@ logs/
 apps/backend/dist/
 apps/backend/*.zip
 
+# Expo prebuild outputs (managed workflow regenerates these on each build)
+apps/workshop/ios/
+apps/workshop/android/
+
 # Test
 coverage/
 .nyc_output/
