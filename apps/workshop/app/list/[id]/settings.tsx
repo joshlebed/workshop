@@ -1,8 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Invite, ListColor, ListMemberSummary, PendingInvite } from "@workshop/shared";
+import type {
+  AlbumShelfListMetadata,
+  Invite,
+  ListColor,
+  ListMemberSummary,
+  PendingInvite,
+} from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { refreshAlbumShelf } from "../../../src/api/albumShelf";
 import { createInvite, revokeInvite } from "../../../src/api/invites";
 import { deleteList, fetchListDetail, updateList } from "../../../src/api/lists";
 import { removeMember } from "../../../src/api/members";
@@ -205,6 +212,73 @@ export default function ListSettings() {
     },
   });
 
+  // --- Album Shelf source playlist (any member can change URL) ---
+
+  const albumShelfMeta =
+    list?.type === "album_shelf" ? (list.metadata as Partial<AlbumShelfListMetadata>) : null;
+  const [shelfUrl, setShelfUrl] = useState<string | null>(null);
+  if (albumShelfMeta && shelfUrl === null) {
+    setShelfUrl(albumShelfMeta.spotifyPlaylistUrl ?? "");
+  }
+
+  const updateSourceMutation = useMutation({
+    mutationFn: () => {
+      if (!id) throw new Error("missing list id");
+      return updateList(id, { metadata: { spotifyPlaylistUrl: (shelfUrl ?? "").trim() } }, token);
+    },
+    onSuccess: async () => {
+      if (!id) return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.albumShelf.items(id) }),
+      ]);
+      showToast({ message: "Source updated and refreshed.", tone: "success" });
+    },
+    onError: (e) => {
+      const code =
+        e instanceof ApiError ? (e.details as { code?: string } | undefined)?.code : undefined;
+      const message =
+        code === "INVALID_PLAYLIST_URL"
+          ? "That doesn't look like a Spotify playlist URL."
+          : code === "PLAYLIST_NOT_AVAILABLE"
+            ? "We couldn't read that playlist. Make sure it's public."
+            : code === "SPOTIFY_UNAVAILABLE"
+              ? "Spotify is having a moment. Try again."
+              : e instanceof Error
+                ? e.message
+                : "Couldn't update source.";
+      showToast({ message, tone: "danger" });
+    },
+  });
+
+  const refreshShelfMutation = useMutation({
+    mutationFn: () => {
+      if (!id) throw new Error("missing list id");
+      return refreshAlbumShelf(id, token);
+    },
+    onSuccess: async (res) => {
+      if (!id) return;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.albumShelf.items(id) }),
+      ]);
+      showToast({
+        message:
+          res.addedCount === 0
+            ? "No new albums detected."
+            : `Detected ${res.addedCount} new album${res.addedCount === 1 ? "" : "s"}.`,
+        tone: res.addedCount === 0 ? "default" : "success",
+      });
+    },
+    onError: (e) => {
+      showToast({
+        message: e instanceof Error ? e.message : "Couldn't refresh.",
+        tone: "danger",
+      });
+    },
+  });
+
   const deleteListMutation = useMutation({
     mutationFn: () => {
       if (!id) throw new Error("missing list id");
@@ -350,6 +424,73 @@ export default function ListSettings() {
             ))}
           </View>
         </Card>
+
+        {/* --- Album Shelf source playlist (any member) --- */}
+        {list?.type === "album_shelf" && albumShelfMeta ? (
+          <Card style={styles.card} elevated>
+            <Text variant="label" tone="secondary">
+              Source playlist
+            </Text>
+            {albumShelfMeta.spotifyPlaylistUrl ? (
+              <Pressable
+                accessibilityRole="link"
+                onPress={() => {
+                  if (albumShelfMeta.spotifyPlaylistUrl) {
+                    Linking.openURL(albumShelfMeta.spotifyPlaylistUrl).catch(() => {});
+                  }
+                }}
+                testID="settings-source-open"
+              >
+                <Text style={styles.urlText} numberOfLines={1}>
+                  {albumShelfMeta.spotifyPlaylistUrl}
+                </Text>
+              </Pressable>
+            ) : null}
+            <Text variant="caption" tone="muted">
+              {albumShelfMeta.lastRefreshedAt
+                ? `Last refreshed ${new Date(albumShelfMeta.lastRefreshedAt).toLocaleString()}`
+                : "Not yet refreshed."}
+            </Text>
+            <View style={styles.field}>
+              <Text variant="caption" tone="muted">
+                Change source URL
+              </Text>
+              <TextInput
+                testID="settings-source-url"
+                value={shelfUrl ?? ""}
+                onChangeText={setShelfUrl}
+                placeholder="https://open.spotify.com/playlist/…"
+                placeholderTextColor={tokens.text.muted}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                maxLength={2048}
+                style={styles.input}
+              />
+              <Button
+                testID="settings-source-save"
+                label="Save and refresh"
+                size="md"
+                disabled={
+                  updateSourceMutation.isPending ||
+                  refreshShelfMutation.isPending ||
+                  (shelfUrl ?? "").trim() === (albumShelfMeta.spotifyPlaylistUrl ?? "")
+                }
+                loading={updateSourceMutation.isPending}
+                onPress={() => updateSourceMutation.mutate()}
+              />
+            </View>
+            <Button
+              testID="settings-refresh-now"
+              label="Refresh now"
+              variant="secondary"
+              size="md"
+              loading={refreshShelfMutation.isPending}
+              disabled={refreshShelfMutation.isPending || updateSourceMutation.isPending}
+              onPress={() => refreshShelfMutation.mutate()}
+            />
+          </Card>
+        ) : null}
 
         {/* --- Share link (owner-only) --- */}
         {isOwner ? (

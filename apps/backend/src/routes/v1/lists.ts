@@ -1,11 +1,33 @@
-import type { List, ListColor, ListMemberSummary, ListSummary, MemberRole } from "@workshop/shared";
+import type {
+  AlbumShelfListMetadata,
+  List,
+  ListColor,
+  ListMemberSummary,
+  ListMetadata,
+  ListSummary,
+  MemberRole,
+} from "@workshop/shared";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbList, listMembers, lists, users } from "../../db/schema.js";
+import {
+  asAlbumShelfMetadata,
+  fetchAlbumShelfItems,
+  refreshAlbumShelfItems,
+} from "../../lib/album-shelf.js";
 import { recordEvent } from "../../lib/events.js";
 import { err, ok } from "../../lib/response.js";
+import {
+  fetchPlaylistMeta,
+  PlaylistNotAvailableError,
+  SpotifyApiError,
+  SpotifyAuthError,
+  SpotifyConfigError,
+} from "../../lib/spotify/app-client.js";
+import { InvalidPlaylistUrlError, parsePlaylistId } from "../../lib/spotify/playlist-parser.js";
+import { albumShelfListMetadataPatchSchema } from "../../lib/validators/album-shelf.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
@@ -17,7 +39,7 @@ export const listRoutes = new Hono();
 listRoutes.use("*", requireAuth);
 
 const listColors = ["sunset", "ocean", "forest", "grape", "rose", "sand", "slate"] as const;
-const listTypes = ["movie", "tv", "book", "date_idea", "trip"] as const;
+const listTypes = ["movie", "tv", "book", "date_idea", "trip", "album_shelf"] as const;
 
 const nameSchema = z
   .string()
@@ -45,6 +67,9 @@ export const createListSchema = z.object({
   emoji: emojiSchema,
   color: colorSchema,
   description: descriptionSchema.optional(),
+  // Required iff type === 'album_shelf'. Verified at the route layer so we
+  // can return a structured error code distinguishing missing vs. malformed.
+  spotifyPlaylistUrl: z.string().min(1).max(2048).optional(),
 });
 
 export const updateListSchema = z
@@ -54,6 +79,9 @@ export const updateListSchema = z
     color: colorSchema.optional(),
     // null clears, undefined leaves alone, string updates.
     description: z.union([descriptionSchema, z.null()]).optional(),
+    // For album_shelf lists, members can patch `metadata.spotifyPlaylistUrl`
+    // (per spec §3.5) — that path is open to any member, not owner-only.
+    metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "at least one field required");
 
@@ -66,6 +94,7 @@ function toListShape(l: DbList): List {
     color: l.color as ListColor,
     description: l.description,
     ownerId: l.ownerId,
+    metadata: (l.metadata ?? {}) as ListMetadata,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
   };
@@ -86,6 +115,7 @@ listRoutes.get("/", async (c) => {
       l.color,
       l.description,
       l.owner_id,
+      l.metadata,
       l.created_at,
       l.updated_at,
       me.role::text AS my_role,
@@ -108,6 +138,7 @@ listRoutes.get("/", async (c) => {
       color: String(r.color) as ListColor,
       description: r.description === null ? null : String(r.description),
       ownerId: String(r.owner_id),
+      metadata: (r.metadata ?? {}) as ListMetadata,
       createdAt: createdAt.toISOString(),
       updatedAt: updatedAt.toISOString(),
       role: String(r.my_role) as MemberRole,
@@ -132,34 +163,118 @@ listRoutes.post("/", async (c) => {
   }
   const userId = c.get("userId");
   const db = getDb();
+  const data = parsed.data;
 
-  const created = await db.transaction(async (tx) => {
-    const [list] = await tx
-      .insert(lists)
-      .values({
-        type: parsed.data.type,
-        name: parsed.data.name,
-        emoji: parsed.data.emoji,
-        color: parsed.data.color,
-        description: parsed.data.description ?? null,
-        ownerId: userId,
-      })
-      .returning();
-    if (!list) throw new Error("list insert returned no row");
-    await tx.insert(listMembers).values({
-      listId: list.id,
-      userId,
-      role: "owner",
+  // album_shelf: validate the playlist URL up-front so we don't create
+  // an orphan list if Spotify rejects it. The actual album fetch happens
+  // inside the transaction below.
+  let playlistMetadata: AlbumShelfListMetadata | null = null;
+  if (data.type === "album_shelf") {
+    if (!data.spotifyPlaylistUrl) {
+      return err(c, "VALIDATION", "spotifyPlaylistUrl required for album_shelf lists");
+    }
+    let playlistId: string;
+    try {
+      playlistId = parsePlaylistId(data.spotifyPlaylistUrl);
+    } catch (e) {
+      if (e instanceof InvalidPlaylistUrlError) {
+        return err(c, "VALIDATION", "invalid playlist URL", { code: "INVALID_PLAYLIST_URL" });
+      }
+      throw e;
+    }
+    try {
+      const meta = await fetchPlaylistMeta(playlistId);
+      if (meta.public === false) {
+        return err(c, "VALIDATION", "playlist must be public", {
+          code: "PLAYLIST_NOT_AVAILABLE",
+        });
+      }
+    } catch (e) {
+      if (e instanceof PlaylistNotAvailableError) {
+        return err(c, "VALIDATION", "playlist not found or private", {
+          code: "PLAYLIST_NOT_AVAILABLE",
+        });
+      }
+      if (e instanceof SpotifyConfigError) {
+        return err(c, "INTERNAL", "spotify integration not configured");
+      }
+      if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
+        return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
+      }
+      throw e;
+    }
+    playlistMetadata = {
+      spotifyPlaylistUrl: data.spotifyPlaylistUrl,
+      spotifyPlaylistId: playlistId,
+      lastRefreshedAt: null,
+      lastRefreshedBy: null,
+    };
+  } else if (data.spotifyPlaylistUrl !== undefined) {
+    return err(c, "VALIDATION", "spotifyPlaylistUrl only valid for album_shelf lists");
+  }
+
+  let created: DbList;
+  try {
+    created = await db.transaction(async (tx) => {
+      const [list] = await tx
+        .insert(lists)
+        .values({
+          type: data.type,
+          name: data.name,
+          emoji: data.emoji,
+          color: data.color,
+          description: data.description ?? null,
+          ownerId: userId,
+          metadata: playlistMetadata ?? {},
+        })
+        .returning();
+      if (!list) throw new Error("list insert returned no row");
+      await tx.insert(listMembers).values({
+        listId: list.id,
+        userId,
+        role: "owner",
+      });
+      await recordEvent({
+        db: tx,
+        listId: list.id,
+        actorId: userId,
+        type: "list_created",
+        payload: { name: list.name, type: list.type },
+      });
+
+      if (data.type === "album_shelf" && playlistMetadata) {
+        const result = await refreshAlbumShelfItems({
+          listId: list.id,
+          userId,
+          spotifyPlaylistId: playlistMetadata.spotifyPlaylistId,
+          spotifyPlaylistUrl: playlistMetadata.spotifyPlaylistUrl,
+          db: tx,
+        });
+        await recordEvent({
+          db: tx,
+          listId: list.id,
+          actorId: userId,
+          type: "album_shelf_refreshed",
+          payload: { added: result.addedCount, source: result.source },
+        });
+        // Re-select so the returned shape reflects the updated metadata
+        // (lastRefreshedAt populated by refreshAlbumShelfItems).
+        const [refreshed] = await tx.select().from(lists).where(eq(lists.id, list.id)).limit(1);
+        return refreshed ?? list;
+      }
+      return list;
     });
-    await recordEvent({
-      db: tx,
-      listId: list.id,
-      actorId: userId,
-      type: "list_created",
-      payload: { name: list.name, type: list.type },
-    });
-    return list;
-  });
+  } catch (e) {
+    if (e instanceof PlaylistNotAvailableError) {
+      return err(c, "VALIDATION", "playlist not found or private", {
+        code: "PLAYLIST_NOT_AVAILABLE",
+      });
+    }
+    if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
+      return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
+    }
+    throw e;
+  }
 
   return ok(c, { list: toListShape(created) }, 201);
 });
@@ -203,7 +318,7 @@ listRoutes.get("/:id", requireListMember, async (c) => {
   });
 });
 
-listRoutes.patch("/:id", requireListMember, requireListOwner, async (c) => {
+listRoutes.patch("/:id", requireListMember, async (c) => {
   let body: unknown;
   try {
     body = await c.req.json();
@@ -215,18 +330,141 @@ listRoutes.patch("/:id", requireListMember, requireListOwner, async (c) => {
     return err(c, "VALIDATION", "invalid request", parsed.error.issues);
   }
   const listId = c.req.param("id");
+  const userId = c.get("userId");
+  const role = c.get("listMemberRole");
   const db = getDb();
+  const data = parsed.data;
+
+  // Permission split (spec §3.5): owner-only for rename / emoji / color /
+  // description; any member can patch metadata (the only metadata patch we
+  // currently allow is album_shelf source URL change).
+  const ownerOnlyKeys = (["name", "emoji", "color", "description"] as const).filter(
+    (k) => data[k] !== undefined,
+  );
+  if (ownerOnlyKeys.length > 0 && role !== "owner") {
+    return err(c, "FORBIDDEN", "owner-only patch fields", { keys: ownerOnlyKeys });
+  }
+
+  // Look up the current list to know its type (gates whether `metadata`
+  // patches are allowed and what schema applies).
+  const [existing] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
+  if (!existing) return err(c, "NOT_FOUND", "list not found");
 
   const patch: Partial<DbList> = { updatedAt: new Date() };
-  if (parsed.data.name !== undefined) patch.name = parsed.data.name;
-  if (parsed.data.emoji !== undefined) patch.emoji = parsed.data.emoji;
-  if (parsed.data.color !== undefined) patch.color = parsed.data.color;
-  if (parsed.data.description !== undefined) {
-    patch.description = parsed.data.description;
+  if (data.name !== undefined) patch.name = data.name;
+  if (data.emoji !== undefined) patch.emoji = data.emoji;
+  if (data.color !== undefined) patch.color = data.color;
+  if (data.description !== undefined) patch.description = data.description;
+
+  let triggerAlbumShelfRefresh = false;
+  let oldSourceUrl: string | null = null;
+  let newPlaylistId: string | null = null;
+  let newSourceUrl: string | null = null;
+  if (data.metadata !== undefined) {
+    if (existing.type !== "album_shelf") {
+      return err(c, "VALIDATION", "metadata patch only supported for album_shelf lists");
+    }
+    const v = albumShelfListMetadataPatchSchema.safeParse(data.metadata);
+    if (!v.success) {
+      return err(c, "VALIDATION", "invalid metadata patch", v.error.issues);
+    }
+    if (v.data.spotifyPlaylistUrl !== undefined) {
+      let playlistId: string;
+      try {
+        playlistId = parsePlaylistId(v.data.spotifyPlaylistUrl);
+      } catch (e) {
+        if (e instanceof InvalidPlaylistUrlError) {
+          return err(c, "VALIDATION", "invalid playlist URL", { code: "INVALID_PLAYLIST_URL" });
+        }
+        throw e;
+      }
+      try {
+        const meta = await fetchPlaylistMeta(playlistId);
+        if (meta.public === false) {
+          return err(c, "VALIDATION", "playlist must be public", {
+            code: "PLAYLIST_NOT_AVAILABLE",
+          });
+        }
+      } catch (e) {
+        if (e instanceof PlaylistNotAvailableError) {
+          return err(c, "VALIDATION", "playlist not found or private", {
+            code: "PLAYLIST_NOT_AVAILABLE",
+          });
+        }
+        if (e instanceof SpotifyConfigError) {
+          return err(c, "INTERNAL", "spotify integration not configured");
+        }
+        if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
+          return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
+        }
+        throw e;
+      }
+
+      const prevMeta = (existing.metadata ?? {}) as Record<string, unknown>;
+      oldSourceUrl =
+        typeof prevMeta.spotifyPlaylistUrl === "string" ? prevMeta.spotifyPlaylistUrl : null;
+      newSourceUrl = v.data.spotifyPlaylistUrl;
+      newPlaylistId = playlistId;
+      triggerAlbumShelfRefresh = true;
+      patch.metadata = {
+        ...prevMeta,
+        spotifyPlaylistUrl: v.data.spotifyPlaylistUrl,
+        spotifyPlaylistId: playlistId,
+      };
+    }
+  }
+
+  if (
+    data.name === undefined &&
+    data.emoji === undefined &&
+    data.color === undefined &&
+    data.description === undefined &&
+    !triggerAlbumShelfRefresh
+  ) {
+    // Nothing actionable in the patch (e.g. metadata blob without
+    // spotifyPlaylistUrl). Return the row as-is.
+    return ok(c, { list: toListShape(existing) });
   }
 
   const [updated] = await db.update(lists).set(patch).where(eq(lists.id, listId)).returning();
   if (!updated) return err(c, "NOT_FOUND", "list not found");
+
+  if (triggerAlbumShelfRefresh && newPlaylistId && newSourceUrl) {
+    try {
+      const result = await refreshAlbumShelfItems({
+        listId,
+        userId,
+        spotifyPlaylistId: newPlaylistId,
+        spotifyPlaylistUrl: newSourceUrl,
+        db,
+      });
+      await recordEvent({
+        listId,
+        actorId: userId,
+        type: "album_shelf_source_changed",
+        payload: { from: oldSourceUrl ?? "", to: newSourceUrl },
+      });
+      await recordEvent({
+        listId,
+        actorId: userId,
+        type: "album_shelf_refreshed",
+        payload: { added: result.addedCount, source: result.source },
+      });
+      const [reread] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
+      return ok(c, { list: toListShape(reread ?? updated) });
+    } catch (e) {
+      if (e instanceof PlaylistNotAvailableError) {
+        return err(c, "VALIDATION", "playlist not found or private", {
+          code: "PLAYLIST_NOT_AVAILABLE",
+        });
+      }
+      if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
+        return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
+      }
+      throw e;
+    }
+  }
+
   return ok(c, { list: toListShape(updated) });
 });
 
@@ -257,6 +495,22 @@ listRoutes.get("/:id/items", requireListMember, async (c) => {
   }
   const listId = c.req.param("id");
   const userId = c.get("userId");
+  const db = getDb();
+
+  // Album shelves return a typed `{ ordered, detected }` shape — section
+  // assignment + sort happen server-side per spec §7.2 so the client
+  // doesn't have to filter/sort by metadata.position.
+  const [parent] = await db
+    .select({ type: lists.type })
+    .from(lists)
+    .where(eq(lists.id, listId))
+    .limit(1);
+  if (!parent) return err(c, "NOT_FOUND", "list not found");
+  if (parent.type === "album_shelf") {
+    const split = await fetchAlbumShelfItems(listId);
+    return ok(c, split);
+  }
+
   const items = await fetchItemsForList(listId, userId, { completed: completedParam.data });
   return ok(c, { items });
 });
@@ -283,6 +537,20 @@ listRoutes.post(
     }
     const listId = c.req.param("id");
     const userId = c.get("userId");
+
+    // album_shelf items only enter via refresh — manual add isn't a UX entry
+    // point on the client and accepting it here would let stale clients
+    // smuggle in rows that don't satisfy the type's metadata invariants.
+    const db = getDb();
+    const [parent] = await db
+      .select({ type: lists.type })
+      .from(lists)
+      .where(eq(lists.id, listId))
+      .limit(1);
+    if (parent?.type === "album_shelf") {
+      return err(c, "VALIDATION", "items cannot be added manually to an album_shelf list");
+    }
+
     let item: Awaited<ReturnType<typeof createItem>>;
     try {
       item = await createItem(listId, userId, parsed.data);
@@ -293,5 +561,79 @@ listRoutes.post(
       throw e;
     }
     return ok(c, { item }, 201);
+  },
+);
+
+// --- Album-shelf refresh ---
+//
+// Pulls the current playlist from Spotify and adds any new (list_id,
+// spotifyAlbumId) rows as detected items. Pure-additive: existing rows
+// (ordered or detected) stay even if their tracks left the playlist.
+// Member-level (any member can refresh).
+
+listRoutes.post(
+  "/:id/refresh",
+  requireListMember,
+  rateLimit({
+    family: "v1.album-shelf.refresh",
+    limit: 30,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const listId = c.req.param("id");
+    const userId = c.get("userId");
+    const db = getDb();
+    const [list] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
+    if (!list) return err(c, "NOT_FOUND", "list not found");
+    if (list.type !== "album_shelf") {
+      return err(c, "VALIDATION", "refresh only supported for album_shelf lists");
+    }
+
+    let meta: AlbumShelfListMetadata;
+    try {
+      meta = asAlbumShelfMetadata(list.metadata);
+    } catch {
+      return err(c, "VALIDATION", "album shelf playlist not configured");
+    }
+
+    let result: Awaited<ReturnType<typeof refreshAlbumShelfItems>>;
+    try {
+      result = await refreshAlbumShelfItems({
+        listId,
+        userId,
+        spotifyPlaylistId: meta.spotifyPlaylistId,
+        spotifyPlaylistUrl: meta.spotifyPlaylistUrl,
+        db,
+      });
+    } catch (e) {
+      if (e instanceof PlaylistNotAvailableError) {
+        return err(c, "VALIDATION", "playlist not found or private", {
+          code: "PLAYLIST_NOT_AVAILABLE",
+        });
+      }
+      if (e instanceof SpotifyConfigError) {
+        return err(c, "INTERNAL", "spotify integration not configured");
+      }
+      if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
+        return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
+      }
+      throw e;
+    }
+
+    await recordEvent({
+      listId,
+      actorId: userId,
+      type: "album_shelf_refreshed",
+      payload: { added: result.addedCount, source: result.source },
+    });
+
+    const split = await fetchAlbumShelfItems(listId);
+    return ok(c, {
+      ...split,
+      refreshedAt: result.refreshedAt.toISOString(),
+      refreshedBy: userId,
+      addedCount: result.addedCount,
+    });
   },
 );

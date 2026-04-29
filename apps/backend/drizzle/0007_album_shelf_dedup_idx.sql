@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "items_list_spotify_album_idx" ON "items" USING btree ("list_id",("metadata"->>'spotifyAlbumId')) WHERE metadata ? 'spotifyAlbumId';

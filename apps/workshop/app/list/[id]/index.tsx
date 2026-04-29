@@ -26,6 +26,7 @@ import { ApiError } from "../../../src/lib/api";
 import { haptics } from "../../../src/lib/haptics";
 import { computeNewItemsDelta } from "../../../src/lib/newItemsPill";
 import { queryKeys } from "../../../src/lib/queryKeys";
+import { AlbumShelfDetail } from "../../../src/screens/AlbumShelfDetail";
 import {
   Button,
   Card,
@@ -192,6 +193,19 @@ export default function ListDetail() {
   }
 
   const list = listQuery.data?.list;
+  // Album shelves render an entirely separate detail screen — different
+  // sections (ordered/detected), no upvote, no completed checkmark, no FAB,
+  // refresh button instead of add. See src/screens/AlbumShelfDetail.tsx.
+  if (list?.type === "album_shelf") {
+    return (
+      <AlbumShelfDetail
+        list={list}
+        token={token}
+        onBack={() => router.back()}
+        onSettings={() => router.push(`/list/${id}/settings`)}
+      />
+    );
+  }
   const accent = list?.color
     ? (tokens.list[list.color as ListColorKey] ?? tokens.accent.default)
     : tokens.accent.default;

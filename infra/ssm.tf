@@ -104,23 +104,3 @@ resource "aws_ssm_parameter" "spotify_client_secret" {
     ignore_changes = [value]
   }
 }
-
-resource "aws_ssm_parameter" "spotify_redirect_uri" {
-  name  = "/${local.prefix}/spotify_redirect_uri"
-  type  = "SecureString"
-  value = var.spotify_redirect_uri
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}
-
-resource "aws_ssm_parameter" "spotify_app_redirect_uri" {
-  name  = "/${local.prefix}/spotify_app_redirect_uri"
-  type  = "SecureString"
-  value = var.spotify_app_redirect_uri
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-}

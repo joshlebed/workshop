@@ -36,6 +36,27 @@
       "when": 1777308191288,
       "tag": "0004_spotify_integration",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777436166062,
+      "tag": "0005_drop_spotify_user_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777436407000,
+      "tag": "0006_album_shelf_enum_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1777437410358,
+      "tag": "0007_album_shelf_dedup_idx",
+      "breakpoints": true
     }
   ]
 }
