@@ -23,7 +23,7 @@
     "e2e:ui": "playwright test --ui",
     "deploy:backend": "./scripts/deploy.sh",
     "deploy:ota": "pnpm --filter workshop-app exec npx eas-cli@latest update --auto --branch production",
-    "deploy:ios": "pnpm --filter workshop-app exec npx eas-cli@18.8.1 build --platform ios --profile production --auto-submit --non-interactive --no-wait",
+    "deploy:ios": "EAS_BUILD_NO_EXPO_GO_WARNING=true pnpm --filter workshop-app exec npx eas-cli@18.8.1 build --platform ios --profile production --auto-submit --non-interactive --no-wait",
     "deploy:ios:local": "./scripts/deploy-ios-xcode.sh",
     "deploy": "pnpm run deploy:backend && pnpm run deploy:ota && pnpm run deploy:ios",
     "deploy:local": "pnpm run deploy:backend && pnpm run deploy:ota && pnpm run deploy:ios:local",
