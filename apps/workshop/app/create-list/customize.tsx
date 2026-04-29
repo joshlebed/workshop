@@ -2,7 +2,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ListColor, ListType } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
 import { queryKeys } from "../../src/lib/queryKeys";
@@ -130,7 +138,10 @@ export default function CreateListCustomize() {
   };
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <View style={styles.header}>
         <IconButton accessibilityLabel="Back" onPress={() => router.back()}>
           <Text style={styles.backGlyph}>‹</Text>
@@ -231,7 +242,7 @@ export default function CreateListCustomize() {
           onPress={onSubmit}
         />
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

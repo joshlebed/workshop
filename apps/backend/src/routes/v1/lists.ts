@@ -270,6 +270,9 @@ listRoutes.post("/", async (c) => {
         code: "PLAYLIST_NOT_AVAILABLE",
       });
     }
+    if (e instanceof SpotifyConfigError) {
+      return err(c, "INTERNAL", "spotify integration not configured");
+    }
     if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
       return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
     }

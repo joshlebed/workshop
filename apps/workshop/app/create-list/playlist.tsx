@@ -2,7 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ListColor } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ScrollView, StyleSheet, TextInput, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
 import { ApiError } from "../../src/lib/api";
@@ -64,7 +71,10 @@ export default function CreateListPlaylist() {
   });
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <View style={styles.header}>
         <IconButton
           accessibilityLabel="Back"
@@ -117,7 +127,7 @@ export default function CreateListPlaylist() {
           onPress={() => mutation.mutate()}
         />
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

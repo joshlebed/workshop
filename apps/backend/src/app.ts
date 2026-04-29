@@ -46,7 +46,12 @@ export function buildApp() {
 
   app.onError((e, c) => {
     logger.error("unhandled error", { error: e, path: c.req.path });
-    return err(c, "INTERNAL", "internal server error");
+    // Surface error name + message in the response so a 500 in the iOS UI is
+    // actionable without CloudWatch access. We're the only audience for this
+    // API; not worth hiding the underlying error class.
+    const message =
+      e instanceof Error ? `${e.name}: ${e.message}`.slice(0, 500) : "internal server error";
+    return err(c, "INTERNAL", message);
   });
 
   app.notFound((c) => err(c, "NOT_FOUND", "not found"));
