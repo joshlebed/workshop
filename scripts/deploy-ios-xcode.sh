@@ -24,12 +24,54 @@ APPLE_ID="joshlebed@gmail.com"
 TEAM_ID="Q65U6C65ZZ"
 SCHEME="Workshopdev"
 
+# Preflight — collect all missing prereqs and print one report. Better DX than
+# fail → fix → fail → fix one at a time. See docs/manual-setup.md §12 for the
+# canonical setup runbook.
+missing=()
+
+if ! command -v xcodebuild >/dev/null 2>&1; then
+  missing+=("xcodebuild not found — install Xcode from the App Store, then run \`sudo xcode-select --install\`")
+fi
+if ! command -v pod >/dev/null 2>&1; then
+  missing+=("CocoaPods not found — \`gem install cocoapods\` (or \`brew install cocoapods\`)")
+fi
+if ! command -v xcrun >/dev/null 2>&1; then
+  missing+=("xcrun not found — Xcode command-line tools missing")
+fi
+
 if [ -z "${ASC_APP_SPECIFIC_PASSWORD:-}" ]; then
-  echo "ERROR: ASC_APP_SPECIFIC_PASSWORD env var required."
-  echo "  Generate at https://appleid.apple.com → App-Specific Passwords"
-  echo "  Then: export ASC_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx"
+  missing+=("ASC_APP_SPECIFIC_PASSWORD env var not set
+      Generate one at https://appleid.apple.com → Sign-In and Security → App-Specific Passwords.
+      Then either:
+        export ASC_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
+      or store once in keychain and reference:
+        xcrun altool --store-password-in-keychain-item ASC_PASSWORD \\
+          -u $APPLE_ID -p '<password>'
+        export ASC_APP_SPECIFIC_PASSWORD='@keychain:ASC_PASSWORD'")
+fi
+
+if ! security find-identity -v -p codesigning 2>/dev/null \
+    | grep -qE "(iPhone|Apple) Distribution.*\($TEAM_ID\)"; then
+  missing+=("Apple distribution cert for team $TEAM_ID not found in any keychain
+      Plant it once via either:
+        cd apps/workshop && npx eas-cli@latest credentials -p ios
+          (downloads EAS-managed cert + installs into login.keychain)
+      or export the .p12 from https://developer.apple.com/account/resources/certificates
+      and double-click to install.")
+fi
+
+if [ ${#missing[@]} -gt 0 ]; then
+  echo "✘ Missing prereqs (${#missing[@]}):"
+  echo
+  for i in "${!missing[@]}"; do
+    printf "  %d) %s\n\n" "$((i + 1))" "${missing[$i]}"
+  done
+  echo "After fixing, re-run: pnpm run deploy:ios:local"
+  echo "Full setup guide: docs/manual-setup.md §12"
   exit 1
 fi
+
+echo "✓ Preflight checks passed"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$REPO_ROOT/apps/workshop"
