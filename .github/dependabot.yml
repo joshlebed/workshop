@@ -16,16 +16,20 @@ updates:
     # `expo install --check` defines the supported matrix for the iOS app.
     # Dependabot must not move RN or its satellites past the SDK-pinned major —
     # it breaks Metro codegen (see docs/plans/HANDOFF.md §CI/CD unblock).
-    # react/react-dom are pinned exact (e.g. 19.2.0); even patch bumps fail
-    # expo-doctor, so ignore patches too. typescript follows expo's `~5.9.x`.
-    # Re-open these ignores when the Expo SDK itself is bumped.
+    # react-native + react-native-reanimated also fail expo-doctor on patch
+    # drift (PR #98 bumped them off the SDK 55 matrix and broke CI), so ignore
+    # patches there too. react/react-dom are pinned exact (e.g. 19.2.0); even
+    # patch bumps fail expo-doctor, so ignore patches too. typescript follows
+    # expo's `~5.9.x`. Re-open these ignores when the Expo SDK itself is bumped.
     ignore:
       - dependency-name: "react-native"
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+        update-types:
+          ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "react-native-gesture-handler"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "react-native-reanimated"
-        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+        update-types:
+          ["version-update:semver-patch", "version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "react-native-safe-area-context"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "react-native-screens"
