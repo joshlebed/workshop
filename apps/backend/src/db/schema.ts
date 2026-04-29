@@ -13,7 +13,14 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const listTypeEnum = pgEnum("list_type", ["movie", "tv", "book", "date_idea", "trip"]);
+export const listTypeEnum = pgEnum("list_type", [
+  "movie",
+  "tv",
+  "book",
+  "date_idea",
+  "trip",
+  "album_shelf",
+]);
 
 export const memberRoleEnum = pgEnum("member_role", ["owner", "member"]);
 
@@ -33,6 +40,10 @@ export const activityEventTypeEnum = pgEnum("activity_event_type", [
   "item_uncompleted",
   "invite_created",
   "invite_revoked",
+  "album_shelf_refreshed",
+  "album_shelf_source_changed",
+  "album_promoted",
+  "album_demoted",
 ]);
 
 export const users = pgTable(
@@ -143,6 +154,16 @@ export const items = pgTable(
       t.completed,
       t.createdAt,
     ),
+    // Partial unique idx for album_shelf items: dedupe by (list_id, spotifyAlbumId)
+    // so concurrent refreshes can `INSERT ... ON CONFLICT DO NOTHING` without
+    // a per-shelf lock. The predicate is `metadata ? 'spotifyAlbumId'` rather
+    // than `type = 'album_shelf'` to keep the migration enum-free — drizzle's
+    // migrator wraps all pending migrations in one transaction and Postgres
+    // forbids using a freshly-added enum value in the same tx. Items of other
+    // list types don't carry spotifyAlbumId so they're naturally excluded.
+    listSpotifyAlbumIdx: uniqueIndex("items_list_spotify_album_idx")
+      .on(t.listId, sql`(${t.metadata}->>'spotifyAlbumId')`)
+      .where(sql`metadata ? 'spotifyAlbumId'`),
   }),
 );
 
@@ -226,66 +247,6 @@ export const rateLimits = pgTable(
   }),
 );
 
-// --- Spotify integration ---
-
-// One row per (user, spotify_user). The encrypted refresh token (well, plain
-// for now — a follow-up should wrap with KMS Encrypt/Decrypt) lives here so
-// the backend can mint fresh access tokens transparently. `expires_at` lets
-// the API client refresh proactively without burning a 401.
-export const spotifyAccounts = pgTable("spotify_accounts", {
-  userId: uuid("user_id")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  spotifyUserId: text("spotify_user_id").notNull(),
-  spotifyDisplayName: text("spotify_display_name"),
-  scope: text("scope").notNull(),
-  accessToken: text("access_token").notNull(),
-  refreshToken: text("refresh_token").notNull(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
-});
-
-// User-saved Spotify albums. The album payload is denormalised on save so the
-// album list renders without round-tripping to Spotify on every paint. The
-// canonical metadata also lives in `metadata_cache` keyed by source=spotify.
-export const spotifyAlbumSaves = pgTable(
-  "spotify_album_saves",
-  {
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    spotifyAlbumId: text("spotify_album_id").notNull(),
-    name: text("name").notNull(),
-    artists: jsonb("artists").notNull().default(sql`'[]'::jsonb`),
-    imageUrl: text("image_url"),
-    releaseDate: text("release_date"),
-    totalTracks: integer("total_tracks"),
-    spotifyUrl: text("spotify_url"),
-    note: text("note"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.userId, t.spotifyAlbumId] }),
-    userCreatedIdx: index("spotify_album_saves_user_created_idx").on(t.userId, t.createdAt),
-  }),
-);
-
-// OAuth state cache for the Authorization Code + PKCE flow. The verifier
-// can't ride the redirect (Spotify echoes back only `state`), so we store
-// it server-side keyed by `state`. Rows are best-effort short-lived; the
-// callback also enforces an `expires_at` check.
-export const spotifyOauthStates = pgTable("spotify_oauth_states", {
-  state: text("state").primaryKey(),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  codeVerifier: text("code_verifier").notNull(),
-  appRedirect: text("app_redirect"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-});
-
 export type DbUser = typeof users.$inferSelect;
 export type DbList = typeof lists.$inferSelect;
 export type DbListMember = typeof listMembers.$inferSelect;
@@ -296,6 +257,3 @@ export type DbActivityEvent = typeof activityEvents.$inferSelect;
 export type DbUserActivityRead = typeof userActivityReads.$inferSelect;
 export type DbMetadataCache = typeof metadataCache.$inferSelect;
 export type DbRateLimit = typeof rateLimits.$inferSelect;
-export type DbSpotifyAccount = typeof spotifyAccounts.$inferSelect;
-export type DbSpotifyAlbumSave = typeof spotifyAlbumSaves.$inferSelect;
-export type DbSpotifyOauthState = typeof spotifyOauthStates.$inferSelect;

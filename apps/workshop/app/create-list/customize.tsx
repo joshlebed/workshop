@@ -16,7 +16,14 @@ import {
   useToast,
 } from "../../src/ui/index";
 
-const VALID_TYPES: readonly ListType[] = ["movie", "tv", "book", "date_idea", "trip"];
+const VALID_TYPES: readonly ListType[] = [
+  "movie",
+  "tv",
+  "book",
+  "date_idea",
+  "trip",
+  "album_shelf",
+];
 
 const TYPE_LABEL: Record<ListType, string> = {
   movie: "Movies",
@@ -24,6 +31,7 @@ const TYPE_LABEL: Record<ListType, string> = {
   book: "Books",
   date_idea: "Date ideas",
   trip: "Trips",
+  album_shelf: "Album shelf",
 };
 
 const DEFAULT_EMOJI: Record<ListType, string> = {
@@ -32,6 +40,7 @@ const DEFAULT_EMOJI: Record<ListType, string> = {
   book: "📚",
   date_idea: "💡",
   trip: "✈️",
+  album_shelf: "📀",
 };
 
 const DEFAULT_COLOR: Record<ListType, ListColor> = {
@@ -40,6 +49,7 @@ const DEFAULT_COLOR: Record<ListType, ListColor> = {
   book: "forest",
   date_idea: "rose",
   trip: "grape",
+  album_shelf: "slate",
 };
 
 const COLOR_KEYS: readonly ListColorKey[] = [
@@ -99,6 +109,25 @@ export default function CreateListCustomize() {
       });
     },
   });
+
+  const onSubmit = () => {
+    if (type === "album_shelf") {
+      // Album shelves need a playlist URL to be valid — defer creation
+      // to the playlist screen, which calls `createList` with the URL.
+      router.push({
+        pathname: "/create-list/playlist",
+        params: {
+          type,
+          name: trimmedName,
+          emoji,
+          color,
+          ...(description.trim().length > 0 ? { description: description.trim() } : {}),
+        },
+      });
+      return;
+    }
+    mutation.mutate();
+  };
 
   return (
     <View style={styles.root}>
@@ -195,11 +224,11 @@ export default function CreateListCustomize() {
 
         <Button
           testID="create-list-submit"
-          label="Create list"
+          label={type === "album_shelf" ? "Continue" : "Create list"}
           size="lg"
           disabled={!canSubmit || mutation.isPending}
           loading={mutation.isPending}
-          onPress={() => mutation.mutate()}
+          onPress={onSubmit}
         />
       </ScrollView>
     </View>

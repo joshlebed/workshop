@@ -158,6 +158,17 @@ function describeEvent(event: ActivityEvent): string {
       return "created a share link";
     case "invite_revoked":
       return "revoked a share link";
+    case "album_shelf_refreshed": {
+      const added = typeof payload.added === "number" ? payload.added : 0;
+      if (added === 0) return "refreshed the shelf — no new albums";
+      return `refreshed the shelf — ${added} new album${added === 1 ? "" : "s"}`;
+    }
+    case "album_shelf_source_changed":
+      return "changed the source playlist";
+    case "album_promoted":
+      return `promoted${payloadString(payload, "albumTitle", (t) => ` "${t}"`)} to the ordered shelf`;
+    case "album_demoted":
+      return `removed${payloadString(payload, "albumTitle", (t) => ` "${t}"`)} from the ordered shelf`;
     default: {
       const _exhaustive: never = event.type as never;
       void _exhaustive;

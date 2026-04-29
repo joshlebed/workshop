@@ -8,7 +8,7 @@
 
 export type AuthProvider = "apple" | "google";
 
-export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip";
+export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip" | "album_shelf";
 
 export type MemberRole = "owner" | "member";
 
@@ -25,7 +25,11 @@ export type ActivityEventType =
   | "item_completed"
   | "item_uncompleted"
   | "invite_created"
-  | "invite_revoked";
+  | "invite_revoked"
+  | "album_shelf_refreshed"
+  | "album_shelf_source_changed"
+  | "album_promoted"
+  | "album_demoted";
 
 export interface User {
   id: string;
@@ -92,6 +96,12 @@ export interface UpdateMeRequest {
  */
 export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand" | "slate";
 
+/**
+ * Free-form per-list-type JSONB blob. For `album_shelf`, the shape is
+ * `AlbumShelfListMetadata` (see below); other list types currently store `{}`.
+ */
+export type ListMetadata = Record<string, unknown>;
+
 export interface List {
   id: string;
   type: ListType;
@@ -100,6 +110,7 @@ export interface List {
   color: ListColor;
   description: string | null;
   ownerId: string;
+  metadata: ListMetadata;
   createdAt: string;
   updatedAt: string;
 }
@@ -142,6 +153,11 @@ export interface CreateListRequest {
   emoji: string;
   color: ListColor;
   description?: string;
+  /**
+   * Required iff `type === "album_shelf"`. Public Spotify playlist URL
+   * (`open.spotify.com/playlist/<id>` or `spotify:playlist:<id>`).
+   */
+  spotifyPlaylistUrl?: string;
 }
 
 export interface UpdateListRequest {
@@ -150,6 +166,12 @@ export interface UpdateListRequest {
   color?: ListColor;
   /** Pass `null` to clear; omit to leave unchanged. */
   description?: string | null;
+  /**
+   * Mutable per-list-type blob. For `album_shelf`, only
+   * `spotifyPlaylistUrl` is client-settable; the backend re-parses the id,
+   * persists, and triggers a refresh.
+   */
+  metadata?: ListMetadata;
 }
 
 export interface ListListResponse {
@@ -418,125 +440,52 @@ export interface MarkActivityReadResponse {
   ok: true;
 }
 
-// --- Spotify integration ---
+// --- Album Shelf (post-redesign feature, see docs/album-shelf.md) ---
 
 /**
- * Public-facing Spotify connection state. `connected: false` means the user
- * has never linked an account or revoked access. The mobile/web app uses
- * this to decide whether to render the "Connect Spotify" CTA or the rest of
- * the Spotify UI.
+ * Stored on `lists.metadata` for `type === "album_shelf"` rows. Other types
+ * leave `metadata` empty.
  */
-export interface SpotifyConnectionStatus {
-  connected: boolean;
-  spotifyUserId: string | null;
-  spotifyDisplayName: string | null;
-  scope: string | null;
-  connectedAt: string | null;
-}
-
-export interface SpotifyAuthorizeResponse {
-  /** Browser-openable Spotify consent URL with PKCE challenge already attached. */
-  authorizeUrl: string;
-  /** Opaque correlation id; clients can ignore but it's logged for debugging. */
-  state: string;
-}
-
-export interface SpotifyAlbumSummary {
-  spotifyAlbumId: string;
-  name: string;
-  artists: string[];
-  imageUrl: string | null;
-  releaseDate: string | null;
-  totalTracks: number | null;
-  spotifyUrl: string | null;
-}
-
-/** A saved album row, including the per-user note + save timestamp. */
-export interface SavedAlbum extends SpotifyAlbumSummary {
-  note: string | null;
-  savedAt: string;
-}
-
-export interface SavedAlbumListResponse {
-  albums: SavedAlbum[];
-}
-
-export interface SavedAlbumResponse {
-  album: SavedAlbum;
-}
-
-export interface SpotifyAlbumSearchResponse {
-  query: string;
-  results: SpotifyAlbumSummary[];
-}
-
-export interface SaveAlbumRequest {
-  spotifyAlbumId: string;
-  note?: string;
-}
-
-export interface UpdateSavedAlbumRequest {
-  /** Pass `null` to clear; omit to leave unchanged. */
-  note?: string | null;
-}
-
-/** Trimmed subset of the Spotify track shape the app actually renders. */
-export interface SpotifyTrackSummary {
-  spotifyTrackId: string;
-  name: string;
-  durationMs: number;
-  artists: string[];
-  album: {
-    spotifyAlbumId: string;
-    name: string;
-    imageUrl: string | null;
-  };
-  spotifyUrl: string | null;
-}
-
-export interface SpotifyNowPlaying {
-  isPlaying: boolean;
-  progressMs: number | null;
-  track: SpotifyTrackSummary | null;
-}
-
-export interface SpotifyRecentListen {
-  playedAt: string;
-  track: SpotifyTrackSummary;
-}
-
-export interface SpotifyRecentListensResponse {
-  items: SpotifyRecentListen[];
-}
-
-export interface SpotifyPlaylistSummary {
+export interface AlbumShelfListMetadata {
+  spotifyPlaylistUrl: string;
   spotifyPlaylistId: string;
-  name: string;
-  description: string | null;
-  imageUrl: string | null;
-  ownerDisplayName: string | null;
-  trackCount: number;
-  spotifyUrl: string | null;
-}
-
-export interface SpotifyPlaylistListResponse {
-  playlists: SpotifyPlaylistSummary[];
-}
-
-export interface SpotifyPlaylistTracksResponse {
-  playlistId: string;
-  total: number;
-  tracks: SpotifyTrackSummary[];
+  /** Updated each time a member runs a refresh. Null until the first refresh. */
+  lastRefreshedAt: string | null;
+  lastRefreshedBy: string | null;
 }
 
 /**
- * Result of "syncing" a Spotify playlist into the user's saved albums:
- * every unique album that appears across the playlist's tracks is added.
+ * Stored on `items.metadata` for `type === "album_shelf"` rows. `position`
+ * decides which section the row renders in: `null` → detected (sorted by
+ * `detectedAt` ASC), non-null → ordered (sorted by `position` ASC).
  */
-export interface SyncPlaylistAlbumsResponse {
-  playlistId: string;
-  uniqueAlbumCount: number;
-  newlySavedCount: number;
-  alreadySavedCount: number;
-  albums: SavedAlbum[];
+export interface AlbumShelfItemMetadata {
+  source: "spotify";
+  spotifyAlbumId: string;
+  spotifyAlbumUrl: string;
+  title: string;
+  artist: string;
+  year?: number;
+  coverUrl?: string;
+  trackCount: number;
+  position: number | null;
+  detectedAt: string;
+}
+
+/**
+ * Response for `GET /v1/lists/:id/items` when the list is an album_shelf.
+ * Other list types continue to return `{ items: Item[] }`.
+ */
+export interface AlbumShelfItemsResponse {
+  ordered: Item[];
+  detected: Item[];
+}
+
+export interface AlbumShelfRefreshResponse {
+  ordered: Item[];
+  detected: Item[];
+  refreshedAt: string;
+  refreshedBy: string;
+  /** Number of new detected items added in this refresh (may be 0). */
+  addedCount: number;
 }

@@ -70,17 +70,5 @@ variable "spotify_client_secret" {
   type        = string
   default     = ""
   sensitive   = true
-  description = "Spotify Web API client secret. Used in the Authorization Code token exchange when PKCE is paired with confidential clients."
-}
-
-variable "spotify_redirect_uri" {
-  type        = string
-  default     = ""
-  description = "Redirect URI registered on the Spotify dashboard. Must point at the deployed API: https://<api>/v1/spotify/auth/callback."
-}
-
-variable "spotify_app_redirect_uri" {
-  type        = string
-  default     = ""
-  description = "Where the backend redirects the browser after a successful Spotify callback. Typically the workshop:// deep link or the web app origin."
+  description = "Spotify Web API client secret. Used by the Album Shelf feature's Client Credentials flow to read public playlists."
 }

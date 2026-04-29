@@ -6,6 +6,10 @@ import { getDb } from "../../db/client.js";
 import { type DbItem, items, itemUpvotes, lists } from "../../db/schema.js";
 import { recordEvent } from "../../lib/events.js";
 import { err, ok } from "../../lib/response.js";
+import {
+  albumShelfItemMetadataSchema,
+  albumShelfItemPatchSchema,
+} from "../../lib/validators/album-shelf.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireItemMember } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
@@ -104,7 +108,27 @@ const metadataSchemasByType: Record<ListType, ZodType<ItemMetadata>> = {
   book: bookMetadataSchema as ZodType<ItemMetadata>,
   date_idea: placeMetadataSchema as ZodType<ItemMetadata>,
   trip: placeMetadataSchema as ZodType<ItemMetadata>,
+  album_shelf: albumShelfItemMetadataSchema as ZodType<ItemMetadata>,
 };
+
+/**
+ * Whitelist of metadata fields a member can mutate on an existing item via
+ * `PATCH /v1/items/:id`. For `album_shelf` rows only `position` is mutable;
+ * everything else is derived from Spotify and re-set by the refresh path.
+ * For other list types we don't currently restrict client patches (manual
+ * entries are still free-form), so the validator is a no-op pass-through.
+ */
+function validatePatchMetadataForType(
+  type: ListType,
+  metadata: unknown,
+): { success: true; data: ItemMetadata } | { success: false; issues: z.ZodIssue[] } {
+  if (type === "album_shelf") {
+    const r = albumShelfItemPatchSchema.safeParse(metadata);
+    if (!r.success) return { success: false, issues: r.error.issues };
+    return { success: true, data: r.data as ItemMetadata };
+  }
+  return validateMetadataForType(type, metadata);
+}
 
 /**
  * Per-list-type validation for `items.metadata`. Returns the parsed metadata
@@ -351,38 +375,94 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
   if (parsed.data.title !== undefined) patch.title = parsed.data.title;
   if (parsed.data.url !== undefined) patch.url = parsed.data.url;
   if (parsed.data.note !== undefined) patch.note = parsed.data.note;
+
+  // For album_shelf, we need the existing metadata + type to merge a position
+  // patch and emit promote/demote events. For other list types, the patch
+  // shape replaces the metadata blob wholesale (existing behavior).
+  let prevType: ListType | null = null;
+  let prevMetadata: ItemMetadata | null = null;
   if (parsed.data.metadata !== undefined) {
-    // Per-type validation needs the parent list's type. The `items.type`
-    // column is denormalized from `lists.type` (schema §7.6), so reading
-    // it here is one extra index lookup vs. joining lists.
-    const [typeRow] = await db
-      .select({ type: items.type })
+    const [existing] = await db
+      .select({ type: items.type, metadata: items.metadata })
       .from(items)
       .where(eq(items.id, itemId))
       .limit(1);
-    if (!typeRow) return err(c, "NOT_FOUND", "item not found");
-    const v = validateMetadataForType(typeRow.type, parsed.data.metadata);
+    if (!existing) return err(c, "NOT_FOUND", "item not found");
+    prevType = existing.type;
+    prevMetadata = (existing.metadata ?? {}) as ItemMetadata;
+
+    const v = validatePatchMetadataForType(prevType, parsed.data.metadata);
     if (!v.success) {
       return err(c, "VALIDATION", "invalid metadata for list type", v.issues);
     }
-    patch.metadata = v.data;
+
+    if (prevType === "album_shelf") {
+      // album_shelf: merge `position` into the existing blob. Other fields
+      // are immutable client-side.
+      const merged = { ...prevMetadata, ...v.data };
+      patch.metadata = merged;
+    } else {
+      patch.metadata = v.data;
+    }
   }
 
   const [updated] = await db.update(items).set(patch).where(eq(items.id, itemId)).returning();
   if (!updated) return err(c, "NOT_FOUND", "item not found");
 
-  await recordEvent({
-    listId: updated.listId,
-    actorId: userId,
-    type: "item_updated",
-    itemId: updated.id,
-    payload: { title: updated.title },
+  // Choose the activity event for this patch. For album_shelf, position
+  // changes that cross the divider fire promote/demote; pure within-section
+  // reorders (number → number) stay silent to keep the feed quiet. For
+  // other list types we always emit `item_updated`.
+  const eventToRecord = pickPatchEvent({
+    prevType,
+    prevMetadata,
+    nextMetadata: patch.metadata as ItemMetadata | undefined,
+    metadataPatched: parsed.data.metadata !== undefined,
+    title: updated.title,
   });
+  if (eventToRecord) {
+    await recordEvent({
+      listId: updated.listId,
+      actorId: userId,
+      type: eventToRecord.type,
+      itemId: updated.id,
+      payload: eventToRecord.payload,
+    });
+  }
 
   const item = await fetchItemShape(itemId, userId);
   if (!item) return err(c, "NOT_FOUND", "item not found");
   return ok(c, { item });
 });
+
+interface PickPatchEventArgs {
+  prevType: ListType | null;
+  prevMetadata: ItemMetadata | null;
+  nextMetadata: ItemMetadata | undefined;
+  metadataPatched: boolean;
+  title: string;
+}
+
+function pickPatchEvent(a: PickPatchEventArgs): {
+  type: "item_updated" | "album_promoted" | "album_demoted";
+  payload: Record<string, unknown>;
+} | null {
+  if (a.prevType !== "album_shelf" || !a.metadataPatched) {
+    return { type: "item_updated", payload: { title: a.title } };
+  }
+  const prevPos = (a.prevMetadata as Record<string, unknown> | null)?.position;
+  const nextPos = (a.nextMetadata as Record<string, unknown> | undefined)?.position;
+  const wasOrdered = typeof prevPos === "number";
+  const nowOrdered = typeof nextPos === "number";
+  if (!wasOrdered && nowOrdered) {
+    return { type: "album_promoted", payload: { albumTitle: a.title, position: nextPos } };
+  }
+  if (wasOrdered && !nowOrdered) {
+    return { type: "album_demoted", payload: { albumTitle: a.title } };
+  }
+  // Within-section reorder, or a no-op — stay silent.
+  return null;
+}
 
 itemRoutes.delete("/:id", requireItemMember, async (c) => {
   const itemId = c.req.param("id");

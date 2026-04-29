@@ -22,13 +22,7 @@ export const queryKeys = {
     feed: ["activity", "feed"] as const,
     feedInfinite: ["activity", "feedInfinite"] as const,
   },
-  spotify: {
-    status: ["spotify", "status"] as const,
-    savedAlbums: ["spotify", "savedAlbums"] as const,
-    search: (q: string) => ["spotify", "search", q] as const,
-    nowPlaying: ["spotify", "nowPlaying"] as const,
-    recent: ["spotify", "recent"] as const,
-    playlists: ["spotify", "playlists"] as const,
-    playlistTracks: (id: string) => ["spotify", "playlists", id, "tracks"] as const,
+  albumShelf: {
+    items: (listId: string) => ["albumShelf", "items", listId] as const,
   },
 } as const;

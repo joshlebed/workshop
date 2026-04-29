@@ -41,6 +41,12 @@ const OPTIONS: TypeOption[] = [
     label: "Trips",
     description: "Places to go, things to do there.",
   },
+  {
+    type: "album_shelf",
+    emoji: "📀",
+    label: "Album shelf",
+    description: "Build a curated album collection from a public Spotify playlist.",
+  },
 ];
 
 export default function CreateListType() {
