@@ -10,6 +10,7 @@ build/
 .expo/
 .expo-shared/
 web-build/
+*.ipa
 
 # Env + secrets (never commit)
 .env
@@ -57,6 +58,10 @@ logs/
 # Lambda build artifacts
 apps/backend/dist/
 apps/backend/*.zip
+
+# Expo prebuild outputs (managed workflow regenerates these on each build)
+apps/workshop/ios/
+apps/workshop/android/
 
 # Test
 coverage/
