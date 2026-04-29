@@ -38,9 +38,9 @@
     "expo-web-browser": "~55.0.14",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "react-native": "0.83.9",
+    "react-native": "0.83.6",
     "react-native-gesture-handler": "~2.30.1",
-    "react-native-reanimated": "4.2.3",
+    "react-native-reanimated": "4.2.1",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
     "react-native-web": "^0.21.2",
@@ -53,13 +53,5 @@
     "eas-cli": "18.8.1",
     "typescript": "5.9.3",
     "vitest": "2.1.9"
-  },
-  "expo": {
-    "install": {
-      "exclude": [
-        "react-native",
-        "react-native-reanimated"
-      ]
-    }
   }
 }
