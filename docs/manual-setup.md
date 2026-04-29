@@ -247,6 +247,64 @@ or use the capability at runtime.
 The order matters: declaring in code first means EAS's capability sync (which reverts
 portal-only changes) won't undo your portal toggle on the next build.
 
+## 12. Local iOS deploy (zero-EAS-Build)
+
+`pnpm run deploy:ios:local` builds and uploads to TestFlight from your laptop without
+using EAS Build infra (`scripts/deploy-ios-xcode.sh`: `expo prebuild` → `pod install` →
+`xcodebuild archive` → `-exportArchive` → `xcrun altool --upload-app`). Useful when EAS
+Build minutes are exhausted or you want to validate a build path that uses your actual
+Xcode signing setup. The script preflights everything below — if anything's missing,
+it prints the exact command and bails.
+
+One-time setup:
+
+- [ ] **Xcode + CLI tools**: install Xcode from the App Store (≥ 15), then
+      `sudo xcode-select --install`. The script needs `xcodebuild`, `xcrun`, and `xcrun altool`.
+- [ ] **CocoaPods** in PATH: `gem install cocoapods` (or `brew install cocoapods`). Note
+      that brew's cocoapods will silently break if Homebrew bumps Ruby past the version
+      its shim was built against — `gem install` against the active Ruby is the
+      lowest-friction path.
+- [ ] **Distribution certificate in any visible keychain** for team `Q65U6C65ZZ`. Plant
+      once via either:
+
+      ```bash
+      cd apps/workshop && npx eas-cli@latest credentials -p ios
+      ```
+
+      (downloads the EAS-managed cert + installs into `login.keychain`), or export the
+      `.p12` from <https://developer.apple.com/account/resources/certificates> and
+      double-click to install.
+
+- [ ] **App-Specific Password** for `xcrun altool` upload. Generate at
+      <https://appleid.apple.com> → Sign-In and Security → App-Specific Passwords. Then:
+
+      ```bash
+      export ASC_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
+      ```
+
+      Or store in keychain once and reference by alias:
+
+      ```bash
+      xcrun altool --store-password-in-keychain-item ASC_PASSWORD \
+        -u joshlebed@gmail.com -p '<password>'
+      export ASC_APP_SPECIFIC_PASSWORD='@keychain:ASC_PASSWORD'
+      ```
+
+- [ ] **Signed into Apple ID in Xcode** (Settings → Accounts → "+"). The build runs with
+      `-allowProvisioningUpdates` which lets Xcode fetch / create profiles on demand;
+      without an Xcode-side Apple session, the archive step fails with a signing error.
+
+After the one-time setup, every subsequent run is just:
+
+```bash
+pnpm run deploy:ios:local      # build + upload only
+pnpm run deploy:local           # backend + OTA + local iOS, in order
+```
+
+Build numbers are timestamp-based (`YYYYMMDDHHMM`) so they're monotonically increasing
+and don't collide with EAS-managed `appVersionSource: remote` values from CI runs.
+TestFlight processing takes ~10 min after upload.
+
 ## Troubleshooting first-run
 
 - **"Lambda returns 503 'not deployed yet'"**: the placeholder zip is still there. CI didn't run
