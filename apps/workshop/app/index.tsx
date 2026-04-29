@@ -24,6 +24,7 @@ const TYPE_LABEL: Record<ListType, string> = {
   book: "Books",
   date_idea: "Date ideas",
   trip: "Trips",
+  album_shelf: "Album shelf",
 };
 
 export default function Home() {
@@ -100,13 +101,6 @@ export default function Home() {
               </View>
             ) : null}
           </View>
-          <IconButton
-            accessibilityLabel="Open Spotify"
-            onPress={() => router.push("/spotify")}
-            testID="open-spotify"
-          >
-            <Text style={styles.spotifyGlyph}>🎧</Text>
-          </IconButton>
           <IconButton accessibilityLabel="Sign out" onPress={signOut} testID="sign-out">
             <Text tone="secondary" style={styles.signOutGlyph}>
               ⎋
@@ -239,7 +233,6 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   signOutGlyph: { fontSize: tokens.font.size.lg },
-  spotifyGlyph: { fontSize: tokens.font.size.lg },
   bellGlyph: { fontSize: tokens.font.size.lg },
   bellBadge: {
     position: "absolute",

@@ -120,6 +120,7 @@ function AuthGate() {
         <Stack.Screen name="onboarding/display-name" />
         <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="create-list/playlist" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="create-list/share" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="list/[id]/index" />
@@ -130,11 +131,6 @@ function AuthGate() {
         <Stack.Screen name="invite/[token]" />
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="spotify/index" />
-        <Stack.Screen name="spotify/albums" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="spotify/now-playing" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="spotify/playlists" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="spotify/playlist/[id]" options={{ animation: "slide_from_right" }} />
       </Stack>
     </SafeAreaView>
   );

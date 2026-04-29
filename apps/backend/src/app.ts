@@ -13,7 +13,6 @@ import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
 import { listRoutes } from "./routes/v1/lists.js";
 import { memberRoutes } from "./routes/v1/members.js";
 import { searchRoutes } from "./routes/v1/search.js";
-import { spotifyRoutes } from "./routes/v1/spotify.js";
 import { userRoutes } from "./routes/v1/users.js";
 
 const clientIp: RateLimitKeyFn = (c) => {
@@ -74,7 +73,6 @@ export function buildApp() {
   app.route("/v1/items", itemRoutes);
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);
-  app.route("/v1/spotify", spotifyRoutes);
   app.route("/v1/activity", activityRoutes);
   // Invite routes split across two URL roots (`/v1/lists/:id/invites/...`
   // and `/v1/invites/:token/accept`). Mount under `/v1` so both shapes

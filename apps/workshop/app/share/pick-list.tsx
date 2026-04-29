@@ -21,6 +21,7 @@ const TYPE_LABEL: Record<ListType, string> = {
   book: "Books",
   date_idea: "Date ideas",
   trip: "Trips",
+  album_shelf: "Album shelf",
 };
 
 // Lists that pair naturally with a shared URL (free-form items take a URL +

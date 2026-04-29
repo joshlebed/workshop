@@ -8,4 +8,4 @@
 // `./types.ts` — the offline persister keys cached state by this string and
 // discards anything older on cold start. Pure addition (new optional field,
 // new endpoint type) doesn't require a bump.
-export const SHARED_TYPES_VERSION = "1";
+export const SHARED_TYPES_VERSION = "2";
