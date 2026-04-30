@@ -87,7 +87,11 @@ export default function CreateListPlaylist() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         <Text tone="secondary" style={styles.tagline}>
           Paste a public Spotify playlist URL. Your shelf will pull every album the playlist
           references.
@@ -117,7 +121,13 @@ export default function CreateListPlaylist() {
             playlists won't work.
           </Text>
         </Card>
+      </ScrollView>
 
+      {/* Submit lives outside the ScrollView so it sticks above the keyboard
+          (KeyboardAvoidingView + padding shrinks the KAV; the button stays at
+          its bottom edge instead of getting trapped inside scrollable
+          content). */}
+      <View style={styles.footer}>
         <Button
           testID="album-shelf-playlist-submit"
           label="Create shelf"
@@ -126,7 +136,7 @@ export default function CreateListPlaylist() {
           loading={mutation.isPending}
           onPress={() => mutation.mutate()}
         />
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -155,8 +165,14 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 40 },
   body: {
     paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
+    paddingBottom: tokens.space.lg,
     gap: tokens.space.lg,
+  },
+  footer: {
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.xxl,
+    backgroundColor: tokens.bg.canvas,
   },
   tagline: { textAlign: "left" },
   card: { gap: tokens.space.md },

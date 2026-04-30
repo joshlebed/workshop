@@ -150,7 +150,11 @@ export default function CreateListCustomize() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+      >
         <Card style={styles.card} elevated>
           <View style={styles.field}>
             <Text variant="label" tone="secondary">
@@ -232,7 +236,13 @@ export default function CreateListCustomize() {
             />
           </View>
         </Card>
+      </ScrollView>
 
+      {/* Submit lives outside the ScrollView so it sticks above the keyboard
+          (KeyboardAvoidingView + padding shrinks the KAV; the button stays at
+          its bottom edge instead of getting trapped inside scrollable
+          content). */}
+      <View style={styles.footer}>
         <Button
           testID="create-list-submit"
           label={type === "album_shelf" ? "Continue" : "Create list"}
@@ -241,7 +251,7 @@ export default function CreateListCustomize() {
           loading={mutation.isPending}
           onPress={onSubmit}
         />
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -260,8 +270,14 @@ const styles = StyleSheet.create({
   headerSpacer: { width: 40 },
   body: {
     paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
+    paddingBottom: tokens.space.lg,
     gap: tokens.space.lg,
+  },
+  footer: {
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.xxl,
+    backgroundColor: tokens.bg.canvas,
   },
   card: { gap: tokens.space.lg },
   field: { gap: tokens.space.sm },

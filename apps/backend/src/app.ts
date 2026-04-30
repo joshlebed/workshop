@@ -1,3 +1,4 @@
+import { DrizzleQueryError } from "drizzle-orm/errors";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
@@ -48,9 +49,15 @@ export function buildApp() {
     logger.error("unhandled error", { error: e, path: c.req.path });
     // Surface error name + message in the response so a 500 in the iOS UI is
     // actionable without CloudWatch access. We're the only audience for this
-    // API; not worth hiding the underlying error class.
+    // API; not worth hiding the underlying error class. DrizzleQueryError's
+    // own `.message` is just the failed query + bind params; the actual
+    // postgres error (e.g. "invalid input value for enum list_type") lives on
+    // `.cause`, so unwrap it to keep the toast useful.
+    const root = unwrapRootError(e);
     const message =
-      e instanceof Error ? `${e.name}: ${e.message}`.slice(0, 500) : "internal server error";
+      root instanceof Error
+        ? `${root.name}: ${root.message}`.slice(0, 500)
+        : "internal server error";
     return err(c, "INTERNAL", message);
   });
 
@@ -85,4 +92,24 @@ export function buildApp() {
   app.route("/v1", inviteRoutes);
 
   return app;
+}
+
+function unwrapRootError(e: unknown): unknown {
+  if (!(e instanceof Error)) return e;
+  // DrizzleQueryError wraps a postgres-js error on `.cause`. Walk the chain
+  // (capped) so a deeper cause still surfaces over the wrapper's
+  // "Failed query: ..." message.
+  let cur: unknown = e;
+  for (let i = 0; i < 5; i++) {
+    if (cur instanceof DrizzleQueryError && cur.cause) {
+      cur = cur.cause;
+      continue;
+    }
+    if (cur instanceof Error && cur.cause instanceof Error) {
+      cur = cur.cause;
+      continue;
+    }
+    break;
+  }
+  return cur;
 }
