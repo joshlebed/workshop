@@ -10,24 +10,35 @@ import type {
   ListColor,
   ListMemberSummary,
 } from "@workshop/shared";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  type LayoutChangeEvent,
+  Platform,
   Pressable,
   RefreshControl,
-  SectionList,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { fetchAlbumShelfItems, refreshAlbumShelf } from "../api/albumShelf";
 import { deleteItem, updateItem } from "../api/items";
 import { ApiError } from "../lib/api";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
 import { Button, Card, EmptyState, type ListColorKey, Text, tokens, useToast } from "../ui/index";
+import { type DropResult, type OrderedItem, resolveDrop } from "./albumShelfDrag";
+import { useWebDragHandlers } from "./albumShelfWebDrag";
 
 interface Props {
   list: List;
@@ -37,18 +48,45 @@ interface Props {
   onSettings: () => void;
 }
 
+// Entries we render in the flat scroll. We need stable per-row layouts to
+// translate drag Y → drop slot, so headers / hint / rows are all entries
+// with measurable heights.
+type Entry =
+  | { kind: "ordered-header"; count: number }
+  | { kind: "detected-header"; count: number }
+  | { kind: "ordered-hint" }
+  | { kind: "ordered-row"; item: Item; orderedIndex: number }
+  | { kind: "detected-row"; item: Item };
+
+type EntryKey = string;
+
+function entryKey(e: Entry, position: number): EntryKey {
+  switch (e.kind) {
+    case "ordered-header":
+      return "ordered-header";
+    case "detected-header":
+      return "detected-header";
+    case "ordered-hint":
+      return "ordered-hint";
+    case "ordered-row":
+      return `ordered:${e.item.id}`;
+    case "detected-row":
+      return `detected:${e.item.id}:${position}`;
+  }
+}
+
+const LONG_PRESS_MS = 350;
+
 /**
  * Album Shelf list-detail screen. Distinct enough from the standard
  * list-detail (no upvote, no completed checkmark, no FAB; refresh button +
- * ordered/detected sections + per-row context menu) that it lives in its
- * own component rather than branching the standard one.
+ * ordered/detected sections + drag-to-reorder + per-row context menu) that
+ * it lives in its own component rather than branching the standard one.
  *
- * Drag-to-reorder is intentionally not in v1.1 — `react-native-draggable-
- * flatlist` doesn't drag across multiple FlatLists out of the box, so
- * promotion/demotion + reordering is exposed via the row context menu
- * (Move up / Move down / Move to top / Move to bottom / Move to ordered /
- * Move to detected / Delete). docs/album-shelf.md §10.7 explicitly allows
- * this fallback.
+ * Drag flow: long-press a row to lift it, then drag across the divider to
+ * promote/demote or within the same section to reorder. On web the same
+ * gesture works with mouse-down. Position math is in `albumShelfDrag.ts`
+ * (unit-tested separately) so this file only owns the rendering.
  */
 export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: Props) {
   const queryClient = useQueryClient();
@@ -64,10 +102,8 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
 
   // After a successful refresh we mark item ids that are newly arrived so the
   // detected rows can render the "new" pill briefly. Per spec §4.4: the pill
-  // fades after 3s. We track ids in state because we need a re-render to
-  // clear the highlight after the timer fires.
+  // fades after 3s.
   const [newItemIds, setNewItemIds] = useState<Set<string>>(() => new Set());
-  // Stash a snapshot of item ids before each refresh so we can diff after.
   const beforeRefreshIdsRef = useRef<Set<string> | null>(null);
 
   const refreshMutation = useMutation<AlbumShelfRefreshResponse, Error, void>({
@@ -89,8 +125,6 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(list.id) });
       const added = res.addedCount;
-      // Compute the freshly-detected ids by diffing post-refresh items against
-      // the snapshot taken in `onMutate`.
       const before = beforeRefreshIdsRef.current ?? new Set<string>();
       const fresh = new Set<string>();
       for (const it of res.detected) {
@@ -113,9 +147,6 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     },
   });
 
-  // Clear "new" pills 3s after the latest refresh batch lands. Re-running
-  // useEffect on every set transition is fine — we always replace the whole
-  // set on success, so a single timer per set is enough.
   useEffect(() => {
     if (newItemIds.size === 0) return;
     const t = setTimeout(() => setNewItemIds(new Set()), 3000);
@@ -128,10 +159,6 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     { item: Item; nextPosition: number | null },
     { previous?: AlbumShelfItemsResponse }
   >({
-    // The backend's `albumShelfItemPatchSchema` is `.strict()` and only accepts
-    // `{ position }` — every other field on `AlbumShelfItemMetadata` is derived
-    // from Spotify and immutable client-side. Server merges `position` into
-    // the existing row.
     mutationFn: async ({ item, nextPosition }) => {
       const res = await updateItem(
         item.id,
@@ -183,9 +210,6 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     return { ordered: orderedRaw.filter(matches), detected: detectedRaw.filter(matches) };
   }, [orderedRaw, detectedRaw, filter]);
 
-  // userId → displayName lookup so per-row "added by @kira" + the header
-  // subline can resolve names without an extra query. Unknown ids fall
-  // through to "someone".
   const memberNameById = useMemo(() => {
     const map = new Map<string, string>();
     for (const m of members) {
@@ -205,6 +229,100 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     : null;
   const refreshing = refreshMutation.isPending;
 
+  const showOrderedHint =
+    filtered.ordered.length === 0 && filtered.detected.length > 0 && filter.trim().length === 0;
+
+  // Build the flat entry list. Order matters — drop-slot math depends on
+  // ordered entries appearing first.
+  const entries: Entry[] = useMemo(() => {
+    const out: Entry[] = [];
+    if (filtered.ordered.length > 0) {
+      out.push({ kind: "ordered-header", count: filtered.ordered.length });
+      filtered.ordered.forEach((it, i) => {
+        out.push({ kind: "ordered-row", item: it, orderedIndex: i });
+      });
+    }
+    if (showOrderedHint) {
+      out.push({ kind: "ordered-hint" });
+    }
+    if (filtered.detected.length > 0) {
+      out.push({ kind: "detected-header", count: filtered.detected.length });
+      filtered.detected.forEach((it) => {
+        out.push({ kind: "detected-row", item: it });
+      });
+    }
+    return out;
+  }, [filtered.ordered, filtered.detected, showOrderedHint]);
+
+  // Layout cache: y + height for each entry index. The drag handler needs
+  // these to translate touch Y → drop slot. Re-fill on every entries
+  // change; the per-row onLayout hooks repopulate it.
+  const layoutsRef = useRef<Array<{ y: number; height: number } | null>>([]);
+  useEffect(() => {
+    layoutsRef.current = entries.map(() => null);
+  }, [entries]);
+
+  const onEntryLayout = useCallback((index: number) => {
+    return (e: LayoutChangeEvent) => {
+      const { y, height } = e.nativeEvent.layout;
+      const cur = layoutsRef.current;
+      if (!cur[index] || cur[index].y !== y || cur[index].height !== height) {
+        cur[index] = { y, height };
+      }
+    };
+  }, []);
+
+  // Drag state. We split shared values (UI thread, used in animated style)
+  // from React state (re-renders the placeholder gap). When a drag is
+  // active, `draggingId` is set and `hoverSlot` ticks through 0..entries.length.
+  const draggingId = useSharedValue<string | null>(null);
+  const dragY = useSharedValue(0);
+  const dragHeight = useSharedValue(0);
+  // Slot the dragged item would land in if released right now. Mirrored
+  // from the worklet via runOnJS so we can re-render the placeholder gap.
+  const [hoverSlot, setHoverSlot] = useState<number | null>(null);
+  const [draggingState, setDraggingState] = useState<{
+    id: string;
+    rowKind: "ordered" | "detected";
+    height: number;
+  } | null>(null);
+
+  const beginDrag = useCallback(
+    (info: { id: string; rowKind: "ordered" | "detected"; height: number; index: number }) => {
+      setDraggingState({ id: info.id, rowKind: info.rowKind, height: info.height });
+      const initial = layoutsRef.current[info.index];
+      setHoverSlot(initial ? indexToInitialSlot(info.index) : info.index);
+    },
+    [],
+  );
+
+  const finishDrag = useCallback(
+    (slot: number) => {
+      const state = draggingState;
+      setDraggingState(null);
+      setHoverSlot(null);
+      if (!state) return;
+      const orderedItems: OrderedItem[] = filtered.ordered.map((it) => ({
+        id: it.id,
+        position: positionOf(it) ?? 0,
+      }));
+      const dropSlotInRows = entrySlotToRowSlot(entries, slot);
+      const result: DropResult = resolveDrop({
+        ordered: orderedItems,
+        detectedCount: filtered.detected.length,
+        draggedId: state.id,
+        dropSlot: dropSlotInRows,
+      });
+      if (result.kind === "noop") return;
+      const item =
+        filtered.ordered.find((it) => it.id === state.id) ??
+        filtered.detected.find((it) => it.id === state.id);
+      if (!item) return;
+      positionMutation.mutate({ item, nextPosition: result.nextPosition });
+    },
+    [entries, filtered.ordered, filtered.detected, draggingState, positionMutation],
+  );
+
   const onRowDelete = (item: Item) => {
     Alert.alert(
       "Remove this album?",
@@ -220,69 +338,22 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     );
   };
 
-  // Move an item to a target position relative to the existing ordered list.
-  // `index === 0` → top (midpoint with first or 0.5 if list empty).
-  // `index === ordered.length` → bottom (max + 1 or 1).
-  // Otherwise → midpoint between adjacent ordered rows (spec §3.3.1
-  // gap-insert with floats).
-  const computeInsertPosition = (index: number): number => {
-    const positions = orderedRaw
-      .map((it) => positionOf(it))
-      .filter((p): p is number => typeof p === "number");
-    if (positions.length === 0) return 1;
-    if (index <= 0) {
-      const first = positions[0] ?? 1;
-      return first / 2;
-    }
-    if (index >= positions.length) {
-      const last = positions[positions.length - 1] ?? 0;
-      return last + 1;
-    }
-    const before = positions[index - 1] ?? 0;
-    const after = positions[index] ?? before + 2;
-    return (before + after) / 2;
-  };
-
   const onPromote = (item: Item) => {
-    // Default: append to bottom of ordered. Same UX pre-fix.
-    positionMutation.mutate({ item, nextPosition: computeInsertPosition(orderedRaw.length) });
+    const orderedItems: OrderedItem[] = filtered.ordered.map((it) => ({
+      id: it.id,
+      position: positionOf(it) ?? 0,
+    }));
+    const last = orderedItems[orderedItems.length - 1]?.position ?? 0;
+    positionMutation.mutate({ item, nextPosition: orderedItems.length === 0 ? 1 : last + 1 });
   };
   const onPromoteToTop = (item: Item) => {
-    positionMutation.mutate({ item, nextPosition: computeInsertPosition(0) });
+    const first = filtered.ordered[0];
+    const next = first ? (positionOf(first) ?? 1) / 2 : 1;
+    positionMutation.mutate({ item, nextPosition: next });
   };
   const onDemote = (item: Item) => {
     positionMutation.mutate({ item, nextPosition: null });
   };
-  const onMoveUp = (item: Item) => {
-    const idx = orderedRaw.findIndex((it) => it.id === item.id);
-    if (idx <= 0) return; // already top
-    // Insert at idx-1 (between row [idx-2] and row [idx-1]). Skip the target
-    // itself so the recomputed positions reflect a list without `item`.
-    const without = orderedRaw.filter((it) => it.id !== item.id);
-    const next = midpointAt(without, idx - 1);
-    positionMutation.mutate({ item, nextPosition: next });
-  };
-  const onMoveDown = (item: Item) => {
-    const idx = orderedRaw.findIndex((it) => it.id === item.id);
-    if (idx < 0 || idx >= orderedRaw.length - 1) return; // already bottom
-    const without = orderedRaw.filter((it) => it.id !== item.id);
-    // Move to idx+1 in the original list = idx in the without-self list
-    // (because we removed self at idx).
-    const next = midpointAt(without, idx + 1);
-    positionMutation.mutate({ item, nextPosition: next });
-  };
-
-  const sections = useMemo(() => {
-    type SectionLike = { key: "ordered" | "detected"; title: string; data: Item[] };
-    const out: SectionLike[] = [];
-    if (filtered.ordered.length > 0) {
-      out.push({ key: "ordered", title: "Ordered", data: filtered.ordered });
-    }
-    if (filtered.detected.length > 0) {
-      out.push({ key: "detected", title: "Detected", data: filtered.detected });
-    }
-    return out;
-  }, [filtered.ordered, filtered.detected]);
 
   const headerSubline = useMemo(() => {
     if (refreshing) return "Refreshing…";
@@ -294,9 +365,6 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     const actor = lastRefreshedByName ? ` by @${lastRefreshedByName}` : "";
     return `${memberPart} · last refreshed ${rel}${actor}`;
   }, [refreshing, members.length, lastRefreshedAt, lastRefreshedByName]);
-
-  const showOrderedHint =
-    filtered.ordered.length === 0 && filtered.detected.length > 0 && filter.trim().length === 0;
 
   return (
     <View style={styles.root}>
@@ -380,7 +448,7 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
             }
           />
         </View>
-      ) : sections.length === 0 ? (
+      ) : entries.length === 0 ? (
         <View style={styles.center}>
           <EmptyState
             title={lastRefreshedAt ? "No albums detected." : "Pulling albums from your playlist…"}
@@ -402,52 +470,13 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
           />
         </View>
       ) : (
-        <SectionList
+        <ScrollView
           testID="album-shelf-list"
-          sections={sections}
-          stickySectionHeadersEnabled
-          keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          ListHeaderComponent={
-            showOrderedHint ? (
-              <View style={styles.orderedHint} testID="album-shelf-ordered-hint">
-                <Text variant="caption" tone="secondary">
-                  Tap ⋮ on a detected album → "Move to ordered" to start ranking your shelf.
-                </Text>
-              </View>
-            ) : null
-          }
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader} testID={`album-shelf-section-${section.key}`}>
-              <Text variant="label" tone="secondary">
-                {section.title.toUpperCase()} ({section.data.length})
-              </Text>
-            </View>
-          )}
-          ItemSeparatorComponent={SectionSpacer}
-          renderItem={({ item, index, section }) => {
-            const isOrdered = section.key === "ordered";
-            const orderedIndex = isOrdered ? index : -1;
-            const orderedTotal = isOrdered ? section.data.length : 0;
-            const addedByName = memberNameById.get(item.addedBy) ?? null;
-            return (
-              <AlbumRow
-                item={item}
-                indexLabel={isOrdered ? String(index + 1) : "•"}
-                isOrdered={isOrdered}
-                isFirst={isOrdered && orderedIndex === 0}
-                isLast={isOrdered && orderedIndex === orderedTotal - 1}
-                isNew={!isOrdered && newItemIds.has(item.id)}
-                addedByName={addedByName}
-                onPromote={() => onPromote(item)}
-                onPromoteToTop={() => onPromoteToTop(item)}
-                onDemote={() => onDemote(item)}
-                onMoveUp={() => onMoveUp(item)}
-                onMoveDown={() => onMoveDown(item)}
-                onDelete={() => onRowDelete(item)}
-              />
-            );
-          }}
+          // Disable scroll while a drag is active so the drag gesture owns
+          // vertical movement. RN's gesture-handler should claim it via
+          // simultaneousWithExternalGesture, but explicit is safer.
+          scrollEnabled={!draggingState}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -455,55 +484,232 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
               tintColor={tokens.accent.default}
             />
           }
-        />
+        >
+          {entries.map((entry, index) => {
+            const key = entryKey(entry, index);
+            const isDragSource = isRowEntry(entry) && draggingState?.id === entry.item.id;
+            // Insert a placeholder gap above the entry that would receive the
+            // drop. Rendering it as a sibling sized like the dragged item gives
+            // visual feedback that the drop slot is there.
+            const showPlaceholderAbove = hoverSlot === index && draggingState && !isDragSource;
+            return (
+              <View
+                key={key}
+                style={isDragSource ? styles.entryHidden : null}
+                onLayout={onEntryLayout(index)}
+              >
+                {showPlaceholderAbove ? <DropPlaceholder height={draggingState.height} /> : null}
+                {renderEntry({
+                  entry,
+                  isDragSource: !!isDragSource,
+                  isNew:
+                    isRowEntry(entry) &&
+                    entry.kind === "detected-row" &&
+                    newItemIds.has(entry.item.id),
+                  addedByName: isRowEntry(entry)
+                    ? (memberNameById.get(entry.item.addedBy) ?? null)
+                    : null,
+                  onMenu: isRowEntry(entry)
+                    ? () =>
+                        showRowMenu({
+                          item: entry.item,
+                          isOrdered: entry.kind === "ordered-row",
+                          isFirst: entry.kind === "ordered-row" && entry.orderedIndex === 0,
+                          isLast:
+                            entry.kind === "ordered-row" &&
+                            entry.orderedIndex === filtered.ordered.length - 1,
+                          onPromote: () => onPromote(entry.item),
+                          onPromoteToTop: () => onPromoteToTop(entry.item),
+                          onDemote: () => onDemote(entry.item),
+                          onDelete: () => onRowDelete(entry.item),
+                        })
+                    : undefined,
+                  onBeginDrag: isRowEntry(entry)
+                    ? (height: number) =>
+                        beginDrag({
+                          id: entry.item.id,
+                          rowKind: entry.kind === "ordered-row" ? "ordered" : "detected",
+                          height,
+                          index,
+                        })
+                    : undefined,
+                  onDragMove: isRowEntry(entry)
+                    ? (absY: number) => {
+                        setHoverSlot(computeHoverSlot(layoutsRef.current, absY));
+                      }
+                    : undefined,
+                  onDragEnd: isRowEntry(entry) ? () => finishDrag(hoverSlot ?? index) : undefined,
+                  draggingId,
+                  dragY,
+                  dragHeight,
+                })}
+                {showPlaceholderAbove && index === entries.length - 1 ? null : null}
+              </View>
+            );
+          })}
+          {hoverSlot === entries.length && draggingState ? (
+            <DropPlaceholder height={draggingState.height} />
+          ) : null}
+        </ScrollView>
       )}
+
+      {draggingState ? (
+        <View style={styles.dragHint} pointerEvents="none">
+          <Text variant="caption" tone="onAccent">
+            Drag across the divider to promote / demote · release to drop
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-function SectionSpacer() {
-  return <View style={{ height: tokens.space.sm }} />;
+function isRowEntry(e: Entry): e is Extract<Entry, { kind: "ordered-row" | "detected-row" }> {
+  return e.kind === "ordered-row" || e.kind === "detected-row";
 }
 
-interface AlbumRowProps {
+function indexToInitialSlot(index: number): number {
+  return index;
+}
+
+function entrySlotToRowSlot(entries: Entry[], entrySlot: number): number {
+  // Map an entry-flat-list slot index → the "row-only" slot index that
+  // resolveDrop expects (ordered rows + detected rows, no headers/hints).
+  let rowsBefore = 0;
+  for (let i = 0; i < entrySlot && i < entries.length; i++) {
+    const e = entries[i];
+    if (!e) continue;
+    if (e.kind === "ordered-row" || e.kind === "detected-row") rowsBefore++;
+  }
+  return rowsBefore;
+}
+
+function computeHoverSlot(
+  layouts: Array<{ y: number; height: number } | null>,
+  absY: number,
+): number {
+  for (let i = 0; i < layouts.length; i++) {
+    const l = layouts[i];
+    if (!l) continue;
+    const center = l.y + l.height / 2;
+    if (absY < center) return i;
+  }
+  return layouts.length;
+}
+
+function showRowMenu(p: {
   item: Item;
-  indexLabel: string;
   isOrdered: boolean;
   isFirst: boolean;
   isLast: boolean;
-  isNew: boolean;
-  addedByName: string | null;
   onPromote: () => void;
   onPromoteToTop: () => void;
   onDemote: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onDelete: () => void;
+}) {
+  type Action = { text: string; onPress?: () => void; style?: "destructive" | "cancel" };
+  const actions: Action[] = [];
+  if (p.isOrdered) {
+    actions.push({ text: "Move to detected", onPress: p.onDemote });
+  } else {
+    actions.push({ text: "Move to ordered (bottom)", onPress: p.onPromote });
+    actions.push({ text: "Move to ordered (top)", onPress: p.onPromoteToTop });
+  }
+  actions.push({ text: "Delete album", style: "destructive", onPress: p.onDelete });
+  actions.push({ text: "Cancel", style: "cancel" });
+  Alert.alert(p.item.title, undefined, actions);
 }
 
-function AlbumRow({
+interface RenderEntryArgs {
+  entry: Entry;
+  isDragSource: boolean;
+  isNew: boolean;
+  addedByName: string | null;
+  onMenu?: () => void;
+  onBeginDrag?: (height: number) => void;
+  onDragMove?: (absY: number) => void;
+  onDragEnd?: () => void;
+  draggingId: ReturnType<typeof useSharedValue<string | null>>;
+  dragY: ReturnType<typeof useSharedValue<number>>;
+  dragHeight: ReturnType<typeof useSharedValue<number>>;
+}
+
+function renderEntry(args: RenderEntryArgs) {
+  const { entry } = args;
+  if (entry.kind === "ordered-header") {
+    return (
+      <View style={styles.sectionHeader} testID="album-shelf-section-ordered">
+        <Text variant="label" tone="secondary">
+          ORDERED ({entry.count})
+        </Text>
+      </View>
+    );
+  }
+  if (entry.kind === "detected-header") {
+    return (
+      <View style={styles.sectionHeader} testID="album-shelf-section-detected">
+        <Text variant="label" tone="secondary">
+          DETECTED ({entry.count})
+        </Text>
+      </View>
+    );
+  }
+  if (entry.kind === "ordered-hint") {
+    return (
+      <View style={styles.orderedHint} testID="album-shelf-ordered-hint">
+        <Text variant="caption" tone="secondary">
+          Long-press a detected album and drag it up here to start ranking your shelf.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <DraggableAlbumRow
+      item={entry.item}
+      isOrdered={entry.kind === "ordered-row"}
+      indexLabel={entry.kind === "ordered-row" ? String(entry.orderedIndex + 1) : "•"}
+      isNew={args.isNew}
+      addedByName={args.addedByName}
+      onMenu={args.onMenu ?? noop}
+      onBeginDrag={args.onBeginDrag ?? noopHeight}
+      onDragMove={args.onDragMove ?? noopAbs}
+      onDragEnd={args.onDragEnd ?? noop}
+    />
+  );
+}
+
+const noop = () => {};
+const noopHeight = (_height: number) => {};
+const noopAbs = (_absY: number) => {};
+
+interface DraggableAlbumRowProps {
+  item: Item;
+  isOrdered: boolean;
+  indexLabel: string;
+  isNew: boolean;
+  addedByName: string | null;
+  onMenu: () => void;
+  onBeginDrag: (height: number) => void;
+  onDragMove: (absY: number) => void;
+  onDragEnd: () => void;
+}
+
+function DraggableAlbumRow({
   item,
-  indexLabel,
   isOrdered,
-  isFirst,
-  isLast,
+  indexLabel,
   isNew,
   addedByName,
-  onPromote,
-  onPromoteToTop,
-  onDemote,
-  onMoveUp,
-  onMoveDown,
-  onDelete,
-}: AlbumRowProps) {
+  onMenu,
+  onBeginDrag,
+  onDragMove,
+  onDragEnd,
+}: DraggableAlbumRowProps) {
   const meta = item.metadata as Partial<AlbumShelfItemMetadata>;
   const cover = meta.coverUrl;
   const artist = meta.artist ?? "";
   const year = meta.year;
   const subline = year ? `${artist} · ${year}` : artist;
-
-  // Per spec §4.2 each row has a third subline: "added <date> by @<who>" for
-  // ordered items, "detected <relative>" for detected items.
   const detectedAt = typeof meta.detectedAt === "string" ? meta.detectedAt : null;
   const provenance = isOrdered
     ? addedByName
@@ -513,91 +719,198 @@ function AlbumRow({
       ? `detected ${formatRelative(detectedAt)}`
       : "detected";
 
-  const onMenu = () => {
-    type Action = { text: string; onPress?: () => void; style?: "destructive" | "cancel" };
-    const actions: Action[] = [];
-    if (isOrdered) {
-      if (!isFirst) actions.push({ text: "Move up", onPress: onMoveUp });
-      if (!isLast) actions.push({ text: "Move down", onPress: onMoveDown });
-      actions.push({ text: "Move to detected", onPress: onDemote });
-    } else {
-      actions.push({ text: "Move to ordered (bottom)", onPress: onPromote });
-      actions.push({ text: "Move to ordered (top)", onPress: onPromoteToTop });
-    }
-    actions.push({ text: "Delete album", style: "destructive", onPress: onDelete });
-    actions.push({ text: "Cancel", style: "cancel" });
-    Alert.alert(item.title, undefined, actions);
-  };
+  // Local shared values for the visual lift while this row is the drag
+  // source. translateY follows the finger; scale gives a "picked up" cue.
+  const translateY = useSharedValue(0);
+  const scale = useSharedValue(1);
+  const elevation = useSharedValue(0);
+  const heightRef = useRef(0);
+
+  const startDragJS = useCallback(() => {
+    onBeginDrag(heightRef.current);
+  }, [onBeginDrag]);
+  const moveDragJS = useCallback(
+    (absY: number) => {
+      onDragMove(absY);
+    },
+    [onDragMove],
+  );
+  const endDragJS = useCallback(() => {
+    onDragEnd();
+  }, [onDragEnd]);
+
+  // Web-only fallback: drive the drag via DOM pointer events on the handle.
+  // RNGH's web impl + Reanimated 4 don't reliably activate Pan from mouse
+  // input in this version, so on web we bypass the gesture pipeline. On
+  // native this hook returns an empty handler set.
+  const webDragHandlers = useWebDragHandlers({
+    onBegin: () => {
+      scale.value = withTiming(1.02, { duration: 120 });
+      elevation.value = 1;
+      onBeginDrag(heightRef.current);
+    },
+    onMove: (absoluteY) => onDragMove(absoluteY),
+    onEnd: () => {
+      onDragEnd();
+      scale.value = withTiming(1, { duration: 180 });
+      translateY.value = withTiming(0, { duration: 180 });
+      elevation.value = 0;
+    },
+    onCancel: () => {
+      scale.value = withTiming(1, { duration: 180 });
+      translateY.value = withTiming(0, { duration: 180 });
+      elevation.value = 0;
+    },
+  });
+
+  // Two-pronged activation:
+  //  - Body Pan: hold-still-then-drag (long-press) — picks up touches anywhere on
+  //    the row but waits 350ms so a normal tap or upward swipe-to-scroll wins.
+  //  - Handle Pan: immediate-on-movement (no long-press) — clicking the ≡ icon
+  //    is an explicit "grab to drag" gesture, useful especially on web where
+  //    the long-press semantics aren't as discoverable with a mouse.
+  const bodyPan = Gesture.Pan()
+    .activateAfterLongPress(LONG_PRESS_MS)
+    .onStart(() => {
+      "worklet";
+      scale.value = withTiming(1.02, { duration: 120 });
+      elevation.value = 1;
+      runOnJS(startDragJS)();
+    })
+    .onUpdate((e) => {
+      "worklet";
+      translateY.value = e.translationY;
+      runOnJS(moveDragJS)(e.absoluteY);
+    })
+    .onEnd(() => {
+      "worklet";
+      runOnJS(endDragJS)();
+      translateY.value = withTiming(0, { duration: 180 });
+      scale.value = withTiming(1, { duration: 180 });
+      elevation.value = 0;
+    })
+    .onFinalize(() => {
+      "worklet";
+      translateY.value = withTiming(0, { duration: 180 });
+      scale.value = withTiming(1, { duration: 180 });
+      elevation.value = 0;
+    });
+
+  const handlePan = Gesture.Pan()
+    .minDistance(2)
+    .onStart(() => {
+      "worklet";
+      scale.value = withTiming(1.02, { duration: 120 });
+      elevation.value = 1;
+      runOnJS(startDragJS)();
+    })
+    .onUpdate((e) => {
+      "worklet";
+      translateY.value = e.translationY;
+      runOnJS(moveDragJS)(e.absoluteY);
+    })
+    .onEnd(() => {
+      "worklet";
+      runOnJS(endDragJS)();
+      translateY.value = withTiming(0, { duration: 180 });
+      scale.value = withTiming(1, { duration: 180 });
+      elevation.value = 0;
+    })
+    .onFinalize(() => {
+      "worklet";
+      translateY.value = withTiming(0, { duration: 180 });
+      scale.value = withTiming(1, { duration: 180 });
+      elevation.value = 0;
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }, { scale: scale.value }],
+    zIndex: elevation.value > 0 ? 999 : 0,
+    elevation: elevation.value > 0 ? 8 : 0,
+    shadowOpacity: elevation.value > 0 ? 0.35 : 0,
+    shadowRadius: elevation.value > 0 ? 12 : 0,
+  }));
+
+  // touch-action: none on web so the browser doesn't steal the drag for
+  // scroll. RNGH does this on iOS automatically.
+  const webTouchAction = Platform.OS === "web" ? { touchAction: "none" as const } : null;
 
   return (
-    <Card style={[styles.row, isNew && styles.rowNew]} testID={`album-row-${item.id}`}>
-      <View style={styles.rowIndex}>
-        <Text variant="caption" tone="muted" style={styles.indexText}>
-          {indexLabel}
-        </Text>
-      </View>
-      {cover ? (
-        <Image source={{ uri: cover }} style={styles.cover} accessibilityIgnoresInvertColors />
-      ) : (
-        <View style={[styles.cover, styles.coverPlaceholder]}>
-          <Text style={styles.coverPlaceholderGlyph}>📀</Text>
-        </View>
-      )}
-      <View style={styles.rowBody}>
-        <View style={styles.rowTitleLine}>
-          <Text numberOfLines={1} style={styles.rowTitle}>
-            {item.title}
-          </Text>
-          {isNew ? (
-            <View style={styles.newPill} testID={`album-row-new-${item.id}`}>
-              <Text variant="caption" tone="onAccent" style={styles.newPillText}>
-                NEW
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        <Text variant="caption" tone="secondary" numberOfLines={1}>
-          {subline}
-        </Text>
-        <Text variant="caption" tone="muted" numberOfLines={1}>
-          {provenance}
-        </Text>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Open menu for ${item.title}`}
-        onPress={onMenu}
-        testID={`album-row-menu-${item.id}`}
-        style={({ pressed }) => [styles.menuBtn, pressed && styles.menuBtnPressed]}
-        hitSlop={10}
+    <GestureDetector gesture={bodyPan}>
+      <Animated.View
+        style={[animatedStyle, webTouchAction]}
+        onLayout={(e) => {
+          heightRef.current = e.nativeEvent.layout.height;
+        }}
       >
-        <Text style={styles.menuGlyph}>⋮</Text>
-      </Pressable>
-    </Card>
+        <Card style={[styles.row, isNew && styles.rowNew]} testID={`album-row-${item.id}`}>
+          <GestureDetector gesture={handlePan}>
+            <View
+              // biome-ignore lint/a11y/useSemanticElements: gesture handler needs a View
+              accessibilityRole="button"
+              accessibilityLabel={`Drag handle for ${item.title}`}
+              testID={`album-row-handle-${item.id}`}
+              style={[styles.rowDragHandle, webTouchAction]}
+              {...(webDragHandlers as Record<string, unknown>)}
+            >
+              <Text style={styles.dragHandleGlyph}>≡</Text>
+            </View>
+          </GestureDetector>
+          <View style={styles.rowIndex}>
+            <Text variant="caption" tone="muted" style={styles.indexText}>
+              {indexLabel}
+            </Text>
+          </View>
+          {cover ? (
+            <Image source={{ uri: cover }} style={styles.cover} accessibilityIgnoresInvertColors />
+          ) : (
+            <View style={[styles.cover, styles.coverPlaceholder]}>
+              <Text style={styles.coverPlaceholderGlyph}>📀</Text>
+            </View>
+          )}
+          <View style={styles.rowBody}>
+            <View style={styles.rowTitleLine}>
+              <Text numberOfLines={1} style={styles.rowTitle}>
+                {item.title}
+              </Text>
+              {isNew ? (
+                <View style={styles.newPill} testID={`album-row-new-${item.id}`}>
+                  <Text variant="caption" tone="onAccent" style={styles.newPillText}>
+                    NEW
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Text variant="caption" tone="secondary" numberOfLines={1}>
+              {subline}
+            </Text>
+            <Text variant="caption" tone="muted" numberOfLines={1}>
+              {provenance}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open menu for ${item.title}`}
+            onPress={onMenu}
+            testID={`album-row-menu-${item.id}`}
+            style={({ pressed }) => [styles.menuBtn, pressed && styles.menuBtnPressed]}
+            hitSlop={10}
+          >
+            <Text style={styles.menuGlyph}>⋮</Text>
+          </Pressable>
+        </Card>
+      </Animated.View>
+    </GestureDetector>
   );
+}
+
+function DropPlaceholder({ height }: { height: number }) {
+  return <View style={[styles.dropPlaceholder, { height }]} />;
 }
 
 function positionOf(it: Item): number | null {
   const m = it.metadata as Partial<AlbumShelfItemMetadata>;
   return typeof m.position === "number" ? m.position : null;
-}
-
-function midpointAt(orderedItems: Item[], index: number): number {
-  const positions = orderedItems
-    .map((it) => positionOf(it))
-    .filter((p): p is number => typeof p === "number");
-  if (positions.length === 0) return 1;
-  if (index <= 0) {
-    const first = positions[0] ?? 1;
-    return first / 2;
-  }
-  if (index >= positions.length) {
-    const last = positions[positions.length - 1] ?? 0;
-    return last + 1;
-  }
-  const before = positions[index - 1] ?? 0;
-  const after = positions[index] ?? before + 2;
-  return (before + after) / 2;
 }
 
 function applyPositionPatch(
@@ -638,8 +951,8 @@ function errorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-// Use ListColor in a no-op assertion to keep ts-reset's unused-import nag
-// quiet without changing the public API.
+// Keep `ListColor` referenced so the unused-import lint stays quiet. The
+// type is used downstream by the public ListSummary type.
 const _color: ListColor | null = null;
 void _color;
 
@@ -693,12 +1006,9 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.xxl * 2,
   },
-  // Sticky section headers need a non-transparent background; if the list
-  // scrolls past them they otherwise overlap the rows below.
   sectionHeader: {
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.sm,
-    backgroundColor: tokens.bg.canvas,
   },
   orderedHint: {
     paddingTop: tokens.space.md,
@@ -714,6 +1024,15 @@ const styles = StyleSheet.create({
   rowNew: {
     borderColor: tokens.accent.default,
     borderWidth: 1,
+  },
+  rowDragHandle: {
+    paddingHorizontal: tokens.space.xs,
+    paddingVertical: tokens.space.sm,
+  },
+  dragHandleGlyph: {
+    color: tokens.text.muted,
+    fontSize: tokens.font.size.lg,
+    lineHeight: tokens.font.size.lg + 2,
   },
   rowIndex: { width: 24, alignItems: "center" },
   indexText: { fontSize: tokens.font.size.md },
@@ -743,4 +1062,23 @@ const styles = StyleSheet.create({
   menuBtn: { paddingHorizontal: tokens.space.sm, paddingVertical: tokens.space.xs },
   menuBtnPressed: { opacity: 0.6 },
   menuGlyph: { fontSize: tokens.font.size.lg, color: tokens.text.secondary },
+  entryHidden: { opacity: 0 },
+  dropPlaceholder: {
+    borderRadius: tokens.radius.md,
+    borderWidth: 2,
+    borderColor: tokens.accent.default,
+    borderStyle: "dashed",
+    backgroundColor: tokens.accent.muted,
+    marginVertical: tokens.space.xs / 2,
+  },
+  dragHint: {
+    position: "absolute",
+    bottom: tokens.space.lg,
+    left: tokens.space.xl,
+    right: tokens.space.xl,
+    backgroundColor: tokens.accent.default,
+    borderRadius: tokens.radius.md,
+    paddingVertical: tokens.space.sm,
+    alignItems: "center",
+  },
 });
