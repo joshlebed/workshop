@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { signSession } from "../../lib/session.js";
+import { albumShelfItemPatchSchema } from "../../lib/validators/album-shelf.js";
 import {
   createItemSchema,
   itemRoutes,
@@ -307,5 +308,37 @@ describe("validateMetadataForType (Phase 2a-1, spec §9.4)", () => {
     expect(validateMetadataForType("movie", {}).success).toBe(true);
     expect(validateMetadataForType("book", {}).success).toBe(true);
     expect(validateMetadataForType("trip", {}).success).toBe(true);
+  });
+});
+
+describe("album_shelf item patch contract", () => {
+  // Regression for "invalid metadata for list type" on Promote/Demote.
+  // The client must send `{ position }` only — every other field on
+  // `AlbumShelfItemMetadata` is server-derived from Spotify, and the
+  // `albumShelfItemPatchSchema` is `.strict()` so unrecognized keys reject
+  // the whole patch.
+  it("accepts a position-only patch on album_shelf items", () => {
+    const r = albumShelfItemPatchSchema.safeParse({ position: 1 });
+    expect(r.success).toBe(true);
+  });
+
+  it("accepts a position: null patch (demote)", () => {
+    const r = albumShelfItemPatchSchema.safeParse({ position: null });
+    expect(r.success).toBe(true);
+  });
+
+  it("rejects a patch that includes the full Spotify metadata blob", () => {
+    const r = albumShelfItemPatchSchema.safeParse({
+      source: "spotify",
+      spotifyAlbumId: "abc",
+      spotifyAlbumUrl: "https://open.spotify.com/album/abc",
+      title: "Currents",
+      artist: "Tame Impala",
+      year: 2015,
+      trackCount: 13,
+      position: 1,
+      detectedAt: "2026-04-30T00:00:00.000Z",
+    });
+    expect(r.success).toBe(false);
   });
 });

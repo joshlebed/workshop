@@ -89,12 +89,17 @@ export function AlbumShelfDetail({ list, token, onBack, onSettings }: Props) {
     { item: Item; nextPosition: number | null },
     { previous?: AlbumShelfItemsResponse }
   >({
+    // The backend's `albumShelfItemPatchSchema` is `.strict()` and only accepts
+    // `{ position }` — every other field on `AlbumShelfItemMetadata` is derived
+    // from Spotify and immutable client-side. Sending the full merged blob
+    // gets rejected with `invalid metadata for list type` because of the strict
+    // unrecognized-keys check. Server merges `position` into the existing row.
     mutationFn: async ({ item, nextPosition }) => {
-      const meta: AlbumShelfItemMetadata = {
-        ...(item.metadata as unknown as AlbumShelfItemMetadata),
-        position: nextPosition,
-      };
-      const res = await updateItem(item.id, { metadata: meta as unknown as ItemMetadata }, token);
+      const res = await updateItem(
+        item.id,
+        { metadata: { position: nextPosition } as unknown as ItemMetadata },
+        token,
+      );
       return res.item;
     },
     onMutate: async ({ item, nextPosition }) => {
