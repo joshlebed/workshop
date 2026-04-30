@@ -24,5 +24,6 @@ export const queryKeys = {
   },
   albumShelf: {
     items: (listId: string) => ["albumShelf", "items", listId] as const,
+    preview: (url: string) => ["albumShelf", "preview", url] as const,
   },
 } as const;

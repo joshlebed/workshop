@@ -16,6 +16,7 @@ import { removeMember } from "../../../src/api/members";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { ApiError } from "../../../src/lib/api";
 import { queryKeys } from "../../../src/lib/queryKeys";
+import { formatRelative } from "../../../src/lib/relativeTime";
 import { buildInviteShareUrl, copyToClipboard } from "../../../src/lib/share";
 import {
   Button,
@@ -448,7 +449,18 @@ export default function ListSettings() {
             ) : null}
             <Text variant="caption" tone="muted">
               {albumShelfMeta.lastRefreshedAt
-                ? `Last refreshed ${new Date(albumShelfMeta.lastRefreshedAt).toLocaleString()}`
+                ? `Last refreshed ${formatRelative(albumShelfMeta.lastRefreshedAt)}${
+                    albumShelfMeta.lastRefreshedBy
+                      ? (
+                          () => {
+                            const name = members.find(
+                              (m) => m.userId === albumShelfMeta.lastRefreshedBy,
+                            )?.displayName;
+                            return name ? ` by @${name}` : "";
+                          }
+                        )()
+                      : ""
+                  }`
                 : "Not yet refreshed."}
             </Text>
             <View style={styles.field}>

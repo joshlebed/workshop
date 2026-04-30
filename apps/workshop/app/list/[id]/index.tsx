@@ -210,6 +210,7 @@ export default function ListDetail() {
     return (
       <AlbumShelfDetail
         list={list}
+        members={listQuery.data?.members ?? []}
         token={token}
         onBack={() => router.back()}
         onSettings={() => router.push(`/list/${id}/settings`)}
