@@ -6,6 +6,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-
 import { fetchActivity } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
 import { useAuth } from "../src/hooks/useAuth";
+import { errorMessage } from "../src/lib/api";
 import { getActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
 import {
@@ -210,11 +211,6 @@ function ListCard({ list, onPress }: { list: ListSummary; onPress: () => void })
 
 function pluralize(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Unknown error";
 }
 
 const styles = StyleSheet.create({

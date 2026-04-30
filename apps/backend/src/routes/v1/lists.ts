@@ -8,7 +8,7 @@ import type {
   MemberRole,
 } from "@workshop/shared";
 import { eq, sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbList, listMembers, lists, users } from "../../db/schema.js";
@@ -17,16 +17,14 @@ import {
   fetchAlbumShelfItems,
   refreshAlbumShelfItems,
 } from "../../lib/album-shelf.js";
+import { toIsoString } from "../../lib/dates.js";
 import { recordEvent } from "../../lib/events.js";
+import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
-import {
-  fetchPlaylistMeta,
-  PlaylistNotAvailableError,
-  SpotifyApiError,
-  SpotifyAuthError,
-  SpotifyConfigError,
-} from "../../lib/spotify/app-client.js";
+import { fetchPlaylistMeta } from "../../lib/spotify/app-client.js";
+import { mapSpotifyError } from "../../lib/spotify/error-mapping.js";
 import { InvalidPlaylistUrlError, parsePlaylistId } from "../../lib/spotify/playlist-parser.js";
+import { executeRows } from "../../lib/sql.js";
 import { albumShelfListMetadataPatchSchema } from "../../lib/validators/album-shelf.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
@@ -100,67 +98,110 @@ function toListShape(l: DbList): List {
   };
 }
 
+/**
+ * Parse + verify a public-playlist URL once. Returns the v1 error envelope on
+ * failure; caller should `return` it. On success the parsed playlist id is
+ * returned alongside the original URL so callers can persist both.
+ */
+async function validatePlaylistUrl(
+  c: Context,
+  url: string,
+): Promise<{ ok: true; playlistId: string; url: string } | { ok: false; response: Response }> {
+  let playlistId: string;
+  try {
+    playlistId = parsePlaylistId(url);
+  } catch (e) {
+    if (e instanceof InvalidPlaylistUrlError) {
+      return {
+        ok: false,
+        response: err(c, "VALIDATION", "invalid playlist URL", { code: "INVALID_PLAYLIST_URL" }),
+      };
+    }
+    throw e;
+  }
+  try {
+    const meta = await fetchPlaylistMeta(playlistId);
+    if (meta.public === false) {
+      return {
+        ok: false,
+        response: err(c, "VALIDATION", "playlist must be public", {
+          code: "PLAYLIST_NOT_AVAILABLE",
+        }),
+      };
+    }
+  } catch (e) {
+    const mapped = mapSpotifyError(c, e);
+    if (mapped) return { ok: false, response: mapped };
+    throw e;
+  }
+  return { ok: true, playlistId, url };
+}
+
 listRoutes.get("/", async (c) => {
   const userId = c.get("userId");
   const db = getDb();
   // One query: every list the user is a member of, plus their role + the
   // member/item counts. Aggregates use COUNT(DISTINCT ...) so the cross-join
   // between members and items doesn't double-count.
-  const rows = (await db.execute(sql`
-    SELECT
-      l.id,
-      l.type::text AS type,
-      l.name,
-      l.emoji,
-      l.color,
-      l.description,
-      l.owner_id,
-      l.metadata,
-      l.created_at,
-      l.updated_at,
-      me.role::text AS my_role,
-      (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
-      (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id) AS item_count
-    FROM lists l
-    JOIN list_members me ON me.list_id = l.id AND me.user_id = ${userId}
-    ORDER BY l.updated_at DESC
-  `)) as Array<Record<string, unknown>> | { rows: Array<Record<string, unknown>> };
+  const rows = await executeRows<{
+    id: string;
+    type: string;
+    name: string;
+    emoji: string;
+    color: string;
+    description: string | null;
+    owner_id: string;
+    metadata: Record<string, unknown> | null;
+    created_at: Date | string;
+    updated_at: Date | string;
+    my_role: string;
+    member_count: number;
+    item_count: number;
+  }>(
+    db,
+    sql`
+      SELECT
+        l.id,
+        l.type::text AS type,
+        l.name,
+        l.emoji,
+        l.color,
+        l.description,
+        l.owner_id,
+        l.metadata,
+        l.created_at,
+        l.updated_at,
+        me.role::text AS my_role,
+        (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
+        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id) AS item_count
+      FROM lists l
+      JOIN list_members me ON me.list_id = l.id AND me.user_id = ${userId}
+      ORDER BY l.updated_at DESC
+    `,
+  );
 
-  const list = Array.isArray(rows) ? rows : rows.rows;
-  const summaries: ListSummary[] = list.map((r) => {
-    const createdAt = r.created_at instanceof Date ? r.created_at : new Date(String(r.created_at));
-    const updatedAt = r.updated_at instanceof Date ? r.updated_at : new Date(String(r.updated_at));
-    return {
-      id: String(r.id),
-      type: String(r.type) as ListSummary["type"],
-      name: String(r.name),
-      emoji: String(r.emoji),
-      color: String(r.color) as ListColor,
-      description: r.description === null ? null : String(r.description),
-      ownerId: String(r.owner_id),
-      metadata: (r.metadata ?? {}) as ListMetadata,
-      createdAt: createdAt.toISOString(),
-      updatedAt: updatedAt.toISOString(),
-      role: String(r.my_role) as MemberRole,
-      memberCount: Number(r.member_count),
-      itemCount: Number(r.item_count),
-    };
-  });
+  const summaries: ListSummary[] = rows.map((r) => ({
+    id: r.id,
+    type: r.type as ListSummary["type"],
+    name: r.name,
+    emoji: r.emoji,
+    color: r.color as ListColor,
+    description: r.description,
+    ownerId: r.owner_id,
+    metadata: (r.metadata ?? {}) as ListMetadata,
+    createdAt: toIsoString(r.created_at),
+    updatedAt: toIsoString(r.updated_at),
+    role: r.my_role as MemberRole,
+    memberCount: Number(r.member_count),
+    itemCount: Number(r.item_count),
+  }));
 
   return ok(c, { lists: summaries });
 });
 
 listRoutes.post("/", async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = createListSchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, createListSchema);
+  if (!parsed.ok) return parsed.response;
   const userId = c.get("userId");
   const db = getDb();
   const data = parsed.data;
@@ -173,39 +214,11 @@ listRoutes.post("/", async (c) => {
     if (!data.spotifyPlaylistUrl) {
       return err(c, "VALIDATION", "spotifyPlaylistUrl required for album_shelf lists");
     }
-    let playlistId: string;
-    try {
-      playlistId = parsePlaylistId(data.spotifyPlaylistUrl);
-    } catch (e) {
-      if (e instanceof InvalidPlaylistUrlError) {
-        return err(c, "VALIDATION", "invalid playlist URL", { code: "INVALID_PLAYLIST_URL" });
-      }
-      throw e;
-    }
-    try {
-      const meta = await fetchPlaylistMeta(playlistId);
-      if (meta.public === false) {
-        return err(c, "VALIDATION", "playlist must be public", {
-          code: "PLAYLIST_NOT_AVAILABLE",
-        });
-      }
-    } catch (e) {
-      if (e instanceof PlaylistNotAvailableError) {
-        return err(c, "VALIDATION", "playlist not found or private", {
-          code: "PLAYLIST_NOT_AVAILABLE",
-        });
-      }
-      if (e instanceof SpotifyConfigError) {
-        return err(c, "INTERNAL", "spotify integration not configured");
-      }
-      if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
-        return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
-      }
-      throw e;
-    }
+    const validated = await validatePlaylistUrl(c, data.spotifyPlaylistUrl);
+    if (!validated.ok) return validated.response;
     playlistMetadata = {
-      spotifyPlaylistUrl: data.spotifyPlaylistUrl,
-      spotifyPlaylistId: playlistId,
+      spotifyPlaylistUrl: validated.url,
+      spotifyPlaylistId: validated.playlistId,
       lastRefreshedAt: null,
       lastRefreshedBy: null,
     };
@@ -265,17 +278,8 @@ listRoutes.post("/", async (c) => {
       return list;
     });
   } catch (e) {
-    if (e instanceof PlaylistNotAvailableError) {
-      return err(c, "VALIDATION", "playlist not found or private", {
-        code: "PLAYLIST_NOT_AVAILABLE",
-      });
-    }
-    if (e instanceof SpotifyConfigError) {
-      return err(c, "INTERNAL", "spotify integration not configured");
-    }
-    if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
-      return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
-    }
+    const mapped = mapSpotifyError(c, e);
+    if (mapped) return mapped;
     throw e;
   }
 
@@ -322,16 +326,8 @@ listRoutes.get("/:id", requireListMember, async (c) => {
 });
 
 listRoutes.patch("/:id", requireListMember, async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = updateListSchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, updateListSchema);
+  if (!parsed.ok) return parsed.response;
   const listId = c.req.param("id");
   const userId = c.get("userId");
   const role = c.get("listMemberRole");
@@ -372,47 +368,19 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
       return err(c, "VALIDATION", "invalid metadata patch", v.error.issues);
     }
     if (v.data.spotifyPlaylistUrl !== undefined) {
-      let playlistId: string;
-      try {
-        playlistId = parsePlaylistId(v.data.spotifyPlaylistUrl);
-      } catch (e) {
-        if (e instanceof InvalidPlaylistUrlError) {
-          return err(c, "VALIDATION", "invalid playlist URL", { code: "INVALID_PLAYLIST_URL" });
-        }
-        throw e;
-      }
-      try {
-        const meta = await fetchPlaylistMeta(playlistId);
-        if (meta.public === false) {
-          return err(c, "VALIDATION", "playlist must be public", {
-            code: "PLAYLIST_NOT_AVAILABLE",
-          });
-        }
-      } catch (e) {
-        if (e instanceof PlaylistNotAvailableError) {
-          return err(c, "VALIDATION", "playlist not found or private", {
-            code: "PLAYLIST_NOT_AVAILABLE",
-          });
-        }
-        if (e instanceof SpotifyConfigError) {
-          return err(c, "INTERNAL", "spotify integration not configured");
-        }
-        if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
-          return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
-        }
-        throw e;
-      }
+      const validated = await validatePlaylistUrl(c, v.data.spotifyPlaylistUrl);
+      if (!validated.ok) return validated.response;
 
       const prevMeta = (existing.metadata ?? {}) as Record<string, unknown>;
       oldSourceUrl =
         typeof prevMeta.spotifyPlaylistUrl === "string" ? prevMeta.spotifyPlaylistUrl : null;
-      newSourceUrl = v.data.spotifyPlaylistUrl;
-      newPlaylistId = playlistId;
+      newSourceUrl = validated.url;
+      newPlaylistId = validated.playlistId;
       triggerAlbumShelfRefresh = true;
       patch.metadata = {
         ...prevMeta,
-        spotifyPlaylistUrl: v.data.spotifyPlaylistUrl,
-        spotifyPlaylistId: playlistId,
+        spotifyPlaylistUrl: validated.url,
+        spotifyPlaylistId: validated.playlistId,
       };
     }
   }
@@ -456,14 +424,8 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
       const [reread] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
       return ok(c, { list: toListShape(reread ?? updated) });
     } catch (e) {
-      if (e instanceof PlaylistNotAvailableError) {
-        return err(c, "VALIDATION", "playlist not found or private", {
-          code: "PLAYLIST_NOT_AVAILABLE",
-        });
-      }
-      if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
-        return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
-      }
+      const mapped = mapSpotifyError(c, e);
+      if (mapped) return mapped;
       throw e;
     }
   }
@@ -528,16 +490,8 @@ listRoutes.post(
     key: (c) => c.get("userId") ?? null,
   }),
   async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return err(c, "VALIDATION", "invalid json body");
-    }
-    const parsed = createItemSchema.safeParse(body);
-    if (!parsed.success) {
-      return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-    }
+    const parsed = await parseJsonBody(c, createItemSchema);
+    if (!parsed.ok) return parsed.response;
     const listId = c.req.param("id");
     const userId = c.get("userId");
 
@@ -610,17 +564,8 @@ listRoutes.post(
         db,
       });
     } catch (e) {
-      if (e instanceof PlaylistNotAvailableError) {
-        return err(c, "VALIDATION", "playlist not found or private", {
-          code: "PLAYLIST_NOT_AVAILABLE",
-        });
-      }
-      if (e instanceof SpotifyConfigError) {
-        return err(c, "INTERNAL", "spotify integration not configured");
-      }
-      if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
-        return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
-      }
+      const mapped = mapSpotifyError(c, e);
+      if (mapped) return mapped;
       throw e;
     }
 

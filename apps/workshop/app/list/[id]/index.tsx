@@ -22,7 +22,7 @@ import {
 } from "../../../src/api/items";
 import { fetchListDetail } from "../../../src/api/lists";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { ApiError } from "../../../src/lib/api";
+import { errorMessage } from "../../../src/lib/api";
 import { haptics } from "../../../src/lib/haptics";
 import { computeNewItemsDelta } from "../../../src/lib/newItemsPill";
 import { queryKeys } from "../../../src/lib/queryKeys";
@@ -115,7 +115,7 @@ export default function ListDetail() {
         queryClient.setQueryData(upvoteKey, ctx.previous);
       }
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't update upvote",
+        message: errorMessage(e, "Couldn't update upvote"),
         tone: "danger",
       });
     },
@@ -143,7 +143,7 @@ export default function ListDetail() {
     },
     onError: (e) => {
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't update item",
+        message: errorMessage(e, "Couldn't update item"),
         tone: "danger",
       });
     },
@@ -458,11 +458,6 @@ function ItemRow({ item, onUpvote, onComplete, onPress, isCompleted = false }: I
       </Card>
     </Pressable>
   );
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Unknown error";
 }
 
 const styles = StyleSheet.create({

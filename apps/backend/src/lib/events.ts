@@ -2,6 +2,7 @@ import type { ActivityEventType } from "@workshop/shared";
 import { sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { activityEvents } from "../db/schema.js";
+import type { SqlExecutor } from "./sql.js";
 
 /**
  * Synchronous insert into `activity_events`. Mutating handlers call this
@@ -16,10 +17,6 @@ import { activityEvents } from "../db/schema.js";
  * Drizzle client. Mirrors the `metadata-cache.ts` pattern.
  */
 
-interface DbLike {
-  execute: (q: ReturnType<typeof sql>) => Promise<unknown>;
-}
-
 interface RecordEventParams {
   listId: string;
   actorId: string;
@@ -29,7 +26,7 @@ interface RecordEventParams {
   /** Event-specific payload; defaults to `{}`. */
   payload?: Record<string, unknown>;
   /** Defaults to the cached client; pass `tx` to enlist in an open transaction. */
-  db?: DbLike;
+  db?: SqlExecutor;
 }
 
 export async function recordEvent(params: RecordEventParams): Promise<void> {

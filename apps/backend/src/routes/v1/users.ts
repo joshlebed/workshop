@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbUser, users } from "../../db/schema.js";
+import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 
@@ -34,16 +35,8 @@ function toUserShape(u: DbUser) {
 }
 
 userRoutes.patch("/me", async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = patchMeSchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, patchMeSchema);
+  if (!parsed.ok) return parsed.response;
   const userId = c.get("userId");
   const db = getDb();
   const [updated] = await db

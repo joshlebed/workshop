@@ -14,7 +14,8 @@ import { createInvite, revokeInvite } from "../../../src/api/invites";
 import { deleteList, fetchListDetail, updateList } from "../../../src/api/lists";
 import { removeMember } from "../../../src/api/members";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { ApiError } from "../../../src/lib/api";
+import { albumShelfErrorMessage } from "../../../src/lib/albumShelfErrors";
+import { errorMessage } from "../../../src/lib/api";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import { formatRelative } from "../../../src/lib/relativeTime";
 import { buildInviteShareUrl, copyToClipboard } from "../../../src/lib/share";
@@ -125,7 +126,7 @@ export default function ListSettings() {
     },
     onError: (e) => {
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't save list",
+        message: errorMessage(e, "Couldn't save list"),
         tone: "danger",
       });
     },
@@ -159,7 +160,7 @@ export default function ListSettings() {
     },
     onError: (e) => {
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't generate invite",
+        message: errorMessage(e, "Couldn't generate invite"),
         tone: "danger",
       });
     },
@@ -180,7 +181,7 @@ export default function ListSettings() {
     },
     onError: (e) => {
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't revoke invite",
+        message: errorMessage(e, "Couldn't revoke invite"),
         tone: "danger",
       });
     },
@@ -207,7 +208,7 @@ export default function ListSettings() {
     },
     onError: (e) => {
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't remove member",
+        message: errorMessage(e, "Couldn't remove member"),
         tone: "danger",
       });
     },
@@ -237,19 +238,10 @@ export default function ListSettings() {
       showToast({ message: "Source updated and refreshed.", tone: "success" });
     },
     onError: (e) => {
-      const code =
-        e instanceof ApiError ? (e.details as { code?: string } | undefined)?.code : undefined;
-      const message =
-        code === "INVALID_PLAYLIST_URL"
-          ? "That doesn't look like a Spotify playlist URL."
-          : code === "PLAYLIST_NOT_AVAILABLE"
-            ? "We couldn't read that playlist. Make sure it's public."
-            : code === "SPOTIFY_UNAVAILABLE"
-              ? "Spotify is having a moment. Try again."
-              : e instanceof Error
-                ? e.message
-                : "Couldn't update source.";
-      showToast({ message, tone: "danger" });
+      showToast({
+        message: albumShelfErrorMessage(e, "Couldn't update source."),
+        tone: "danger",
+      });
     },
   });
 
@@ -274,7 +266,7 @@ export default function ListSettings() {
     },
     onError: (e) => {
       showToast({
-        message: e instanceof Error ? e.message : "Couldn't refresh.",
+        message: albumShelfErrorMessage(e, "Couldn't refresh."),
         tone: "danger",
       });
     },
@@ -291,7 +283,7 @@ export default function ListSettings() {
     },
     onError: (e) => {
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't delete list",
+        message: errorMessage(e, "Couldn't delete list"),
         tone: "danger",
       });
     },

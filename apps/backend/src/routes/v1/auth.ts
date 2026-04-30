@@ -9,6 +9,7 @@ import { logger } from "../../lib/logger.js";
 import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
 import { verifyGoogleIdentityToken } from "../../lib/oauth/google.js";
 import { OAuthVerifyError, type VerifiedClaims } from "../../lib/oauth/jwks.js";
+import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { signSession } from "../../lib/session.js";
 import { requireAuth } from "../../middleware/auth.js";
@@ -81,16 +82,8 @@ async function upsertUser({ provider, sub, email, displayName }: UpsertInput): P
 }
 
 authRoutes.post("/apple", async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = appleBodySchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, appleBodySchema);
+  if (!parsed.ok) return parsed.response;
   const { identityToken, nonce, email: clientEmail, fullName } = parsed.data;
 
   let claims: VerifiedClaims;
@@ -128,16 +121,8 @@ authRoutes.post("/apple", async (c) => {
 });
 
 authRoutes.post("/google", async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = googleBodySchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, googleBodySchema);
+  if (!parsed.ok) return parsed.response;
 
   let claims: VerifiedClaims;
   try {
@@ -180,16 +165,8 @@ authRoutes.post("/dev", async (c) => {
   if (!getConfig().devAuthEnabled) {
     return err(c, "NOT_FOUND", "not found");
   }
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = devBodySchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, devBodySchema);
+  if (!parsed.ok) return parsed.response;
   const { email, displayName } = parsed.data;
   const sub = `dev:${email}`;
 
