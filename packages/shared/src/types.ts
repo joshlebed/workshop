@@ -489,3 +489,19 @@ export interface AlbumShelfRefreshResponse {
   /** Number of new detected items added in this refresh (may be 0). */
   addedCount: number;
 }
+
+/**
+ * `POST /v1/album-shelf/preview` request body. The user pastes a URL on the
+ * create-list flow's source-playlist step; the server parses + hits Spotify
+ * to confirm the playlist is public before the user moves on.
+ */
+export interface AlbumShelfPreviewRequest {
+  url: string;
+}
+
+export interface AlbumShelfPreviewResponse {
+  playlistId: string;
+  name: string;
+  ownerName: string | null;
+  trackCount: number;
+}

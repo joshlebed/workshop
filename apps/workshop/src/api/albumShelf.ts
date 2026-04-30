@@ -1,5 +1,27 @@
-import type { AlbumShelfItemsResponse, AlbumShelfRefreshResponse } from "@workshop/shared";
+import type {
+  AlbumShelfItemsResponse,
+  AlbumShelfPreviewResponse,
+  AlbumShelfRefreshResponse,
+} from "@workshop/shared";
 import { apiRequest } from "../lib/api";
+
+/**
+ * Preview a Spotify playlist URL via the backend before the user finishes
+ * the create-shelf flow. Resolves with playlist metadata on success or
+ * throws an `ApiError` with `details.code` set to one of
+ * `INVALID_PLAYLIST_URL`, `PLAYLIST_NOT_AVAILABLE`, `SPOTIFY_UNAVAILABLE`.
+ */
+export function previewSpotifyPlaylist(
+  url: string,
+  token: string | null,
+): Promise<AlbumShelfPreviewResponse> {
+  return apiRequest<AlbumShelfPreviewResponse>({
+    method: "POST",
+    path: "/v1/album-shelf/preview",
+    body: { url },
+    token,
+  });
+}
 
 /** Validate a Spotify playlist URL against the backend. Wraps `POST /v1/lists` */
 // is implicit — there's no separate validate endpoint; the create call performs
