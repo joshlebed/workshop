@@ -88,6 +88,7 @@ export default function CreateListPlaylist() {
       </View>
 
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
@@ -153,6 +154,7 @@ function messageFromApiError(e: ApiError): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
+  scroll: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",

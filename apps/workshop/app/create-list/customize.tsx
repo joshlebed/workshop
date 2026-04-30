@@ -151,6 +151,7 @@ export default function CreateListCustomize() {
       </View>
 
       <ScrollView
+        style={styles.scroll}
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
@@ -258,6 +259,7 @@ export default function CreateListCustomize() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
+  scroll: { flex: 1 },
   header: {
     flexDirection: "row",
     alignItems: "center",
