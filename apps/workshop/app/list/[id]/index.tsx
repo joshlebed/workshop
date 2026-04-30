@@ -62,16 +62,22 @@ export default function ListDetail() {
     enabled: !!token && !!id,
   });
 
+  // For album_shelf lists the server replies to /items with { ordered, detected }
+  // (see lists.ts:512), not { items }. AlbumShelfDetail handles that route under
+  // its own query — we must not fire the standard items queries because their
+  // data shape would crash this screen's render path on `data.items.length`.
+  const isAlbumShelf = listQuery.data?.list.type === "album_shelf";
+
   const activeQuery = useQuery({
     queryKey: queryKeys.items.byListFiltered(id ?? "", false),
     queryFn: () => fetchItems(id ?? "", { completed: false }, token),
-    enabled: !!token && !!id,
+    enabled: !!token && !!id && !isAlbumShelf,
   });
 
   const completedQuery = useQuery({
     queryKey: queryKeys.items.byListFiltered(id ?? "", true),
     queryFn: () => fetchItems(id ?? "", { completed: true }, token),
-    enabled: !!token && !!id,
+    enabled: !!token && !!id && !isAlbumShelf,
   });
 
   const upvoteKey = id ? queryKeys.items.byListFiltered(id, false) : undefined;
@@ -143,7 +149,11 @@ export default function ListDetail() {
     },
   });
 
-  const activeCount = activeQuery.data?.items.length;
+  // Defensive `?.items?.length`: a previously-persisted offline cache (PR #86)
+  // could still hold a wrong-shape payload from before the album_shelf gate
+  // above existed. The first render after upgrade would otherwise crash on
+  // `undefined.length`.
+  const activeCount = activeQuery.data?.items?.length;
 
   useEffect(() => {
     if (activeCount === undefined) return;
@@ -266,7 +276,7 @@ export default function ListDetail() {
         <View style={styles.center}>
           <ActivityIndicator color={tokens.accent.default} />
         </View>
-      ) : activeQuery.data?.items.length === 0 && completedQuery.data?.items.length === 0 ? (
+      ) : activeQuery.data?.items?.length === 0 && completedQuery.data?.items?.length === 0 ? (
         <View style={styles.center}>
           <EmptyState
             title="No items yet"
