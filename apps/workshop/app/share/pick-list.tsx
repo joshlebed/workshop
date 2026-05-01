@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { fetchLists } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
+import { errorMessage } from "../../src/lib/api";
 import { queryKeys } from "../../src/lib/queryKeys";
 import {
   Button,
@@ -156,11 +157,6 @@ function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) 
       </Card>
     </Pressable>
   );
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Unknown error";
 }
 
 const styles = StyleSheet.create({

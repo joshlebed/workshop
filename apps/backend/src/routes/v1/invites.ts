@@ -13,6 +13,7 @@ import {
   users,
 } from "../../db/schema.js";
 import { recordEvent } from "../../lib/events.js";
+import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
@@ -79,17 +80,8 @@ function toInviteShape(row: DbListInvite, opts: { includeToken: boolean }): Invi
 // --- POST /v1/lists/:id/invites (owner-only, share-link generator) ---
 
 inviteRoutes.post("/lists/:id/invites", requireListMember, requireListOwner, async (c) => {
-  let body: unknown;
-  try {
-    const text = await c.req.text();
-    body = text.length === 0 ? undefined : JSON.parse(text);
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = createInviteSchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, createInviteSchema, { allowEmpty: true });
+  if (!parsed.ok) return parsed.response;
 
   const listId = c.req.param("id");
   const userId = c.get("userId");

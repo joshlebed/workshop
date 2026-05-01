@@ -4,8 +4,11 @@ import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbItem, items, itemUpvotes, lists } from "../../db/schema.js";
+import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { recordEvent } from "../../lib/events.js";
+import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { executeRows } from "../../lib/sql.js";
 import {
   albumShelfItemMetadataSchema,
   albumShelfItemPatchSchema,
@@ -217,64 +220,72 @@ export async function fetchItemsForList(
       ? sql`ORDER BY i.completed_at DESC NULLS LAST, i.created_at DESC`
       : sql`ORDER BY upvote_count DESC, i.created_at DESC`;
 
-  const rows = (await db.execute(sql`
-    SELECT
-      i.id,
-      i.list_id,
-      i.type::text AS type,
-      i.title,
-      i.url,
-      i.note,
-      i.metadata,
-      i.added_by,
-      i.completed,
-      i.completed_at,
-      i.completed_by,
-      i.created_at,
-      i.updated_at,
-      COALESCE(u.upvote_count, 0)::int AS upvote_count,
-      COALESCE(u.has_upvoted, FALSE) AS has_upvoted
-    FROM items i
-    LEFT JOIN (
+  const rows = await executeRows<{
+    id: string;
+    list_id: string;
+    type: string;
+    title: string;
+    url: string | null;
+    note: string | null;
+    metadata: Record<string, unknown> | null;
+    added_by: string;
+    completed: boolean;
+    completed_at: Date | string | null;
+    completed_by: string | null;
+    created_at: Date | string;
+    updated_at: Date | string;
+    upvote_count: number;
+    has_upvoted: boolean;
+  }>(
+    db,
+    sql`
       SELECT
-        item_id,
-        COUNT(*)::int AS upvote_count,
-        BOOL_OR(user_id = ${userId}) AS has_upvoted
-      FROM item_upvotes
-      GROUP BY item_id
-    ) u ON u.item_id = i.id
-    WHERE i.list_id = ${listId} ${completedClause}
-    ${orderBy}
-  `)) as Array<Record<string, unknown>> | { rows: Array<Record<string, unknown>> };
+        i.id,
+        i.list_id,
+        i.type::text AS type,
+        i.title,
+        i.url,
+        i.note,
+        i.metadata,
+        i.added_by,
+        i.completed,
+        i.completed_at,
+        i.completed_by,
+        i.created_at,
+        i.updated_at,
+        COALESCE(u.upvote_count, 0)::int AS upvote_count,
+        COALESCE(u.has_upvoted, FALSE) AS has_upvoted
+      FROM items i
+      LEFT JOIN (
+        SELECT
+          item_id,
+          COUNT(*)::int AS upvote_count,
+          BOOL_OR(user_id = ${userId}) AS has_upvoted
+        FROM item_upvotes
+        GROUP BY item_id
+      ) u ON u.item_id = i.id
+      WHERE i.list_id = ${listId} ${completedClause}
+      ${orderBy}
+    `,
+  );
 
-  const list = Array.isArray(rows) ? rows : rows.rows;
-  return list.map((r) => {
-    const createdAt = r.created_at instanceof Date ? r.created_at : new Date(String(r.created_at));
-    const updatedAt = r.updated_at instanceof Date ? r.updated_at : new Date(String(r.updated_at));
-    const completedAt =
-      r.completed_at == null
-        ? null
-        : r.completed_at instanceof Date
-          ? r.completed_at
-          : new Date(String(r.completed_at));
-    return {
-      id: String(r.id),
-      listId: String(r.list_id),
-      type: String(r.type) as ListType,
-      title: String(r.title),
-      url: r.url == null ? null : String(r.url),
-      note: r.note == null ? null : String(r.note),
-      metadata: (r.metadata ?? {}) as ItemMetadata,
-      addedBy: String(r.added_by),
-      completed: Boolean(r.completed),
-      completedAt: completedAt ? completedAt.toISOString() : null,
-      completedBy: r.completed_by == null ? null : String(r.completed_by),
-      upvoteCount: Number(r.upvote_count),
-      hasUpvoted: Boolean(r.has_upvoted),
-      createdAt: createdAt.toISOString(),
-      updatedAt: updatedAt.toISOString(),
-    };
-  });
+  return rows.map((r) => ({
+    id: r.id,
+    listId: r.list_id,
+    type: r.type as ListType,
+    title: r.title,
+    url: r.url,
+    note: r.note,
+    metadata: (r.metadata ?? {}) as ItemMetadata,
+    addedBy: r.added_by,
+    completed: Boolean(r.completed),
+    completedAt: toIsoOrNull(r.completed_at),
+    completedBy: r.completed_by,
+    upvoteCount: Number(r.upvote_count),
+    hasUpvoted: Boolean(r.has_upvoted),
+    createdAt: toIsoString(r.created_at),
+    updatedAt: toIsoString(r.updated_at),
+  }));
 }
 
 /** Thrown by `createItem` when per-type metadata validation fails. */
@@ -356,16 +367,8 @@ itemRoutes.get("/:id", requireItemMember, async (c) => {
 });
 
 itemRoutes.patch("/:id", requireItemMember, async (c) => {
-  let body: unknown;
-  try {
-    body = await c.req.json();
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = updateItemSchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, updateItemSchema);
+  if (!parsed.ok) return parsed.response;
 
   const itemId = c.req.param("id");
   const userId = c.get("userId");
@@ -511,14 +514,16 @@ itemRoutes.post(
     // `RETURNING` only emits a row on a fresh insert — a conflict returns
     // nothing — so we use the row count to decide whether to record an
     // event (don't spam the feed on repeat clicks).
-    const inserted = (await db.execute(sql`
-      INSERT INTO item_upvotes (item_id, user_id)
-      VALUES (${itemId}, ${userId})
-      ON CONFLICT (item_id, user_id) DO NOTHING
-      RETURNING item_id
-    `)) as Array<Record<string, unknown>> | { rows: Array<Record<string, unknown>> };
+    const insertedRows = await executeRows(
+      db,
+      sql`
+        INSERT INTO item_upvotes (item_id, user_id)
+        VALUES (${itemId}, ${userId})
+        ON CONFLICT (item_id, user_id) DO NOTHING
+        RETURNING item_id
+      `,
+    );
 
-    const insertedRows = Array.isArray(inserted) ? inserted : inserted.rows;
     if (insertedRows.length > 0) {
       await recordEvent({
         listId,

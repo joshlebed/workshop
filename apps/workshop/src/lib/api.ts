@@ -1,19 +1,8 @@
 import type { ApiErrorResponse } from "@workshop/shared";
 import { API_URL } from "../config";
+import { ApiError } from "./apiError";
 
-export class ApiError extends Error {
-  readonly code: ApiErrorResponse["code"];
-  readonly status: number;
-  readonly details?: unknown;
-
-  constructor(code: ApiErrorResponse["code"], message: string, status: number, details?: unknown) {
-    super(message);
-    this.name = "ApiError";
-    this.code = code;
-    this.status = status;
-    this.details = details;
-  }
-}
+export { ApiError, apiErrorCode, errorMessage } from "./apiError";
 
 interface ApiRequest {
   method: "GET" | "POST" | "PATCH" | "DELETE";

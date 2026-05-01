@@ -1,6 +1,8 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { metadataCache } from "../db/schema.js";
+import { toDate } from "./dates.js";
+import { executeRows, type SqlExecutor } from "./sql.js";
 
 /**
  * Backed by the `metadata_cache` table. Stores normalized provider responses
@@ -13,10 +15,6 @@ import { metadataCache } from "../db/schema.js";
  * link-preview 7d) and storing the absolute expiry keeps callers from having
  * to know about source-specific TTL knobs at lookup.
  */
-
-interface DbLike {
-  execute: (q: ReturnType<typeof sql>) => Promise<unknown>;
-}
 
 interface CacheEntry<T = unknown> {
   source: string;
@@ -34,30 +32,34 @@ interface CacheEntry<T = unknown> {
 export async function lookupCacheEntry<T>(
   source: string,
   sourceId: string,
-  db: DbLike = getDb(),
+  db: SqlExecutor = getDb(),
 ): Promise<CacheEntry<T> | null> {
-  const rows = (await db.execute(sql`
-    SELECT source, source_id, data, fetched_at, expires_at
-    FROM ${metadataCache}
-    WHERE source = ${source}
-      AND source_id = ${sourceId}
-      AND expires_at > now()
-    LIMIT 1
-  `)) as Array<Record<string, unknown>> | { rows: Array<Record<string, unknown>> };
+  const rows = await executeRows<{
+    source: string;
+    source_id: string;
+    data: unknown;
+    fetched_at: Date | string;
+    expires_at: Date | string;
+  }>(
+    db,
+    sql`
+      SELECT source, source_id, data, fetched_at, expires_at
+      FROM ${metadataCache}
+      WHERE source = ${source}
+        AND source_id = ${sourceId}
+        AND expires_at > now()
+      LIMIT 1
+    `,
+  );
 
-  const list = Array.isArray(rows) ? rows : rows.rows;
-  const row = list[0];
+  const row = rows[0];
   if (!row) return null;
-  const fetchedAt =
-    row.fetched_at instanceof Date ? row.fetched_at : new Date(String(row.fetched_at));
-  const expiresAt =
-    row.expires_at instanceof Date ? row.expires_at : new Date(String(row.expires_at));
   return {
-    source: String(row.source),
-    sourceId: String(row.source_id),
+    source: row.source,
+    sourceId: row.source_id,
     data: row.data as T,
-    fetchedAt,
-    expiresAt,
+    fetchedAt: toDate(row.fetched_at),
+    expiresAt: toDate(row.expires_at),
   };
 }
 
@@ -70,7 +72,7 @@ export async function upsertCacheEntry<T>(
   sourceId: string,
   data: T,
   ttlSeconds: number,
-  db: DbLike = getDb(),
+  db: SqlExecutor = getDb(),
 ): Promise<void> {
   if (!Number.isFinite(ttlSeconds) || ttlSeconds <= 0) {
     throw new Error("ttlSeconds must be a positive finite number");

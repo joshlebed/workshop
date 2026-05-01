@@ -7,7 +7,6 @@ import type {
   Item,
   ItemMetadata,
   List,
-  ListColor,
   ListMemberSummary,
 } from "@workshop/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -35,7 +34,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { fetchAlbumShelfItems, refreshAlbumShelf } from "../api/albumShelf";
 import { deleteItem, updateItem } from "../api/items";
-import { ApiError } from "../lib/api";
+import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
+import { applyPositionPatch, midpointAt, positionOf } from "../lib/albumShelfPositions";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
 import { Button, Card, EmptyState, type ListColorKey, Text, tokens, useToast } from "../ui/index";
@@ -143,7 +143,7 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     },
     onError: (e) => {
       showToast({
-        message: errorMessage(e, "Couldn't refresh — try again?"),
+        message: albumShelfErrorMessage(e, "Couldn't refresh — try again?"),
         tone: "danger",
       });
     },
@@ -180,7 +180,10 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     },
     onError: (e, _vars, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(itemsKey, ctx.previous);
-      showToast({ message: errorMessage(e, "Couldn't move that album."), tone: "danger" });
+      showToast({
+        message: albumShelfErrorMessage(e, "Couldn't move that album."),
+        tone: "danger",
+      });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: itemsKey });
@@ -193,7 +196,10 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
       queryClient.invalidateQueries({ queryKey: itemsKey });
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't delete that album."), tone: "danger" });
+      showToast({
+        message: albumShelfErrorMessage(e, "Couldn't delete that album."),
+        tone: "danger",
+      });
     },
   });
 
@@ -394,17 +400,14 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
   };
 
   const onPromote = (item: Item) => {
-    const orderedItems: OrderedItem[] = filtered.ordered.map((it) => ({
-      id: it.id,
-      position: positionOf(it) ?? 0,
-    }));
-    const last = orderedItems[orderedItems.length - 1]?.position ?? 0;
-    positionMutation.mutate({ item, nextPosition: orderedItems.length === 0 ? 1 : last + 1 });
+    // Append to bottom of the visible ordered list (filter-aware).
+    positionMutation.mutate({
+      item,
+      nextPosition: midpointAt(filtered.ordered, filtered.ordered.length),
+    });
   };
   const onPromoteToTop = (item: Item) => {
-    const first = filtered.ordered[0];
-    const next = first ? (positionOf(first) ?? 1) / 2 : 1;
-    positionMutation.mutate({ item, nextPosition: next });
+    positionMutation.mutate({ item, nextPosition: midpointAt(filtered.ordered, 0) });
   };
   const onDemote = (item: Item) => {
     positionMutation.mutate({ item, nextPosition: null });
@@ -492,7 +495,7 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
         <View style={styles.center}>
           <EmptyState
             title="Couldn't load shelf"
-            description={errorMessage(itemsQuery.error, "Unknown error")}
+            description={albumShelfErrorMessage(itemsQuery.error, "Unknown error")}
             action={
               <Button
                 label="Retry"
@@ -1012,54 +1015,6 @@ function DraggableAlbumRow({
 
   return <GestureDetector gesture={bodyPan}>{rowBody}</GestureDetector>;
 }
-
-function positionOf(it: Item): number | null {
-  const m = it.metadata as Partial<AlbumShelfItemMetadata>;
-  return typeof m.position === "number" ? m.position : null;
-}
-
-function applyPositionPatch(
-  data: AlbumShelfItemsResponse,
-  itemId: string,
-  nextPosition: number | null,
-): AlbumShelfItemsResponse {
-  const all = [...data.ordered, ...data.detected];
-  const target = all.find((i) => i.id === itemId);
-  if (!target) return data;
-  const otherOrdered = data.ordered.filter((i) => i.id !== itemId);
-  const otherDetected = data.detected.filter((i) => i.id !== itemId);
-  const patched: Item = {
-    ...target,
-    metadata: {
-      ...(target.metadata as unknown as AlbumShelfItemMetadata),
-      position: nextPosition,
-    } as unknown as ItemMetadata,
-  };
-  if (typeof nextPosition === "number") {
-    const ordered = [...otherOrdered, patched].sort(
-      (a, b) => (positionOf(a) ?? 0) - (positionOf(b) ?? 0),
-    );
-    return { ordered, detected: otherDetected };
-  }
-  return { ordered: otherOrdered, detected: [...otherDetected, patched] };
-}
-
-function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof ApiError) {
-    const code = (err.details as { code?: string } | undefined)?.code;
-    if (code === "PLAYLIST_NOT_AVAILABLE")
-      return "Source playlist is private or deleted. Update the source URL in settings.";
-    if (code === "SPOTIFY_UNAVAILABLE") return "Spotify is having a moment. Try again.";
-    return err.message;
-  }
-  if (err instanceof Error) return err.message;
-  return fallback;
-}
-
-// Keep `ListColor` referenced so the unused-import lint stays quiet. The
-// type is used downstream by the public ListSummary type.
-const _color: ListColor | null = null;
-void _color;
 
 const styles = StyleSheet.create({
   root: {

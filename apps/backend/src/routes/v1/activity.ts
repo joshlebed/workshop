@@ -8,7 +8,10 @@ import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
+import { toIsoString } from "../../lib/dates.js";
+import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { executeRows } from "../../lib/sql.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 /**
@@ -105,41 +108,49 @@ activityRoutes.get("/", async (c) => {
 
   // Fetch limit+1 so we know whether there's another page without a
   // separate COUNT query. Drop the extra row before serialising.
-  const rows = (await db.execute(sql`
-    SELECT
-      e.id,
-      e.list_id,
-      e.actor_id,
-      e.event_type::text AS event_type,
-      e.item_id,
-      e.payload,
-      e.created_at,
-      u.display_name AS actor_display_name
-    FROM activity_events e
-    JOIN list_members lm ON lm.list_id = e.list_id AND lm.user_id = ${userId}
-    LEFT JOIN users u ON u.id = e.actor_id
-    WHERE TRUE ${cursorClause}
-    ORDER BY e.created_at DESC, e.id DESC
-    LIMIT ${limit + 1}
-  `)) as Array<Record<string, unknown>> | { rows: Array<Record<string, unknown>> };
+  const rows = await executeRows<{
+    id: string;
+    list_id: string;
+    actor_id: string;
+    event_type: string;
+    item_id: string | null;
+    payload: Record<string, unknown> | null;
+    created_at: Date | string;
+    actor_display_name: string | null;
+  }>(
+    db,
+    sql`
+      SELECT
+        e.id,
+        e.list_id,
+        e.actor_id,
+        e.event_type::text AS event_type,
+        e.item_id,
+        e.payload,
+        e.created_at,
+        u.display_name AS actor_display_name
+      FROM activity_events e
+      JOIN list_members lm ON lm.list_id = e.list_id AND lm.user_id = ${userId}
+      LEFT JOIN users u ON u.id = e.actor_id
+      WHERE TRUE ${cursorClause}
+      ORDER BY e.created_at DESC, e.id DESC
+      LIMIT ${limit + 1}
+    `,
+  );
 
-  const list = Array.isArray(rows) ? rows : rows.rows;
-  const hasMore = list.length > limit;
-  const page = hasMore ? list.slice(0, limit) : list;
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
 
-  const events: ActivityEvent[] = page.map((r) => {
-    const createdAt = r.created_at instanceof Date ? r.created_at : new Date(String(r.created_at));
-    return {
-      id: String(r.id),
-      listId: String(r.list_id),
-      actorId: String(r.actor_id),
-      actorDisplayName: r.actor_display_name == null ? null : String(r.actor_display_name),
-      type: String(r.event_type) as ActivityEventType,
-      itemId: r.item_id == null ? null : String(r.item_id),
-      payload: (r.payload ?? {}) as Record<string, unknown>,
-      createdAt: createdAt.toISOString(),
-    };
-  });
+  const events: ActivityEvent[] = page.map((r) => ({
+    id: r.id,
+    listId: r.list_id,
+    actorId: r.actor_id,
+    actorDisplayName: r.actor_display_name,
+    type: r.event_type as ActivityEventType,
+    itemId: r.item_id,
+    payload: (r.payload ?? {}) as Record<string, unknown>,
+    createdAt: toIsoString(r.created_at),
+  }));
 
   let nextCursor: string | null = null;
   if (hasMore) {
@@ -160,17 +171,8 @@ export const markReadSchema = z
   .optional();
 
 activityRoutes.post("/read", async (c) => {
-  let body: unknown;
-  try {
-    const text = await c.req.text();
-    body = text.length === 0 ? undefined : JSON.parse(text);
-  } catch {
-    return err(c, "VALIDATION", "invalid json body");
-  }
-  const parsed = markReadSchema.safeParse(body);
-  if (!parsed.success) {
-    return err(c, "VALIDATION", "invalid request", parsed.error.issues);
-  }
+  const parsed = await parseJsonBody(c, markReadSchema, { allowEmpty: true });
+  if (!parsed.ok) return parsed.response;
 
   const userId = c.get("userId");
   const listIds = parsed.data?.listIds;

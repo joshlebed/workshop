@@ -8,14 +8,10 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
-import {
-  fetchPlaylistMeta,
-  PlaylistNotAvailableError,
-  SpotifyApiError,
-  SpotifyAuthError,
-  SpotifyConfigError,
-} from "../../lib/spotify/app-client.js";
+import { fetchPlaylistMeta } from "../../lib/spotify/app-client.js";
+import { mapSpotifyError } from "../../lib/spotify/error-mapping.js";
 import { InvalidPlaylistUrlError, parsePlaylistId } from "../../lib/spotify/playlist-parser.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
@@ -37,14 +33,8 @@ albumShelfRoutes.post(
     key: (c) => c.get("userId") ?? null,
   }),
   async (c) => {
-    let body: unknown;
-    try {
-      body = await c.req.json();
-    } catch {
-      return err(c, "VALIDATION", "invalid json body");
-    }
-    const parsed = previewSchema.safeParse(body);
-    if (!parsed.success) return err(c, "VALIDATION", "invalid request", parsed.error.issues);
+    const parsed = await parseJsonBody(c, previewSchema);
+    if (!parsed.ok) return parsed.response;
 
     let playlistId: string;
     try {
@@ -70,17 +60,8 @@ albumShelfRoutes.post(
         trackCount: meta.tracks.total,
       });
     } catch (e) {
-      if (e instanceof PlaylistNotAvailableError) {
-        return err(c, "VALIDATION", "playlist not found or private", {
-          code: "PLAYLIST_NOT_AVAILABLE",
-        });
-      }
-      if (e instanceof SpotifyConfigError) {
-        return err(c, "INTERNAL", "spotify integration not configured");
-      }
-      if (e instanceof SpotifyAuthError || e instanceof SpotifyApiError) {
-        return err(c, "INTERNAL", "spotify upstream error", { code: "SPOTIFY_UNAVAILABLE" });
-      }
+      const mapped = mapSpotifyError(c, e);
+      if (mapped) return mapped;
       throw e;
     }
   },

@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import { fetchActivity, markActivityRead } from "../src/api/activity";
 import { useAuth } from "../src/hooks/useAuth";
+import { errorMessage } from "../src/lib/api";
 import { setActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
 import { Button, Card, EmptyState, IconButton, Text, tokens } from "../src/ui/index";
@@ -198,11 +199,6 @@ function formatRelative(iso: string): string {
   const days = Math.round(hours / 24);
   if (days < 14) return `${days}d ago`;
   return new Date(iso).toLocaleDateString();
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Unknown error";
 }
 
 const styles = StyleSheet.create({

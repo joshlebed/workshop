@@ -11,17 +11,15 @@ import type {
 } from "@workshop/shared";
 import { sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
+import { toIsoOrNull, toIsoString } from "./dates.js";
 import { type AlbumExtract, fetchPlaylistAlbumExtracts } from "./spotify/app-client.js";
+import { executeRows, type SqlExecutor } from "./sql.js";
 
 class AlbumShelfStateError extends Error {
   constructor(message = "list is not an album_shelf") {
     super(message);
     this.name = "AlbumShelfStateError";
   }
-}
-
-interface DbExec {
-  execute: (q: ReturnType<typeof sql>) => Promise<unknown>;
 }
 
 interface RefreshResult {
@@ -46,7 +44,7 @@ export async function refreshAlbumShelfItems(args: {
   userId: string;
   spotifyPlaylistId: string;
   spotifyPlaylistUrl: string;
-  db: DbExec;
+  db: SqlExecutor;
 }): Promise<RefreshResult> {
   const extracts = await fetchPlaylistAlbumExtracts(args.spotifyPlaylistId);
   const refreshedAt = new Date();
@@ -81,7 +79,7 @@ async function insertExtractIfMissing(args: {
   userId: string;
   extract: AlbumExtract;
   detectedAt: Date;
-  db: DbExec;
+  db: SqlExecutor;
 }): Promise<number> {
   const meta: AlbumShelfItemMetadata = {
     source: "spotify",
@@ -99,20 +97,22 @@ async function insertExtractIfMissing(args: {
   // (list_id, metadata->>'spotifyAlbumId') WHERE type = 'album_shelf'. The
   // bare `ON CONFLICT DO NOTHING` form catches any unique violation without
   // having to name a non-constraint index.
-  const inserted = (await args.db.execute(sql`
-    INSERT INTO items (list_id, type, title, url, metadata, added_by)
-    VALUES (
-      ${args.listId},
-      'album_shelf'::list_type,
-      ${args.extract.title},
-      ${args.extract.spotifyAlbumUrl},
-      ${JSON.stringify(meta)}::jsonb,
-      ${args.userId}
-    )
-    ON CONFLICT DO NOTHING
-    RETURNING id
-  `)) as Array<unknown> | { rows: Array<unknown> };
-  const rows = Array.isArray(inserted) ? inserted : inserted.rows;
+  const rows = await executeRows(
+    args.db,
+    sql`
+      INSERT INTO items (list_id, type, title, url, metadata, added_by)
+      VALUES (
+        ${args.listId},
+        'album_shelf'::list_type,
+        ${args.extract.title},
+        ${args.extract.spotifyAlbumUrl},
+        ${JSON.stringify(meta)}::jsonb,
+        ${args.userId}
+      )
+      ON CONFLICT DO NOTHING
+      RETURNING id
+    `,
+  );
   return rows.length;
 }
 
@@ -144,33 +144,35 @@ export async function fetchAlbumShelfItems(
   listId: string,
 ): Promise<{ ordered: Item[]; detected: Item[] }> {
   const db = getDb();
-  const rows = (await db.execute(sql`
-    SELECT
-      i.id,
-      i.list_id,
-      i.type::text AS type,
-      i.title,
-      i.url,
-      i.note,
-      i.metadata,
-      i.added_by,
-      i.completed,
-      i.completed_at,
-      i.completed_by,
-      i.created_at,
-      i.updated_at
-    FROM items i
-    WHERE i.list_id = ${listId}
-    ORDER BY
-      (i.metadata->>'position') IS NULL,
-      (i.metadata->>'position')::numeric ASC NULLS LAST,
-      (i.metadata->>'detectedAt') ASC
-  `)) as unknown as Array<SplitItemsRow> | { rows: Array<SplitItemsRow> };
+  const rows = await executeRows<SplitItemsRow>(
+    db,
+    sql`
+      SELECT
+        i.id,
+        i.list_id,
+        i.type::text AS type,
+        i.title,
+        i.url,
+        i.note,
+        i.metadata,
+        i.added_by,
+        i.completed,
+        i.completed_at,
+        i.completed_by,
+        i.created_at,
+        i.updated_at
+      FROM items i
+      WHERE i.list_id = ${listId}
+      ORDER BY
+        (i.metadata->>'position') IS NULL,
+        (i.metadata->>'position')::numeric ASC NULLS LAST,
+        (i.metadata->>'detectedAt') ASC
+    `,
+  );
 
-  const list = Array.isArray(rows) ? rows : rows.rows;
   const ordered: Item[] = [];
   const detected: Item[] = [];
-  for (const r of list) {
+  for (const r of rows) {
     const meta = (r.metadata ?? {}) as Record<string, unknown>;
     const position = meta.position;
     const item = rowToItem(r);
@@ -184,14 +186,6 @@ export async function fetchAlbumShelfItems(
 }
 
 function rowToItem(r: SplitItemsRow): Item {
-  const createdAt = r.created_at instanceof Date ? r.created_at : new Date(String(r.created_at));
-  const updatedAt = r.updated_at instanceof Date ? r.updated_at : new Date(String(r.updated_at));
-  const completedAt =
-    r.completed_at == null
-      ? null
-      : r.completed_at instanceof Date
-        ? r.completed_at
-        : new Date(String(r.completed_at));
   return {
     id: r.id,
     listId: r.list_id,
@@ -202,12 +196,12 @@ function rowToItem(r: SplitItemsRow): Item {
     metadata: (r.metadata ?? {}) as ItemMetadata,
     addedBy: r.added_by,
     completed: r.completed,
-    completedAt: completedAt ? completedAt.toISOString() : null,
+    completedAt: toIsoOrNull(r.completed_at),
     completedBy: r.completed_by,
     upvoteCount: 0,
     hasUpvoted: false,
-    createdAt: createdAt.toISOString(),
-    updatedAt: updatedAt.toISOString(),
+    createdAt: toIsoString(r.created_at),
+    updatedAt: toIsoString(r.updated_at),
   };
 }
 
