@@ -104,11 +104,25 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   an explicit grant like `pull-requests: read`. Failure mode is opaque at runtime
   (`"Resource not accessible by integration"`) and isn't caught by `actionlint`.
 - **Auto-merge is on.** The repo is public (which gives us free branch protection + unlimited
-  Actions minutes) and `main` requires the `Quality (lint, typecheck, test, knip, format,
-terraform, actionlint)` check to pass. `gh pr merge <PR> --auto --squash --delete-branch` is
-  the canonical merge path: it arms a queued merge that fires when the required check goes green,
-  including across reruns and force-pushes. The `/continue-redesign` skill uses this by default.
-  Don't claim merged without verifying with `gh pr view <PR> --json state` — armed ≠ merged.
+  Actions minutes) and `main` requires three checks to pass:
+  - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs on PRs.
+  - `Mobile Metro bundle` — runs only when `apps/workshop/**`, `packages/shared/**`, or
+    `pnpm-lock.yaml` changes; skipped (and treated as passing) otherwise. Catches RN/Expo
+    SDK drift — Dependabot bumping `react-native` past the SDK matrix would have shipped
+    to prod without this gate (the 2026-04-24 mobile outage).
+  - `Migrate smoke (fresh DB + idempotent re-run)` — runs only when
+    `apps/backend/drizzle/**`, `apps/backend/src/db/**`, or `pnpm-lock.yaml` changes;
+    skipped (and treated as passing) otherwise. Catches Drizzle journal-vs-files drift
+    before it can desync prod (the 2026-04-24 backend-deploy outage).
+
+  `gh pr merge <PR> --auto --squash --delete-branch` is the canonical merge path: it arms
+  a queued merge that fires when all required checks go green, including across reruns and
+  force-pushes. The `/continue-redesign` skill uses this by default. Don't claim merged
+  without verifying with `gh pr view <PR> --json state` — armed ≠ merged.
+
+  Updating the required-check list is a GitHub admin action (Settings → Branches → main →
+  edit rule), not a repo file. Keep the bullets above in sync if the gate ever changes.
+
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
   unless there's a specific reason (security fix, unblocking work). Monthly PRs on the first
   Monday, aggressively grouped.
