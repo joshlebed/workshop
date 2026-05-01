@@ -10,6 +10,7 @@ import * as Updates from "expo-updates";
 import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
@@ -145,21 +146,23 @@ export default function RootLayout() {
   const isLight = colorScheme === "light";
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <ThemeProvider>
-          <NavigationThemeProvider value={isLight ? LightNavigationTheme : DarkTheme}>
-            <StatusBar style={isLight ? "dark" : "light"} />
-            <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
-              <ToastProvider>
-                <OfflineRetryWatcher />
-                <AuthProvider>
-                  <AuthGate />
-                </AuthProvider>
-              </ToastProvider>
-            </PersistQueryClientProvider>
-          </NavigationThemeProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
+      <KeyboardProvider>
+        <SafeAreaProvider>
+          <ThemeProvider>
+            <NavigationThemeProvider value={isLight ? LightNavigationTheme : DarkTheme}>
+              <StatusBar style={isLight ? "dark" : "light"} />
+              <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+                <ToastProvider>
+                  <OfflineRetryWatcher />
+                  <AuthProvider>
+                    <AuthGate />
+                  </AuthProvider>
+                </ToastProvider>
+              </PersistQueryClientProvider>
+            </NavigationThemeProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
+      </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }

@@ -2,15 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ListColor, ListType } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
 import { queryKeys } from "../../src/lib/queryKeys";
@@ -150,11 +143,12 @@ export default function CreateListCustomize() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
+        bottomOffset={tokens.space.lg}
       >
         <Card style={styles.card} elevated>
           <View style={styles.field}>
@@ -237,11 +231,11 @@ export default function CreateListCustomize() {
             />
           </View>
         </Card>
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
-      {/* Submit lives outside the ScrollView so it sticks above the keyboard
-          (KeyboardAvoidingView + padding shrinks the KAV; the button stays at
-          its bottom edge instead of getting trapped inside scrollable
+      {/* Submit lives outside the scroll so it sticks above the keyboard
+          (KeyboardAvoidingView shrinks the available space; the button stays
+          at its bottom edge instead of getting trapped inside scrollable
           content). */}
       <View style={styles.footer}>
         <Button

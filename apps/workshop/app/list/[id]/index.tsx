@@ -7,11 +7,13 @@ import {
   FlatList,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  Platform,
   Pressable,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import {
   completeItem,
@@ -222,7 +224,10 @@ export default function ListDetail() {
     : tokens.accent.default;
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <View style={styles.header}>
         <IconButton accessibilityLabel="Back" onPress={() => router.back()} testID="list-back">
           <Text style={styles.headerGlyph}>‹</Text>
@@ -373,7 +378,7 @@ export default function ListDetail() {
           +
         </Text>
       </Pressable>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

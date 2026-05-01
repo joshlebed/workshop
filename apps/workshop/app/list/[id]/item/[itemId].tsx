@@ -1,15 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Linking,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import {
   completeItem,
   deleteItem,
@@ -193,7 +186,12 @@ export default function ItemDetail() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        bottomOffset={tokens.space.lg}
+      >
         <Card style={styles.card} elevated>
           <View style={styles.row}>
             <UpvotePill
@@ -295,7 +293,7 @@ export default function ItemDetail() {
           loading={deleteMutation.isPending}
           onPress={() => deleteMutation.mutate()}
         />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
