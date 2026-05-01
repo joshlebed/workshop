@@ -14,17 +14,28 @@ import { Platform } from "react-native";
 
 export interface WebDragCallbacks {
   onBegin: () => void;
-  onMove: (absoluteY: number) => void;
+  /**
+   * `clientY` is the touch's viewport-Y (matches `getBoundingClientRect`).
+   * `deltaY` is the offset since drag-start so the row can translateY to
+   * follow the cursor visually.
+   */
+  onMove: (clientY: number, deltaY: number) => void;
   onEnd: () => void;
   onCancel: () => void;
 }
 
 export interface WebDragHandlers {
-  onPointerDown?: (e: { clientY: number; pointerId?: number; preventDefault?: () => void }) => void;
+  onPointerDown?: (e: {
+    clientY: number;
+    pointerId?: number;
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+    currentTarget?: { setPointerCapture?: (id: number) => void };
+  }) => void;
 }
 
 /**
- * Returns pointer-down handler to attach to the drag handle on web. Listens
+ * Returns a pointer-down handler to attach to the drag handle on web. Listens
  * for window-level pointermove / pointerup so the user can drag past the
  * handle's bounds. On native, returns an empty handler set.
  */
@@ -33,13 +44,16 @@ export function useWebDragHandlers(callbacks: WebDragCallbacks): WebDragHandlers
   cbRef.current = callbacks;
   // Active pointer id while a drag is in progress; null otherwise.
   const activePointerRef = useRef<number | null>(null);
+  const startYRef = useRef(0);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const onMove = (e: PointerEvent) => {
       if (activePointerRef.current === null) return;
       if (e.pointerId !== activePointerRef.current) return;
-      cbRef.current.onMove(e.clientY);
+      // Prevent text selection / scroll during drag.
+      if (e.cancelable) e.preventDefault();
+      cbRef.current.onMove(e.clientY, e.clientY - startYRef.current);
     };
     const onUp = (e: PointerEvent) => {
       if (activePointerRef.current === null) return;
@@ -53,7 +67,9 @@ export function useWebDragHandlers(callbacks: WebDragCallbacks): WebDragHandlers
       activePointerRef.current = null;
       cbRef.current.onCancel();
     };
-    window.addEventListener("pointermove", onMove);
+    // `passive: false` so we can preventDefault on pointermove and stop the
+    // browser from selecting text / hijacking the drag for native scrolling.
+    window.addEventListener("pointermove", onMove, { passive: false });
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
     return () => {
@@ -68,10 +84,16 @@ export function useWebDragHandlers(callbacks: WebDragCallbacks): WebDragHandlers
   return {
     onPointerDown: (e) => {
       if (activePointerRef.current !== null) return;
-      activePointerRef.current = e.pointerId ?? 0;
+      const id = e.pointerId ?? 0;
+      activePointerRef.current = id;
+      startYRef.current = e.clientY;
       e.preventDefault?.();
+      e.stopPropagation?.();
+      // Pin pointer events to this element so move/up keep firing even if
+      // the user drags outside the handle's bounds.
+      e.currentTarget?.setPointerCapture?.(id);
       cbRef.current.onBegin();
-      cbRef.current.onMove(e.clientY);
+      cbRef.current.onMove(e.clientY, 0);
     },
   };
 }
