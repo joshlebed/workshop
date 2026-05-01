@@ -104,3 +104,13 @@ resource "aws_ssm_parameter" "spotify_client_secret" {
     ignore_changes = [value]
   }
 }
+
+resource "aws_ssm_parameter" "sentry_dsn" {
+  name  = "/${local.prefix}/sentry_dsn"
+  type  = "SecureString"
+  value = var.sentry_dsn
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
