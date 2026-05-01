@@ -16,6 +16,8 @@ import {
   Alert,
   Image,
   type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
   RefreshControl,
@@ -254,9 +256,10 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     return out;
   }, [filtered.ordered, filtered.detected, showOrderedHint]);
 
-  // Layout cache: y + height for each entry index. The drag handler needs
-  // these to translate touch Y → drop slot. Re-fill on every entries
-  // change; the per-row onLayout hooks repopulate it.
+  // Layout cache: y + height for each entry index, in ScrollView CONTENT
+  // coordinates (what onLayout gives for direct ScrollView children). The
+  // drag handler translates the touch's PAGE-Y back into this same content
+  // coordinate space using the snapshot taken at drag-start.
   const layoutsRef = useRef<Array<{ y: number; height: number } | null>>([]);
   useEffect(() => {
     layoutsRef.current = entries.map(() => null);
@@ -272,14 +275,30 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     };
   }, []);
 
-  // Drag state. We split shared values (UI thread, used in animated style)
-  // from React state (re-renders the placeholder gap). When a drag is
-  // active, `draggingId` is set and `hoverSlot` ticks through 0..entries.length.
-  const draggingId = useSharedValue<string | null>(null);
-  const dragY = useSharedValue(0);
-  const dragHeight = useSharedValue(0);
-  // Slot the dragged item would land in if released right now. Mirrored
-  // from the worklet via runOnJS so we can re-render the placeholder gap.
+  // We need to convert a touch's page-Y (what RNGH `absoluteY` and DOM
+  // `clientY` both give us) into a ScrollView-CONTENT-Y so we can compare
+  // it against `layoutsRef` (which holds onLayout-derived content-Y).
+  //
+  //   contentY = touchPageY - scrollViewPageY + scrollOffsetY
+  //
+  // `scrollViewPageY` is captured by giving the ScrollView's wrapper View a
+  // ref + onLayout: the wrapper's measureInWindow gives us viewport-Y.
+  // ScrollView's own ref is unreliable for measureInWindow on RN-Web, but a
+  // plain View's ref maps cleanly to a DOM element on web and a host
+  // component on native.
+  const scrollWrapRef = useRef<View>(null);
+  const scrollOffsetYRef = useRef(0);
+  const dragOriginRef = useRef<{ scrollViewPageY: number; scrollOffsetY: number } | null>(null);
+  // Layouts captured at drag-start. Used instead of layoutsRef during a
+  // drag so any in-flight onLayout fires (e.g. from an indicator or a
+  // collateral re-render) can't shift the slot math under our feet.
+  const dragLayoutsRef = useRef<Array<{ y: number; height: number } | null>>([]);
+
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    scrollOffsetYRef.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  // Slot the dragged item would land in if released right now.
   const [hoverSlot, setHoverSlot] = useState<number | null>(null);
   const [draggingState, setDraggingState] = useState<{
     id: string;
@@ -290,17 +309,53 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
   const beginDrag = useCallback(
     (info: { id: string; rowKind: "ordered" | "detected"; height: number; index: number }) => {
       setDraggingState({ id: info.id, rowKind: info.rowKind, height: info.height });
-      const initial = layoutsRef.current[info.index];
-      setHoverSlot(initial ? indexToInitialSlot(info.index) : info.index);
+      setHoverSlot(info.index);
+      // Freeze the layouts snapshot for the duration of this drag.
+      dragLayoutsRef.current = layoutsRef.current.map((l) => (l ? { ...l } : null));
+      // Snapshot the wrapper View's viewport-Y. measureInWindow is async on
+      // native; the gap to the first move event is many frames in practice.
+      // On RN-Web this falls through to getBoundingClientRect on the div.
+      const wrap = scrollWrapRef.current as unknown as {
+        measureInWindow?: (cb: (x: number, y: number, w: number, h: number) => void) => void;
+      } | null;
+      const setOrigin = (y: number) => {
+        dragOriginRef.current = {
+          scrollViewPageY: y,
+          scrollOffsetY: scrollOffsetYRef.current,
+        };
+      };
+      if (wrap?.measureInWindow) {
+        wrap.measureInWindow((_x, y) => setOrigin(y));
+      }
+      // Web fallback: getBoundingClientRect synchronously, in case
+      // measureInWindow's callback is delayed past the first move event.
+      if (Platform.OS === "web") {
+        const node = scrollWrapRef.current as unknown as {
+          getBoundingClientRect?: () => { top: number };
+        } | null;
+        const rect = node?.getBoundingClientRect?.();
+        if (rect) setOrigin(rect.top);
+      }
     },
     [],
   );
+
+  // Convert a touch's page-Y (RNGH absoluteY on native, DOM clientY on web)
+  // into a hover slot.
+  const updateHoverFromPageY = useCallback((touchPageY: number) => {
+    const origin = dragOriginRef.current;
+    const layouts = dragLayoutsRef.current;
+    if (!origin || layouts.length === 0) return;
+    const contentY = touchPageY - origin.scrollViewPageY + origin.scrollOffsetY;
+    setHoverSlot(computeHoverSlot(layouts, contentY));
+  }, []);
 
   const finishDrag = useCallback(
     (slot: number) => {
       const state = draggingState;
       setDraggingState(null);
       setHoverSlot(null);
+      dragOriginRef.current = null;
       if (!state) return;
       const orderedItems: OrderedItem[] = filtered.ordered.map((it) => ({
         id: it.id,
@@ -470,87 +525,87 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
           />
         </View>
       ) : (
-        <ScrollView
-          testID="album-shelf-list"
-          contentContainerStyle={styles.listContent}
-          // Disable scroll while a drag is active so the drag gesture owns
-          // vertical movement. RN's gesture-handler should claim it via
-          // simultaneousWithExternalGesture, but explicit is safer.
-          scrollEnabled={!draggingState}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => refreshMutation.mutate()}
-              tintColor={tokens.accent.default}
-            />
-          }
-        >
-          {entries.map((entry, index) => {
-            const key = entryKey(entry, index);
-            const isDragSource = isRowEntry(entry) && draggingState?.id === entry.item.id;
-            // Insert a placeholder gap above the entry that would receive the
-            // drop. Rendering it as a sibling sized like the dragged item gives
-            // visual feedback that the drop slot is there.
-            const showPlaceholderAbove = hoverSlot === index && draggingState && !isDragSource;
-            return (
+        <View ref={scrollWrapRef} style={styles.scrollWrap}>
+          <ScrollView
+            testID="album-shelf-list"
+            contentContainerStyle={styles.listContent}
+            // Disable scroll while a drag is active so the drag gesture owns
+            // vertical movement. RN's gesture-handler should claim it via
+            // simultaneousWithExternalGesture, but explicit is safer.
+            scrollEnabled={!draggingState}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => refreshMutation.mutate()}
+                tintColor={tokens.accent.default}
+              />
+            }
+          >
+            {entries.map((entry, index) => {
+              const key = entryKey(entry, index);
+              const isDragSource = isRowEntry(entry) && draggingState?.id === entry.item.id;
+              return (
+                <View key={key} onLayout={onEntryLayout(index)}>
+                  {renderEntry({
+                    entry,
+                    isDragSource: !!isDragSource,
+                    isNew:
+                      isRowEntry(entry) &&
+                      entry.kind === "detected-row" &&
+                      newItemIds.has(entry.item.id),
+                    addedByName: isRowEntry(entry)
+                      ? (memberNameById.get(entry.item.addedBy) ?? null)
+                      : null,
+                    onMenu: isRowEntry(entry)
+                      ? () =>
+                          showRowMenu({
+                            item: entry.item,
+                            isOrdered: entry.kind === "ordered-row",
+                            isFirst: entry.kind === "ordered-row" && entry.orderedIndex === 0,
+                            isLast:
+                              entry.kind === "ordered-row" &&
+                              entry.orderedIndex === filtered.ordered.length - 1,
+                            onPromote: () => onPromote(entry.item),
+                            onPromoteToTop: () => onPromoteToTop(entry.item),
+                            onDemote: () => onDemote(entry.item),
+                            onDelete: () => onRowDelete(entry.item),
+                          })
+                      : undefined,
+                    onBeginDrag: isRowEntry(entry)
+                      ? (height: number) =>
+                          beginDrag({
+                            id: entry.item.id,
+                            rowKind: entry.kind === "ordered-row" ? "ordered" : "detected",
+                            height,
+                            index,
+                          })
+                      : undefined,
+                    onDragMove: isRowEntry(entry) ? updateHoverFromPageY : undefined,
+                    onDragEnd: isRowEntry(entry) ? () => finishDrag(hoverSlot ?? index) : undefined,
+                  })}
+                </View>
+              );
+            })}
+            {/*
+            Drop indicator: a thin colored line at the gap where the dragged
+            row would land. Absolutely positioned in CONTENT coordinates so
+            it never shifts layout (which would otherwise invalidate
+            dragLayoutsRef and feed back into the slot math).
+          */}
+            {draggingState && hoverSlot !== null ? (
               <View
-                key={key}
-                style={isDragSource ? styles.entryHidden : null}
-                onLayout={onEntryLayout(index)}
-              >
-                {showPlaceholderAbove ? <DropPlaceholder height={draggingState.height} /> : null}
-                {renderEntry({
-                  entry,
-                  isDragSource: !!isDragSource,
-                  isNew:
-                    isRowEntry(entry) &&
-                    entry.kind === "detected-row" &&
-                    newItemIds.has(entry.item.id),
-                  addedByName: isRowEntry(entry)
-                    ? (memberNameById.get(entry.item.addedBy) ?? null)
-                    : null,
-                  onMenu: isRowEntry(entry)
-                    ? () =>
-                        showRowMenu({
-                          item: entry.item,
-                          isOrdered: entry.kind === "ordered-row",
-                          isFirst: entry.kind === "ordered-row" && entry.orderedIndex === 0,
-                          isLast:
-                            entry.kind === "ordered-row" &&
-                            entry.orderedIndex === filtered.ordered.length - 1,
-                          onPromote: () => onPromote(entry.item),
-                          onPromoteToTop: () => onPromoteToTop(entry.item),
-                          onDemote: () => onDemote(entry.item),
-                          onDelete: () => onRowDelete(entry.item),
-                        })
-                    : undefined,
-                  onBeginDrag: isRowEntry(entry)
-                    ? (height: number) =>
-                        beginDrag({
-                          id: entry.item.id,
-                          rowKind: entry.kind === "ordered-row" ? "ordered" : "detected",
-                          height,
-                          index,
-                        })
-                    : undefined,
-                  onDragMove: isRowEntry(entry)
-                    ? (absY: number) => {
-                        setHoverSlot(computeHoverSlot(layoutsRef.current, absY));
-                      }
-                    : undefined,
-                  onDragEnd: isRowEntry(entry) ? () => finishDrag(hoverSlot ?? index) : undefined,
-                  draggingId,
-                  dragY,
-                  dragHeight,
-                })}
-                {showPlaceholderAbove && index === entries.length - 1 ? null : null}
-              </View>
-            );
-          })}
-          {hoverSlot === entries.length && draggingState ? (
-            <DropPlaceholder height={draggingState.height} />
-          ) : null}
-        </ScrollView>
+                pointerEvents="none"
+                style={[
+                  styles.dropIndicator,
+                  { top: dropIndicatorY(dragLayoutsRef.current, hoverSlot) },
+                ]}
+                testID="album-shelf-drop-indicator"
+              />
+            ) : null}
+          </ScrollView>
+        </View>
       )}
 
       {draggingState ? (
@@ -568,8 +623,32 @@ function isRowEntry(e: Entry): e is Extract<Entry, { kind: "ordered-row" | "dete
   return e.kind === "ordered-row" || e.kind === "detected-row";
 }
 
-function indexToInitialSlot(index: number): number {
-  return index;
+function dropIndicatorY(
+  layouts: Array<{ y: number; height: number } | null>,
+  slot: number,
+): number {
+  // Y-position (in ScrollView CONTENT coords) of the gap between
+  // entry[slot-1] and entry[slot]. Slot 0 → top of first entry. Slot N →
+  // bottom of last entry. Missing layouts fall through to the next valid one.
+  if (slot <= 0) {
+    for (let i = 0; i < layouts.length; i++) {
+      const l = layouts[i];
+      if (l) return l.y;
+    }
+    return 0;
+  }
+  if (slot >= layouts.length) {
+    for (let i = layouts.length - 1; i >= 0; i--) {
+      const l = layouts[i];
+      if (l) return l.y + l.height;
+    }
+    return 0;
+  }
+  const above = layouts[slot - 1];
+  if (above) return above.y + above.height;
+  const below = layouts[slot];
+  if (below) return below.y;
+  return 0;
 }
 
 function entrySlotToRowSlot(entries: Entry[], entrySlot: number): number {
@@ -627,11 +706,8 @@ interface RenderEntryArgs {
   addedByName: string | null;
   onMenu?: () => void;
   onBeginDrag?: (height: number) => void;
-  onDragMove?: (absY: number) => void;
+  onDragMove?: (pageY: number) => void;
   onDragEnd?: () => void;
-  draggingId: ReturnType<typeof useSharedValue<string | null>>;
-  dragY: ReturnType<typeof useSharedValue<number>>;
-  dragHeight: ReturnType<typeof useSharedValue<number>>;
 }
 
 function renderEntry(args: RenderEntryArgs) {
@@ -669,10 +745,11 @@ function renderEntry(args: RenderEntryArgs) {
       isOrdered={entry.kind === "ordered-row"}
       indexLabel={entry.kind === "ordered-row" ? String(entry.orderedIndex + 1) : "•"}
       isNew={args.isNew}
+      isDragSource={args.isDragSource}
       addedByName={args.addedByName}
       onMenu={args.onMenu ?? noop}
       onBeginDrag={args.onBeginDrag ?? noopHeight}
-      onDragMove={args.onDragMove ?? noopAbs}
+      onDragMove={args.onDragMove ?? noopPageY}
       onDragEnd={args.onDragEnd ?? noop}
     />
   );
@@ -680,17 +757,18 @@ function renderEntry(args: RenderEntryArgs) {
 
 const noop = () => {};
 const noopHeight = (_height: number) => {};
-const noopAbs = (_absY: number) => {};
+const noopPageY = (_pageY: number) => {};
 
 interface DraggableAlbumRowProps {
   item: Item;
   isOrdered: boolean;
   indexLabel: string;
   isNew: boolean;
+  isDragSource: boolean;
   addedByName: string | null;
   onMenu: () => void;
   onBeginDrag: (height: number) => void;
-  onDragMove: (absY: number) => void;
+  onDragMove: (pageY: number) => void;
   onDragEnd: () => void;
 }
 
@@ -699,6 +777,7 @@ function DraggableAlbumRow({
   isOrdered,
   indexLabel,
   isNew,
+  isDragSource,
   addedByName,
   onMenu,
   onBeginDrag,
@@ -718,9 +797,12 @@ function DraggableAlbumRow({
     : detectedAt
       ? `detected ${formatRelative(detectedAt)}`
       : "detected";
+  const isWeb = Platform.OS === "web";
 
   // Local shared values for the visual lift while this row is the drag
   // source. translateY follows the finger; scale gives a "picked up" cue.
+  // We do NOT hide the source row — keeping it visible (lifted) is what
+  // gives the user a thing to follow with their finger / cursor.
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
   const elevation = useSharedValue(0);
@@ -730,8 +812,8 @@ function DraggableAlbumRow({
     onBeginDrag(heightRef.current);
   }, [onBeginDrag]);
   const moveDragJS = useCallback(
-    (absY: number) => {
-      onDragMove(absY);
+    (pageY: number) => {
+      onDragMove(pageY);
     },
     [onDragMove],
   );
@@ -739,41 +821,48 @@ function DraggableAlbumRow({
     onDragEnd();
   }, [onDragEnd]);
 
-  // Web-only fallback: drive the drag via DOM pointer events on the handle.
-  // RNGH's web impl + Reanimated 4 don't reliably activate Pan from mouse
-  // input in this version, so on web we bypass the gesture pipeline. On
-  // native this hook returns an empty handler set.
+  const settle = useCallback(() => {
+    translateY.value = withTiming(0, { duration: 180 });
+    scale.value = withTiming(1, { duration: 180 });
+    elevation.value = 0;
+  }, [elevation, scale, translateY]);
+
+  const lift = useCallback(() => {
+    scale.value = withTiming(1.03, { duration: 120 });
+    elevation.value = 1;
+  }, [elevation, scale]);
+
+  // Web-only: drive the drag via DOM pointer events on the handle. RNGH's
+  // web impl + Reanimated 4 don't reliably activate Pan from mouse input,
+  // so on web we bypass the gesture pipeline entirely. On native this hook
+  // returns an empty handler set (and we won't attach it anyway).
   const webDragHandlers = useWebDragHandlers({
     onBegin: () => {
-      scale.value = withTiming(1.02, { duration: 120 });
-      elevation.value = 1;
+      lift();
       onBeginDrag(heightRef.current);
     },
-    onMove: (absoluteY) => onDragMove(absoluteY),
+    onMove: (clientY, deltaY) => {
+      translateY.value = deltaY;
+      onDragMove(clientY);
+    },
     onEnd: () => {
       onDragEnd();
-      scale.value = withTiming(1, { duration: 180 });
-      translateY.value = withTiming(0, { duration: 180 });
-      elevation.value = 0;
+      settle();
     },
     onCancel: () => {
-      scale.value = withTiming(1, { duration: 180 });
-      translateY.value = withTiming(0, { duration: 180 });
-      elevation.value = 0;
+      settle();
     },
   });
 
-  // Two-pronged activation:
-  //  - Body Pan: hold-still-then-drag (long-press) — picks up touches anywhere on
-  //    the row but waits 350ms so a normal tap or upward swipe-to-scroll wins.
-  //  - Handle Pan: immediate-on-movement (no long-press) — clicking the ≡ icon
-  //    is an explicit "grab to drag" gesture, useful especially on web where
-  //    the long-press semantics aren't as discoverable with a mouse.
+  // Native gestures: long-press anywhere on the row OR an immediate grab on
+  // the handle. We don't compose them explicitly — RNGH's nesting semantics
+  // already pick whichever activates first.
   const bodyPan = Gesture.Pan()
+    .enabled(!isWeb)
     .activateAfterLongPress(LONG_PRESS_MS)
     .onStart(() => {
       "worklet";
-      scale.value = withTiming(1.02, { duration: 120 });
+      scale.value = withTiming(1.03, { duration: 120 });
       elevation.value = 1;
       runOnJS(startDragJS)();
     })
@@ -797,10 +886,11 @@ function DraggableAlbumRow({
     });
 
   const handlePan = Gesture.Pan()
+    .enabled(!isWeb)
     .minDistance(2)
     .onStart(() => {
       "worklet";
-      scale.value = withTiming(1.02, { duration: 120 });
+      scale.value = withTiming(1.03, { duration: 120 });
       elevation.value = 1;
       runOnJS(startDragJS)();
     })
@@ -833,79 +923,94 @@ function DraggableAlbumRow({
 
   // touch-action: none on web so the browser doesn't steal the drag for
   // scroll. RNGH does this on iOS automatically.
-  const webTouchAction = Platform.OS === "web" ? { touchAction: "none" as const } : null;
+  // Web-only style props (touchAction, cursor, userSelect) aren't in RN's
+  // ViewStyle types but RN-Web honours them. Cast to unknown to keep TS quiet.
+  const webTouchAction = isWeb ? ({ touchAction: "none" } as unknown as object) : null;
+  const webHandleStyle = isWeb
+    ? ({ touchAction: "none", cursor: "grab", userSelect: "none" } as unknown as object)
+    : null;
 
-  return (
-    <GestureDetector gesture={bodyPan}>
-      <Animated.View
-        style={[animatedStyle, webTouchAction]}
-        onLayout={(e) => {
-          heightRef.current = e.nativeEvent.layout.height;
-        }}
+  const handle = isWeb ? (
+    <View
+      accessibilityRole="button"
+      accessibilityLabel={`Drag handle for ${item.title}`}
+      testID={`album-row-handle-${item.id}`}
+      style={[styles.rowDragHandle, webHandleStyle]}
+      {...(webDragHandlers as Record<string, unknown>)}
+    >
+      <Text style={styles.dragHandleGlyph}>≡</Text>
+    </View>
+  ) : (
+    <GestureDetector gesture={handlePan}>
+      <View
+        accessibilityRole="button"
+        accessibilityLabel={`Drag handle for ${item.title}`}
+        testID={`album-row-handle-${item.id}`}
+        style={styles.rowDragHandle}
       >
-        <Card style={[styles.row, isNew && styles.rowNew]} testID={`album-row-${item.id}`}>
-          <GestureDetector gesture={handlePan}>
-            <View
-              // biome-ignore lint/a11y/useSemanticElements: gesture handler needs a View
-              accessibilityRole="button"
-              accessibilityLabel={`Drag handle for ${item.title}`}
-              testID={`album-row-handle-${item.id}`}
-              style={[styles.rowDragHandle, webTouchAction]}
-              {...(webDragHandlers as Record<string, unknown>)}
-            >
-              <Text style={styles.dragHandleGlyph}>≡</Text>
-            </View>
-          </GestureDetector>
-          <View style={styles.rowIndex}>
-            <Text variant="caption" tone="muted" style={styles.indexText}>
-              {indexLabel}
-            </Text>
-          </View>
-          {cover ? (
-            <Image source={{ uri: cover }} style={styles.cover} accessibilityIgnoresInvertColors />
-          ) : (
-            <View style={[styles.cover, styles.coverPlaceholder]}>
-              <Text style={styles.coverPlaceholderGlyph}>📀</Text>
-            </View>
-          )}
-          <View style={styles.rowBody}>
-            <View style={styles.rowTitleLine}>
-              <Text numberOfLines={1} style={styles.rowTitle}>
-                {item.title}
-              </Text>
-              {isNew ? (
-                <View style={styles.newPill} testID={`album-row-new-${item.id}`}>
-                  <Text variant="caption" tone="onAccent" style={styles.newPillText}>
-                    NEW
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-            <Text variant="caption" tone="secondary" numberOfLines={1}>
-              {subline}
-            </Text>
-            <Text variant="caption" tone="muted" numberOfLines={1}>
-              {provenance}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Open menu for ${item.title}`}
-            onPress={onMenu}
-            testID={`album-row-menu-${item.id}`}
-            style={({ pressed }) => [styles.menuBtn, pressed && styles.menuBtnPressed]}
-            hitSlop={10}
-          >
-            <Text style={styles.menuGlyph}>⋮</Text>
-          </Pressable>
-        </Card>
-      </Animated.View>
+        <Text style={styles.dragHandleGlyph}>≡</Text>
+      </View>
     </GestureDetector>
   );
-}
 
-function DropPlaceholder({ height }: { height: number }) {
-  return <View style={[styles.dropPlaceholder, { height }]} />;
+  const rowBody = (
+    <Animated.View
+      style={[animatedStyle, webTouchAction, isDragSource && styles.rowDragSource]}
+      onLayout={(e) => {
+        heightRef.current = e.nativeEvent.layout.height;
+      }}
+    >
+      <Card style={[styles.row, isNew && styles.rowNew]} testID={`album-row-${item.id}`}>
+        {handle}
+        <View style={styles.rowIndex}>
+          <Text variant="caption" tone="muted" style={styles.indexText}>
+            {indexLabel}
+          </Text>
+        </View>
+        {cover ? (
+          <Image source={{ uri: cover }} style={styles.cover} accessibilityIgnoresInvertColors />
+        ) : (
+          <View style={[styles.cover, styles.coverPlaceholder]}>
+            <Text style={styles.coverPlaceholderGlyph}>📀</Text>
+          </View>
+        )}
+        <View style={styles.rowBody}>
+          <View style={styles.rowTitleLine}>
+            <Text numberOfLines={1} style={styles.rowTitle}>
+              {item.title}
+            </Text>
+            {isNew ? (
+              <View style={styles.newPill} testID={`album-row-new-${item.id}`}>
+                <Text variant="caption" tone="onAccent" style={styles.newPillText}>
+                  NEW
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <Text variant="caption" tone="secondary" numberOfLines={1}>
+            {subline}
+          </Text>
+          <Text variant="caption" tone="muted" numberOfLines={1}>
+            {provenance}
+          </Text>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open menu for ${item.title}`}
+          onPress={onMenu}
+          testID={`album-row-menu-${item.id}`}
+          style={({ pressed }) => [styles.menuBtn, pressed && styles.menuBtnPressed]}
+          hitSlop={10}
+        >
+          <Text style={styles.menuGlyph}>⋮</Text>
+        </Pressable>
+      </Card>
+    </Animated.View>
+  );
+
+  if (isWeb) return rowBody;
+
+  return <GestureDetector gesture={bodyPan}>{rowBody}</GestureDetector>;
 }
 
 function positionOf(it: Item): number | null {
@@ -1001,6 +1106,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: tokens.space.xxl,
   },
+  scrollWrap: { flex: 1 },
   listContent: {
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.sm,
@@ -1026,13 +1132,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   rowDragHandle: {
-    paddingHorizontal: tokens.space.xs,
-    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: tokens.space.md,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 32,
   },
   dragHandleGlyph: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg + 2,
+    color: tokens.text.secondary,
+    fontSize: tokens.font.size.xl,
+    lineHeight: tokens.font.size.xl + 2,
+  },
+  rowDragSource: {
+    opacity: 0.85,
   },
   rowIndex: { width: 24, alignItems: "center" },
   indexText: { fontSize: tokens.font.size.md },
@@ -1062,14 +1174,14 @@ const styles = StyleSheet.create({
   menuBtn: { paddingHorizontal: tokens.space.sm, paddingVertical: tokens.space.xs },
   menuBtnPressed: { opacity: 0.6 },
   menuGlyph: { fontSize: tokens.font.size.lg, color: tokens.text.secondary },
-  entryHidden: { opacity: 0 },
-  dropPlaceholder: {
-    borderRadius: tokens.radius.md,
-    borderWidth: 2,
-    borderColor: tokens.accent.default,
-    borderStyle: "dashed",
-    backgroundColor: tokens.accent.muted,
-    marginVertical: tokens.space.xs / 2,
+  dropIndicator: {
+    position: "absolute",
+    left: tokens.space.xl,
+    right: tokens.space.xl,
+    height: 4,
+    marginTop: -2,
+    borderRadius: 2,
+    backgroundColor: tokens.accent.default,
   },
   dragHint: {
     position: "absolute",
