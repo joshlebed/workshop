@@ -19,3 +19,7 @@ google_web_client_id = ""
 # Enrichment API keys (Phase 2). Leave empty until obtained.
 tmdb_api_key         = ""
 google_books_api_key = ""
+
+# Sentry DSN for the backend Lambda. Empty until the Sentry project is created;
+# rotate via `aws ssm put-parameter --overwrite` (lifecycle ignores value).
+sentry_dsn = ""

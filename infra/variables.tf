@@ -72,3 +72,10 @@ variable "spotify_client_secret" {
   sensitive   = true
   description = "Spotify Web API client secret. Used by the Album Shelf feature's Client Credentials flow to read public playlists."
 }
+
+variable "sentry_dsn" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Sentry DSN for the backend Lambda. Empty default lets infra apply before the Sentry project is created; backend Sentry SDK is a no-op until populated. Rotate via `aws ssm put-parameter --overwrite` (lifecycle ignores `value`)."
+}

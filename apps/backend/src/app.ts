@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
 import { logger } from "./lib/logger.js";
 import { err } from "./lib/response.js";
+import { Sentry } from "./lib/sentry.js";
 import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
 import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
@@ -48,13 +49,18 @@ export function buildApp() {
 
   app.onError((e, c) => {
     logger.error("unhandled error", { error: e, path: c.req.path });
+    // Capture the unwrapped root cause in Sentry so DrizzleQueryError chains
+    // group on the underlying postgres error, not the generic wrapper.
+    const root = unwrapRootError(e);
+    Sentry.captureException(root instanceof Error ? root : e, {
+      tags: { path: c.req.path, method: c.req.method },
+    });
     // Surface error name + message in the response so a 500 in the iOS UI is
     // actionable without CloudWatch access. We're the only audience for this
     // API; not worth hiding the underlying error class. DrizzleQueryError's
     // own `.message` is just the failed query + bind params; the actual
     // postgres error (e.g. "invalid input value for enum list_type") lives on
     // `.cause`, so unwrap it to keep the toast useful.
-    const root = unwrapRootError(e);
     const message =
       root instanceof Error
         ? `${root.name}: ${root.message}`.slice(0, 500)

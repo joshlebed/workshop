@@ -15,8 +15,13 @@ import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
+import { initSentry, Sentry } from "../src/lib/sentry";
 import { getItem } from "../src/lib/storage";
 import { ThemeProvider, ToastProvider, tokens } from "../src/ui/index";
+
+// Init before the root component renders so Sentry's React error boundary
+// can catch render-phase exceptions on the first paint.
+initSentry();
 
 function useApplyOtaUpdatesOnArrival() {
   const { isUpdatePending } = Updates.useUpdates();
@@ -137,7 +142,7 @@ function AuthGate() {
   );
 }
 
-export default function RootLayout() {
+function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
   const persistOptions = useMemo(() => getPersistOptions(), []);
@@ -163,3 +168,8 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+// Sentry.wrap installs the React error boundary, navigation tracing
+// (expo-router auto-detected), and touch-event breadcrumbs. When the SDK
+// isn't initialized (no DSN) this is a transparent passthrough.
+export default Sentry.wrap(RootLayout);
