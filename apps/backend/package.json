@@ -15,14 +15,14 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "@hono/node-server": "2.0.0",
+    "@hono/node-server": "2.0.1",
     "@workshop/shared": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "hono": "4.12.15",
+    "hono": "4.12.16",
     "ipaddr.js": "2.3.0",
-    "jose": "6.2.2",
+    "jose": "6.2.3",
     "postgres": "3.4.9",
-    "zod": "4.3.6"
+    "zod": "4.4.1"
   },
   "devDependencies": {
     "@types/node": "25.6.0",
@@ -30,6 +30,6 @@
     "esbuild": "0.28.0",
     "tsx": "4.21.0",
     "typescript": "6.0.3",
-    "vitest": "2.1.9"
+    "vitest": "4.1.5"
   }
 }
