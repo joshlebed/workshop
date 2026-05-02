@@ -9,7 +9,16 @@ import type {
   ListMemberSummary,
 } from "@workshop/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { fetchAlbumShelfItems, refreshAlbumShelf } from "../api/albumShelf";
 import { deleteItem, updateItem } from "../api/items";
 import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
@@ -270,7 +279,10 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
   }, [refreshing, members.length, lastRefreshedAt, lastRefreshedByName]);
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -383,7 +395,7 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
           />
         </View>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

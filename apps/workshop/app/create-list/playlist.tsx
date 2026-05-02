@@ -2,15 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ListColor } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { previewSpotifyPlaylist } from "../../src/api/albumShelf";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
@@ -121,11 +114,12 @@ export default function CreateListPlaylist() {
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
+      <KeyboardAwareScrollView
         style={styles.scroll}
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
+        bottomOffset={tokens.space.lg}
       >
         <Text tone="secondary" style={styles.tagline}>
           Paste a public Spotify playlist URL. Your shelf will pull every album the playlist
@@ -188,11 +182,11 @@ export default function CreateListPlaylist() {
             </Text>
           </Card>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
-      {/* Submit lives outside the ScrollView so it sticks above the keyboard
-          (KeyboardAvoidingView + padding shrinks the KAV; the button stays at
-          its bottom edge instead of getting trapped inside scrollable
+      {/* Submit lives outside the scroll so it sticks above the keyboard
+          (KeyboardAvoidingView shrinks the available space; the button stays
+          at its bottom edge instead of getting trapped inside scrollable
           content). */}
       <View style={styles.footer}>
         <Button

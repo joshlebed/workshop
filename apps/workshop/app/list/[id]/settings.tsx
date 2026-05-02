@@ -8,7 +8,8 @@ import type {
 } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Linking, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { refreshAlbumShelf } from "../../../src/api/albumShelf";
 import { createInvite, revokeInvite } from "../../../src/api/invites";
 import { deleteList, fetchListDetail, updateList } from "../../../src/api/lists";
@@ -311,7 +312,12 @@ export default function ListSettings() {
         </IconButton>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        bottomOffset={tokens.space.lg}
+      >
         {/* --- Details --- */}
         {isOwner ? (
           <Card style={styles.card} elevated>
@@ -601,7 +607,7 @@ export default function ListSettings() {
             />
           </Card>
         )}
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

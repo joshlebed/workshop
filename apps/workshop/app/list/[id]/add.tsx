@@ -12,7 +12,8 @@ import type {
 } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { createItem } from "../../../src/api/items";
 import { fetchLinkPreview } from "../../../src/api/linkPreview";
 import { fetchListDetail } from "../../../src/api/lists";
@@ -297,7 +298,12 @@ function SearchFlow({
   const showError = !showPrompt && !!searchQuery.error;
 
   return (
-    <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      contentContainerStyle={styles.body}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      bottomOffset={tokens.space.lg}
+    >
       <Card style={styles.searchCard} elevated>
         <TextInput
           testID="add-item-search"
@@ -368,7 +374,7 @@ function SearchFlow({
           No matches.
         </Text>
       ) : null}
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -405,7 +411,12 @@ function FreeFormFlow({
   previewActive,
 }: FreeFormFlowProps) {
   return (
-    <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView
+      contentContainerStyle={styles.body}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      bottomOffset={tokens.space.lg}
+    >
       <Card style={styles.card} elevated>
         <View style={styles.field}>
           <Text variant="label" tone="secondary">
@@ -471,7 +482,7 @@ function FreeFormFlow({
           onPress={onSubmit}
         />
       </Card>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 

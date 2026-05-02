@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Platform, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useAuth } from "../../src/hooks/useAuth";
 import { Button, Card, Text, tokens } from "../../src/ui/index";
 
@@ -25,7 +26,10 @@ export default function DisplayName() {
   }
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <View style={styles.header}>
         <Text variant="title">What should we call you?</Text>
         <Text tone="secondary" style={styles.tagline}>
@@ -64,7 +68,7 @@ export default function DisplayName() {
           </Text>
         ) : null}
       </Card>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
