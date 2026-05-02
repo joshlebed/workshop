@@ -26,6 +26,7 @@ import {
   View,
 } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -425,7 +426,10 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
   }, [refreshing, members.length, lastRefreshedAt, lastRefreshedByName]);
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -618,7 +622,7 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
           </Text>
         </View>
       ) : null}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
