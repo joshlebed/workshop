@@ -7,7 +7,7 @@ import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyb
 import { previewSpotifyPlaylist } from "../../src/api/albumShelf";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
-import { ApiError } from "../../src/lib/api";
+import { albumShelfErrorMessage } from "../../src/lib/albumShelfErrors";
 import { queryKeys } from "../../src/lib/queryKeys";
 import { Button, Card, IconButton, Text, tokens, useToast } from "../../src/ui/index";
 
@@ -56,12 +56,13 @@ export default function CreateListPlaylist() {
     staleTime: 60_000,
   });
 
-  const previewError =
-    previewQuery.isError && previewQuery.error instanceof ApiError
-      ? previewMessageFromApiError(previewQuery.error)
-      : previewQuery.isError
-        ? "Couldn't read that playlist. Try again?"
-        : null;
+  const previewError = previewQuery.isError
+    ? albumShelfErrorMessage(
+        previewQuery.error,
+        "Couldn't read that playlist. Try again?",
+        "creation",
+      )
+    : null;
   const preview = previewQuery.isSuccess ? previewQuery.data : null;
   const previewing = previewQuery.isFetching && !previewQuery.isSuccess;
 
@@ -87,13 +88,10 @@ export default function CreateListPlaylist() {
       router.replace(`/create-list/share?listId=${res.list.id}`);
     },
     onError: (e) => {
-      const message =
-        e instanceof ApiError
-          ? messageFromApiError(e)
-          : e instanceof Error
-            ? e.message
-            : "Couldn't create the album shelf";
-      showToast({ message, tone: "danger" });
+      showToast({
+        message: albumShelfErrorMessage(e, "Couldn't create the album shelf", "creation"),
+        tone: "danger",
+      });
     },
   });
 
@@ -200,25 +198,6 @@ export default function CreateListPlaylist() {
       </View>
     </KeyboardAvoidingView>
   );
-}
-
-function previewMessageFromApiError(e: ApiError): string {
-  const code = (e.details as { code?: string } | undefined)?.code;
-  if (code === "INVALID_PLAYLIST_URL") return "That doesn't look like a Spotify playlist URL.";
-  if (code === "PLAYLIST_NOT_AVAILABLE")
-    return "That playlist isn't public. Make it public on Spotify and try again.";
-  if (code === "SPOTIFY_UNAVAILABLE") return "Spotify is having a moment. Give it a beat.";
-  return e.message;
-}
-
-function messageFromApiError(e: ApiError): string {
-  const code = (e.details as { code?: string } | undefined)?.code;
-  if (code === "INVALID_PLAYLIST_URL") return "That doesn't look like a Spotify playlist URL.";
-  if (code === "PLAYLIST_NOT_AVAILABLE")
-    return "We couldn't read that playlist. Make sure it's public and try again.";
-  if (code === "SPOTIFY_UNAVAILABLE")
-    return "Spotify is having a moment. Give it a beat and try again.";
-  return e.message;
 }
 
 const styles = StyleSheet.create({

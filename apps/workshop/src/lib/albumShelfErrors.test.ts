@@ -7,22 +7,44 @@ function apiErr(code: string): ApiError {
 }
 
 describe("albumShelfErrorMessage", () => {
-  it("returns the invalid-URL copy for INVALID_PLAYLIST_URL", () => {
-    expect(albumShelfErrorMessage(apiErr("INVALID_PLAYLIST_URL"), "fallback")).toBe(
-      "That doesn't look like a Spotify playlist URL.",
-    );
+  describe("settings context (default)", () => {
+    it("returns the invalid-URL copy for INVALID_PLAYLIST_URL", () => {
+      expect(albumShelfErrorMessage(apiErr("INVALID_PLAYLIST_URL"), "fallback")).toBe(
+        "That doesn't look like a Spotify playlist URL.",
+      );
+    });
+
+    it("returns the not-available copy for PLAYLIST_NOT_AVAILABLE", () => {
+      expect(albumShelfErrorMessage(apiErr("PLAYLIST_NOT_AVAILABLE"), "fallback")).toBe(
+        "Source playlist is private or deleted. Update the source URL in settings.",
+      );
+    });
+
+    it("returns the upstream copy for SPOTIFY_UNAVAILABLE", () => {
+      expect(albumShelfErrorMessage(apiErr("SPOTIFY_UNAVAILABLE"), "fallback")).toBe(
+        "Spotify is having a moment. Try again.",
+      );
+    });
   });
 
-  it("returns the not-available copy for PLAYLIST_NOT_AVAILABLE", () => {
-    expect(albumShelfErrorMessage(apiErr("PLAYLIST_NOT_AVAILABLE"), "fallback")).toBe(
-      "Source playlist is private or deleted. Update the source URL in settings.",
-    );
-  });
+  describe("creation context", () => {
+    it("uses make-it-public phrasing for PLAYLIST_NOT_AVAILABLE (no settings yet)", () => {
+      expect(albumShelfErrorMessage(apiErr("PLAYLIST_NOT_AVAILABLE"), "fallback", "creation")).toBe(
+        "That playlist isn't public. Make it public on Spotify and try again.",
+      );
+    });
 
-  it("returns the upstream copy for SPOTIFY_UNAVAILABLE", () => {
-    expect(albumShelfErrorMessage(apiErr("SPOTIFY_UNAVAILABLE"), "fallback")).toBe(
-      "Spotify is having a moment. Try again.",
-    );
+    it("uses give-it-a-beat phrasing for SPOTIFY_UNAVAILABLE", () => {
+      expect(albumShelfErrorMessage(apiErr("SPOTIFY_UNAVAILABLE"), "fallback", "creation")).toBe(
+        "Spotify is having a moment. Give it a beat.",
+      );
+    });
+
+    it("matches the settings copy for INVALID_PLAYLIST_URL", () => {
+      expect(albumShelfErrorMessage(apiErr("INVALID_PLAYLIST_URL"), "fallback", "creation")).toBe(
+        "That doesn't look like a Spotify playlist URL.",
+      );
+    });
   });
 
   it("falls through to the error message for unrecognized codes", () => {
