@@ -10,7 +10,7 @@
 
 import * as Haptics from "expo-haptics";
 import { useCallback } from "react";
-import { Pressable, StyleSheet } from "react-native";
+import { Linking, Pressable, StyleSheet } from "react-native";
 import ReorderableList, {
   type ReorderableListReorderEvent,
   useIsActive,
@@ -20,6 +20,15 @@ import { Text, tokens } from "../../ui/index";
 import { AlbumShelfRow, OrderedHint, rowStyles, SectionHeader } from "./AlbumShelfRow";
 import type { ShelfListProps } from "./shelfListProps";
 import { entryId, type ShelfEntry } from "./types";
+
+function openSpotify(item: import("@workshop/shared").Item) {
+  const meta = item.metadata as { spotifyAlbumUrl?: string };
+  const url = meta.spotifyAlbumUrl;
+  if (!url) return;
+  Linking.openURL(url).catch(() => {
+    /* best effort — Spotify app missing or scheme blocked is non-fatal */
+  });
+}
 
 export function AlbumShelfList({
   entries,
@@ -48,6 +57,7 @@ export function AlbumShelfList({
           isNew={!isOrdered && newItemIds.has(entry.item.id)}
           addedByName={memberNameById.get(entry.item.addedBy) ?? null}
           onMenu={() => onRowMenu(entry)}
+          onPressBody={() => openSpotify(entry.item)}
         />
       );
     },
@@ -82,6 +92,7 @@ interface DraggableShelfRowProps {
   isNew: boolean;
   addedByName: string | null;
   onMenu: () => void;
+  onPressBody: () => void;
 }
 
 function DraggableShelfRow({
@@ -91,23 +102,25 @@ function DraggableShelfRow({
   isNew,
   addedByName,
   onMenu,
+  onPressBody,
 }: DraggableShelfRowProps) {
   const drag = useReorderableDrag();
   const isActive = useIsActive();
 
-  const onLongPress = useCallback(() => {
+  // Long-press the handle to start dragging. The body of the row is
+  // press-to-open-Spotify; we don't want a stray long-press anywhere on
+  // the card to also start a drag because that'd race with body's
+  // onPress (drags would feel laggy waiting for long-press timeout).
+  const onHandleLongPress = useCallback(() => {
     Haptics.selectionAsync().catch(() => {
-      /* haptics unavailable on simulator/web — non-fatal */
+      /* haptics unavailable on simulator — non-fatal */
     });
     drag();
   }, [drag]);
 
-  // The whole card is long-press-draggable, but a visible handle on the
-  // left advertises the affordance and gives a quicker grab target for
-  // power users.
   const dragHandle = (
     <Pressable
-      onLongPress={onLongPress}
+      onLongPress={onHandleLongPress}
       delayLongPress={120}
       accessibilityRole="button"
       accessibilityLabel={`Drag handle for ${item.title}`}
@@ -120,18 +133,17 @@ function DraggableShelfRow({
   );
 
   return (
-    <Pressable onLongPress={onLongPress} delayLongPress={350} android_disableSound>
-      <AlbumShelfRow
-        item={item}
-        isOrdered={isOrdered}
-        indexLabel={indexLabel}
-        isNew={isNew}
-        isDragging={isActive}
-        addedByName={addedByName}
-        onMenu={onMenu}
-        dragHandle={dragHandle}
-      />
-    </Pressable>
+    <AlbumShelfRow
+      item={item}
+      isOrdered={isOrdered}
+      indexLabel={indexLabel}
+      isNew={isNew}
+      isDragging={isActive}
+      addedByName={addedByName}
+      onMenu={onMenu}
+      onPressBody={onPressBody}
+      dragHandle={dragHandle}
+    />
   );
 }
 
