@@ -1,29 +1,71 @@
-// Web album-shelf list. Uses `@dnd-kit/sortable` for drag-to-reorder
-// + accessible keyboard reorder + animated sibling shifts. Native iOS
-// uses a separate impl driven by `react-native-reorderable-list`. The
-// section/promote/demote logic is shared via `resolveReorder`.
+// Web album-shelf list. Two `SortableContext`s (one per section) inside a
+// single `DndContext`, with section headers + ordered-hint rendered as
+// plain markup between them.
 //
-// dnd-kit gives us:
-//   - `<DndContext>` wraps the area; owns sensors + drag state.
-//   - `<SortableContext>` declares the sortable items in display order.
-//   - `useSortable(id)` per item returns transform + transition + listeners.
-// Non-row entries (section headers, the ordered-hint) deliberately do NOT
-// call useSortable and do NOT appear in `SortableContext.items`. If they
-// did, dnd-kit would still apply transforms to them while a sibling row
-// is dragged (even with `disabled: true`), making the headers visually
-// behave like sortable list items. We keep them in the entries array
-// because resolveReorder needs them to detect cross-section drops.
+// Why per-section contexts: `verticalListSortingStrategy` translates
+// non-active sortable siblings to make space for the dragged item. It
+// uses each item's `getBoundingClientRect`, but ASSUMES items are
+// contiguous in the layout. With section headers interleaved between
+// sortable rows, the strategy's `arrayMove(rects, …)` shifts rows across
+// header gaps — e.g. dragging an ordered row toward the detected band
+// pulls the first detected row up by ord-row-height + header-height,
+// visually colliding with the DETECTED header. PR #125 took headers out
+// of `SortableContext.items` to stop them from animating, but the
+// remaining sortable rows still shifted across the header gaps.
+// Splitting into per-section contexts contains each strategy to its own
+// contiguous run of rows; cross-section drag still works because the
+// outer DndContext sees both `active` and `over` regardless of which
+// inner SortableContext owns them.
+//
+// Cross-section drop: when the user releases over a row in the OTHER
+// section, `over.id` resolves to that row in the full entries array, and
+// `resolveReorder` figures out the section change + position math.
 
-import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  type Modifier,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { Linking, ScrollView, StyleSheet, View } from "react-native";
 import { Text, tokens } from "../../ui/index";
 import { AlbumShelfRow, OrderedHint, rowStyles, SectionHeader } from "./AlbumShelfRow";
 import type { ShelfListProps } from "./shelfListProps";
-import { entryId, isRowEntry, type ShelfEntry } from "./types";
+import { entryId, type ShelfEntry } from "./types";
+
+/**
+ * Custom dnd-kit modifier that clamps the active row's vertical movement
+ * to be no higher than the top of the first row in the list (i.e. just
+ * below the ORDERED section header) and no lower than the bottom of the
+ * last row (just above the bottom padding). Without this clamp,
+ * `restrictToFirstScrollableAncestor` only stops at the scroll
+ * container's bounds — the section headers live INSIDE the ScrollView,
+ * so the active row can be visually translated above the ORDERED header.
+ */
+function makeRowsAreaModifier(rowsAreaRef: React.RefObject<View | null>): Modifier {
+  return ({ transform, draggingNodeRect }) => {
+    if (!draggingNodeRect) return transform;
+    const node = rowsAreaRef.current as unknown as { getBoundingClientRect?: () => DOMRect } | null;
+    const areaRect = node?.getBoundingClientRect?.();
+    if (!areaRect) return transform;
+    const proposedTop = draggingNodeRect.top + transform.y;
+    const proposedBottom = draggingNodeRect.bottom + transform.y;
+    if (proposedTop < areaRect.top) {
+      return { ...transform, y: areaRect.top - draggingNodeRect.top };
+    }
+    if (proposedBottom > areaRect.bottom) {
+      return { ...transform, y: areaRect.bottom - draggingNodeRect.bottom };
+    }
+    return transform;
+  };
+}
 
 export function AlbumShelfList({
   entries,
@@ -37,9 +79,35 @@ export function AlbumShelfList({
   // the gesture is owned by dnd-kit.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  // Only ROW ids are sortable. Headers + ordered-hint are static markup
-  // between sortable siblings.
-  const sortableIds = useMemo(() => entries.filter(isRowEntry).map((e) => entryId(e)), [entries]);
+  // Pre-compute section partitions so each SortableContext sees only its
+  // own rows. The full `entries` array stays in scope for resolveReorder
+  // (it needs to know about headers to detect cross-section drops).
+  const orderedRows = useMemo(
+    () =>
+      entries.filter(
+        (e): e is Extract<ShelfEntry, { kind: "ordered-row" }> => e.kind === "ordered-row",
+      ),
+    [entries],
+  );
+  const detectedRows = useMemo(
+    () =>
+      entries.filter(
+        (e): e is Extract<ShelfEntry, { kind: "detected-row" }> => e.kind === "detected-row",
+      ),
+    [entries],
+  );
+  const orderedIds = useMemo(() => orderedRows.map((r) => entryId(r)), [orderedRows]);
+  const detectedIds = useMemo(() => detectedRows.map((r) => entryId(r)), [detectedRows]);
+  const orderedHeader = entries.find((e) => e.kind === "ordered-header");
+  const detectedHeader = entries.find((e) => e.kind === "detected-header");
+  const showHint = entries.some((e) => e.kind === "ordered-hint");
+
+  // Wraps the rows area (everything between the headers — including
+  // section headers and the hint between them, but NOT the section
+  // headers at the very top/bottom). The custom modifier clamps the
+  // dragged row's transform to within this area's bounding rect.
+  const rowsAreaRef = useRef<View>(null);
+  const rowsAreaModifier = useMemo(() => makeRowsAreaModifier(rowsAreaRef), []);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -49,12 +117,11 @@ export function AlbumShelfList({
       const overIdx = entries.findIndex((e) => entryId(e) === over.id);
       if (from < 0 || overIdx < 0) return;
       // dnd-kit's standard sortable mapping is the same `arrayMove(items,
-      // oldIndex, newIndex)` semantics that `react-native-reorderable-list`
-      // already gives us in `onReorder`: take the OVER item's pre-move
-      // index as `to` and let `splice(from, 1) → splice(to, 0)` do the
-      // right thing. Drag DOWN: from < to → active lands BELOW over (over
-      // shifts up to fill the gap). Drag UP: from > to → active lands
-      // ABOVE over.
+      // oldIndex, newIndex)` semantics that resolveReorder expects. With
+      // per-section SortableContexts, dnd-kit reports `over` as the row
+      // currently under the cursor regardless of which section it's in,
+      // so cross-section drops "just work" — resolveReorder reads the
+      // post-splice section by walking back to the nearest header.
       onReorder({ from, to: overIdx });
     },
     [entries, onReorder],
@@ -62,32 +129,52 @@ export function AlbumShelfList({
 
   return (
     <ScrollView contentContainerStyle={styles.listContent} testID="album-shelf-list">
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
-          {entries.map((entry) => {
-            if (entry.kind === "ordered-header") {
-              return <SectionHeader key={entryId(entry)} kind="ordered" count={entry.count} />;
-            }
-            if (entry.kind === "detected-header") {
-              return <SectionHeader key={entryId(entry)} kind="detected" count={entry.count} />;
-            }
-            if (entry.kind === "ordered-hint") {
-              return <OrderedHint key={entryId(entry)} />;
-            }
-            const isNew = entry.kind === "detected-row" && newItemIds.has(entry.item.id);
-            const addedByName = memberNameById.get(entry.item.addedBy) ?? null;
-            return (
-              <SortableRow
-                key={entryId(entry)}
-                entry={entry}
-                isNew={isNew}
-                addedByName={addedByName}
-                onMenu={() => onRowMenu(entry)}
-                onPressBody={() => openSpotify(entry.item)}
-              />
-            );
-          })}
-        </SortableContext>
+      <DndContext
+        sensors={sensors}
+        onDragEnd={handleDragEnd}
+        collisionDetection={closestCenter}
+        // Clamp the active row's vertical translation to within the rows
+        // area (everything strictly between the top ORDERED header and
+        // the bottom padding). Without this, dragging up far enough
+        // pulls the row above the ORDERED header — confusing because
+        // that's not a valid drop slot. Cross-section drag (ordered ↔
+        // detected) still works because the rows area spans both
+        // sections, including the in-between DETECTED header.
+        modifiers={[rowsAreaModifier]}
+      >
+        {orderedHeader ? <SectionHeader kind="ordered" count={orderedHeader.count} /> : null}
+        <View ref={rowsAreaRef}>
+          {orderedRows.length > 0 ? (
+            <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
+              {orderedRows.map((row) => (
+                <SortableRowEntry
+                  key={entryId(row)}
+                  entry={row}
+                  isNew={false}
+                  addedByName={memberNameById.get(row.item.addedBy) ?? null}
+                  onMenu={() => onRowMenu(row)}
+                  onPressBody={() => openSpotify(row.item)}
+                />
+              ))}
+            </SortableContext>
+          ) : null}
+          {showHint ? <OrderedHint /> : null}
+          {detectedHeader ? <SectionHeader kind="detected" count={detectedHeader.count} /> : null}
+          {detectedRows.length > 0 ? (
+            <SortableContext items={detectedIds} strategy={verticalListSortingStrategy}>
+              {detectedRows.map((row) => (
+                <SortableRowEntry
+                  key={entryId(row)}
+                  entry={row}
+                  isNew={newItemIds.has(row.item.id)}
+                  addedByName={memberNameById.get(row.item.addedBy) ?? null}
+                  onMenu={() => onRowMenu(row)}
+                  onPressBody={() => openSpotify(row.item)}
+                />
+              ))}
+            </SortableContext>
+          ) : null}
+        </View>
       </DndContext>
     </ScrollView>
   );
@@ -102,7 +189,7 @@ function openSpotify(item: Item) {
   });
 }
 
-interface SortableRowProps {
+interface SortableRowEntryProps {
   entry: Extract<ShelfEntry, { kind: "ordered-row" | "detected-row" }>;
   isNew: boolean;
   addedByName: string | null;
@@ -110,7 +197,13 @@ interface SortableRowProps {
   onPressBody: () => void;
 }
 
-function SortableRow({ entry, isNew, addedByName, onMenu, onPressBody }: SortableRowProps) {
+function SortableRowEntry({
+  entry,
+  isNew,
+  addedByName,
+  onMenu,
+  onPressBody,
+}: SortableRowEntryProps) {
   const id = entryId(entry);
   const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
     id,
