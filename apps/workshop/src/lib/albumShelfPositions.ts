@@ -1,20 +1,15 @@
-import type {
-  AlbumShelfItemMetadata,
-  AlbumShelfItemsResponse,
-  Item,
-  ItemMetadata,
-} from "@workshop/shared";
+import type { Item, ItemMetadata, ListItemsResponse } from "@workshop/shared";
 
 /**
- * Album-shelf "ordered" rows are sorted by `metadata.position` (a float,
- * docs/album-shelf.md §3.3.1). To insert at index `index` we pick a
- * midpoint between the neighbours; promoting to top or bottom carries off
- * one end (half of the existing first / last + 1). Empty list → 1 so we
- * always start with positive numbers.
+ * Ordered rows are sorted by `metadata.position` (a float; see
+ * docs/album-shelf.md §3.3.1 for the original album-shelf spec — the same
+ * scheme is reused for every list type since the 2026-05 ordering refactor).
+ * To insert at index `index` we pick a midpoint between the neighbours;
+ * promoting to top or bottom carries off one end (half of the existing
+ * first / last + 1). Empty list → 1 so we always start with positive
+ * numbers.
  *
- * Pulled out of `AlbumShelfDetail.tsx` because it had two near-identical
- * implementations (`computeInsertPosition` + `midpointAt`) and neither was
- * tested. Pure function, easy to test.
+ * Pure function — kept here for unit tests.
  */
 export function midpointAt(orderedItems: Item[], index: number): number {
   const positions = orderedItems
@@ -35,38 +30,43 @@ export function midpointAt(orderedItems: Item[], index: number): number {
 }
 
 export function positionOf(item: Item): number | null {
-  const meta = item.metadata as Partial<AlbumShelfItemMetadata>;
+  const meta = item.metadata as { position?: number | null };
   return typeof meta.position === "number" ? meta.position : null;
 }
 
 /**
- * Optimistic-update helper. Given the current ordered/detected response and a
- * patch that sets a row's position to `nextPosition` (number → ordered, null →
- * detected), return the next response shape with the row moved into the right
- * section and re-sorted.
+ * Optimistic-update helper. Given the current ordered/unordered/completed
+ * response and a patch that sets a row's position to `nextPosition` (number
+ * → ordered, null → unordered), return the next response with the row
+ * moved into the right section and re-sorted. Completed items are not
+ * affected by position drag — they live in their own bucket.
  */
 export function applyPositionPatch(
-  data: AlbumShelfItemsResponse,
+  data: ListItemsResponse,
   itemId: string,
   nextPosition: number | null,
-): AlbumShelfItemsResponse {
-  const all = [...data.ordered, ...data.detected];
+): ListItemsResponse {
+  const all = [...data.ordered, ...data.unordered];
   const target = all.find((i) => i.id === itemId);
   if (!target) return data;
   const otherOrdered = data.ordered.filter((i) => i.id !== itemId);
-  const otherDetected = data.detected.filter((i) => i.id !== itemId);
+  const otherUnordered = data.unordered.filter((i) => i.id !== itemId);
   const patched: Item = {
     ...target,
     metadata: {
-      ...(target.metadata as unknown as AlbumShelfItemMetadata),
+      ...(target.metadata as ItemMetadata),
       position: nextPosition,
-    } as unknown as ItemMetadata,
+    } as ItemMetadata,
   };
   if (typeof nextPosition === "number") {
     const ordered = [...otherOrdered, patched].sort(
       (a, b) => (positionOf(a) ?? 0) - (positionOf(b) ?? 0),
     );
-    return { ordered, detected: otherDetected };
+    return { ordered, unordered: otherUnordered, completed: data.completed };
   }
-  return { ordered: otherOrdered, detected: [...otherDetected, patched] };
+  return {
+    ordered: otherOrdered,
+    unordered: [...otherUnordered, patched],
+    completed: data.completed,
+  };
 }

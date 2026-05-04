@@ -81,6 +81,8 @@ describe("recordEvent", () => {
       "item_unupvoted",
       "item_completed",
       "item_uncompleted",
+      "item_promoted",
+      "item_demoted",
       "invite_created",
       "invite_revoked",
     ] as const;

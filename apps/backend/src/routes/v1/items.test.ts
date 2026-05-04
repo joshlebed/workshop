@@ -106,13 +106,6 @@ describe("itemRoutes auth gating", () => {
     expect(res.status).toBe(401);
   });
 
-  it("POST /:id/upvote requires a bearer token", async () => {
-    const res = await itemRoutes.request("/00000000-0000-0000-0000-000000000001/upvote", {
-      method: "POST",
-    });
-    expect(res.status).toBe(401);
-  });
-
   it("POST /:id/complete requires a bearer token", async () => {
     const res = await itemRoutes.request("/00000000-0000-0000-0000-000000000001/complete", {
       method: "POST",
@@ -151,22 +144,6 @@ describe("itemRoutes input validation", () => {
 
   it("DELETE /:id 404s when id isn't a uuid", async () => {
     const res = await itemRoutes.request("/not-a-uuid", {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  it("POST /:id/upvote 404s when id isn't a uuid", async () => {
-    const res = await itemRoutes.request("/not-a-uuid/upvote", {
-      method: "POST",
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  it("DELETE /:id/upvote 404s when id isn't a uuid", async () => {
-    const res = await itemRoutes.request("/not-a-uuid/upvote", {
       method: "DELETE",
       headers: authHeaders(),
     });

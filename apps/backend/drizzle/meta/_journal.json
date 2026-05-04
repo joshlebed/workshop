@@ -57,6 +57,13 @@
       "when": 1777437410358,
       "tag": "0007_album_shelf_dedup_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1777928670825,
+      "tag": "0008_add_item_promoted_demoted_events",
+      "breakpoints": true
     }
   ]
 }

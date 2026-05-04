@@ -7,10 +7,8 @@ import {
   completeItem,
   deleteItem,
   fetchItem,
-  removeUpvote,
   uncompleteItem,
   updateItem,
-  upvoteItem,
 } from "../../../../src/api/items";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { ApiError } from "../../../../src/lib/api";
@@ -23,7 +21,6 @@ import {
   IconButton,
   Text,
   tokens,
-  UpvotePill,
   useToast,
 } from "../../../../src/ui/index";
 
@@ -58,24 +55,9 @@ export default function ItemDetail() {
     if (!itemId || !listId) return Promise.resolve();
     return Promise.all([
       queryClient.invalidateQueries({ queryKey: queryKeys.items.detail(itemId) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.items.byListFiltered(listId, false) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.items.byListFiltered(listId, true) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(listId) }),
     ]);
   }
-
-  const upvoteMutation = useMutation({
-    mutationFn: (nextHasUpvoted: boolean) =>
-      nextHasUpvoted ? upvoteItem(itemId ?? "", token) : removeUpvote(itemId ?? "", token),
-    onMutate: () => {
-      haptics.light();
-    },
-    onSuccess: () => invalidateItem(),
-    onError: (e) =>
-      showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't update upvote",
-        tone: "danger",
-      }),
-  });
 
   const completeMutation = useMutation({
     mutationFn: (nextCompleted: boolean) =>
@@ -124,10 +106,7 @@ export default function ItemDetail() {
       haptics.medium();
       if (listId) {
         await Promise.all([
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.items.byListFiltered(listId, false),
-          }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.items.byListFiltered(listId, true) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(listId) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
         ]);
       }
@@ -194,12 +173,6 @@ export default function ItemDetail() {
       >
         <Card style={styles.card} elevated>
           <View style={styles.row}>
-            <UpvotePill
-              count={item.upvoteCount}
-              hasUpvoted={item.hasUpvoted}
-              onPress={() => upvoteMutation.mutate(!item.hasUpvoted)}
-              testID="item-detail-upvote"
-            />
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={item.completed ? "Mark as not done" : "Mark as done"}
@@ -319,7 +292,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     gap: tokens.space.md,
   },
   field: { gap: tokens.space.sm },

@@ -1,0 +1,2 @@
+ALTER TYPE "public"."activity_event_type" ADD VALUE 'item_promoted' BEFORE 'invite_created';--> statement-breakpoint
+ALTER TYPE "public"."activity_event_type" ADD VALUE 'item_demoted' BEFORE 'invite_created';

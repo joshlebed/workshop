@@ -12,11 +12,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbList, listMembers, lists, users } from "../../db/schema.js";
-import {
-  asAlbumShelfMetadata,
-  fetchAlbumShelfItems,
-  refreshAlbumShelfItems,
-} from "../../lib/album-shelf.js";
+import { asAlbumShelfMetadata, refreshAlbumShelfItems } from "../../lib/album-shelf.js";
 import { toIsoString } from "../../lib/dates.js";
 import { recordEvent } from "../../lib/events.js";
 import { parseJsonBody } from "../../lib/request.js";
@@ -448,36 +444,10 @@ listRoutes.delete("/:id", requireListMember, requireListOwner, async (c) => {
 // Mounted under `/v1/lists/:id/items`. The item-id-scoped routes
 // (`/v1/items/:id/...`) live in `items.ts` and ship under their own router.
 
-const completedFilter = z
-  .union([z.literal("true"), z.literal("false")])
-  .optional()
-  .transform((v) => (v === undefined ? undefined : v === "true"));
-
 listRoutes.get("/:id/items", requireListMember, async (c) => {
-  const completedParam = completedFilter.safeParse(c.req.query("completed"));
-  if (!completedParam.success) {
-    return err(c, "VALIDATION", "invalid completed filter");
-  }
   const listId = c.req.param("id");
-  const userId = c.get("userId");
-  const db = getDb();
-
-  // Album shelves return a typed `{ ordered, detected }` shape — section
-  // assignment + sort happen server-side per spec §7.2 so the client
-  // doesn't have to filter/sort by metadata.position.
-  const [parent] = await db
-    .select({ type: lists.type })
-    .from(lists)
-    .where(eq(lists.id, listId))
-    .limit(1);
-  if (!parent) return err(c, "NOT_FOUND", "list not found");
-  if (parent.type === "album_shelf") {
-    const split = await fetchAlbumShelfItems(listId);
-    return ok(c, split);
-  }
-
-  const items = await fetchItemsForList(listId, userId, { completed: completedParam.data });
-  return ok(c, { items });
+  const split = await fetchItemsForList(listId);
+  return ok(c, split);
 });
 
 listRoutes.post(
@@ -576,7 +546,7 @@ listRoutes.post(
       payload: { added: result.addedCount, source: result.source },
     });
 
-    const split = await fetchAlbumShelfItems(listId);
+    const split = await fetchItemsForList(listId);
     return ok(c, {
       ...split,
       refreshedAt: result.refreshedAt.toISOString(),

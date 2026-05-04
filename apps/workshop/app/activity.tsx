@@ -73,7 +73,7 @@ export default function Activity() {
         <View style={styles.center}>
           <EmptyState
             title="No activity yet"
-            description="When you and your collaborators add or upvote items, you'll see it here."
+            description="When you and your collaborators add or rank items, you'll see it here."
           />
         </View>
       ) : (
@@ -155,6 +155,10 @@ function describeEvent(event: ActivityEvent): string {
       return `completed${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_uncompleted":
       return `reopened${payloadString(payload, "title", (t) => ` "${t}"`)}`;
+    case "item_promoted":
+      return `ranked${payloadString(payload, "title", (t) => ` "${t}"`)}`;
+    case "item_demoted":
+      return `unranked${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "invite_created":
       return "created a share link";
     case "invite_revoked":
