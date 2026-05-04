@@ -7,16 +7,19 @@
 //   - `<DndContext>` wraps the area; owns sensors + drag state.
 //   - `<SortableContext>` declares the sortable items in display order.
 //   - `useSortable(id)` per item returns transform + transition + listeners.
-// We bind `listeners` to the drag handle (so only the handle initiates
-// drag, not the whole row), and `setNodeRef` to the row container so the
-// CSS transform follows the cursor. `onDragEnd` reports {active, over}
-// → we map it to library-style {from, to} for `resolveReorder`.
+// Non-row entries (section headers, the ordered-hint) deliberately do NOT
+// call useSortable and do NOT appear in `SortableContext.items`. If they
+// did, dnd-kit would still apply transforms to them while a sibling row
+// is dragged (even with `disabled: true`), making the headers visually
+// behave like sortable list items. We keep them in the entries array
+// because resolveReorder needs them to detect cross-section drops.
 
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { Item } from "@workshop/shared";
 import { useCallback, useMemo } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Linking, ScrollView, StyleSheet, View } from "react-native";
 import { Text, tokens } from "../../ui/index";
 import { AlbumShelfRow, OrderedHint, rowStyles, SectionHeader } from "./AlbumShelfRow";
 import type { ShelfListProps } from "./shelfListProps";
@@ -34,7 +37,9 @@ export function AlbumShelfList({
   // the gesture is owned by dnd-kit.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  const itemIds = useMemo(() => entries.map(entryId), [entries]);
+  // Only ROW ids are sortable. Headers + ordered-hint are static markup
+  // between sortable siblings.
+  const sortableIds = useMemo(() => entries.filter(isRowEntry).map((e) => entryId(e)), [entries]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -58,20 +63,27 @@ export function AlbumShelfList({
   return (
     <ScrollView contentContainerStyle={styles.listContent} testID="album-shelf-list">
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+        <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
           {entries.map((entry) => {
-            const row = isRowEntry(entry) ? entry : null;
-            const isNew = row?.kind === "detected-row" && newItemIds.has(row.item.id);
-            const addedByName = row ? (memberNameById.get(row.item.addedBy) ?? null) : null;
+            if (entry.kind === "ordered-header") {
+              return <SectionHeader key={entryId(entry)} kind="ordered" count={entry.count} />;
+            }
+            if (entry.kind === "detected-header") {
+              return <SectionHeader key={entryId(entry)} kind="detected" count={entry.count} />;
+            }
+            if (entry.kind === "ordered-hint") {
+              return <OrderedHint key={entryId(entry)} />;
+            }
+            const isNew = entry.kind === "detected-row" && newItemIds.has(entry.item.id);
+            const addedByName = memberNameById.get(entry.item.addedBy) ?? null;
             return (
-              <SortableEntry
+              <SortableRow
                 key={entryId(entry)}
                 entry={entry}
                 isNew={isNew}
                 addedByName={addedByName}
-                onMenu={() => {
-                  if (row) onRowMenu(row);
-                }}
+                onMenu={() => onRowMenu(entry)}
+                onPressBody={() => openSpotify(entry.item)}
               />
             );
           })}
@@ -81,57 +93,45 @@ export function AlbumShelfList({
   );
 }
 
-interface SortableEntryProps {
-  entry: ShelfEntry;
+function openSpotify(item: Item) {
+  const meta = item.metadata as { spotifyAlbumUrl?: string };
+  const url = meta.spotifyAlbumUrl;
+  if (!url) return;
+  Linking.openURL(url).catch(() => {
+    /* best effort — popup blocker / unsupported scheme is non-fatal */
+  });
+}
+
+interface SortableRowProps {
+  entry: Extract<ShelfEntry, { kind: "ordered-row" | "detected-row" }>;
   isNew: boolean;
   addedByName: string | null;
   onMenu: () => void;
+  onPressBody: () => void;
 }
 
-function SortableEntry({ entry, isNew, addedByName, onMenu }: SortableEntryProps) {
+function SortableRow({ entry, isNew, addedByName, onMenu, onPressBody }: SortableRowProps) {
   const id = entryId(entry);
-  const draggable = isRowEntry(entry);
-  const sortable = useSortable({ id, disabled: !draggable });
-  const { setNodeRef, transform, transition, listeners, attributes, isDragging } = sortable;
+  const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
+    id,
+  });
 
   // dnd-kit emits CSS transforms; on react-native-web that becomes a
   // `transform` style on the underlying div. We apply it via the platform-
-  // specific style escape hatch (cast to `any` because RN's ViewStyle
-  // doesn't include arbitrary CSS strings).
+  // specific style escape hatch (cast because RN's ViewStyle doesn't
+  // include arbitrary CSS strings).
   const webStyle = {
     transform: CSS.Transform.toString(transform) ?? undefined,
     transition: transition ?? undefined,
     touchAction: "none",
   } as unknown as object;
 
-  if (entry.kind === "ordered-header") {
-    return (
-      <View ref={setNodeRef as unknown as React.Ref<View>} style={webStyle}>
-        <SectionHeader kind="ordered" count={entry.count} />
-      </View>
-    );
-  }
-  if (entry.kind === "detected-header") {
-    return (
-      <View ref={setNodeRef as unknown as React.Ref<View>} style={webStyle}>
-        <SectionHeader kind="detected" count={entry.count} />
-      </View>
-    );
-  }
-  if (entry.kind === "ordered-hint") {
-    return (
-      <View ref={setNodeRef as unknown as React.Ref<View>} style={webStyle}>
-        <OrderedHint />
-      </View>
-    );
-  }
-
-  // Row case. Bind dnd-kit listeners to the drag handle only; the rest of
-  // the card stays clickable (e.g. the ⋮ menu button).
+  // Bind dnd-kit listeners to the drag handle only; the rest of the card
+  // stays clickable (menu button, body click → Spotify).
   const dragHandle = (
     <View
-      // Pass-through any DOM listeners + ARIA attrs dnd-kit gives us.
-      // RN's <View> on web is a div, so spreading these works.
+      // RN's <View> on web is a div, so spreading DOM listeners + ARIA
+      // attrs onto it works.
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
       {...((attributes ?? {}) as unknown as Record<string, unknown>)}
       accessibilityRole="button"
@@ -153,6 +153,7 @@ function SortableEntry({ entry, isNew, addedByName, onMenu }: SortableEntryProps
         isDragging={isDragging}
         addedByName={addedByName}
         onMenu={onMenu}
+        onPressBody={onPressBody}
         dragHandle={dragHandle}
       />
     </View>

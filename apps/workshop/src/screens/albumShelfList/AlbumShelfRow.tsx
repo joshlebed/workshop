@@ -17,6 +17,8 @@ interface AlbumShelfRowProps {
   isDragging: boolean;
   addedByName: string | null;
   onMenu: () => void;
+  /** Short-tap on the cover/title area — opens the album. */
+  onPressBody?: () => void;
   /**
    * Drag-affordance slot. The list impl injects a Pressable / `<div>`
    * wired up to its drag library so the row stays library-agnostic.
@@ -32,6 +34,7 @@ export function AlbumShelfRow({
   isDragging,
   addedByName,
   onMenu,
+  onPressBody,
   dragHandle,
 }: AlbumShelfRowProps) {
   const meta = item.metadata as Partial<AlbumShelfItemMetadata>;
@@ -48,12 +51,8 @@ export function AlbumShelfRow({
       ? `detected ${formatRelative(detectedAt)}`
       : "detected";
 
-  return (
-    <Card
-      style={[styles.row, isNew && styles.rowNew, isDragging && styles.rowDragging]}
-      testID={`album-row-${item.id}`}
-    >
-      {dragHandle ?? <View style={styles.handlePlaceholder} />}
+  const bodyContent = (
+    <>
       <View style={styles.rowIndex}>
         <Text variant="caption" tone="muted" style={styles.indexText}>
           {indexLabel}
@@ -86,6 +85,28 @@ export function AlbumShelfRow({
           {provenance}
         </Text>
       </View>
+    </>
+  );
+
+  return (
+    <Card
+      style={[styles.row, isNew && styles.rowNew, isDragging && styles.rowDragging]}
+      testID={`album-row-${item.id}`}
+    >
+      {dragHandle ?? <View style={styles.handlePlaceholder} />}
+      {onPressBody ? (
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={`Open ${item.title} on Spotify`}
+          onPress={onPressBody}
+          testID={`album-row-body-${item.id}`}
+          style={({ pressed }) => [styles.bodyPressable, pressed && styles.bodyPressed]}
+        >
+          {bodyContent}
+        </Pressable>
+      ) : (
+        <View style={styles.bodyPressable}>{bodyContent}</View>
+      )}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Open menu for ${item.title}`}
@@ -146,6 +167,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
     padding: tokens.space.md,
+  },
+  bodyPressable: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+  },
+  bodyPressed: {
+    opacity: 0.7,
   },
   rowNew: {
     borderColor: tokens.accent.default,

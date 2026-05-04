@@ -26,6 +26,7 @@ import { applyPositionPatch, midpointAt } from "../lib/albumShelfPositions";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
 import { Button, EmptyState, type ListColorKey, Text, tokens, useToast } from "../ui/index";
+import { AlbumRowMenu, type AlbumRowMenuActions } from "./albumShelfList/AlbumRowMenu";
 import { AlbumShelfList } from "./albumShelfList/AlbumShelfList";
 import { resolveReorder } from "./albumShelfList/resolveReorder";
 import type { ReorderEvent } from "./albumShelfList/shelfListProps";
@@ -232,14 +233,23 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
     positionMutation.mutate({ item: dragged.item, nextPosition: result.nextPosition });
   };
 
+  // The row menu sits above the list as a single bottom sheet rather than
+  // recreating per-row triggers. `Alert.alert(title, undefined, actions)`
+  // (the previous impl) silently no-ops on react-native-web with 3+
+  // buttons, which is why the kebab menu was broken on the web build.
+  const [menuItem, setMenuItem] = useState<Item | null>(null);
+  const [menuActions, setMenuActions] = useState<AlbumRowMenuActions | null>(null);
+
+  const closeMenu = () => {
+    setMenuItem(null);
+    setMenuActions(null);
+  };
+
   const onRowMenu = (entry: Extract<ShelfEntry, { kind: "ordered-row" | "detected-row" }>) => {
     const isOrdered = entry.kind === "ordered-row";
-    const orderedIdx = isOrdered ? entry.orderedIndex : -1;
-    showRowMenu({
-      item: entry.item,
+    setMenuItem(entry.item);
+    setMenuActions({
       isOrdered,
-      isFirst: isOrdered && orderedIdx === 0,
-      isLast: isOrdered && orderedIdx === filtered.ordered.length - 1,
       onPromote: () =>
         positionMutation.mutate({
           item: entry.item,
@@ -395,31 +405,9 @@ export function AlbumShelfDetail({ list, members, token, onBack, onSettings }: P
           />
         </View>
       )}
+      <AlbumRowMenu item={menuItem} actions={menuActions} onClose={closeMenu} />
     </KeyboardAvoidingView>
   );
-}
-
-function showRowMenu(p: {
-  item: Item;
-  isOrdered: boolean;
-  isFirst: boolean;
-  isLast: boolean;
-  onPromote: () => void;
-  onPromoteToTop: () => void;
-  onDemote: () => void;
-  onDelete: () => void;
-}) {
-  type Action = { text: string; onPress?: () => void; style?: "destructive" | "cancel" };
-  const actions: Action[] = [];
-  if (p.isOrdered) {
-    actions.push({ text: "Move to detected", onPress: p.onDemote });
-  } else {
-    actions.push({ text: "Move to ordered (bottom)", onPress: p.onPromote });
-    actions.push({ text: "Move to ordered (top)", onPress: p.onPromoteToTop });
-  }
-  actions.push({ text: "Delete album", style: "destructive", onPress: p.onDelete });
-  actions.push({ text: "Cancel", style: "cancel" });
-  Alert.alert(p.item.title, undefined, actions);
 }
 
 const styles = StyleSheet.create({
