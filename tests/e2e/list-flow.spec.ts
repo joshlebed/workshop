@@ -1,13 +1,16 @@
 import { expect, test } from "@playwright/test";
 import { disableAutoDevSignIn } from "./helpers";
 
-// Happy-path for chunk 1b-2: dev-sign-in → create list → add item → upvote → complete.
+// Happy-path for chunk 1b-2: dev-sign-in → create list → add item →
+// rank/unrank via kebab → complete. Updated for the 2026-05 ordering
+// refactor: every list type now has ordered / unordered / completed
+// sections with drag-to-reorder and a kebab menu (no upvote pill).
 //
 // Reuses the dev sign-in backdoor seeded by `scripts/e2e.sh` (DEV_AUTH_ENABLED=1).
 // Each run uses a unique list name so re-running against a dirty dev DB doesn't
 // conflict with prior runs.
 
-test("create list → add item → upvote → complete", async ({ page }) => {
+test("create list → add item → rank → complete", async ({ page }) => {
   await disableAutoDevSignIn(page);
   await page.goto("/");
 
@@ -40,28 +43,25 @@ test("create list → add item → upvote → complete", async ({ page }) => {
   await page.getByTestId("create-list-share-done").click();
 
   // Land on list detail; empty state is visible.
-  await expect(page.getByTestId("empty-add-item")).toBeVisible();
-  await page.getByTestId("empty-add-item").click();
+  await expect(page.getByTestId("list-detail-empty-add")).toBeVisible();
+  await page.getByTestId("list-detail-empty-add").click();
 
   const itemTitle = `Picnic at the park ${Date.now()}`;
   await page.getByTestId("add-item-title").fill(itemTitle);
   await page.getByTestId("add-item-submit").click();
 
-  // The new item shows up with upvote count of 1 (creator's auto-upvote).
+  // The new item lands in the unordered section.
   const itemRow = page.locator('[data-testid^="item-row-"]').first();
   await expect(itemRow).toBeVisible();
-  const upvotePill = itemRow.locator('[data-testid^="item-upvote-"]');
-  await expect(upvotePill).toContainText("1");
+  await expect(page.getByTestId("list-detail-section-unordered")).toBeVisible();
 
-  // Toggle upvote off → count drops to 0 → toggle back on.
-  await upvotePill.click();
-  await expect(upvotePill).toContainText("0");
-  await upvotePill.click();
-  await expect(upvotePill).toContainText("1");
+  // Open kebab → promote to ordered (top). Item moves to the ORDERED section.
+  await itemRow.locator('[data-testid^="item-row-menu-"]').click();
+  await page.getByTestId("item-row-menu-promote-top").click();
+  await expect(page.getByTestId("list-detail-section-ordered")).toBeVisible();
 
-  // Complete the item — it should move out of the active list and into the
-  // completed section.
-  const completeBtn = itemRow.locator('[data-testid^="item-complete-"]');
-  await completeBtn.click();
-  await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+  // Open kebab → mark complete. Item moves to the COMPLETED section.
+  await itemRow.locator('[data-testid^="item-row-menu-"]').click();
+  await page.getByTestId("item-row-menu-complete").click();
+  await expect(page.getByTestId("list-detail-section-completed")).toBeVisible();
 });

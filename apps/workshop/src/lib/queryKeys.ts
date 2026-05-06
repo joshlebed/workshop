@@ -4,9 +4,11 @@ export const queryKeys = {
     detail: (id: string) => ["lists", "detail", id] as const,
   },
   items: {
+    /**
+     * Per-list split read (`{ ordered, unordered, completed }`). Single key per
+     * list since the 2026-05 ordering refactor unified the API into one shape.
+     */
     byList: (listId: string) => ["items", "byList", listId] as const,
-    byListFiltered: (listId: string, completed: boolean | undefined) =>
-      ["items", "byList", listId, { completed: completed ?? "all" }] as const,
     detail: (id: string) => ["items", "detail", id] as const,
   },
   auth: {
@@ -23,7 +25,6 @@ export const queryKeys = {
     feedInfinite: ["activity", "feedInfinite"] as const,
   },
   albumShelf: {
-    items: (listId: string) => ["albumShelf", "items", listId] as const,
     preview: (url: string) => ["albumShelf", "preview", url] as const,
   },
 } as const;

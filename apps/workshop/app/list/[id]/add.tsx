@@ -111,7 +111,7 @@ export default function AddItem() {
       haptics.medium();
       if (id) {
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.items.byListFiltered(id, false) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
         ]);
       }

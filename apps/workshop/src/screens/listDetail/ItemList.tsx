@@ -1,67 +1,82 @@
-// Native (iOS / Android) album-shelf list. Uses
+// Native (iOS / Android) list-detail row container. Uses
 // `react-native-reorderable-list` for drag-to-reorder + autoscroll +
-// sibling animations + layout animations. The shelf has two visually
-// distinct sections (ordered + detected) but is rendered as a single flat
-// list so one library handles all the drag plumbing; cross-section
-// drops are detected after the fact in `resolveReorder`.
+// sibling animations + layout animations. Three sections (ordered +
+// unordered + completed) are rendered as a single flat list so one
+// library handles all the drag plumbing; cross-section drops are
+// detected after the fact in `resolveReorder`. Completed rows are
+// displayed but skip the drag handle, so dragging in/out of them is a
+// no-op at the resolve layer.
 //
-// The web platform uses a separate impl (see `AlbumShelfList.web.tsx`)
+// The web platform uses a separate impl (see `ItemList.web.tsx`)
 // driven by @dnd-kit/sortable since RNRL doesn't target react-native-web.
 
 import * as Haptics from "expo-haptics";
 import { useCallback } from "react";
-import { Linking, Pressable, StyleSheet } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 import ReorderableList, {
   type ReorderableListReorderEvent,
   useIsActive,
   useReorderableDrag,
 } from "react-native-reorderable-list";
 import { Text, tokens } from "../../ui/index";
-import { AlbumShelfRow, OrderedHint, rowStyles, SectionHeader } from "./AlbumShelfRow";
-import type { ShelfListProps } from "./shelfListProps";
-import { entryId, type ShelfEntry } from "./types";
+import { ItemRow, OrderedHint, rowStyles, SectionHeader } from "./ItemRow";
+import type { ItemListProps } from "./listProps";
+import { entryId, type ListEntry } from "./types";
 
-function openSpotify(item: import("@workshop/shared").Item) {
-  const meta = item.metadata as { spotifyAlbumUrl?: string };
-  const url = meta.spotifyAlbumUrl;
-  if (!url) return;
-  Linking.openURL(url).catch(() => {
-    /* best effort — Spotify app missing or scheme blocked is non-fatal */
-  });
-}
-
-export function AlbumShelfList({
+export function ItemList({
   entries,
   newItemIds,
   memberNameById,
   onReorder,
   onRowMenu,
-}: ShelfListProps) {
+  onRowPressBody,
+}: ItemListProps) {
   const renderItem = useCallback(
-    ({ item: entry }: { item: ShelfEntry }) => {
+    ({ item: entry }: { item: ListEntry }) => {
       if (entry.kind === "ordered-header") {
         return <SectionHeader kind="ordered" count={entry.count} />;
       }
-      if (entry.kind === "detected-header") {
-        return <SectionHeader kind="detected" count={entry.count} />;
+      if (entry.kind === "unordered-header") {
+        return (
+          <SectionHeader kind="unordered" count={entry.count} isAlbumShelf={entry.isAlbumShelf} />
+        );
+      }
+      if (entry.kind === "completed-header") {
+        return <SectionHeader kind="completed" count={entry.count} />;
       }
       if (entry.kind === "ordered-hint") {
-        return <OrderedHint />;
+        const isAlbumShelfHint = entries.some(
+          (e) => e.kind === "unordered-header" && e.isAlbumShelf,
+        );
+        return <OrderedHint isAlbumShelf={isAlbumShelfHint} />;
       }
-      const isOrdered = entry.kind === "ordered-row";
+      const section =
+        entry.kind === "ordered-row"
+          ? "ordered"
+          : entry.kind === "unordered-row"
+            ? "unordered"
+            : "completed";
+      const indexLabel =
+        entry.kind === "ordered-row"
+          ? String(entry.orderedIndex + 1)
+          : section === "completed"
+            ? "✓"
+            : "•";
+      const isDraggable = entry.kind !== "completed-row";
       return (
-        <DraggableShelfRow
+        <DraggableRow
           item={entry.item}
-          isOrdered={isOrdered}
-          indexLabel={isOrdered ? String(entry.orderedIndex + 1) : "•"}
-          isNew={!isOrdered && newItemIds.has(entry.item.id)}
+          section={section}
+          indexLabel={indexLabel}
+          isNew={section === "unordered" && newItemIds.has(entry.item.id)}
           addedByName={memberNameById.get(entry.item.addedBy) ?? null}
           onMenu={() => onRowMenu(entry)}
-          onPressBody={() => openSpotify(entry.item)}
+          onPressBody={() => onRowPressBody(entry)}
+          draggable={isDraggable}
         />
       );
     },
-    [newItemIds, memberNameById, onRowMenu],
+    [entries, newItemIds, memberNameById, onRowMenu, onRowPressBody],
   );
 
   const handleReorder = useCallback(
@@ -85,32 +100,30 @@ export function AlbumShelfList({
   );
 }
 
-interface DraggableShelfRowProps {
+interface DraggableRowProps {
   item: import("@workshop/shared").Item;
-  isOrdered: boolean;
+  section: "ordered" | "unordered" | "completed";
   indexLabel: string;
   isNew: boolean;
   addedByName: string | null;
   onMenu: () => void;
   onPressBody: () => void;
+  draggable: boolean;
 }
 
-function DraggableShelfRow({
+function DraggableRow({
   item,
-  isOrdered,
+  section,
   indexLabel,
   isNew,
   addedByName,
   onMenu,
   onPressBody,
-}: DraggableShelfRowProps) {
+  draggable,
+}: DraggableRowProps) {
   const drag = useReorderableDrag();
   const isActive = useIsActive();
 
-  // Long-press the handle to start dragging. The body of the row is
-  // press-to-open-Spotify; we don't want a stray long-press anywhere on
-  // the card to also start a drag because that'd race with body's
-  // onPress (drags would feel laggy waiting for long-press timeout).
   const onHandleLongPress = useCallback(() => {
     Haptics.selectionAsync().catch(() => {
       /* haptics unavailable on simulator — non-fatal */
@@ -118,31 +131,31 @@ function DraggableShelfRow({
     drag();
   }, [drag]);
 
-  const dragHandle = (
+  const dragHandle = draggable ? (
     <Pressable
       onLongPress={onHandleLongPress}
       delayLongPress={120}
       accessibilityRole="button"
       accessibilityLabel={`Drag handle for ${item.title}`}
-      testID={`album-row-handle-${item.id}`}
+      testID={`item-row-handle-${item.id}`}
       style={rowStyles.rowDragHandle}
       hitSlop={6}
     >
       <Text style={rowStyles.dragHandleGlyph}>≡</Text>
     </Pressable>
-  );
+  ) : undefined;
 
   return (
-    <AlbumShelfRow
+    <ItemRow
       item={item}
-      isOrdered={isOrdered}
+      section={section}
       indexLabel={indexLabel}
       isNew={isNew}
       isDragging={isActive}
       addedByName={addedByName}
       onMenu={onMenu}
       onPressBody={onPressBody}
-      dragHandle={dragHandle}
+      {...(dragHandle ? { dragHandle } : {})}
     />
   );
 }

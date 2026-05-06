@@ -1,17 +1,11 @@
-// Album Shelf core: refresh logic + split ordered/detected reads. Used by
-// both `POST /v1/lists` (initial refresh on creation), `POST /v1/lists/:id/refresh`,
-// and `PATCH /v1/lists/:id` (re-refresh on source URL change). See
-// docs/album-shelf.md §7.3.
+// Album Shelf core: refresh logic for the Spotify-driven shelf type. Used by
+// `POST /v1/lists` (initial refresh on creation), `POST /v1/lists/:id/refresh`,
+// and `PATCH /v1/lists/:id` (re-refresh on source URL change). The
+// ordered/unordered/completed split read for every list type lives in
+// `routes/v1/items.ts#fetchItemsForList`. See docs/album-shelf.md §7.3.
 
-import type {
-  AlbumShelfItemMetadata,
-  AlbumShelfListMetadata,
-  Item,
-  ItemMetadata,
-} from "@workshop/shared";
+import type { AlbumShelfItemMetadata, AlbumShelfListMetadata } from "@workshop/shared";
 import { sql } from "drizzle-orm";
-import { getDb } from "../db/client.js";
-import { toIsoOrNull, toIsoString } from "./dates.js";
 import { type AlbumExtract, fetchPlaylistAlbumExtracts } from "./spotify/app-client.js";
 import { executeRows, type SqlExecutor } from "./sql.js";
 
@@ -114,95 +108,6 @@ async function insertExtractIfMissing(args: {
     `,
   );
   return rows.length;
-}
-
-interface SplitItemsRow {
-  id: string;
-  list_id: string;
-  type: string;
-  title: string;
-  url: string | null;
-  note: string | null;
-  metadata: Record<string, unknown>;
-  added_by: string;
-  completed: boolean;
-  completed_at: Date | string | null;
-  completed_by: string | null;
-  created_at: Date | string;
-  updated_at: Date | string;
-}
-
-/**
- * Reads every item on an album_shelf and splits into ordered/detected per
- * spec §3.3. Single SQL query — section assignment + sort happen in one
- * pass.
- *
- * Ordered: `metadata.position` non-null, sorted by position ASC.
- * Detected: `metadata.position` null, sorted by `metadata.detectedAt` ASC.
- */
-export async function fetchAlbumShelfItems(
-  listId: string,
-): Promise<{ ordered: Item[]; detected: Item[] }> {
-  const db = getDb();
-  const rows = await executeRows<SplitItemsRow>(
-    db,
-    sql`
-      SELECT
-        i.id,
-        i.list_id,
-        i.type::text AS type,
-        i.title,
-        i.url,
-        i.note,
-        i.metadata,
-        i.added_by,
-        i.completed,
-        i.completed_at,
-        i.completed_by,
-        i.created_at,
-        i.updated_at
-      FROM items i
-      WHERE i.list_id = ${listId}
-      ORDER BY
-        (i.metadata->>'position') IS NULL,
-        (i.metadata->>'position')::numeric ASC NULLS LAST,
-        (i.metadata->>'detectedAt') ASC
-    `,
-  );
-
-  const ordered: Item[] = [];
-  const detected: Item[] = [];
-  for (const r of rows) {
-    const meta = (r.metadata ?? {}) as Record<string, unknown>;
-    const position = meta.position;
-    const item = rowToItem(r);
-    if (typeof position === "number") {
-      ordered.push(item);
-    } else {
-      detected.push(item);
-    }
-  }
-  return { ordered, detected };
-}
-
-function rowToItem(r: SplitItemsRow): Item {
-  return {
-    id: r.id,
-    listId: r.list_id,
-    type: r.type as Item["type"],
-    title: r.title,
-    url: r.url,
-    note: r.note,
-    metadata: (r.metadata ?? {}) as ItemMetadata,
-    addedBy: r.added_by,
-    completed: r.completed,
-    completedAt: toIsoOrNull(r.completed_at),
-    completedBy: r.completed_by,
-    upvoteCount: 0,
-    hasUpvoted: false,
-    createdAt: toIsoString(r.created_at),
-    updatedAt: toIsoString(r.updated_at),
-  };
 }
 
 /**

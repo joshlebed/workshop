@@ -1,26 +1,20 @@
 import type {
   CreateItemRequest,
-  ItemListResponse,
   ItemResponse,
+  ListItemsResponse,
   UpdateItemRequest,
 } from "@workshop/shared";
 import { apiRequest } from "../lib/api";
 
-export interface ItemListFilter {
-  /** When set, the server returns only completed (true) or only active (false) items. */
-  completed?: boolean;
-}
-
-export function fetchItems(
-  listId: string,
-  filter: ItemListFilter,
-  token: string | null,
-): Promise<ItemListResponse> {
-  const search =
-    filter.completed === undefined ? "" : `?completed=${filter.completed ? "true" : "false"}`;
-  return apiRequest<ItemListResponse>({
+/**
+ * Fetches the unified ordered / unordered / completed split for any list
+ * type. Album shelves and other list types share the same shape since the
+ * 2026-05 ordering refactor — see `apps/backend/src/routes/v1/items.ts#fetchItemsForList`.
+ */
+export function fetchItems(listId: string, token: string | null): Promise<ListItemsResponse> {
+  return apiRequest<ListItemsResponse>({
     method: "GET",
-    path: `/v1/lists/${listId}/items${search}`,
+    path: `/v1/lists/${listId}/items`,
     token,
   });
 }
@@ -57,22 +51,6 @@ export function updateItem(
 
 export function deleteItem(itemId: string, token: string | null): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/items/${itemId}`, token });
-}
-
-export function upvoteItem(itemId: string, token: string | null): Promise<ItemResponse> {
-  return apiRequest<ItemResponse>({
-    method: "POST",
-    path: `/v1/items/${itemId}/upvote`,
-    token,
-  });
-}
-
-export function removeUpvote(itemId: string, token: string | null): Promise<ItemResponse> {
-  return apiRequest<ItemResponse>({
-    method: "DELETE",
-    path: `/v1/items/${itemId}/upvote`,
-    token,
-  });
 }
 
 export function completeItem(itemId: string, token: string | null): Promise<ItemResponse> {

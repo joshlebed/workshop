@@ -38,6 +38,8 @@ export const activityEventTypeEnum = pgEnum("activity_event_type", [
   "item_unupvoted",
   "item_completed",
   "item_uncompleted",
+  "item_promoted",
+  "item_demoted",
   "invite_created",
   "invite_revoked",
   "album_shelf_refreshed",

@@ -24,6 +24,4 @@ export { ThemeProvider } from "./ThemeProvider";
 export { ToastProvider, useToast } from "./Toast";
 export type { ListColorKey, Tokens } from "./theme";
 export { darkTokens, lightTokens, tokens } from "./theme";
-export type { UpvotePillProps } from "./UpvotePill";
-export { UpvotePill } from "./UpvotePill";
 export { useTheme } from "./useTheme";

@@ -234,7 +234,7 @@ export default function ListSettings() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.albumShelf.items(id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
       ]);
       showToast({ message: "Source updated and refreshed.", tone: "success" });
     },
@@ -255,7 +255,7 @@ export default function ListSettings() {
       if (!id) return;
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.albumShelf.items(id) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
       ]);
       showToast({
         message:

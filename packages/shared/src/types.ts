@@ -24,6 +24,8 @@ export type ActivityEventType =
   | "item_unupvoted"
   | "item_completed"
   | "item_uncompleted"
+  | "item_promoted"
+  | "item_demoted"
   | "invite_created"
   | "invite_revoked"
   | "album_shelf_refreshed"
@@ -210,10 +212,6 @@ export interface Item {
   completed: boolean;
   completedAt: string | null;
   completedBy: string | null;
-  /** Aggregate count from `item_upvotes`. New items always start at 1 (creator's auto-upvote). */
-  upvoteCount: number;
-  /** True when the requesting user has upvoted this item. */
-  hasUpvoted: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -234,8 +232,20 @@ export interface UpdateItemRequest {
   metadata?: ItemMetadata;
 }
 
-export interface ItemListResponse {
-  items: Item[];
+/**
+ * Server-side three-way split for `GET /v1/lists/:id/items`. Every list type
+ * returns this same shape so the client can render the unified ordered /
+ * unordered / completed sections (spec §7.2).
+ *
+ * - `ordered`: not completed, `metadata.position` non-null, sorted by position ASC.
+ * - `unordered`: not completed, `metadata.position` null, sorted by createdAt
+ *   DESC (album_shelf items use `metadata.detectedAt` as a fallback).
+ * - `completed`: completed=true, sorted by completedAt DESC.
+ */
+export interface ListItemsResponse {
+  ordered: Item[];
+  unordered: Item[];
+  completed: Item[];
 }
 
 export interface ItemResponse {
@@ -456,7 +466,7 @@ export interface AlbumShelfListMetadata {
 
 /**
  * Stored on `items.metadata` for `type === "album_shelf"` rows. `position`
- * decides which section the row renders in: `null` → detected (sorted by
+ * decides which section the row renders in: `null` → unordered (sorted by
  * `detectedAt` ASC), non-null → ordered (sorted by `position` ASC).
  */
 export interface AlbumShelfItemMetadata {
@@ -472,21 +482,10 @@ export interface AlbumShelfItemMetadata {
   detectedAt: string;
 }
 
-/**
- * Response for `GET /v1/lists/:id/items` when the list is an album_shelf.
- * Other list types continue to return `{ items: Item[] }`.
- */
-export interface AlbumShelfItemsResponse {
-  ordered: Item[];
-  detected: Item[];
-}
-
-export interface AlbumShelfRefreshResponse {
-  ordered: Item[];
-  detected: Item[];
+export interface AlbumShelfRefreshResponse extends ListItemsResponse {
   refreshedAt: string;
   refreshedBy: string;
-  /** Number of new detected items added in this refresh (may be 0). */
+  /** Number of new detected (unordered) items added in this refresh (may be 0). */
   addedCount: number;
 }
 

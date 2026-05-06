@@ -1,4 +1,4 @@
-import type { AlbumShelfItemMetadata, Item } from "@workshop/shared";
+import type { AlbumShelfItemMetadata, Item, ListItemsResponse } from "@workshop/shared";
 import { describe, expect, it } from "vitest";
 import { applyPositionPatch, midpointAt, positionOf } from "./albumShelfPositions";
 
@@ -24,8 +24,6 @@ function albumItem(id: string, position: number | null): Item {
     completed: false,
     completedAt: null,
     completedBy: null,
-    upvoteCount: 0,
-    hasUpvoted: false,
     createdAt: "2024-01-01T00:00:00.000Z",
     updatedAt: "2024-01-01T00:00:00.000Z",
   };
@@ -36,7 +34,7 @@ describe("positionOf", () => {
     expect(positionOf(albumItem("a", 3))).toBe(3);
   });
 
-  it("returns null for a detected item", () => {
+  it("returns null for an unordered item", () => {
     expect(positionOf(albumItem("a", null))).toBeNull();
   });
 });
@@ -74,21 +72,22 @@ describe("midpointAt", () => {
 });
 
 describe("applyPositionPatch", () => {
-  const initial = {
+  const initial: ListItemsResponse = {
     ordered: [albumItem("a", 1), albumItem("b", 2)],
-    detected: [albumItem("c", null)],
+    unordered: [albumItem("c", null)],
+    completed: [],
   };
 
-  it("promotes a detected row into ordered and resorts", () => {
+  it("promotes an unordered row into ordered and resorts", () => {
     const next = applyPositionPatch(initial, "c", 1.5);
-    expect(next.detected).toEqual([]);
+    expect(next.unordered).toEqual([]);
     expect(next.ordered.map((i) => i.id)).toEqual(["a", "c", "b"]);
   });
 
   it("demotes an ordered row by setting position to null", () => {
     const next = applyPositionPatch(initial, "a", null);
     expect(next.ordered.map((i) => i.id)).toEqual(["b"]);
-    expect(next.detected.map((i) => i.id)).toEqual(["c", "a"]);
+    expect(next.unordered.map((i) => i.id)).toEqual(["c", "a"]);
   });
 
   it("returns the same response when the item id is unknown", () => {
@@ -99,5 +98,15 @@ describe("applyPositionPatch", () => {
   it("re-orders an existing ordered row", () => {
     const next = applyPositionPatch(initial, "a", 3);
     expect(next.ordered.map((i) => i.id)).toEqual(["b", "a"]);
+  });
+
+  it("preserves the completed bucket through position patches", () => {
+    const initialWithCompleted: ListItemsResponse = {
+      ordered: [albumItem("a", 1)],
+      unordered: [albumItem("c", null)],
+      completed: [albumItem("done", null)],
+    };
+    const next = applyPositionPatch(initialWithCompleted, "c", 0.5);
+    expect(next.completed.map((i) => i.id)).toEqual(["done"]);
   });
 });
