@@ -1,6 +1,12 @@
 import type { AlbumShelfItemMetadata, Item, ListItemsResponse } from "@workshop/shared";
 import { describe, expect, it } from "vitest";
-import { applyPositionPatch, midpointAt, positionOf } from "./albumShelfPositions";
+import {
+  applyPositionPatch,
+  midpointAt,
+  midpointBetween,
+  midpointForOrderedReorder,
+  positionOf,
+} from "./albumShelfPositions";
 
 function albumItem(id: string, position: number | null): Item {
   return {
@@ -108,5 +114,60 @@ describe("applyPositionPatch", () => {
     };
     const next = applyPositionPatch(initialWithCompleted, "c", 0.5);
     expect(next.completed.map((i) => i.id)).toEqual(["done"]);
+  });
+});
+
+describe("midpointBetween", () => {
+  it("returns 1 for an empty ordered list", () => {
+    expect(midpointBetween(null, null)).toBe(1);
+  });
+  it("halves the first position when inserting at top", () => {
+    expect(midpointBetween(null, 4)).toBe(2);
+  });
+  it("adds 1 to the last position when inserting at bottom", () => {
+    expect(midpointBetween(4, null)).toBe(5);
+  });
+  it("averages two neighbours", () => {
+    expect(midpointBetween(2, 4)).toBe(3);
+    expect(midpointBetween(1, 1.5)).toBe(1.25);
+  });
+});
+
+describe("midpointForOrderedReorder", () => {
+  const ordered = () => [albumItem("a", 1), albumItem("b", 2), albumItem("c", 3)];
+
+  it("returns null when fromIndex equals toIndex", () => {
+    expect(midpointForOrderedReorder(ordered(), 1, 1)).toBeNull();
+  });
+
+  it("returns null for out-of-range indices", () => {
+    expect(midpointForOrderedReorder(ordered(), -1, 0)).toBeNull();
+    expect(midpointForOrderedReorder(ordered(), 0, 99)).toBeNull();
+  });
+
+  it("moves a row down past the next neighbour: a → between b and c", () => {
+    expect(midpointForOrderedReorder(ordered(), 0, 1)).toBe(2.5);
+  });
+
+  it("moves a row up past the previous neighbour: c → between a and b", () => {
+    expect(midpointForOrderedReorder(ordered(), 2, 1)).toBe(1.5);
+  });
+
+  it("moves a row to the very top by halving the first remaining position", () => {
+    expect(midpointForOrderedReorder(ordered(), 2, 0)).toBe(0.5);
+  });
+
+  it("moves a row to the very bottom by adding 1 to the last remaining position", () => {
+    expect(midpointForOrderedReorder(ordered(), 0, 2)).toBe(4);
+  });
+
+  it("handles fractional neighbours without drift", () => {
+    const items = [albumItem("a", 0.5), albumItem("b", 0.75), albumItem("c", 1)];
+    expect(midpointForOrderedReorder(items, 2, 1)).toBe(0.625);
+  });
+
+  it("returns null when the row already sits at the computed midpoint", () => {
+    const items = [albumItem("a", 1), albumItem("b", 2)];
+    expect(midpointForOrderedReorder(items, 0, 0)).toBeNull();
   });
 });

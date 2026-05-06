@@ -253,8 +253,8 @@ export function SectionHeader({ kind, count, isAlbumShelf = false }: SectionHead
 
 export function OrderedHint({ isAlbumShelf }: { isAlbumShelf: boolean }) {
   const text = isAlbumShelf
-    ? "Long-press a detected album and drag it up here to start ranking your shelf."
-    : "Drag items up here to rank them.";
+    ? "Tap ⋮ on a detected album → Move to ordered to start ranking your shelf."
+    : "Tap ⋮ on an item → Move to ordered to start ranking.";
   return (
     <View style={styles.orderedHint} testID="list-detail-ordered-hint">
       <Text variant="caption" tone="secondary">

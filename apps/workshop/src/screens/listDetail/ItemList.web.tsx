@@ -1,195 +1,142 @@
-// Web list-detail row container. Multiple `SortableContext`s (one per
-// draggable section) inside a single `DndContext`, with section headers
-// + ordered-hint + completed rows rendered as plain markup between them.
-// Keeping per-section contexts contains dnd-kit's vertical strategy to
-// each contiguous run of sortable rows and stops shifts across header
-// gaps. Cross-section drag still works because the outer DndContext sees
-// both `active` and `over` regardless of which inner SortableContext
-// owns them. See the album-shelf web list (PR #126) for the original
-// motivation.
+// Web list-detail row container.
 //
-// Completed rows are rendered but not registered with any
-// SortableContext, so they aren't draggable; resolveReorder treats a
-// drop into the completed band as a noop too.
+// Section headers and the ordered hint render as plain markup outside any
+// sortable context — keeping them out of the sortable items list is what
+// fixed the cross-section layout glitch the native side was hitting too
+// (where the section header ended up rendered below its rows after a
+// drag). Drag-to-reorder is scoped to the ordered section; cross-section
+// transitions go through the kebab menu.
 
 import {
   closestCenter,
   DndContext,
   type DragEndEvent,
-  type Modifier,
   PointerSensor,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useCallback, useMemo, useRef } from "react";
+import type { Item } from "@workshop/shared";
+import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Text, tokens } from "../../ui/index";
 import { ItemRow, OrderedHint, rowStyles, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
-import { entryId, type ListEntry } from "./types";
-
-function makeRowsAreaModifier(rowsAreaRef: React.RefObject<View | null>): Modifier {
-  return ({ transform, draggingNodeRect }) => {
-    if (!draggingNodeRect) return transform;
-    const node = rowsAreaRef.current as unknown as { getBoundingClientRect?: () => DOMRect } | null;
-    const areaRect = node?.getBoundingClientRect?.();
-    if (!areaRect) return transform;
-    const proposedTop = draggingNodeRect.top + transform.y;
-    const proposedBottom = draggingNodeRect.bottom + transform.y;
-    if (proposedTop < areaRect.top) {
-      return { ...transform, y: areaRect.top - draggingNodeRect.top };
-    }
-    if (proposedBottom > areaRect.bottom) {
-      return { ...transform, y: areaRect.bottom - draggingNodeRect.bottom };
-    }
-    return transform;
-  };
-}
 
 export function ItemList({
-  entries,
+  ordered,
+  unordered,
+  completed,
+  isAlbumShelf,
+  showOrderedHint,
   newItemIds,
   memberNameById,
-  onReorder,
+  onReorderOrdered,
   onRowMenu,
   onRowPressBody,
 }: ItemListProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-
-  const orderedRows = useMemo(
-    () =>
-      entries.filter(
-        (e): e is Extract<ListEntry, { kind: "ordered-row" }> => e.kind === "ordered-row",
-      ),
-    [entries],
-  );
-  const unorderedRows = useMemo(
-    () =>
-      entries.filter(
-        (e): e is Extract<ListEntry, { kind: "unordered-row" }> => e.kind === "unordered-row",
-      ),
-    [entries],
-  );
-  const completedRows = useMemo(
-    () =>
-      entries.filter(
-        (e): e is Extract<ListEntry, { kind: "completed-row" }> => e.kind === "completed-row",
-      ),
-    [entries],
-  );
-  const orderedIds = useMemo(() => orderedRows.map((r) => entryId(r)), [orderedRows]);
-  const unorderedIds = useMemo(() => unorderedRows.map((r) => entryId(r)), [unorderedRows]);
-  const orderedHeader = entries.find((e) => e.kind === "ordered-header");
-  const unorderedHeader = entries.find(
-    (e): e is Extract<ListEntry, { kind: "unordered-header" }> => e.kind === "unordered-header",
-  );
-  const completedHeader = entries.find(
-    (e): e is Extract<ListEntry, { kind: "completed-header" }> => e.kind === "completed-header",
-  );
-  const showHint = entries.some((e) => e.kind === "ordered-hint");
-  const isAlbumShelfHint = unorderedHeader?.isAlbumShelf ?? false;
-
-  const rowsAreaRef = useRef<View>(null);
-  const rowsAreaModifier = useMemo(() => makeRowsAreaModifier(rowsAreaRef), []);
+  const orderedIds = useMemo(() => ordered.map((it) => it.id), [ordered]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
       if (!over || active.id === over.id) return;
-      const from = entries.findIndex((e) => entryId(e) === active.id);
-      const overIdx = entries.findIndex((e) => entryId(e) === over.id);
-      if (from < 0 || overIdx < 0) return;
-      onReorder({ from, to: overIdx });
+      const fromIndex = ordered.findIndex((it) => it.id === active.id);
+      const toIndex = ordered.findIndex((it) => it.id === over.id);
+      if (fromIndex < 0 || toIndex < 0) return;
+      onReorderOrdered({ fromIndex, toIndex });
     },
-    [entries, onReorder],
+    [ordered, onReorderOrdered],
   );
 
   return (
     <ScrollView contentContainerStyle={styles.listContent} testID="list-detail-list">
-      <DndContext
-        sensors={sensors}
-        onDragEnd={handleDragEnd}
-        collisionDetection={closestCenter}
-        modifiers={[rowsAreaModifier]}
-      >
-        {orderedHeader ? <SectionHeader kind="ordered" count={orderedHeader.count} /> : null}
-        <View ref={rowsAreaRef}>
-          {orderedRows.length > 0 ? (
+      {ordered.length > 0 ? (
+        <>
+          <SectionHeader kind="ordered" count={ordered.length} />
+          <DndContext
+            sensors={sensors}
+            onDragEnd={handleDragEnd}
+            collisionDetection={closestCenter}
+          >
             <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-              {orderedRows.map((row) => (
-                <SortableRowEntry
-                  key={entryId(row)}
-                  entry={row}
-                  isNew={false}
-                  addedByName={memberNameById.get(row.item.addedBy) ?? null}
-                  onMenu={() => onRowMenu(row)}
-                  onPressBody={() => onRowPressBody(row)}
+              {ordered.map((item, i) => (
+                <SortableOrderedRow
+                  key={item.id}
+                  item={item}
+                  indexLabel={String(i + 1)}
+                  addedByName={memberNameById.get(item.addedBy) ?? null}
+                  onMenu={() => onRowMenu(item, "ordered")}
+                  onPressBody={() => onRowPressBody(item, "ordered")}
                 />
               ))}
             </SortableContext>
-          ) : null}
-          {showHint ? <OrderedHint isAlbumShelf={isAlbumShelfHint} /> : null}
-          {unorderedHeader ? (
-            <SectionHeader
-              kind="unordered"
-              count={unorderedHeader.count}
-              isAlbumShelf={unorderedHeader.isAlbumShelf}
+          </DndContext>
+        </>
+      ) : null}
+
+      {showOrderedHint ? <OrderedHint isAlbumShelf={isAlbumShelf} /> : null}
+
+      {unordered.length > 0 ? (
+        <>
+          <SectionHeader kind="unordered" count={unordered.length} isAlbumShelf={isAlbumShelf} />
+          {unordered.map((item) => (
+            <ItemRow
+              key={item.id}
+              item={item}
+              section="unordered"
+              indexLabel="•"
+              isNew={newItemIds.has(item.id)}
+              isDragging={false}
+              addedByName={memberNameById.get(item.addedBy) ?? null}
+              onMenu={() => onRowMenu(item, "unordered")}
+              onPressBody={() => onRowPressBody(item, "unordered")}
             />
-          ) : null}
-          {unorderedRows.length > 0 ? (
-            <SortableContext items={unorderedIds} strategy={verticalListSortingStrategy}>
-              {unorderedRows.map((row) => (
-                <SortableRowEntry
-                  key={entryId(row)}
-                  entry={row}
-                  isNew={newItemIds.has(row.item.id)}
-                  addedByName={memberNameById.get(row.item.addedBy) ?? null}
-                  onMenu={() => onRowMenu(row)}
-                  onPressBody={() => onRowPressBody(row)}
-                />
-              ))}
-            </SortableContext>
-          ) : null}
-        </View>
-        {completedHeader ? <SectionHeader kind="completed" count={completedHeader.count} /> : null}
-        {completedRows.map((row) => (
-          <ItemRow
-            key={entryId(row)}
-            item={row.item}
-            section="completed"
-            indexLabel="✓"
-            isNew={false}
-            isDragging={false}
-            addedByName={memberNameById.get(row.item.addedBy) ?? null}
-            onMenu={() => onRowMenu(row)}
-            onPressBody={() => onRowPressBody(row)}
-          />
-        ))}
-      </DndContext>
+          ))}
+        </>
+      ) : null}
+
+      {completed.length > 0 ? (
+        <>
+          <SectionHeader kind="completed" count={completed.length} />
+          {completed.map((item) => (
+            <ItemRow
+              key={item.id}
+              item={item}
+              section="completed"
+              indexLabel="✓"
+              isNew={false}
+              isDragging={false}
+              addedByName={memberNameById.get(item.addedBy) ?? null}
+              onMenu={() => onRowMenu(item, "completed")}
+              onPressBody={() => onRowPressBody(item, "completed")}
+            />
+          ))}
+        </>
+      ) : null}
     </ScrollView>
   );
 }
 
-interface SortableRowEntryProps {
-  entry: Extract<ListEntry, { kind: "ordered-row" | "unordered-row" }>;
-  isNew: boolean;
+interface SortableOrderedRowProps {
+  item: Item;
+  indexLabel: string;
   addedByName: string | null;
   onMenu: () => void;
   onPressBody: () => void;
 }
 
-function SortableRowEntry({
-  entry,
-  isNew,
+function SortableOrderedRow({
+  item,
+  indexLabel,
   addedByName,
   onMenu,
   onPressBody,
-}: SortableRowEntryProps) {
-  const id = entryId(entry);
+}: SortableOrderedRowProps) {
   const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
-    id,
+    id: item.id,
   });
 
   const webStyle = {
@@ -203,24 +150,21 @@ function SortableRowEntry({
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
       {...((attributes ?? {}) as unknown as Record<string, unknown>)}
       accessibilityRole="button"
-      accessibilityLabel={`Drag handle for ${entry.item.title}`}
-      testID={`item-row-handle-${entry.item.id}`}
+      accessibilityLabel={`Drag handle for ${item.title}`}
+      testID={`item-row-handle-${item.id}`}
       style={[rowStyles.rowDragHandle, { cursor: "grab", userSelect: "none" } as unknown as object]}
     >
       <Text style={rowStyles.dragHandleGlyph}>≡</Text>
     </View>
   );
 
-  const section = entry.kind === "ordered-row" ? "ordered" : "unordered";
-  const indexLabel = entry.kind === "ordered-row" ? String(entry.orderedIndex + 1) : "•";
-
   return (
     <View ref={setNodeRef as unknown as React.Ref<View>} style={webStyle}>
       <ItemRow
-        item={entry.item}
-        section={section}
+        item={item}
+        section="ordered"
         indexLabel={indexLabel}
-        isNew={isNew}
+        isNew={false}
         isDragging={isDragging}
         addedByName={addedByName}
         onMenu={onMenu}
