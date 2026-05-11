@@ -5,10 +5,10 @@ type Variant = "title" | "heading" | "body" | "caption" | "label";
 type Tone = "primary" | "secondary" | "muted" | "onAccent" | "danger";
 
 const variantStyle: Record<Variant, TextStyle> = {
-  title: { fontSize: tokens.font.size.xxl, fontWeight: tokens.font.weight.bold },
-  heading: { fontSize: tokens.font.size.xl, fontWeight: tokens.font.weight.semibold },
+  title: { fontSize: tokens.font.size.xxl, fontWeight: tokens.font.weight.semibold },
+  heading: { fontSize: tokens.font.size.lg, fontWeight: tokens.font.weight.semibold },
   body: { fontSize: tokens.font.size.md, fontWeight: tokens.font.weight.regular },
-  caption: { fontSize: tokens.font.size.sm, fontWeight: tokens.font.weight.regular },
+  caption: { fontSize: tokens.font.size.xs, fontWeight: tokens.font.weight.regular },
   label: { fontSize: tokens.font.size.sm, fontWeight: tokens.font.weight.medium },
 };
 

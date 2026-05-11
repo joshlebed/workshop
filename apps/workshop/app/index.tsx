@@ -9,15 +9,7 @@ import { useAuth } from "../src/hooks/useAuth";
 import { errorMessage } from "../src/lib/api";
 import { getActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
-import {
-  Button,
-  Card,
-  EmptyState,
-  IconButton,
-  type ListColorKey,
-  Text,
-  tokens,
-} from "../src/ui/index";
+import { Button, EmptyState, IconButton, type ListColorKey, Text, tokens } from "../src/ui/index";
 
 const TYPE_LABEL: Record<ListType, string> = {
   movie: "Movies",
@@ -79,10 +71,10 @@ export default function Home() {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <View>
-          <Text variant="heading">Workshop.dev</Text>
-          <Text tone="secondary" testID="home-greeting">
-            {user?.displayName ? `Hi, ${user.displayName}` : "Signed in"}
+        <View style={styles.headerTitleBlock}>
+          <Text variant="heading">Lists</Text>
+          <Text variant="caption" tone="muted" testID="home-greeting">
+            {user?.displayName ? user.displayName : "Signed in"}
           </Text>
         </View>
         <View style={styles.headerActions}>
@@ -138,9 +130,9 @@ export default function Home() {
             data={listsQuery.data.lists}
             keyExtractor={(l) => l.id}
             contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <View style={{ height: tokens.space.md }} />}
+            ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
             renderItem={({ item }) => (
-              <ListCard list={item} onPress={() => router.push(`/list/${item.id}`)} />
+              <ListRow list={item} onPress={() => router.push(`/list/${item.id}`)} />
             )}
             refreshing={listsQuery.isRefetching}
             onRefresh={() => listsQuery.refetch()}
@@ -163,114 +155,109 @@ export default function Home() {
   );
 }
 
-function ListCard({ list, onPress }: { list: ListSummary; onPress: () => void }) {
+function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) {
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
+  const subtitle = list.description?.trim()
+    ? list.description
+    : `${TYPE_LABEL[list.type]} · ${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Open list ${list.name}`}
       onPress={onPress}
       testID={`list-card-${list.id}`}
-      style={({ pressed }) => [pressed && styles.cardPressed]}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      <Card style={styles.card}>
-        <View style={[styles.cardStripe, { backgroundColor: accent }]} />
-        <View style={styles.cardBody}>
-          <View style={styles.cardHead}>
-            <Text style={styles.cardEmoji}>{list.emoji}</Text>
-            <View style={styles.cardTitleBlock}>
-              <Text variant="heading" numberOfLines={1}>
-                {list.name}
-              </Text>
-              <Text variant="caption" tone="muted">
-                {TYPE_LABEL[list.type]} · {list.role === "owner" ? "Owner" : "Member"}
-              </Text>
-            </View>
-          </View>
-          {list.description ? (
-            <Text tone="secondary" numberOfLines={2}>
-              {list.description}
-            </Text>
-          ) : null}
-          <View style={styles.cardMeta}>
-            <Text variant="caption" tone="muted">
-              {pluralize(list.itemCount, "item")}
-            </Text>
-            <Text variant="caption" tone="muted">
-              ·
-            </Text>
-            <Text variant="caption" tone="muted">
-              {pluralize(list.memberCount, "member")}
-            </Text>
-          </View>
-        </View>
-      </Card>
+      <View style={[styles.avatar, { backgroundColor: `${accent}33`, borderColor: accent }]}>
+        <Text style={styles.avatarEmoji}>{list.emoji}</Text>
+      </View>
+      <View style={styles.rowBody}>
+        <Text variant="label" numberOfLines={1}>
+          {list.name}
+        </Text>
+        <Text variant="caption" tone="muted" numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
     </Pressable>
   );
-}
-
-function pluralize(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.xxl,
-    paddingBottom: tokens.space.xl,
-    gap: tokens.space.lg,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.lg,
+    gap: tokens.space.sm,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.xs,
   },
-  signOutGlyph: { fontSize: tokens.font.size.lg },
-  bellGlyph: { fontSize: tokens.font.size.lg },
+  headerTitleBlock: { gap: 0 },
+  signOutGlyph: { fontSize: tokens.font.size.md },
+  bellGlyph: { fontSize: tokens.font.size.md },
   bellBadge: {
     position: "absolute",
     top: 2,
     right: 2,
-    minWidth: 18,
-    height: 18,
+    minWidth: 16,
+    height: 16,
     paddingHorizontal: 4,
-    borderRadius: 9,
+    borderRadius: 8,
     backgroundColor: tokens.accent.default,
     alignItems: "center",
     justifyContent: "center",
   },
-  bellBadgeText: { fontSize: 10, fontWeight: tokens.font.weight.bold },
-  headerActions: { flexDirection: "row", gap: tokens.space.sm, alignItems: "center" },
+  bellBadgeText: { fontSize: 9, fontWeight: tokens.font.weight.bold },
+  headerActions: { flexDirection: "row", gap: tokens.space.xs, alignItems: "center" },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   listContent: { paddingBottom: tokens.space.xxl * 2 },
-  card: { padding: 0, overflow: "hidden", flexDirection: "row" },
-  cardPressed: { opacity: 0.85 },
-  cardStripe: { width: 6 },
-  cardBody: { flex: 1, padding: tokens.space.lg, gap: tokens.space.sm },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
-  cardEmoji: { fontSize: tokens.font.size.xl },
-  cardTitleBlock: { flex: 1, gap: 2 },
-  cardMeta: { flexDirection: "row", gap: tokens.space.sm, alignItems: "center" },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.sm,
+  },
+  rowPressed: { backgroundColor: tokens.bg.surface },
+  rowBody: { flex: 1, gap: 2, minWidth: 0 },
+  rowSeparator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tokens.border.subtle,
+    marginLeft: tokens.space.lg + 44 + tokens.space.md,
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  avatarEmoji: { fontSize: 20, lineHeight: 24 },
   fab: {
     position: "absolute",
-    right: tokens.space.xl,
-    bottom: tokens.space.xl,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    right: tokens.space.lg,
+    bottom: tokens.space.lg,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: tokens.accent.default,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
   },
   fabPressed: { backgroundColor: tokens.accent.hover },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.bold, lineHeight: 32 },
+  fabGlyph: { fontSize: 24, fontWeight: tokens.font.weight.semibold, lineHeight: 28 },
 });
