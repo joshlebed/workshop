@@ -35,6 +35,55 @@ export function positionOf(item: Item): number | null {
 }
 
 /**
+ * Within-section reorder: given the current ordered array and a drag from
+ * `fromIndex` to `toIndex` (post-removal-splice convention used by both
+ * dnd-kit and react-native-reorderable-list), return the new `position`
+ * value for the dragged item, or `null` if no mutation is needed.
+ *
+ * Cross-section moves (promote / demote) are handled separately via the
+ * kebab menu so this helper never has to reason about which section the
+ * row belongs to.
+ */
+export function midpointForOrderedReorder(
+  orderedItems: Item[],
+  fromIndex: number,
+  toIndex: number,
+): number | null {
+  if (fromIndex === toIndex) return null;
+  if (fromIndex < 0 || fromIndex >= orderedItems.length) return null;
+  if (toIndex < 0 || toIndex >= orderedItems.length) return null;
+
+  const post = orderedItems.slice();
+  const [moved] = post.splice(fromIndex, 1);
+  if (!moved) return null;
+  post.splice(toIndex, 0, moved);
+
+  const beforeItem = toIndex > 0 ? post[toIndex - 1] : null;
+  const afterItem = toIndex < post.length - 1 ? post[toIndex + 1] : null;
+  const before = beforeItem ? positionOf(beforeItem) : null;
+  const after = afterItem ? positionOf(afterItem) : null;
+  const next = midpointBetween(before, after);
+
+  const current = positionOf(moved);
+  if (current !== null && Math.abs(current - next) < 1e-9) return null;
+  return next;
+}
+
+/**
+ * Midpoint between two ordered-row positions:
+ * - both null → 1   (empty ordered list)
+ * - before null → after / 2  (insert at top)
+ * - after null  → before + 1  (insert at bottom)
+ * - both        → (before + after) / 2
+ */
+export function midpointBetween(before: number | null, after: number | null): number {
+  if (before === null && after === null) return 1;
+  if (before === null && after !== null) return after / 2;
+  if (after === null && before !== null) return before + 1;
+  return ((before as number) + (after as number)) / 2;
+}
+
+/**
  * Optimistic-update helper. Given the current ordered/unordered/completed
  * response and a patch that sets a row's position to `nextPosition` (number
  * → ordered, null → unordered), return the next response with the row

@@ -24,7 +24,11 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { refreshAlbumShelf } from "../api/albumShelf";
 import { completeItem, deleteItem, fetchItems, uncompleteItem, updateItem } from "../api/items";
 import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
-import { applyPositionPatch, midpointAt } from "../lib/albumShelfPositions";
+import {
+  applyPositionPatch,
+  midpointAt,
+  midpointForOrderedReorder,
+} from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { haptics } from "../lib/haptics";
 import { queryKeys } from "../lib/queryKeys";
@@ -33,8 +37,7 @@ import { Button, EmptyState, type ListColorKey, Text, tokens, useToast } from ".
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import type { ReorderEvent } from "./listDetail/listProps";
-import { resolveReorder } from "./listDetail/resolveReorder";
-import type { ListEntry, RowEntry } from "./listDetail/types";
+import type { Section } from "./listDetail/types";
 
 interface Props {
   list: List;
@@ -44,9 +47,9 @@ interface Props {
 
 /**
  * Unified list-detail screen for every list type. The album-shelf pattern
- * (ordered + unordered sections, drag-to-reorder, kebab menu) generalises
- * to all list types since the 2026-05 ordering refactor — there is no
- * separate standard / album-shelf screen any more.
+ * (ordered + unordered + completed sections, drag-to-reorder, kebab menu)
+ * generalises to all list types since the 2026-05 ordering refactor —
+ * there is no separate standard / album-shelf screen any more.
  *
  * Type-specific behaviour:
  *   - album_shelf: refresh button (instead of FAB), body-press opens
@@ -55,12 +58,16 @@ interface Props {
  *   - other types: FAB to add an item, body-press opens the item-detail
  *     screen, "UNORDERED" section label, kebab includes Edit.
  *
- * Drag-to-reorder is delegated to a platform-specific list:
+ * Drag-to-reorder is scoped to the ordered section only and delegated to
+ * a platform-specific list:
  *   - native: `ItemList.tsx` (react-native-reorderable-list)
  *   - web:    `ItemList.web.tsx` (@dnd-kit/sortable)
- * Both libraries report drag end as `{from, to}` indices in the flat
- * entries list. The pure `resolveReorder` helper turns that into a
- * `{position}` mutation, handling cross-section promote/demote.
+ * Both libraries report drag end as `{fromIndex, toIndex}` inside the
+ * ordered array; this screen translates that into a `{position}` PATCH.
+ * Cross-section transitions (promote / demote / mark complete) all flow
+ * through the kebab menu — keeping section headers out of any sortable
+ * container is what fixed the layout glitch where a section header could
+ * end up rendered below its rows after a cross-section drag.
  */
 export function ListDetail({ list, members, token }: Props) {
   const router = useRouter();
@@ -248,42 +255,18 @@ export function ListDetail({ list, members, token }: Props) {
     (filtered.unordered.length > 0 || filtered.completed.length > 0) &&
     filter.trim().length === 0;
 
-  const entries: ListEntry[] = useMemo(() => {
-    const out: ListEntry[] = [];
-    if (filtered.ordered.length > 0) {
-      out.push({ kind: "ordered-header", count: filtered.ordered.length });
-      filtered.ordered.forEach((it, i) => {
-        out.push({ kind: "ordered-row", item: it, orderedIndex: i });
-      });
-    }
-    if (showOrderedHint) {
-      out.push({ kind: "ordered-hint" });
-    }
-    if (filtered.unordered.length > 0) {
-      out.push({
-        kind: "unordered-header",
-        count: filtered.unordered.length,
-        isAlbumShelf,
-      });
-      filtered.unordered.forEach((it) => {
-        out.push({ kind: "unordered-row", item: it });
-      });
-    }
-    if (filtered.completed.length > 0) {
-      out.push({ kind: "completed-header", count: filtered.completed.length });
-      filtered.completed.forEach((it) => {
-        out.push({ kind: "completed-row", item: it });
-      });
-    }
-    return out;
-  }, [filtered.ordered, filtered.unordered, filtered.completed, showOrderedHint, isAlbumShelf]);
+  const totalRows = filtered.ordered.length + filtered.unordered.length + filtered.completed.length;
 
-  const onReorder = (event: ReorderEvent) => {
-    const result = resolveReorder({ entries, from: event.from, to: event.to });
-    if (result.kind === "noop") return;
-    const dragged = entries[event.from];
-    if (!dragged || (dragged.kind !== "ordered-row" && dragged.kind !== "unordered-row")) return;
-    positionMutation.mutate({ item: dragged.item, nextPosition: result.nextPosition });
+  const onReorderOrdered = (event: ReorderEvent) => {
+    const item = filtered.ordered[event.fromIndex];
+    if (!item) return;
+    const nextPosition = midpointForOrderedReorder(
+      filtered.ordered,
+      event.fromIndex,
+      event.toIndex,
+    );
+    if (nextPosition === null) return;
+    positionMutation.mutate({ item, nextPosition });
   };
 
   const [menuItem, setMenuItem] = useState<Item | null>(null);
@@ -293,14 +276,7 @@ export function ListDetail({ list, members, token }: Props) {
     setMenuActions(null);
   };
 
-  const onRowMenu = (entry: RowEntry) => {
-    const section: "ordered" | "unordered" | "completed" =
-      entry.kind === "ordered-row"
-        ? "ordered"
-        : entry.kind === "unordered-row"
-          ? "unordered"
-          : "completed";
-    const item = entry.item;
+  const onRowMenu = (item: Item, section: Section) => {
     const confirmDelete = () => {
       Alert.alert(
         "Remove this item?",
@@ -355,9 +331,9 @@ export function ListDetail({ list, members, token }: Props) {
     });
   };
 
-  const onRowPressBody = (entry: RowEntry) => {
+  const onRowPressBody = (item: Item) => {
     if (isAlbumShelf) {
-      const m = entry.item.metadata as { spotifyAlbumUrl?: string };
+      const m = item.metadata as { spotifyAlbumUrl?: string };
       const url = m.spotifyAlbumUrl;
       if (!url) return;
       Linking.openURL(url).catch(() => {
@@ -365,7 +341,7 @@ export function ListDetail({ list, members, token }: Props) {
       });
       return;
     }
-    router.push(`/list/${list.id}/item/${entry.item.id}`);
+    router.push(`/list/${list.id}/item/${item.id}`);
   };
 
   const headerSubline = useMemo(() => {
@@ -397,7 +373,7 @@ export function ListDetail({ list, members, token }: Props) {
     completedRaw.length,
   ]);
 
-  const isEmptyAfterFetch = !itemsQuery.isPending && !itemsQuery.isError && entries.length === 0;
+  const isEmptyAfterFetch = !itemsQuery.isPending && !itemsQuery.isError && totalRows === 0;
 
   return (
     <KeyboardAvoidingView
@@ -528,10 +504,14 @@ export function ListDetail({ list, members, token }: Props) {
       ) : (
         <View style={styles.listWrap}>
           <ItemList
-            entries={entries}
+            ordered={filtered.ordered}
+            unordered={filtered.unordered}
+            completed={filtered.completed}
+            isAlbumShelf={isAlbumShelf}
+            showOrderedHint={showOrderedHint}
             newItemIds={newItemIds}
             memberNameById={memberNameById}
-            onReorder={onReorder}
+            onReorderOrdered={onReorderOrdered}
             onRowMenu={onRowMenu}
             onRowPressBody={onRowPressBody}
           />
