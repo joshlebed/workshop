@@ -20,6 +20,30 @@ const TYPE_LABEL: Record<ListType, string> = {
   album_shelf: "Album shelf",
 };
 
+function partOfDay(date = new Date()): "morning" | "afternoon" | "evening" | "night" {
+  const h = date.getHours();
+  if (h < 5) return "night";
+  if (h < 12) return "morning";
+  if (h < 17) return "afternoon";
+  if (h < 22) return "evening";
+  return "night";
+}
+
+function buildGreeting(name: string | null | undefined): string {
+  const trimmed = name?.trim();
+  const handle = trimmed && trimmed.length > 0 ? trimmed : null;
+  switch (partOfDay()) {
+    case "morning":
+      return handle ? `Morning, ${handle}` : "Good morning";
+    case "afternoon":
+      return handle ? `Afternoon, ${handle}` : "Good afternoon";
+    case "evening":
+      return handle ? `Evening, ${handle}` : "Good evening";
+    case "night":
+      return handle ? `Hi, ${handle}` : "Welcome back";
+  }
+}
+
 export default function Home() {
   const { user, token, signOut } = useAuth();
   const router = useRouter();
@@ -68,27 +92,18 @@ export default function Home() {
     router.push("/create-list/type");
   };
 
-  const lists = listsQuery.data?.lists ?? [];
-  const totalItems = lists.reduce((acc, l) => acc + l.itemCount, 0);
-  const greeting = user?.displayName ? `Hi, ${user.displayName.split(" ")[0]}` : "Welcome back";
-  const summary =
-    lists.length === 0
-      ? null
-      : `${lists.length} ${lists.length === 1 ? "list" : "lists"}, ${totalItems} ${totalItems === 1 ? "item" : "items"}`;
+  const greeting = buildGreeting(user?.displayName);
 
   return (
     <View style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerTitleBlock}>
-          <Text variant="caption" tone="muted" testID="home-greeting" style={styles.greeting}>
+          <Text variant="title" testID="home-greeting" style={styles.title}>
             {greeting}
           </Text>
-          <Text variant="title">Lists</Text>
-          {summary ? (
-            <Text variant="caption" tone="muted" style={styles.summary}>
-              {summary}
-            </Text>
-          ) : null}
+          <Text variant="caption" tone="muted" style={styles.eyebrow}>
+            Your lists
+          </Text>
         </View>
         <View style={styles.headerActions}>
           <View>
@@ -108,7 +123,7 @@ export default function Home() {
             ) : null}
           </View>
           <IconButton accessibilityLabel="Sign out" onPress={signOut} testID="sign-out">
-            <Text tone="secondary" style={styles.signOutGlyph}>
+            <Text tone="muted" style={styles.signOutGlyph}>
               ⎋
             </Text>
           </IconButton>
@@ -132,10 +147,13 @@ export default function Home() {
           </View>
         ) : listsQuery.data.lists.length === 0 ? (
           <View style={styles.center}>
+            <View style={styles.emptyGlyphBadge}>
+              <Text style={styles.emptyGlyph}>✦</Text>
+            </View>
             <EmptyState
-              title="Nothing here yet"
-              description="Start a list for movies, books, trips, or whatever you're collecting."
-              action={<Button label="Create your first list" onPress={onCreateList} />}
+              title="Start your first list"
+              description="Movies, books, trips, albums, date ideas. Anything you want to remember together."
+              action={<Button label="Create a list" onPress={onCreateList} />}
             />
           </View>
         ) : (
@@ -170,10 +188,10 @@ export default function Home() {
 
 function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) {
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
-  const countText = `${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
-  const subtitle = list.description?.trim()
-    ? list.description
-    : `${TYPE_LABEL[list.type]} · ${countText}`;
+  const itemsLabel =
+    list.itemCount === 0 ? "Empty" : `${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
+  const description = list.description?.trim();
+  const subtitle = description ? description : `${TYPE_LABEL[list.type]} · ${itemsLabel}`;
   return (
     <Pressable
       accessibilityRole="button"
@@ -184,17 +202,11 @@ function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) 
     >
       <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
         <Text style={styles.avatarEmoji}>{list.emoji}</Text>
-        <View style={[styles.avatarDot, { backgroundColor: accent }]} />
       </View>
       <View style={styles.rowBody}>
-        <View style={styles.rowTitleLine}>
-          <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
-            {list.name}
-          </Text>
-          <Text variant="caption" tone="muted" style={styles.rowCount}>
-            {list.itemCount}
-          </Text>
-        </View>
+        <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
+          {list.name}
+        </Text>
         <Text variant="caption" tone="muted" numberOfLines={1}>
           {subtitle}
         </Text>
@@ -210,35 +222,23 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.lg,
+    paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.lg,
-    gap: tokens.space.sm,
+    gap: tokens.space.md,
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
     gap: tokens.space.md,
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xs,
   },
-  headerTitleBlock: { gap: 2, flex: 1, minWidth: 0 },
-  greeting: { letterSpacing: 0.3, textTransform: "uppercase" },
-  summary: { marginTop: 2 },
-  rowTitleLine: { flexDirection: "row", alignItems: "baseline", gap: tokens.space.sm },
-  rowTitle: { flexShrink: 1, fontSize: tokens.font.size.md },
-  rowCount: { fontVariant: ["tabular-nums"] },
+  headerTitleBlock: { gap: tokens.space.xs, flex: 1, minWidth: 0 },
+  title: { fontSize: tokens.font.size.xxl, letterSpacing: -0.5 },
+  eyebrow: { letterSpacing: 0.6, textTransform: "uppercase" },
+  rowTitle: { fontSize: tokens.font.size.md },
   rowChevron: { fontSize: tokens.font.size.xl, marginLeft: tokens.space.xs },
-  avatarDot: {
-    position: "absolute",
-    bottom: -1,
-    right: -1,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 2,
-    borderColor: tokens.bg.canvas,
-  },
   signOutGlyph: { fontSize: tokens.font.size.md },
   bellGlyph: { fontSize: tokens.font.size.md },
   bellBadge: {
@@ -256,14 +256,23 @@ const styles = StyleSheet.create({
   bellBadgeText: { fontSize: 9, fontWeight: tokens.font.weight.bold },
   headerActions: { flexDirection: "row", gap: tokens.space.xs, alignItems: "center" },
   body: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: tokens.space.lg },
+  emptyGlyphBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: tokens.accent.muted,
+  },
+  emptyGlyph: { fontSize: 28, color: tokens.accent.default },
   listContent: { paddingBottom: tokens.space.xxl * 2 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
     paddingHorizontal: tokens.space.lg,
-    paddingVertical: tokens.space.sm,
+    paddingVertical: tokens.space.md,
   },
   rowPressed: { backgroundColor: tokens.bg.surface },
   rowBody: { flex: 1, gap: 2, minWidth: 0 },
@@ -284,18 +293,18 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: tokens.space.lg,
     bottom: tokens.space.lg,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: tokens.accent.default,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
     shadowOpacity: 0.3,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 5,
   },
   fabPressed: { backgroundColor: tokens.accent.hover },
-  fabGlyph: { fontSize: 24, fontWeight: tokens.font.weight.semibold, lineHeight: 28 },
+  fabGlyph: { fontSize: 26, fontWeight: tokens.font.weight.semibold, lineHeight: 30 },
 });
