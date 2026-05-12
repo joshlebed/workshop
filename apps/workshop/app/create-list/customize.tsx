@@ -2,8 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ListColor, ListType } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
 import { queryKeys } from "../../src/lib/queryKeys";
@@ -132,10 +132,7 @@ export default function CreateListCustomize() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <View style={styles.root}>
       <View style={styles.header}>
         <IconButton accessibilityLabel="Back" onPress={() => router.back()}>
           <Text style={styles.backGlyph}>‹</Text>
@@ -248,21 +245,25 @@ export default function CreateListCustomize() {
         </View>
       </KeyboardAwareScrollView>
 
-      {/* Submit lives outside the scroll so it sticks above the keyboard
-          (KeyboardAvoidingView shrinks the available space; the button stays
-          at its bottom edge instead of getting trapped inside scrollable
-          content). */}
-      <View style={styles.footer}>
-        <Button
-          testID="create-list-submit"
-          label={isAlbumShelf ? "Continue" : "Create list"}
-          size="lg"
-          disabled={!canSubmit || mutation.isPending}
-          loading={mutation.isPending}
-          onPress={onSubmit}
-        />
-      </View>
-    </KeyboardAvoidingView>
+      {/* `KeyboardStickyView` tracks the real keyboard frame (including the
+          iOS autocorrect-suggestions bar). Pinning the CTA this way is the
+          documented pattern for "sticky button above the keyboard" in
+          react-native-keyboard-controller — `KeyboardAvoidingView` with
+          `padding` measured the keys-only height and clipped this button
+          behind the suggestions strip. */}
+      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+        <View style={styles.footer}>
+          <Button
+            testID="create-list-submit"
+            label={isAlbumShelf ? "Continue" : "Create list"}
+            size="lg"
+            disabled={!canSubmit || mutation.isPending}
+            loading={mutation.isPending}
+            onPress={onSubmit}
+          />
+        </View>
+      </KeyboardStickyView>
+    </View>
   );
 }
 

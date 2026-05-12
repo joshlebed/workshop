@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ListColor } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, TextInput, View } from "react-native";
-import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { previewSpotifyPlaylist } from "../../src/api/albumShelf";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
@@ -96,10 +96,7 @@ export default function CreateListPlaylist() {
   });
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <View style={styles.root}>
       <View style={styles.header}>
         <IconButton
           accessibilityLabel="Back"
@@ -185,21 +182,22 @@ export default function CreateListPlaylist() {
         ) : null}
       </KeyboardAwareScrollView>
 
-      {/* Submit lives outside the scroll so it sticks above the keyboard
-          (KeyboardAvoidingView shrinks the available space; the button stays
-          at its bottom edge instead of getting trapped inside scrollable
-          content). */}
-      <View style={styles.footer}>
-        <Button
-          testID="album-shelf-playlist-submit"
-          label="Create shelf"
-          size="lg"
-          disabled={!canSubmit || mutation.isPending}
-          loading={mutation.isPending}
-          onPress={() => mutation.mutate()}
-        />
-      </View>
-    </KeyboardAvoidingView>
+      {/* See customize.tsx — `KeyboardStickyView` is the right primitive for
+          a CTA pinned above the keyboard; it tracks the real keyboard frame
+          including the iOS suggestions strip. */}
+      <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
+        <View style={styles.footer}>
+          <Button
+            testID="album-shelf-playlist-submit"
+            label="Create shelf"
+            size="lg"
+            disabled={!canSubmit || mutation.isPending}
+            loading={mutation.isPending}
+            onPress={() => mutation.mutate()}
+          />
+        </View>
+      </KeyboardStickyView>
+    </View>
   );
 }
 
