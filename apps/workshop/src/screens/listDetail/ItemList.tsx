@@ -13,7 +13,7 @@
 
 import type { Item } from "@workshop/shared";
 import * as Haptics from "expo-haptics";
-import { memo, useCallback } from "react";
+import { memo, type ReactNode, useCallback } from "react";
 import { type ListRenderItemInfo, Pressable, StyleSheet } from "react-native";
 import {
   NestedReorderableList,
@@ -22,7 +22,7 @@ import {
   useIsActive,
   useReorderableDrag,
 } from "react-native-reorderable-list";
-import { Text, tokens } from "../../ui/index";
+import { tokens } from "../../ui/index";
 import { ItemRow, OrderedHint, rowStyles, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
 
@@ -34,6 +34,8 @@ export function ItemList({
   showOrderedHint,
   newItemIds,
   memberNameById,
+  showProvenance,
+  accent,
   onReorderOrdered,
   onRowMenu,
   onRowPressBody,
@@ -50,12 +52,13 @@ export function ItemList({
       <DraggableOrderedRow
         item={item}
         indexLabel={String(index + 1)}
-        addedByName={memberNameById.get(item.addedBy) ?? null}
+        addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+        accent={accent}
         onMenu={() => onRowMenu(item, "ordered")}
         onPressBody={() => onRowPressBody(item, "ordered")}
       />
     ),
-    [memberNameById, onRowMenu, onRowPressBody],
+    [memberNameById, showProvenance, accent, onRowMenu, onRowPressBody],
   );
 
   return (
@@ -86,10 +89,11 @@ export function ItemList({
               key={item.id}
               item={item}
               section="unordered"
-              indexLabel="•"
+              indexLabel=""
               isNew={newItemIds.has(item.id)}
               isDragging={false}
-              addedByName={memberNameById.get(item.addedBy) ?? null}
+              addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+              accent={accent}
               onMenu={() => onRowMenu(item, "unordered")}
               onPressBody={() => onRowPressBody(item, "unordered")}
             />
@@ -105,10 +109,11 @@ export function ItemList({
               key={item.id}
               item={item}
               section="completed"
-              indexLabel="✓"
+              indexLabel=""
               isNew={false}
               isDragging={false}
-              addedByName={memberNameById.get(item.addedBy) ?? null}
+              addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+              accent={accent}
               onMenu={() => onRowMenu(item, "completed")}
               onPressBody={() => onRowPressBody(item, "completed")}
             />
@@ -127,6 +132,7 @@ interface DraggableOrderedRowProps {
   item: Item;
   indexLabel: string;
   addedByName: string | null;
+  accent: string;
   onMenu: () => void;
   onPressBody: () => void;
 }
@@ -135,6 +141,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
   item,
   indexLabel,
   addedByName,
+  accent,
   onMenu,
   onPressBody,
 }: DraggableOrderedRowProps) {
@@ -148,7 +155,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
     drag();
   }, [drag]);
 
-  const dragHandle = (
+  const dragHandle = (child: ReactNode) => (
     <Pressable
       onLongPress={onHandleLongPress}
       delayLongPress={120}
@@ -158,7 +165,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
       style={rowStyles.rowDragHandle}
       hitSlop={6}
     >
-      <Text style={rowStyles.dragHandleGlyph}>≡</Text>
+      {child}
     </Pressable>
   );
 
@@ -170,6 +177,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
       isNew={false}
       isDragging={isActive}
       addedByName={addedByName}
+      accent={accent}
       onMenu={onMenu}
       onPressBody={onPressBody}
       dragHandle={dragHandle}
