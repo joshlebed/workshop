@@ -68,14 +68,27 @@ export default function Home() {
     router.push("/create-list/type");
   };
 
+  const lists = listsQuery.data?.lists ?? [];
+  const totalItems = lists.reduce((acc, l) => acc + l.itemCount, 0);
+  const greeting = user?.displayName ? `Hi, ${user.displayName.split(" ")[0]}` : "Welcome back";
+  const summary =
+    lists.length === 0
+      ? null
+      : `${lists.length} ${lists.length === 1 ? "list" : "lists"}, ${totalItems} ${totalItems === 1 ? "item" : "items"}`;
+
   return (
     <View style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerTitleBlock}>
-          <Text variant="heading">Lists</Text>
-          <Text variant="caption" tone="muted" testID="home-greeting">
-            {user?.displayName ? user.displayName : "Signed in"}
+          <Text variant="caption" tone="muted" testID="home-greeting" style={styles.greeting}>
+            {greeting}
           </Text>
+          <Text variant="title">Lists</Text>
+          {summary ? (
+            <Text variant="caption" tone="muted" style={styles.summary}>
+              {summary}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.headerActions}>
           <View>
@@ -120,9 +133,9 @@ export default function Home() {
         ) : listsQuery.data.lists.length === 0 ? (
           <View style={styles.center}>
             <EmptyState
-              title="No lists yet"
-              description="Create your first list to start collecting movies, books, trips, or date ideas."
-              action={<Button label="Create a list" onPress={onCreateList} />}
+              title="Nothing here yet"
+              description="Start a list for movies, books, trips, or whatever you're collecting."
+              action={<Button label="Create your first list" onPress={onCreateList} />}
             />
           </View>
         ) : (
@@ -157,9 +170,10 @@ export default function Home() {
 
 function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) {
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
+  const countText = `${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
   const subtitle = list.description?.trim()
     ? list.description
-    : `${TYPE_LABEL[list.type]} · ${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
+    : `${TYPE_LABEL[list.type]} · ${countText}`;
   return (
     <Pressable
       accessibilityRole="button"
@@ -168,17 +182,26 @@ function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) 
       testID={`list-card-${list.id}`}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      <View style={[styles.avatar, { backgroundColor: `${accent}33`, borderColor: accent }]}>
+      <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
         <Text style={styles.avatarEmoji}>{list.emoji}</Text>
+        <View style={[styles.avatarDot, { backgroundColor: accent }]} />
       </View>
       <View style={styles.rowBody}>
-        <Text variant="label" numberOfLines={1}>
-          {list.name}
-        </Text>
+        <View style={styles.rowTitleLine}>
+          <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
+            {list.name}
+          </Text>
+          <Text variant="caption" tone="muted" style={styles.rowCount}>
+            {list.itemCount}
+          </Text>
+        </View>
         <Text variant="caption" tone="muted" numberOfLines={1}>
           {subtitle}
         </Text>
       </View>
+      <Text tone="muted" style={styles.rowChevron}>
+        ›
+      </Text>
     </Pressable>
   );
 }
@@ -199,7 +222,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xs,
   },
-  headerTitleBlock: { gap: 0 },
+  headerTitleBlock: { gap: 2, flex: 1, minWidth: 0 },
+  greeting: { letterSpacing: 0.3, textTransform: "uppercase" },
+  summary: { marginTop: 2 },
+  rowTitleLine: { flexDirection: "row", alignItems: "baseline", gap: tokens.space.sm },
+  rowTitle: { flexShrink: 1, fontSize: tokens.font.size.md },
+  rowCount: { fontVariant: ["tabular-nums"] },
+  rowChevron: { fontSize: tokens.font.size.xl, marginLeft: tokens.space.xs },
+  avatarDot: {
+    position: "absolute",
+    bottom: -1,
+    right: -1,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+    borderColor: tokens.bg.canvas,
+  },
   signOutGlyph: { fontSize: tokens.font.size.md },
   bellGlyph: { fontSize: tokens.font.size.md },
   bellBadge: {
@@ -239,9 +278,8 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
   },
-  avatarEmoji: { fontSize: 20, lineHeight: 24 },
+  avatarEmoji: { fontSize: 22, lineHeight: 26 },
   fab: {
     position: "absolute",
     right: tokens.space.lg,

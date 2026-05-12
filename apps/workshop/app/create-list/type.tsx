@@ -1,13 +1,14 @@
 import type { ListType } from "@workshop/shared";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { Card, IconButton, Text, tokens } from "../../src/ui/index";
+import { IconButton, type ListColorKey, Text, tokens } from "../../src/ui/index";
 
 interface TypeOption {
   type: ListType;
   emoji: string;
   label: string;
   description: string;
+  color: ListColorKey;
 }
 
 const OPTIONS: TypeOption[] = [
@@ -15,37 +16,43 @@ const OPTIONS: TypeOption[] = [
     type: "movie",
     emoji: "🎬",
     label: "Movies",
-    description: "Films to watch — solo or with someone.",
+    description: "Films to watch, solo or with someone.",
+    color: "sunset",
   },
   {
     type: "tv",
     emoji: "📺",
     label: "TV shows",
     description: "Series to start, finish, or rewatch.",
+    color: "ocean",
   },
   {
     type: "book",
     emoji: "📚",
     label: "Books",
-    description: "Reading list, shared or otherwise.",
+    description: "A reading list, shared or otherwise.",
+    color: "forest",
   },
   {
     type: "date_idea",
     emoji: "💡",
     label: "Date ideas",
     description: "Plans for time spent together.",
+    color: "rose",
   },
   {
     type: "trip",
     emoji: "✈️",
     label: "Trips",
     description: "Places to go, things to do there.",
+    color: "grape",
   },
   {
     type: "album_shelf",
     emoji: "📀",
     label: "Album shelf",
-    description: "Build a curated album collection from a public Spotify playlist.",
+    description: "Curate albums from a public Spotify playlist.",
+    color: "slate",
   },
 ];
 
@@ -71,34 +78,39 @@ export default function CreateListType() {
           Pick a type. You can rename and reskin it next.
         </Text>
         <View style={styles.options}>
-          {OPTIONS.map((opt) => (
-            <Pressable
-              key={opt.type}
-              testID={`create-list-type-${opt.type}`}
-              accessibilityRole="button"
-              accessibilityLabel={opt.label}
-              onPress={() =>
-                router.push({
-                  pathname: "/create-list/customize",
-                  params: { type: opt.type },
-                })
-              }
-              style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
-            >
-              <Card padded={false} style={styles.optionCard}>
-                <View style={styles.optionInner}>
+          {OPTIONS.map((opt) => {
+            const accent = tokens.list[opt.color];
+            return (
+              <Pressable
+                key={opt.type}
+                testID={`create-list-type-${opt.type}`}
+                accessibilityRole="button"
+                accessibilityLabel={opt.label}
+                onPress={() =>
+                  router.push({
+                    pathname: "/create-list/customize",
+                    params: { type: opt.type },
+                  })
+                }
+                style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+              >
+                <View style={[styles.optionBadge, { backgroundColor: `${accent}26` }]}>
                   <Text style={styles.optionEmoji}>{opt.emoji}</Text>
-                  <View style={styles.optionText}>
-                    <Text variant="heading">{opt.label}</Text>
-                    <Text tone="secondary">{opt.description}</Text>
-                  </View>
-                  <Text tone="muted" style={styles.optionChevron}>
-                    ›
+                </View>
+                <View style={styles.optionText}>
+                  <Text variant="label" style={styles.optionLabel}>
+                    {opt.label}
+                  </Text>
+                  <Text variant="caption" tone="muted">
+                    {opt.description}
                   </Text>
                 </View>
-              </Card>
-            </Pressable>
-          ))}
+                <Text tone="muted" style={styles.optionChevron}>
+                  ›
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       </ScrollView>
     </View>
@@ -118,22 +130,30 @@ const styles = StyleSheet.create({
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
   headerSpacer: { width: 40 },
   body: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.lg,
   },
-  tagline: { textAlign: "center" },
-  options: { gap: tokens.space.md },
-  option: { borderRadius: tokens.radius.lg },
-  optionPressed: { opacity: 0.85 },
-  optionCard: { overflow: "hidden" },
-  optionInner: {
+  tagline: { paddingHorizontal: tokens.space.sm, fontSize: tokens.font.size.md },
+  options: { gap: tokens.space.xs },
+  option: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
-    padding: tokens.space.lg,
+    gap: tokens.space.md,
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.sm,
+    borderRadius: tokens.radius.lg,
   },
-  optionEmoji: { fontSize: tokens.font.size.xxl },
-  optionText: { flex: 1, gap: 2 },
+  optionPressed: { backgroundColor: tokens.bg.surface },
+  optionBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionEmoji: { fontSize: 24, lineHeight: 28 },
+  optionText: { flex: 1, gap: 2, minWidth: 0 },
+  optionLabel: { fontSize: tokens.font.size.md },
   optionChevron: { fontSize: tokens.font.size.xl },
 });

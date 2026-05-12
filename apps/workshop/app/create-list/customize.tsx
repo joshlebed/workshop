@@ -7,15 +7,7 @@ import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyb
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
 import { queryKeys } from "../../src/lib/queryKeys";
-import {
-  Button,
-  Card,
-  IconButton,
-  type ListColorKey,
-  Text,
-  tokens,
-  useToast,
-} from "../../src/ui/index";
+import { Button, IconButton, type ListColorKey, Text, tokens, useToast } from "../../src/ui/index";
 
 const VALID_TYPES: readonly ListType[] = [
   "movie",
@@ -150,87 +142,103 @@ export default function CreateListCustomize() {
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
       >
-        <Card style={styles.card} elevated>
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Name
-            </Text>
-            <TextInput
-              testID="create-list-name"
-              value={name}
-              onChangeText={setName}
-              placeholder="Friday night movies"
-              placeholderTextColor={tokens.text.muted}
-              autoFocus
-              maxLength={80}
-              style={styles.input}
-              returnKeyType="next"
-            />
+        <View style={styles.preview}>
+          <View
+            style={[
+              styles.previewBadge,
+              { backgroundColor: `${tokens.list[color as ListColorKey]}26` },
+            ]}
+          >
+            <Text style={styles.previewEmoji}>{emoji}</Text>
           </View>
+          <Text variant="heading" numberOfLines={1} style={styles.previewName}>
+            {trimmedName.length > 0 ? trimmedName : "Untitled list"}
+          </Text>
+        </View>
 
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Emoji
-            </Text>
-            <View style={styles.emojiRow}>
-              {EMOJI_CHOICES.map((choice) => (
-                <Pressable
-                  key={choice}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Use emoji ${choice}`}
-                  accessibilityState={{ selected: choice === emoji }}
-                  onPress={() => setEmoji(choice)}
-                  style={({ pressed }) => [
-                    styles.emojiCell,
-                    choice === emoji && styles.emojiCellSelected,
-                    pressed && styles.emojiCellPressed,
-                  ]}
-                >
-                  <Text style={styles.emojiGlyph}>{choice}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
+        <View style={styles.field}>
+          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+            Name
+          </Text>
+          <TextInput
+            testID="create-list-name"
+            value={name}
+            onChangeText={setName}
+            placeholder="Friday night movies"
+            placeholderTextColor={tokens.text.muted}
+            autoFocus
+            maxLength={80}
+            style={styles.input}
+            returnKeyType="next"
+          />
+        </View>
 
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Color
-            </Text>
-            <View style={styles.colorRow}>
-              {COLOR_KEYS.map((key) => (
-                <Pressable
-                  key={key}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Use color ${key}`}
-                  accessibilityState={{ selected: key === color }}
-                  onPress={() => setColor(key)}
-                  style={({ pressed }) => [
-                    styles.colorCell,
-                    { backgroundColor: tokens.list[key] },
-                    key === color && styles.colorCellSelected,
-                    pressed && styles.colorCellPressed,
-                  ]}
-                />
-              ))}
-            </View>
+        <View style={styles.field}>
+          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+            Emoji
+          </Text>
+          <View style={styles.emojiRow}>
+            {EMOJI_CHOICES.map((choice) => (
+              <Pressable
+                key={choice}
+                accessibilityRole="button"
+                accessibilityLabel={`Use emoji ${choice}`}
+                accessibilityState={{ selected: choice === emoji }}
+                onPress={() => setEmoji(choice)}
+                style={({ pressed }) => [
+                  styles.emojiCell,
+                  choice === emoji && styles.emojiCellSelected,
+                  pressed && styles.emojiCellPressed,
+                ]}
+              >
+                <Text style={styles.emojiGlyph}>{choice}</Text>
+              </Pressable>
+            ))}
           </View>
+        </View>
 
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Description (optional)
-            </Text>
-            <TextInput
-              testID="create-list-description"
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Anything to know about this list?"
-              placeholderTextColor={tokens.text.muted}
-              multiline
-              maxLength={500}
-              style={[styles.input, styles.inputMultiline]}
-            />
+        <View style={styles.field}>
+          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+            Color
+          </Text>
+          <View style={styles.colorRow}>
+            {COLOR_KEYS.map((key) => (
+              <Pressable
+                key={key}
+                accessibilityRole="button"
+                accessibilityLabel={`Use color ${key}`}
+                accessibilityState={{ selected: key === color }}
+                onPress={() => setColor(key)}
+                style={({ pressed }) => [
+                  styles.colorCell,
+                  key === color && styles.colorCellSelected,
+                  pressed && styles.colorCellPressed,
+                ]}
+              >
+                <View style={[styles.colorSwatch, { backgroundColor: tokens.list[key] }]} />
+              </Pressable>
+            ))}
           </View>
-        </Card>
+        </View>
+
+        <View style={styles.field}>
+          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+            Description{" "}
+            <Text tone="muted" variant="caption">
+              (optional)
+            </Text>
+          </Text>
+          <TextInput
+            testID="create-list-description"
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Anything to know about this list?"
+            placeholderTextColor={tokens.text.muted}
+            multiline
+            maxLength={500}
+            style={[styles.input, styles.inputMultiline]}
+          />
+        </View>
       </KeyboardAwareScrollView>
 
       {/* Submit lives outside the scroll so it sticks above the keyboard
@@ -275,41 +283,57 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.xxl,
     backgroundColor: tokens.bg.canvas,
   },
-  card: { gap: tokens.space.lg },
+  preview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+  },
+  previewBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewEmoji: { fontSize: 28, lineHeight: 32 },
+  previewName: { flex: 1, minWidth: 0 },
   field: { gap: tokens.space.sm },
+  fieldLabel: { letterSpacing: 0.3, textTransform: "uppercase" },
   input: {
     borderWidth: 1,
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: tokens.space.md,
     paddingVertical: 12,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.surface,
   },
-  inputMultiline: { minHeight: 80, textAlignVertical: "top" },
+  inputMultiline: { minHeight: 72, textAlignVertical: "top" },
   emojiRow: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
   emojiCell: {
     width: 44,
     height: 44,
     borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.surface,
   },
-  emojiCellSelected: { borderColor: tokens.accent.default, backgroundColor: tokens.accent.muted },
+  emojiCellSelected: { backgroundColor: tokens.accent.muted },
   emojiCellPressed: { opacity: 0.7 },
   emojiGlyph: { fontSize: tokens.font.size.lg },
-  colorRow: { flexDirection: "row", gap: tokens.space.md },
+  colorRow: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
   colorCell: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
     borderColor: "transparent",
   },
+  colorSwatch: { width: 28, height: 28, borderRadius: 14 },
   colorCellSelected: { borderColor: tokens.text.primary },
   colorCellPressed: { opacity: 0.8 },
 });

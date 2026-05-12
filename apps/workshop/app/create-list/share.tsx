@@ -34,7 +34,7 @@ export default function CreateListShare() {
       const fresh = res.invite;
       if (!fresh.token) {
         showToast({
-          message: "Invite created but token missing — open settings to retry.",
+          message: "Invite created but token missing. Open settings to retry.",
           tone: "danger",
         });
         return;
@@ -91,12 +91,15 @@ export default function CreateListShare() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <Text variant="title" style={styles.lead}>
+          Bring people in
+        </Text>
+        <Text tone="secondary" style={styles.leadSub}>
+          Anyone with the link can join. Links expire after 7 days and can be revoked from list
+          settings.
+        </Text>
+
         <Card style={styles.card} elevated>
-          <Text variant="heading">Invite collaborators</Text>
-          <Text tone="secondary">
-            Generate a share link to invite people to this list. Anyone with the link can join — it
-            expires after 7 days, and you can revoke it any time from list settings.
-          </Text>
           {shareUrl ? (
             <View style={styles.field}>
               <Text variant="caption" tone="muted">
@@ -120,7 +123,7 @@ export default function CreateListShare() {
                 onPress={async () => {
                   const ok = await copyToClipboard(shareUrl);
                   showToast({
-                    message: ok ? "Copied" : "Couldn't copy — copy the link manually",
+                    message: ok ? "Copied" : "Couldn't copy. Try copying the link manually.",
                     tone: ok ? "success" : "danger",
                   });
                 }}
@@ -166,6 +169,8 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.lg,
   },
+  lead: { paddingHorizontal: tokens.space.xs },
+  leadSub: { paddingHorizontal: tokens.space.xs, marginTop: -tokens.space.sm },
   card: { gap: tokens.space.md },
   field: { gap: tokens.space.sm },
   urlBox: {

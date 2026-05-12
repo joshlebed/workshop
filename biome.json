@@ -36,6 +36,7 @@
     "includes": [
       "**",
       "!**/node_modules",
+      "!.agents",
       "!**/dist",
       "!**/build",
       "!**/.expo",
