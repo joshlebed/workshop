@@ -115,6 +115,8 @@ function AuthGate() {
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: tokens.bg.canvas },
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
         }}
       >
         <Stack.Screen name="index" />

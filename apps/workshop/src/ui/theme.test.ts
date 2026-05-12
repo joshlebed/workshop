@@ -43,12 +43,12 @@ describe("theme tokens", () => {
         },
         "font": {
           "size": {
-            "lg": 20,
-            "md": 16,
-            "sm": 14,
-            "xl": 28,
-            "xs": 12,
-            "xxl": 36,
+            "lg": 16,
+            "md": 14,
+            "sm": 12,
+            "xl": 20,
+            "xs": 11,
+            "xxl": 26,
           },
           "weight": {
             "bold": "700",
@@ -115,12 +115,12 @@ describe("theme tokens", () => {
         },
         "font": {
           "size": {
-            "lg": 20,
-            "md": 16,
-            "sm": 14,
-            "xl": 28,
-            "xs": 12,
-            "xxl": 36,
+            "lg": 16,
+            "md": 14,
+            "sm": 12,
+            "xl": 20,
+            "xs": 11,
+            "xxl": 26,
           },
           "weight": {
             "bold": "700",
