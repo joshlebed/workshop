@@ -111,6 +111,12 @@ export interface List {
   emoji: string;
   color: ListColor;
   description: string | null;
+  /**
+   * Optional user-uploaded cover photo as a `data:image/...;base64,…` URL.
+   * When present, the client renders this in place of the emoji on list
+   * thumbnails.
+   */
+  coverPhotoUrl: string | null;
   ownerId: string;
   metadata: ListMetadata;
   createdAt: string;
@@ -155,6 +161,8 @@ export interface CreateListRequest {
   emoji: string;
   color: ListColor;
   description?: string;
+  /** Optional `data:image/...;base64,…` URL — render as list thumbnail. */
+  coverPhotoUrl?: string;
   /**
    * Required iff `type === "album_shelf"`. Public Spotify playlist URL
    * (`open.spotify.com/playlist/<id>` or `spotify:playlist:<id>`).
@@ -168,6 +176,8 @@ export interface UpdateListRequest {
   color?: ListColor;
   /** Pass `null` to clear; omit to leave unchanged. */
   description?: string | null;
+  /** Pass `null` to clear; omit to leave unchanged. */
+  coverPhotoUrl?: string | null;
   /**
    * Mutable per-list-type blob. For `album_shelf`, only
    * `spotifyPlaylistUrl` is client-settable; the backend re-parses the id,

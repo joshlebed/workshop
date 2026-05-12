@@ -8,7 +8,7 @@ import type {
 } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { refreshAlbumShelf } from "../../../src/api/albumShelf";
 import { createInvite, revokeInvite } from "../../../src/api/invites";
@@ -17,6 +17,7 @@ import { removeMember } from "../../../src/api/members";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { albumShelfErrorMessage } from "../../../src/lib/albumShelfErrors";
 import { errorMessage } from "../../../src/lib/api";
+import { pickCoverPhoto } from "../../../src/lib/coverPhoto";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import { formatRelative } from "../../../src/lib/relativeTime";
 import { buildInviteShareUrl, copyToClipboard } from "../../../src/lib/share";
@@ -77,6 +78,10 @@ export default function ListSettings() {
   const [emoji, setEmoji] = useState<string | null>(null);
   const [color, setColor] = useState<ListColor | null>(null);
   const [description, setDescription] = useState<string | null>(null);
+  // null = no cover; string = cover data URL. `coverPhotoLoaded` lets us
+  // distinguish "not hydrated yet" from "user cleared the photo".
+  const [coverPhotoUrl, setCoverPhotoUrl] = useState<string | null>(null);
+  const [coverPhotoLoaded, setCoverPhotoLoaded] = useState(false);
 
   // Hydrate form state once on first list load.
   if (list && name === null && emoji === null && color === null && description === null) {
@@ -85,6 +90,10 @@ export default function ListSettings() {
     setColor(list.color);
     setDescription(list.description ?? "");
   }
+  if (list && !coverPhotoLoaded) {
+    setCoverPhotoUrl(list.coverPhotoUrl ?? null);
+    setCoverPhotoLoaded(true);
+  }
 
   const detailsDirty = useMemo(() => {
     if (!list || name === null || emoji === null || color === null || description === null) {
@@ -92,13 +101,15 @@ export default function ListSettings() {
     }
     const desc = description.trim();
     const currentDesc = list.description ?? "";
+    const currentCover = list.coverPhotoUrl ?? null;
     return (
       name.trim() !== list.name ||
       emoji !== list.emoji ||
       color !== list.color ||
-      desc !== currentDesc
+      desc !== currentDesc ||
+      coverPhotoUrl !== currentCover
     );
-  }, [list, name, emoji, color, description]);
+  }, [list, name, emoji, color, description, coverPhotoUrl]);
 
   const updateMutation = useMutation({
     mutationFn: () => {
@@ -106,6 +117,7 @@ export default function ListSettings() {
         throw new Error("invalid form state");
       }
       const desc = description.trim();
+      const currentCover = list?.coverPhotoUrl ?? null;
       return updateList(
         id,
         {
@@ -113,6 +125,9 @@ export default function ListSettings() {
           emoji,
           color,
           description: desc.length > 0 ? desc : null,
+          // Only include `coverPhotoUrl` in the patch if it actually changed
+          // — sending a 1MB data URL on every save would be wasteful.
+          ...(coverPhotoUrl !== currentCover ? { coverPhotoUrl } : {}),
         },
         token,
       );
@@ -335,6 +350,45 @@ export default function ListSettings() {
                 maxLength={100}
                 style={styles.input}
               />
+            </View>
+            <View style={styles.field}>
+              <Text variant="caption" tone="muted">
+                Cover photo
+              </Text>
+              <View style={styles.coverRow}>
+                {coverPhotoUrl ? (
+                  <Image
+                    source={{ uri: coverPhotoUrl }}
+                    style={styles.coverPreview}
+                    accessibilityIgnoresInvertColors
+                  />
+                ) : (
+                  <View style={[styles.coverPreview, styles.coverPreviewEmpty]}>
+                    <Text style={styles.coverPreviewEmoji}>{emoji ?? list?.emoji ?? "🖼"}</Text>
+                  </View>
+                )}
+                <View style={styles.coverButtons}>
+                  <Button
+                    testID="settings-cover-pick"
+                    label={coverPhotoUrl ? "Change photo" : "Upload photo"}
+                    variant="secondary"
+                    size="md"
+                    onPress={async () => {
+                      const picked = await pickCoverPhoto();
+                      if (picked) setCoverPhotoUrl(picked.dataUrl);
+                    }}
+                  />
+                  {coverPhotoUrl ? (
+                    <Button
+                      testID="settings-cover-remove"
+                      label="Remove"
+                      variant="secondary"
+                      size="md"
+                      onPress={() => setCoverPhotoUrl(null)}
+                    />
+                  ) : null}
+                </View>
+              </View>
             </View>
             <View style={styles.field}>
               <Text variant="caption" tone="muted">
@@ -735,6 +789,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "transparent",
   },
+  coverRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  coverButtons: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap", flex: 1 },
+  coverPreview: { width: 64, height: 64, borderRadius: tokens.radius.md },
+  coverPreviewEmpty: {
+    backgroundColor: tokens.bg.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  coverPreviewEmoji: { fontSize: 28 },
   colorCellSelected: { borderColor: tokens.text.primary },
   colorCellPressed: { opacity: 0.8 },
   memberList: { gap: tokens.space.sm },

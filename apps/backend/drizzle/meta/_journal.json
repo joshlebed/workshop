@@ -64,6 +64,13 @@
       "when": 1777928670825,
       "tag": "0008_add_item_promoted_demoted_events",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778559017637,
+      "tag": "0009_add_list_cover_photo",
+      "breakpoints": true
     }
   ]
 }

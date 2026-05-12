@@ -73,6 +73,11 @@ export const lists = pgTable(
     emoji: text("emoji").notNull(),
     color: text("color").notNull(),
     description: text("description"),
+    // Optional user-uploaded cover photo. Stored as a `data:image/...;base64,…`
+    // URL so we don't need S3 infra for v1 — client resizes/compresses to
+    // ~1024px before uploading. Render as the list thumbnail when present;
+    // fall back to `emoji` when null.
+    coverPhotoUrl: text("cover_photo_url"),
     ownerId: uuid("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),

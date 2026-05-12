@@ -55,12 +55,24 @@ const descriptionSchema = z
   .transform((s) => s.trim())
   .pipe(z.string().max(280, "description too long"));
 
+// ~1.5 MB cap on the data URL (base64 inflates ~4/3, so ≈1.1 MB raw).
+// Clients are expected to resize/compress before upload.
+const COVER_PHOTO_MAX_CHARS = 1_500_000;
+const coverPhotoUrlSchema = z
+  .string()
+  .max(COVER_PHOTO_MAX_CHARS, "cover photo too large")
+  .refine(
+    (s) => /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s),
+    "cover photo must be a base64 data URL",
+  );
+
 export const createListSchema = z.object({
   type: typeSchema,
   name: nameSchema,
   emoji: emojiSchema,
   color: colorSchema,
   description: descriptionSchema.optional(),
+  coverPhotoUrl: coverPhotoUrlSchema.optional(),
   // Required iff type === 'album_shelf'. Verified at the route layer so we
   // can return a structured error code distinguishing missing vs. malformed.
   spotifyPlaylistUrl: z.string().min(1).max(2048).optional(),
@@ -73,6 +85,7 @@ export const updateListSchema = z
     color: colorSchema.optional(),
     // null clears, undefined leaves alone, string updates.
     description: z.union([descriptionSchema, z.null()]).optional(),
+    coverPhotoUrl: z.union([coverPhotoUrlSchema, z.null()]).optional(),
     // For album_shelf lists, members can patch `metadata.spotifyPlaylistUrl`
     // (per spec §3.5) — that path is open to any member, not owner-only.
     metadata: z.record(z.string(), z.unknown()).optional(),
@@ -87,6 +100,7 @@ function toListShape(l: DbList): List {
     emoji: l.emoji,
     color: l.color as ListColor,
     description: l.description,
+    coverPhotoUrl: l.coverPhotoUrl,
     ownerId: l.ownerId,
     metadata: (l.metadata ?? {}) as ListMetadata,
     createdAt: l.createdAt.toISOString(),
@@ -146,6 +160,7 @@ listRoutes.get("/", async (c) => {
     emoji: string;
     color: string;
     description: string | null;
+    cover_photo_url: string | null;
     owner_id: string;
     metadata: Record<string, unknown> | null;
     created_at: Date | string;
@@ -163,6 +178,7 @@ listRoutes.get("/", async (c) => {
         l.emoji,
         l.color,
         l.description,
+        l.cover_photo_url,
         l.owner_id,
         l.metadata,
         l.created_at,
@@ -183,6 +199,7 @@ listRoutes.get("/", async (c) => {
     emoji: r.emoji,
     color: r.color as ListColor,
     description: r.description,
+    coverPhotoUrl: r.cover_photo_url,
     ownerId: r.owner_id,
     metadata: (r.metadata ?? {}) as ListMetadata,
     createdAt: toIsoString(r.created_at),
@@ -233,6 +250,7 @@ listRoutes.post("/", async (c) => {
           emoji: data.emoji,
           color: data.color,
           description: data.description ?? null,
+          coverPhotoUrl: data.coverPhotoUrl ?? null,
           ownerId: userId,
           metadata: playlistMetadata ?? {},
         })
@@ -333,9 +351,9 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   // Permission split (spec §3.5): owner-only for rename / emoji / color /
   // description; any member can patch metadata (the only metadata patch we
   // currently allow is album_shelf source URL change).
-  const ownerOnlyKeys = (["name", "emoji", "color", "description"] as const).filter(
-    (k) => data[k] !== undefined,
-  );
+  const ownerOnlyKeys = (
+    ["name", "emoji", "color", "description", "coverPhotoUrl"] as const
+  ).filter((k) => data[k] !== undefined);
   if (ownerOnlyKeys.length > 0 && role !== "owner") {
     return err(c, "FORBIDDEN", "owner-only patch fields", { keys: ownerOnlyKeys });
   }
@@ -350,6 +368,7 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   if (data.emoji !== undefined) patch.emoji = data.emoji;
   if (data.color !== undefined) patch.color = data.color;
   if (data.description !== undefined) patch.description = data.description;
+  if (data.coverPhotoUrl !== undefined) patch.coverPhotoUrl = data.coverPhotoUrl;
 
   let triggerAlbumShelfRefresh = false;
   let oldSourceUrl: string | null = null;
@@ -386,6 +405,7 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
     data.emoji === undefined &&
     data.color === undefined &&
     data.description === undefined &&
+    data.coverPhotoUrl === undefined &&
     !triggerAlbumShelfRefresh
   ) {
     // Nothing actionable in the patch (e.g. metadata blob without

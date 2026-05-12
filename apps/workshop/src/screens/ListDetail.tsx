@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
   Platform,
   Pressable,
@@ -422,14 +423,22 @@ export function ListDetail({ list, members, token }: Props) {
       </View>
 
       <View style={styles.titleBlock}>
-        <View
-          style={[
-            styles.titleBadge,
-            { backgroundColor: `${accent}26`, borderColor: `${accent}55` },
-          ]}
-        >
-          <Text style={styles.titleEmoji}>{list.emoji}</Text>
-        </View>
+        {list.coverPhotoUrl ? (
+          <Image
+            source={{ uri: list.coverPhotoUrl }}
+            style={[styles.titleBadge, { borderColor: `${accent}55` }]}
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <View
+            style={[
+              styles.titleBadge,
+              { backgroundColor: `${accent}26`, borderColor: `${accent}55` },
+            ]}
+          >
+            <Text style={styles.titleEmoji}>{list.emoji}</Text>
+          </View>
+        )}
         <View style={styles.titleText}>
           <Text variant="title" numberOfLines={2} style={styles.titleName}>
             {list.name}
