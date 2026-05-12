@@ -2,7 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import type { ListSummary, ListType } from "@workshop/shared";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { fetchActivity } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
 import { useAuth } from "../src/hooks/useAuth";
@@ -209,9 +217,17 @@ function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) 
       testID={`list-card-${list.id}`}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
-        <Text style={styles.avatarEmoji}>{list.emoji}</Text>
-      </View>
+      {list.coverPhotoUrl ? (
+        <Image
+          source={{ uri: list.coverPhotoUrl }}
+          style={styles.avatar}
+          accessibilityIgnoresInvertColors
+        />
+      ) : (
+        <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
+          <Text style={styles.avatarEmoji}>{list.emoji}</Text>
+        </View>
+      )}
       <View style={styles.rowBody}>
         <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
           {list.name}

@@ -2,10 +2,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ListColor, ListType } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
+import { pickCoverPhoto } from "../../src/lib/coverPhoto";
 import { queryKeys } from "../../src/lib/queryKeys";
 import { Button, IconButton, type ListColorKey, Text, tokens, useToast } from "../../src/ui/index";
 
@@ -84,6 +85,7 @@ export default function CreateListCustomize() {
   const [emoji, setEmoji] = useState(DEFAULT_EMOJI[type]);
   const [color, setColor] = useState<ListColor>(DEFAULT_COLOR[type]);
   const [description, setDescription] = useState("");
+  const [coverPhotoUrl, setCoverPhotoUrl] = useState<string | null>(null);
 
   const trimmedName = name.trim();
   const canSubmit = trimmedName.length >= 1 && trimmedName.length <= 80;
@@ -99,6 +101,7 @@ export default function CreateListCustomize() {
           emoji,
           color,
           ...(description.trim().length > 0 ? { description: description.trim() } : {}),
+          ...(coverPhotoUrl ? { coverPhotoUrl } : {}),
         },
         token,
       ),
@@ -151,9 +154,17 @@ export default function CreateListCustomize() {
         bottomOffset={tokens.space.lg}
       >
         <View style={styles.preview}>
-          <View style={[styles.previewBadge, { backgroundColor: `${accentHex}26` }]}>
-            <Text style={styles.previewEmoji}>{emoji}</Text>
-          </View>
+          {coverPhotoUrl ? (
+            <Image
+              source={{ uri: coverPhotoUrl }}
+              style={styles.previewBadge}
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <View style={[styles.previewBadge, { backgroundColor: `${accentHex}26` }]}>
+              <Text style={styles.previewEmoji}>{emoji}</Text>
+            </View>
+          )}
           <View style={styles.previewText}>
             <Text variant="caption" tone="muted" style={styles.previewKind}>
               {TYPE_LABEL[type]}
@@ -180,6 +191,40 @@ export default function CreateListCustomize() {
             returnKeyType="next"
           />
         </View>
+
+        {!isAlbumShelf ? (
+          <View style={styles.field}>
+            <View style={styles.fieldLabelRow}>
+              <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+                Cover photo
+              </Text>
+              <Text variant="caption" tone="muted">
+                Optional
+              </Text>
+            </View>
+            <View style={styles.coverRow}>
+              <Button
+                testID="create-list-cover-pick"
+                label={coverPhotoUrl ? "Change photo" : "Upload photo"}
+                variant="secondary"
+                size="md"
+                onPress={async () => {
+                  const picked = await pickCoverPhoto();
+                  if (picked) setCoverPhotoUrl(picked.dataUrl);
+                }}
+              />
+              {coverPhotoUrl ? (
+                <Button
+                  testID="create-list-cover-remove"
+                  label="Remove"
+                  variant="secondary"
+                  size="md"
+                  onPress={() => setCoverPhotoUrl(null)}
+                />
+              ) : null}
+            </View>
+          </View>
+        ) : null}
 
         <View style={styles.field}>
           <Text variant="label" tone="secondary" style={styles.fieldLabel}>
@@ -351,6 +396,7 @@ const styles = StyleSheet.create({
     borderColor: "transparent",
   },
   colorSwatch: { width: 28, height: 28, borderRadius: 14 },
+  coverRow: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
   colorCellSelected: { borderColor: tokens.text.primary },
   colorCellPressed: { opacity: 0.8 },
 });
