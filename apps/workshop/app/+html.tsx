@@ -29,7 +29,15 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
         />
+        {/* Force the same dark tint in both schemes — the app shell always
+            paints a dark canvas, so we don't want Safari's URL bar going
+            light when the user's iOS is in light mode. Safari historically
+            requires explicit media variants to honor theme-color in light
+            mode, so we declare both. */}
         <meta name="theme-color" content="#0E0E10" />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0E0E10" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0E10" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <ScrollViewStyleReset />
         <style
