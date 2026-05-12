@@ -387,17 +387,19 @@ export function ListDetail({ list, members, token }: Props) {
           onPress={() => router.back()}
           testID="list-detail-back"
           hitSlop={10}
+          style={styles.headerSide}
         >
           <Text style={styles.headerGlyph}>‹</Text>
         </Pressable>
         <View style={styles.headerCenter}>
           <View style={styles.headerTitle}>
-            <Text style={styles.headerEmoji}>{list.emoji}</Text>
+            <View style={[styles.headerEmojiBadge, { backgroundColor: `${accent}1F` }]}>
+              <Text style={styles.headerEmoji}>{list.emoji}</Text>
+            </View>
             <Text variant="heading" numberOfLines={1} style={styles.headerName}>
               {list.name}
             </Text>
           </View>
-          <View style={[styles.headerStripe, { backgroundColor: accent }]} />
           <Text variant="caption" tone="muted" style={styles.subline} testID="list-detail-subline">
             {headerSubline}
           </Text>
@@ -432,15 +434,33 @@ export function ListDetail({ list, members, token }: Props) {
       </View>
 
       <View style={styles.toolbar}>
-        <TextInput
-          testID="list-detail-filter"
-          value={filter}
-          onChangeText={setFilter}
-          placeholder={isAlbumShelf ? "Search this shelf" : "Filter items"}
-          placeholderTextColor={tokens.text.muted}
-          style={styles.filterInput}
-          accessibilityLabel="Filter items"
-        />
+        <View style={styles.filterWrap}>
+          <Text style={styles.filterGlyph} tone="muted">
+            ⌕
+          </Text>
+          <TextInput
+            testID="list-detail-filter"
+            value={filter}
+            onChangeText={setFilter}
+            placeholder={isAlbumShelf ? "Search this shelf" : "Filter items"}
+            placeholderTextColor={tokens.text.muted}
+            style={styles.filterInput}
+            accessibilityLabel="Filter items"
+          />
+          {filter.length > 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Clear filter"
+              onPress={() => setFilter("")}
+              hitSlop={8}
+              style={styles.filterClear}
+            >
+              <Text tone="muted" style={styles.filterClearGlyph}>
+                ✕
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       {itemsQuery.isPending ? (
@@ -489,8 +509,8 @@ export function ListDetail({ list, members, token }: Props) {
             />
           ) : (
             <EmptyState
-              title="No items yet"
-              description="Add the first thing on your list."
+              title="Nothing on the list"
+              description="Add the first thing you want to remember."
               action={
                 <Button
                   label="Add an item"
@@ -554,28 +574,48 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.xl,
     paddingHorizontal: tokens.space.sm,
   },
+  headerSide: { minWidth: 32 },
   headerCenter: { flex: 1, alignItems: "center", gap: tokens.space.xs },
   headerTitle: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  headerEmoji: { fontSize: tokens.font.size.lg },
-  headerName: { maxWidth: 240 },
-  headerStripe: { height: 3, width: 48, borderRadius: 2 },
-  headerActions: { flexDirection: "row", alignItems: "center" },
+  headerEmojiBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerEmoji: { fontSize: 18, lineHeight: 22 },
+  headerName: { maxWidth: 220 },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 32,
+    justifyContent: "flex-end",
+  },
   subline: { textAlign: "center", paddingHorizontal: tokens.space.lg },
   toolbar: {
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.sm,
   },
-  filterInput: {
+  filterWrap: {
+    flexDirection: "row",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: tokens.space.md,
+    backgroundColor: tokens.bg.surface,
+  },
+  filterGlyph: { fontSize: tokens.font.size.md, marginRight: tokens.space.sm },
+  filterInput: {
+    flex: 1,
     paddingVertical: 10,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.surface,
   },
+  filterClear: { paddingHorizontal: tokens.space.xs, paddingVertical: tokens.space.xs },
+  filterClearGlyph: { fontSize: tokens.font.size.sm },
   center: {
     flex: 1,
     alignItems: "center",

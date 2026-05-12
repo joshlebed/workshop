@@ -157,7 +157,7 @@ export default function CreateListPlaylist() {
             ) : null}
           </View>
           <Text variant="caption" tone="muted">
-            We use Workshop's Spotify app to read the playlist — no Spotify sign-in needed. Private
+            We use Workshop's Spotify app to read the playlist. No Spotify sign-in needed. Private
             playlists won't work.
           </Text>
         </Card>
