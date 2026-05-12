@@ -248,20 +248,32 @@ function DraggableUnorderedRow({
 
   const webStyle = {
     transform: CSS.Translate.toString(transform) ?? undefined,
-    touchAction: "none",
     opacity: isDragging ? 0.7 : 1,
   } as unknown as object;
 
-  // Unordered rows have no leading affordance from ItemRow, so wrap the
-  // whole row in a draggable surface (with listeners on the wrapper).
-  return (
+  // Listeners go on the leading drag handle, not the row wrapper — RN Web
+  // Pressables inside the row body capture pointerdown and would otherwise
+  // swallow the drag activation.
+  const dragHandle = (child: ReactNode) => (
     <View
-      ref={setNodeRef as unknown as React.Ref<View>}
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
       {...((attributes ?? {}) as unknown as Record<string, unknown>)}
-      style={[webStyle, { cursor: "grab", userSelect: "none" } as unknown as object]}
+      accessibilityRole="button"
+      accessibilityLabel={`Drag handle for ${item.title}`}
       testID={`item-row-handle-${item.id}`}
+      style={
+        [
+          rowStyles.rowDragHandle,
+          { cursor: "grab", userSelect: "none", touchAction: "none" },
+        ] as unknown as object
+      }
     >
+      {child}
+    </View>
+  );
+
+  return (
+    <View ref={setNodeRef as unknown as React.Ref<View>} style={webStyle}>
       <ItemRow
         item={item}
         section="unordered"
@@ -271,6 +283,7 @@ function DraggableUnorderedRow({
         accent={accent}
         onMenu={onMenu}
         onPressBody={onPressBody}
+        dragHandle={dragHandle}
       />
     </View>
   );
