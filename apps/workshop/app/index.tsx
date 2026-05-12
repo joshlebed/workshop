@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ListSummary, ListType } from "@workshop/shared";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { fetchActivity } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
 import { useAuth } from "../src/hooks/useAuth";
@@ -122,7 +122,16 @@ export default function Home() {
               </View>
             ) : null}
           </View>
-          <IconButton accessibilityLabel="Sign out" onPress={signOut} testID="sign-out">
+          <IconButton
+            accessibilityLabel="Sign out"
+            onPress={() => {
+              Alert.alert("Sign out?", "You'll need to sign in again to access your lists.", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Sign out", style: "destructive", onPress: signOut },
+              ]);
+            }}
+            testID="sign-out"
+          >
             <Text tone="muted" style={styles.signOutGlyph}>
               ⎋
             </Text>
