@@ -132,6 +132,17 @@ land as additional routes inside the same app.
   `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`. Dependabot rolls them forward monthly.
   (2) Never interpolate `${{ … }}` inside a shell `run:` block — hoist into the step's `env:`
   and read as `$VAR` in bash. Both patterns are visible throughout `.github/workflows/*`.
+- **Docs-only PRs need a required-check shim.** `ci.yml` has
+  `paths-ignore: **/*.md`/`docs/**` so docs-only PRs don't burn CI minutes — but
+  branch protection still requires the `Quality (...)` check to report. Without
+  a shim, a docs-only PR is unmergeable (the required check never runs and
+  `mergeStateStatus` stays `BLOCKED` with no failing checks visible). The fix
+  lives in `.github/workflows/ci-docs.yml`: a sibling workflow that triggers on
+  the inverse path set and emits the same job names as trivial successes. If
+  you add a new required check to `ci.yml`, add a matching noop job to
+  `ci-docs.yml` or docs-only PRs will deadlock again. If you add a new
+  `paths-ignore` entry to `ci.yml`, mirror it as a `paths` entry in
+  `ci-docs.yml`.
 - **Workflow path-filter self-trigger** — if a PR modifies a workflow file and that
   workflow's own `on.push.paths:` includes its own filename (e.g. `testflight.yml` lists
   `.github/workflows/testflight.yml` as a path), the merge commit will trigger that
