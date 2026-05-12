@@ -4,20 +4,22 @@ import { Platform } from "react-native";
 function deriveFromWebLocation(): string | null {
   if (Platform.OS !== "web") return null;
   if (typeof window === "undefined") return null;
-  const { hostname, protocol, port } = window.location;
+  const { hostname, port } = window.location;
 
   if (hostname === "localhost" || hostname === "127.0.0.1") {
     return "http://localhost:8787";
   }
 
-  const previewMatch = hostname.match(/^ns-(\d+)-(.+)\.preview\.niteshift\.dev$/);
-  if (previewMatch) {
-    const [, , id] = previewMatch;
-    return `${protocol}//ns-8787-${id}.preview.niteshift.dev`;
+  // Niteshift preview proxy gates the backend port (`ns-8787-…`) with a 401
+  // HTML page, so we route through `/api` on the same origin instead — the
+  // Expo web dev server proxies that to `localhost:8787` (see metro.config.js
+  // + dev-api-proxy.js).
+  if (hostname.endsWith(".preview.niteshift.dev")) {
+    return "/api";
   }
 
   if (port === "8081") {
-    return `${protocol}//${hostname}:8787`;
+    return `${window.location.protocol}//${hostname}:8787`;
   }
   return null;
 }
