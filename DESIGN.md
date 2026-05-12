@@ -31,7 +31,7 @@ Shared:
 
 ## Typography
 
-System font stack (SF on iOS, system-ui on web). Sizes: 11/12/14/16/20/26.
+System font stack (SF on iOS, system-ui on web). Sizes: 12/13/16/18/22/30.
 Weights: 400/500/600/700. Hierarchy through scale + weight contrast; titles
 26/600, headings 16/600, body 14/400, captions 11/400. Captions used as
 uppercase eyebrows track +0.3.
