@@ -269,6 +269,11 @@ export function ListDetail({ list, members, token }: Props) {
     positionMutation.mutate({ item, nextPosition });
   };
 
+  const onPromoteToOrdered = ({ item, toIndex }: { item: Item; toIndex: number }) => {
+    const clamped = Math.max(0, Math.min(toIndex, filtered.ordered.length));
+    positionMutation.mutate({ item, nextPosition: midpointAt(filtered.ordered, clamped) });
+  };
+
   const [menuItem, setMenuItem] = useState<Item | null>(null);
   const [menuActions, setMenuActions] = useState<ItemRowMenuActions | null>(null);
   const closeMenu = () => {
@@ -536,6 +541,7 @@ export function ListDetail({ list, members, token }: Props) {
             showProvenance={members.length > 1}
             accent={accent}
             onReorderOrdered={onReorderOrdered}
+            onPromoteToOrdered={onPromoteToOrdered}
             onRowMenu={onRowMenu}
             onRowPressBody={onRowPressBody}
           />

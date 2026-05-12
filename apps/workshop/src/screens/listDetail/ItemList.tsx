@@ -48,10 +48,9 @@ export function ItemList({
   );
 
   const renderOrderedItem = useCallback(
-    ({ item, index }: ListRenderItemInfo<Item>) => (
+    ({ item }: ListRenderItemInfo<Item>) => (
       <DraggableOrderedRow
         item={item}
-        indexLabel={String(index + 1)}
         addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
         accent={accent}
         onMenu={() => onRowMenu(item, "ordered")}
@@ -89,7 +88,6 @@ export function ItemList({
               key={item.id}
               item={item}
               section="unordered"
-              indexLabel=""
               isNew={newItemIds.has(item.id)}
               isDragging={false}
               addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
@@ -109,7 +107,6 @@ export function ItemList({
               key={item.id}
               item={item}
               section="completed"
-              indexLabel=""
               isNew={false}
               isDragging={false}
               addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
@@ -130,7 +127,6 @@ function keyExtractor(item: Item): string {
 
 interface DraggableOrderedRowProps {
   item: Item;
-  indexLabel: string;
   addedByName: string | null;
   accent: string;
   onMenu: () => void;
@@ -139,7 +135,6 @@ interface DraggableOrderedRowProps {
 
 const DraggableOrderedRow = memo(function DraggableOrderedRow({
   item,
-  indexLabel,
   addedByName,
   accent,
   onMenu,
@@ -173,7 +168,6 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
     <ItemRow
       item={item}
       section="ordered"
-      indexLabel={indexLabel}
       isNew={false}
       isDragging={isActive}
       addedByName={addedByName}

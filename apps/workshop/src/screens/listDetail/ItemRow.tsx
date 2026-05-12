@@ -20,8 +20,6 @@ interface ItemRowProps {
   item: Item;
   /** Section bucket — drives leading affordance + chrome. */
   section: "ordered" | "unordered" | "completed";
-  /** "1", "2", … for ordered rows; ignored for the other sections. */
-  indexLabel: string;
   /**
    * Album-shelf only: highlights the row briefly after a refresh that
    * surfaced it as a new detection.
@@ -45,7 +43,6 @@ interface ItemRowProps {
 export function ItemRow({
   item,
   section,
-  indexLabel,
   isNew,
   isDragging,
   addedByName,
@@ -66,12 +63,7 @@ export function ItemRow({
 
   const leading =
     section === "ordered" ? (
-      <PositionChip
-        indexLabel={indexLabel}
-        dragHandle={dragHandle}
-        isDragging={isDragging}
-        accent={accent}
-      />
+      <PositionChip dragHandle={dragHandle} isDragging={isDragging} accent={accent} />
     ) : section === "completed" ? (
       <View style={styles.completedMark}>
         <Text style={styles.completedGlyph}>✓</Text>
@@ -176,17 +168,19 @@ export function ItemRow({
 }
 
 interface PositionChipProps {
-  indexLabel: string;
   isDragging: boolean;
   accent: string;
   dragHandle?: (children: ReactNode) => ReactNode;
 }
 
-function PositionChip({ indexLabel, isDragging, accent, dragHandle }: PositionChipProps) {
-  const padded = indexLabel.length === 1 ? `0${indexLabel}` : indexLabel;
+// The chip is the drag handle for ordered rows. The numeric rank used to
+// live here, but the rank repeats information the order already conveys,
+// so we render a drag glyph instead — visual affordance without the
+// duplicated digits eating horizontal space.
+function PositionChip({ isDragging, accent, dragHandle }: PositionChipProps) {
   const chip = (
     <View style={[styles.positionChip, isDragging && styles.positionChipDragging]}>
-      <Text style={[styles.positionChipText, { color: accent }]}>{padded}</Text>
+      <Text style={[styles.positionChipText, { color: accent }]}>≡</Text>
     </View>
   );
   return dragHandle ? <>{dragHandle(chip)}</> : chip;
@@ -302,8 +296,8 @@ export function SectionHeader({ kind, count, isAlbumShelf = false }: SectionHead
 
 export function OrderedHint({ isAlbumShelf }: { isAlbumShelf: boolean }) {
   const text = isAlbumShelf
-    ? "Tap ⋯ on a detected album → Move to ranked to start ordering."
-    : "Tap ⋯ on a row → Move to ranked to start ordering.";
+    ? "Drag a detected album up here (or tap ⋯ → Move to ranked) to start ordering."
+    : "Drag a row up here (or tap ⋯ → Move to ranked) to start ordering.";
   return (
     <View style={styles.orderedHint} testID="list-detail-ordered-hint">
       <Text variant="caption" tone="secondary">
@@ -364,10 +358,8 @@ const styles = StyleSheet.create({
   positionChipDragging: { backgroundColor: tokens.bg.elevated },
   positionChipText: {
     color: tokens.text.secondary,
-    fontSize: tokens.font.size.sm,
+    fontSize: tokens.font.size.lg,
     fontWeight: tokens.font.weight.semibold,
-    fontVariant: ["tabular-nums"],
-    letterSpacing: 0.3,
   },
   completedMark: {
     width: 36,
