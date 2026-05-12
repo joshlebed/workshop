@@ -37,8 +37,15 @@ export interface ItemListProps {
   showProvenance: boolean;
   /** List accent hex used to tint cover placeholders + the position chip. */
   accent: string;
-  /** Drag inside the ordered section finished. Cross-section drags don't exist. */
+  /** Drag inside the ordered section finished. */
   onReorderOrdered: (event: ReorderEvent) => void;
+  /**
+   * Drag from the unordered section finished on an ordered drop target.
+   * `toIndex` is the position in the ordered array where the item should
+   * be inserted (0 = top, ordered.length = bottom). Web only — native uses
+   * the kebab menu for cross-section moves.
+   */
+  onPromoteToOrdered: (event: { item: Item; toIndex: number }) => void;
   /** Open the context menu for a row (kebab button). */
   onRowMenu: (item: Item, section: Section) => void;
   /** Body click on a row — type-specific handler (Spotify or item detail page). */
