@@ -417,7 +417,12 @@ export function ListDetail({ list, members, token }: Props) {
       </View>
 
       <View style={styles.titleBlock}>
-        <View style={[styles.titleBadge, { backgroundColor: `${accent}26` }]}>
+        <View
+          style={[
+            styles.titleBadge,
+            { backgroundColor: `${accent}26`, borderColor: `${accent}55` },
+          ]}
+        >
           <Text style={styles.titleEmoji}>{list.emoji}</Text>
         </View>
         <View style={styles.titleText}>
@@ -439,7 +444,7 @@ export function ListDetail({ list, members, token }: Props) {
             testID="list-detail-filter"
             value={filter}
             onChangeText={setFilter}
-            placeholder={isAlbumShelf ? "Search this shelf" : "Filter items"}
+            placeholder={isAlbumShelf ? "Search this shelf" : "Filter"}
             placeholderTextColor={tokens.text.muted}
             style={styles.filterInput}
             accessibilityLabel="Filter items"
@@ -528,6 +533,8 @@ export function ListDetail({ list, members, token }: Props) {
             showOrderedHint={showOrderedHint}
             newItemIds={newItemIds}
             memberNameById={memberNameById}
+            showProvenance={members.length > 1}
+            accent={accent}
             onReorderOrdered={onReorderOrdered}
             onRowMenu={onRowMenu}
             onRowPressBody={onRowPressBody}
@@ -581,39 +588,43 @@ const styles = StyleSheet.create({
   titleBlock: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.sm,
+    gap: tokens.space.lg,
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.sm,
   },
   titleBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 60,
+    height: 60,
+    borderRadius: tokens.radius.lg,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  titleEmoji: { fontSize: 26, lineHeight: 30 },
-  titleText: { flex: 1, minWidth: 0, gap: 2 },
-  titleName: { letterSpacing: -0.4 },
-  subline: {},
+  titleEmoji: { fontSize: 30, lineHeight: 34 },
+  titleText: { flex: 1, minWidth: 0, gap: 4 },
+  titleName: { letterSpacing: -0.6, fontSize: 26, lineHeight: 30 },
+  subline: { letterSpacing: 0.1 },
   toolbar: {
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.sm,
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.xs,
   },
   filterWrap: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: tokens.radius.pill,
-    paddingHorizontal: tokens.space.md,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    paddingHorizontal: tokens.space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border.subtle,
   },
-  filterGlyph: { fontSize: tokens.font.size.md, marginRight: tokens.space.sm },
+  filterGlyph: {
+    fontSize: tokens.font.size.md,
+    marginRight: tokens.space.sm,
+    color: tokens.text.muted,
+  },
   filterInput: {
     flex: 1,
-    paddingVertical: 9,
+    paddingVertical: 10,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
   },

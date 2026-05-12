@@ -18,9 +18,9 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
-import { useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { Text, tokens } from "../../ui/index";
+import { tokens } from "../../ui/index";
 import { ItemRow, OrderedHint, rowStyles, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
 
@@ -32,6 +32,8 @@ export function ItemList({
   showOrderedHint,
   newItemIds,
   memberNameById,
+  showProvenance,
+  accent,
   onReorderOrdered,
   onRowMenu,
   onRowPressBody,
@@ -67,7 +69,8 @@ export function ItemList({
                   key={item.id}
                   item={item}
                   indexLabel={String(i + 1)}
-                  addedByName={memberNameById.get(item.addedBy) ?? null}
+                  addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                  accent={accent}
                   onMenu={() => onRowMenu(item, "ordered")}
                   onPressBody={() => onRowPressBody(item, "ordered")}
                 />
@@ -87,10 +90,11 @@ export function ItemList({
               key={item.id}
               item={item}
               section="unordered"
-              indexLabel="•"
+              indexLabel=""
               isNew={newItemIds.has(item.id)}
               isDragging={false}
-              addedByName={memberNameById.get(item.addedBy) ?? null}
+              addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+              accent={accent}
               onMenu={() => onRowMenu(item, "unordered")}
               onPressBody={() => onRowPressBody(item, "unordered")}
             />
@@ -106,10 +110,11 @@ export function ItemList({
               key={item.id}
               item={item}
               section="completed"
-              indexLabel="✓"
+              indexLabel=""
               isNew={false}
               isDragging={false}
-              addedByName={memberNameById.get(item.addedBy) ?? null}
+              addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+              accent={accent}
               onMenu={() => onRowMenu(item, "completed")}
               onPressBody={() => onRowPressBody(item, "completed")}
             />
@@ -124,6 +129,7 @@ interface SortableOrderedRowProps {
   item: Item;
   indexLabel: string;
   addedByName: string | null;
+  accent: string;
   onMenu: () => void;
   onPressBody: () => void;
 }
@@ -132,6 +138,7 @@ function SortableOrderedRow({
   item,
   indexLabel,
   addedByName,
+  accent,
   onMenu,
   onPressBody,
 }: SortableOrderedRowProps) {
@@ -145,7 +152,7 @@ function SortableOrderedRow({
     touchAction: "none",
   } as unknown as object;
 
-  const dragHandle = (
+  const dragHandle = (child: ReactNode) => (
     <View
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
       {...((attributes ?? {}) as unknown as Record<string, unknown>)}
@@ -154,7 +161,7 @@ function SortableOrderedRow({
       testID={`item-row-handle-${item.id}`}
       style={[rowStyles.rowDragHandle, { cursor: "grab", userSelect: "none" } as unknown as object]}
     >
-      <Text style={rowStyles.dragHandleGlyph}>≡</Text>
+      {child}
     </View>
   );
 
@@ -167,6 +174,7 @@ function SortableOrderedRow({
         isNew={false}
         isDragging={isDragging}
         addedByName={addedByName}
+        accent={accent}
         onMenu={onMenu}
         onPressBody={onPressBody}
         dragHandle={dragHandle}

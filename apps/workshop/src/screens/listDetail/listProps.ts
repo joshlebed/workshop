@@ -33,6 +33,10 @@ export interface ItemListProps {
   newItemIds: Set<string>;
   /** Map from userId → display name for provenance lines. */
   memberNameById: Map<string, string>;
+  /** True when more than one collaborator can add — gates the "added by @x" provenance. */
+  showProvenance: boolean;
+  /** List accent hex used to tint cover placeholders + the position chip. */
+  accent: string;
   /** Drag inside the ordered section finished. Cross-section drags don't exist. */
   onReorderOrdered: (event: ReorderEvent) => void;
   /** Open the context menu for a row (kebab button). */

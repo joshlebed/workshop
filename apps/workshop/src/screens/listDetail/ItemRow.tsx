@@ -14,13 +14,13 @@ import { useEffect } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { formatRelative } from "../../lib/relativeTime";
-import { Card, Text, tokens } from "../../ui/index";
+import { Text, tokens } from "../../ui/index";
 
 interface ItemRowProps {
   item: Item;
-  /** Section bucket — drives index label + chrome. */
+  /** Section bucket — drives leading affordance + chrome. */
   section: "ordered" | "unordered" | "completed";
-  /** "1", "2", … for ordered; "•" for unordered; "✓" for completed. */
+  /** "1", "2", … for ordered rows; ignored for the other sections. */
   indexLabel: string;
   /**
    * Album-shelf only: highlights the row briefly after a refresh that
@@ -30,15 +30,16 @@ interface ItemRowProps {
   /** Library reports `true` while the row is being dragged. */
   isDragging: boolean;
   addedByName: string | null;
+  /** List accent hex used to tint cover placeholder + position chip glyph. */
+  accent: string;
   onMenu: () => void;
   /** Short-tap on the body (excluding handle/menu) — type-specific destination. */
   onPressBody?: () => void;
   /**
-   * Drag-affordance slot. The list impl injects a Pressable / `<div>`
-   * wired up to its drag library so the row stays library-agnostic.
-   * Omitted on completed rows (not draggable).
+   * Drag-affordance slot — wraps the position chip on ordered rows so the
+   * gesture library owns the touch target. Omitted on unordered/completed.
    */
-  dragHandle?: ReactNode;
+  dragHandle?: (children: ReactNode) => ReactNode;
 }
 
 export function ItemRow({
@@ -48,6 +49,7 @@ export function ItemRow({
   isNew,
   isDragging,
   addedByName,
+  accent,
   onMenu,
   onPressBody,
   dragHandle,
@@ -57,29 +59,47 @@ export function ItemRow({
   useEffect(() => {
     completedProgress.value = withTiming(isCompleted ? 1 : 0, { duration: 220 });
   }, [isCompleted, completedProgress]);
-  const titleStyle = useAnimatedStyle(() => ({ opacity: 1 - completedProgress.value * 0.4 }));
+  const titleStyle = useAnimatedStyle(() => ({ opacity: 1 - completedProgress.value * 0.45 }));
 
   const view = describeItem(item);
   const provenance = describeProvenance(item, section, addedByName);
 
+  const leading =
+    section === "ordered" ? (
+      <PositionChip
+        indexLabel={indexLabel}
+        dragHandle={dragHandle}
+        isDragging={isDragging}
+        accent={accent}
+      />
+    ) : section === "completed" ? (
+      <View style={styles.completedMark}>
+        <Text style={styles.completedGlyph}>✓</Text>
+      </View>
+    ) : null;
+
+  const cover = view.imageUrl ? (
+    <Image
+      source={{ uri: view.imageUrl }}
+      style={[styles.cover, isCompleted && styles.coverCompleted]}
+      accessibilityIgnoresInvertColors
+    />
+  ) : (
+    <View
+      style={[
+        styles.cover,
+        styles.coverPlaceholder,
+        { backgroundColor: `${accent}1F` },
+        isCompleted && styles.coverCompleted,
+      ]}
+    >
+      <Text style={styles.coverPlaceholderGlyph}>{view.placeholderGlyph}</Text>
+    </View>
+  );
+
   const bodyContent = (
     <>
-      <View style={styles.rowIndex}>
-        <Text variant="caption" tone="muted" style={styles.indexText}>
-          {indexLabel}
-        </Text>
-      </View>
-      {view.imageUrl ? (
-        <Image
-          source={{ uri: view.imageUrl }}
-          style={styles.cover}
-          accessibilityIgnoresInvertColors
-        />
-      ) : (
-        <View style={[styles.cover, styles.coverPlaceholder]}>
-          <Text style={styles.coverPlaceholderGlyph}>{view.placeholderGlyph}</Text>
-        </View>
-      )}
+      {cover}
       <View style={styles.rowBody}>
         <View style={styles.rowTitleLine}>
           <Animated.Text
@@ -98,30 +118,40 @@ export function ItemRow({
           ) : null}
         </View>
         {view.subline ? (
-          <Text variant="caption" tone="secondary" numberOfLines={1}>
+          <Text
+            variant="caption"
+            tone={isCompleted ? "muted" : "secondary"}
+            numberOfLines={1}
+            style={styles.subline}
+          >
             {view.subline}
           </Text>
         ) : null}
-        <Text variant="caption" tone="muted" numberOfLines={1}>
-          {provenance}
-        </Text>
+        {provenance ? (
+          <Text variant="caption" tone="muted" numberOfLines={1} style={styles.provenance}>
+            {provenance}
+          </Text>
+        ) : null}
       </View>
     </>
   );
 
   return (
-    <Card
+    <View
       style={[styles.row, isNew && styles.rowNew, isDragging && styles.rowDragging]}
       testID={`item-row-${item.id}`}
     >
-      {dragHandle ?? <View style={styles.handlePlaceholder} />}
+      {leading}
       {onPressBody ? (
         <Pressable
           accessibilityRole={view.bodyRole}
           accessibilityLabel={view.bodyLabel}
           onPress={onPressBody}
           testID={`item-row-body-${item.id}`}
-          style={({ pressed }) => [styles.bodyPressable, pressed && styles.bodyPressed]}
+          style={({ pressed, hovered }) => [
+            styles.bodyPressable,
+            (pressed || hovered) && styles.bodyPressed,
+          ]}
         >
           {bodyContent}
         </Pressable>
@@ -133,13 +163,33 @@ export function ItemRow({
         accessibilityLabel={`Open menu for ${item.title}`}
         onPress={onMenu}
         testID={`item-row-menu-${item.id}`}
-        style={({ pressed }) => [styles.menuBtn, pressed && styles.menuBtnPressed]}
+        style={({ pressed, hovered }) => [
+          styles.menuBtn,
+          (pressed || hovered) && styles.menuBtnHover,
+        ]}
         hitSlop={10}
       >
-        <Text style={styles.menuGlyph}>⋮</Text>
+        <Text style={styles.menuGlyph}>⋯</Text>
       </Pressable>
-    </Card>
+    </View>
   );
+}
+
+interface PositionChipProps {
+  indexLabel: string;
+  isDragging: boolean;
+  accent: string;
+  dragHandle?: (children: ReactNode) => ReactNode;
+}
+
+function PositionChip({ indexLabel, isDragging, accent, dragHandle }: PositionChipProps) {
+  const padded = indexLabel.length === 1 ? `0${indexLabel}` : indexLabel;
+  const chip = (
+    <View style={[styles.positionChip, isDragging && styles.positionChipDragging]}>
+      <Text style={[styles.positionChipText, { color: accent }]}>{padded}</Text>
+    </View>
+  );
+  return dragHandle ? <>{dragHandle(chip)}</> : chip;
 }
 
 interface ItemView {
@@ -212,7 +262,7 @@ function describeProvenance(
   item: Item,
   section: "ordered" | "unordered" | "completed",
   addedByName: string | null,
-): string {
+): string | null {
   if (section === "completed" && item.completedAt) {
     return `completed ${formatRelative(item.completedAt)}`;
   }
@@ -221,9 +271,9 @@ function describeProvenance(
     const detectedAt = typeof meta.detectedAt === "string" ? meta.detectedAt : null;
     return detectedAt ? `detected ${formatRelative(detectedAt)}` : "detected";
   }
-  return addedByName
-    ? `added ${formatRelative(item.createdAt)} by @${addedByName}`
-    : `added ${formatRelative(item.createdAt)}`;
+  // Only surface "added by @x" when another collaborator added the row;
+  // a list owned and added-to by one person doesn't need the repetition.
+  return addedByName ? `added by @${addedByName} · ${formatRelative(item.createdAt)}` : null;
 }
 
 interface SectionHeaderProps {
@@ -236,25 +286,24 @@ interface SectionHeaderProps {
 export function SectionHeader({ kind, count, isAlbumShelf = false }: SectionHeaderProps) {
   const label =
     kind === "ordered"
-      ? "ORDERED"
+      ? "Ranked"
       : kind === "completed"
-        ? "COMPLETED"
+        ? "Done"
         : isAlbumShelf
-          ? "DETECTED"
-          : "UNORDERED";
+          ? "Detected"
+          : "To watch";
   return (
     <View style={styles.sectionHeader} testID={`list-detail-section-${kind}`}>
-      <Text variant="label" tone="secondary">
-        {label} ({count})
-      </Text>
+      <Text style={styles.sectionHeaderLabel}>{label}</Text>
+      <Text style={styles.sectionHeaderCount}>{count}</Text>
     </View>
   );
 }
 
 export function OrderedHint({ isAlbumShelf }: { isAlbumShelf: boolean }) {
   const text = isAlbumShelf
-    ? "Tap ⋮ on a detected album → Move to ordered to start ranking your shelf."
-    : "Tap ⋮ on an item → Move to ordered to start ranking.";
+    ? "Tap ⋯ on a detected album → Move to ranked to start ordering."
+    : "Tap ⋯ on a row → Move to ranked to start ordering.";
   return (
     <View style={styles.orderedHint} testID="list-detail-ordered-hint">
       <Text variant="caption" tone="secondary">
@@ -265,17 +314,11 @@ export function OrderedHint({ isAlbumShelf }: { isAlbumShelf: boolean }) {
 }
 
 export const rowStyles = StyleSheet.create({
+  // Wrapper passed by the gesture-aware parent. Keeps the touch target the
+  // size of the position chip without adding padding around it.
   rowDragHandle: {
-    paddingHorizontal: tokens.space.sm,
-    paddingVertical: tokens.space.md,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 32,
-  },
-  dragHandleGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl + 2,
   },
 });
 
@@ -284,44 +327,83 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
-    padding: tokens.space.md,
+    paddingVertical: tokens.space.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border.subtle,
+  },
+  rowNew: { backgroundColor: tokens.accent.muted },
+  rowDragging: {
+    backgroundColor: tokens.bg.surface,
+    shadowColor: "#000",
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+    // Lift the row off the divider while dragging
+    borderBottomColor: "transparent",
   },
   bodyPressable: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
+    paddingVertical: tokens.space.xs,
+    paddingHorizontal: tokens.space.xs,
+    marginHorizontal: -tokens.space.xs,
+    borderRadius: tokens.radius.md,
   },
-  bodyPressed: { opacity: 0.7 },
-  rowNew: { borderColor: tokens.accent.default, borderWidth: 1 },
-  rowDragging: {
-    opacity: 0.85,
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  handlePlaceholder: { width: 32 },
-  rowIndex: { width: 24, alignItems: "center" },
-  indexText: { fontSize: tokens.font.size.md },
-  cover: {
-    width: 48,
-    height: 48,
+  bodyPressed: { backgroundColor: tokens.bg.surface },
+  positionChip: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.bg.surface,
+  },
+  positionChipDragging: { backgroundColor: tokens.bg.elevated },
+  positionChipText: {
+    color: tokens.text.secondary,
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.semibold,
+    fontVariant: ["tabular-nums"],
+    letterSpacing: 0.3,
+  },
+  completedMark: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.border.default,
+  },
+  completedGlyph: {
+    color: tokens.text.secondary,
+    fontSize: tokens.font.size.md,
+    lineHeight: tokens.font.size.md + 2,
+  },
+  cover: {
+    width: 52,
+    height: 52,
+    borderRadius: tokens.radius.md,
     backgroundColor: tokens.bg.elevated,
   },
+  coverCompleted: { opacity: 0.5 },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
-  coverPlaceholderGlyph: { fontSize: 22 },
+  coverPlaceholderGlyph: { fontSize: 24 },
   rowBody: { flex: 1, gap: 2 },
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   rowTitle: {
     flexShrink: 1,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.regular,
+    fontWeight: tokens.font.weight.medium,
+    letterSpacing: -0.1,
   },
   rowTitleCompleted: { textDecorationLine: "line-through", color: tokens.text.muted },
+  subline: { marginTop: 1 },
+  provenance: { marginTop: 1 },
   newPill: {
     backgroundColor: tokens.accent.default,
     paddingHorizontal: tokens.space.sm,
@@ -329,16 +411,40 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   newPillText: { fontSize: 10, fontWeight: tokens.font.weight.bold, letterSpacing: 0.5 },
-  menuBtn: { paddingHorizontal: tokens.space.sm, paddingVertical: tokens.space.xs },
-  menuBtnPressed: { opacity: 0.6 },
-  menuGlyph: { fontSize: tokens.font.size.lg, color: tokens.text.secondary },
+  menuBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.sm,
+  },
+  menuBtnHover: { backgroundColor: tokens.bg.surface },
+  menuGlyph: {
+    color: tokens.text.secondary,
+    fontSize: tokens.font.size.lg,
+    lineHeight: tokens.font.size.lg,
+  },
   sectionHeader: {
-    paddingTop: tokens.space.md,
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: tokens.space.sm,
+    paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.sm,
+  },
+  sectionHeaderLabel: {
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.semibold,
+    textTransform: "uppercase",
+    letterSpacing: 1.1,
+  },
+  sectionHeaderCount: {
+    color: tokens.text.muted,
+    fontSize: tokens.font.size.sm,
+    fontVariant: ["tabular-nums"],
   },
   orderedHint: {
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
   },
 });
