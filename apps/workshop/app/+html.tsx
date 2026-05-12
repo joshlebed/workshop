@@ -13,8 +13,11 @@ import type { PropsWithChildren } from "react";
  *  2. `html`/`body` paint the canvas color end-to-end. The `ScrollViewStyleReset`
  *     pins height to 100%, but Expo's stylesheet doesn't set a background — so
  *     the iOS Safari status-bar / home-indicator overscroll regions render
- *     white on top of an otherwise-dark app. We set it explicitly and honor
- *     `prefers-color-scheme`.
+ *     white on top of an otherwise-dark app. The app shell (`_layout` /
+ *     `tokens.bg.canvas`) always paints dark regardless of system color
+ *     scheme, so we lock html/body to the same dark canvas — otherwise the
+ *     top status-bar area and bottom home-indicator/toolbar area flash white
+ *     in iOS light mode.
  */
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -27,15 +30,13 @@ export default function Root({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
         />
         <meta name="theme-color" content="#0E0E10" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <ScrollViewStyleReset />
         <style
           // biome-ignore lint/security/noDangerouslySetInnerHtml: static, no user input
           dangerouslySetInnerHTML={{
             __html: `
-              html, body { background-color: #FAFAFB; }
-              @media (prefers-color-scheme: dark) {
-                html, body { background-color: #0E0E10; }
-              }
+              html, body { background-color: #0E0E10; color-scheme: dark; }
               /* Use the dynamic viewport so the layout shrinks with the iOS
                  keyboard instead of the keyboard covering the page. */
               #root { min-height: 100dvh; }
