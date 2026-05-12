@@ -68,6 +68,11 @@ export function ItemRow({
       <View style={styles.completedMark}>
         <Text style={styles.completedGlyph}>✓</Text>
       </View>
+    ) : dragHandle ? (
+      // Unordered rows on web get a drag handle so they can be dragged into
+      // the ranked section. Native unordered rows omit `dragHandle` (cross-
+      // section drag isn't supported there).
+      <PositionChip dragHandle={dragHandle} isDragging={isDragging} accent={accent} />
     ) : null;
 
   const cover = view.imageUrl ? (
