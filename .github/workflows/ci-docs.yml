@@ -1,0 +1,35 @@
+name: CI
+
+# Sibling to ci.yml. The main CI workflow skips docs-only PRs via
+# `paths-ignore: **/*.md` etc., but branch protection still requires the
+# `Quality (...)` check to report. Without this shim, a docs-only PR is
+# unmergeable — the required check never runs. This workflow runs on the
+# inverse path set and reports the same job names as trivial successes.
+#
+# A mixed PR (touches both code and docs) triggers both workflows; both
+# emit `Quality` and both must pass. The shim passes trivially, so the
+# real check is still the gate.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "**/*.md"
+      - "docs/**"
+      - ".prettierrc.json"
+      - ".prettierignore"
+
+concurrency:
+  group: ci-docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality (lint, typecheck, test, knip, format, terraform, actionlint)
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Docs-only change set; real CI is skipped by paths-ignore. Reporting required check as success."

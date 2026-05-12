@@ -644,3 +644,31 @@ node_modules/babel-preset-expo/build/`. ~5 min vs. the rabbit
 | Worklets babel plugin auto-wiring is non-obvious                          | One-line note in top-level `CLAUDE.md` under "Tooling baseline"                     | ~3m  |
 | Bundle recompile cost on each smoke pass                                  | `scripts/dev-smoke.sh` that hits N URLs and reports errors                          | ~30m |
 | Reanimated primitive without callers tempting to skip-test                | Extend §3.29's testing-policy line: "primitive → manual + Playwright at 1st caller" | ~5m  |
+
+---
+
+## 2026-05-12 — docs-only PR can't merge (required check never runs)
+
+**Symptom:** PR #140 touched only `CLAUDE.md`. `mergeStateStatus` stayed
+`BLOCKED` with no failing checks visible — only Cloudflare Pages and Niteshift
+Fixes ran. `gh run list --branch <branch>` returned empty because `ci.yml` has
+`paths-ignore: **/*.md` and never triggered. Branch protection requires
+`Quality (lint, typecheck, test, knip, format, terraform, actionlint)`, so
+auto-merge was armed but could never fire.
+
+**Root cause:** Classic GitHub required-check + path-filter deadlock. When a
+workflow is skipped entirely via `paths-ignore` (vs. skipped at the job level
+with an `if:`), the check name never gets reported, so branch protection waits
+forever.
+
+**Suggested fix:** Already landed in this PR — `.github/workflows/ci-docs.yml`
+is a sibling workflow that triggers on the inverse path set and reports the
+same `Quality (...)` job name as a trivial success. If new required checks get
+added to `ci.yml`, mirror them as noop jobs in `ci-docs.yml`. Longer-term, a
+generated/maintained "required-checks shim" workflow (or a tiny script that
+diffs `ci.yml` job names against `ci-docs.yml` and fails CI on drift) would
+prevent the next person from forgetting.
+
+**Workaround used this session:** Added `ci-docs.yml` as a permanent fix
+rather than a workaround — the noop workflow runs cheaply (~5s) and removes a
+whole class of "docs-only PR is unmergeable" surprise.
