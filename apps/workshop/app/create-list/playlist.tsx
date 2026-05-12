@@ -108,7 +108,9 @@ export default function CreateListPlaylist() {
         >
           <Text style={styles.backGlyph}>‹</Text>
         </IconButton>
-        <Text variant="heading">Source playlist</Text>
+        <Text variant="caption" tone="muted" style={styles.step}>
+          Step 3 of 3
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -119,52 +121,53 @@ export default function CreateListPlaylist() {
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
       >
-        <Text tone="secondary" style={styles.tagline}>
-          Paste a public Spotify playlist URL. Your shelf will pull every album the playlist
-          references.
-        </Text>
-
-        <Card style={styles.card} elevated>
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Playlist URL
-            </Text>
-            <TextInput
-              testID="album-shelf-playlist-url"
-              value={url}
-              onChangeText={setUrl}
-              placeholder="https://open.spotify.com/playlist/…"
-              placeholderTextColor={tokens.text.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoFocus
-              keyboardType="url"
-              maxLength={2048}
-              style={styles.input}
-            />
-            {previewing ? (
-              <View style={styles.previewStatus}>
-                <ActivityIndicator color={tokens.text.muted} size="small" />
-                <Text variant="caption" tone="muted">
-                  Checking playlist…
-                </Text>
-              </View>
-            ) : null}
-            {!previewing && previewError ? (
-              <Text variant="caption" tone="danger" testID="album-shelf-playlist-error">
-                {previewError}
-              </Text>
-            ) : null}
-          </View>
-          <Text variant="caption" tone="muted">
-            We use Workshop's Spotify app to read the playlist. No Spotify sign-in needed. Private
-            playlists won't work.
+        <View style={styles.intro}>
+          <Text variant="title" style={styles.lead}>
+            Point us at a playlist
           </Text>
-        </Card>
+          <Text tone="secondary" style={styles.tagline}>
+            Paste a public Spotify playlist URL. Your shelf will pull every album it references.
+          </Text>
+        </View>
+
+        <View style={styles.field}>
+          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+            Playlist URL
+          </Text>
+          <TextInput
+            testID="album-shelf-playlist-url"
+            value={url}
+            onChangeText={setUrl}
+            placeholder="https://open.spotify.com/playlist/…"
+            placeholderTextColor={tokens.text.muted}
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoFocus
+            keyboardType="url"
+            maxLength={2048}
+            style={styles.input}
+          />
+          {previewing ? (
+            <View style={styles.previewStatus}>
+              <ActivityIndicator color={tokens.text.muted} size="small" />
+              <Text variant="caption" tone="muted">
+                Checking playlist…
+              </Text>
+            </View>
+          ) : null}
+          {!previewing && previewError ? (
+            <Text variant="caption" tone="danger" testID="album-shelf-playlist-error">
+              {previewError}
+            </Text>
+          ) : null}
+          <Text variant="caption" tone="muted" style={styles.hint}>
+            No Spotify sign-in needed. Private playlists won't work.
+          </Text>
+        </View>
 
         {preview ? (
           <Card style={styles.previewCard} elevated testID="album-shelf-playlist-preview">
-            <Text variant="label" tone="secondary">
+            <Text variant="caption" tone="muted" style={styles.previewKind}>
               Preview
             </Text>
             <Text variant="heading" numberOfLines={1}>
@@ -208,39 +211,45 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.xxl,
+    paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
+  step: { letterSpacing: 0.6, textTransform: "uppercase" },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   headerSpacer: { width: 40 },
   body: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.lg,
-    gap: tokens.space.lg,
+    gap: tokens.space.xl,
   },
   footer: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl,
     backgroundColor: tokens.bg.canvas,
   },
-  tagline: { textAlign: "left" },
-  card: { gap: tokens.space.md },
+  intro: { gap: tokens.space.xs },
+  lead: { letterSpacing: -0.4 },
+  tagline: { fontSize: tokens.font.size.md, lineHeight: 22 },
   previewCard: {
     gap: tokens.space.xs,
     borderColor: tokens.accent.default,
     borderWidth: 1,
   },
+  previewKind: { letterSpacing: 0.6, textTransform: "uppercase" },
   field: { gap: tokens.space.sm },
+  fieldLabel: { letterSpacing: 0.5, textTransform: "uppercase" },
+  hint: { lineHeight: 16 },
   input: {
     borderWidth: 1,
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: tokens.space.md,
     paddingVertical: 12,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.surface,
   },
   previewStatus: {
     flexDirection: "row",

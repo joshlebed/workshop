@@ -69,14 +69,21 @@ export default function CreateListType() {
         >
           <Text style={styles.backGlyph}>✕</Text>
         </IconButton>
-        <Text variant="heading">New list</Text>
+        <Text variant="caption" tone="muted" style={styles.step}>
+          Step 1 of 2
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
-        <Text tone="secondary" style={styles.tagline}>
-          Pick a type. You can rename and reskin it next.
-        </Text>
+        <View style={styles.intro}>
+          <Text variant="title" style={styles.lead}>
+            What are you collecting?
+          </Text>
+          <Text tone="secondary" style={styles.tagline}>
+            Pick a type. You'll name and skin it next.
+          </Text>
+        </View>
         <View style={styles.options}>
           {OPTIONS.map((opt) => {
             const accent = tokens.list[opt.color];
@@ -101,7 +108,7 @@ export default function CreateListType() {
                   <Text variant="label" style={styles.optionLabel}>
                     {opt.label}
                   </Text>
-                  <Text variant="caption" tone="muted">
+                  <Text variant="caption" tone="muted" numberOfLines={2}>
                     {opt.description}
                   </Text>
                 </View>
@@ -124,17 +131,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.xxl,
+    paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
+  step: { letterSpacing: 0.6, textTransform: "uppercase" },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
   headerSpacer: { width: 40 },
   body: {
     paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl,
-    gap: tokens.space.lg,
+    gap: tokens.space.xl,
   },
-  tagline: { paddingHorizontal: tokens.space.sm, fontSize: tokens.font.size.md },
+  intro: { gap: tokens.space.xs, paddingHorizontal: tokens.space.sm },
+  lead: { letterSpacing: -0.4 },
+  tagline: { fontSize: tokens.font.size.md, lineHeight: 22 },
   options: { gap: tokens.space.xs },
   option: {
     flexDirection: "row",
@@ -146,13 +157,13 @@ const styles = StyleSheet.create({
   },
   optionPressed: { backgroundColor: tokens.bg.surface },
   optionBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
   },
-  optionEmoji: { fontSize: 24, lineHeight: 28 },
+  optionEmoji: { fontSize: 26, lineHeight: 30 },
   optionText: { flex: 1, gap: 2, minWidth: 0 },
   optionLabel: { fontSize: tokens.font.size.md },
   optionChevron: { fontSize: tokens.font.size.xl },

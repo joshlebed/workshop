@@ -345,23 +345,17 @@ export function ListDetail({ list, members, token }: Props) {
   };
 
   const headerSubline = useMemo(() => {
+    const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
     if (isAlbumShelf) {
-      if (refreshing) return "Refreshing…";
-      const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
-      if (!lastRefreshedAt) {
-        return `${memberPart} · pull from Spotify by tapping ↻`;
-      }
+      if (refreshing) return "Refreshing from Spotify…";
+      if (!lastRefreshedAt) return `${memberPart} · tap ↻ to pull from Spotify`;
       const rel = formatRelative(lastRefreshedAt);
       const actor = lastRefreshedByName ? ` by @${lastRefreshedByName}` : "";
-      return `${memberPart} · last refreshed ${rel}${actor}`;
+      return `${memberPart} · refreshed ${rel}${actor}`;
     }
-    const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
-    const counts = [
-      orderedRaw.length > 0 ? `${orderedRaw.length} ordered` : null,
-      unorderedRaw.length > 0 ? `${unorderedRaw.length} unordered` : null,
-      completedRaw.length > 0 ? `${completedRaw.length} completed` : null,
-    ].filter(Boolean);
-    return counts.length > 0 ? `${memberPart} · ${counts.join(" · ")}` : memberPart;
+    const total = orderedRaw.length + unorderedRaw.length + completedRaw.length;
+    if (total === 0) return memberPart;
+    return `${memberPart} · ${total} ${total === 1 ? "item" : "items"}`;
   }, [
     isAlbumShelf,
     refreshing,
@@ -380,31 +374,18 @@ export function ListDetail({ list, members, token }: Props) {
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.header}>
+      <View style={styles.headerNav}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back"
           onPress={() => router.back()}
           testID="list-detail-back"
           hitSlop={10}
-          style={styles.headerSide}
+          style={styles.navButton}
         >
-          <Text style={styles.headerGlyph}>‹</Text>
+          <Text style={styles.navGlyph}>‹</Text>
         </Pressable>
-        <View style={styles.headerCenter}>
-          <View style={styles.headerTitle}>
-            <View style={[styles.headerEmojiBadge, { backgroundColor: `${accent}1F` }]}>
-              <Text style={styles.headerEmoji}>{list.emoji}</Text>
-            </View>
-            <Text variant="heading" numberOfLines={1} style={styles.headerName}>
-              {list.name}
-            </Text>
-          </View>
-          <Text variant="caption" tone="muted" style={styles.subline} testID="list-detail-subline">
-            {headerSubline}
-          </Text>
-        </View>
-        <View style={styles.headerActions}>
+        <View style={styles.navActions}>
           {isAlbumShelf ? (
             <Pressable
               accessibilityRole="button"
@@ -413,11 +394,12 @@ export function ListDetail({ list, members, token }: Props) {
               disabled={refreshing}
               testID="list-detail-refresh"
               hitSlop={10}
+              style={styles.navButton}
             >
               {refreshing ? (
                 <ActivityIndicator color={tokens.accent.default} />
               ) : (
-                <Text style={styles.headerGlyph}>↻</Text>
+                <Text style={styles.navGlyph}>↻</Text>
               )}
             </Pressable>
           ) : null}
@@ -427,9 +409,24 @@ export function ListDetail({ list, members, token }: Props) {
             onPress={() => router.push(`/list/${list.id}/settings`)}
             testID="list-detail-settings"
             hitSlop={10}
+            style={styles.navButton}
           >
-            <Text style={styles.headerGlyph}>⋯</Text>
+            <Text style={styles.navGlyph}>⋯</Text>
           </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.titleBlock}>
+        <View style={[styles.titleBadge, { backgroundColor: `${accent}26` }]}>
+          <Text style={styles.titleEmoji}>{list.emoji}</Text>
+        </View>
+        <View style={styles.titleText}>
+          <Text variant="title" numberOfLines={2} style={styles.titleName}>
+            {list.name}
+          </Text>
+          <Text variant="caption" tone="muted" style={styles.subline} testID="list-detail-subline">
+            {headerSubline}
+          </Text>
         </View>
       </View>
 
@@ -561,56 +558,62 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.xxl,
+    paddingTop: tokens.space.xl,
   },
-  header: {
+  headerNav: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    paddingHorizontal: tokens.space.md,
-    gap: tokens.space.md,
-  },
-  headerGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.xl,
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: tokens.space.sm,
   },
-  headerSide: { minWidth: 32 },
-  headerCenter: { flex: 1, alignItems: "center", gap: tokens.space.xs },
-  headerTitle: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  headerEmojiBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  navButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.md,
+  },
+  navGlyph: {
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.xl,
+  },
+  navActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  titleBlock: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
+  },
+  titleBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: "center",
     justifyContent: "center",
   },
-  headerEmoji: { fontSize: 18, lineHeight: 22 },
-  headerName: { maxWidth: 220 },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    minWidth: 32,
-    justifyContent: "flex-end",
-  },
-  subline: { textAlign: "center", paddingHorizontal: tokens.space.lg },
+  titleEmoji: { fontSize: 26, lineHeight: 30 },
+  titleText: { flex: 1, minWidth: 0, gap: 2 },
+  titleName: { letterSpacing: -0.4 },
+  subline: {},
   toolbar: {
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.sm,
   },
   filterWrap: {
     flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: tokens.radius.pill,
     paddingHorizontal: tokens.space.md,
     backgroundColor: tokens.bg.surface,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
   },
   filterGlyph: { fontSize: tokens.font.size.md, marginRight: tokens.space.sm },
   filterInput: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 9,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
   },

@@ -57,6 +57,15 @@ const COLOR_KEYS: readonly ListColorKey[] = [
 
 const EMOJI_CHOICES = ["🎬", "📺", "📚", "💡", "✈️", "🍿", "🎮", "🎵", "🍔", "🌅", "🏔️", "🎨"];
 
+const NAME_PLACEHOLDERS: Record<ListType, string> = {
+  movie: "Friday night movies",
+  tv: "Shows we're both watching",
+  book: "Books for the trip",
+  date_idea: "Date ideas",
+  trip: "Summer trip",
+  album_shelf: "Album shelf",
+};
+
 function parseType(value: string | string[] | undefined): ListType {
   const raw = Array.isArray(value) ? value[0] : value;
   if (raw && (VALID_TYPES as readonly string[]).includes(raw)) return raw as ListType;
@@ -78,6 +87,8 @@ export default function CreateListCustomize() {
 
   const trimmedName = name.trim();
   const canSubmit = trimmedName.length >= 1 && trimmedName.length <= 80;
+  const accentHex = tokens.list[color as ListColorKey];
+  const isAlbumShelf = type === "album_shelf";
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -104,9 +115,7 @@ export default function CreateListCustomize() {
   });
 
   const onSubmit = () => {
-    if (type === "album_shelf") {
-      // Album shelves need a playlist URL to be valid — defer creation
-      // to the playlist screen, which calls `createList` with the URL.
+    if (isAlbumShelf) {
       router.push({
         pathname: "/create-list/playlist",
         params: {
@@ -131,7 +140,9 @@ export default function CreateListCustomize() {
         <IconButton accessibilityLabel="Back" onPress={() => router.back()}>
           <Text style={styles.backGlyph}>‹</Text>
         </IconButton>
-        <Text variant="heading">{TYPE_LABEL[type]}</Text>
+        <Text variant="caption" tone="muted" style={styles.step}>
+          {isAlbumShelf ? "Step 2 of 3" : "Step 2 of 2"}
+        </Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -143,17 +154,17 @@ export default function CreateListCustomize() {
         bottomOffset={tokens.space.lg}
       >
         <View style={styles.preview}>
-          <View
-            style={[
-              styles.previewBadge,
-              { backgroundColor: `${tokens.list[color as ListColorKey]}26` },
-            ]}
-          >
+          <View style={[styles.previewBadge, { backgroundColor: `${accentHex}26` }]}>
             <Text style={styles.previewEmoji}>{emoji}</Text>
           </View>
-          <Text variant="heading" numberOfLines={1} style={styles.previewName}>
-            {trimmedName.length > 0 ? trimmedName : "Untitled list"}
-          </Text>
+          <View style={styles.previewText}>
+            <Text variant="caption" tone="muted" style={styles.previewKind}>
+              {TYPE_LABEL[type]}
+            </Text>
+            <Text variant="title" numberOfLines={1} style={styles.previewName}>
+              {trimmedName.length > 0 ? trimmedName : "Untitled list"}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.field}>
@@ -164,7 +175,7 @@ export default function CreateListCustomize() {
             testID="create-list-name"
             value={name}
             onChangeText={setName}
-            placeholder="Friday night movies"
+            placeholder={NAME_PLACEHOLDERS[type]}
             placeholderTextColor={tokens.text.muted}
             autoFocus
             maxLength={80}
@@ -175,8 +186,26 @@ export default function CreateListCustomize() {
 
         <View style={styles.field}>
           <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-            Emoji
+            Look
           </Text>
+          <View style={styles.colorRow}>
+            {COLOR_KEYS.map((key) => (
+              <Pressable
+                key={key}
+                accessibilityRole="button"
+                accessibilityLabel={`Use color ${key}`}
+                accessibilityState={{ selected: key === color }}
+                onPress={() => setColor(key)}
+                style={({ pressed }) => [
+                  styles.colorCell,
+                  key === color && styles.colorCellSelected,
+                  pressed && styles.colorCellPressed,
+                ]}
+              >
+                <View style={[styles.colorSwatch, { backgroundColor: tokens.list[key] }]} />
+              </Pressable>
+            ))}
+          </View>
           <View style={styles.emojiRow}>
             {EMOJI_CHOICES.map((choice) => (
               <Pressable
@@ -198,41 +227,19 @@ export default function CreateListCustomize() {
         </View>
 
         <View style={styles.field}>
-          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-            Color
-          </Text>
-          <View style={styles.colorRow}>
-            {COLOR_KEYS.map((key) => (
-              <Pressable
-                key={key}
-                accessibilityRole="button"
-                accessibilityLabel={`Use color ${key}`}
-                accessibilityState={{ selected: key === color }}
-                onPress={() => setColor(key)}
-                style={({ pressed }) => [
-                  styles.colorCell,
-                  key === color && styles.colorCellSelected,
-                  pressed && styles.colorCellPressed,
-                ]}
-              >
-                <View style={[styles.colorSwatch, { backgroundColor: tokens.list[key] }]} />
-              </Pressable>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.field}>
-          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-            Description{" "}
-            <Text tone="muted" variant="caption">
-              (optional)
+          <View style={styles.fieldLabelRow}>
+            <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+              Description
             </Text>
-          </Text>
+            <Text variant="caption" tone="muted">
+              Optional
+            </Text>
+          </View>
           <TextInput
             testID="create-list-description"
             value={description}
             onChangeText={setDescription}
-            placeholder="Anything to know about this list?"
+            placeholder="What's this list for?"
             placeholderTextColor={tokens.text.muted}
             multiline
             maxLength={500}
@@ -248,7 +255,7 @@ export default function CreateListCustomize() {
       <View style={styles.footer}>
         <Button
           testID="create-list-submit"
-          label={type === "album_shelf" ? "Continue" : "Create list"}
+          label={isAlbumShelf ? "Continue" : "Create list"}
           size="lg"
           disabled={!canSubmit || mutation.isPending}
           loading={mutation.isPending}
@@ -267,18 +274,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.xxl,
+    paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
+  step: { letterSpacing: 0.6, textTransform: "uppercase" },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   headerSpacer: { width: 40 },
   body: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.lg,
-    gap: tokens.space.lg,
+    gap: tokens.space.xl,
   },
   footer: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl,
     backgroundColor: tokens.bg.canvas,
@@ -290,16 +299,23 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.sm,
   },
   previewBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: "center",
     justifyContent: "center",
   },
-  previewEmoji: { fontSize: 28, lineHeight: 32 },
-  previewName: { flex: 1, minWidth: 0 },
+  previewEmoji: { fontSize: 32, lineHeight: 36 },
+  previewText: { flex: 1, minWidth: 0, gap: 2 },
+  previewKind: { letterSpacing: 0.6, textTransform: "uppercase" },
+  previewName: { letterSpacing: -0.4 },
   field: { gap: tokens.space.sm },
-  fieldLabel: { letterSpacing: 0.3, textTransform: "uppercase" },
+  fieldLabel: { letterSpacing: 0.5, textTransform: "uppercase" },
+  fieldLabelRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+  },
   input: {
     borderWidth: 1,
     borderColor: tokens.border.default,
@@ -310,7 +326,7 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.md,
     backgroundColor: tokens.bg.surface,
   },
-  inputMultiline: { minHeight: 72, textAlignVertical: "top" },
+  inputMultiline: { minHeight: 80, textAlignVertical: "top" },
   emojiRow: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
   emojiCell: {
     width: 44,
