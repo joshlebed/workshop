@@ -78,6 +78,31 @@ describe("parseOgMeta", () => {
   });
 });
 
+describe("parseFavicon", () => {
+  it("prefers apple-touch-icon over icon and shortcut icon", () => {
+    const html = `
+      <head>
+        <link rel="shortcut icon" href="/favicon.ico">
+        <link rel="icon" type="image/png" href="/icon-32.png">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+      </head>`;
+    expect(__internal.parseFavicon(html)).toBe("/apple-touch-icon.png");
+  });
+
+  it("falls through to icon when apple-touch-icon is absent", () => {
+    const html = `
+      <head>
+        <link rel="shortcut icon" href="/favicon.ico">
+        <link rel="icon" href="/icon.png">
+      </head>`;
+    expect(__internal.parseFavicon(html)).toBe("/icon.png");
+  });
+
+  it("returns null when no icon links are present", () => {
+    expect(__internal.parseFavicon("<head></head>")).toBeNull();
+  });
+});
+
 describe("cacheKeyFor", () => {
   it("is stable for the same URL and differs across URLs", () => {
     const a = __internal.cacheKeyFor(new URL("https://example.com/a"));
@@ -108,6 +133,22 @@ describe("buildPreview", () => {
       body: `<head><meta property="og:title" content="T"></head>`,
     });
     expect(preview.siteName).toBe("www.example.com");
+  });
+
+  it("resolves a declared favicon and falls back to /favicon.ico otherwise", () => {
+    const withDeclared = __internal.buildPreview(new URL("https://example.com/p"), {
+      finalUrl: new URL("https://www.example.com/p"),
+      contentType: "text/html",
+      body: `<head><link rel="apple-touch-icon" href="/apple-touch-icon.png"></head>`,
+    });
+    expect(withDeclared.favicon).toBe("https://www.example.com/apple-touch-icon.png");
+
+    const noDeclared = __internal.buildPreview(new URL("https://example.com/p"), {
+      finalUrl: new URL("https://www.example.com/p"),
+      contentType: "text/html",
+      body: `<head></head>`,
+    });
+    expect(noDeclared.favicon).toBe("https://www.example.com/favicon.ico");
   });
 });
 
@@ -223,6 +264,7 @@ describe("GET /v1/link-preview happy paths", () => {
       title: "Cool Page",
       description: "Stuff",
       image: "https://cdn.example/i.jpg",
+      favicon: "https://example.com/favicon.ico",
       siteName: "ExampleSite",
     });
     expect(typeof body.preview.fetchedAt).toBe("string");
@@ -236,6 +278,7 @@ describe("GET /v1/link-preview happy paths", () => {
       title: "Cached",
       description: null,
       image: null,
+      favicon: null,
       siteName: "example.com",
       fetchedAt: "2026-01-01T00:00:00.000Z",
     };

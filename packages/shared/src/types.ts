@@ -407,6 +407,7 @@ export interface LinkPreview {
   title: string | null;
   description: string | null;
   image: string | null;
+  favicon: string | null;
   siteName: string | null;
   fetchedAt: string;
 }
