@@ -1,6 +1,7 @@
 // Shared Playwright helpers for the workshop E2E suite.
 
 import type { APIRequestContext, Page, Route } from "@playwright/test";
+import { expect } from "@playwright/test";
 
 const AUTO_DEV_OPT_OUT_KEY = "workshop.disable-auto-dev";
 const SESSION_TOKEN_KEY = "workshop.session.v1";
@@ -72,6 +73,43 @@ export async function mockGoogleAuthEndpoint(page: Page, authResponse: unknown):
       body: JSON.stringify(authResponse),
     });
   });
+}
+
+/**
+ * Drive the dev sign-in flow from the sign-in screen to the home greeting.
+ * Caller is responsible for `disableAutoDevSignIn` + `page.goto("/")` and any
+ * `page.route(...)` mocks (so route setup can run before navigation). The
+ * helper handles the post-click branch where a fresh user lands on the
+ * display-name screen vs an already-onboarded one lands on home directly.
+ *
+ * For tests that specifically exercise the display-name onboarding step
+ * (e.g. `sign-in.spec.ts`), inline the assertions rather than using this
+ * helper — it intentionally treats display-name entry as optional.
+ */
+export async function signInAsDev(
+  page: Page,
+  options: { displayName?: string } = {},
+): Promise<void> {
+  const displayName = options.displayName ?? "E2E User";
+  await expect(page.getByTestId("sign-in-dev")).toBeVisible();
+  await page.getByTestId("sign-in-dev").click();
+
+  await Promise.race([
+    page.getByTestId("display-name-input").waitFor({ state: "visible" }),
+    page.getByTestId("home-greeting").waitFor({ state: "visible" }),
+  ]);
+
+  if (
+    await page
+      .getByTestId("display-name-input")
+      .isVisible()
+      .catch(() => false)
+  ) {
+    await page.getByTestId("display-name-input").fill(displayName);
+    await page.getByTestId("display-name-save").click();
+  }
+
+  await expect(page.getByTestId("home-greeting")).toBeVisible();
 }
 
 interface DevAuthResponse {

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { disableAutoDevSignIn } from "./helpers";
+import { disableAutoDevSignIn, signInAsDev } from "./helpers";
 
 // Happy-path for chunk 1b-2: dev-sign-in → create list → add item →
 // rank/unrank via kebab → complete. Updated for the 2026-05 ordering
@@ -14,21 +14,7 @@ test("create list → add item → rank → complete", async ({ page }) => {
   await disableAutoDevSignIn(page);
   await page.goto("/");
 
-  // Sign in via the dev backdoor + onboard if needed.
-  await expect(page.getByTestId("sign-in-dev")).toBeVisible();
-  await page.getByTestId("sign-in-dev").click();
-
-  if (
-    await page
-      .getByTestId("display-name-input")
-      .isVisible()
-      .catch(() => false)
-  ) {
-    await page.getByTestId("display-name-input").fill("E2E Tester");
-    await page.getByTestId("display-name-save").click();
-  }
-
-  await expect(page.getByTestId("home-greeting")).toBeVisible();
+  await signInAsDev(page, { displayName: "E2E Tester" });
 
   // Open the create-list modal stack via the FAB.
   await page.getByTestId("fab-create-list").click();

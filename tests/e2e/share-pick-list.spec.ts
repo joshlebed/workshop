@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { disableAutoDevSignIn } from "./helpers";
+import { disableAutoDevSignIn, signInAsDev } from "./helpers";
 
 // Happy-path for chunk 4a-1: dev-sign-in → create date-idea list →
 // simulate a share-extension hand-off by visiting `/share?url=…` →
@@ -38,20 +38,7 @@ test("share entry → pick list → URL pre-filled in add screen", async ({ page
 
   await page.goto("/");
 
-  await expect(page.getByTestId("sign-in-dev")).toBeVisible();
-  await page.getByTestId("sign-in-dev").click();
-
-  await Promise.race([
-    page.getByTestId("display-name-input").waitFor({ state: "visible" }),
-    page.getByTestId("home-greeting").waitFor({ state: "visible" }),
-  ]);
-
-  if (await page.getByTestId("display-name-input").isVisible()) {
-    await page.getByTestId("display-name-input").fill("E2E Sharer");
-    await page.getByTestId("display-name-save").click();
-  }
-
-  await expect(page.getByTestId("home-greeting")).toBeVisible();
+  await signInAsDev(page, { displayName: "E2E Sharer" });
 
   // Seed a date-idea list to share into.
   await page.getByTestId("fab-create-list").click();

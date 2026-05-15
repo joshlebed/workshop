@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { disableAutoDevSignIn } from "./helpers";
+import { disableAutoDevSignIn, signInAsDev } from "./helpers";
 
 // Happy-path for chunk 2b-2: dev-sign-in → create date-idea list → paste a URL
 // in the add-item form → see the inline link preview → save the item.
@@ -32,22 +32,7 @@ test("create date-idea list → paste URL → see preview → save", async ({ pa
 
   await page.goto("/");
 
-  await expect(page.getByTestId("sign-in-dev")).toBeVisible();
-  await page.getByTestId("sign-in-dev").click();
-
-  // Race the post-sign-in branches — fresh user vs already-onboarded — so the
-  // spec survives a dirty dev DB. Same pattern as add-search.spec.ts.
-  await Promise.race([
-    page.getByTestId("display-name-input").waitFor({ state: "visible" }),
-    page.getByTestId("home-greeting").waitFor({ state: "visible" }),
-  ]);
-
-  if (await page.getByTestId("display-name-input").isVisible()) {
-    await page.getByTestId("display-name-input").fill("E2E Preview");
-    await page.getByTestId("display-name-save").click();
-  }
-
-  await expect(page.getByTestId("home-greeting")).toBeVisible();
+  await signInAsDev(page, { displayName: "E2E Preview" });
 
   // Create a date-idea list (free-form flow).
   await page.getByTestId("fab-create-list").click();

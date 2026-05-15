@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { disableAutoDevSignIn } from "./helpers";
+import { disableAutoDevSignIn, signInAsDev } from "./helpers";
 
 // Happy-path for chunk 2b-1: dev-sign-in → create movie list → search →
 // add a movie via the search modal → verify it lands on the list.
@@ -41,23 +41,7 @@ test("create movie list → search → add via search result", async ({ page }) 
 
   await page.goto("/");
 
-  // Sign in via the dev backdoor + onboard if needed. Wait for whichever
-  // screen renders first — display-name on a fresh user, home-greeting on
-  // an already-onboarded one.
-  await expect(page.getByTestId("sign-in-dev")).toBeVisible();
-  await page.getByTestId("sign-in-dev").click();
-
-  await Promise.race([
-    page.getByTestId("display-name-input").waitFor({ state: "visible" }),
-    page.getByTestId("home-greeting").waitFor({ state: "visible" }),
-  ]);
-
-  if (await page.getByTestId("display-name-input").isVisible()) {
-    await page.getByTestId("display-name-input").fill("E2E Search");
-    await page.getByTestId("display-name-save").click();
-  }
-
-  await expect(page.getByTestId("home-greeting")).toBeVisible();
+  await signInAsDev(page, { displayName: "E2E Search" });
 
   // Create a movie-typed list.
   await page.getByTestId("fab-create-list").click();
