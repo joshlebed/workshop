@@ -211,6 +211,33 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   (`:8787`) and web (`:8081`) on the same ports `pnpm dev` (and the Niteshift sandbox) use.
   Kill anything bound to those ports before running it; don't rely on `--kill-others-on-fail`
   to clean up — that's the e2e script's own children, not the pre-existing dev servers.
+- **`useColorScheme()` returns `null` on web during the first render.** Before
+  `prefers-color-scheme` hydrates, React Native Web's `useColorScheme()` is
+  `null | undefined`, not `"light"`. A naive `scheme === "dark" ? darkTokens
+: lightTokens` ternary silently flips the app to light on first paint.
+  Default to the baseline mode explicitly: `scheme === "light" ? lightTokens
+: darkTokens` (or the reverse, depending on which mode is the default).
+  See `apps/workshop/src/ui/ThemeProvider.tsx` for the pattern.
+- **Reanimated press-feedback: wrap `Pressable`, don't replace it.**
+  `Animated.createAnimatedComponent(Pressable)` looks tempting, but
+  `Pressable`'s `style={({ pressed }) => [...]}` callback re-resolves on
+  every render and clobbers any transform animation routed through the same
+  animated component. Wrap a plain `<Pressable>` inside an `<Animated.View>`
+  (or `<Animated.Pressable>` for ref-only animations) and keep the
+  press-state styling on the inner `Pressable`. `UpvotePill` is the
+  canonical reference. See AGENT-REFLECTIONS.md 2026-04-28 (Phase 5d).
+- **`react-native-worklets` babel plugin is auto-wired by
+  `babel-preset-expo`.** Reanimated 4 needs the worklets babel plugin to
+  transform `worklet` functions; when `react-native-worklets` is a dep,
+  `babel-preset-expo` includes it automatically. Don't add
+  `react-native-worklets/plugin` to `babel.config.js` manually — it'll run
+  twice and either no-op or break with confusing duplicate-transform errors.
+- **For animated text, use `AnimatedText` from `src/ui/Text.tsx`.** Raw
+  `<Animated.Text>` strips our `variant` / `tone` props, so a `body`-sized
+  title that gets switched to `<Animated.Text>` for an opacity crossfade
+  silently loses its `fontSize` / `fontWeight`. `AnimatedText` is the same
+  surface as `Text` but accepts animated styles; reach for it instead of
+  re-applying styles by hand on `Animated.Text`.
 
 ## Debugging production
 
