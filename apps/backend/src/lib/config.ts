@@ -44,6 +44,9 @@ const configSchema = z.object({
   // without Spotify configured; Album Shelf routes 503 until these are set.
   spotifyClientId: z.string().optional().default(""),
   spotifyClientSecret: z.string().optional().default(""),
+  // Sentry DSN for the Lambda. Empty default = SDK is a no-op (local dev
+  // and any deploy before the secret is wired up). Populated via SSM in prod.
+  sentryDsn: z.string().optional().default(""),
 });
 
 type Config = z.infer<typeof configSchema> & { isLocal: boolean };
@@ -69,6 +72,7 @@ export function getConfig(): Config {
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    sentryDsn: process.env.SENTRY_DSN,
   });
   cached = { ...parsed, isLocal: parsed.stage === "local" };
   return cached;

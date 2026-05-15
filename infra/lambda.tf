@@ -56,6 +56,7 @@ resource "aws_lambda_function" "api" {
       GOOGLE_BOOKS_API_KEY  = aws_ssm_parameter.google_books_api_key.value
       SPOTIFY_CLIENT_ID     = aws_ssm_parameter.spotify_client_id.value
       SPOTIFY_CLIENT_SECRET = aws_ssm_parameter.spotify_client_secret.value
+      SENTRY_DSN            = aws_ssm_parameter.sentry_dsn.value
       LOG_LEVEL             = "info"
     }
   }

@@ -36,6 +36,12 @@ jobs:
           EXPO_PUBLIC_APPLE_SERVICES_ID: dev.josh.workshop.web
           EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33.apps.googleusercontent.com
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com
+          # EXPO_PUBLIC_SENTRY_DSN is read at bundle time and embedded in the
+          # JS bundle. SENTRY_AUTH_TOKEN is used by the Sentry expo plugin to
+          # upload the Hermes source map to Sentry. Both are silently no-op
+          # if unset — Sentry SDK skips init, source maps just don't upload.
+          EXPO_PUBLIC_SENTRY_DSN: ${{ secrets.EXPO_PUBLIC_SENTRY_DSN }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           COMMIT_SHA: ${{ github.sha }}
         run: |
           pnpm exec eas update \
