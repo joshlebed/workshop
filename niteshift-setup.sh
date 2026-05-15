@@ -118,7 +118,21 @@ log "running db migrations"
 pnpm --filter @workshop/backend run db:migrate
 
 # ---------------------------------------------------------------------------
-# 7) Start backend (:8787) + Expo web (:8081) in parallel.
+# 7) Seed dev data (idempotent — exits without changes if seed user has lists).
+#    Populates the preview user (`preview@workshop.local`, the same identity the
+#    web app's auto-dev-sign-in uses) with a mix of movie/tv/book/date/trip/game
+#    lists so the agent or human lands on a non-empty UI on first load. Set
+#    SEED_DEV_DATA=0 to skip (e.g. when reproducing an empty-state bug).
+# ---------------------------------------------------------------------------
+if [ "${SEED_DEV_DATA:-1}" = "1" ]; then
+  log "seeding dev data"
+  pnpm --filter @workshop/backend run db:seed
+else
+  log "SEED_DEV_DATA=0 — skipping dev data seed"
+fi
+
+# ---------------------------------------------------------------------------
+# 8) Start backend (:8787) + Expo web (:8081) in parallel.
 #    EXPO_PUBLIC_API_URL points the browser at the backend preview URL so
 #    fetch() calls from the React Native web bundle cross the Niteshift proxy
 #    to the sandbox — localhost:8787 isn't reachable from the user's browser.

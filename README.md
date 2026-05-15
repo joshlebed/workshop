@@ -16,6 +16,7 @@ and will grow to include more small apps over time.
 ```bash
 pnpm install
 ./scripts/dev.sh                  # postgres (docker) + backend (leave running)
+                                  # also seeds a dev user with sample lists
 
 # In a second terminal:
 EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start
@@ -23,6 +24,12 @@ EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start
 
 Open Expo Go on your iPhone, scan the QR code from the second terminal. Sign in with any email —
 the 6-digit code prints in the backend terminal (local mode doesn't send real email).
+
+The first run of `./scripts/dev.sh` seeds the local DB with sample lists owned by
+`preview@workshop.local` (the same user the web app auto-signs in as when
+`EXPO_PUBLIC_DEV_AUTH=1`), so the UI opens lived-in. The seed is idempotent and bails when
+the user already has lists; set `SEED_DEV_DATA=0` to skip, or run
+`pnpm --filter @workshop/backend run db:seed` manually.
 
 > Two terminals because Expo's interactive QR/keybind UI doesn't render cleanly next to streaming
 > backend logs.

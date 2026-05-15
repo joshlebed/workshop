@@ -484,10 +484,31 @@ pnpm dev:mobile   # iOS/Expo Go — MUST be a separate terminal (QR/keybinds)
 ```
 
 `pnpm dev` runs `scripts/dev.sh`, which: starts the `workshop-pg` postgres container, seeds
-`apps/backend/.env` on first run (generating `SESSION_SECRET`), applies Drizzle migrations, then
-uses `concurrently` to run the backend (`tsx watch`) and `expo start --web` with `[backend]` /
-`[web]` prefixes in a single terminal. Ctrl-C stops both. `app.json` already points `apiUrl` at
+`apps/backend/.env` on first run (generating `SESSION_SECRET`), applies Drizzle migrations,
+seeds dev fixtures (idempotently — see "Dev data seed" below), then uses `concurrently` to
+run the backend (`tsx watch`) and `expo start --web` with `[backend]` / `[web]` prefixes in a
+single terminal. Ctrl-C stops both. `app.json` already points `apiUrl` at
 `http://localhost:8787`; backend CORS is `origin: "*"`.
+
+### Dev data seed
+
+`apps/backend/scripts/seed.ts` populates the local Postgres with a "lived-in" set of lists
+(movie / tv / book / date_idea / trip / game) owned by `preview@workshop.local` — the same
+identity the web app's auto-dev-sign-in uses (`apps/workshop/src/hooks/useAuth.tsx`). A
+second user `friend@workshop.local` is added as a member on a few shared lists with one
+upvote each, plus a handful of recent `game_scores` rows so the game-detail screen renders
+non-empty.
+
+Both `scripts/dev.sh` and `niteshift-setup.sh` run `pnpm --filter @workshop/backend run db:seed`
+after migrations. The script is idempotent (bails the moment it finds the preview user owns
+any list) and hard-guards against non-local stages, so re-running setup is safe and prod
+can't be touched. Set `SEED_DEV_DATA=0` to skip when reproducing empty-state bugs. To
+re-seed locally, blow away the preview user (`DELETE FROM users WHERE email LIKE
+'%@workshop.local';`) and re-run `pnpm --filter @workshop/backend run db:seed` — the seed
+restores the same fixture set.
+
+When adding a new list type or item-metadata field, extend `seed.ts` so the next agent or
+human gets coverage for it on first load.
 
 ### Dev logs — `/tmp/workshop-dev.log` (local) or `$NITESHIFT_LOG_FILE` (sandbox)
 
