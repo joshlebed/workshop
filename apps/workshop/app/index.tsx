@@ -2,20 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import type { ListSummary, ListType } from "@workshop/shared";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Image,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, View } from "react-native";
 import { fetchActivity } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
 import { PullToRefresh } from "../src/components/PullToRefresh";
 import { useAuth } from "../src/hooks/useAuth";
 import { errorMessage } from "../src/lib/api";
+import { confirm } from "../src/lib/confirm";
 import { getActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
 import { Button, EmptyState, IconButton, type ListColorKey, Text, tokens } from "../src/ui/index";
@@ -134,11 +127,14 @@ export default function Home() {
           </View>
           <IconButton
             accessibilityLabel="Sign out"
-            onPress={() => {
-              Alert.alert("Sign out?", "You'll need to sign in again to access your lists.", [
-                { text: "Cancel", style: "cancel" },
-                { text: "Sign out", style: "destructive", onPress: signOut },
-              ]);
+            onPress={async () => {
+              const ok = await confirm({
+                title: "Sign out?",
+                message: "You'll need to sign in again to access your lists.",
+                confirmLabel: "Sign out",
+                destructive: true,
+              });
+              if (ok) signOut();
             }}
             testID="sign-out"
           >

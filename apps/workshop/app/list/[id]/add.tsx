@@ -176,9 +176,17 @@ export default function AddItem() {
         ? buildGameMetadata(preview)
         : buildLinkPreviewMetadata(preview)
       : undefined;
+    // Force a scheme on bare hostnames at save time so `Linking.openURL` /
+    // `window.open` don't treat them as relative paths on web later. Prefer
+    // the already-validated `normalizedUrl` when the preview matched, else
+    // wrap a bare hostname in https://.
+    const persistedUrl =
+      trimmedUrl.length === 0
+        ? undefined
+        : (normalizedUrl ?? `https://${trimmedUrl.replace(/^\/\//, "")}`);
     const body: CreateItemRequest = {
       title: trimmedTitle,
-      ...(trimmedUrl.length > 0 ? { url: trimmedUrl } : {}),
+      ...(persistedUrl ? { url: persistedUrl } : {}),
       ...(trimmedNote.length > 0 ? { note: trimmedNote } : {}),
       ...(metadata ? { metadata } : {}),
     };

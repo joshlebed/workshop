@@ -46,7 +46,7 @@ export function ItemList({
   onReorderOrdered,
   onRowMenu,
   onRowPressBody,
-  onRowPressCover,
+  resolveRowPressCover,
   refreshing,
   onRefresh,
 }: ItemListProps) {
@@ -65,10 +65,10 @@ export function ItemList({
         accent={accent}
         onMenu={() => onRowMenu(item, "ordered")}
         onPressBody={() => onRowPressBody(item, "ordered")}
-        onPressCover={onRowPressCover ? () => onRowPressCover(item, "ordered") : undefined}
+        onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
       />
     ),
-    [memberNameById, showProvenance, accent, onRowMenu, onRowPressBody, onRowPressCover],
+    [memberNameById, showProvenance, accent, onRowMenu, onRowPressBody, resolveRowPressCover],
   );
 
   return (
@@ -106,9 +106,7 @@ export function ItemList({
                 accent={accent}
                 onMenu={() => onRowMenu(item, "unordered")}
                 onPressBody={() => onRowPressBody(item, "unordered")}
-                onPressCover={
-                  onRowPressCover ? () => onRowPressCover(item, "unordered") : undefined
-                }
+                onPressCover={resolveRowPressCover?.(item, "unordered") ?? undefined}
               />
             ))}
           </>
@@ -128,9 +126,7 @@ export function ItemList({
                 accent={accent}
                 onMenu={() => onRowMenu(item, "completed")}
                 onPressBody={() => onRowPressBody(item, "completed")}
-                onPressCover={
-                  onRowPressCover ? () => onRowPressCover(item, "completed") : undefined
-                }
+                onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
               />
             ))}
           </>

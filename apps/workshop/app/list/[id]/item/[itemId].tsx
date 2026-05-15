@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import {
   completeItem,
@@ -13,6 +13,7 @@ import {
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { ApiError } from "../../../../src/lib/api";
 import { haptics } from "../../../../src/lib/haptics";
+import { normalizeExternalUrl, openExternalUrl } from "../../../../src/lib/openUrl";
 import { queryKeys } from "../../../../src/lib/queryKeys";
 import {
   Button,
@@ -78,13 +79,15 @@ export default function ItemDetail() {
     mutationFn: () => {
       const trimmedTitle = title.trim();
       const trimmedNote = note.trim();
-      const trimmedUrl = url.trim();
+      // Force a scheme on bare hostnames so the saved URL is openable
+      // straight from the row (no relative-path footgun on web).
+      const normalizedUrl = normalizeExternalUrl(url);
       return updateItem(
         itemId ?? "",
         {
           title: trimmedTitle,
           note: trimmedNote.length === 0 ? null : trimmedNote,
-          url: trimmedUrl.length === 0 ? null : trimmedUrl,
+          url: normalizedUrl,
         },
         token,
       );
@@ -148,6 +151,12 @@ export default function ItemDetail() {
   }
 
   const item = itemQuery.data.item;
+  // Game items have their own combined edit + leaderboard screen at
+  // `/list/:id/game/:itemId`. Anyone who lands on the generic item screen
+  // with a game item (e.g. from a stale share link) gets redirected.
+  if (item.type === "game") {
+    return <Redirect href={`/list/${listId}/game/${itemId}`} />;
+  }
   const trimmedTitle = title.trim();
   const dirty =
     trimmedTitle !== item.title ||
@@ -224,7 +233,7 @@ export default function ItemDetail() {
               <Pressable
                 accessibilityRole="link"
                 accessibilityLabel={`Open ${item.url}`}
-                onPress={() => Linking.openURL(item.url ?? "").catch(() => {})}
+                onPress={() => openExternalUrl(item.url)}
               >
                 <Text tone="secondary" numberOfLines={1} style={styles.urlPreview}>
                   Open ↗
