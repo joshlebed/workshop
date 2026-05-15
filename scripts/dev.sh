@@ -53,6 +53,13 @@ source apps/backend/.env
 set +a
 pnpm --filter @workshop/backend run db:migrate
 
+# Idempotent dev-data seed — populates `preview@workshop.local` (matching the
+# web app's auto-dev-sign-in user) on a fresh DB so the UI opens lived-in.
+# `SEED_DEV_DATA=0 pnpm dev` skips it if you need to reproduce empty state.
+if [ "${SEED_DEV_DATA:-1}" = "1" ]; then
+  pnpm --filter @workshop/backend run db:seed
+fi
+
 LOG_FILE="${WORKSHOP_DEV_LOG:-/tmp/workshop-dev.log}"
 : > "$LOG_FILE"
 
