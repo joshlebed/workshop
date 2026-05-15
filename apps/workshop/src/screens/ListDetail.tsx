@@ -14,7 +14,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -32,6 +31,7 @@ import {
 } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { haptics } from "../lib/haptics";
+import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
 import { Button, EmptyState, type ListColorKey, Text, tokens, useToast } from "../ui/index";
@@ -332,39 +332,47 @@ export function ListDetail({ list, members, token }: Props) {
             onUncomplete: () => completeMutation.mutate({ item, nextCompleted: false }),
           }
         : {}),
-      ...(!isAlbumShelf ? { onEdit: () => router.push(`/list/${list.id}/item/${item.id}`) } : {}),
+      ...(!isAlbumShelf
+        ? {
+            onEdit: () =>
+              router.push(
+                item.type === "game"
+                  ? `/list/${list.id}/game/${item.id}`
+                  : `/list/${list.id}/item/${item.id}`,
+              ),
+          }
+        : {}),
       onDelete: confirmDelete,
     });
   };
 
-  const isGameList = list.type === "game";
-
+  // Across every list type the thumbnail is the "action" affordance — it
+  // launches the external URL / Spotify album / game URL. The row body opens
+  // the item-detail screen, except for album shelves which have no editable
+  // detail (fields are server-derived from Spotify, so body-tap also opens
+  // the album in Spotify).
   const onRowPressBody = (item: Item) => {
     if (isAlbumShelf) {
       const m = item.metadata as { spotifyAlbumUrl?: string };
-      const url = m.spotifyAlbumUrl;
-      if (!url) return;
-      Linking.openURL(url).catch(() => {
-        /* best effort — popup blocker / unsupported scheme is non-fatal */
-      });
+      openExternalUrl(m.spotifyAlbumUrl);
       return;
     }
-    if (isGameList) {
-      // Body tap on a game row opens the leaderboard / paste-score detail.
+    if (item.type === "game") {
       router.push(`/list/${list.id}/game/${item.id}`);
       return;
     }
     router.push(`/list/${list.id}/item/${item.id}`);
   };
 
-  const onRowPressCover = isGameList
-    ? (item: Item) => {
-        if (!item.url) return;
-        Linking.openURL(item.url).catch(() => {
-          /* best effort — popup blocker / unsupported scheme is non-fatal */
-        });
-      }
-    : undefined;
+  const resolveRowPressCover = (item: Item): (() => void) | null => {
+    if (isAlbumShelf) {
+      const m = item.metadata as { spotifyAlbumUrl?: string };
+      const url = normalizeExternalUrl(m.spotifyAlbumUrl);
+      return url ? () => openExternalUrl(url) : null;
+    }
+    const url = normalizeExternalUrl(item.url);
+    return url ? () => openExternalUrl(url) : null;
+  };
 
   const headerSubline = useMemo(() => {
     const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
@@ -569,7 +577,7 @@ export function ListDetail({ list, members, token }: Props) {
             onPromoteToOrdered={onPromoteToOrdered}
             onRowMenu={onRowMenu}
             onRowPressBody={onRowPressBody}
-            onRowPressCover={onRowPressCover}
+            resolveRowPressCover={resolveRowPressCover}
             refreshing={itemsQuery.isRefetching}
             onRefresh={() => {
               itemsQuery.refetch();

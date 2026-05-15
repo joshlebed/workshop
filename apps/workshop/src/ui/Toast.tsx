@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { copyToClipboard } from "../lib/share";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -27,7 +28,11 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+// Default toasts auto-dismiss after a short read. Danger toasts hang around
+// 10s because the user usually needs them long enough to copy the message
+// and report it.
 const DEFAULT_DURATION_MS = 3500;
+const DANGER_DURATION_MS = 10_000;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -38,18 +43,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showToast = useCallback(
-    ({
-      message,
-      tone = "default",
-      durationMs = DEFAULT_DURATION_MS,
-      actionLabel,
-      onAction,
-    }: ShowToastInput) => {
+    ({ message, tone = "default", durationMs, actionLabel, onAction }: ShowToastInput) => {
       idRef.current += 1;
       const id = idRef.current;
       setToasts((prev) => [...prev, { id, message, tone, actionLabel, onAction }]);
-      if (durationMs > 0) {
-        setTimeout(() => dismiss(id), durationMs);
+      const effectiveDuration =
+        durationMs ?? (tone === "danger" ? DANGER_DURATION_MS : DEFAULT_DURATION_MS);
+      if (effectiveDuration > 0) {
+        setTimeout(() => dismiss(id), effectiveDuration);
       }
     },
     [dismiss],
@@ -78,9 +79,12 @@ function ToastViewport({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
 
 function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const tone = toneStyle[toast.tone];
+  const showCopy = toast.tone === "danger";
   return (
-    <View style={[styles.row, tone]}>
-      <Text style={styles.message}>{toast.message}</Text>
+    <View style={[styles.row, tone]} testID={`toast-${toast.tone}`}>
+      <Text style={styles.message} selectable>
+        {toast.message}
+      </Text>
       {toast.actionLabel ? (
         <Pressable
           accessibilityRole="button"
@@ -95,6 +99,36 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
           </Text>
         </Pressable>
       ) : null}
+      {showCopy ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Copy error message"
+          onPress={() => {
+            copyToClipboard(toast.message).catch(() => {});
+          }}
+          style={({ pressed, hovered }) => [
+            styles.iconBtn,
+            (pressed || hovered) && styles.iconBtnHover,
+          ]}
+          hitSlop={8}
+          testID="toast-copy"
+        >
+          <Text style={styles.iconGlyph}>⧉</Text>
+        </Pressable>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss"
+        onPress={onDismiss}
+        style={({ pressed, hovered }) => [
+          styles.iconBtn,
+          (pressed || hovered) && styles.iconBtnHover,
+        ]}
+        hitSlop={8}
+        testID="toast-dismiss"
+      >
+        <Text style={styles.iconGlyph}>✕</Text>
+      </Pressable>
     </View>
   );
 }
@@ -124,11 +158,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: tokens.space.sm,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: tokens.space.md,
+    paddingLeft: tokens.space.lg,
+    paddingRight: tokens.space.sm,
+    paddingVertical: tokens.space.sm,
     minHeight: 44,
     maxWidth: 480,
     width: "100%",
@@ -141,4 +176,17 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   actionLabel: { fontSize: tokens.font.size.sm, fontWeight: tokens.font.weight.semibold },
+  iconBtn: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.sm,
+  },
+  iconBtnHover: { backgroundColor: tokens.bg.surface },
+  iconGlyph: {
+    color: tokens.text.secondary,
+    fontSize: tokens.font.size.md,
+    lineHeight: tokens.font.size.md + 2,
+  },
 });

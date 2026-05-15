@@ -1,12 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GameLeaderboardEntry } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -16,11 +14,13 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { deleteItemScore, fetchItemScores, upsertItemScore } from "../../../../src/api/gameScores";
-import { fetchItem } from "../../../../src/api/items";
+import { deleteItem, fetchItem, updateItem } from "../../../../src/api/items";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { errorMessage } from "../../../../src/lib/api";
+import { confirm } from "../../../../src/lib/confirm";
 import { formatGameDateLabel, localDateKey, shiftDateKey } from "../../../../src/lib/gameDate";
 import { haptics } from "../../../../src/lib/haptics";
+import { normalizeExternalUrl, openExternalUrl } from "../../../../src/lib/openUrl";
 import { queryKeys } from "../../../../src/lib/queryKeys";
 import { formatRelative } from "../../../../src/lib/relativeTime";
 import {
@@ -57,12 +57,21 @@ export default function GameDetail() {
   const today = localDateKey();
   const [date, setDate] = useState(today);
   const [draft, setDraft] = useState("");
+  const [titleDraft, setTitleDraft] = useState("");
+  const [urlDraft, setUrlDraft] = useState("");
 
   const itemQuery = useQuery({
     queryKey: queryKeys.items.detail(itemId ?? ""),
     queryFn: () => fetchItem(itemId ?? "", token),
     enabled: !!token && !!itemId,
   });
+
+  useEffect(() => {
+    if (itemQuery.data?.item) {
+      setTitleDraft(itemQuery.data.item.title);
+      setUrlDraft(itemQuery.data.item.url ?? "");
+    }
+  }, [itemQuery.data?.item]);
 
   const scoresQuery = useQuery({
     queryKey: queryKeys.gameScores.forItem(itemId ?? "", date),
@@ -125,6 +134,58 @@ export default function GameDetail() {
     },
   });
 
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      if (!itemId) throw new Error("missing item id");
+      const trimmedTitle = titleDraft.trim();
+      // Force an https:// prefix on bare hostnames at save time so
+      // `Linking.openURL` doesn't treat them as relative on web (a bare
+      // `www.maptap.gg` would otherwise land the browser on
+      // `/list/<id>/game/www.maptap.gg`).
+      const normalizedUrl = normalizeExternalUrl(urlDraft);
+      return updateItem(
+        itemId,
+        {
+          title: trimmedTitle,
+          url: normalizedUrl,
+        },
+        token,
+      );
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.items.detail(itemId ?? "") }),
+        listId
+          ? queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(listId) })
+          : Promise.resolve(),
+      ]);
+      showToast({ message: "Saved", tone: "success" });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't save"), tone: "danger" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => {
+      if (!itemId) throw new Error("missing item id");
+      return deleteItem(itemId, token);
+    },
+    onSuccess: async () => {
+      haptics.medium();
+      if (listId) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(listId) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
+        ]);
+      }
+      router.back();
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't delete"), tone: "danger" });
+    },
+  });
+
   if (!itemId || !listId) {
     return (
       <View style={styles.center}>
@@ -172,37 +233,8 @@ export default function GameDetail() {
   };
 
   const onOpenGame = () => {
-    if (!item.url) {
+    if (!openExternalUrl(item.url)) {
       showToast({ message: "No URL set on this game.", tone: "danger" });
-      return;
-    }
-    Linking.openURL(item.url).catch(() => {
-      showToast({ message: "Couldn't open the game URL.", tone: "danger" });
-    });
-  };
-
-  const onPasteFromClipboard = async () => {
-    // Web only — native clipboard read needs expo-clipboard which the repo
-    // hasn't added yet (see lib/share.ts:30 for the same caveat). Native
-    // users still paste via the OS keyboard / long-press into the textbox.
-    if (Platform.OS !== "web" || typeof navigator === "undefined") return;
-    const clip = navigator.clipboard;
-    if (!clip || typeof clip.readText !== "function") {
-      showToast({ message: "Clipboard isn't accessible in this browser.", tone: "danger" });
-      return;
-    }
-    try {
-      const text = await clip.readText();
-      if (!text) {
-        showToast({ message: "Clipboard is empty.", tone: "default" });
-        return;
-      }
-      setDraft(text);
-    } catch {
-      showToast({
-        message: "Browser blocked clipboard access — paste manually instead.",
-        tone: "danger",
-      });
     }
   };
 
@@ -212,12 +244,30 @@ export default function GameDetail() {
     upsertMutation.mutate(trimmed);
   };
 
-  const onClear = () => {
-    Alert.alert("Clear today's score?", "This removes your pasted score for today only.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Clear", style: "destructive", onPress: () => clearMutation.mutate() },
-    ]);
+  const onClear = async () => {
+    const ok = await confirm({
+      title: "Clear today's score?",
+      message: "This removes your pasted score for today only.",
+      confirmLabel: "Clear",
+      destructive: true,
+    });
+    if (ok) clearMutation.mutate();
   };
+
+  const onDelete = async () => {
+    const ok = await confirm({
+      title: "Delete this game?",
+      message: "Deleting this item is permanent.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (ok) deleteMutation.mutate();
+  };
+
+  const trimmedTitleDraft = titleDraft.trim();
+  const trimmedUrlDraft = urlDraft.trim();
+  const editDirty = trimmedTitleDraft !== item.title || trimmedUrlDraft !== (item.url ?? "");
+  const canSaveEdit = trimmedTitleDraft.length >= 1 && trimmedTitleDraft.length <= 500 && editDirty;
 
   return (
     <KeyboardAvoidingView
@@ -236,17 +286,26 @@ export default function GameDetail() {
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <Card elevated style={styles.gameCard}>
-          {thumb ? (
-            <Image
-              source={{ uri: thumb }}
-              style={styles.gameThumb}
-              accessibilityIgnoresInvertColors
-            />
-          ) : (
-            <View style={[styles.gameThumb, styles.gameThumbPlaceholder]}>
-              <Text style={styles.gameThumbGlyph}>🎮</Text>
-            </View>
-          )}
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Open ${item.title}`}
+            onPress={onOpenGame}
+            disabled={!item.url}
+            style={({ pressed }) => (pressed && item.url ? styles.gameThumbPressed : null)}
+            testID="game-detail-thumb"
+          >
+            {thumb ? (
+              <Image
+                source={{ uri: thumb }}
+                style={styles.gameThumb}
+                accessibilityIgnoresInvertColors
+              />
+            ) : (
+              <View style={[styles.gameThumb, styles.gameThumbPlaceholder]}>
+                <Text style={styles.gameThumbGlyph}>🎮</Text>
+              </View>
+            )}
+          </Pressable>
           <View style={styles.gameMeta}>
             {meta.siteName ? (
               <Text variant="caption" tone="muted" numberOfLines={1}>
@@ -320,15 +379,6 @@ export default function GameDetail() {
               style={styles.pasteInput}
             />
             <View style={styles.pasteActions}>
-              {Platform.OS === "web" ? (
-                <Button
-                  label="Paste from clipboard"
-                  variant="secondary"
-                  size="md"
-                  onPress={onPasteFromClipboard}
-                  testID="game-detail-paste-clipboard"
-                />
-              ) : null}
               <Button
                 label="Post score"
                 size="md"
@@ -376,6 +426,58 @@ export default function GameDetail() {
             ))
           )}
         </View>
+
+        <Card elevated style={styles.editCard}>
+          <Text variant="label" tone="secondary" style={styles.editLabel}>
+            Edit game
+          </Text>
+          <View style={styles.field}>
+            <Text variant="caption" tone="muted">
+              Title
+            </Text>
+            <TextInput
+              testID="game-detail-title-input"
+              value={titleDraft}
+              onChangeText={setTitleDraft}
+              placeholder="Game name"
+              placeholderTextColor={tokens.text.muted}
+              maxLength={500}
+              style={styles.editInput}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text variant="caption" tone="muted">
+              URL
+            </Text>
+            <TextInput
+              testID="game-detail-url-input"
+              value={urlDraft}
+              onChangeText={setUrlDraft}
+              placeholder="https://"
+              placeholderTextColor={tokens.text.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              maxLength={2048}
+              style={styles.editInput}
+            />
+          </View>
+          <Button
+            testID="game-detail-save"
+            label="Save changes"
+            disabled={!canSaveEdit || saveMutation.isPending}
+            loading={saveMutation.isPending}
+            onPress={() => saveMutation.mutate()}
+          />
+        </Card>
+
+        <Button
+          testID="game-detail-delete"
+          label="Delete game"
+          variant="danger"
+          disabled={deleteMutation.isPending}
+          loading={deleteMutation.isPending}
+          onPress={onDelete}
+        />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -447,6 +549,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     backgroundColor: tokens.bg.elevated,
   },
+  gameThumbPressed: { opacity: 0.7 },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   gameThumbGlyph: { fontSize: 26 },
   gameMeta: { flex: 1, minWidth: 0, gap: 2 },
@@ -517,6 +620,19 @@ const styles = StyleSheet.create({
     paddingLeft: 32,
   },
   entryEmpty: { paddingLeft: 32 },
+  editCard: { gap: tokens.space.md },
+  editLabel: { letterSpacing: 0.5, textTransform: "uppercase" },
+  field: { gap: tokens.space.xs },
+  editInput: {
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.md,
+    backgroundColor: tokens.bg.canvas,
+  },
   center: {
     flex: 1,
     alignItems: "center",

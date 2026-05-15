@@ -51,12 +51,13 @@ export interface ItemListProps {
   /** Body click on a row — type-specific handler (Spotify or item detail page). */
   onRowPressBody: (item: Item, section: Section) => void;
   /**
-   * Tap on the row's cover image. Currently only used by game lists, where
-   * tapping the thumbnail launches the game URL in the browser while the
-   * body opens the leaderboard. Pass `undefined` for list types where the
-   * cover should not be a separate target.
+   * Per-row cover-press resolver. Return a handler when the row's
+   * thumbnail should be its own tap target (launches the item's external
+   * URL / Spotify album / game URL); return `null` for items where the
+   * thumbnail should fold back into the body's tap target (no URL set,
+   * or list type that doesn't expose an external launch).
    */
-  onRowPressCover?: (item: Item, section: Section) => void;
+  resolveRowPressCover?: (item: Item, section: Section) => (() => void) | null;
   /** Whether a refresh is in flight — drives the pull-to-refresh spinner. */
   refreshing: boolean;
   /** Pull-to-refresh trigger (typically `itemsQuery.refetch()`). */
