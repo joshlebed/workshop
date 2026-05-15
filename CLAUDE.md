@@ -5,54 +5,57 @@ design, `docs/recovery-runbook.md` when something is broken (flat symptom → fi
 check `docs/plans/HANDOFF.md` if it exists — it describes in-flight setup work that may not be
 complete.
 
-## Self-improving devx loop (do this every session)
+## Self-healing agent docs (do this every session)
 
-This repo treats `CLAUDE.md`, `README.md`, and `AGENT-REFLECTIONS.md` as living artifacts that
-each coding agent is expected to leave better than they found it. The goal is a self-healing
-loop: every mistake an agent makes once should become impossible (or at least cheap to recover
-from) for the next agent.
+`CLAUDE.md`, `README.md`, and `AGENT-REFLECTIONS.md` are living artifacts. Every agent is
+expected to leave them more accurate than they found them — both by adding lessons learned
+_and_ by removing entries that no longer apply. The goal is a self-healing loop: every
+mistake an agent makes once should become impossible (or cheap to recover from) for the
+next agent, and stale guidance should disappear before it misleads anyone.
 
-**Before you finish a task, do all three of these:**
+**Before you finish a task, do all three:**
 
-1. **Update `CLAUDE.md`** when you hit a gotcha, footgun, or non-obvious constraint that wasn't
-   already documented. Add it to the most relevant existing section (Conventions, the per-system
-   layers, recovery runbook) — don't bolt on a new top-level section unless the topic is
-   genuinely new. Prefer one tight paragraph with the symptom, the cause, and the fix. If a
-   rule here led you astray (stale, ambiguous, wrong), _edit it_, don't add a contradicting
-   rule alongside it.
+1. **Update `CLAUDE.md`** when you hit a gotcha, footgun, or non-obvious constraint that
+   isn't already documented — _or_ when an existing rule misled you. Add it to the most
+   relevant existing section (Conventions, the per-system layers, recovery runbook); don't
+   bolt on a new top-level section unless the topic is genuinely new. Prefer one tight
+   paragraph with the symptom, the cause, and the fix. If a rule here led you astray
+   (stale, ambiguous, wrong), _edit it_ — don't add a contradicting rule alongside it.
+   When you ship code that retires a CLAUDE.md gotcha (the underlying issue is permanently
+   fixed, not just worked around), delete the corresponding bullet in the same PR.
 2. **Update `README.md`** when human-facing setup, run, or deploy instructions are wrong or
-   missing. If `pnpm dev` failed for a reason a fresh clone would also hit, that's a README bug.
-   Keep `README.md` aimed at humans/onboarding; keep agent-only guidance in `CLAUDE.md`.
-3. **Append to `AGENT-REFLECTIONS.md`** when the friction is in the environment itself — the
-   setup script, the sandbox image, the dev server orchestration, missing tooling, slow feedback
-   loops, flaky tests, anything that cost you time but that you can't fix from inside a normal
-   PR. These are notes _to the human maintainer_ about what to improve in
-   `niteshift-setup.sh`, `scripts/dev.sh`, CI config, or the harness. Create the file if it
-   doesn't exist. Format each entry as:
+   missing. If `pnpm dev` failed for a reason a fresh clone would also hit, that's a
+   README bug. Keep `README.md` aimed at humans/onboarding; keep agent-only guidance in
+   `CLAUDE.md`.
+3. **Curate `AGENT-REFLECTIONS.md`** as the outstanding-issues queue for environment /
+   tooling friction you can't fix from inside the current PR (setup script, sandbox image,
+   dev orchestration, missing tooling, slow feedback loops, flaky tests). It is _not_ a
+   session diary — entries describe **open** problems, not history. The contract:
+   - **Add** an entry when you hit friction that you can't fix in the current PR. Keep
+     each entry to one tight paragraph: symptom → suggested fix. One issue per entry.
+   - **Remove** an entry in the same PR that retires it. If a fix is partial, edit the
+     entry down to just the still-open part. Don't archive, don't strike through — just
+     delete. Git history is the audit trail.
+   - **Promote** an entry to `CLAUDE.md` (as a documented gotcha agents work around) if
+     it's been sitting unfixed across multiple sessions and probably _won't_ get a code
+     fix soon.
 
-   ```
-   ## <YYYY-MM-DD> — <one-line title>
-   **Symptom:** what went wrong / what was slow
-   **Root cause:** (if known)
-   **Suggested fix:** concrete change to setup script / dev env / tooling
-   **Workaround used this session:** (so the next agent isn't stuck)
-   ```
+   See `AGENT-REFLECTIONS.md` for the current open queue and the full contribution rules.
 
-   Keep entries terse. Don't delete old entries — the maintainer prunes them when fixed.
+**What counts as worth writing down:** anything that would have saved you ≥5 minutes if
+you'd known it at the start of the session. If you found yourself grepping the same thing
+twice, re-discovering a port collision, re-learning which log file has the magic code, or
+working around a broken script — write it down. If you wasted time on a wrong assumption
+that the existing docs technically covered, _improve the wording_ so the next agent can't
+make the same misread.
 
-**What counts as worth writing down:** anything that would have saved you ≥5 minutes if you'd
-known it at the start of the session. If you found yourself grepping the same thing twice,
-re-discovering a port collision, re-learning which log file has the magic code, or working
-around a broken script — write it down. If you wasted time on a wrong assumption that the
-existing docs technically covered, _improve the wording_ so the next agent can't make the same
-misread.
-
-**What doesn't belong:** task-specific notes (those go in the PR description), speculative
-future-feature ideas, or anything that duplicates existing docs. Don't write reflections
-that just narrate what you did this session — write the lesson, not the diary.
+**What doesn't belong:** task-specific notes (PR description), positive reflections ("X
+worked well"), speculative future-feature ideas, or anything fixable inside a normal PR
+(open the PR instead of writing about it).
 
 Treat these updates as part of "done." A PR that fixes a bug but leaves the next agent to
-re-hit the same trap is only half-finished.
+re-hit the same trap — or leaves a stale entry pointing at a problem you just solved — is
+only half-finished.
 
 ## What this repo is
 
