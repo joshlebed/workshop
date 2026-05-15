@@ -229,11 +229,8 @@ function decodeEntities(s: string): string {
 
 function buildPreview(originalUrl: URL, page: FetchedPage): LinkPreview {
   const meta = parseOgMeta(page.body);
-  const image = meta.image ? toAbsoluteUrl(meta.image, page.finalUrl) : null;
-  const parsedFavicon = parseFavicon(page.body);
-  const favicon = parsedFavicon
-    ? toAbsoluteUrl(parsedFavicon, page.finalUrl)
-    : toAbsoluteUrl("/favicon.ico", page.finalUrl);
+  const image = pickImage(collectImageCandidates(page.body), page.finalUrl);
+  const favicon = pickFavicon(collectFaviconCandidates(page.body), page.finalUrl);
   return {
     url: originalUrl.href,
     finalUrl: page.finalUrl.href,
@@ -246,33 +243,242 @@ function buildPreview(originalUrl: URL, page: FetchedPage): LinkPreview {
   };
 }
 
-/**
- * Picks the best `<link rel="...icon...">` href from the head, used as a
- * thumbnail fallback when `og:image` / `twitter:image` are missing. Preference
- * order: apple-touch-icon (typically 180×180 PNG, ideal as a tile) →
- * apple-touch-icon-precomposed → icon → shortcut icon. Returns the raw href —
- * `buildPreview` resolves to an absolute URL.
- */
-function parseFavicon(html: string): string | null {
-  const headMatch = html.match(/<head[\s\S]*?<\/head>/i);
-  const haystack = headMatch ? headMatch[0] : html;
+// Anything smaller than this in either dimension is too small to use as a
+// game tile — clients fall back to a placeholder glyph instead.
+const MIN_IMAGE_DIMENSION = 200;
+// Smaller bar for favicons since 180×180 apple-touch-icons are common and
+// still look fine on a 64pt tile. Standard 16/32 px `.ico` files don't clear it.
+const MIN_FAVICON_DIMENSION = 64;
+// Substrings that almost always mark a tracking pixel, spacer, or placeholder.
+// Word-boundary matches keep `300x250-banner.jpg` (a real banner) from tripping.
+const LOW_QUALITY_URL_RE =
+  /\b(?:1x1|2x2|pixel|spacer|blank|transparent|beacon|tracker|tracking)\b/i;
 
-  const order = ["apple-touch-icon", "apple-touch-icon-precomposed", "icon", "shortcut icon"];
-  const found = new Map<string, string>();
-  const linkRe = /<link\b([^>]*)>/gi;
-  for (const m of haystack.matchAll(linkRe)) {
+interface ImageCandidate {
+  url: string;
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * Walks the parsed head + body for every image URL the page advertises. Order
+ * matters — earlier sources are tried first by `pickImage`. We deliberately
+ * over-collect (e.g. every JSON-LD `image` we can reach) and lean on the
+ * quality filter to drop bad candidates rather than guessing which one is
+ * canonical from markup alone.
+ */
+function collectImageCandidates(html: string): ImageCandidate[] {
+  const head = extractHead(html);
+  const metas = collectMetas(head);
+  const out: ImageCandidate[] = [];
+
+  // OG width/height are global — they describe og:image only.
+  const ogW = parseDimension(metas.get("og:image:width"));
+  const ogH = parseDimension(metas.get("og:image:height"));
+  pushCandidate(
+    out,
+    metas.get("og:image:secure_url") ?? metas.get("og:image:url") ?? metas.get("og:image"),
+    ogW,
+    ogH,
+  );
+
+  pushCandidate(out, metas.get("twitter:image") ?? metas.get("twitter:image:src"), null, null);
+
+  for (const c of collectJsonLdImages(html)) out.push(c);
+
+  pushCandidate(out, metas.get("msapplication-tileimage"), null, null);
+  pushCandidate(out, parseItempropImage(head), null, null);
+  pushCandidate(out, parseImageSrcLink(head), null, null);
+
+  return out;
+}
+
+function pushCandidate(
+  out: ImageCandidate[],
+  url: string | null | undefined,
+  width: number | null,
+  height: number | null,
+): void {
+  if (!url) return;
+  out.push({ url: decodeEntities(url), width, height });
+}
+
+function extractHead(html: string): string {
+  const headMatch = html.match(/<head[\s\S]*?<\/head>/i);
+  return headMatch ? headMatch[0] : html;
+}
+
+function collectMetas(head: string): Map<string, string> {
+  const metas = new Map<string, string>();
+  for (const m of head.matchAll(/<meta\b([^>]*)>/gi)) {
+    const attrs = m[1] ?? "";
+    const key = attrText(attrs, "property") ?? attrText(attrs, "name");
+    const value = attrText(attrs, "content");
+    if (!key || value == null) continue;
+    const lower = key.toLowerCase();
+    if (!metas.has(lower)) metas.set(lower, value);
+  }
+  return metas;
+}
+
+function parseDimension(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+function parseItempropImage(head: string): string | null {
+  const m = head.match(/<meta\b[^>]*\bitemprop\s*=\s*["']image["'][^>]*>/i);
+  return m ? attrText(m[0], "content") : null;
+}
+
+function parseImageSrcLink(head: string): string | null {
+  const m = head.match(/<link\b[^>]*\brel\s*=\s*["']image_src["'][^>]*>/i);
+  return m ? attrText(m[0], "href") : null;
+}
+
+/**
+ * JSON-LD blocks can be a single object, an array, or have an `@graph` with
+ * mixed types. `image` itself can be a string, an `ImageObject`, or an array
+ * of either. We recurse to a small depth so a hostile or pathological doc
+ * can't blow the stack.
+ */
+function collectJsonLdImages(html: string): ImageCandidate[] {
+  const out: ImageCandidate[] = [];
+  const re = /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  for (const m of html.matchAll(re)) {
+    const raw = m[1]?.trim();
+    if (!raw) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    walkJsonLdImages(parsed, out, 0);
+  }
+  return out;
+}
+
+function walkJsonLdImages(node: unknown, out: ImageCandidate[], depth: number): void {
+  if (depth > 6 || node == null) return;
+  if (Array.isArray(node)) {
+    for (const item of node) walkJsonLdImages(item, out, depth + 1);
+    return;
+  }
+  if (typeof node !== "object") return;
+  const obj = node as Record<string, unknown>;
+  if (obj["@graph"]) walkJsonLdImages(obj["@graph"], out, depth + 1);
+  const image = obj.image;
+  if (image == null) return;
+  if (typeof image === "string") {
+    out.push({ url: image, width: null, height: null });
+    return;
+  }
+  if (Array.isArray(image)) {
+    for (const item of image) walkJsonLdImages({ image: item }, out, depth + 1);
+    return;
+  }
+  if (typeof image === "object") {
+    const child = image as Record<string, unknown>;
+    const url = child.url;
+    if (typeof url === "string") {
+      out.push({
+        url,
+        width: coerceNumber(child.width),
+        height: coerceNumber(child.height),
+      });
+    }
+  }
+}
+
+function coerceNumber(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+  if (typeof v === "string") return parseDimension(v);
+  return null;
+}
+
+function pickImage(candidates: ImageCandidate[], base: URL): string | null {
+  for (const c of candidates) {
+    if (isLowQualityImage(c)) continue;
+    const abs = toAbsoluteUrl(c.url, base);
+    if (abs) return abs;
+  }
+  return null;
+}
+
+function isLowQualityImage(c: ImageCandidate): boolean {
+  const url = c.url.trim();
+  if (!url) return true;
+  // Base64 placeholders are almost always trackers; allow inline SVG, which
+  // can be a legitimate scalable icon.
+  if (url.startsWith("data:") && !url.startsWith("data:image/svg")) return true;
+  if (LOW_QUALITY_URL_RE.test(url)) return true;
+  if (c.width !== null && c.width < MIN_IMAGE_DIMENSION) return true;
+  if (c.height !== null && c.height < MIN_IMAGE_DIMENSION) return true;
+  return false;
+}
+
+interface FaviconCandidate {
+  url: string;
+  rel: string;
+  size: number | null;
+}
+
+function collectFaviconCandidates(html: string): FaviconCandidate[] {
+  const head = extractHead(html);
+  const out: FaviconCandidate[] = [];
+  for (const m of head.matchAll(/<link\b([^>]*)>/gi)) {
     const attrs = m[1] ?? "";
     const rel = attrText(attrs, "rel")?.toLowerCase();
     const href = attrText(attrs, "href");
     if (!rel || !href) continue;
-    if (!order.includes(rel)) continue;
-    if (!found.has(rel)) found.set(rel, href);
+    if (
+      rel !== "apple-touch-icon" &&
+      rel !== "apple-touch-icon-precomposed" &&
+      rel !== "icon" &&
+      rel !== "shortcut icon"
+    ) {
+      continue;
+    }
+    out.push({ url: decodeEntities(href), rel, size: parseLargestSize(attrText(attrs, "sizes")) });
   }
-  for (const rel of order) {
-    const href = found.get(rel);
-    if (href) return decodeEntities(href);
+  return out;
+}
+
+function parseLargestSize(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  if (raw.toLowerCase().includes("any")) return Number.POSITIVE_INFINITY;
+  let best: number | null = null;
+  for (const token of raw.split(/\s+/)) {
+    const m = token.match(/^(\d+)x(\d+)$/i);
+    if (!m) continue;
+    const max = Math.max(Number.parseInt(m[1] ?? "0", 10), Number.parseInt(m[2] ?? "0", 10));
+    if (Number.isFinite(max) && (best == null || max > best)) best = max;
   }
-  return null;
+  return best;
+}
+
+/**
+ * Quality bar for favicons: apple-touch-icons are 180×180 by convention so
+ * we accept them without a size attr; any other rel must declare a `sizes`
+ * attribute ≥ MIN_FAVICON_DIMENSION (or be an SVG, which scales). We never
+ * synthesize `/favicon.ico` — the game tile's 🎮 placeholder beats a 16px
+ * postage-stamp icon.
+ */
+function pickFavicon(candidates: FaviconCandidate[], base: URL): string | null {
+  let best: { c: FaviconCandidate; rank: number; size: number } | null = null;
+  for (const c of candidates) {
+    const isApple = c.rel === "apple-touch-icon" || c.rel === "apple-touch-icon-precomposed";
+    const isSvg = /\.svg(?:$|[?#])/i.test(c.url);
+    const effective = c.size ?? (isApple ? 180 : isSvg ? Number.POSITIVE_INFINITY : 0);
+    if (!isApple && !isSvg && effective < MIN_FAVICON_DIMENSION) continue;
+    const rank = isApple ? 3 : c.rel === "icon" ? 2 : 1;
+    if (!best || rank > best.rank || (rank === best.rank && effective > best.size)) {
+      best = { c, rank, size: effective };
+    }
+  }
+  return best ? toAbsoluteUrl(best.c.url, base) : null;
 }
 
 function toAbsoluteUrl(raw: string, base: URL): string | null {
@@ -336,7 +542,11 @@ linkPreviewRoutes.get(
 
 export const __internal = {
   parseOgMeta,
-  parseFavicon,
   cacheKeyFor,
   buildPreview,
+  collectImageCandidates,
+  pickImage,
+  isLowQualityImage,
+  collectFaviconCandidates,
+  pickFavicon,
 };
