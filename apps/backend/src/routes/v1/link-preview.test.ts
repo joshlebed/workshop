@@ -78,28 +78,159 @@ describe("parseOgMeta", () => {
   });
 });
 
-describe("parseFavicon", () => {
+describe("collectImageCandidates", () => {
+  it("collects og:image with width/height, twitter, msapp tile, itemprop, image_src", () => {
+    const html = `
+      <head>
+        <meta property="og:image" content="https://cdn.example/og.jpg">
+        <meta property="og:image:width" content="800">
+        <meta property="og:image:height" content="600">
+        <meta name="twitter:image" content="https://cdn.example/tw.jpg">
+        <meta name="msapplication-TileImage" content="/tile.png">
+        <meta itemprop="image" content="/item.png">
+        <link rel="image_src" href="/legacy.png">
+      </head>`;
+    const c = __internal.collectImageCandidates(html);
+    expect(c[0]).toEqual({ url: "https://cdn.example/og.jpg", width: 800, height: 600 });
+    expect(c[1]).toEqual({ url: "https://cdn.example/tw.jpg", width: null, height: null });
+    expect(c.map((x) => x.url)).toEqual([
+      "https://cdn.example/og.jpg",
+      "https://cdn.example/tw.jpg",
+      "/tile.png",
+      "/item.png",
+      "/legacy.png",
+    ]);
+  });
+
+  it("prefers og:image:secure_url over og:image when both exist", () => {
+    const html = `
+      <head>
+        <meta property="og:image" content="http://cdn.example/og.jpg">
+        <meta property="og:image:secure_url" content="https://cdn.example/og.jpg">
+      </head>`;
+    const c = __internal.collectImageCandidates(html);
+    expect(c[0]?.url).toBe("https://cdn.example/og.jpg");
+  });
+
+  it("extracts images from JSON-LD strings, ImageObjects, arrays, and @graph", () => {
+    const html = `
+      <head>
+        <script type="application/ld+json">
+          {"@context":"https://schema.org","@type":"VideoGame","image":"https://cdn.example/game.jpg"}
+        </script>
+        <script type="application/ld+json">
+          {"@graph":[{"@type":"Product","image":[{"@type":"ImageObject","url":"https://cdn.example/p1.jpg","width":512,"height":512},"https://cdn.example/p2.jpg"]}]}
+        </script>
+      </head>`;
+    const c = __internal.collectImageCandidates(html);
+    const urls = c.map((x) => x.url);
+    expect(urls).toContain("https://cdn.example/game.jpg");
+    expect(urls).toContain("https://cdn.example/p1.jpg");
+    expect(urls).toContain("https://cdn.example/p2.jpg");
+    const sized = c.find((x) => x.url === "https://cdn.example/p1.jpg");
+    expect(sized).toEqual({ url: "https://cdn.example/p1.jpg", width: 512, height: 512 });
+  });
+
+  it("ignores JSON-LD blocks that don't parse", () => {
+    const html = `<head><script type="application/ld+json">{not json}</script></head>`;
+    expect(__internal.collectImageCandidates(html)).toEqual([]);
+  });
+});
+
+describe("isLowQualityImage", () => {
+  it("rejects data: URLs but accepts inline SVG", () => {
+    expect(
+      __internal.isLowQualityImage({
+        url: "data:image/gif;base64,R0lGOD",
+        width: null,
+        height: null,
+      }),
+    ).toBe(true);
+    expect(
+      __internal.isLowQualityImage({
+        url: "data:image/svg+xml;base64,PHN2Zy8+",
+        width: null,
+        height: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects tracking-pixel-ish filenames", () => {
+    for (const url of [
+      "https://t.example/1x1.gif",
+      "https://t.example/spacer.gif",
+      "https://cdn.example/transparent.png",
+      "https://cdn.example/tracking-pixel.png",
+      "https://cdn.example/beacon.gif",
+    ]) {
+      expect(__internal.isLowQualityImage({ url, width: null, height: null })).toBe(true);
+    }
+  });
+
+  it("rejects declared dimensions below the threshold", () => {
+    expect(__internal.isLowQualityImage({ url: "https://x/tiny.png", width: 64, height: 64 })).toBe(
+      true,
+    );
+    expect(__internal.isLowQualityImage({ url: "https://x/ok.png", width: 600, height: 400 })).toBe(
+      false,
+    );
+  });
+
+  it("accepts banner-style filenames with mid-size dimensions baked in", () => {
+    // Word boundaries keep `300x250` from matching the `1x1`/`2x2` blocklist.
+    expect(
+      __internal.isLowQualityImage({
+        url: "https://cdn.example/promo-300x250.jpg",
+        width: null,
+        height: null,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("collectFaviconCandidates / pickFavicon", () => {
+  const base = new URL("https://www.example.com/");
+
   it("prefers apple-touch-icon over icon and shortcut icon", () => {
     const html = `
       <head>
         <link rel="shortcut icon" href="/favicon.ico">
-        <link rel="icon" type="image/png" href="/icon-32.png">
+        <link rel="icon" sizes="32x32" href="/icon-32.png">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
       </head>`;
-    expect(__internal.parseFavicon(html)).toBe("/apple-touch-icon.png");
+    const picked = __internal.pickFavicon(__internal.collectFaviconCandidates(html), base);
+    expect(picked).toBe("https://www.example.com/apple-touch-icon.png");
   });
 
-  it("falls through to icon when apple-touch-icon is absent", () => {
+  it("accepts an icon link with a large declared size when no apple-touch-icon", () => {
     const html = `
       <head>
+        <link rel="icon" sizes="192x192" href="/icon-192.png">
         <link rel="shortcut icon" href="/favicon.ico">
-        <link rel="icon" href="/icon.png">
       </head>`;
-    expect(__internal.parseFavicon(html)).toBe("/icon.png");
+    const picked = __internal.pickFavicon(__internal.collectFaviconCandidates(html), base);
+    expect(picked).toBe("https://www.example.com/icon-192.png");
   });
 
-  it("returns null when no icon links are present", () => {
-    expect(__internal.parseFavicon("<head></head>")).toBeNull();
+  it("accepts SVG icons even without a sizes attribute", () => {
+    const html = `<head><link rel="icon" href="/icon.svg"></head>`;
+    const picked = __internal.pickFavicon(__internal.collectFaviconCandidates(html), base);
+    expect(picked).toBe("https://www.example.com/icon.svg");
+  });
+
+  it("returns null when only a tiny shortcut icon is declared", () => {
+    const html = `<head><link rel="shortcut icon" href="/favicon.ico"></head>`;
+    expect(__internal.pickFavicon(__internal.collectFaviconCandidates(html), base)).toBeNull();
+  });
+
+  it("picks the largest declared size when several icons exist at the same rel", () => {
+    const html = `
+      <head>
+        <link rel="icon" sizes="64x64" href="/icon-64.png">
+        <link rel="icon" sizes="256x256" href="/icon-256.png">
+      </head>`;
+    const picked = __internal.pickFavicon(__internal.collectFaviconCandidates(html), base);
+    expect(picked).toBe("https://www.example.com/icon-256.png");
   });
 });
 
@@ -135,20 +266,49 @@ describe("buildPreview", () => {
     expect(preview.siteName).toBe("www.example.com");
   });
 
-  it("resolves a declared favicon and falls back to /favicon.ico otherwise", () => {
-    const withDeclared = __internal.buildPreview(new URL("https://example.com/p"), {
+  it("resolves an apple-touch-icon as the favicon when one is declared", () => {
+    const preview = __internal.buildPreview(new URL("https://example.com/p"), {
       finalUrl: new URL("https://www.example.com/p"),
       contentType: "text/html",
       body: `<head><link rel="apple-touch-icon" href="/apple-touch-icon.png"></head>`,
     });
-    expect(withDeclared.favicon).toBe("https://www.example.com/apple-touch-icon.png");
+    expect(preview.favicon).toBe("https://www.example.com/apple-touch-icon.png");
+  });
 
-    const noDeclared = __internal.buildPreview(new URL("https://example.com/p"), {
+  it("leaves favicon null when nothing meets the quality bar so the client can show its emoji placeholder", () => {
+    const preview = __internal.buildPreview(new URL("https://example.com/p"), {
       finalUrl: new URL("https://www.example.com/p"),
       contentType: "text/html",
-      body: `<head></head>`,
+      body: `<head><link rel="shortcut icon" href="/favicon.ico"></head>`,
     });
-    expect(noDeclared.favicon).toBe("https://www.example.com/favicon.ico");
+    expect(preview.favicon).toBeNull();
+  });
+
+  it("skips low-quality image candidates and tries the next source", () => {
+    const preview = __internal.buildPreview(new URL("https://example.com/p"), {
+      finalUrl: new URL("https://www.example.com/p"),
+      contentType: "text/html",
+      body: `
+        <head>
+          <meta property="og:image" content="https://cdn.example/pixel-1x1.gif">
+          <meta name="twitter:image" content="https://cdn.example/hero.jpg">
+        </head>`,
+    });
+    expect(preview.image).toBe("https://cdn.example/hero.jpg");
+  });
+
+  it("returns null image when every candidate is low-quality", () => {
+    const preview = __internal.buildPreview(new URL("https://example.com/p"), {
+      finalUrl: new URL("https://www.example.com/p"),
+      contentType: "text/html",
+      body: `
+        <head>
+          <meta property="og:image" content="https://cdn.example/tracker.gif">
+          <meta property="og:image:width" content="1">
+          <meta property="og:image:height" content="1">
+        </head>`,
+    });
+    expect(preview.image).toBeNull();
   });
 });
 
@@ -264,7 +424,7 @@ describe("GET /v1/link-preview happy paths", () => {
       title: "Cool Page",
       description: "Stuff",
       image: "https://cdn.example/i.jpg",
-      favicon: "https://example.com/favicon.ico",
+      favicon: null,
       siteName: "ExampleSite",
     });
     expect(typeof body.preview.fetchedAt).toBe("string");
