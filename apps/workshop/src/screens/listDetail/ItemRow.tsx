@@ -381,10 +381,7 @@ const styles = StyleSheet.create({
   rowNew: { backgroundColor: tokens.accent.muted },
   rowDragging: {
     backgroundColor: tokens.bg.surface,
-    shadowColor: "#000",
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    boxShadow: "0px 6px 12px rgba(0, 0, 0, 0.35)",
     elevation: 8,
     // Lift the row off the divider while dragging
     borderBottomColor: "transparent",
