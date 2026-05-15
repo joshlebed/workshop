@@ -45,6 +45,7 @@ export function ItemList({
   onPromoteToOrdered,
   onRowMenu,
   onRowPressBody,
+  onRowPressCover,
 }: ItemListProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const orderedIds = useMemo(() => ordered.map((it) => it.id), [ordered]);
@@ -120,6 +121,7 @@ export function ItemList({
               accent={accent}
               onMenu={() => onRowMenu(item, "ordered")}
               onPressBody={() => onRowPressBody(item, "ordered")}
+              onPressCover={onRowPressCover ? () => onRowPressCover(item, "ordered") : undefined}
             />
           ))}
         </SortableContext>
@@ -140,6 +142,9 @@ export function ItemList({
                 accent={accent}
                 onMenu={() => onRowMenu(item, "unordered")}
                 onPressBody={() => onRowPressBody(item, "unordered")}
+                onPressCover={
+                  onRowPressCover ? () => onRowPressCover(item, "unordered") : undefined
+                }
               />
             ))}
           </>
@@ -159,6 +164,9 @@ export function ItemList({
                 accent={accent}
                 onMenu={() => onRowMenu(item, "completed")}
                 onPressBody={() => onRowPressBody(item, "completed")}
+                onPressCover={
+                  onRowPressCover ? () => onRowPressCover(item, "completed") : undefined
+                }
               />
             ))}
           </>
@@ -174,6 +182,7 @@ interface SortableOrderedRowProps {
   accent: string;
   onMenu: () => void;
   onPressBody: () => void;
+  onPressCover?: () => void;
 }
 
 function SortableOrderedRow({
@@ -182,6 +191,7 @@ function SortableOrderedRow({
   accent,
   onMenu,
   onPressBody,
+  onPressCover,
 }: SortableOrderedRowProps) {
   const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
     id: item.id,
@@ -218,6 +228,7 @@ function SortableOrderedRow({
         accent={accent}
         onMenu={onMenu}
         onPressBody={onPressBody}
+        onPressCover={onPressCover}
         dragHandle={dragHandle}
       />
     </View>
@@ -231,6 +242,7 @@ interface DraggableUnorderedRowProps {
   accent: string;
   onMenu: () => void;
   onPressBody: () => void;
+  onPressCover?: () => void;
 }
 
 function DraggableUnorderedRow({
@@ -240,6 +252,7 @@ function DraggableUnorderedRow({
   accent,
   onMenu,
   onPressBody,
+  onPressCover,
 }: DraggableUnorderedRowProps) {
   const { setNodeRef, transform, listeners, attributes, isDragging } = useDraggable({
     id: item.id,
@@ -283,6 +296,7 @@ function DraggableUnorderedRow({
         accent={accent}
         onMenu={onMenu}
         onPressBody={onPressBody}
+        onPressCover={onPressCover}
         dragHandle={dragHandle}
       />
     </View>

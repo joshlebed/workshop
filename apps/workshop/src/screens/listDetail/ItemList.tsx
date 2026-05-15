@@ -39,6 +39,7 @@ export function ItemList({
   onReorderOrdered,
   onRowMenu,
   onRowPressBody,
+  onRowPressCover,
 }: ItemListProps) {
   const handleOrderedReorder = useCallback(
     ({ from, to }: ReorderableListReorderEvent) => {
@@ -55,9 +56,10 @@ export function ItemList({
         accent={accent}
         onMenu={() => onRowMenu(item, "ordered")}
         onPressBody={() => onRowPressBody(item, "ordered")}
+        onPressCover={onRowPressCover ? () => onRowPressCover(item, "ordered") : undefined}
       />
     ),
-    [memberNameById, showProvenance, accent, onRowMenu, onRowPressBody],
+    [memberNameById, showProvenance, accent, onRowMenu, onRowPressBody, onRowPressCover],
   );
 
   return (
@@ -94,6 +96,7 @@ export function ItemList({
               accent={accent}
               onMenu={() => onRowMenu(item, "unordered")}
               onPressBody={() => onRowPressBody(item, "unordered")}
+              onPressCover={onRowPressCover ? () => onRowPressCover(item, "unordered") : undefined}
             />
           ))}
         </>
@@ -113,6 +116,7 @@ export function ItemList({
               accent={accent}
               onMenu={() => onRowMenu(item, "completed")}
               onPressBody={() => onRowPressBody(item, "completed")}
+              onPressCover={onRowPressCover ? () => onRowPressCover(item, "completed") : undefined}
             />
           ))}
         </>
@@ -131,6 +135,7 @@ interface DraggableOrderedRowProps {
   accent: string;
   onMenu: () => void;
   onPressBody: () => void;
+  onPressCover?: () => void;
 }
 
 const DraggableOrderedRow = memo(function DraggableOrderedRow({
@@ -139,6 +144,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
   accent,
   onMenu,
   onPressBody,
+  onPressCover,
 }: DraggableOrderedRowProps) {
   const drag = useReorderableDrag();
   const isActive = useIsActive();
@@ -174,6 +180,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
       accent={accent}
       onMenu={onMenu}
       onPressBody={onPressBody}
+      onPressCover={onPressCover}
       dragHandle={dragHandle}
     />
   );

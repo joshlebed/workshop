@@ -20,6 +20,7 @@ export const listTypeEnum = pgEnum("list_type", [
   "date_idea",
   "trip",
   "album_shelf",
+  "game",
 ]);
 
 export const memberRoleEnum = pgEnum("member_role", ["owner", "member"]);
@@ -242,6 +243,35 @@ export const metadataCache = pgTable(
   }),
 );
 
+/**
+ * One row per (game item, user, calendar day). Re-pasting the same day's
+ * score updates the existing row (UPSERT on the composite PK), so users
+ * never accumulate duplicate plays for the same day. `date` is a YYYY-MM-DD
+ * text column whose value is the **submitter's local calendar day** at the
+ * time of paste — matching how each game itself decides which day a play
+ * belongs to.
+ */
+export const gameScores = pgTable(
+  "game_scores",
+  {
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    date: text("date").notNull(),
+    score: text("score").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.itemId, t.userId, t.date] }),
+    itemDateIdx: index("game_scores_item_date_idx").on(t.itemId, t.date),
+    userDateIdx: index("game_scores_user_date_idx").on(t.userId, t.date),
+  }),
+);
+
 export const rateLimits = pgTable(
   "rate_limits",
   {
@@ -264,3 +294,4 @@ export type DbActivityEvent = typeof activityEvents.$inferSelect;
 export type DbUserActivityRead = typeof userActivityReads.$inferSelect;
 export type DbMetadataCache = typeof metadataCache.$inferSelect;
 export type DbRateLimit = typeof rateLimits.$inferSelect;
+export type DbGameScore = typeof gameScores.$inferSelect;

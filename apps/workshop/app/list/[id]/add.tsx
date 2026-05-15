@@ -171,7 +171,11 @@ export default function AddItem() {
       previewQuery.data?.preview && normalizedUrl !== null && trimmedUrl === debouncedUrl.trim()
         ? previewQuery.data.preview
         : null;
-    const metadata = preview ? buildLinkPreviewMetadata(preview) : undefined;
+    const metadata = preview
+      ? listType === "game"
+        ? buildGameMetadata(preview)
+        : buildLinkPreviewMetadata(preview)
+      : undefined;
     const body: CreateItemRequest = {
       title: trimmedTitle,
       ...(trimmedUrl.length > 0 ? { url: trimmedUrl } : {}),
@@ -204,6 +208,7 @@ export default function AddItem() {
         />
       ) : (
         <FreeFormFlow
+          listType={listType ?? "date_idea"}
           title={title}
           onChangeTitle={setTitle}
           url={url}
@@ -250,6 +255,16 @@ function buildLinkPreviewMetadata(p: LinkPreview): CreateItemRequest["metadata"]
   if (p.siteName) meta.siteName = p.siteName;
   if (p.title) meta.title = p.title;
   if (p.description) meta.description = p.description;
+  return meta;
+}
+
+// Game items use a tighter metadata schema (`gameMetadataSchema` in
+// apps/backend/src/routes/v1/items.ts). `.strict()` would 400 on any extra
+// field, so map the OG card down to just the keys that schema permits.
+function buildGameMetadata(p: LinkPreview): CreateItemRequest["metadata"] {
+  const meta: Record<string, unknown> = {};
+  if (p.image) meta.thumbnailUrl = p.image;
+  if (p.siteName) meta.siteName = p.siteName;
   return meta;
 }
 
@@ -379,6 +394,7 @@ function SearchFlow({
 }
 
 interface FreeFormFlowProps {
+  listType: ListType;
   title: string;
   onChangeTitle: (v: string) => void;
   url: string;
@@ -396,6 +412,7 @@ interface FreeFormFlowProps {
 }
 
 function FreeFormFlow({
+  listType,
   title,
   onChangeTitle,
   url,
@@ -410,6 +427,12 @@ function FreeFormFlow({
   previewFailed,
   previewActive,
 }: FreeFormFlowProps) {
+  const isGame = listType === "game";
+  const titlePlaceholder = isGame ? "Game name (e.g. Globle)" : "What is it?";
+  const urlLabel = isGame ? "URL" : "URL (optional)";
+  const urlPlaceholder = isGame ? "https://globle-game.com" : "https://";
+  const notePlaceholder = isGame ? "Anything to remember?" : "Anything to remember?";
+  const showNote = !isGame;
   return (
     <KeyboardAwareScrollView
       contentContainerStyle={styles.body}
@@ -426,7 +449,7 @@ function FreeFormFlow({
             testID="add-item-title"
             value={title}
             onChangeText={onChangeTitle}
-            placeholder="What is it?"
+            placeholder={titlePlaceholder}
             placeholderTextColor={tokens.text.muted}
             autoFocus
             maxLength={500}
@@ -436,13 +459,13 @@ function FreeFormFlow({
 
         <View style={styles.field}>
           <Text variant="label" tone="secondary">
-            URL (optional)
+            {urlLabel}
           </Text>
           <TextInput
             testID="add-item-url"
             value={url}
             onChangeText={onChangeUrl}
-            placeholder="https://"
+            placeholder={urlPlaceholder}
             placeholderTextColor={tokens.text.muted}
             autoCapitalize="none"
             autoCorrect={false}
@@ -457,25 +480,27 @@ function FreeFormFlow({
           />
         </View>
 
-        <View style={styles.field}>
-          <Text variant="label" tone="secondary">
-            Note (optional)
-          </Text>
-          <TextInput
-            testID="add-item-note"
-            value={note}
-            onChangeText={onChangeNote}
-            placeholder="Anything to remember?"
-            placeholderTextColor={tokens.text.muted}
-            multiline
-            maxLength={1000}
-            style={[styles.input, styles.inputMultiline]}
-          />
-        </View>
+        {showNote ? (
+          <View style={styles.field}>
+            <Text variant="label" tone="secondary">
+              Note (optional)
+            </Text>
+            <TextInput
+              testID="add-item-note"
+              value={note}
+              onChangeText={onChangeNote}
+              placeholder={notePlaceholder}
+              placeholderTextColor={tokens.text.muted}
+              multiline
+              maxLength={1000}
+              style={[styles.input, styles.inputMultiline]}
+            />
+          </View>
+        ) : null}
 
         <Button
           testID="add-item-submit"
-          label="Add"
+          label={isGame ? "Add game" : "Add"}
           size="lg"
           disabled={!canSubmit || loading}
           loading={loading}

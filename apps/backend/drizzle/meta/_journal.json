@@ -71,6 +71,13 @@
       "when": 1778559017637,
       "tag": "0009_add_list_cover_photo",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778880669812,
+      "tag": "0010_add_games_list_type",
+      "breakpoints": true
     }
   ]
 }
