@@ -541,7 +541,7 @@ itemRoutes.post(
         updatedAt: new Date(),
       })
       .where(eq(items.id, itemId))
-      .returning({ id: items.id });
+      .returning({ id: items.id, title: items.title });
     if (!updated) return err(c, "NOT_FOUND", "item not found");
 
     await recordEvent({
@@ -549,6 +549,7 @@ itemRoutes.post(
       actorId: userId,
       type: "item_completed",
       itemId,
+      payload: { title: updated.title },
     });
 
     const item = await fetchItemShape(itemId);
@@ -581,7 +582,7 @@ itemRoutes.post(
         updatedAt: new Date(),
       })
       .where(eq(items.id, itemId))
-      .returning({ id: items.id });
+      .returning({ id: items.id, title: items.title });
     if (!updated) return err(c, "NOT_FOUND", "item not found");
 
     await recordEvent({
@@ -589,6 +590,7 @@ itemRoutes.post(
       actorId: userId,
       type: "item_uncompleted",
       itemId,
+      payload: { title: updated.title },
     });
 
     const item = await fetchItemShape(itemId);
