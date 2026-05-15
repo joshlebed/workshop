@@ -163,6 +163,14 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   action that needs PR metadata (e.g. `dorny/paths-filter`, label-on-PR, comment-on-PR) needs
   an explicit grant like `pull-requests: read`. Failure mode is opaque at runtime
   (`"Resource not accessible by integration"`) and isn't caught by `actionlint`.
+- **CORS `allowMethods` is an explicit whitelist.** Hono's `cors()` middleware in
+  `apps/backend/src/app.ts` only echoes the methods you list, so a route that uses an
+  HTTP verb outside the whitelist 401s the OPTIONS preflight from the browser and
+  surfaces as a generic `TypeError: Failed to fetch` with no backend log line (the
+  request never makes it past CORS). When adding a new verb to a route — e.g. `PUT`
+  for the game-scores upsert in 2026-05 — also add it to `allowMethods`. The same
+  whitelist gates `apiRequest`'s `method` union in `apps/workshop/src/lib/api.ts`,
+  so update both in lockstep.
 - **Auto-merge is on.** The repo is public (which gives us free branch protection + unlimited
   Actions minutes) and `main` requires three checks to pass:
   - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs on PRs.

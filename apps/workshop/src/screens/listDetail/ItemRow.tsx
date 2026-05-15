@@ -34,6 +34,13 @@ interface ItemRowProps {
   /** Short-tap on the body (excluding handle/menu) — type-specific destination. */
   onPressBody?: () => void;
   /**
+   * If provided, the cover image becomes its own Pressable target —
+   * separate from the body tap. Used for game rows where tapping the
+   * thumbnail opens the game URL while tapping the rest of the row opens
+   * the leaderboard.
+   */
+  onPressCover?: () => void;
+  /**
    * Drag-affordance slot — wraps the position chip on ordered rows so the
    * gesture library owns the touch target. Omitted on unordered/completed.
    */
@@ -49,6 +56,7 @@ export function ItemRow({
   accent,
   onMenu,
   onPressBody,
+  onPressCover,
   dragHandle,
 }: ItemRowProps) {
   const isCompleted = section === "completed";
@@ -75,7 +83,7 @@ export function ItemRow({
       <PositionChip dragHandle={dragHandle} isDragging={isDragging} accent={accent} />
     ) : null;
 
-  const cover = view.imageUrl ? (
+  const coverInner = view.imageUrl ? (
     <Image
       source={{ uri: view.imageUrl }}
       style={[styles.cover, isCompleted && styles.coverCompleted]}
@@ -94,9 +102,26 @@ export function ItemRow({
     </View>
   );
 
+  // For game rows the thumbnail launches the game URL — give it its own
+  // Pressable so it's not part of the body's leaderboard-tap target.
+  const cover = onPressCover ? (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`Play ${item.title}`}
+      onPress={onPressCover}
+      hitSlop={6}
+      testID={`item-row-cover-${item.id}`}
+      style={({ pressed }) => [styles.coverPressable, pressed && styles.coverPressed]}
+    >
+      {coverInner}
+    </Pressable>
+  ) : (
+    coverInner
+  );
+
   const bodyContent = (
     <>
-      {cover}
+      {onPressCover ? null : cover}
       <View style={styles.rowBody}>
         <View style={styles.rowTitleLine}>
           <Animated.Text
@@ -139,6 +164,7 @@ export function ItemRow({
       testID={`item-row-${item.id}`}
     >
       {leading}
+      {onPressCover ? cover : null}
       {onPressBody ? (
         <Pressable
           accessibilityRole={view.bodyRole}
@@ -252,6 +278,20 @@ function describeItem(item: Item): ItemView {
         subline,
         bodyRole: "button",
         bodyLabel: `Open ${item.title}`,
+      };
+    }
+    case "game": {
+      // The body of a game row opens the leaderboard / paste-score screen,
+      // not the URL — the URL has its own dedicated thumbnail tap target so
+      // users can launch the game without losing the row's context.
+      const thumb = typeof meta.thumbnailUrl === "string" ? meta.thumbnailUrl : undefined;
+      const siteName = typeof meta.siteName === "string" ? meta.siteName : "";
+      return {
+        ...(thumb ? { imageUrl: thumb } : {}),
+        placeholderGlyph: "🎮",
+        subline: siteName,
+        bodyRole: "button",
+        bodyLabel: `Open ${item.title} leaderboard`,
       };
     }
   }
@@ -386,6 +426,10 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     backgroundColor: tokens.bg.elevated,
   },
+  coverPressable: {
+    borderRadius: tokens.radius.md,
+  },
+  coverPressed: { opacity: 0.7 },
   coverCompleted: { opacity: 0.5 },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
   coverPlaceholderGlyph: { fontSize: 24 },

@@ -23,12 +23,13 @@ const TYPE_LABEL: Record<ListType, string> = {
   date_idea: "Date ideas",
   trip: "Trips",
   album_shelf: "Album shelf",
+  game: "Games",
 };
 
 // Lists that pair naturally with a shared URL (free-form items take a URL +
 // link preview). Search-flow lists (movie/tv/book) ignore prefillUrl in
 // add.tsx, so we visually de-emphasise them here.
-const URL_FRIENDLY: ReadonlySet<ListType> = new Set<ListType>(["date_idea", "trip"]);
+const URL_FRIENDLY: ReadonlySet<ListType> = new Set<ListType>(["date_idea", "trip", "game"]);
 
 export default function PickList() {
   const params = useLocalSearchParams<{ url?: string }>();

@@ -54,6 +54,13 @@ const OPTIONS: TypeOption[] = [
     description: "Curate albums from a public Spotify playlist.",
     color: "slate",
   },
+  {
+    type: "game",
+    emoji: "🎮",
+    label: "Games",
+    description: "Daily game scores — paste from Wordle, Globle, Satle, etc.",
+    color: "ocean",
+  },
 ];
 
 export default function CreateListType() {

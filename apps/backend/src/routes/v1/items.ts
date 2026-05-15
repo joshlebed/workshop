@@ -111,6 +111,17 @@ const placeMetadataSchema = z
   })
   .strict();
 
+// Game items: a URL + display name + an optional thumbnail scraped from the
+// page's OG card. Per-day scores live in their own table (`game_scores`)
+// rather than in `metadata` so re-pasting upserts cleanly.
+const gameMetadataSchema = z
+  .object({
+    thumbnailUrl: z.string().max(2048).optional(),
+    siteName: z.string().max(200).optional(),
+    position: positionField,
+  })
+  .strict();
+
 const metadataSchemasByType: Record<ListType, ZodType<ItemMetadata>> = {
   movie: movieTvMetadataSchema as ZodType<ItemMetadata>,
   tv: movieTvMetadataSchema as ZodType<ItemMetadata>,
@@ -118,6 +129,7 @@ const metadataSchemasByType: Record<ListType, ZodType<ItemMetadata>> = {
   date_idea: placeMetadataSchema as ZodType<ItemMetadata>,
   trip: placeMetadataSchema as ZodType<ItemMetadata>,
   album_shelf: albumShelfItemMetadataSchema as ZodType<ItemMetadata>,
+  game: gameMetadataSchema as ZodType<ItemMetadata>,
 };
 
 /**
@@ -323,6 +335,25 @@ export async function createItem(
       const v = validateMetadataForType(parent.type, data.metadata);
       if (!v.success) throw new ItemMetadataError(v.issues);
       metadata = v.data;
+    }
+
+    // Game items auto-enter the ordered section so users can reorder them
+    // immediately — there's no concept of an "unranked" daily-puzzle game.
+    // Use the current max position + 1024 as the seed; midpoint reorders
+    // (`midpointForOrderedReorder` in the mobile client) carve out gaps
+    // between positions without having to rewrite siblings.
+    if (
+      parent.type === "game" &&
+      typeof (metadata as Record<string, unknown>).position !== "number"
+    ) {
+      const [maxRow] = await tx
+        .select({
+          max: sql<number>`COALESCE(MAX((metadata->>'position')::numeric), 0)::float8`,
+        })
+        .from(items)
+        .where(eq(items.listId, listId));
+      const next = Number(maxRow?.max ?? 0) + 1024;
+      metadata = { ...metadata, position: next };
     }
 
     const [row] = await tx

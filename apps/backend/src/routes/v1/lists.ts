@@ -33,7 +33,7 @@ export const listRoutes = new Hono();
 listRoutes.use("*", requireAuth);
 
 const listColors = ["sunset", "ocean", "forest", "grape", "rose", "sand", "slate"] as const;
-const listTypes = ["movie", "tv", "book", "date_idea", "trip", "album_shelf"] as const;
+const listTypes = ["movie", "tv", "book", "date_idea", "trip", "album_shelf", "game"] as const;
 
 const nameSchema = z
   .string()

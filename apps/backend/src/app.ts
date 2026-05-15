@@ -9,6 +9,7 @@ import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
 import { albumShelfRoutes } from "./routes/v1/album-shelf.js";
 import { authRoutes } from "./routes/v1/auth.js";
+import { itemScoreRoutes, listGameScoresRoutes } from "./routes/v1/game-scores.js";
 import { inviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
 import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
@@ -35,7 +36,7 @@ export function buildApp() {
     cors({
       origin: (origin) => origin ?? "*",
       allowHeaders: ["Content-Type", "Authorization"],
-      allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+      allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       credentials: true,
       maxAge: 600,
     }),
@@ -83,7 +84,9 @@ export function buildApp() {
   app.route("/v1/users", userRoutes);
   app.route("/v1/lists", listRoutes);
   app.route("/v1/lists", memberRoutes);
+  app.route("/v1/lists", listGameScoresRoutes);
   app.route("/v1/items", itemRoutes);
+  app.route("/v1/items", itemScoreRoutes);
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/activity", activityRoutes);

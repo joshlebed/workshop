@@ -17,6 +17,7 @@ const VALID_TYPES: readonly ListType[] = [
   "date_idea",
   "trip",
   "album_shelf",
+  "game",
 ];
 
 const TYPE_LABEL: Record<ListType, string> = {
@@ -26,6 +27,7 @@ const TYPE_LABEL: Record<ListType, string> = {
   date_idea: "Date ideas",
   trip: "Trips",
   album_shelf: "Album shelf",
+  game: "Games",
 };
 
 const DEFAULT_EMOJI: Record<ListType, string> = {
@@ -35,6 +37,7 @@ const DEFAULT_EMOJI: Record<ListType, string> = {
   date_idea: "💡",
   trip: "✈️",
   album_shelf: "📀",
+  game: "🎮",
 };
 
 const DEFAULT_COLOR: Record<ListType, ListColor> = {
@@ -44,6 +47,7 @@ const DEFAULT_COLOR: Record<ListType, ListColor> = {
   date_idea: "rose",
   trip: "grape",
   album_shelf: "slate",
+  game: "ocean",
 };
 
 const COLOR_KEYS: readonly ListColorKey[] = [
@@ -65,6 +69,7 @@ const NAME_PLACEHOLDERS: Record<ListType, string> = {
   date_idea: "Date ideas",
   trip: "Summer trip",
   album_shelf: "Album shelf",
+  game: "Daily games",
 };
 
 function parseType(value: string | string[] | undefined): ListType {

@@ -50,4 +50,11 @@ export interface ItemListProps {
   onRowMenu: (item: Item, section: Section) => void;
   /** Body click on a row — type-specific handler (Spotify or item detail page). */
   onRowPressBody: (item: Item, section: Section) => void;
+  /**
+   * Tap on the row's cover image. Currently only used by game lists, where
+   * tapping the thumbnail launches the game URL in the browser while the
+   * body opens the leaderboard. Pass `undefined` for list types where the
+   * cover should not be a separate target.
+   */
+  onRowPressCover?: (item: Item, section: Section) => void;
 }

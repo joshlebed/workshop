@@ -8,7 +8,7 @@
 
 export type AuthProvider = "apple" | "google";
 
-export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip" | "album_shelf";
+export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip" | "album_shelf" | "game";
 
 export type MemberRole = "owner" | "member";
 
@@ -513,4 +513,70 @@ export interface AlbumShelfPreviewResponse {
   name: string;
   ownerName: string | null;
   trackCount: number;
+}
+
+// --- Games (daily-score lists) ---
+
+/**
+ * Stored on `items.metadata` for `type === "game"` rows. `thumbnailUrl` is
+ * fetched from the URL's OG/Twitter card on add (via `/v1/link-preview`).
+ * `position` decides ordering inside the list (drag-to-reorder).
+ */
+export interface GameItemMetadata {
+  thumbnailUrl?: string;
+  siteName?: string;
+  position?: number | null;
+}
+
+/**
+ * One member's pasted score for a game on a single calendar day. The day
+ * bucket uses the user's local calendar (YYYY-MM-DD) — that's how each game
+ * itself decides which day a play belongs to (Wordle, Globle, Satle, etc.).
+ */
+export interface GameScore {
+  itemId: string;
+  userId: string;
+  /** YYYY-MM-DD in the submitter's locale. */
+  date: string;
+  /** Raw pasted score string (preserves emojis, line breaks, etc.). */
+  score: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertGameScoreRequest {
+  date: string;
+  score: string;
+}
+
+export interface GameScoreResponse {
+  score: GameScore;
+}
+
+/**
+ * Per-game leaderboard for a single date — every list member appears,
+ * even when they haven't pasted a score yet (`score: null`).
+ */
+export interface GameLeaderboardEntry {
+  userId: string;
+  displayName: string | null;
+  score: string | null;
+  updatedAt: string | null;
+}
+
+export interface GameLeaderboardResponse {
+  itemId: string;
+  date: string;
+  entries: GameLeaderboardEntry[];
+}
+
+/**
+ * Aggregated scores for every game on a list for one date — lets the
+ * list-detail screen show "you / friends played" indicators per row in a
+ * single round-trip.
+ */
+export interface ListGameScoresResponse {
+  date: string;
+  /** Map from itemId → leaderboard entries. Items with no scores omitted. */
+  scoresByItem: Record<string, GameLeaderboardEntry[]>;
 }

@@ -337,6 +337,8 @@ export function ListDetail({ list, members, token }: Props) {
     });
   };
 
+  const isGameList = list.type === "game";
+
   const onRowPressBody = (item: Item) => {
     if (isAlbumShelf) {
       const m = item.metadata as { spotifyAlbumUrl?: string };
@@ -347,8 +349,22 @@ export function ListDetail({ list, members, token }: Props) {
       });
       return;
     }
+    if (isGameList) {
+      // Body tap on a game row opens the leaderboard / paste-score detail.
+      router.push(`/list/${list.id}/game/${item.id}`);
+      return;
+    }
     router.push(`/list/${list.id}/item/${item.id}`);
   };
+
+  const onRowPressCover = isGameList
+    ? (item: Item) => {
+        if (!item.url) return;
+        Linking.openURL(item.url).catch(() => {
+          /* best effort — popup blocker / unsupported scheme is non-fatal */
+        });
+      }
+    : undefined;
 
   const headerSubline = useMemo(() => {
     const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
@@ -553,6 +569,7 @@ export function ListDetail({ list, members, token }: Props) {
             onPromoteToOrdered={onPromoteToOrdered}
             onRowMenu={onRowMenu}
             onRowPressBody={onRowPressBody}
+            onRowPressCover={onRowPressCover}
           />
         </View>
       )}

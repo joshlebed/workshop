@@ -5,7 +5,7 @@ import { ApiError } from "./apiError";
 export { ApiError, apiErrorCode, errorMessage } from "./apiError";
 
 interface ApiRequest {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
   token?: string | null;

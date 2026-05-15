@@ -26,6 +26,7 @@ const TYPE_LABEL: Record<ListType, string> = {
   date_idea: "Date ideas",
   trip: "Trips",
   album_shelf: "Album shelf",
+  game: "Games",
 };
 
 function partOfDay(date = new Date()): "morning" | "afternoon" | "evening" | "night" {
