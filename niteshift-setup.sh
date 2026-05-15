@@ -131,6 +131,13 @@ BACKEND_PORT="${PORT:-8787}"
 export EXPO_PUBLIC_API_URL="${EXPO_PUBLIC_API_URL:-${NITESHIFT_BACKEND_URL:-http://localhost:${BACKEND_PORT}}}"
 log "EXPO_PUBLIC_API_URL=${EXPO_PUBLIC_API_URL}"
 log "DEV_AUTH_ENABLED=${DEV_AUTH_ENABLED} EXPO_PUBLIC_DEV_AUTH=${EXPO_PUBLIC_DEV_AUTH}"
+# Whitelist the Niteshift preview origin in Expo CLI's CorsMiddleware.
+# `apps/workshop/app.config.ts` reads this and surfaces it as
+# `expo.extra.router.origin`, which the middleware adds to its allow-list
+# in addition to `localhost`. Without this, POST/PATCH/DELETE requests
+# from the iframe-hosted preview are rejected with a 401 HTML page before
+# our `/api/*` dev proxy can handle them.
+log "NITESHIFT_WEB_APP_EXPO_REACT_NATIVE_WEB_URL=${NITESHIFT_WEB_APP_EXPO_REACT_NATIVE_WEB_URL:-(unset)}"
 log "starting backend on :${BACKEND_PORT} and web app on :${WEB_PORT}"
 
 exec pnpm exec concurrently \
