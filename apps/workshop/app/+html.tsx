@@ -18,6 +18,18 @@ import type { PropsWithChildren } from "react";
  *     scheme, so we lock html/body to the same dark canvas — otherwise the
  *     top status-bar area and bottom home-indicator/toolbar area flash white
  *     in iOS light mode.
+ *  3. `html, body, #root { height: 100dvh }` gives the whole flex chain a
+ *     definite, viewport-bounded height. `ScrollViewStyleReset` sets
+ *     `height: 100%` and `body { overflow: hidden }` so the document never
+ *     scrolls — only inner ScrollViews do — but the previous override used
+ *     `#root { min-height: 100dvh }`, which is *not* a definite height: the
+ *     `flex:1` chain below (GestureHandlerRootView → SafeAreaView → screen →
+ *     FlatList) couldn't resolve to a bounded box, so the FlatList's inner
+ *     `overflow:auto` div had nothing to scroll inside and content was
+ *     clipped by `body{overflow:hidden}`. With `height: 100dvh` the dynamic
+ *     viewport (iOS Safari URL-bar shrink, keyboard via
+ *     `interactive-widget=resizes-content`) drives the sizing and every
+ *     FlatList/ScrollView inside scrolls correctly.
  */
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -45,9 +57,10 @@ export default function Root({ children }: PropsWithChildren) {
           dangerouslySetInnerHTML={{
             __html: `
               html, body { background-color: #0E0E10; color-scheme: dark; }
-              /* Use the dynamic viewport so the layout shrinks with the iOS
-                 keyboard instead of the keyboard covering the page. */
-              #root { min-height: 100dvh; }
+              /* Definite height down the whole chain so flex:1 descendants
+                 resolve to a scrollable bounded box. 100dvh tracks the
+                 dynamic viewport (iOS URL bar / on-screen keyboard). */
+              html, body, #root { height: 100dvh; }
             `,
           }}
         />

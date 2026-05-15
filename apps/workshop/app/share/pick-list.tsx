@@ -3,6 +3,7 @@ import type { ListSummary, ListType } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { fetchLists } from "../../src/api/lists";
+import { PullToRefresh } from "../../src/components/PullToRefresh";
 import { useAuth } from "../../src/hooks/useAuth";
 import { errorMessage } from "../../src/lib/api";
 import { queryKeys } from "../../src/lib/queryKeys";
@@ -102,29 +103,34 @@ export default function PickList() {
             />
           </View>
         ) : (
-          <FlatList
-            testID="share-pick-list"
-            data={listsQuery.data.lists}
-            keyExtractor={(l) => l.id}
-            contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <View style={{ height: tokens.space.sm }} />}
-            renderItem={({ item }) => <ListRow list={item} onPress={() => onPick(item)} />}
-            ListFooterComponent={
-              <Pressable
-                accessibilityRole="button"
-                onPress={onCreateNew}
-                testID="share-pick-create-new"
-                style={({ pressed }) => [pressed && styles.cardPressed]}
-              >
-                <Card style={styles.createCard}>
-                  <Text style={styles.createGlyph}>+</Text>
-                  <Text variant="heading" style={styles.createLabel}>
-                    Create new list
-                  </Text>
-                </Card>
-              </Pressable>
-            }
-          />
+          <PullToRefresh
+            refreshing={listsQuery.isRefetching}
+            onRefresh={() => listsQuery.refetch()}
+          >
+            <FlatList
+              testID="share-pick-list"
+              data={listsQuery.data.lists}
+              keyExtractor={(l) => l.id}
+              contentContainerStyle={styles.listContent}
+              ItemSeparatorComponent={() => <View style={{ height: tokens.space.sm }} />}
+              renderItem={({ item }) => <ListRow list={item} onPress={() => onPick(item)} />}
+              ListFooterComponent={
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onCreateNew}
+                  testID="share-pick-create-new"
+                  style={({ pressed }) => [pressed && styles.cardPressed]}
+                >
+                  <Card style={styles.createCard}>
+                    <Text style={styles.createGlyph}>+</Text>
+                    <Text variant="heading" style={styles.createLabel}>
+                      Create new list
+                    </Text>
+                  </Card>
+                </Pressable>
+              }
+            />
+          </PullToRefresh>
         )}
       </View>
     </View>

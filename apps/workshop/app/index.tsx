@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { fetchActivity } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
+import { PullToRefresh } from "../src/components/PullToRefresh";
 import { useAuth } from "../src/hooks/useAuth";
 import { errorMessage } from "../src/lib/api";
 import { getActivityLastViewedAt } from "../src/lib/lastViewed";
@@ -175,17 +176,20 @@ export default function Home() {
             />
           </View>
         ) : (
-          <FlatList
-            data={listsQuery.data.lists}
-            keyExtractor={(l) => l.id}
-            contentContainerStyle={styles.listContent}
-            ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
-            renderItem={({ item }) => (
-              <ListRow list={item} onPress={() => router.push(`/list/${item.id}`)} />
-            )}
+          <PullToRefresh
             refreshing={listsQuery.isRefetching}
             onRefresh={() => listsQuery.refetch()}
-          />
+          >
+            <FlatList
+              data={listsQuery.data.lists}
+              keyExtractor={(l) => l.id}
+              contentContainerStyle={styles.listContent}
+              ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
+              renderItem={({ item }) => (
+                <ListRow list={item} onPress={() => router.push(`/list/${item.id}`)} />
+              )}
+            />
+          </PullToRefresh>
         )}
       </View>
 

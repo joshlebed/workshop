@@ -57,4 +57,8 @@ export interface ItemListProps {
    * cover should not be a separate target.
    */
   onRowPressCover?: (item: Item, section: Section) => void;
+  /** Whether a refresh is in flight — drives the pull-to-refresh spinner. */
+  refreshing: boolean;
+  /** Pull-to-refresh trigger (typically `itemsQuery.refetch()`). */
+  onRefresh: () => void;
 }
