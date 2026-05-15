@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
+import { Redirect, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -12,6 +12,7 @@ import {
 } from "../../../../src/api/items";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { ApiError } from "../../../../src/lib/api";
+import { goBack } from "../../../../src/lib/goBack";
 import { haptics } from "../../../../src/lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../../../../src/lib/openUrl";
 import { queryKeys } from "../../../../src/lib/queryKeys";
@@ -29,7 +30,6 @@ export default function ItemDetail() {
   const params = useLocalSearchParams<{ id: string; itemId: string }>();
   const listId = Array.isArray(params.id) ? params.id[0] : params.id;
   const itemId = Array.isArray(params.itemId) ? params.itemId[0] : params.itemId;
-  const router = useRouter();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -113,7 +113,7 @@ export default function ItemDetail() {
           queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
         ]);
       }
-      router.back();
+      goBack(`/list/${listId}`);
     },
     onError: (e) =>
       showToast({
@@ -167,7 +167,7 @@ export default function ItemDetail() {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <IconButton accessibilityLabel="Back" onPress={() => router.back()}>
+        <IconButton accessibilityLabel="Back" onPress={() => goBack(`/list/${listId}`)}>
           <Text style={styles.headerGlyph}>‹</Text>
         </IconButton>
         <Text variant="heading">Item</Text>

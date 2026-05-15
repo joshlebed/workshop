@@ -8,6 +8,7 @@ import { previewSpotifyPlaylist } from "../../src/api/albumShelf";
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
 import { albumShelfErrorMessage } from "../../src/lib/albumShelfErrors";
+import { goBack } from "../../src/lib/goBack";
 import { queryKeys } from "../../src/lib/queryKeys";
 import { Button, Card, IconButton, Text, tokens, useToast } from "../../src/ui/index";
 
@@ -100,7 +101,7 @@ export default function CreateListPlaylist() {
       <View style={styles.header}>
         <IconButton
           accessibilityLabel="Back"
-          onPress={() => router.back()}
+          onPress={() => goBack("/create-list/type")}
           testID="album-shelf-playlist-back"
         >
           <Text style={styles.backGlyph}>‹</Text>

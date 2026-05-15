@@ -12,7 +12,6 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Platform,
   Pressable,
@@ -30,6 +29,8 @@ import {
   midpointForOrderedReorder,
 } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
+import { confirm } from "../lib/confirm";
+import { goBack } from "../lib/goBack";
 import { haptics } from "../lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
@@ -283,21 +284,16 @@ export function ListDetail({ list, members, token }: Props) {
   };
 
   const onRowMenu = (item: Item, section: Section) => {
-    const confirmDelete = () => {
-      Alert.alert(
-        "Remove this item?",
-        isAlbumShelf
+    const confirmDelete = async () => {
+      const ok = await confirm({
+        title: "Remove this item?",
+        message: isAlbumShelf
           ? "Removing this album won't stop it from coming back. If a track from this album is still on the source playlist, the next refresh will re-detect it."
           : "Deleting this item is permanent.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: () => deleteMutation.mutate({ itemId: item.id }),
-          },
-        ],
-      );
+        confirmLabel: "Delete",
+        destructive: true,
+      });
+      if (ok) deleteMutation.mutate({ itemId: item.id });
     };
     setMenuItem(item);
     setMenuActions({
@@ -408,7 +404,7 @@ export function ListDetail({ list, members, token }: Props) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back"
-          onPress={() => router.back()}
+          onPress={() => goBack("/")}
           testID="list-detail-back"
           hitSlop={10}
           style={styles.navButton}

@@ -7,6 +7,7 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboa
 import { createList } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
 import { pickCoverPhoto } from "../../src/lib/coverPhoto";
+import { goBack } from "../../src/lib/goBack";
 import { queryKeys } from "../../src/lib/queryKeys";
 import { Button, IconButton, type ListColorKey, Text, tokens, useToast } from "../../src/ui/index";
 
@@ -142,7 +143,7 @@ export default function CreateListCustomize() {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <IconButton accessibilityLabel="Back" onPress={() => router.back()}>
+        <IconButton accessibilityLabel="Back" onPress={() => goBack("/create-list/type")}>
           <Text style={styles.backGlyph}>‹</Text>
         </IconButton>
         <Text variant="caption" tone="muted" style={styles.step}>

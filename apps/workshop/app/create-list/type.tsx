@@ -1,6 +1,7 @@
 import type { ListType } from "@workshop/shared";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { goBack } from "../../src/lib/goBack";
 import { IconButton, type ListColorKey, Text, tokens } from "../../src/ui/index";
 
 interface TypeOption {
@@ -71,7 +72,7 @@ export default function CreateListType() {
       <View style={styles.header}>
         <IconButton
           accessibilityLabel="Cancel"
-          onPress={() => router.back()}
+          onPress={() => goBack("/")}
           testID="create-list-cancel"
         >
           <Text style={styles.backGlyph}>✕</Text>

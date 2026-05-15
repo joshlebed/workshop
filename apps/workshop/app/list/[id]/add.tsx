@@ -10,7 +10,7 @@ import type {
   MediaSearchResponse,
   MediaSearchType,
 } from "@workshop/shared";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -21,7 +21,9 @@ import { searchBooks, searchMedia } from "../../../src/api/search";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { useDebouncedQuery } from "../../../src/hooks/useDebouncedQuery";
 import { ApiError } from "../../../src/lib/api";
+import { goBack } from "../../../src/lib/goBack";
 import { haptics } from "../../../src/lib/haptics";
+import { normalizeExternalUrl } from "../../../src/lib/openUrl";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import {
   Button,
@@ -41,7 +43,6 @@ export default function AddItem() {
   const prefillUrlParam = Array.isArray(params.prefillUrl)
     ? params.prefillUrl[0]
     : params.prefillUrl;
-  const router = useRouter();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -115,7 +116,7 @@ export default function AddItem() {
           queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
         ]);
       }
-      router.back();
+      goBack(id ? `/list/${id}` : "/");
     },
     onError: (e) => {
       setPendingId(null);
@@ -178,12 +179,16 @@ export default function AddItem() {
       : undefined;
     // Force a scheme on bare hostnames at save time so `Linking.openURL` /
     // `window.open` don't treat them as relative paths on web later. Prefer
-    // the already-validated `normalizedUrl` when the preview matched, else
-    // wrap a bare hostname in https://.
+    // the already-validated debounced `normalizedUrl` when the preview
+    // matched (it's already gone through `new URL(...)` once); otherwise
+    // run the input through `normalizeExternalUrl`, which is idempotent —
+    // it only prefixes `https://` when the input doesn't already start
+    // with a scheme, so submitting `https://maptap.gg` before the
+    // debounce fires no longer produces `https://https://maptap.gg`.
     const persistedUrl =
       trimmedUrl.length === 0
         ? undefined
-        : (normalizedUrl ?? `https://${trimmedUrl.replace(/^\/\//, "")}`);
+        : (normalizedUrl ?? normalizeExternalUrl(trimmedUrl) ?? trimmedUrl);
     const body: CreateItemRequest = {
       title: trimmedTitle,
       ...(persistedUrl ? { url: persistedUrl } : {}),
@@ -196,7 +201,7 @@ export default function AddItem() {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <IconButton accessibilityLabel="Cancel" onPress={() => router.back()}>
+        <IconButton accessibilityLabel="Cancel" onPress={() => goBack(id ? `/list/${id}` : "/")}>
           <Text style={styles.headerGlyph}>✕</Text>
         </IconButton>
         <Text variant="heading">Add item</Text>
