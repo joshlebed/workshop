@@ -230,15 +230,49 @@ function decodeEntities(s: string): string {
 function buildPreview(originalUrl: URL, page: FetchedPage): LinkPreview {
   const meta = parseOgMeta(page.body);
   const image = meta.image ? toAbsoluteUrl(meta.image, page.finalUrl) : null;
+  const parsedFavicon = parseFavicon(page.body);
+  const favicon = parsedFavicon
+    ? toAbsoluteUrl(parsedFavicon, page.finalUrl)
+    : toAbsoluteUrl("/favicon.ico", page.finalUrl);
   return {
     url: originalUrl.href,
     finalUrl: page.finalUrl.href,
     title: meta.title,
     description: meta.description,
     image,
+    favicon,
     siteName: meta.siteName ?? page.finalUrl.hostname,
     fetchedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Picks the best `<link rel="...icon...">` href from the head, used as a
+ * thumbnail fallback when `og:image` / `twitter:image` are missing. Preference
+ * order: apple-touch-icon (typically 180×180 PNG, ideal as a tile) →
+ * apple-touch-icon-precomposed → icon → shortcut icon. Returns the raw href —
+ * `buildPreview` resolves to an absolute URL.
+ */
+function parseFavicon(html: string): string | null {
+  const headMatch = html.match(/<head[\s\S]*?<\/head>/i);
+  const haystack = headMatch ? headMatch[0] : html;
+
+  const order = ["apple-touch-icon", "apple-touch-icon-precomposed", "icon", "shortcut icon"];
+  const found = new Map<string, string>();
+  const linkRe = /<link\b([^>]*)>/gi;
+  for (const m of haystack.matchAll(linkRe)) {
+    const attrs = m[1] ?? "";
+    const rel = attrText(attrs, "rel")?.toLowerCase();
+    const href = attrText(attrs, "href");
+    if (!rel || !href) continue;
+    if (!order.includes(rel)) continue;
+    if (!found.has(rel)) found.set(rel, href);
+  }
+  for (const rel of order) {
+    const href = found.get(rel);
+    if (href) return decodeEntities(href);
+  }
+  return null;
 }
 
 function toAbsoluteUrl(raw: string, base: URL): string | null {
@@ -302,6 +336,7 @@ linkPreviewRoutes.get(
 
 export const __internal = {
   parseOgMeta,
+  parseFavicon,
   cacheKeyFor,
   buildPreview,
 };

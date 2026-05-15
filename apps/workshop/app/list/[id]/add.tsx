@@ -263,7 +263,8 @@ function buildLinkPreviewMetadata(p: LinkPreview): CreateItemRequest["metadata"]
 // field, so map the OG card down to just the keys that schema permits.
 function buildGameMetadata(p: LinkPreview): CreateItemRequest["metadata"] {
   const meta: Record<string, unknown> = {};
-  if (p.image) meta.thumbnailUrl = p.image;
+  const thumbnail = p.image ?? p.favicon;
+  if (thumbnail) meta.thumbnailUrl = thumbnail;
   if (p.siteName) meta.siteName = p.siteName;
   return meta;
 }
