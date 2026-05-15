@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import { Platform } from "react-native";
 
 const PROD_WEB_BASE_URL = "https://workshop-a2v.pages.dev";
@@ -22,10 +23,8 @@ export function buildInviteShareUrl(token: string): string {
 }
 
 /**
- * Best-effort clipboard copy. Web uses `navigator.clipboard.writeText`; native
- * (iOS) currently no-ops because `expo-clipboard` isn't a dep yet — Phase 4
- * adds the native polish along with the share extension. Returns whether the
- * write actually succeeded so callers can show "Copied" vs. "Copy manually".
+ * Best-effort clipboard copy. Returns whether the write actually succeeded so
+ * callers can show "Copied" vs. "Copy manually".
  */
 export async function copyToClipboard(text: string): Promise<boolean> {
   if (Platform.OS === "web" && typeof navigator !== "undefined") {
@@ -38,6 +37,12 @@ export async function copyToClipboard(text: string): Promise<boolean> {
         return false;
       }
     }
+    return false;
   }
-  return false;
+  try {
+    await Clipboard.setStringAsync(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
