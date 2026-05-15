@@ -672,3 +672,52 @@ prevent the next person from forgetting.
 **Workaround used this session:** Added `ci-docs.yml` as a permanent fix
 rather than a workaround — the noop workflow runs cheaply (~5s) and removes a
 whole class of "docs-only PR is unmergeable" surprise.
+
+## 2026-05-15 — sandbox ships Node 22, repo pins Node 20.19
+
+**Symptom:** Every `pnpm` invocation in the Niteshift sandbox emits
+`WARN  Unsupported engine: wanted: {"node":">=20.19 <21"} (current:
+{"node":"v22.14.0"})`. It shows up at install time, on every dev/migrate/Expo
+command, and clutters `$NITESHIFT_LOG_FILE` enough that `grep -iE "warn"`
+needs an explicit `-v "Unsupported engine"` filter to be useful.
+
+**Root cause:** The sandbox base image has Node 22.14.0 on `$PATH`; the repo
+pins `engines.node = ">=20.19 <21"` (matches `.nvmrc` and CI). pnpm warns
+rather than blocks, so everything still runs — but every command produces
+1–2 extra lines of noise and there's a latent risk of Node-22-only behavior
+slipping through that CI (on 20.19) wouldn't catch.
+
+**Suggested fix:** Make `niteshift-setup.sh` activate the pinned Node via
+`mise install && mise use node` (the repo already has `.mise.toml`) before
+running `pnpm install`. Alternative: bake Node 20.19 into the sandbox image
+as the default `node`.
+
+**Workaround used this session:** None — warnings are non-fatal. Future
+sessions can pipe sandbox dev-log greps through
+`grep -v "Unsupported engine"` to cut the noise.
+
+## 2026-05-15 — Expo RN DevTools auto-install crashes as root in sandbox
+
+**Symptom:** Every Expo web start in the sandbox logs:
+
+```
+[web]  ERROR  An unknown error occurred while installing React Native DevTools. Details:
+[web] [FATAL:electron/shell/app/electron_main_delegate.cc:290] Running as root without --no-sandbox is not supported.
+```
+
+Looks alarming and triggers false positives when grepping
+`$NITESHIFT_LOG_FILE` for `ERROR` / `FATAL`. The dev server still serves
+fine — DevTools is the only thing broken.
+
+**Root cause:** Expo's CLI tries to spawn the Electron-based RN DevTools on
+first web start. The sandbox runs as root, which Electron refuses without
+`--no-sandbox`. Expo has no per-project opt-out for the auto-install.
+
+**Suggested fix:** In `niteshift-setup.sh`, set an env var that disables the
+DevTools auto-install before launching `expo start --web` (needs verification
+against Expo SDK 55 — candidates: `EXPO_NO_DEVTOOLS`, `CI=1`). If no such
+flag exists, file an `expo-cli` issue: in root/CI/sandbox environments the
+install attempt should silently skip instead of logging FATAL.
+
+**Workaround used this session:** None — the error is cosmetic. Documenting
+so future agents don't chase "FATAL" lines that are unrelated to their task.
