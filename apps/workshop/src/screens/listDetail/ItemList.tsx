@@ -10,11 +10,17 @@
 // transitions (promote / demote / mark complete) go through the kebab
 // menu, which has had explicit actions for those moves since the
 // 2026-05 ordering refactor.
+//
+// Reorder activation: long-press anywhere on an ordered row's *body*
+// (not the position chip) calls `useReorderableDrag()`. The body Pressable
+// fires `onLongPress` after 250ms (matched on the web side via dnd-kit's
+// `TouchSensor` `delay`), so the activation feel is the same on both
+// platforms even though the underlying libraries are different.
 
 import type { Item } from "@workshop/shared";
 import * as Haptics from "expo-haptics";
 import { memo, type ReactNode, useCallback } from "react";
-import { type ListRenderItemInfo, Pressable, StyleSheet } from "react-native";
+import { type ListRenderItemInfo, StyleSheet, View } from "react-native";
 import {
   NestedReorderableList,
   type ReorderableListReorderEvent,
@@ -22,8 +28,9 @@ import {
   useIsActive,
   useReorderableDrag,
 } from "react-native-reorderable-list";
+import { PullToRefresh } from "../../components/PullToRefresh";
 import { tokens } from "../../ui/index";
-import { ItemRow, OrderedHint, rowStyles, SectionHeader } from "./ItemRow";
+import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
 
 export function ItemList({
@@ -40,6 +47,8 @@ export function ItemList({
   onRowMenu,
   onRowPressBody,
   onRowPressCover,
+  refreshing,
+  onRefresh,
 }: ItemListProps) {
   const handleOrderedReorder = useCallback(
     ({ from, to }: ReorderableListReorderEvent) => {
@@ -63,65 +72,71 @@ export function ItemList({
   );
 
   return (
-    <ScrollViewContainer contentContainerStyle={styles.listContent} testID="list-detail-list">
-      {ordered.length > 0 ? (
-        <>
-          <SectionHeader kind="ordered" count={ordered.length} />
-          <NestedReorderableList
-            data={ordered}
-            keyExtractor={keyExtractor}
-            renderItem={renderOrderedItem}
-            onReorder={handleOrderedReorder}
-            scrollable={false}
-            autoscrollThreshold={0.15}
-            autoscrollSpeedScale={1}
-            shouldUpdateActiveItem
-          />
-        </>
-      ) : null}
-
-      {showOrderedHint ? <OrderedHint isAlbumShelf={isAlbumShelf} /> : null}
-
-      {unordered.length > 0 ? (
-        <>
-          <SectionHeader kind="unordered" count={unordered.length} isAlbumShelf={isAlbumShelf} />
-          {unordered.map((item) => (
-            <ItemRow
-              key={item.id}
-              item={item}
-              section="unordered"
-              isNew={newItemIds.has(item.id)}
-              isDragging={false}
-              addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
-              accent={accent}
-              onMenu={() => onRowMenu(item, "unordered")}
-              onPressBody={() => onRowPressBody(item, "unordered")}
-              onPressCover={onRowPressCover ? () => onRowPressCover(item, "unordered") : undefined}
+    <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
+      <ScrollViewContainer contentContainerStyle={styles.listContent} testID="list-detail-list">
+        {ordered.length > 0 ? (
+          <>
+            <SectionHeader kind="ordered" count={ordered.length} />
+            <NestedReorderableList
+              data={ordered}
+              keyExtractor={keyExtractor}
+              renderItem={renderOrderedItem}
+              onReorder={handleOrderedReorder}
+              scrollable={false}
+              autoscrollThreshold={0.15}
+              autoscrollSpeedScale={1}
+              shouldUpdateActiveItem
             />
-          ))}
-        </>
-      ) : null}
+          </>
+        ) : null}
 
-      {completed.length > 0 ? (
-        <>
-          <SectionHeader kind="completed" count={completed.length} />
-          {completed.map((item) => (
-            <ItemRow
-              key={item.id}
-              item={item}
-              section="completed"
-              isNew={false}
-              isDragging={false}
-              addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
-              accent={accent}
-              onMenu={() => onRowMenu(item, "completed")}
-              onPressBody={() => onRowPressBody(item, "completed")}
-              onPressCover={onRowPressCover ? () => onRowPressCover(item, "completed") : undefined}
-            />
-          ))}
-        </>
-      ) : null}
-    </ScrollViewContainer>
+        {showOrderedHint ? <OrderedHint isAlbumShelf={isAlbumShelf} /> : null}
+
+        {unordered.length > 0 ? (
+          <>
+            <SectionHeader kind="unordered" count={unordered.length} isAlbumShelf={isAlbumShelf} />
+            {unordered.map((item) => (
+              <ItemRow
+                key={item.id}
+                item={item}
+                section="unordered"
+                isNew={newItemIds.has(item.id)}
+                isDragging={false}
+                addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                accent={accent}
+                onMenu={() => onRowMenu(item, "unordered")}
+                onPressBody={() => onRowPressBody(item, "unordered")}
+                onPressCover={
+                  onRowPressCover ? () => onRowPressCover(item, "unordered") : undefined
+                }
+              />
+            ))}
+          </>
+        ) : null}
+
+        {completed.length > 0 ? (
+          <>
+            <SectionHeader kind="completed" count={completed.length} />
+            {completed.map((item) => (
+              <ItemRow
+                key={item.id}
+                item={item}
+                section="completed"
+                isNew={false}
+                isDragging={false}
+                addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                accent={accent}
+                onMenu={() => onRowMenu(item, "completed")}
+                onPressBody={() => onRowPressBody(item, "completed")}
+                onPressCover={
+                  onRowPressCover ? () => onRowPressCover(item, "completed") : undefined
+                }
+              />
+            ))}
+          </>
+        ) : null}
+      </ScrollViewContainer>
+    </PullToRefresh>
   );
 }
 
@@ -149,26 +164,18 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
   const drag = useReorderableDrag();
   const isActive = useIsActive();
 
-  const onHandleLongPress = useCallback(() => {
+  const onLongPressBody = useCallback(() => {
     Haptics.selectionAsync().catch(() => {
       /* haptics unavailable on simulator — non-fatal */
     });
     drag();
   }, [drag]);
 
-  const dragHandle = (child: ReactNode) => (
-    <Pressable
-      onLongPress={onHandleLongPress}
-      delayLongPress={120}
-      accessibilityRole="button"
-      accessibilityLabel={`Drag handle for ${item.title}`}
-      testID={`item-row-handle-${item.id}`}
-      style={rowStyles.rowDragHandle}
-      hitSlop={6}
-    >
-      {child}
-    </Pressable>
-  );
+  // The position chip is still rendered as a visual drag affordance but no
+  // longer hosts the activation gesture — the whole row body is now the
+  // long-press target, matching the web side and what users expect from
+  // iOS edit-mode lists.
+  const dragHandle = (child: ReactNode) => <View style={styles.dragChip}>{child}</View>;
 
   return (
     <ItemRow
@@ -181,6 +188,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
       onMenu={onMenu}
       onPressBody={onPressBody}
       onPressCover={onPressCover}
+      onLongPressBody={onLongPressBody}
       dragHandle={dragHandle}
     />
   );
@@ -191,5 +199,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.xxl * 2,
+  },
+  dragChip: {
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

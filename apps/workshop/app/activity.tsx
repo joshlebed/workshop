@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import { fetchActivity, markActivityRead } from "../src/api/activity";
+import { PullToRefresh } from "../src/components/PullToRefresh";
 import { useAuth } from "../src/hooks/useAuth";
 import { errorMessage } from "../src/lib/api";
 import { setActivityLastViewedAt } from "../src/lib/lastViewed";
@@ -77,29 +78,32 @@ export default function Activity() {
           />
         </View>
       ) : (
-        <FlatList
-          testID="activity-feed"
-          data={events}
-          keyExtractor={(e) => e.id}
-          contentContainerStyle={styles.body}
-          ItemSeparatorComponent={() => <View style={{ height: tokens.space.sm }} />}
-          renderItem={({ item }) => <ActivityRow event={item} />}
+        <PullToRefresh
           refreshing={feedQuery.isRefetching && !feedQuery.isFetchingNextPage}
           onRefresh={() => feedQuery.refetch()}
-          onEndReached={() => {
-            if (feedQuery.hasNextPage && !feedQuery.isFetchingNextPage) {
-              feedQuery.fetchNextPage();
+        >
+          <FlatList
+            testID="activity-feed"
+            data={events}
+            keyExtractor={(e) => e.id}
+            contentContainerStyle={styles.body}
+            ItemSeparatorComponent={() => <View style={{ height: tokens.space.sm }} />}
+            renderItem={({ item }) => <ActivityRow event={item} />}
+            onEndReached={() => {
+              if (feedQuery.hasNextPage && !feedQuery.isFetchingNextPage) {
+                feedQuery.fetchNextPage();
+              }
+            }}
+            onEndReachedThreshold={0.5}
+            ListFooterComponent={
+              feedQuery.isFetchingNextPage ? (
+                <View style={styles.footerLoader}>
+                  <ActivityIndicator color={tokens.accent.default} />
+                </View>
+              ) : null
             }
-          }}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={
-            feedQuery.isFetchingNextPage ? (
-              <View style={styles.footerLoader}>
-                <ActivityIndicator color={tokens.accent.default} />
-              </View>
-            ) : null
-          }
-        />
+          />
+        </PullToRefresh>
       )}
     </View>
   );

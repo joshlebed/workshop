@@ -41,8 +41,18 @@ interface ItemRowProps {
    */
   onPressCover?: () => void;
   /**
+   * Long-press on the body initiates reorder. The platform-specific
+   * `ItemList` wrapper supplies this — native binds it to
+   * `useReorderableDrag()`, web is driven by `@dnd-kit`'s `TouchSensor`
+   * delay-activation. Omitted on rows that aren't reorderable in a given
+   * section.
+   */
+  onLongPressBody?: () => void;
+  /**
    * Drag-affordance slot — wraps the position chip on ordered rows so the
-   * gesture library owns the touch target. Omitted on unordered/completed.
+   * gesture library can render the visual affordance + (on web) host the
+   * drag-listener spread. The activation gesture itself now lives on the
+   * row body, not the chip, so this slot is purely visual on native.
    */
   dragHandle?: (children: ReactNode) => ReactNode;
 }
@@ -57,6 +67,7 @@ export function ItemRow({
   onMenu,
   onPressBody,
   onPressCover,
+  onLongPressBody,
   dragHandle,
 }: ItemRowProps) {
   const isCompleted = section === "completed";
@@ -165,11 +176,17 @@ export function ItemRow({
     >
       {leading}
       {onPressCover ? cover : null}
-      {onPressBody ? (
+      {onPressBody || onLongPressBody ? (
         <Pressable
           accessibilityRole={view.bodyRole}
           accessibilityLabel={view.bodyLabel}
           onPress={onPressBody}
+          // ~250ms feels like iOS's native edit-mode press without
+          // intercepting honest taps. The kebab Pressable inside this row
+          // owns its own touch via the responder system, so long-press
+          // here doesn't compete with the menu button.
+          onLongPress={onLongPressBody}
+          delayLongPress={250}
           testID={`item-row-body-${item.id}`}
           style={({ pressed, hovered }) => [
             styles.bodyPressable,
@@ -351,15 +368,6 @@ export function OrderedHint({ isAlbumShelf }: { isAlbumShelf: boolean }) {
     </View>
   );
 }
-
-export const rowStyles = StyleSheet.create({
-  // Wrapper passed by the gesture-aware parent. Keeps the touch target the
-  // size of the position chip without adding padding around it.
-  rowDragHandle: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
 
 const styles = StyleSheet.create({
   row: {

@@ -8,13 +8,22 @@
 // draggable into the ordered section (drop on an ordered row inserts above
 // it; drop on the trailing "Drop here" zone appends). Cross-section drag
 // from completed isn't supported — that still goes through the kebab menu.
+//
+// Reorder activation: dnd-kit `TouchSensor` is configured with
+// `{ delay: 250, tolerance: 8 }` so a press-and-hold anywhere on a row
+// activates the drag, while a short tap fires the row's `onPress`. The
+// drag listeners spread onto the *row wrapper* (not a leading handle)
+// and the row sets `touchAction: "pan-y"` so vertical scroll passes
+// through until the long-press fires. Native uses RN `Pressable`'s
+// `onLongPress` against the same delay so the activation feel matches.
 
 import {
   closestCenter,
   DndContext,
   type DragEndEvent,
   type DragStartEvent,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useDraggable,
   useDroppable,
   useSensor,
@@ -25,8 +34,9 @@ import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { PullToRefresh } from "../../components/PullToRefresh";
 import { Text, tokens } from "../../ui/index";
-import { ItemRow, OrderedHint, rowStyles, SectionHeader } from "./ItemRow";
+import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
 
 const ORDERED_DROP_END_ID = "ordered-drop-end";
@@ -46,8 +56,20 @@ export function ItemList({
   onRowMenu,
   onRowPressBody,
   onRowPressCover,
+  refreshing,
+  onRefresh,
 }: ItemListProps) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // Two sensors, never one with mixed activation:
+  //   - MouseSensor with `distance: 4`  → desktop stays snappy (no delay).
+  //   - TouchSensor with `delay: 250, tolerance: 8` → mobile web uses
+  //     press-and-hold; a finger movement > 8px before 250ms cancels the
+  //     pending activation so a regular swipe scrolls instead of dragging.
+  // This is the official dnd-kit recommendation for lists that must scroll
+  // on touch but reorder on hold (docs.dndkit.com/api-documentation/sensors/touch).
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+  );
   const orderedIds = useMemo(() => ordered.map((it) => it.id), [ordered]);
   const orderedIdSet = useMemo(() => new Set(orderedIds), [orderedIds]);
   const [activeSection, setActiveSection] = useState<"ordered" | "unordered" | null>(null);
@@ -110,68 +132,74 @@ export function ItemList({
       onDragCancel={handleDragCancel}
       collisionDetection={closestCenter}
     >
-      <ScrollView contentContainerStyle={styles.listContent} testID="list-detail-list">
-        {ordered.length > 0 ? <SectionHeader kind="ordered" count={ordered.length} /> : null}
-        <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-          {ordered.map((item) => (
-            <SortableOrderedRow
-              key={item.id}
-              item={item}
-              addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
-              accent={accent}
-              onMenu={() => onRowMenu(item, "ordered")}
-              onPressBody={() => onRowPressBody(item, "ordered")}
-              onPressCover={onRowPressCover ? () => onRowPressCover(item, "ordered") : undefined}
-            />
-          ))}
-        </SortableContext>
-
-        {showOrderedDropEnd ? <OrderedDropEndZone highlighted={draggingFromUnordered} /> : null}
-
-        {showOrderedHint ? <OrderedHint isAlbumShelf={isAlbumShelf} /> : null}
-
-        {unordered.length > 0 ? (
-          <>
-            <SectionHeader kind="unordered" count={unordered.length} isAlbumShelf={isAlbumShelf} />
-            {unordered.map((item) => (
-              <DraggableUnorderedRow
+      <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
+        <ScrollView contentContainerStyle={styles.listContent} testID="list-detail-list">
+          {ordered.length > 0 ? <SectionHeader kind="ordered" count={ordered.length} /> : null}
+          <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
+            {ordered.map((item) => (
+              <SortableOrderedRow
                 key={item.id}
                 item={item}
-                isNew={newItemIds.has(item.id)}
                 addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
                 accent={accent}
-                onMenu={() => onRowMenu(item, "unordered")}
-                onPressBody={() => onRowPressBody(item, "unordered")}
-                onPressCover={
-                  onRowPressCover ? () => onRowPressCover(item, "unordered") : undefined
-                }
+                onMenu={() => onRowMenu(item, "ordered")}
+                onPressBody={() => onRowPressBody(item, "ordered")}
+                onPressCover={onRowPressCover ? () => onRowPressCover(item, "ordered") : undefined}
               />
             ))}
-          </>
-        ) : null}
+          </SortableContext>
 
-        {completed.length > 0 ? (
-          <>
-            <SectionHeader kind="completed" count={completed.length} />
-            {completed.map((item) => (
-              <ItemRow
-                key={item.id}
-                item={item}
-                section="completed"
-                isNew={false}
-                isDragging={false}
-                addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
-                accent={accent}
-                onMenu={() => onRowMenu(item, "completed")}
-                onPressBody={() => onRowPressBody(item, "completed")}
-                onPressCover={
-                  onRowPressCover ? () => onRowPressCover(item, "completed") : undefined
-                }
+          {showOrderedDropEnd ? <OrderedDropEndZone highlighted={draggingFromUnordered} /> : null}
+
+          {showOrderedHint ? <OrderedHint isAlbumShelf={isAlbumShelf} /> : null}
+
+          {unordered.length > 0 ? (
+            <>
+              <SectionHeader
+                kind="unordered"
+                count={unordered.length}
+                isAlbumShelf={isAlbumShelf}
               />
-            ))}
-          </>
-        ) : null}
-      </ScrollView>
+              {unordered.map((item) => (
+                <DraggableUnorderedRow
+                  key={item.id}
+                  item={item}
+                  isNew={newItemIds.has(item.id)}
+                  addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                  accent={accent}
+                  onMenu={() => onRowMenu(item, "unordered")}
+                  onPressBody={() => onRowPressBody(item, "unordered")}
+                  onPressCover={
+                    onRowPressCover ? () => onRowPressCover(item, "unordered") : undefined
+                  }
+                />
+              ))}
+            </>
+          ) : null}
+
+          {completed.length > 0 ? (
+            <>
+              <SectionHeader kind="completed" count={completed.length} />
+              {completed.map((item) => (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  section="completed"
+                  isNew={false}
+                  isDragging={false}
+                  addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                  accent={accent}
+                  onMenu={() => onRowMenu(item, "completed")}
+                  onPressBody={() => onRowPressBody(item, "completed")}
+                  onPressCover={
+                    onRowPressCover ? () => onRowPressCover(item, "completed") : undefined
+                  }
+                />
+              ))}
+            </>
+          ) : null}
+        </ScrollView>
+      </PullToRefresh>
     </DndContext>
   );
 }
@@ -198,27 +226,28 @@ function SortableOrderedRow({
     data: { section: "ordered" },
   });
 
+  // `touchAction: "pan-y"` lets vertical scroll pass through the row when
+  // the user swipes — TouchSensor's `delay`+`tolerance` constraint cancels
+  // the pending drag activation if the finger moves > 8px before 250ms,
+  // so scroll wins on a swipe and reorder wins on a hold.
   const webStyle = {
     transform: CSS.Transform.toString(transform) ?? undefined,
     transition: transition ?? undefined,
-    touchAction: "none",
+    touchAction: "pan-y",
+    userSelect: "none",
   } as unknown as object;
 
-  const dragHandle = (child: ReactNode) => (
-    <View
-      {...((listeners ?? {}) as unknown as Record<string, unknown>)}
-      {...((attributes ?? {}) as unknown as Record<string, unknown>)}
-      accessibilityRole="button"
-      accessibilityLabel={`Drag handle for ${item.title}`}
-      testID={`item-row-handle-${item.id}`}
-      style={[rowStyles.rowDragHandle, { cursor: "grab", userSelect: "none" } as unknown as object]}
-    >
-      {child}
-    </View>
-  );
+  // Position chip is purely visual now — the whole row is the touch target
+  // for drag activation (listeners spread onto the row wrapper below).
+  const dragHandle = (child: ReactNode) => <View>{child}</View>;
 
   return (
-    <View ref={setNodeRef as unknown as React.Ref<View>} style={webStyle}>
+    <View
+      ref={setNodeRef as unknown as React.Ref<View>}
+      style={webStyle}
+      {...((listeners ?? {}) as unknown as Record<string, unknown>)}
+      {...((attributes ?? {}) as unknown as Record<string, unknown>)}
+    >
       <ItemRow
         item={item}
         section="ordered"
@@ -262,31 +291,21 @@ function DraggableUnorderedRow({
   const webStyle = {
     transform: CSS.Translate.toString(transform) ?? undefined,
     opacity: isDragging ? 0.7 : 1,
+    touchAction: "pan-y",
+    userSelect: "none",
   } as unknown as object;
 
-  // Listeners go on the leading drag handle, not the row wrapper — RN Web
-  // Pressables inside the row body capture pointerdown and would otherwise
-  // swallow the drag activation.
-  const dragHandle = (child: ReactNode) => (
-    <View
-      {...((listeners ?? {}) as unknown as Record<string, unknown>)}
-      {...((attributes ?? {}) as unknown as Record<string, unknown>)}
-      accessibilityRole="button"
-      accessibilityLabel={`Drag handle for ${item.title}`}
-      testID={`item-row-handle-${item.id}`}
-      style={
-        [
-          rowStyles.rowDragHandle,
-          { cursor: "grab", userSelect: "none", touchAction: "none" },
-        ] as unknown as object
-      }
-    >
-      {child}
-    </View>
-  );
+  // Drag handle is now visual-only; listeners hang on the row wrapper so
+  // a long-press anywhere on the row (not just the chip) starts a drag.
+  const dragHandle = (child: ReactNode) => <View>{child}</View>;
 
   return (
-    <View ref={setNodeRef as unknown as React.Ref<View>} style={webStyle}>
+    <View
+      ref={setNodeRef as unknown as React.Ref<View>}
+      style={webStyle}
+      {...((listeners ?? {}) as unknown as Record<string, unknown>)}
+      {...((attributes ?? {}) as unknown as Record<string, unknown>)}
+    >
       <ItemRow
         item={item}
         section="unordered"

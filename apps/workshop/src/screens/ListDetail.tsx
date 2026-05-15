@@ -570,6 +570,10 @@ export function ListDetail({ list, members, token }: Props) {
             onRowMenu={onRowMenu}
             onRowPressBody={onRowPressBody}
             onRowPressCover={onRowPressCover}
+            refreshing={itemsQuery.isRefetching}
+            onRefresh={() => {
+              itemsQuery.refetch();
+            }}
           />
         </View>
       )}
