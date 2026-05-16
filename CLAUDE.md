@@ -351,6 +351,41 @@ The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
 `GOOGLE_BOOKS_API_KEY`, `LOG_LEVEL` from env vars set by Terraform. If behavior seems wrong,
 `aws lambda get-function-configuration` shows what's actually running.
 
+## Admin runbook
+
+Operational commands for the cross-system surfaces this project owns. For "should I
+do this without asking" gating, see "Safe changes vs careful changes" below.
+
+Most of these need admin credentials. Two surfaces:
+
+- **Laptop sessions** — secrets live in `~/.workshop-admin.env` (gitignored, mode 600).
+  Run the `/admin-elevate` skill at the start of a session that needs writes — it sources
+  the file and runs a health-check sweep, then echoes which credentials are live.
+- **Niteshift sandbox sessions** — secrets are injected as env vars at task start. AWS
+  is special: Niteshift uses role assumption (no static keys), so `AWS_ACCESS_KEY_ID` /
+  `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN` appear automatically with 1h auto-refresh.
+  The assumed role is defined in `infra/niteshift.tf`. To rotate the External ID:
+  Niteshift → Settings → Repositories → workshop → AWS → "Generate New ID", then update
+  `var.niteshift_external_id` in tfvars (or the HCP workspace variable) and apply.
+
+| Goal                                            | Command                                                                                                                                                                           |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Apply infra change                              | `cd infra && AWS_PROFILE=workshop-prod terraform plan` → confirm → `terraform apply`                                                                                              |
+| See what infra would change on main             | trigger `.github/workflows/terraform-status.yml` (auto-runs on push to `main` with `infra/**`)                                                                                    |
+| Tail prod logs (last 10m, errors)               | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 10m --filter error`                                                                                                          |
+| Trace one request id                            | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --filter <reqid>`                                                                                                                    |
+| psql into Neon prod                             | `AWS_PROFILE=workshop-prod ./scripts/db-connect.sh`                                                                                                                               |
+| Spin a Neon branch for a risky migration        | `neonctl branches create --name pre-<feature>` (requires `NEON_API_KEY`)                                                                                                          |
+| Read an SSM secret                              | `AWS_PROFILE=workshop-prod aws ssm get-parameter --name /workshop-prod/X --with-decryption --query 'Parameter.Value' --output text`                                               |
+| Rotate an SSM secret                            | `aws ssm put-parameter --name /workshop-prod/X --value … --overwrite --type SecureString` — note `lifecycle { ignore_changes = [value] }` so Terraform won't drift the next apply |
+| Deploy web to preview (branch)                  | `pnpm deploy:pages:preview` (requires `CLOUDFLARE_API_TOKEN`)                                                                                                                     |
+| Deploy web to production                        | `pnpm deploy:pages` (always-confirm — see below)                                                                                                                                  |
+| Force a fresh TestFlight build                  | `gh workflow run testflight.yml --ref main --field force=true`                                                                                                                    |
+| Bypass EAS submit (when submit queue is jammed) | download IPA from EAS dashboard, then `xcrun altool --upload-app --type ios -f ~/Downloads/workshop.ipa -u joshlebed@gmail.com -p "$APPLE_APP_SPECIFIC_PASSWORD"` (macOS-only)    |
+
+The "Sources of truth" map below lists where each system's UI/state lives if you need to
+read or change something the CLI doesn't cover.
+
 ## iOS deploy pipeline
 
 The iOS pipeline has more moving parts than the backend, and the failure modes
@@ -615,6 +650,46 @@ cleanly.
 - **Ask first**: deleting DB data, changing the Lambda runtime major version, rotating the OIDC
   provider, adding a new AWS service (every service has a free-tier implication), touching
   anything in a _different_ AWS account than Workshop's.
+
+### Admin actions: auto-allowed vs always-confirm
+
+Once `/admin-elevate` is active (or running in a Niteshift sandbox with the AWS role
+assumed), the day-to-day grey areas:
+
+**Auto-allowed** (just do it, mention in chat):
+
+- `terraform plan`, `terraform output`, `terraform state list`, any log read
+- `aws ssm get-parameter` (incl. `--with-decryption`)
+- `aws lambda get-function-configuration` / `get-function`
+- `terraform apply` when the plan diff is **≤5 resources** and only touches
+  `apigateway.tf` / lambda env vars / SSM parameters — and the plan output was shown
+  to the user in chat first
+- `pnpm deploy:pages:preview` (preview branch, not prod)
+- `neonctl branches create` (any non-`main`/`prod*` name)
+- Lambda env var rotation via `aws lambda update-function-configuration` (the change
+  is reverted on next `terraform apply` if SSM source ignores changes)
+- Rerunning a failed CI job, `gh workflow run` for non-deploy workflows
+
+**Always confirm**:
+
+- `terraform apply` >5 resources OR touching IAM, OIDC, the budget, the SES identity,
+  the API Gateway custom domain, or anything in `lambda.tf` that changes runtime/handler
+- Any Cloudflare DNS change
+- `pnpm deploy:pages` to production
+- Any change to GH branch protection or required checks
+- `neonctl branches delete` for `main` or anything matching `prod*`
+- Apple Developer Portal capability toggles (EAS sync semantics — see iOS pipeline)
+- OIDC provider rotation, GH Actions IAM role policy edits
+- Adding a new AWS service (free-tier blast radius)
+- Anything in a _different_ AWS account than Workshop's
+
+**Prohibited** (do not do, even with confirmation):
+
+- Force-push to `main`
+- `terraform destroy` on prod
+- `DROP TABLE` / `TRUNCATE` on prod Neon
+- Rotating `SESSION_SECRET` without first warning the user that all sessions invalidate
+- Removing Niteshift's IAM role trust policy while a task is in-flight (it'll lose creds mid-run)
 
 ## Local development
 

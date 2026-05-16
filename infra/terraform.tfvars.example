@@ -19,3 +19,8 @@ google_web_client_id = ""
 # Enrichment API keys (Phase 2). Leave empty until obtained.
 tmdb_api_key         = ""
 google_books_api_key = ""
+
+# Niteshift AWS integration — per-repo External ID from
+# https://app.niteshift.dev → Settings → Repositories → workshop → AWS tab.
+# Rotate via "Generate New ID" if leaked.
+niteshift_external_id = ""
