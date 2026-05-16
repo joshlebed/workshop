@@ -453,7 +453,7 @@ export function ListDetail({ list, members, token }: Props) {
           <View
             style={[
               styles.titleBadge,
-              { backgroundColor: `${accent}26`, borderColor: `${accent}55` },
+              { backgroundColor: `${accent}1F`, borderColor: `${accent}33` },
             ]}
           >
             <Text style={styles.titleEmoji}>{list.emoji}</Text>
@@ -463,14 +463,22 @@ export function ListDetail({ list, members, token }: Props) {
           <Text variant="title" numberOfLines={2} style={styles.titleName}>
             {list.name}
           </Text>
-          <Text variant="caption" tone="muted" style={styles.subline} testID="list-detail-subline">
-            {headerSubline}
-          </Text>
+          <View style={styles.sublineRow}>
+            {members.length > 0 ? <MemberStack members={members} accent={accent} /> : null}
+            <Text
+              variant="caption"
+              tone="muted"
+              style={styles.subline}
+              testID="list-detail-subline"
+            >
+              {headerSubline}
+            </Text>
+          </View>
         </View>
       </View>
 
       <View style={styles.toolbar}>
-        <View style={styles.filterWrap}>
+        <View style={[styles.filterPill, filter.length > 0 && styles.filterPillActive]}>
           <Text style={styles.filterGlyph} tone="muted">
             ⌕
           </Text>
@@ -478,10 +486,10 @@ export function ListDetail({ list, members, token }: Props) {
             testID="list-detail-filter"
             value={filter}
             onChangeText={setFilter}
-            placeholder={isAlbumShelf ? "Search this shelf" : "Filter"}
+            placeholder={isAlbumShelf ? "Search this shelf" : "Search this list"}
             placeholderTextColor={tokens.text.muted}
             style={styles.filterInput}
-            accessibilityLabel="Filter items"
+            accessibilityLabel="Search items in this list"
           />
           {filter.length > 0 ? (
             <Pressable
@@ -601,6 +609,56 @@ export function ListDetail({ list, members, token }: Props) {
   );
 }
 
+function memberInitials(name: string | null): string {
+  const trimmed = name?.trim();
+  if (!trimmed) return "·";
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts[parts.length - 1]?.[0] ?? "";
+  return (parts.length === 1 ? first : `${first}${last}`).toUpperCase() || "·";
+}
+
+function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent: string }) {
+  // Cap at 3 shown — beyond that the visual budget is wasted and the count in
+  // the adjacent subline carries the rest.
+  const shown = members.slice(0, 3);
+  return (
+    <View style={memberStackStyles.row} accessibilityLabel={`${members.length} members`}>
+      {shown.map((m, i) => (
+        <View
+          key={m.userId}
+          style={[
+            memberStackStyles.chip,
+            { backgroundColor: `${accent}26`, borderColor: tokens.bg.canvas },
+            i > 0 ? memberStackStyles.chipOverlap : null,
+          ]}
+        >
+          <Text style={memberStackStyles.initials}>{memberInitials(m.displayName)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const memberStackStyles = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center" },
+  chip: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chipOverlap: { marginLeft: -8 },
+  initials: {
+    fontSize: 10,
+    fontWeight: tokens.font.weight.semibold,
+    letterSpacing: 0.3,
+    color: tokens.text.primary,
+  },
+});
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -634,29 +692,39 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.sm,
   },
   titleBadge: {
-    width: 60,
-    height: 60,
+    width: 52,
+    height: 52,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  titleEmoji: { fontSize: 30, lineHeight: 34 },
+  titleEmoji: { fontSize: 26, lineHeight: 30 },
   titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.6, fontSize: 26, lineHeight: 30 },
+  titleName: { letterSpacing: -0.6, fontSize: 28, lineHeight: 32 },
+  sublineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    flexWrap: "wrap",
+  },
   subline: { letterSpacing: 0.1 },
   toolbar: {
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xs,
   },
-  filterWrap: {
+  filterPill: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: tokens.space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 2,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
   },
+  filterPillActive: { borderColor: tokens.border.default },
   filterGlyph: {
     fontSize: tokens.font.size.md,
     marginRight: tokens.space.sm,
@@ -664,9 +732,9 @@ const styles = StyleSheet.create({
   },
   filterInput: {
     flex: 1,
-    paddingVertical: 10,
+    paddingVertical: 8,
     color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
+    fontSize: tokens.font.size.sm,
   },
   filterClear: { paddingHorizontal: tokens.space.xs, paddingVertical: tokens.space.xs },
   filterClearGlyph: { fontSize: tokens.font.size.sm },

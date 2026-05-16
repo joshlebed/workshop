@@ -48,7 +48,10 @@ export function Button({
         size === "lg" ? styles.sizeLg : styles.sizeMd,
         variantStyle[variant],
         pressed && !isDisabled ? pressedStyle[variant] : null,
-        isDisabled ? styles.disabled : null,
+        // Disabled state: instead of opacity-on-everything (which muddies the
+        // accent fill and dims the label below readable contrast), neutralise
+        // the fill and switch the label to a muted-but-legible secondary tone.
+        isDisabled && !loading ? disabledStyle[variant] : null,
         style,
       ]}
     >
@@ -57,7 +60,14 @@ export function Button({
       ) : (
         <>
           {leftIcon}
-          <Text style={[styles.label, { color: labelColor[variant] }]}>{label}</Text>
+          <Text
+            style={[
+              styles.label,
+              { color: isDisabled ? disabledLabelColor[variant] : labelColor[variant] },
+            ]}
+          >
+            {label}
+          </Text>
         </>
       )}
     </Pressable>
@@ -76,7 +86,6 @@ const styles = StyleSheet.create({
   sizeMd: { paddingVertical: 10, paddingHorizontal: tokens.space.lg, minHeight: 44 },
   sizeLg: { paddingVertical: 14, paddingHorizontal: tokens.space.xl, minHeight: 52 },
   label: { fontSize: tokens.font.size.md, fontWeight: tokens.font.weight.semibold },
-  disabled: { opacity: 0.5 },
 });
 
 const variantStyle: Record<Variant, ViewStyle> = {
@@ -98,4 +107,18 @@ const labelColor: Record<Variant, string> = {
   secondary: tokens.text.primary,
   ghost: tokens.text.primary,
   danger: tokens.text.primary,
+};
+
+const disabledStyle: Record<Variant, ViewStyle> = {
+  primary: { backgroundColor: tokens.bg.elevated, borderColor: tokens.border.subtle },
+  secondary: { backgroundColor: tokens.bg.surface, borderColor: tokens.border.subtle },
+  ghost: { backgroundColor: "transparent", borderColor: "transparent" },
+  danger: { backgroundColor: tokens.bg.elevated, borderColor: tokens.border.subtle },
+};
+
+const disabledLabelColor: Record<Variant, string> = {
+  primary: tokens.text.muted,
+  secondary: tokens.text.muted,
+  ghost: tokens.text.muted,
+  danger: tokens.text.muted,
 };

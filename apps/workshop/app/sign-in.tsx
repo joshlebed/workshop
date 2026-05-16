@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { useAuth } from "../src/hooks/useAuth";
 import { useAppleSignIn } from "../src/lib/oauth/apple";
 import { useGoogleSignIn } from "../src/lib/oauth/google";
-import { Button, Card, Text, tokens } from "../src/ui/index";
+import { Button, Text, tokens } from "../src/ui/index";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 
@@ -22,7 +22,7 @@ export default function SignIn() {
       if (!result) return;
       await signInWithApple(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "apple sign-in failed");
+      setError(e instanceof Error ? e.message : "Apple sign-in failed");
     } finally {
       setBusy(null);
     }
@@ -36,7 +36,7 @@ export default function SignIn() {
       if (!result) return;
       await signInWithGoogle(result);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "google sign-in failed");
+      setError(e instanceof Error ? e.message : "Google sign-in failed");
     } finally {
       setBusy(null);
     }
@@ -48,7 +48,7 @@ export default function SignIn() {
       setError(null);
       await signInDev({ email: "dev@workshop.local", displayName: null });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "sign in failed");
+      setError(e instanceof Error ? e.message : "Sign in failed");
     } finally {
       setBusy(null);
     }
@@ -56,14 +56,19 @@ export default function SignIn() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.header}>
-        <Text variant="title">Workshop.dev</Text>
+      <View style={styles.topSpacer} />
+      <View style={styles.brandBlock}>
+        <View style={styles.wordmarkRow}>
+          <Text style={styles.wordmark}>workshop</Text>
+          <View style={styles.dot} />
+          <Text style={styles.wordmarkAccent}>dev</Text>
+        </View>
         <Text tone="secondary" style={styles.tagline}>
-          Sign in to start building lists with people you share them with.
+          A quiet place for the lists you keep together.
         </Text>
       </View>
 
-      <Card style={styles.card} elevated>
+      <View style={styles.actions}>
         <Button
           testID="sign-in-apple"
           label="Continue with Apple"
@@ -85,9 +90,9 @@ export default function SignIn() {
         {DEV_AUTH_ENABLED ? (
           <Button
             testID="sign-in-dev"
-            label="Dev sign-in (test only)"
-            variant="primary"
-            size="lg"
+            label="Dev sign-in"
+            variant="ghost"
+            size="md"
             loading={busy === "dev"}
             disabled={busy !== null}
             onPress={handleDev}
@@ -103,10 +108,10 @@ export default function SignIn() {
             {error}
           </Text>
         ) : null}
-      </Card>
+      </View>
 
       <Text tone="muted" style={styles.footer}>
-        By continuing you agree to use a personal, experimental app with no uptime guarantees.
+        A personal, experimental app. Use it gently.
       </Text>
     </View>
   );
@@ -117,13 +122,57 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.bg.canvas,
     paddingHorizontal: tokens.space.xl,
-    justifyContent: "center",
+    paddingVertical: tokens.space.xxl,
     gap: tokens.space.xxl,
   },
-  header: { gap: tokens.space.md, alignItems: "center" },
-  tagline: { textAlign: "center", maxWidth: 420 },
-  card: { gap: tokens.space.md, maxWidth: 420, width: "100%", alignSelf: "center" },
-  error: { textAlign: "center" },
-  help: { textAlign: "center" },
-  footer: { textAlign: "center", maxWidth: 420, alignSelf: "center" },
+  topSpacer: { flex: 1 },
+  brandBlock: {
+    gap: tokens.space.md,
+    maxWidth: 420,
+    width: "100%",
+    alignSelf: "center",
+  },
+  wordmarkRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 6,
+  },
+  wordmark: {
+    color: tokens.text.primary,
+    fontSize: 34,
+    fontWeight: tokens.font.weight.semibold,
+    letterSpacing: -1.0,
+  },
+  wordmarkAccent: {
+    color: tokens.text.muted,
+    fontSize: 34,
+    fontWeight: tokens.font.weight.regular,
+    letterSpacing: -1.0,
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: tokens.accent.default,
+    transform: [{ translateY: -3 }],
+  },
+  tagline: {
+    fontSize: tokens.font.size.md,
+    lineHeight: 22,
+    maxWidth: 320,
+  },
+  actions: {
+    gap: tokens.space.sm,
+    maxWidth: 420,
+    width: "100%",
+    alignSelf: "center",
+  },
+  error: { textAlign: "center", marginTop: tokens.space.xs },
+  help: { textAlign: "center", marginTop: tokens.space.xs },
+  footer: {
+    fontSize: tokens.font.size.xs,
+    maxWidth: 320,
+    alignSelf: "center",
+    textAlign: "center",
+  },
 });

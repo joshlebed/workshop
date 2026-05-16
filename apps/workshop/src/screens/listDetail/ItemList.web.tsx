@@ -136,10 +136,11 @@ export function ItemList({
         <ScrollView contentContainerStyle={styles.listContent} testID="list-detail-list">
           {ordered.length > 0 ? <SectionHeader kind="ordered" count={ordered.length} /> : null}
           <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-            {ordered.map((item) => (
+            {ordered.map((item, index) => (
               <SortableOrderedRow
                 key={item.id}
                 item={item}
+                rank={index + 1}
                 addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
                 accent={accent}
                 onMenu={() => onRowMenu(item, "ordered")}
@@ -202,6 +203,7 @@ export function ItemList({
 
 interface SortableOrderedRowProps {
   item: Item;
+  rank: number;
   addedByName: string | null;
   accent: string;
   onMenu: () => void;
@@ -211,6 +213,7 @@ interface SortableOrderedRowProps {
 
 function SortableOrderedRow({
   item,
+  rank,
   addedByName,
   accent,
   onMenu,
@@ -254,6 +257,7 @@ function SortableOrderedRow({
       <ItemRow
         item={item}
         section="ordered"
+        rank={rank}
         isNew={false}
         isDragging={isDragging}
         addedByName={addedByName}

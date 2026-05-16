@@ -59,7 +59,7 @@ const OPTIONS: TypeOption[] = [
     type: "game",
     emoji: "🎮",
     label: "Games",
-    description: "Daily game scores — paste from Wordle, Globle, Satle, etc.",
+    description: "Daily game scores. Paste from Wordle, Globle, Satle.",
     color: "ocean",
   },
 ];
@@ -120,9 +120,6 @@ export default function CreateListType() {
                     {opt.description}
                   </Text>
                 </View>
-                <Text tone="muted" style={styles.optionChevron}>
-                  ›
-                </Text>
               </Pressable>
             );
           })}
@@ -142,7 +139,7 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
-  step: { letterSpacing: 0.6, textTransform: "uppercase" },
+  step: { letterSpacing: 0.3, fontVariant: ["tabular-nums"] },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
   headerSpacer: { width: 40 },
   body: {
@@ -174,5 +171,4 @@ const styles = StyleSheet.create({
   optionEmoji: { fontSize: 26, lineHeight: 30 },
   optionText: { flex: 1, gap: 2, minWidth: 0 },
   optionLabel: { fontSize: tokens.font.size.md },
-  optionChevron: { fontSize: tokens.font.size.xl },
 });

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useAuth } from "../../src/hooks/useAuth";
-import { Button, Card, Text, tokens } from "../../src/ui/index";
+import { Button, Text, tokens } from "../../src/ui/index";
 
 export default function DisplayName() {
   const { setDisplayName } = useAuth();
@@ -20,7 +20,7 @@ export default function DisplayName() {
       setError(null);
       await setDisplayName(trimmed);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "could not save");
+      setError(e instanceof Error ? e.message : "Could not save");
       setBusy(false);
     }
   }
@@ -30,15 +30,20 @@ export default function DisplayName() {
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.header}>
-        <Text variant="title">What should we call you?</Text>
+      <View style={styles.intro}>
+        <Text variant="caption" tone="muted" style={styles.eyebrow}>
+          One quick thing
+        </Text>
+        <Text variant="title" style={styles.heading}>
+          What should we call you?
+        </Text>
         <Text tone="secondary" style={styles.tagline}>
-          This is how you'll show up to people you share lists with. You can change it later.
+          This is how you'll show up to people you share lists with. Change it later in settings.
         </Text>
       </View>
 
-      <Card style={styles.card} elevated>
-        <Text variant="label" tone="secondary">
+      <View style={styles.form}>
+        <Text variant="label" tone="secondary" style={styles.label}>
           Display name
         </Text>
         <TextInput
@@ -67,7 +72,7 @@ export default function DisplayName() {
             {error}
           </Text>
         ) : null}
-      </Card>
+      </View>
     </KeyboardAvoidingView>
   );
 }
@@ -77,21 +82,35 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.bg.canvas,
     paddingHorizontal: tokens.space.xl,
+    paddingVertical: tokens.space.xxl,
     justifyContent: "center",
     gap: tokens.space.xxl,
   },
-  header: { gap: tokens.space.md, alignItems: "center" },
-  tagline: { textAlign: "center", maxWidth: 420 },
-  card: { gap: tokens.space.md, maxWidth: 420, width: "100%", alignSelf: "center" },
+  intro: {
+    gap: tokens.space.sm,
+    maxWidth: 420,
+    alignSelf: "center",
+    width: "100%",
+  },
+  eyebrow: { letterSpacing: 0.3 },
+  heading: { letterSpacing: -0.4 },
+  tagline: { fontSize: tokens.font.size.md, lineHeight: 22 },
+  form: {
+    gap: tokens.space.md,
+    maxWidth: 420,
+    width: "100%",
+    alignSelf: "center",
+  },
+  label: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   input: {
     borderWidth: 1,
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.lg,
-    paddingVertical: 12,
+    paddingVertical: 14,
     color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    fontSize: tokens.font.size.lg,
+    backgroundColor: tokens.bg.surface,
   },
-  error: { textAlign: "center" },
+  error: { textAlign: "center", marginTop: tokens.space.xs },
 });
