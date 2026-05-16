@@ -280,6 +280,36 @@ need different recovery paths. Read this before trying to debug a TestFlight
 problem — the wrong fix at the wrong layer wastes EAS build minutes (free-tier:
 30/month).
 
+### First diagnostic when "iOS is missing a feature web has"
+
+When a feature is reportedly shipped (merged to main, web shows it) but missing
+on iOS, the answer is almost always the deploy pipeline, **not** a per-platform
+code difference. Before reading any RN code or chasing platform `.web.tsx`
+divergence, check (in order):
+
+1. **Did the OTA actually ship?** Look at the most recent `Deploy Mobile (OTA)`
+   run on main: was it green, what runtime version did it target?
+   ```bash
+   gh run list --workflow=deploy-mobile.yml --branch=main --limit=3
+   gh run view <run-id> --log | grep -E "Runtime version|Branch  *production"
+   ```
+2. **Does the installed TestFlight build's runtime version match the OTA's?**
+   The user's app only picks up the OTA when its `runtimeVersion` (now
+   `appVersion`, i.e. the `version` field in `app.json` at build time) matches
+   the OTA's target. A TestFlight build from `version: 0.1.0` will _never_ apply
+   an OTA targeting `0.2.0`, however many times the user force-quits.
+3. **Has the latest TestFlight build actually finished + been installed?** The
+   `testflight.yml` workflow now awaits the EAS build (~30 min) and reports
+   real status. A red testflight run means the OTA channel is correct but no
+   matching binary exists yet for users to install.
+
+This shortcut would have saved most of the 2026-05-15 debugging session that
+landed PR #160 — the bug was diagnosed as a per-platform code bug ("kebab
+goes to wrong screen on iOS") when the actual root cause was that no
+TestFlight build had landed for ~24h (runtime-version mismatch wedging the
+EAS Build pipeline silently), so the iOS device was still running pre-#154
+JS bundled into pre-#149 native code.
+
 ### The four layers
 
 ```
@@ -325,9 +355,20 @@ out:
 
 1. **Runtime version policy is now `"appVersion"`** (in `app.json`), not `"fingerprint"`.
    Runtime version is just the `version` field, so `eas build` and `eas update --auto`
-   produce identical values on every host. The cost is manual: **when you add a native
-   module or change a config plugin, bump `version` in `app.json`** so OTAs targeting the
-   new code don't ship to old installs that lack the matching native binary.
+   produce identical values on every host. **The cost is manual and severe if forgotten:
+   when you add a native module or change a config plugin, you MUST bump `version` in
+   `app.json` in the same PR.** Concretely:
+   - You add `react-native-foo` (a native module) in PR #N without bumping version. CI
+     builds a fresh TestFlight binary at `version: "0.1.0"` containing the new native
+     code. `deploy-mobile.yml` _also_ publishes an OTA targeting `0.1.0`. That OTA's JS
+     bundle calls into native symbols that the **already-installed** TestFlight build
+     (also `0.1.0`, but from before PR #N) doesn't have. The OTA downloads, applies, and
+     the app crashes on next launch with `Native module RNFoo cannot be null`. Existing
+     users have to delete + reinstall.
+   - Bumping to `0.2.0` in the same PR makes the new OTA target `0.2.0`, which only the
+     post-PR-#N TestFlight build claims, so old installs stay on the last `0.1.0` OTA.
+     `appVersion` is _safe_ when paired with a version bump and _dangerous_ without one.
+     There's currently no CI check enforcing this — when in doubt, bump.
 2. **The workflow awaits the build**, so a `Configure expo-updates` (or any other) failure
    now turns CI red and the fingerprint tag isn't written. The next push retries cleanly.
 
