@@ -68,11 +68,20 @@ jobs:
           TF_VAR_database_url: ${{ steps.ssm.outputs.dburl }}
           TF_VAR_niteshift_external_id: ${{ secrets.NITESHIFT_EXTERNAL_ID }}
         # -detailed-exitcode: 0 = no diff, 1 = error, 2 = diff (changes pending).
-        # We deliberately treat exit 2 as a failure so the merge commit's
-        # status check turns red until someone runs `terraform apply`.
+        # -refresh=false: skip the data-refresh phase. We deliberately don't
+        # broaden the workshop-prod-github-actions role to ssm:GetParameter on
+        # /workshop-prod/* (Lambda/migrations only need db_url + session_secret;
+        # the rest of the SSM params have empty defaults and are managed by the
+        # tfvars file). With refresh enabled, plan tries to read every existing
+        # `aws_ssm_parameter` to detect out-of-band drift and gets 403'd on the
+        # ones the OIDC role can't see. Skipping refresh still catches the case
+        # this workflow exists for — "PR merged green but `terraform apply`
+        # didn't run" — because plan still compares state-vs-code. The case it
+        # misses is true out-of-band drift (someone fingers an SSM value or
+        # IAM policy via the console), which we accept as out-of-scope here.
         run: |
           set +e
-          terraform plan -input=false -detailed-exitcode -no-color > plan.txt 2>&1
+          terraform plan -input=false -refresh=false -detailed-exitcode -no-color > plan.txt 2>&1
           code=$?
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           echo "── plan output ──"
