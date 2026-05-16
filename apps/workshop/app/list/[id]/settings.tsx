@@ -18,6 +18,7 @@ import { useAuth } from "../../../src/hooks/useAuth";
 import { albumShelfErrorMessage } from "../../../src/lib/albumShelfErrors";
 import { errorMessage } from "../../../src/lib/api";
 import { pickCoverPhoto } from "../../../src/lib/coverPhoto";
+import { goBack } from "../../../src/lib/goBack";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import { formatRelative } from "../../../src/lib/relativeTime";
 import { buildInviteShareUrl, copyToClipboard } from "../../../src/lib/share";
@@ -320,7 +321,7 @@ export default function ListSettings() {
         <Text variant="heading">List settings</Text>
         <IconButton
           accessibilityLabel="Close settings"
-          onPress={() => router.back()}
+          onPress={() => goBack(`/list/${id}`)}
           testID="settings-close"
         >
           <Text style={styles.closeGlyph}>✕</Text>

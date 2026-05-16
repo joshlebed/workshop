@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { GameLeaderboardEntry } from "@workshop/shared";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,6 +19,7 @@ import { useAuth } from "../../../../src/hooks/useAuth";
 import { errorMessage } from "../../../../src/lib/api";
 import { confirm } from "../../../../src/lib/confirm";
 import { formatGameDateLabel, localDateKey, shiftDateKey } from "../../../../src/lib/gameDate";
+import { goBack } from "../../../../src/lib/goBack";
 import { haptics } from "../../../../src/lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../../../../src/lib/openUrl";
 import { queryKeys } from "../../../../src/lib/queryKeys";
@@ -49,7 +50,6 @@ export default function GameDetail() {
   const params = useLocalSearchParams<{ id: string; itemId: string }>();
   const listId = Array.isArray(params.id) ? params.id[0] : params.id;
   const itemId = Array.isArray(params.itemId) ? params.itemId[0] : params.itemId;
-  const router = useRouter();
   const { token, user } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -179,7 +179,7 @@ export default function GameDetail() {
           queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
         ]);
       }
-      router.back();
+      goBack(`/list/${listId}`);
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't delete"), tone: "danger" });
@@ -275,7 +275,7 @@ export default function GameDetail() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.header}>
-        <IconButton accessibilityLabel="Back" onPress={() => router.back()}>
+        <IconButton accessibilityLabel="Back" onPress={() => goBack(`/list/${listId}`)}>
           <Text style={styles.headerGlyph}>‹</Text>
         </IconButton>
         <Text variant="heading" numberOfLines={1} style={styles.headerTitle}>

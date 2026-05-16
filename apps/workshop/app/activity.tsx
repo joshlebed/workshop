@@ -1,12 +1,13 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import type { ActivityEvent, ActivityFeedResponse } from "@workshop/shared";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { useCallback } from "react";
 import { ActivityIndicator, FlatList, StyleSheet, View } from "react-native";
 import { fetchActivity, markActivityRead } from "../src/api/activity";
 import { PullToRefresh } from "../src/components/PullToRefresh";
 import { useAuth } from "../src/hooks/useAuth";
 import { errorMessage } from "../src/lib/api";
+import { goBack } from "../src/lib/goBack";
 import { setActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
 import { Button, Card, EmptyState, IconButton, Text, tokens } from "../src/ui/index";
@@ -14,7 +15,6 @@ import { Button, Card, EmptyState, IconButton, Text, tokens } from "../src/ui/in
 const PAGE_SIZE = 50;
 
 export default function Activity() {
-  const router = useRouter();
   const { token } = useAuth();
 
   const feedQuery = useInfiniteQuery<ActivityFeedResponse>({
@@ -49,7 +49,7 @@ export default function Activity() {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <IconButton accessibilityLabel="Back" onPress={() => router.back()} testID="activity-back">
+        <IconButton accessibilityLabel="Back" onPress={() => goBack("/")} testID="activity-back">
           <Text style={styles.headerGlyph}>‹</Text>
         </IconButton>
         <Text variant="heading">Activity</Text>
