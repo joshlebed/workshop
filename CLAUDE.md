@@ -82,10 +82,12 @@ land as additional routes inside the same app.
   `AWS_ROLE_ARN`, `EXPO_TOKEN`, `EXPO_PUBLIC_API_URL`.
 - **EAS Update** for JS-only OTA updates to iPhones within ~60s of merge. TestFlight builds
   auto-trigger on merge when `@expo/fingerprint` detects a native change (new native dep, config
-  plugin, bundle id, etc.) and use `eas build --no-wait --auto-submit` so the build + submit
-  happen entirely on EAS infra (no GH Actions polling time). Manual dispatch with `force=true`
-  bypasses the fingerprint check. Last-built fingerprint is stored as a git tag (`ios-fp-<hash>`),
-  written on successful enqueue (see iOS deploy pipeline section for the trade-off).
+  plugin, bundle id, etc.); `testflight.yml` runs `eas build --auto-submit` and **awaits the
+  build** (~30 min of GH Actions runner time per native build) so the workflow's red/green
+  reflects the actual EAS outcome instead of just the enqueue. Manual dispatch with `force=true`
+  bypasses the fingerprint check. Last-built fingerprint is stored as a git tag
+  (`ios-fp-<hash>`), written only after the build succeeds. Runtime-version policy is
+  `appVersion`, not `fingerprint` (see iOS deploy pipeline section for the why).
 - **Tooling baseline**: Biome (lint + format), Vitest, Zod (for API-boundary validation),
   `@total-typescript/ts-reset` (globally enabled), knip (unused code/deps), lefthook (pre-commit),
   actionlint + gitleaks in CI. Dependabot opens aggressively-grouped npm/Actions/Terraform PRs
@@ -288,31 +290,59 @@ Apple Developer Portal  ←→  EAS Build infrastructure  ←→  GitHub Actions
   config that EAS reflects/syncs.
 - **EAS Build/Submit** runs the actual iOS build on Apple Silicon, signs with the certs/profiles
   it manages, then submits the IPA to App Store Connect for TestFlight processing.
-- **GitHub Actions** orchestrates: computes fingerprint, calls
-  `eas build --no-wait --auto-submit` (fire-and-forget), tags the fingerprint immediately on
-  successful enqueue. The actual build + TestFlight submit run on EAS infra; GH Actions does
-  not poll. Lives in `testflight.yml`.
+- **GitHub Actions** orchestrates: computes fingerprint (as a CI idempotency key), calls
+  `eas build --auto-submit` and **awaits the build**, tags the fingerprint only after the
+  build is confirmed green. The TestFlight submit still runs on EAS infra (`--auto-submit`)
+  but no longer falls outside the GH workflow's success signal: an EAS build failure now
+  surfaces as a red CI run instead of a silent stuck pipeline. Lives in `testflight.yml`.
 - **Code/config** is what EAS Build packages: `app.json` plugins/entitlements, `eas.json` build
   profile, source code.
 
-### Fire-and-forget enqueue model
+### Await-the-build model (and why we don't use `policy: "fingerprint"` for runtime version)
 
-`testflight.yml` uses `eas build --no-wait --auto-submit`. The workflow exits in ~1–2 minutes
-once EAS accepts the job; the build (~30 min) and TestFlight submit (~5 min) happen entirely
-on EAS infra. This avoids burning ~400–500 GH Actions minutes/month on polling.
+`testflight.yml` runs `eas build --auto-submit` without `--no-wait` — the GH Actions runner
+blocks for the full ~25–30 min build, then exits success/failure based on the actual EAS
+build outcome. Auto-submit chains on EAS's side after the build succeeds (the job doesn't
+block on submission; check App Store Connect for that). Cost: ~150 GH Actions minutes/month
+at ~5 native builds/month, well inside the 2000-minute free-tier ceiling.
 
-Fingerprint tag (`ios-fp-<hash>`) is written **immediately on successful enqueue**, not after
-build success. Trade-off: if the build or submit fails on EAS's side, the fingerprint stays
-tagged — the next push with the same fingerprint won't auto-rebuild. Manual recovery:
+Why we changed from `--no-wait` (the old fire-and-forget model): EAS Build added a
+`Configure expo-updates` step that fails the build when the runtime version computed
+pre-submit (on the GH Actions Linux runner via `@expo/fingerprint`) disagrees with the
+runtime version computed during prebuild (on EAS's macOS builder). They _will_ disagree
+under `policy: "fingerprint"` because:
+
+- The macOS-side prebuild generates an `ios/` directory that the Linux fingerprint never
+  sees (the file is "added" in the EAS-vs-local diff).
+- Several native package directories (`@react-native-async-storage/async-storage`,
+  `react-native-reanimated`, `react-native-safe-area-context`, `react-native-screens`,
+  `react-native-worklets`) have different content hashes on Linux vs macOS — postinstall
+  artifacts, platform-conditional files, etc.
+
+Result: every TestFlight enqueue silently failed on EAS infra for ~24h while
+`--no-wait` returned green and the fingerprint tag got written. Two changes locked this
+out:
+
+1. **Runtime version policy is now `"appVersion"`** (in `app.json`), not `"fingerprint"`.
+   Runtime version is just the `version` field, so `eas build` and `eas update --auto`
+   produce identical values on every host. The cost is manual: **when you add a native
+   module or change a config plugin, bump `version` in `app.json`** so OTAs targeting the
+   new code don't ship to old installs that lack the matching native binary.
+2. **The workflow awaits the build**, so a `Configure expo-updates` (or any other) failure
+   now turns CI red and the fingerprint tag isn't written. The next push retries cleanly.
+
+Fingerprint tag (`ios-fp-<hash>`) is still used as a CI idempotency key — it just decides
+whether to enqueue a build, not the runtime version. It's written after build success, so
+a poisoned tag from a failed build can't strand subsequent pushes.
+
+Manual recovery if a tag does get stuck (e.g. the build succeeded but auto-submit failed
+and you want to force a fresh build + submit cycle):
 
 ```bash
 git tag -d ios-fp-<hash>
 git push origin :refs/tags/ios-fp-<hash>
 gh workflow run testflight.yml --ref main --field force=true
 ```
-
-This is a deliberate trade — EAS-side failures are rare and the alternative (polling-wait or
-webhook-driven tagging) costs either Actions minutes or operational complexity.
 
 - **Build failures** are usually code, signing, or capability mismatches. The provisioning
   profile got out of sync with the App ID's capabilities; an entitlement was added in
