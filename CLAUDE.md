@@ -180,14 +180,24 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   action that needs PR metadata (e.g. `dorny/paths-filter`, label-on-PR, comment-on-PR) needs
   an explicit grant like `pull-requests: read`. Failure mode is opaque at runtime
   (`"Resource not accessible by integration"`) and isn't caught by `actionlint`.
-- **CORS `allowMethods` is an explicit whitelist.** Hono's `cors()` middleware in
-  `apps/backend/src/app.ts` only echoes the methods you list, so a route that uses an
-  HTTP verb outside the whitelist 401s the OPTIONS preflight from the browser and
-  surfaces as a generic `TypeError: Failed to fetch` with no backend log line (the
-  request never makes it past CORS). When adding a new verb to a route — e.g. `PUT`
-  for the game-scores upsert in 2026-05 — also add it to `allowMethods`. The same
-  whitelist gates `apiRequest`'s `method` union in `apps/workshop/src/lib/api.ts`,
-  so update both in lockstep.
+- **CORS `allowMethods` is an explicit whitelist in _two_ places.** A new HTTP verb
+  needs to be added to both:
+  1. Hono's `cors()` middleware in `apps/backend/src/app.ts` (echoes the verb on
+     `Access-Control-Allow-Methods`).
+  2. API Gateway HTTP API's `cors_configuration.allow_methods` in
+     `infra/apigateway.tf` — API Gateway answers OPTIONS preflights _at the edge_
+     before Lambda even sees them, so a verb missing from this list silently breaks
+     the browser preflight no matter what Hono says. Caught 2026-05-16: PUT
+     `/v1/items/:id/scores` shipped with Hono updated but apigateway.tf left at
+     `[GET, POST, PATCH, DELETE, OPTIONS]`. Safari surfaced the failed preflight
+     as a generic "Load failed" toast on mobile web.
+
+  The same whitelist also gates `apiRequest`'s `method` union in
+  `apps/workshop/src/lib/api.ts`, so update all three in lockstep. To verify a verb
+  is wired correctly end-to-end, probe the preflight:
+  `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`
+  should respond with `Access-Control-Allow-Methods` containing the verb.
+
 - **Auto-merge is on.** The repo is public (which gives us free branch protection + unlimited
   Actions minutes) and `main` requires three checks to pass:
   - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs on PRs.
@@ -721,6 +731,18 @@ Modules known to work as-is on web: `expo-router`, `expo-linking`, `expo-constan
 `expo-status-bar`, `expo-updates` (web stub returns `isUpdatePending: false`),
 `react-native-safe-area-context`, `react-native-screens`, `react-native-gesture-handler`,
 `@react-navigation/native`. Re-check when adding any new native module.
+
+### Web HTML shell lives in `apps/workshop/public/index.html`
+
+The web bundle uses `app.json` → `web.output: "single"`, which means Expo Router's
+`+html.tsx` static-rendering hook is **not** invoked. Expo CLI builds the HTML from
+`apps/workshop/public/index.html` (project-local override) and falls back to the
+bundled `node_modules/@expo/cli/static/template/index.html` if absent. This is where
+the iOS Safari URL-bar / home-indicator tint (`<meta name="theme-color">`),
+`viewport-fit=cover`, and the html/body `background-color` lock live — without them,
+the system bars render white in iOS light mode no matter what the app shell paints.
+If you switch to `output: "static"` someday, port these meta tags into a `+html.tsx`
+in the same PR; until then, edit `public/index.html`.
 
 ## Per-area guides
 
