@@ -151,8 +151,12 @@ listRoutes.get("/", async (c) => {
   const userId = c.get("userId");
   const db = getDb();
   // One query: every list the user is a member of, plus their role + the
-  // member/item counts. Aggregates use COUNT(DISTINCT ...) so the cross-join
-  // between members and items doesn't double-count.
+  // member/item counts + the per-viewer view state (pin/archive/mute) and
+  // unread count. Unread is "events on this list by someone other than the
+  // viewer, since the viewer's lastReadAt"; capped at 99 in the SQL to keep
+  // a runaway feed from materialising thousands of rows just for a badge.
+  // Muted lists report 0 so a muted list never contributes to the global
+  // unread total either.
   const rows = await executeRows<{
     id: string;
     type: string;
@@ -168,6 +172,10 @@ listRoutes.get("/", async (c) => {
     my_role: string;
     member_count: number;
     item_count: number;
+    pinned_at: Date | string | null;
+    archived_at: Date | string | null;
+    muted_at: Date | string | null;
+    unread_count: number;
   }>(
     db,
     sql`
@@ -184,8 +192,26 @@ listRoutes.get("/", async (c) => {
         l.created_at,
         l.updated_at,
         me.role::text AS my_role,
+        me.pinned_at,
+        me.archived_at,
+        me.muted_at,
         (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
-        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id) AS item_count
+        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id) AS item_count,
+        CASE
+          WHEN me.muted_at IS NOT NULL THEN 0
+          ELSE LEAST(
+            99,
+            (
+              SELECT COUNT(*)::int
+              FROM activity_events e
+              LEFT JOIN user_activity_reads r
+                ON r.user_id = ${userId} AND r.list_id = l.id
+              WHERE e.list_id = l.id
+                AND e.actor_id <> ${userId}
+                AND (r.last_read_at IS NULL OR e.created_at > r.last_read_at)
+            )
+          )
+        END AS unread_count
       FROM lists l
       JOIN list_members me ON me.list_id = l.id AND me.user_id = ${userId}
       ORDER BY l.updated_at DESC
@@ -207,6 +233,10 @@ listRoutes.get("/", async (c) => {
     role: r.my_role as MemberRole,
     memberCount: Number(r.member_count),
     itemCount: Number(r.item_count),
+    pinnedAt: r.pinned_at ? toIsoString(r.pinned_at) : null,
+    archivedAt: r.archived_at ? toIsoString(r.archived_at) : null,
+    mutedAt: r.muted_at ? toIsoString(r.muted_at) : null,
+    unreadCount: Number(r.unread_count),
   }));
 
   return ok(c, { lists: summaries });
@@ -449,6 +479,82 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   return ok(c, { list: toListShape(updated) });
 });
 
+// --- Per-(list, viewer) presentation state ---
+//
+// `/v1/lists/:id/{read,pin,archive,mute}` toggle four per-member flags via a
+// single shared handler. POST sets the relevant timestamp to now(); DELETE
+// clears it. Body is intentionally empty — the resource identity already
+// captures (listId, userId, flag), no further input needed. All four endpoints
+// require listMember; pin/archive/mute have no role gate beyond that since
+// they're each viewer-private state.
+//
+// `read` is one-way (POST only). The natural semantics of "mark as read up to
+// now" don't have a meaningful inverse — there's no notion of "unmark read"
+// in a feed-style activity model. The other three are toggleable.
+
+type ViewStateColumn = "pinnedAt" | "archivedAt" | "mutedAt";
+
+async function setViewStateFlag(
+  listId: string,
+  userId: string,
+  column: ViewStateColumn,
+  value: Date | null,
+): Promise<void> {
+  const db = getDb();
+  // listMembers is composite-keyed (listId, userId); requireListMember has
+  // already verified the row exists, so a plain UPDATE is sufficient.
+  await db
+    .update(listMembers)
+    .set({ [column]: value })
+    .where(sql`${listMembers.listId} = ${listId} AND ${listMembers.userId} = ${userId}`);
+}
+
+// `read` is a per-list one-way mark, persisted in `user_activity_reads`
+// (predates the other view-state columns; `POST /v1/activity/read` writes
+// the same table). Opening a list calls this so the home unread badge
+// decreases as the viewer visits collaborator-edited lists.
+listRoutes.post("/:id/read", requireListMember, async (c) => {
+  const listId = c.req.param("id");
+  const userId = c.get("userId");
+  const db = getDb();
+  await db.execute(sql`
+    INSERT INTO user_activity_reads (user_id, list_id, last_read_at)
+    VALUES (${userId}::uuid, ${listId}::uuid, now())
+    ON CONFLICT (user_id, list_id) DO UPDATE SET last_read_at = EXCLUDED.last_read_at
+  `);
+  return ok(c, { ok: true });
+});
+
+listRoutes.post("/:id/pin", requireListMember, async (c) => {
+  await setViewStateFlag(c.req.param("id"), c.get("userId"), "pinnedAt", new Date());
+  return ok(c, { ok: true });
+});
+
+listRoutes.delete("/:id/pin", requireListMember, async (c) => {
+  await setViewStateFlag(c.req.param("id"), c.get("userId"), "pinnedAt", null);
+  return ok(c, { ok: true });
+});
+
+listRoutes.post("/:id/archive", requireListMember, async (c) => {
+  await setViewStateFlag(c.req.param("id"), c.get("userId"), "archivedAt", new Date());
+  return ok(c, { ok: true });
+});
+
+listRoutes.delete("/:id/archive", requireListMember, async (c) => {
+  await setViewStateFlag(c.req.param("id"), c.get("userId"), "archivedAt", null);
+  return ok(c, { ok: true });
+});
+
+listRoutes.post("/:id/mute", requireListMember, async (c) => {
+  await setViewStateFlag(c.req.param("id"), c.get("userId"), "mutedAt", new Date());
+  return ok(c, { ok: true });
+});
+
+listRoutes.delete("/:id/mute", requireListMember, async (c) => {
+  await setViewStateFlag(c.req.param("id"), c.get("userId"), "mutedAt", null);
+  return ok(c, { ok: true });
+});
+
 listRoutes.delete("/:id", requireListMember, requireListOwner, async (c) => {
   const listId = c.req.param("id");
   const db = getDb();
@@ -508,6 +614,79 @@ listRoutes.post(
       throw e;
     }
     return ok(c, { item }, 201);
+  },
+);
+
+// --- POST /v1/lists/:id/items/bulk ---
+//
+// Bulk-create items from one paste. Reuses the single-item createItem
+// transaction for each row (one transaction per row rather than one wrapping
+// transaction so a single bad row doesn't roll back the whole batch — we
+// stop at the first error and return partial success). Capped at 50/request;
+// clients chunk anything larger. album_shelf is rejected for the same
+// reason the single-item route is.
+const BULK_LIMIT = 50;
+const bulkCreateItemsSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        title: z.string().min(1).max(500).trim(),
+        url: z.string().min(1).max(2048).trim().optional(),
+        note: z.string().max(1000).trim().optional(),
+      }),
+    )
+    .min(1)
+    .max(BULK_LIMIT),
+});
+
+listRoutes.post(
+  "/:id/items/bulk",
+  requireListMember,
+  rateLimit({
+    family: "v1.items.bulk-create",
+    limit: 20,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, bulkCreateItemsSchema);
+    if (!parsed.ok) return parsed.response;
+    const listId = c.req.param("id");
+    const userId = c.get("userId");
+    const db = getDb();
+    const [parent] = await db
+      .select({ type: lists.type })
+      .from(lists)
+      .where(eq(lists.id, listId))
+      .limit(1);
+    if (!parent) return err(c, "NOT_FOUND", "list not found");
+    if (parent.type === "album_shelf") {
+      return err(c, "VALIDATION", "items cannot be added manually to an album_shelf list");
+    }
+
+    const created: Awaited<ReturnType<typeof createItem>>[] = [];
+    for (const row of parsed.data.items) {
+      // Skip blank-after-trim entries silently so a paste with stray empty
+      // lines doesn't 400 the whole call.
+      if (!row.title.trim()) continue;
+      try {
+        const item = await createItem(listId, userId, {
+          title: row.title,
+          url: row.url,
+          note: row.note,
+        });
+        created.push(item);
+      } catch (e) {
+        if (e instanceof ItemMetadataError) {
+          return err(c, "VALIDATION", "invalid metadata for list type", {
+            issues: e.issues,
+            createdSoFar: created.length,
+          });
+        }
+        throw e;
+      }
+    }
+    return ok(c, { created: created.length, items: created }, 201);
   },
 );
 

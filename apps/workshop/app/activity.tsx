@@ -1,12 +1,13 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import type { ActivityEvent, ActivityFeedResponse } from "@workshop/shared";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { fetchActivity, markActivityRead } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
 import { PullToRefresh } from "../src/components/PullToRefresh";
 import { useAuth } from "../src/hooks/useAuth";
+import { useLivePollingInterval } from "../src/hooks/useLivePollingInterval";
 import { errorMessage } from "../src/lib/api";
 import { goBack } from "../src/lib/goBack";
 import { setActivityLastViewedAt } from "../src/lib/lastViewed";
@@ -24,6 +25,7 @@ type FeedItem =
 export default function Activity() {
   const { token } = useAuth();
   const router = useRouter();
+  const livePoll = useLivePollingInterval();
 
   const feedQuery = useInfiniteQuery<ActivityFeedResponse>({
     queryKey: queryKeys.activity.feedInfinite,
@@ -35,6 +37,7 @@ export default function Activity() {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     enabled: !!token,
+    refetchInterval: livePoll,
   });
 
   // Re-use the cached list summaries so each event row can show which list it
@@ -69,6 +72,52 @@ export default function Activity() {
 
   const events: ActivityEvent[] = feedQuery.data?.pages.flatMap((p) => p.events) ?? [];
 
+  // Filter strip: either an actor or a list, never both at once. A single-
+  // dimension filter keeps the chip vocabulary simple ("Alex" or "Movie
+  // Night", never "Alex's Movie Night activity"); the implementation drops
+  // the corresponding tiny edge case ("show me Alex's activity but only on
+  // Movie Night") in favour of a vocabulary the user can keep in their head
+  // without a "filters cleared" affordance.
+  const [filter, setFilter] = useState<
+    { kind: "actor"; id: string } | { kind: "list"; id: string } | null
+  >(null);
+
+  // Unique actors / lists in the visible feed, used to render filter chips.
+  // Order = first appearance in the feed (newest-first), so the people /
+  // lists you're most likely to want to filter by sit at the front of the
+  // scroll. Cap at 6 each so the chip row stays a single horizontal scroll
+  // even with many collaborators.
+  const FILTER_CHIP_CAP = 6;
+  const filterChips = useMemo(() => {
+    const actors: Array<{ id: string; name: string }> = [];
+    const lists: Array<{ id: string; name: string; emoji: string; color: string }> = [];
+    const seenActors = new Set<string>();
+    const seenLists = new Set<string>();
+    for (const e of events) {
+      if (!seenActors.has(e.actorId)) {
+        seenActors.add(e.actorId);
+        const name = e.actorDisplayName?.trim().split(/\s+/)[0] ?? "someone";
+        actors.push({ id: e.actorId, name });
+      }
+      if (!seenLists.has(e.listId)) {
+        seenLists.add(e.listId);
+        const meta = listLookup.get(e.listId);
+        if (meta) lists.push({ id: e.listId, ...meta });
+      }
+      if (actors.length >= FILTER_CHIP_CAP && lists.length >= FILTER_CHIP_CAP) break;
+    }
+    return {
+      actors: actors.slice(0, FILTER_CHIP_CAP),
+      lists: lists.slice(0, FILTER_CHIP_CAP),
+    };
+  }, [events, listLookup]);
+
+  const filteredEvents = useMemo(() => {
+    if (!filter) return events;
+    if (filter.kind === "actor") return events.filter((e) => e.actorId === filter.id);
+    return events.filter((e) => e.listId === filter.id);
+  }, [events, filter]);
+
   // Interleave day-bucket headings into the flat event list so a single
   // FlatList renders both. Cheaper than two lists and keeps scroll behavior
   // sane. The bucket label is computed once per event boundary.
@@ -80,7 +129,10 @@ export default function Activity() {
     const out: FeedItem[] = [];
     let lastBucket: string | null = null;
     let lastListId: string | null = null;
-    for (const e of events) {
+    // When the filter pins us to a single list, every row would render the
+    // same chip — collapse it to never-show in that mode.
+    const suppressListChip = filter?.kind === "list";
+    for (const e of filteredEvents) {
       const bucket = dayBucketLabel(e.createdAt);
       const newBucket = bucket !== lastBucket;
       if (newBucket) {
@@ -88,12 +140,12 @@ export default function Activity() {
         lastBucket = bucket;
         lastListId = null;
       }
-      const showList = newBucket || e.listId !== lastListId;
+      const showList = !suppressListChip && (newBucket || e.listId !== lastListId);
       out.push({ kind: "event", id: e.id, event: e, showList });
       lastListId = e.listId;
     }
     return out;
-  }, [events]);
+  }, [filteredEvents, filter]);
 
   const isInitialLoading = feedQuery.isPending;
   const isError = feedQuery.isError;
@@ -116,6 +168,51 @@ export default function Activity() {
         </Text>
       </View>
 
+      {events.length > 0 && (filterChips.actors.length > 1 || filterChips.lists.length > 0) ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterStrip}
+          style={styles.filterScroll}
+          testID="activity-filter-strip"
+        >
+          <FilterChip
+            label="All"
+            active={filter === null}
+            onPress={() => setFilter(null)}
+            testID="activity-filter-all"
+          />
+          {filterChips.actors.map((a) => (
+            <FilterChip
+              key={`actor-${a.id}`}
+              label={a.name}
+              active={filter?.kind === "actor" && filter.id === a.id}
+              onPress={() =>
+                setFilter(
+                  filter?.kind === "actor" && filter.id === a.id
+                    ? null
+                    : { kind: "actor", id: a.id },
+                )
+              }
+              testID={`activity-filter-actor-${a.id}`}
+            />
+          ))}
+          {filterChips.lists.map((l) => (
+            <FilterChip
+              key={`list-${l.id}`}
+              label={`${l.emoji} ${l.name}`}
+              active={filter?.kind === "list" && filter.id === l.id}
+              onPress={() =>
+                setFilter(
+                  filter?.kind === "list" && filter.id === l.id ? null : { kind: "list", id: l.id },
+                )
+              }
+              testID={`activity-filter-list-${l.id}`}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
+
       {isInitialLoading ? (
         <View style={styles.center}>
           <ActivityIndicator color={tokens.accent.default} />
@@ -135,6 +232,16 @@ export default function Activity() {
           <EmptyState
             title="Quiet for now"
             description="When you and your collaborators add or rank items, the action shows up here."
+          />
+        </View>
+      ) : filteredEvents.length === 0 ? (
+        <View style={styles.center}>
+          <EmptyState
+            title="Nothing matches this filter"
+            description="Pick a different chip, or clear the filter to see everything."
+            action={
+              <Button label="Clear filter" variant="secondary" onPress={() => setFilter(null)} />
+            }
           />
         </View>
       ) : (
@@ -176,6 +283,40 @@ export default function Activity() {
         </PullToRefresh>
       )}
     </Screen>
+  );
+}
+
+function FilterChip({
+  label,
+  active,
+  onPress,
+  testID,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Filter: ${label}`}
+      onPress={onPress}
+      testID={testID}
+      style={({ pressed, hovered }) => [
+        styles.filterChip,
+        active && styles.filterChipActive,
+        (pressed || hovered) && !active && styles.filterChipHover,
+      ]}
+    >
+      <Text
+        tone={active ? "onAccent" : "secondary"}
+        style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -403,6 +544,34 @@ const styles = StyleSheet.create({
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
   navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   title: { fontSize: tokens.font.size.xl, letterSpacing: -0.3 },
+  filterScroll: { flexGrow: 0 },
+  filterStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.md,
+  },
+  filterChip: {
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.pill,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+    backgroundColor: tokens.bg.surface,
+  },
+  filterChipHover: { backgroundColor: tokens.bg.elevated },
+  filterChipActive: {
+    backgroundColor: tokens.accent.default,
+    borderColor: tokens.accent.default,
+  },
+  filterChipLabel: {
+    fontSize: 12,
+    fontWeight: tokens.font.weight.medium,
+    letterSpacing: 0.1,
+  },
+  filterChipLabelActive: { fontWeight: tokens.font.weight.semibold },
   body: {
     paddingBottom: tokens.space.xxl * 2,
   },

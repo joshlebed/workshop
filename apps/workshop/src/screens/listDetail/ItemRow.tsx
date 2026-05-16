@@ -36,6 +36,15 @@ interface ItemRowProps {
   addedByName: string | null;
   /** List accent hex used to tint cover placeholder + position chip glyph. */
   accent: string;
+  /**
+   * Tap-to-uncomplete: when the row is in the completed section, the
+   * checkmark turns into a Pressable that fires this. Saves a row-menu
+   * trip for the common "oops, I checked the wrong one" recovery — and
+   * for the active "checking off as we go" flow, it makes the completed
+   * row itself reversible with one tap. Omit on rows that can't be
+   * toggled (album_shelf items don't support completion at all).
+   */
+  onTapCompleted?: () => void;
   onMenu: () => void;
   /** Short-tap on the body (excluding handle/menu) — type-specific destination. */
   onPressBody?: () => void;
@@ -71,6 +80,7 @@ export function ItemRow({
   isDragging,
   addedByName,
   accent,
+  onTapCompleted,
   onMenu,
   onPressBody,
   onPressCover,
@@ -99,9 +109,25 @@ export function ItemRow({
         rank={typeof rank === "number" ? rank : null}
       />
     ) : section === "completed" ? (
-      <View style={styles.completedMark}>
-        <Text style={styles.completedGlyph}>✓</Text>
-      </View>
+      onTapCompleted ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Mark ${item.title} as not done`}
+          onPress={onTapCompleted}
+          testID={`item-row-uncomplete-${item.id}`}
+          hitSlop={8}
+          style={({ pressed, hovered }) => [
+            styles.completedMark,
+            (pressed || hovered) && styles.completedMarkHover,
+          ]}
+        >
+          <Text style={styles.completedGlyph}>✓</Text>
+        </Pressable>
+      ) : (
+        <View style={styles.completedMark}>
+          <Text style={styles.completedGlyph}>✓</Text>
+        </View>
+      )
     ) : dragHandle ? (
       // Unordered rows on web get a drag handle so they can be dragged into
       // the ranked section. Native unordered rows omit `dragHandle` (cross-
@@ -449,6 +475,7 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.surface,
   },
+  completedMarkHover: { backgroundColor: tokens.bg.elevated },
   completedGlyph: {
     color: tokens.text.muted,
     fontSize: tokens.font.size.md,

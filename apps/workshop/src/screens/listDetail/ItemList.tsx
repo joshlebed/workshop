@@ -47,6 +47,7 @@ export function ItemList({
   onReorderOrdered,
   onRowMenu,
   onRowPressBody,
+  onUncompleteItem,
   resolveRowPressCover,
   refreshing,
   onRefresh,
@@ -142,6 +143,9 @@ export function ItemList({
                 accent={accent}
                 onMenu={() => onRowMenu(item, "completed")}
                 onPressBody={() => onRowPressBody(item, "completed")}
+                onTapCompleted={
+                  item.type !== "album_shelf" ? () => onUncompleteItem(item) : undefined
+                }
                 onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
               />
             ))}
