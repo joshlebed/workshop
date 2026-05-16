@@ -237,12 +237,19 @@ function SortableOrderedRow({
   // for drag activation (listeners spread onto the row wrapper below).
   const dragHandle = (child: ReactNode) => <View>{child}</View>;
 
+  // Strip `role`/`tabIndex` from dnd-kit's a11y attributes — react-native-web
+  // turns `role="button"` on a View into an HTML <button>, and the inner
+  // ItemRow already contains <Pressable>s (also rendered as buttons), which
+  // produces a DOM nesting warning. We're touch/mouse-only here (no keyboard
+  // sensor), so dropping these on the wrapper is safe.
+  const wrapperAttributes = stripButtonRole(attributes);
+
   return (
     <View
       ref={setNodeRef as unknown as React.Ref<View>}
       style={webStyle}
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
-      {...((attributes ?? {}) as unknown as Record<string, unknown>)}
+      {...(wrapperAttributes as unknown as Record<string, unknown>)}
     >
       <ItemRow
         item={item}
@@ -258,6 +265,12 @@ function SortableOrderedRow({
       />
     </View>
   );
+}
+
+function stripButtonRole(attributes: unknown): Record<string, unknown> {
+  if (!attributes || typeof attributes !== "object") return {};
+  const { role: _role, tabIndex: _tabIndex, ...rest } = attributes as Record<string, unknown>;
+  return rest;
 }
 
 interface DraggableUnorderedRowProps {
@@ -295,12 +308,16 @@ function DraggableUnorderedRow({
   // a long-press anywhere on the row (not just the chip) starts a drag.
   const dragHandle = (child: ReactNode) => <View>{child}</View>;
 
+  // See SortableOrderedRow — `role="button"` from dnd-kit's attributes turns
+  // the wrapper into an HTML <button>, nesting around the inner Pressables.
+  const wrapperAttributes = stripButtonRole(attributes);
+
   return (
     <View
       ref={setNodeRef as unknown as React.Ref<View>}
       style={webStyle}
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
-      {...((attributes ?? {}) as unknown as Record<string, unknown>)}
+      {...(wrapperAttributes as unknown as Record<string, unknown>)}
     >
       <ItemRow
         item={item}

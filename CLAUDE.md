@@ -241,6 +241,15 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   silently loses its `fontSize` / `fontWeight`. `AnimatedText` is the same
   surface as `Text` but accepts animated styles; reach for it instead of
   re-applying styles by hand on `Animated.Text`.
+- **Don't spread dnd-kit's `attributes` onto a `View` that wraps a
+  `Pressable`.** `useSortable` / `useDraggable` return an `attributes` bag
+  with `role: "button"` and `tabIndex: 0`, and react-native-web renders any
+  `View` with `role="button"` as an HTML `<button>`. The inner `Pressable`s
+  also render as `<button>`s, so spreading the bag wholesale produces a
+  "button cannot contain a nested button" DOM-nesting warning. We only use
+  Mouse/Touch sensors (no KeyboardSensor), so strip `role` and `tabIndex`
+  before spreading — see the `stripButtonRole` helper in
+  `apps/workshop/src/screens/listDetail/ItemList.web.tsx`.
 
 ## Debugging production
 
