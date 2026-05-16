@@ -341,11 +341,7 @@ export default function Home() {
             <View style={styles.emptyGlyphBadge}>
               <Text style={styles.emptyGlyph}>✦</Text>
             </View>
-            <EmptyState
-              title="Start your first list"
-              description="Movies, books, trips, albums, date ideas. Anything you want to remember together."
-              action={<Button label="Create a list" onPress={onCreateList} />}
-            />
+            <Button label="Create a list" onPress={onCreateList} />
           </View>
         ) : (
           <PullToRefresh

@@ -87,10 +87,7 @@ export default function CreateListType() {
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.intro}>
           <Text variant="title" style={styles.lead}>
-            What are you collecting?
-          </Text>
-          <Text tone="secondary" style={styles.tagline}>
-            Pick a type. You'll name and skin it next.
+            Pick a type of list
           </Text>
         </View>
         <View style={styles.options}>
@@ -177,7 +174,6 @@ const styles = StyleSheet.create({
   },
   intro: { gap: tokens.space.xs, paddingHorizontal: tokens.space.sm },
   lead: { letterSpacing: -0.4 },
-  tagline: { fontSize: tokens.font.size.md, lineHeight: 22 },
   options: { gap: tokens.space.xs },
   option: {
     flexDirection: "row",
