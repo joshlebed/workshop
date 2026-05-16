@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.md,
   },
   headerSpacer: { width: 40 },
-  step: { letterSpacing: 0.6, textTransform: "uppercase" },
+  step: { letterSpacing: 0.3 },
   skipGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
   body: {
     paddingHorizontal: tokens.space.lg,
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
   lead: { letterSpacing: -0.4 },
   leadSub: { fontSize: tokens.font.size.md, lineHeight: 22 },
   linkBlock: { gap: tokens.space.md },
-  linkLabel: { letterSpacing: 0.5, textTransform: "uppercase" },
+  linkLabel: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   urlBox: {
     borderWidth: 1,
     borderColor: tokens.border.default,

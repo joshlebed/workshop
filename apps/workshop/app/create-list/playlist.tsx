@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
-  step: { letterSpacing: 0.6, textTransform: "uppercase" },
+  step: { letterSpacing: 0.3 },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   headerSpacer: { width: 40 },
   body: {
@@ -236,9 +236,9 @@ const styles = StyleSheet.create({
     borderColor: tokens.accent.default,
     borderWidth: 1,
   },
-  previewKind: { letterSpacing: 0.6, textTransform: "uppercase" },
+  previewKind: { letterSpacing: 0.2 },
   field: { gap: tokens.space.sm },
-  fieldLabel: { letterSpacing: 0.5, textTransform: "uppercase" },
+  fieldLabel: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   hint: { lineHeight: 16 },
   input: {
     borderWidth: 1,

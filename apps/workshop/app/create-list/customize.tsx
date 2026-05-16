@@ -211,7 +211,7 @@ export default function CreateListCustomize() {
             <View style={styles.coverRow}>
               <Button
                 testID="create-list-cover-pick"
-                label={coverPhotoUrl ? "Change photo" : "Upload photo"}
+                label={coverPhotoUrl ? "Change photo" : "Add a photo"}
                 variant="secondary"
                 size="md"
                 onPress={async () => {
@@ -250,7 +250,13 @@ export default function CreateListCustomize() {
                   pressed && styles.colorCellPressed,
                 ]}
               >
-                <View style={[styles.colorSwatch, { backgroundColor: tokens.list[key] }]} />
+                <View style={[styles.colorSwatch, { backgroundColor: tokens.list[key] }]}>
+                  {key === color ? (
+                    <Text style={styles.colorCheck} tone="onAccent">
+                      ✓
+                    </Text>
+                  ) : null}
+                </View>
               </Pressable>
             ))}
           </View>
@@ -329,7 +335,7 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
-  step: { letterSpacing: 0.6, textTransform: "uppercase" },
+  step: { letterSpacing: 0.3, fontVariant: ["tabular-nums"] },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   headerSpacer: { width: 40 },
   body: {
@@ -359,10 +365,10 @@ const styles = StyleSheet.create({
   },
   previewEmoji: { fontSize: 32, lineHeight: 36 },
   previewText: { flex: 1, minWidth: 0, gap: 2 },
-  previewKind: { letterSpacing: 0.6, textTransform: "uppercase" },
+  previewKind: { letterSpacing: 0.2 },
   previewName: { letterSpacing: -0.4 },
   field: { gap: tokens.space.sm },
-  fieldLabel: { letterSpacing: 0.5, textTransform: "uppercase" },
+  fieldLabel: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   fieldLabelRow: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -398,11 +404,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "transparent",
   },
-  colorSwatch: { width: 28, height: 28, borderRadius: 14 },
+  colorSwatch: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colorCheck: { fontSize: 14, fontWeight: tokens.font.weight.bold, lineHeight: 16 },
   coverRow: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
-  colorCellSelected: { borderColor: tokens.text.primary },
+  colorCellSelected: {},
   colorCellPressed: { opacity: 0.8 },
 });

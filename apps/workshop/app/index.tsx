@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ListSummary, ListType } from "@workshop/shared";
+import type { ActivityEvent, ListSummary, ListType } from "@workshop/shared";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, View } from "react-native";
 import { fetchActivity } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
@@ -11,7 +11,7 @@ import { errorMessage } from "../src/lib/api";
 import { confirm } from "../src/lib/confirm";
 import { getActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
-import { Button, EmptyState, IconButton, type ListColorKey, Text, tokens } from "../src/ui/index";
+import { Button, EmptyState, type ListColorKey, Sheet, Text, tokens } from "../src/ui/index";
 
 const TYPE_LABEL: Record<ListType, string> = {
   movie: "Movies",
@@ -23,6 +23,24 @@ const TYPE_LABEL: Record<ListType, string> = {
   game: "Games",
 };
 
+// Past-tense, short, friend-y verb phrases. Used to attribute the latest
+// activity per list on the home row subtitle.
+const EVENT_VERB: Partial<Record<ActivityEvent["type"], string>> = {
+  item_added: "added",
+  item_updated: "edited",
+  item_deleted: "removed an item",
+  item_upvoted: "upvoted",
+  item_unupvoted: "unupvoted",
+  item_completed: "checked off",
+  item_uncompleted: "uncrossed",
+  item_promoted: "pinned",
+  item_demoted: "unpinned",
+  member_joined: "joined",
+  member_left: "left",
+  album_promoted: "pinned an album",
+  album_demoted: "unpinned an album",
+};
+
 function partOfDay(date = new Date()): "morning" | "afternoon" | "evening" | "night" {
   const h = date.getHours();
   if (h < 5) return "night";
@@ -32,19 +50,42 @@ function partOfDay(date = new Date()): "morning" | "afternoon" | "evening" | "ni
   return "night";
 }
 
-function buildGreeting(name: string | null | undefined): string {
+const DAY_LABEL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function buildContextLine(date = new Date()): string {
+  const day = DAY_LABEL[date.getDay()] ?? "";
+  return `${day} ${partOfDay(date)}`;
+}
+
+function buildHeadline(): string {
+  // Personalizing the headline ("Sarah's shelf") loses to the calmer second-
+  // person voice. "Your shelf" reads like a label on the room, not a greeting.
+  return "Your shelf";
+}
+
+function relativeShort(iso: string, now = Date.now()): string {
+  const diffMs = now - new Date(iso).getTime();
+  if (diffMs < 0) return "now";
+  const m = Math.floor(diffMs / 60_000);
+  if (m < 1) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  const w = Math.floor(d / 7);
+  if (w < 5) return `${w}w`;
+  return `${Math.floor(d / 30)}mo`;
+}
+
+function initialsFor(name: string | null | undefined): string {
   const trimmed = name?.trim();
-  const handle = trimmed && trimmed.length > 0 ? trimmed : null;
-  switch (partOfDay()) {
-    case "morning":
-      return handle ? `Morning, ${handle}` : "Good morning";
-    case "afternoon":
-      return handle ? `Afternoon, ${handle}` : "Good afternoon";
-    case "evening":
-      return handle ? `Evening, ${handle}` : "Good evening";
-    case "night":
-      return handle ? `Hi, ${handle}` : "Welcome back";
-  }
+  if (!trimmed) return "·";
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts[parts.length - 1]?.[0] ?? "";
+  const initials = parts.length === 1 ? first : `${first}${last}`;
+  return initials.toUpperCase() || "·";
 }
 
 export default function Home() {
@@ -56,17 +97,17 @@ export default function Home() {
     enabled: !!token,
   });
 
-  // Bell badge: re-derive unread count from the first page of the activity
-  // feed. Server-side `lastReadAt` per list isn't surfaced on `GET /v1/lists`
-  // yet, so we compare each event's `createdAt` against a client-side
-  // `lastViewedAt` stamped by the activity screen on focus. The activity
-  // screen also fires `POST /v1/activity/read` for cross-device parity.
+  // Re-use the activity feed for two purposes: (1) the unread dot on the
+  // header activity affordance, and (2) the most-recent attribution line on
+  // each list row. The same `staleTime` and 50-event window cover both.
   const activityFeedQuery = useQuery({
     queryKey: queryKeys.activity.feed,
     queryFn: () => fetchActivity({ limit: 50 }, token),
     enabled: !!token,
     staleTime: 30_000,
   });
+  const events = activityFeedQuery.data?.events ?? [];
+
   const [lastViewedAt, setLastViewedAt] = useState<string | null>(null);
   useFocusEffect(
     useCallback(() => {
@@ -81,67 +122,95 @@ export default function Home() {
       };
     }, []),
   );
-  const events = activityFeedQuery.data?.events ?? [];
-  const unreadCount = events.reduce((acc, e) => {
-    if (e.actorId === user?.id) return acc;
+  const hasUnread = events.some((e) => {
+    if (e.actorId === user?.id) return false;
     if (lastViewedAt && new Date(e.createdAt).getTime() <= new Date(lastViewedAt).getTime()) {
-      return acc;
+      return false;
     }
-    return acc + 1;
-  }, 0);
-  const cappedUnread = unreadCount > 9 ? "9+" : String(unreadCount);
+    return true;
+  });
 
-  const onCreateList = () => {
-    router.push("/create-list/type");
+  // The latest event per list — used as the subtitle when present.
+  // events are returned newest-first by the API, so a Map captures the first
+  // occurrence of each listId without sorting.
+  const latestByList = useMemo(() => {
+    const map = new Map<string, ActivityEvent>();
+    for (const e of events) {
+      if (!map.has(e.listId)) map.set(e.listId, e);
+    }
+    return map;
+  }, [events]);
+
+  // Sort lists by recency of their last activity (or updatedAt fallback).
+  // Active lists rise; the dead inventory falls without the user needing to
+  // archive anything.
+  const sortedLists = useMemo(() => {
+    const lists = listsQuery.data?.lists ?? [];
+    return [...lists].sort((a, b) => {
+      const ta = latestByList.get(a.id)?.createdAt ?? a.updatedAt;
+      const tb = latestByList.get(b.id)?.createdAt ?? b.updatedAt;
+      return new Date(tb).getTime() - new Date(ta).getTime();
+    });
+  }, [listsQuery.data, latestByList]);
+
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const onCreateList = () => router.push("/create-list/type");
+  const onActivity = () => router.push("/activity");
+  const onSignOut = async () => {
+    setProfileOpen(false);
+    const ok = await confirm({
+      title: "Sign out?",
+      message: "You'll need to sign in again to access your lists.",
+      confirmLabel: "Sign out",
+      destructive: true,
+    });
+    if (ok) signOut();
   };
 
-  const greeting = buildGreeting(user?.displayName);
+  const headline = buildHeadline();
+  const contextLine = buildContextLine();
+  const initials = initialsFor(user?.displayName ?? user?.email);
 
   return (
     <View style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerTitleBlock}>
-          <Text variant="title" testID="home-greeting" style={styles.title}>
-            {greeting}
+          <Text variant="caption" tone="muted" style={styles.headerContext}>
+            {contextLine.charAt(0).toUpperCase() + contextLine.slice(1)}
           </Text>
-          <Text variant="caption" tone="muted" style={styles.eyebrow}>
-            Your lists
+          <Text variant="title" testID="home-greeting" style={styles.title}>
+            {headline}
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <View>
-            <IconButton
-              accessibilityLabel={unreadCount > 0 ? `Activity, ${unreadCount} unread` : "Activity"}
-              onPress={() => router.push("/activity")}
-              testID="open-activity"
-            >
-              <Text style={styles.bellGlyph}>🔔</Text>
-            </IconButton>
-            {unreadCount > 0 ? (
-              <View style={styles.bellBadge} testID="activity-unread-badge" pointerEvents="none">
-                <Text style={styles.bellBadgeText} tone="onAccent">
-                  {cappedUnread}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-          <IconButton
-            accessibilityLabel="Sign out"
-            onPress={async () => {
-              const ok = await confirm({
-                title: "Sign out?",
-                message: "You'll need to sign in again to access your lists.",
-                confirmLabel: "Sign out",
-                destructive: true,
-              });
-              if (ok) signOut();
-            }}
-            testID="sign-out"
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={hasUnread ? "Activity, unread" : "Activity"}
+            onPress={onActivity}
+            testID="open-activity"
+            style={({ pressed }) => [styles.headerCircle, pressed && styles.headerCirclePressed]}
           >
-            <Text tone="muted" style={styles.signOutGlyph}>
-              ⎋
+            <View
+              style={[styles.activityDot, hasUnread ? styles.activityDotUnread : null]}
+              testID={hasUnread ? "activity-unread-badge" : undefined}
+            />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Profile and settings"
+            onPress={() => setProfileOpen(true)}
+            testID="open-profile"
+            style={({ pressed }) => [
+              styles.headerCircle,
+              styles.profileCircle,
+              pressed && styles.headerCirclePressed,
+            ]}
+          >
+            <Text style={styles.profileInitials} tone="secondary">
+              {initials}
             </Text>
-          </IconButton>
+          </Pressable>
         </View>
       </View>
 
@@ -160,7 +229,7 @@ export default function Home() {
               }
             />
           </View>
-        ) : listsQuery.data.lists.length === 0 ? (
+        ) : sortedLists.length === 0 ? (
           <View style={styles.center}>
             <View style={styles.emptyGlyphBadge}>
               <Text style={styles.emptyGlyph}>✦</Text>
@@ -177,12 +246,17 @@ export default function Home() {
             onRefresh={() => listsQuery.refetch()}
           >
             <FlatList
-              data={listsQuery.data.lists}
+              data={sortedLists}
               keyExtractor={(l) => l.id}
               contentContainerStyle={styles.listContent}
               ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
               renderItem={({ item }) => (
-                <ListRow list={item} onPress={() => router.push(`/list/${item.id}`)} />
+                <ListRow
+                  list={item}
+                  latestEvent={latestByList.get(item.id) ?? null}
+                  selfId={user?.id ?? null}
+                  onPress={() => router.push(`/list/${item.id}`)}
+                />
               )}
             />
           </PullToRefresh>
@@ -200,16 +274,73 @@ export default function Home() {
           +
         </Text>
       </Pressable>
+
+      <Sheet
+        visible={profileOpen}
+        onRequestClose={() => setProfileOpen(false)}
+        testID="profile-sheet"
+      >
+        <View style={styles.profileSheetHeader}>
+          <View style={[styles.headerCircle, styles.profileCircle, styles.profileSheetAvatar]}>
+            <Text style={styles.profileInitials} tone="secondary">
+              {initials}
+            </Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text variant="heading" numberOfLines={1}>
+              {user?.displayName?.trim() || "You"}
+            </Text>
+            {user?.email ? (
+              <Text variant="caption" tone="muted" numberOfLines={1}>
+                {user.email}
+              </Text>
+            ) : null}
+          </View>
+        </View>
+        <View style={styles.profileSheetActions}>
+          <Button label="Sign out" variant="secondary" onPress={onSignOut} testID="sign-out" />
+        </View>
+      </Sheet>
     </View>
   );
 }
 
-function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) {
+function ListRow({
+  list,
+  latestEvent,
+  selfId,
+  onPress,
+}: {
+  list: ListSummary;
+  latestEvent: ActivityEvent | null;
+  selfId: string | null;
+  onPress: () => void;
+}) {
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
   const itemsLabel =
     list.itemCount === 0 ? "Empty" : `${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
-  const description = list.description?.trim();
-  const subtitle = description ? description : `${TYPE_LABEL[list.type]} · ${itemsLabel}`;
+
+  // Prefer last-action attribution when an actor name is known; fall back to
+  // type + count. This is the multiplayer signal PRODUCT.md asks for.
+  let subtitle: string;
+  if (latestEvent && EVENT_VERB[latestEvent.type] && latestEvent.actorDisplayName?.trim()) {
+    const isSelf = selfId && latestEvent.actorId === selfId;
+    const who = isSelf ? "You" : latestEvent.actorDisplayName.trim().split(/\s+/)[0];
+    subtitle = `${who} ${EVENT_VERB[latestEvent.type]} · ${relativeShort(latestEvent.createdAt)}`;
+  } else if (list.description?.trim()) {
+    subtitle = list.description.trim();
+  } else {
+    subtitle = `${TYPE_LABEL[list.type]} · ${itemsLabel}`;
+  }
+
+  // A list is "live" when the most recent activity is within 24h. This earns
+  // a tiny accent dot at the top-right of the avatar — calm, not loud.
+  const isLive = latestEvent
+    ? Date.now() - new Date(latestEvent.createdAt).getTime() < 24 * 60 * 60 * 1000
+    : false;
+
+  const shared = list.memberCount > 1;
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -218,17 +349,25 @@ function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) 
       testID={`list-card-${list.id}`}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
     >
-      {list.coverPhotoUrl ? (
-        <Image
-          source={{ uri: list.coverPhotoUrl }}
-          style={styles.avatar}
-          accessibilityIgnoresInvertColors
-        />
-      ) : (
-        <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
-          <Text style={styles.avatarEmoji}>{list.emoji}</Text>
-        </View>
-      )}
+      <View style={styles.avatarWrap}>
+        {list.coverPhotoUrl ? (
+          <Image
+            source={{ uri: list.coverPhotoUrl }}
+            style={styles.avatar}
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
+            <Text style={styles.avatarEmoji}>{list.emoji}</Text>
+          </View>
+        )}
+        {isLive ? (
+          <View
+            style={[styles.liveDot, { backgroundColor: accent, borderColor: tokens.bg.canvas }]}
+            pointerEvents="none"
+          />
+        ) : null}
+      </View>
       <View style={styles.rowBody}>
         <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
           {list.name}
@@ -237,9 +376,14 @@ function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) 
           {subtitle}
         </Text>
       </View>
-      <Text tone="muted" style={styles.rowChevron}>
-        ›
-      </Text>
+      {shared ? (
+        <View style={styles.memberBadge} accessibilityLabel={`${list.memberCount} members`}>
+          <View style={styles.memberBadgeDot} />
+          <Text variant="caption" tone="secondary" style={styles.memberBadgeText}>
+            {list.memberCount}
+          </Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -258,29 +402,36 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: tokens.space.md,
     paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xs,
+    paddingBottom: tokens.space.sm,
   },
-  headerTitleBlock: { gap: tokens.space.xs, flex: 1, minWidth: 0 },
-  title: { fontSize: tokens.font.size.xxl, letterSpacing: -0.5 },
-  eyebrow: { letterSpacing: 0.6, textTransform: "uppercase" },
-  rowTitle: { fontSize: tokens.font.size.md },
-  rowChevron: { fontSize: tokens.font.size.xl, marginLeft: tokens.space.xs },
-  signOutGlyph: { fontSize: tokens.font.size.md },
-  bellGlyph: { fontSize: tokens.font.size.md },
-  bellBadge: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    backgroundColor: tokens.accent.default,
+  headerTitleBlock: { gap: 2, flex: 1, minWidth: 0 },
+  headerContext: { letterSpacing: 0.4 },
+  title: { fontSize: tokens.font.size.xl, letterSpacing: -0.3 },
+  headerActions: { flexDirection: "row", gap: tokens.space.sm, alignItems: "center" },
+  headerCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: tokens.bg.surface,
   },
-  bellBadgeText: { fontSize: 9, fontWeight: tokens.font.weight.bold },
-  headerActions: { flexDirection: "row", gap: tokens.space.xs, alignItems: "center" },
+  headerCirclePressed: { backgroundColor: tokens.bg.elevated },
+  profileCircle: { borderColor: tokens.border.default },
+  profileInitials: {
+    fontSize: 12,
+    fontWeight: tokens.font.weight.semibold,
+    letterSpacing: 0.5,
+  },
+  activityDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: tokens.text.muted,
+  },
+  activityDotUnread: { backgroundColor: tokens.accent.default },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: tokens.space.lg },
   emptyGlyphBadge: {
@@ -302,11 +453,13 @@ const styles = StyleSheet.create({
   },
   rowPressed: { backgroundColor: tokens.bg.surface },
   rowBody: { flex: 1, gap: 2, minWidth: 0 },
+  rowTitle: { fontSize: tokens.font.size.md },
   rowSeparator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.border.subtle,
     marginLeft: tokens.space.lg + 44 + tokens.space.md,
   },
+  avatarWrap: { position: "relative" },
   avatar: {
     width: 44,
     height: 44,
@@ -315,6 +468,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarEmoji: { fontSize: 22, lineHeight: 26 },
+  liveDot: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2.5,
+  },
+  memberBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.bg.surface,
+  },
+  memberBadgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: tokens.text.muted,
+  },
+  memberBadgeText: { fontSize: 11, lineHeight: 14, fontWeight: tokens.font.weight.medium },
   fab: {
     position: "absolute",
     right: tokens.space.lg,
@@ -330,4 +508,11 @@ const styles = StyleSheet.create({
   },
   fabPressed: { backgroundColor: tokens.accent.hover },
   fabGlyph: { fontSize: 26, fontWeight: tokens.font.weight.semibold, lineHeight: 30 },
+  profileSheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+  },
+  profileSheetAvatar: { width: 48, height: 48, borderRadius: 24 },
+  profileSheetActions: { gap: tokens.space.sm },
 });

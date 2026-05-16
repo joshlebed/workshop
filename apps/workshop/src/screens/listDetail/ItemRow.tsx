@@ -11,7 +11,7 @@
 import type { AlbumShelfItemMetadata, Item } from "@workshop/shared";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import { Image, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { formatRelative } from "../../lib/relativeTime";
 import { Text, tokens } from "../../ui/index";
@@ -20,6 +20,12 @@ interface ItemRowProps {
   item: Item;
   /** Section bucket — drives leading affordance + chrome. */
   section: "ordered" | "unordered" | "completed";
+  /**
+   * 1-indexed position inside the ordered section. Only used when section ===
+   * "ordered" — the rank number replaces the previous drag-glyph placeholder
+   * so the ordered position is visible at a glance instead of being implied.
+   */
+  rank?: number;
   /**
    * Album-shelf only: highlights the row briefly after a refresh that
    * surfaced it as a new detection.
@@ -60,6 +66,7 @@ interface ItemRowProps {
 export function ItemRow({
   item,
   section,
+  rank,
   isNew,
   isDragging,
   addedByName,
@@ -71,18 +78,26 @@ export function ItemRow({
   dragHandle,
 }: ItemRowProps) {
   const isCompleted = section === "completed";
+  // Crossfade the cover when a row's completed state changes — gives the
+  // checkbox flip a visible echo. The title relies on strikethrough alone;
+  // doubling up with opacity made completed rows feel washed out.
   const completedProgress = useSharedValue(isCompleted ? 1 : 0);
   useEffect(() => {
     completedProgress.value = withTiming(isCompleted ? 1 : 0, { duration: 220 });
   }, [isCompleted, completedProgress]);
-  const titleStyle = useAnimatedStyle(() => ({ opacity: 1 - completedProgress.value * 0.45 }));
+  const coverStyle = useAnimatedStyle(() => ({ opacity: 1 - completedProgress.value * 0.5 }));
 
   const view = describeItem(item);
   const provenance = describeProvenance(item, section, addedByName);
 
   const leading =
     section === "ordered" ? (
-      <PositionChip dragHandle={dragHandle} isDragging={isDragging} accent={accent} />
+      <PositionChip
+        dragHandle={dragHandle}
+        isDragging={isDragging}
+        accent={accent}
+        rank={typeof rank === "number" ? rank : null}
+      />
     ) : section === "completed" ? (
       <View style={styles.completedMark}>
         <Text style={styles.completedGlyph}>✓</Text>
@@ -90,27 +105,28 @@ export function ItemRow({
     ) : dragHandle ? (
       // Unordered rows on web get a drag handle so they can be dragged into
       // the ranked section. Native unordered rows omit `dragHandle` (cross-
-      // section drag isn't supported there).
-      <PositionChip dragHandle={dragHandle} isDragging={isDragging} accent={accent} />
+      // section drag isn't supported there). No rank yet — render the drag
+      // glyph instead of a number.
+      <PositionChip dragHandle={dragHandle} isDragging={isDragging} accent={accent} rank={null} />
     ) : null;
 
   const coverInner = view.imageUrl ? (
-    <Image
+    <Animated.Image
       source={{ uri: view.imageUrl }}
-      style={[styles.cover, isCompleted && styles.coverCompleted]}
+      style={[styles.cover, coverStyle]}
       accessibilityIgnoresInvertColors
     />
   ) : (
-    <View
+    <Animated.View
       style={[
         styles.cover,
         styles.coverPlaceholder,
         { backgroundColor: `${accent}1F` },
-        isCompleted && styles.coverCompleted,
+        coverStyle,
       ]}
     >
       <Text style={styles.coverPlaceholderGlyph}>{view.placeholderGlyph}</Text>
-    </View>
+    </Animated.View>
   );
 
   // For game rows the thumbnail launches the game URL — give it its own
@@ -135,13 +151,13 @@ export function ItemRow({
       {onPressCover ? null : cover}
       <View style={styles.rowBody}>
         <View style={styles.rowTitleLine}>
-          <Animated.Text
+          <Text
             numberOfLines={2}
-            style={[styles.rowTitle, isCompleted && styles.rowTitleCompleted, titleStyle]}
+            style={[styles.rowTitle, isCompleted && styles.rowTitleCompleted]}
             testID={`item-title-${item.id}`}
           >
             {item.title}
-          </Animated.Text>
+          </Text>
           {isNew ? (
             <View style={styles.newPill} testID={`item-row-new-${item.id}`}>
               <Text variant="caption" tone="onAccent" style={styles.newPillText}>
@@ -218,20 +234,25 @@ export function ItemRow({
 interface PositionChipProps {
   isDragging: boolean;
   accent: string;
+  rank: number | null;
   dragHandle?: (children: ReactNode) => ReactNode;
 }
 
-// The chip is the drag handle for ordered rows. The numeric rank used to
-// live here, but the rank repeats information the order already conveys,
-// so we render a drag glyph instead — visual affordance without the
-// duplicated digits eating horizontal space.
-function PositionChip({ isDragging, accent, dragHandle }: PositionChipProps) {
+// The chip doubles as the drag handle for ordered rows. When we know the
+// rank, show it — the number IS the information and a drag glyph (`≡`) had
+// to be learned. Unranked unordered rows fall back to the glyph so the user
+// still sees the drag affordance.
+function PositionChip({ isDragging, accent, rank, dragHandle }: PositionChipProps) {
   const chip = (
     <View style={[styles.positionChip, isDragging && styles.positionChipDragging]}>
-      <Text style={[styles.positionChipText, { color: accent }]}>≡</Text>
+      {rank !== null ? (
+        <Text style={[styles.positionChipRank, { color: accent }]}>{rank}</Text>
+      ) : (
+        <Text style={[styles.positionChipText, { color: accent }]}>≡</Text>
+      )}
     </View>
   );
-  return dragHandle ? <>{dragHandle(chip)}</> : chip;
+  return dragHandle ? dragHandle(chip) : chip;
 }
 
 interface ItemView {
@@ -327,9 +348,12 @@ function describeProvenance(
     const detectedAt = typeof meta.detectedAt === "string" ? meta.detectedAt : null;
     return detectedAt ? `detected ${formatRelative(detectedAt)}` : "detected";
   }
-  // Only surface "added by @x" when another collaborator added the row;
-  // a list owned and added-to by one person doesn't need the repetition.
-  return addedByName ? `added by @${addedByName} · ${formatRelative(item.createdAt)}` : null;
+  // Only surface attribution when another collaborator added the row; a list
+  // owned and added-to by one person doesn't need the repetition. Use the
+  // bare first name (no "@" handle prefix) — calmer.
+  if (!addedByName) return null;
+  const first = addedByName.trim().split(/\s+/)[0] ?? addedByName;
+  return `Added by ${first} · ${formatRelative(item.createdAt)}`;
 }
 
 interface SectionHeaderProps {
@@ -411,17 +435,22 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.lg,
     fontWeight: tokens.font.weight.semibold,
   },
+  positionChipRank: {
+    fontSize: tokens.font.size.md,
+    fontWeight: tokens.font.weight.semibold,
+    fontVariant: ["tabular-nums"],
+    letterSpacing: -0.5,
+  },
   completedMark: {
     width: 36,
     height: 36,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.default,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.bg.surface,
   },
   completedGlyph: {
-    color: tokens.text.secondary,
+    color: tokens.text.muted,
     fontSize: tokens.font.size.md,
     lineHeight: tokens.font.size.md + 2,
   },
@@ -479,14 +508,14 @@ const styles = StyleSheet.create({
   },
   sectionHeaderLabel: {
     color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
+    fontSize: tokens.font.size.md,
     fontWeight: tokens.font.weight.semibold,
-    textTransform: "uppercase",
-    letterSpacing: 1.1,
+    letterSpacing: -0.2,
   },
   sectionHeaderCount: {
     color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
+    fontSize: tokens.font.size.md,
+    fontWeight: tokens.font.weight.regular,
     fontVariant: ["tabular-nums"],
   },
   orderedHint: {

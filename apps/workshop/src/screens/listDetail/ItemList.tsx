@@ -58,9 +58,10 @@ export function ItemList({
   );
 
   const renderOrderedItem = useCallback(
-    ({ item }: ListRenderItemInfo<Item>) => (
+    ({ item, index }: ListRenderItemInfo<Item>) => (
       <DraggableOrderedRow
         item={item}
+        rank={index + 1}
         addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
         accent={accent}
         onMenu={() => onRowMenu(item, "ordered")}
@@ -142,6 +143,7 @@ function keyExtractor(item: Item): string {
 
 interface DraggableOrderedRowProps {
   item: Item;
+  rank: number;
   addedByName: string | null;
   accent: string;
   onMenu: () => void;
@@ -151,6 +153,7 @@ interface DraggableOrderedRowProps {
 
 const DraggableOrderedRow = memo(function DraggableOrderedRow({
   item,
+  rank,
   addedByName,
   accent,
   onMenu,
@@ -177,6 +180,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
     <ItemRow
       item={item}
       section="ordered"
+      rank={rank}
       isNew={false}
       isDragging={isActive}
       addedByName={addedByName}
