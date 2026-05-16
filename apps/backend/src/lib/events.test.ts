@@ -71,12 +71,14 @@ describe("recordEvent", () => {
     const db = fakeDb();
     const types = [
       "list_created",
+      "list_archived",
       "member_joined",
       "member_left",
       "member_removed",
       "item_added",
       "item_updated",
       "item_deleted",
+      "item_archived",
       "item_upvoted",
       "item_unupvoted",
       "item_completed",

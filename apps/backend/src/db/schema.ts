@@ -29,12 +29,17 @@ export const authProviderEnum = pgEnum("auth_provider", ["apple", "google"]);
 
 export const activityEventTypeEnum = pgEnum("activity_event_type", [
   "list_created",
+  "list_archived",
   "member_joined",
   "member_left",
   "member_removed",
   "item_added",
   "item_updated",
+  // Legacy: pre-soft-delete code emitted `item_deleted` for hard deletes. Kept
+  // in the enum so historical rows still type-check; new code emits
+  // `item_archived` instead (see DELETE /v1/lists/:id and /v1/items/:id).
   "item_deleted",
+  "item_archived",
   "item_upvoted",
   "item_unupvoted",
   "item_completed",
@@ -85,6 +90,13 @@ export const lists = pgTable(
     metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+    // Soft-delete marker. NULL = active list. Non-NULL = archived; the row is
+    // filtered out of every read path so archived lists become invisible to
+    // clients. Distinct from `list_members.archived_at`, which is per-(list,
+    // viewer) presentation state (the "stash from my home feed" toggle). An
+    // unarchive surface isn't shipped yet — set via DELETE /v1/lists/:id by
+    // the owner only.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => ({
     ownerIdx: index("lists_owner_idx").on(t.ownerId),
@@ -167,6 +179,12 @@ export const items = pgTable(
     completedBy: uuid("completed_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+    // Soft-delete marker. NULL = active item. Non-NULL = archived; filtered
+    // out of every item read so archived items become invisible to clients.
+    // For album_shelf rows the partial unique index on
+    // (list_id, spotifyAlbumId) still applies to archived rows, so a refresh
+    // doesn't resurface an album the user explicitly archived.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => ({
     listIdx: index("items_list_idx").on(t.listId),

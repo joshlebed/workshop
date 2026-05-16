@@ -70,7 +70,16 @@ export function updateItem(
   });
 }
 
-export function deleteItem(itemId: string, token: string | null): Promise<{ ok: true }> {
+/**
+ * Archives (soft-deletes) the item. The server sets `items.archived_at` and
+ * the row immediately drops out of every read — the items split, item
+ * detail, and item-scoped activity-feed events. Upvotes and game scores
+ * stay in the DB so a future unarchive surface can restore the item
+ * intact. For album_shelf items the partial unique index on
+ * (list_id, spotifyAlbumId) still includes archived rows, so a refresh
+ * won't resurface an album the user explicitly archived.
+ */
+export function archiveItem(itemId: string, token: string | null): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/items/${itemId}`, token });
 }
 

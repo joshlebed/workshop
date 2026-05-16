@@ -83,7 +83,7 @@ memberRoutes.delete("/:id/members/:userId", requireListMember, async (c) => {
 
   if (result.kind === "not_found") return err(c, "NOT_FOUND", "member not found");
   if (result.kind === "owner_block") {
-    return err(c, "FORBIDDEN", "owner cannot leave; delete the list instead");
+    return err(c, "FORBIDDEN", "owner cannot leave; archive the list instead");
   }
   return ok(c, { ok: true });
 });

@@ -7,7 +7,7 @@ import type {
   ListSummary,
   MemberRole,
 } from "@workshop/shared";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -196,7 +196,7 @@ listRoutes.get("/", async (c) => {
         me.archived_at,
         me.muted_at,
         (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
-        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id) AS item_count,
+        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id AND i.archived_at IS NULL) AS item_count,
         CASE
           WHEN me.muted_at IS NOT NULL THEN 0
           ELSE LEAST(
@@ -214,6 +214,7 @@ listRoutes.get("/", async (c) => {
         END AS unread_count
       FROM lists l
       JOIN list_members me ON me.list_id = l.id AND me.user_id = ${userId}
+      WHERE l.archived_at IS NULL
       ORDER BY l.updated_at DESC
     `,
   );
@@ -333,7 +334,11 @@ listRoutes.post("/", async (c) => {
 listRoutes.get("/:id", requireListMember, async (c) => {
   const listId = c.req.param("id");
   const db = getDb();
-  const [list] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
+  const [list] = await db
+    .select()
+    .from(lists)
+    .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
+    .limit(1);
   if (!list) return err(c, "NOT_FOUND", "list not found");
 
   const memberRows = await db
@@ -555,13 +560,33 @@ listRoutes.delete("/:id/mute", requireListMember, async (c) => {
   return ok(c, { ok: true });
 });
 
+// Archive (soft delete) the list. Owner-only. Sets `lists.archived_at` so the
+// row is filtered out of every read path — `GET /v1/lists`, `GET
+// /v1/lists/:id`, item reads, activity feed, middleware. The dependent rows
+// (members, items, invites, activity events, reads, upvotes) stay in place
+// so a future unarchive surface can restore them in one shot. Idempotent: a
+// repeat archive on an already-archived list returns 404 because the
+// requester can no longer see the list as a member.
 listRoutes.delete("/:id", requireListMember, requireListOwner, async (c) => {
   const listId = c.req.param("id");
+  const userId = c.get("userId");
   const db = getDb();
-  // ON DELETE CASCADE on items / list_members / item_upvotes / activity_events
-  // / list_invites / user_activity_reads handles the dependents.
-  const deleted = await db.delete(lists).where(eq(lists.id, listId)).returning({ id: lists.id });
-  if (deleted.length === 0) return err(c, "NOT_FOUND", "list not found");
+  const archived = await db
+    .update(lists)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
+    .returning({ id: lists.id, name: lists.name });
+  if (archived.length === 0) return err(c, "NOT_FOUND", "list not found");
+
+  const row = archived[0];
+  if (row) {
+    await recordEvent({
+      listId,
+      actorId: userId,
+      type: "list_archived",
+      payload: { name: row.name },
+    });
+  }
   return ok(c, { ok: true });
 });
 

@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import {
+  archiveItem,
   completeItem,
-  deleteItem,
   fetchItem,
   uncompleteItem,
   updateItem,
@@ -103,8 +103,8 @@ export default function ItemDetail() {
       }),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteItem(itemId ?? "", token),
+  const archiveMutation = useMutation({
+    mutationFn: () => archiveItem(itemId ?? "", token),
     onSuccess: async () => {
       haptics.medium();
       if (listId) {
@@ -117,7 +117,7 @@ export default function ItemDetail() {
     },
     onError: (e) =>
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't delete",
+        message: e instanceof ApiError ? e.message : "Couldn't archive",
         tone: "danger",
       }),
   });
@@ -271,9 +271,9 @@ export default function ItemDetail() {
           testID="item-delete"
           label="Delete item"
           variant="danger"
-          disabled={deleteMutation.isPending}
-          loading={deleteMutation.isPending}
-          onPress={() => deleteMutation.mutate()}
+          disabled={archiveMutation.isPending}
+          loading={archiveMutation.isPending}
+          onPress={() => archiveMutation.mutate()}
         />
       </KeyboardAwareScrollView>
     </View>

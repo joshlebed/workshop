@@ -12,7 +12,7 @@ import { Image, Linking, Pressable, StyleSheet, TextInput, View } from "react-na
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { refreshAlbumShelf } from "../../../src/api/albumShelf";
 import { createInvite, revokeInvite } from "../../../src/api/invites";
-import { deleteList, fetchListDetail, updateList } from "../../../src/api/lists";
+import { archiveListEntirely, fetchListDetail, updateList } from "../../../src/api/lists";
 import { removeMember } from "../../../src/api/members";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { albumShelfErrorMessage } from "../../../src/lib/albumShelfErrors";
@@ -289,10 +289,14 @@ export default function ListSettings() {
     },
   });
 
-  const deleteListMutation = useMutation({
+  // Archives the list (soft-delete via DELETE /v1/lists/:id). Owner-only.
+  // The list disappears from every read path on the next query — home feed,
+  // detail, items, activity — but the DB rows stay so a future unarchive
+  // surface can restore them.
+  const archiveListMutation = useMutation({
     mutationFn: () => {
       if (!id) throw new Error("missing list id");
-      return deleteList(id, token);
+      return archiveListEntirely(id, token);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
@@ -300,7 +304,7 @@ export default function ListSettings() {
     },
     onError: (e) => {
       showToast({
-        message: errorMessage(e, "Couldn't delete list"),
+        message: errorMessage(e, "Couldn't archive list"),
         tone: "danger",
       });
     },
@@ -622,23 +626,17 @@ export default function ListSettings() {
           </Card>
         ) : null}
 
-        {/* --- Danger zone --- */}
+        {/* --- Delete list (owner-only; archives under the hood) --- */}
         {isOwner ? (
           <Card style={styles.card} elevated>
-            <Text variant="label" tone="danger">
-              Danger zone
-            </Text>
-            <Text tone="secondary">
-              Delete this list and all of its items. This cannot be undone.
-            </Text>
             <Button
               testID="settings-delete-list"
               label="Delete list"
               variant="danger"
               size="md"
-              loading={deleteListMutation.isPending}
-              disabled={deleteListMutation.isPending}
-              onPress={() => deleteListMutation.mutate()}
+              loading={archiveListMutation.isPending}
+              disabled={archiveListMutation.isPending}
+              onPress={() => archiveListMutation.mutate()}
             />
           </Card>
         ) : (

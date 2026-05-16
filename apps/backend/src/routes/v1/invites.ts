@@ -205,7 +205,11 @@ inviteRoutes.post("/invites/:token/accept", async (c) => {
       return { kind: "not_found" as const };
     }
 
-    const [list] = await tx.select().from(lists).where(eq(lists.id, invite.listId)).limit(1);
+    const [list] = await tx
+      .select()
+      .from(lists)
+      .where(and(eq(lists.id, invite.listId), isNull(lists.archivedAt)))
+      .limit(1);
     if (!list) return { kind: "not_found" as const };
 
     // Idempotent: existing membership keeps role + joinedAt.
@@ -301,7 +305,11 @@ publicInviteRoutes.get("/invites/:token/preview", async (c) => {
     return err(c, "NOT_FOUND", "invite not found");
   }
 
-  const [list] = await db.select().from(lists).where(eq(lists.id, invite.listId)).limit(1);
+  const [list] = await db
+    .select()
+    .from(lists)
+    .where(and(eq(lists.id, invite.listId), isNull(lists.archivedAt)))
+    .limit(1);
   if (!list) {
     return err(c, "NOT_FOUND", "invite not found");
   }
@@ -316,7 +324,7 @@ publicInviteRoutes.get("/invites/:token/preview", async (c) => {
     db,
     sql`
       SELECT
-        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = ${list.id}) AS item_count,
+        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = ${list.id} AND i.archived_at IS NULL) AS item_count,
         (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = ${list.id}) AS member_count
     `,
   );
