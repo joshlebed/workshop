@@ -35,6 +35,12 @@ export interface ItemListProps {
   memberNameById: Map<string, string>;
   /** True when more than one collaborator can add — gates the "added by @x" provenance. */
   showProvenance: boolean;
+  /**
+   * Current viewer's userId. Used to suppress provenance lines when the row's
+   * `addedBy` matches the viewer — a shared list with "Added by you · 1m" on
+   * every row reads as noise. Null when not signed in (no rows render anyway).
+   */
+  selfId: string | null;
   /** List accent hex used to tint cover placeholders + the position chip. */
   accent: string;
   /** Drag inside the ordered section finished. */

@@ -22,6 +22,7 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { refreshAlbumShelf } from "../api/albumShelf";
 import { completeItem, deleteItem, fetchItems, uncompleteItem, updateItem } from "../api/items";
+import { useAuth } from "../hooks/useAuth";
 import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
 import {
   applyPositionPatch,
@@ -35,7 +36,7 @@ import { haptics } from "../lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
-import { Button, EmptyState, type ListColorKey, Text, tokens, useToast } from "../ui/index";
+import { Button, EmptyState, type ListColorKey, Screen, Text, tokens, useToast } from "../ui/index";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import type { ReorderEvent } from "./listDetail/listProps";
@@ -75,6 +76,9 @@ export function ListDetail({ list, members, token }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const selfId = user?.id ?? null;
+  const filterInputRef = useRef<TextInput>(null);
   const [filter, setFilter] = useState("");
   const isAlbumShelf = list.type === "album_shelf";
   const itemsKey = queryKeys.items.byList(list.id);
@@ -395,227 +399,265 @@ export function ListDetail({ list, members, token }: Props) {
 
   const isEmptyAfterFetch = !itemsQuery.isPending && !itemsQuery.isError && totalRows === 0;
 
+  // Web-only keyboard shortcuts. `/` focuses search; `Esc` clears + blurs;
+  // `N` (when no input focused) jumps to add. Ignored on native.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const inInput = tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable;
+      if (e.key === "Escape" && inInput) {
+        e.preventDefault();
+        setFilter("");
+        filterInputRef.current?.blur?.();
+        return;
+      }
+      if (inInput) return;
+      if (e.key === "/" || (e.metaKey && e.key === "k") || (e.ctrlKey && e.key === "k")) {
+        e.preventDefault();
+        filterInputRef.current?.focus?.();
+      } else if (e.key === "n" && !e.metaKey && !e.ctrlKey && !isAlbumShelf) {
+        e.preventDefault();
+        router.push(`/list/${list.id}/add`);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [router, list.id, isAlbumShelf]);
+
   return (
     <KeyboardAvoidingView
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.headerNav}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => goBack("/")}
-          testID="list-detail-back"
-          hitSlop={10}
-          style={styles.navButton}
-        >
-          <Text style={styles.navGlyph}>‹</Text>
-        </Pressable>
-        <View style={styles.navActions}>
-          {isAlbumShelf ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Refresh from Spotify"
-              onPress={() => refreshMutation.mutate()}
-              disabled={refreshing}
-              testID="list-detail-refresh"
-              hitSlop={10}
-              style={styles.navButton}
-            >
-              {refreshing ? (
-                <ActivityIndicator color={tokens.accent.default} />
-              ) : (
-                <Text style={styles.navGlyph}>↻</Text>
-              )}
-            </Pressable>
-          ) : null}
+      <Screen style={styles.column}>
+        <View style={styles.headerNav}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Open list settings"
-            onPress={() => router.push(`/list/${list.id}/settings`)}
-            testID="list-detail-settings"
+            accessibilityLabel="Back"
+            onPress={() => goBack("/")}
+            testID="list-detail-back"
             hitSlop={10}
             style={styles.navButton}
           >
-            <Text style={styles.navGlyph}>⋯</Text>
+            <Text style={styles.navGlyph}>‹</Text>
           </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.titleBlock}>
-        {list.coverPhotoUrl ? (
-          <Image
-            source={{ uri: list.coverPhotoUrl }}
-            style={[styles.titleBadge, { borderColor: `${accent}55` }]}
-            accessibilityIgnoresInvertColors
-          />
-        ) : (
-          <View
-            style={[
-              styles.titleBadge,
-              { backgroundColor: `${accent}1F`, borderColor: `${accent}33` },
-            ]}
-          >
-            <Text style={styles.titleEmoji}>{list.emoji}</Text>
-          </View>
-        )}
-        <View style={styles.titleText}>
-          <Text variant="title" numberOfLines={2} style={styles.titleName}>
-            {list.name}
-          </Text>
-          <View style={styles.sublineRow}>
-            {members.length > 0 ? <MemberStack members={members} accent={accent} /> : null}
-            <Text
-              variant="caption"
-              tone="muted"
-              style={styles.subline}
-              testID="list-detail-subline"
-            >
-              {headerSubline}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={styles.toolbar}>
-        <View style={[styles.filterPill, filter.length > 0 && styles.filterPillActive]}>
-          <Text style={styles.filterGlyph} tone="muted">
-            ⌕
-          </Text>
-          <TextInput
-            testID="list-detail-filter"
-            value={filter}
-            onChangeText={setFilter}
-            placeholder={isAlbumShelf ? "Search this shelf" : "Search this list"}
-            placeholderTextColor={tokens.text.muted}
-            style={styles.filterInput}
-            accessibilityLabel="Search items in this list"
-          />
-          {filter.length > 0 ? (
+          <View style={styles.navActions}>
+            {isAlbumShelf ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Refresh from Spotify"
+                onPress={() => refreshMutation.mutate()}
+                disabled={refreshing}
+                testID="list-detail-refresh"
+                hitSlop={10}
+                style={styles.navButton}
+              >
+                {refreshing ? (
+                  <ActivityIndicator color={tokens.accent.default} />
+                ) : (
+                  <Text style={styles.navGlyph}>↻</Text>
+                )}
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Clear filter"
-              onPress={() => setFilter("")}
-              hitSlop={8}
-              style={styles.filterClear}
+              accessibilityLabel="Open list settings"
+              onPress={() => router.push(`/list/${list.id}/settings`)}
+              testID="list-detail-settings"
+              hitSlop={10}
+              style={styles.navButton}
             >
-              <Text tone="muted" style={styles.filterClearGlyph}>
-                ✕
-              </Text>
+              <Text style={styles.navGlyph}>⋯</Text>
             </Pressable>
-          ) : null}
+          </View>
         </View>
-      </View>
 
-      {itemsQuery.isPending ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
-        </View>
-      ) : itemsQuery.isError ? (
-        <View style={styles.center}>
-          <EmptyState
-            title="Couldn't load list"
-            description={
-              isAlbumShelf
-                ? albumShelfErrorMessage(itemsQuery.error, "Unknown error")
-                : errorMessage(itemsQuery.error)
-            }
-            action={
-              <Button
-                label="Retry"
-                variant="secondary"
-                onPress={() => itemsQuery.refetch()}
-                testID="list-detail-retry"
-              />
-            }
-          />
-        </View>
-      ) : isEmptyAfterFetch ? (
-        <View style={styles.center}>
-          {isAlbumShelf ? (
-            <EmptyState
-              title={lastRefreshedAt ? "No albums detected." : "Pulling albums from your playlist…"}
-              description={
-                lastRefreshedAt
-                  ? "Check that your playlist has tracks with album info, or change the source URL in settings."
-                  : undefined
-              }
-              action={
-                lastRefreshedAt ? (
-                  <Button
-                    label="Refresh now"
-                    onPress={() => refreshMutation.mutate()}
-                    loading={refreshing}
-                    testID="list-detail-empty-refresh"
-                  />
-                ) : undefined
-              }
+        <View style={styles.titleBlock}>
+          {list.coverPhotoUrl ? (
+            <Image
+              source={{ uri: list.coverPhotoUrl }}
+              style={[styles.titleBadge, { borderColor: `${accent}55` }]}
+              accessibilityIgnoresInvertColors
             />
           ) : (
+            <View
+              style={[
+                styles.titleBadge,
+                { backgroundColor: `${accent}1F`, borderColor: `${accent}33` },
+              ]}
+            >
+              <Text style={styles.titleEmoji}>{list.emoji}</Text>
+            </View>
+          )}
+          <View style={styles.titleText}>
+            <Text variant="title" numberOfLines={2} style={styles.titleName}>
+              {list.name}
+            </Text>
+            <View style={styles.sublineRow}>
+              {members.length > 0 ? <MemberStack members={members} accent={accent} /> : null}
+              <Text
+                variant="caption"
+                tone="muted"
+                style={styles.subline}
+                testID="list-detail-subline"
+              >
+                {headerSubline}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.toolbar}>
+          <View style={[styles.filterPill, filter.length > 0 && styles.filterPillActive]}>
+            <Text style={styles.filterGlyph} tone="muted">
+              ⌕
+            </Text>
+            <TextInput
+              ref={filterInputRef}
+              testID="list-detail-filter"
+              value={filter}
+              onChangeText={setFilter}
+              placeholder={isAlbumShelf ? "Search this shelf" : "Search this list"}
+              placeholderTextColor={tokens.text.muted}
+              style={styles.filterInput}
+              accessibilityLabel="Search items in this list"
+              onSubmitEditing={() => filterInputRef.current?.blur()}
+            />
+            {filter.length > 0 ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear filter"
+                onPress={() => setFilter("")}
+                hitSlop={8}
+                style={styles.filterClear}
+              >
+                <Text tone="muted" style={styles.filterClearGlyph}>
+                  ✕
+                </Text>
+              </Pressable>
+            ) : Platform.OS === "web" ? (
+              <Text style={styles.filterKbd} tone="muted" accessibilityElementsHidden>
+                /
+              </Text>
+            ) : null}
+          </View>
+        </View>
+
+        {itemsQuery.isPending ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={tokens.accent.default} />
+          </View>
+        ) : itemsQuery.isError ? (
+          <View style={styles.center}>
             <EmptyState
-              title="Nothing on the list"
-              description="Add the first thing you want to remember."
+              title="Couldn't load list"
+              description={
+                isAlbumShelf
+                  ? albumShelfErrorMessage(itemsQuery.error, "Unknown error")
+                  : errorMessage(itemsQuery.error)
+              }
               action={
                 <Button
-                  label="Add an item"
-                  onPress={() => router.push(`/list/${list.id}/add`)}
-                  testID="list-detail-empty-add"
+                  label="Retry"
+                  variant="secondary"
+                  onPress={() => itemsQuery.refetch()}
+                  testID="list-detail-retry"
                 />
               }
             />
-          )}
-        </View>
-      ) : (
-        <View style={styles.listWrap}>
-          <ItemList
-            ordered={filtered.ordered}
-            unordered={filtered.unordered}
-            completed={filtered.completed}
-            isAlbumShelf={isAlbumShelf}
-            showOrderedHint={showOrderedHint}
-            newItemIds={newItemIds}
-            memberNameById={memberNameById}
-            showProvenance={members.length > 1}
-            accent={accent}
-            onReorderOrdered={onReorderOrdered}
-            onPromoteToOrdered={onPromoteToOrdered}
-            onRowMenu={onRowMenu}
-            onRowPressBody={onRowPressBody}
-            resolveRowPressCover={resolveRowPressCover}
-            refreshing={itemsQuery.isRefetching}
-            onRefresh={() => {
-              itemsQuery.refetch();
-            }}
-          />
-        </View>
-      )}
+          </View>
+        ) : isEmptyAfterFetch ? (
+          <View style={styles.center}>
+            {isAlbumShelf ? (
+              <EmptyState
+                title={
+                  lastRefreshedAt ? "No albums detected." : "Pulling albums from your playlist…"
+                }
+                description={
+                  lastRefreshedAt
+                    ? "Check that your playlist has tracks with album info, or change the source URL in settings."
+                    : undefined
+                }
+                action={
+                  lastRefreshedAt ? (
+                    <Button
+                      label="Refresh now"
+                      onPress={() => refreshMutation.mutate()}
+                      loading={refreshing}
+                      testID="list-detail-empty-refresh"
+                    />
+                  ) : undefined
+                }
+              />
+            ) : (
+              <EmptyState
+                title="Nothing on the list"
+                description="Add the first thing you want to remember."
+                action={
+                  <Button
+                    label="Add an item"
+                    onPress={() => router.push(`/list/${list.id}/add`)}
+                    testID="list-detail-empty-add"
+                  />
+                }
+              />
+            )}
+          </View>
+        ) : (
+          <View style={styles.listWrap}>
+            <ItemList
+              ordered={filtered.ordered}
+              unordered={filtered.unordered}
+              completed={filtered.completed}
+              isAlbumShelf={isAlbumShelf}
+              showOrderedHint={showOrderedHint}
+              newItemIds={newItemIds}
+              memberNameById={memberNameById}
+              showProvenance={members.length > 1}
+              selfId={selfId}
+              accent={accent}
+              onReorderOrdered={onReorderOrdered}
+              onPromoteToOrdered={onPromoteToOrdered}
+              onRowMenu={onRowMenu}
+              onRowPressBody={onRowPressBody}
+              resolveRowPressCover={resolveRowPressCover}
+              refreshing={itemsQuery.isRefetching}
+              onRefresh={() => {
+                itemsQuery.refetch();
+              }}
+            />
+          </View>
+        )}
 
-      {!isAlbumShelf ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Add item"
-          onPress={() => router.push(`/list/${list.id}/add`)}
-          style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-          testID="fab-add-item"
-        >
-          <Text style={styles.fabGlyph} tone="onAccent">
-            +
-          </Text>
-        </Pressable>
-      ) : null}
+        {!isAlbumShelf ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add item"
+            onPress={() => router.push(`/list/${list.id}/add`)}
+            style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
+            testID="fab-add-item"
+          >
+            <Text style={styles.fabGlyph} tone="onAccent">
+              +
+            </Text>
+          </Pressable>
+        ) : null}
 
-      <ItemRowMenu item={menuItem} actions={menuActions} onClose={closeMenu} />
+        <ItemRowMenu item={menuItem} actions={menuActions} onClose={closeMenu} />
+      </Screen>
     </KeyboardAvoidingView>
   );
 }
 
-function memberInitials(name: string | null): string {
+function memberInitial(name: string | null): string {
   const trimmed = name?.trim();
   if (!trimmed) return "·";
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? "";
-  const last = parts[parts.length - 1]?.[0] ?? "";
-  return (parts.length === 1 ? first : `${first}${last}`).toUpperCase() || "·";
+  // Single letter only — at chip size 26px, two letters overlap into a
+  // single illegible blob when 3+ members stack. The first letter alone
+  // reads cleanly and the surrounding chip's accent tint disambiguates.
+  return (trimmed[0] ?? "·").toUpperCase();
 }
 
 function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent: string }) {
@@ -633,7 +675,7 @@ function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent
             i > 0 ? memberStackStyles.chipOverlap : null,
           ]}
         >
-          <Text style={memberStackStyles.initials}>{memberInitials(m.displayName)}</Text>
+          <Text style={memberStackStyles.initials}>{memberInitial(m.displayName)}</Text>
         </View>
       ))}
     </View>
@@ -643,18 +685,19 @@ function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent
 const memberStackStyles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center" },
   chip: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
   },
-  chipOverlap: { marginLeft: -8 },
+  chipOverlap: { marginLeft: -9 },
   initials: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
+    lineHeight: 14,
     color: tokens.text.primary,
   },
 });
@@ -665,6 +708,7 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
     paddingTop: tokens.space.xl,
   },
+  column: { flex: 1 },
   headerNav: {
     flexDirection: "row",
     alignItems: "center",
@@ -719,12 +763,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: tokens.space.md,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: tokens.radius.md,
+    backgroundColor: "transparent",
     borderWidth: 1,
     borderColor: tokens.border.subtle,
   },
-  filterPillActive: { borderColor: tokens.border.default },
+  filterPillActive: {
+    backgroundColor: tokens.bg.surface,
+    borderColor: tokens.border.default,
+  },
   filterGlyph: {
     fontSize: tokens.font.size.md,
     marginRight: tokens.space.sm,
@@ -738,6 +785,18 @@ const styles = StyleSheet.create({
   },
   filterClear: { paddingHorizontal: tokens.space.xs, paddingVertical: tokens.space.xs },
   filterClearGlyph: { fontSize: tokens.font.size.sm },
+  filterKbd: {
+    fontSize: 11,
+    fontVariant: ["tabular-nums"],
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+    backgroundColor: tokens.bg.surface,
+    lineHeight: 14,
+    marginLeft: tokens.space.xs,
+  },
   center: {
     flex: 1,
     alignItems: "center",
@@ -755,9 +814,9 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.accent.default,
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0px 4px 8px rgba(0, 0, 0, 0.35)",
+    boxShadow: "0px 6px 18px rgba(245, 165, 36, 0.30), 0px 2px 4px rgba(0, 0, 0, 0.35)",
     elevation: 6,
   },
-  fabPressed: { backgroundColor: tokens.accent.hover },
+  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
   fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.bold, lineHeight: 32 },
 });

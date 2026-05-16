@@ -10,6 +10,7 @@ export type { EmptyStateProps } from "./EmptyState";
 export { EmptyState } from "./EmptyState";
 export type { IconButtonProps } from "./IconButton";
 export { IconButton } from "./IconButton";
+export { Screen, screenColumnMaxWidth } from "./Layout";
 export type { ModalProps } from "./Modal";
 export { Modal } from "./Modal";
 export type { NewItemsPillProps } from "./NewItemsPill";

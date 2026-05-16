@@ -11,7 +11,7 @@ import { errorMessage } from "../src/lib/api";
 import { goBack } from "../src/lib/goBack";
 import { setActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
-import { Button, EmptyState, type ListColorKey, Text, tokens } from "../src/ui/index";
+import { Button, EmptyState, type ListColorKey, Screen, Text, tokens } from "../src/ui/index";
 
 const PAGE_SIZE = 50;
 
@@ -19,7 +19,7 @@ type ListLookup = Map<string, { name: string; emoji: string; color: string }>;
 
 type FeedItem =
   | { kind: "heading"; id: string; label: string }
-  | { kind: "event"; id: string; event: ActivityEvent };
+  | { kind: "event"; id: string; event: ActivityEvent; showList: boolean };
 
 export default function Activity() {
   const { token } = useAuth();
@@ -72,16 +72,25 @@ export default function Activity() {
   // Interleave day-bucket headings into the flat event list so a single
   // FlatList renders both. Cheaper than two lists and keeps scroll behavior
   // sane. The bucket label is computed once per event boundary.
+  //
+  // `showList` collapses the list chip on consecutive same-list rows: when
+  // someone bulk-adds 6 items to the same list, the chip becomes noise after
+  // the first. The chip resets on a day-bucket boundary or a list change.
   const items: FeedItem[] = useMemo(() => {
     const out: FeedItem[] = [];
     let lastBucket: string | null = null;
+    let lastListId: string | null = null;
     for (const e of events) {
       const bucket = dayBucketLabel(e.createdAt);
-      if (bucket !== lastBucket) {
+      const newBucket = bucket !== lastBucket;
+      if (newBucket) {
         out.push({ kind: "heading", id: `h-${bucket}-${e.id}`, label: bucket });
         lastBucket = bucket;
+        lastListId = null;
       }
-      out.push({ kind: "event", id: e.id, event: e });
+      const showList = newBucket || e.listId !== lastListId;
+      out.push({ kind: "event", id: e.id, event: e, showList });
+      lastListId = e.listId;
     }
     return out;
   }, [events]);
@@ -90,7 +99,7 @@ export default function Activity() {
   const isError = feedQuery.isError;
 
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -145,6 +154,7 @@ export default function Activity() {
                 <ActivityRow
                   event={item.event}
                   list={listLookup.get(item.event.listId) ?? null}
+                  showList={item.showList}
                   onOpenList={() => router.push(`/list/${item.event.listId}`)}
                 />
               )
@@ -165,7 +175,7 @@ export default function Activity() {
           />
         </PullToRefresh>
       )}
-    </View>
+    </Screen>
   );
 }
 
@@ -180,10 +190,16 @@ function DayHeading({ label }: { label: string }) {
 interface ActivityRowProps {
   event: ActivityEvent;
   list: { name: string; emoji: string; color: string } | null;
+  /**
+   * When false, the trailing list chip is suppressed because the previous
+   * event in this day-bucket was on the same list — keeps a burst of adds
+   * from rendering the same chip 5+ times in a row.
+   */
+  showList: boolean;
   onOpenList: () => void;
 }
 
-function ActivityRow({ event, list, onOpenList }: ActivityRowProps) {
+function ActivityRow({ event, list, showList, onOpenList }: ActivityRowProps) {
   const actor = event.actorDisplayName?.trim() || "Someone";
   const first = actor.split(/\s+/)[0] ?? actor;
   const description = describeEvent(event);
@@ -212,7 +228,7 @@ function ActivityRow({ event, list, onOpenList }: ActivityRowProps) {
           <Text style={styles.actorName}>{first}</Text>
           <Text> {description}</Text>
         </Text>
-        {list ? (
+        {list && showList ? (
           <View style={styles.listChipRow}>
             <Text style={styles.listChipEmoji}>{list.emoji}</Text>
             <Text variant="caption" tone="muted" numberOfLines={1} style={styles.listChipName}>

@@ -50,6 +50,7 @@ export function ItemList({
   newItemIds,
   memberNameById,
   showProvenance,
+  selfId,
   accent,
   onReorderOrdered,
   onPromoteToOrdered,
@@ -59,6 +60,14 @@ export function ItemList({
   refreshing,
   onRefresh,
 }: ItemListProps) {
+  // See ItemList.tsx for rationale: suppresses "added by you" provenance on
+  // every row when the viewer is also the adder; collapses chrome to the
+  // collaborator-attributed rows only.
+  const resolveAddedByName = (item: Item): string | null => {
+    if (!showProvenance) return null;
+    if (selfId && item.addedBy === selfId) return null;
+    return memberNameById.get(item.addedBy) ?? null;
+  };
   // Two sensors, never one with mixed activation:
   //   - MouseSensor with `distance: 4`  → desktop stays snappy (no delay).
   //   - TouchSensor with `delay: 250, tolerance: 8` → mobile web uses
@@ -141,7 +150,7 @@ export function ItemList({
                 key={item.id}
                 item={item}
                 rank={index + 1}
-                addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                addedByName={resolveAddedByName(item)}
                 accent={accent}
                 onMenu={() => onRowMenu(item, "ordered")}
                 onPressBody={() => onRowPressBody(item, "ordered")}
@@ -166,7 +175,7 @@ export function ItemList({
                   key={item.id}
                   item={item}
                   isNew={newItemIds.has(item.id)}
-                  addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                  addedByName={resolveAddedByName(item)}
                   accent={accent}
                   onMenu={() => onRowMenu(item, "unordered")}
                   onPressBody={() => onRowPressBody(item, "unordered")}
@@ -186,7 +195,7 @@ export function ItemList({
                   section="completed"
                   isNew={false}
                   isDragging={false}
-                  addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                  addedByName={resolveAddedByName(item)}
                   accent={accent}
                   onMenu={() => onRowMenu(item, "completed")}
                   onPressBody={() => onRowPressBody(item, "completed")}

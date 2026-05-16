@@ -252,6 +252,15 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   Mouse/Touch sensors (no KeyboardSensor), so strip `role` and `tabIndex`
   before spreading — see the `stripButtonRole` helper in
   `apps/workshop/src/screens/listDetail/ItemList.web.tsx`.
+- **Wrap top-level screens in `Screen` from `src/ui/Layout.tsx`** when adding a
+  new route. On native it's a no-op `flex: 1` view; on web it constrains the
+  content to a ~560px reading column with `alignSelf: center`. Without it, a
+  RN-Web app at desktop width stretches edge-to-edge — list rows render
+  full-bleed at 1920px with content clustered at the left edge and trailing
+  affordances drifting to the right column. Existing screens that use it:
+  home, list-detail, activity, create-list/{type,customize,playlist,share}.
+  The `Sheet` modal is intentionally _not_ inside the column on web (it
+  stays a system-level overlay) — that's fine.
 
 ## Debugging production
 

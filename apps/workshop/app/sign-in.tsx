@@ -88,15 +88,24 @@ export default function SignIn() {
           onPress={handleGoogle}
         />
         {DEV_AUTH_ENABLED ? (
-          <Button
-            testID="sign-in-dev"
-            label="Dev sign-in"
-            variant="ghost"
-            size="md"
-            loading={busy === "dev"}
-            disabled={busy !== null}
-            onPress={handleDev}
-          />
+          <>
+            <View style={styles.divider} accessibilityElementsHidden>
+              <View style={styles.dividerLine} />
+              <Text tone="muted" style={styles.dividerText}>
+                or
+              </Text>
+              <View style={styles.dividerLine} />
+            </View>
+            <Button
+              testID="sign-in-dev"
+              label="Dev sign-in"
+              variant="ghost"
+              size="md"
+              loading={busy === "dev"}
+              disabled={busy !== null}
+              onPress={handleDev}
+            />
+          </>
         ) : null}
         {!apple.available && !google.available && !DEV_AUTH_ENABLED ? (
           <Text tone="muted" style={styles.help} testID="sign-in-providers-unconfigured">
@@ -110,6 +119,7 @@ export default function SignIn() {
         ) : null}
       </View>
 
+      <View style={styles.bottomSpacer} />
       <Text tone="muted" style={styles.footer}>
         A personal, experimental app. Use it gently.
       </Text>
@@ -125,7 +135,12 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xxl,
     gap: tokens.space.xxl,
   },
-  topSpacer: { flex: 1 },
+  // Push the brand block to ~38% from the top — purely-vertical centering on
+  // desktop leaves a void above the wordmark; this brings it closer to where
+  // the eye naturally lands without crowding the top. On mobile the safe-area
+  // padding plus this ratio still leaves the buttons in thumb reach.
+  topSpacer: { flex: 0.7 },
+  bottomSpacer: { flex: 1 },
   brandBlock: {
     gap: tokens.space.md,
     maxWidth: 420,
@@ -169,6 +184,22 @@ const styles = StyleSheet.create({
   },
   error: { textAlign: "center", marginTop: tokens.space.xs },
   help: { textAlign: "center", marginTop: tokens.space.xs },
+  divider: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    paddingVertical: tokens.space.xs,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tokens.border.subtle,
+  },
+  dividerText: {
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
   footer: {
     fontSize: tokens.font.size.xs,
     maxWidth: 320,

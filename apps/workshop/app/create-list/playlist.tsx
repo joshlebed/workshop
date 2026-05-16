@@ -10,7 +10,7 @@ import { useAuth } from "../../src/hooks/useAuth";
 import { albumShelfErrorMessage } from "../../src/lib/albumShelfErrors";
 import { goBack } from "../../src/lib/goBack";
 import { queryKeys } from "../../src/lib/queryKeys";
-import { Button, Card, IconButton, Text, tokens, useToast } from "../../src/ui/index";
+import { Button, Card, IconButton, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
 function pickString(v: string | string[] | undefined): string {
   return Array.isArray(v) ? (v[0] ?? "") : (v ?? "");
@@ -97,7 +97,7 @@ export default function CreateListPlaylist() {
   });
 
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <IconButton
           accessibilityLabel="Back"
@@ -106,9 +106,11 @@ export default function CreateListPlaylist() {
         >
           <Text style={styles.backGlyph}>‹</Text>
         </IconButton>
-        <Text variant="caption" tone="muted" style={styles.step}>
-          Step 3 of 3
-        </Text>
+        <View style={styles.stepDots} accessibilityLabel="Step 3 of 3">
+          <View style={[styles.stepDot, styles.stepDotActive]} />
+          <View style={[styles.stepDot, styles.stepDotActive]} />
+          <View style={[styles.stepDot, styles.stepDotActive]} />
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -198,7 +200,7 @@ export default function CreateListPlaylist() {
           />
         </View>
       </KeyboardStickyView>
-    </View>
+    </Screen>
   );
 }
 
@@ -214,6 +216,14 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.md,
   },
   step: { letterSpacing: 0.3 },
+  stepDots: { flexDirection: "row", gap: 6, alignItems: "center" },
+  stepDot: {
+    width: 18,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: tokens.border.subtle,
+  },
+  stepDotActive: { backgroundColor: tokens.accent.default },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   headerSpacer: { width: 40 },
   body: {

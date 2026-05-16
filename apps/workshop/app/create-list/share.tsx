@@ -7,7 +7,7 @@ import { useAuth } from "../../src/hooks/useAuth";
 import { ApiError } from "../../src/lib/api";
 import { queryKeys } from "../../src/lib/queryKeys";
 import { buildInviteShareUrl, copyToClipboard } from "../../src/lib/share";
-import { Button, IconButton, Text, tokens, useToast } from "../../src/ui/index";
+import { Button, IconButton, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
 /**
  * Final step of the create-list flow: offer to mint a share link before
@@ -77,7 +77,7 @@ export default function CreateListShare() {
   }
 
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerSpacer} />
         <Text variant="caption" tone="muted" style={styles.step}>
@@ -161,7 +161,7 @@ export default function CreateListShare() {
           />
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
