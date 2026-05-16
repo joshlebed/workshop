@@ -77,9 +77,10 @@ land as additional routes inside the same app.
   → Lambda env var.
 - **Terraform** for all infra. State in HCP Terraform (free tier), org `josh-personal-org`,
   workspace `workshop-prod`, execution mode **Local** (plans/applies run on the client, state
-  stored in HCP).
+  stored in HCP). Auto-applied by CI on merge to `main` — see Terraform deploy pipeline below.
 - **GitHub Actions** for CI/CD. OIDC to AWS (no long-lived keys). Secrets: `TF_API_TOKEN`,
-  `AWS_ROLE_ARN`, `EXPO_TOKEN`, `EXPO_PUBLIC_API_URL`.
+  `AWS_ROLE_ARN` (narrow Lambda-deploy + plan role), `AWS_ROLE_ARN_TF_APPLY` (Admin, used only
+  by main-branch apply), `NITESHIFT_EXTERNAL_ID`, `EXPO_TOKEN`, `EXPO_PUBLIC_API_URL`.
 - **EAS Update** for JS-only OTA updates to iPhones within ~60s of merge. TestFlight builds
   auto-trigger on merge when `@expo/fingerprint` detects a native change (new native dep, config
   plugin, bundle id, etc.); `testflight.yml` runs `eas build --auto-submit` and **awaits the
@@ -368,20 +369,21 @@ Most of these need admin credentials. Two surfaces:
   Niteshift → Settings → Repositories → workshop → AWS → "Generate New ID", then update
   `var.niteshift_external_id` in tfvars (or the HCP workspace variable) and apply.
 
-| Goal                                            | Command                                                                                                                                                                           |
-| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Apply infra change                              | `cd infra && AWS_PROFILE=workshop-prod terraform plan` → confirm → `terraform apply`                                                                                              |
-| See what infra would change on main             | trigger `.github/workflows/terraform-status.yml` (auto-runs on push to `main` with `infra/**`)                                                                                    |
-| Tail prod logs (last 10m, errors)               | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 10m --filter error`                                                                                                          |
-| Trace one request id                            | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --filter <reqid>`                                                                                                                    |
-| psql into Neon prod                             | `AWS_PROFILE=workshop-prod ./scripts/db-connect.sh`                                                                                                                               |
-| Spin a Neon branch for a risky migration        | `neonctl branches create --name pre-<feature>` (requires `NEON_API_KEY`)                                                                                                          |
-| Read an SSM secret                              | `AWS_PROFILE=workshop-prod aws ssm get-parameter --name /workshop-prod/X --with-decryption --query 'Parameter.Value' --output text`                                               |
-| Rotate an SSM secret                            | `aws ssm put-parameter --name /workshop-prod/X --value … --overwrite --type SecureString` — note `lifecycle { ignore_changes = [value] }` so Terraform won't drift the next apply |
-| Deploy web to preview (branch)                  | `pnpm deploy:pages:preview` (requires `CLOUDFLARE_API_TOKEN`)                                                                                                                     |
-| Deploy web to production                        | `pnpm deploy:pages` (always-confirm — see below)                                                                                                                                  |
-| Force a fresh TestFlight build                  | `gh workflow run testflight.yml --ref main --field force=true`                                                                                                                    |
-| Bypass EAS submit (when submit queue is jammed) | download IPA from EAS dashboard, then `xcrun altool --upload-app --type ios -f ~/Downloads/workshop.ipa -u joshlebed@gmail.com -p "$APPLE_APP_SPECIFIC_PASSWORD"` (macOS-only)    |
+| Goal                                            | Command                                                                                                                                                                            |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ship an infra change                            | Open a PR; the PR comment shows the plan. Merge — `.github/workflows/terraform.yml` auto-applies. Manual `terraform apply` is bootstrap-only (see Terraform deploy pipeline below) |
+| Preview an infra change locally                 | `cd infra && AWS_PROFILE=workshop-prod terraform plan` (no apply needed — CI does it)                                                                                              |
+| See what infra would change on main             | `gh workflow run terraform.yml --ref main` (workflow_dispatch runs plan + opens an `infra-drift` issue if anything is pending)                                                     |
+| Tail prod logs (last 10m, errors)               | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 10m --filter error`                                                                                                           |
+| Trace one request id                            | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --filter <reqid>`                                                                                                                     |
+| psql into Neon prod                             | `AWS_PROFILE=workshop-prod ./scripts/db-connect.sh`                                                                                                                                |
+| Spin a Neon branch for a risky migration        | `neonctl branches create --name pre-<feature>` (requires `NEON_API_KEY`)                                                                                                           |
+| Read an SSM secret                              | `AWS_PROFILE=workshop-prod aws ssm get-parameter --name /workshop-prod/X --with-decryption --query 'Parameter.Value' --output text`                                                |
+| Rotate an SSM secret                            | `aws ssm put-parameter --name /workshop-prod/X --value … --overwrite --type SecureString` — note `lifecycle { ignore_changes = [value] }` so Terraform won't drift the next apply  |
+| Deploy web to preview (branch)                  | `pnpm deploy:pages:preview` (requires `CLOUDFLARE_API_TOKEN`)                                                                                                                      |
+| Deploy web to production                        | `pnpm deploy:pages` (always-confirm — see below)                                                                                                                                   |
+| Force a fresh TestFlight build                  | `gh workflow run testflight.yml --ref main --field force=true`                                                                                                                     |
+| Bypass EAS submit (when submit queue is jammed) | download IPA from EAS dashboard, then `xcrun altool --upload-app --type ios -f ~/Downloads/workshop.ipa -u joshlebed@gmail.com -p "$APPLE_APP_SPECIFIC_PASSWORD"` (macOS-only)     |
 
 The "Sources of truth" map below lists where each system's UI/state lives if you need to
 read or change something the CLI doesn't cover.
@@ -640,16 +642,93 @@ Fix:
 Prefer force-unlock via the UI over `-lock=false` — the flag bypasses safety; UI unlock clears
 cleanly.
 
+## Terraform deploy pipeline
+
+`infra/` changes ship through `.github/workflows/terraform.yml`, which owns the full
+Terraform lifecycle with three triggers:
+
+- **PR (paths: `infra/**`or`terraform.yml`)** → `terraform plan -detailed-exitcode -refresh=false`,
+  posted as a sticky comment on the PR. Plan is **informational**, not a required check;
+  a bad plan surfaces as a red post-merge apply (caught loudly there).
+- **Push to `main` (same paths)** → `terraform apply -auto-approve`, followed by a `/health`
+  smoke test. No human gate beyond the PR review that already gated the merge.
+- **Weekly cron (Mondays 13:00 UTC)** + `workflow_dispatch` → plan; opens / updates a single
+  `infra-drift` GitHub issue if drift is detected. Safety net for any state drift introduced
+  outside Terraform (console edits, etc.).
+
+### Roles, variables, and the `-refresh=false` workaround
+
+Plan uses the existing narrow `AWS_ROLE_ARN` (Lambda + `ssm:GetParameter` on `db/url` and
+`session_secret`). It runs with `-refresh=false` so it doesn't try to re-read every
+`aws_ssm_parameter` (the role can't see most of them — 403s otherwise). The case this
+misses is true out-of-band drift on an SSM value (someone edits via the console); apply's
+plan (admin role) catches that downstream.
+
+Apply uses `AWS_ROLE_ARN_TF_APPLY` — `AdministratorAccess`, assumable **only** by the
+`ref:refs/heads/main` sub claim. Fork PRs and any non-main push cannot produce that sub
+even with `id-token: write`, so they cannot apply. Broad perms because Terraform manages
+IAM (including this role's own trust policy) — scoping tighter doesn't shrink blast
+radius and creates ongoing least-privilege debugging.
+
+Variables, because the HCP workspace is Local-mode (vars aren't injected automatically):
+
+- `database_url` — fetched from SSM `/workshop-prod/db/url` at job runtime via OIDC.
+- `niteshift_external_id` — GH Actions secret `NITESHIFT_EXTERNAL_ID`.
+- Everything else (Apple/Google/TMDB/Books/Spotify) — uses the variable's empty-string
+  default. The backing SSM params have `lifecycle { ignore_changes = [value] }`, so apply
+  with `""` doesn't clobber the live values that ops set out-of-band.
+
+If you add a new required variable in `infra/variables.tf` (no default), wire it into
+both jobs' env blocks **and** add the matching GH secret (or extend the SSM-fetch path)
+in the same PR — otherwise the next apply fails on "no value for required variable".
+
+### Plan-vs-apply race (re-plan-at-apply tradeoff)
+
+Apply re-plans at apply time rather than consuming a saved plan from the PR-time job. If
+two `infra/` PRs merge back-to-back, the second apply re-plans against the post-first
+state and may do something the second PR's plan comment didn't reflect. HCP's workspace
+lock prevents concurrent applies (the second waits); branch protection gates merges.
+Solo-repo low risk; revisit when a second contributor lands.
+
+### Cross-workflow inconsistency window
+
+A PR touching both `apps/backend/**` and `infra/**` triggers both `deploy-backend.yml`
+and `terraform.yml` on merge — they run in parallel, no ordering. Today the Lambda's
+`ignore_changes = [filename, source_code_hash]` means the two paths are independent, but
+if a future change couples backend code to a new env var Terraform sets, the code deploy
+could land before the apply. Either bump the app version with a runtime-version-mismatch
+guard, or split into infra-first + code-second PRs.
+
+### Bootstrap (only matters when expanding the apply role's perms)
+
+The apply role is itself Terraform-managed. To change its trust policy or attached
+policies you need an existing, more-privileged actor to run the first apply that enacts
+the change. Standard pattern: run `AWS_PROFILE=workshop-prod terraform apply` from a dev
+laptop once (your SSO `AdministratorAccess` can grant the perms), then let CI take over.
+Document the manual step in the PR description.
+
+### Recovery: apply fails on main
+
+`gh run view <run-id> --log` shows the failure. Common cases:
+
+- **Plan failed** (validation, missing TF_VAR) → fix on a new PR; normal flow resumes.
+- **Apply failed partway** → HCP locks the workspace; the next push retries. If a single
+  resource is stuck mid-modify, `terraform apply` from a dev laptop with the same vars
+  resumes (state is in HCP).
+- **State lock held by aborted run** → see "Known gotcha: HCP Terraform state lock" above.
+
 ## Safe changes vs careful changes
 
-- **Safe** (green light, just push): new routes, new Expo screens, new Drizzle columns with
-  defaults, new tests, new scripts.
-- **Careful** (run `terraform plan` locally first, show the user): anything in `infra/` other than
-  `outputs.tf` / `README.md`; anything touching IAM policies; rotating `database_url` (Lambda env
-  var gets updated, in-flight requests may fail briefly).
-- **Ask first**: deleting DB data, changing the Lambda runtime major version, rotating the OIDC
-  provider, adding a new AWS service (every service has a free-tier implication), touching
-  anything in a _different_ AWS account than Workshop's.
+- **Safe** (green light, just push): new routes, new Expo screens, new Drizzle columns
+  with defaults, new tests, new scripts, **`infra/` changes whose PR-time plan matches
+  expectations** (CI applies on merge automatically).
+- **Careful** (read the PR-time plan output before merging): destructive `infra/` changes
+  (resource recreation, IAM policy edits, deleting SSM params with non-default data);
+  rotating `database_url` (Lambda env var updated, in-flight requests may briefly fail).
+- **Ask first**: deleting DB data, changing the Lambda runtime major version, rotating
+  the OIDC provider, expanding the `tf-apply` role's perms or trust policy, adding a new
+  AWS service (every service has a free-tier implication), touching anything in a
+  _different_ AWS account than Workshop's.
 
 ### Admin actions: auto-allowed vs always-confirm
 
@@ -661,25 +740,22 @@ assumed), the day-to-day grey areas:
 - `terraform plan`, `terraform output`, `terraform state list`, any log read
 - `aws ssm get-parameter` (incl. `--with-decryption`)
 - `aws lambda get-function-configuration` / `get-function`
-- `terraform apply` when the plan diff is **≤5 resources** and only touches
-  `apigateway.tf` / lambda env vars / SSM parameters — and the plan output was shown
-  to the user in chat first
 - `pnpm deploy:pages:preview` (preview branch, not prod)
 - `neonctl branches create` (any non-`main`/`prod*` name)
-- Lambda env var rotation via `aws lambda update-function-configuration` (the change
-  is reverted on next `terraform apply` if SSM source ignores changes)
+- Lambda env var rotation via `aws lambda update-function-configuration` (reverted on the
+  next CI apply if SSM source ignores changes — useful for ad-hoc experiments)
 - Rerunning a failed CI job, `gh workflow run` for non-deploy workflows
 
 **Always confirm**:
 
-- `terraform apply` >5 resources OR touching IAM, OIDC, the budget, the SES identity,
-  the API Gateway custom domain, or anything in `lambda.tf` that changes runtime/handler
+- Manual `terraform apply` (CI applies on merge; only run locally as a bootstrap or to
+  recover a stuck apply — see Terraform deploy pipeline)
 - Any Cloudflare DNS change
 - `pnpm deploy:pages` to production
 - Any change to GH branch protection or required checks
 - `neonctl branches delete` for `main` or anything matching `prod*`
 - Apple Developer Portal capability toggles (EAS sync semantics — see iOS pipeline)
-- OIDC provider rotation, GH Actions IAM role policy edits
+- OIDC provider rotation, GH Actions IAM role policy edits (especially `tf-apply` trust)
 - Adding a new AWS service (free-tier blast radius)
 - Anything in a _different_ AWS account than Workshop's
 

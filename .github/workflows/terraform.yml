@@ -1,0 +1,270 @@
+name: Terraform
+
+# Three-trigger workflow that owns the Terraform lifecycle end-to-end.
+#
+#   pull_request (paths: infra/** or this file)
+#     → `terraform plan -detailed-exitcode -refresh=false`
+#     → sticky-comment the plan output on the PR (informational; not required)
+#
+#   push to main (same paths)
+#     → `terraform apply -auto-approve` + `/health` smoke test
+#     → no human gate; main is already gated by branch protection + PR review
+#
+#   schedule (Mondays 13:00 UTC) + workflow_dispatch
+#     → plan; open / update an `infra-drift` GH issue on exit 2
+#
+# Replaces the earlier .github/workflows/terraform-status.yml (which only
+# detected drift). The trust model, var-sourcing pattern, and recovery
+# are documented in CLAUDE.md under "Terraform deploy pipeline".
+#
+# Vars sourcing (workspace execution-mode is Local — HCP doesn't inject vars):
+#   - database_url            ← SSM /workshop-prod/db/url via OIDC (mirrors
+#                               deploy-backend.yml + the prior terraform-status)
+#   - niteshift_external_id   ← GH repo secret NITESHIFT_EXTERNAL_ID
+#   - everything else         ← variable defaults (empty string). The SSM
+#                               params backing them have lifecycle
+#                               { ignore_changes = [value] } so apply doesn't
+#                               clobber the live values.
+#
+# Plan uses the narrow existing AWS_ROLE_ARN with `-refresh=false` (it can
+# read db/url + session_secret but not every SSM param the refresh would
+# touch). Apply uses the broader AWS_ROLE_ARN_TF_APPLY (AdministratorAccess,
+# main-only sub claim) so it can write the full graph.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yml"
+  schedule:
+    - cron: "0 13 * * 1" # Mondays 13:00 UTC, an hour after the gitleaks sweep
+  workflow_dispatch:
+
+concurrency:
+  group: terraform
+  cancel-in-progress: false # never cancel an in-flight apply
+
+permissions:
+  id-token: write # OIDC to AWS
+  contents: read
+  pull-requests: write # plan comments
+  issues: write # drift issues
+
+env:
+  TF_VERSION: "1.14.7"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  plan:
+    name: terraform plan
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    outputs:
+      exit_code: ${{ steps.plan.outputs.exit_code }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Fetch database_url from SSM
+        id: ssm
+        run: |
+          DBURL=$(aws ssm get-parameter --name /workshop-prod/db/url \
+            --with-decryption --query 'Parameter.Value' --output text)
+          echo "::add-mask::$DBURL"
+          echo "dburl=$DBURL" >> "$GITHUB_OUTPUT"
+
+      - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init -input=false
+
+      - name: terraform plan
+        id: plan
+        working-directory: infra
+        env:
+          TF_VAR_database_url: ${{ steps.ssm.outputs.dburl }}
+          TF_VAR_niteshift_external_id: ${{ secrets.NITESHIFT_EXTERNAL_ID }}
+        # -detailed-exitcode: 0=no changes, 1=error, 2=changes pending.
+        # -refresh=false: skip the resource-refresh phase. The narrow plan
+        # role doesn't have ssm:GetParameter on every /workshop-prod/* param
+        # (only db/url + session_secret), so refresh would 403 on the others.
+        # Skipping still catches "PR merged but `terraform apply` didn't run"
+        # because plan still compares state-vs-code. The case it misses is
+        # true out-of-band drift (someone fingers an SSM value via the
+        # console); apply's plan (admin role) catches that downstream.
+        run: |
+          set +e
+          terraform plan -refresh=false -no-color -detailed-exitcode > plan_raw.txt 2>&1
+          ec=$?
+          set -e
+          echo "exit_code=$ec" >> "$GITHUB_OUTPUT"
+          # Strip the saved-plan footer (we don't share it across steps).
+          sed -e '/^Saved the plan to:/,$d' -e '/^To perform exactly these actions/,$d' plan_raw.txt > plan.txt
+          echo "---- terraform plan (exit ${ec}) ----"
+          cat plan.txt
+          if [ "$ec" = "1" ]; then
+            exit 1
+          fi
+
+      - name: Upload plan artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: terraform-plan
+          path: infra/plan.txt
+          retention-days: 14
+
+      - name: Comment plan on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          EXIT_CODE: ${{ steps.plan.outputs.exit_code }}
+        with:
+          script: |
+            const fs = require('fs');
+            const ec = process.env.EXIT_CODE;
+            const status = ec === '0'
+              ? 'No changes. Infrastructure is up to date.'
+              : (ec === '2' ? 'Changes detected. Review the diff; CI will apply on merge.' : `terraform plan failed (exit ${ec}).`);
+            const plan = fs.readFileSync('infra/plan.txt', 'utf8');
+            const max = 60000;
+            const body = plan.length > max
+              ? plan.slice(0, max) + `\n\n... (truncated; full output in the workflow's terraform-plan artifact)`
+              : plan;
+            const marker = '<!-- terraform-plan-comment -->';
+            const out = `${marker}\n### Terraform plan\n\n${status}\n\n<details><summary>plan output (exit ${ec})</summary>\n\n\`\`\`hcl\n${body}\n\`\`\`\n\n</details>`;
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: out,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: out,
+              });
+            }
+
+      - name: Open or update drift issue
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && steps.plan.outputs.exit_code == '2'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync('infra/plan.txt', 'utf8');
+            const max = 60000;
+            const body = plan.length > max
+              ? plan.slice(0, max) + `\n\n... (truncated; full output in the workflow's terraform-plan artifact)`
+              : plan;
+            const today = new Date().toISOString().slice(0, 10);
+            const title = `Terraform drift detected (${today})`;
+            const out = `Scheduled drift check found differences between \`main\` and deployed AWS state.\n\nThe next push that touches \`infra/\` will auto-apply this delta. To resolve sooner, either push an infra-only change to main, or run \`terraform apply\` from a dev laptop.\n\nWorkflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\n<details><summary>plan output</summary>\n\n\`\`\`hcl\n${body}\n\`\`\`\n\n</details>`;
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'infra-drift',
+              state: 'open',
+            });
+            if (existing.length > 0) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing[0].number,
+                title,
+                body: out,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body: out,
+                labels: ['infra-drift'],
+              });
+            }
+
+  apply:
+    name: terraform apply
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_TF_APPLY }}
+          aws-region: us-east-1
+
+      - name: Fetch database_url from SSM
+        id: ssm
+        run: |
+          DBURL=$(aws ssm get-parameter --name /workshop-prod/db/url \
+            --with-decryption --query 'Parameter.Value' --output text)
+          echo "::add-mask::$DBURL"
+          echo "dburl=$DBURL" >> "$GITHUB_OUTPUT"
+
+      - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init -input=false
+
+      - name: terraform apply
+        id: apply
+        working-directory: infra
+        env:
+          TF_VAR_database_url: ${{ steps.ssm.outputs.dburl }}
+          TF_VAR_niteshift_external_id: ${{ secrets.NITESHIFT_EXTERNAL_ID }}
+        # Re-plan-at-apply (no saved-plan-from-PR handoff). If state moved
+        # between PR-time plan and merge, the applied plan will differ from
+        # the reviewed plan. With HCP's workspace lock and branch protection
+        # gating merges, this race is low risk for a solo repo. Documented
+        # tradeoff; revisit when a second contributor lands.
+        run: |
+          terraform apply -auto-approve -no-color
+          API_URL=$(terraform output -raw api_url)
+          echo "api_url=$API_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test API /health
+        env:
+          API_URL: ${{ steps.apply.outputs.api_url }}
+        run: |
+          set -euo pipefail
+          for i in 1 2 3 4 5; do
+            if curl -fsS "$API_URL/health" >/dev/null; then
+              echo "health OK"
+              exit 0
+            fi
+            echo "retry $i..."
+            sleep 3
+          done
+          echo "health check failed"
+          exit 1

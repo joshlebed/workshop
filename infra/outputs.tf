@@ -28,6 +28,11 @@ output "niteshift_role_arn" {
   value       = aws_iam_role.niteshift.arn
 }
 
+output "github_actions_tf_apply_role_arn" {
+  description = "Role ARN used by terraform.yml's apply job (push-to-main). Admin policy; scoped to main-branch sub claim."
+  value       = aws_iam_role.github_actions_tf_apply.arn
+}
+
 output "aws_region" {
   value = data.aws_region.current.name
 }

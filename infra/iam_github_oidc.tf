@@ -82,3 +82,49 @@ resource "aws_iam_role_policy" "github_actions" {
   role   = aws_iam_role.github_actions.id
   policy = data.aws_iam_policy_document.github_permissions.json
 }
+
+# Terraform apply role: assumable ONLY from main-branch push (post-merge auto-
+# apply via .github/workflows/terraform.yml). The `sub` claim for `push` events
+# is `repo:<r>:ref:refs/heads/main`; fork PRs and pull_request events cannot
+# produce this sub, so they cannot assume this role even with `id-token: write`
+# permissions on their workflow.
+#
+# AdministratorAccess is broad on purpose: Terraform manages IAM (including
+# this role and its trust policy), the OIDC provider, API Gateway, Lambda,
+# SSM, budgets, logs — scoping tighter requires constant least-privilege
+# debugging without meaningfully shrinking blast radius (the role can already
+# rewrite its own trust policy). The compensating control is `sub`-restriction
+# to main branch: only a merged commit can assume this role.
+data "aws_iam_policy_document" "github_terraform_apply_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_actions_tf_apply" {
+  name               = "${local.prefix}-github-actions-tf-apply"
+  assume_role_policy = data.aws_iam_policy_document.github_terraform_apply_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_tf_apply_admin" {
+  role       = aws_iam_role.github_actions_tf_apply.name
+  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+}

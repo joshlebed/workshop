@@ -58,9 +58,10 @@ jobs:
           terraform_version: 1.14.7
           cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
-      # `terraform apply` is intentionally run from a dev laptop, not CI. The
-      # CI role is scoped to code deploys only (see infra/iam_github_oidc.tf).
-      # We init here only to read HCP state for the outputs below.
+      # `terraform apply` runs in .github/workflows/terraform.yml under a
+      # separate, privileged OIDC role. This workflow's role is narrow
+      # (Lambda code + SSM read) — we init here only to read HCP state for
+      # the outputs below.
       - name: terraform init
         working-directory: infra
         run: terraform init
