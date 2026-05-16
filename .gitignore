@@ -59,6 +59,9 @@ logs/
 apps/backend/dist/
 apps/backend/*.zip
 
+# Wrangler / Cloudflare Pages local cache (deploys + dev sessions write here)
+.wrangler/
+
 # Expo prebuild outputs (managed workflow regenerates these on each build)
 apps/workshop/ios/
 apps/workshop/android/

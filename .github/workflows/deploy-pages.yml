@@ -1,0 +1,95 @@
+name: Deploy Pages
+
+# Builds the Workshop web app and deploys it (plus the Pages Functions
+# at `functions/`) to Cloudflare Pages via wrangler. Replaces CF Pages's
+# default git-source auto-build so deploy failures surface as a red GH
+# Actions run instead of a silent dashboard-only error.
+#
+# Before this workflow existed, CF Pages's auto-build silently failed on
+# the `@workshop/shared/og` workspace import twice in a row (PRs #168 +
+# #169) — production stayed on the previous SVG version for hours with
+# zero visibility outside the CF dashboard. The fix runs wrangler from
+# CI with the secrets below, so we get the same CI surface as every
+# other deploy in this repo.
+#
+# Setup (one-time):
+#   1. Generate a CF API token at https://dash.cloudflare.com/profile/api-tokens
+#      with the "Cloudflare Pages — Edit" template (Account: workshop,
+#      Zone: All zones). Copy the token.
+#   2. gh secret set CLOUDFLARE_API_TOKEN
+#      gh secret set CLOUDFLARE_ACCOUNT_ID  # account id: dd75c7bdd35289afb8b0a74f3610eba8
+#   3. Disable the CF Pages git integration so it doesn't double-deploy:
+#      dash.cloudflare.com → Pages → workshop → Settings → Builds → Disconnect.
+#      (Skipping this is harmless but causes two deploys per push.)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/workshop/**"
+      - "packages/shared/**"
+      - "functions/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build + deploy to Cloudflare Pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+        with:
+          version: 10.19.0
+
+      # Wrangler 4 requires Node 22. The rest of the project pins Node 20 in
+      # .nvmrc, but this workflow only runs deploy steps — install + expo
+      # export both tolerate Node 22, and the project's lockfile is portable.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build web bundle
+        run: pnpm --filter workshop-app exec expo export --platform web
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.14.1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/workshop/dist --project-name=workshop --branch=main --commit-dirty=true
+
+      - name: Verify production OG endpoint serves PNG
+        run: |
+          set -euo pipefail
+          URL="https://workshop-a2v.pages.dev/og/invite/_smoke_check_token.png"
+          # Retry briefly — Pages propagation can take a few seconds after
+          # `Deployment complete` returns.
+          for i in 1 2 3 4 5 6; do
+            CT="$(curl -sS -o /tmp/og.bin -w '%{content_type}' "$URL" || true)"
+            FILE_TYPE="$(file -b /tmp/og.bin 2>/dev/null || true)"
+            if [[ "$CT" == image/png* ]] && [[ "$FILE_TYPE" == PNG* ]]; then
+              echo "✓ OG endpoint returns PNG ($CT, $FILE_TYPE)"
+              exit 0
+            fi
+            echo "retry $i: ct=$CT type=$FILE_TYPE"
+            sleep 5
+          done
+          echo "✗ OG endpoint did not return a PNG after retries"
+          echo "  content-type: $CT"
+          echo "  body type:    $FILE_TYPE"
+          exit 1

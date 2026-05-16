@@ -716,13 +716,22 @@ Two non-obvious things to keep in sync:
   description still rendering correctly. The 2026-05-16 first pass
   shipped SVG and had to be replaced. The rasterizer is `workers-og`
   (Satori-based) running inside the Pages Function.
-- **Pure metadata helpers live in `@workshop/shared/og`**, not inside
-  the function files. They're imported via the `"./og"` subpath in
-  `packages/shared/package.json`'s `exports` map (same pattern as
-  `./constants` — see the Conventions section). Unit-tested with
-  `packages/shared/src/og.test.ts`. The function files are thin shells
-  that call `buildMetaTags(preview, …)` / `buildOgImageHtml(preview)`
-  and pipe the result into `HTMLRewriter` / `ImageResponse`.
+- **The Pages Functions must NOT import from workspace packages.**
+  Cloudflare Pages's bundler (esbuild via Wrangler) runs at the repo
+  root, but `functions/` isn't a pnpm workspace member, so
+  `node_modules/@workshop/` doesn't exist there for esbuild to follow.
+  PR #168 and #169 both shipped a `@workshop/shared/og` import in
+  `functions/_lib/og.ts` and both deploy-failed with
+  `Could not resolve "@workshop/shared/og"` — production stayed on
+  the previous version for hours with zero visibility outside the CF
+  dashboard. The fix is to keep the function code self-contained: the
+  pure metadata helpers (`buildMetaTags`, `buildOgImageHtml`,
+  `escapeXml`, `truncate`, color/type tables, `OG_IMAGE_WIDTH/HEIGHT`)
+  are inlined into `functions/_lib/og.ts`. A mirror copy lives in
+  `packages/shared/src/og.ts` so vitest can unit-test the same surface
+  (`packages/shared/src/og.test.ts`); if you edit one, update both in
+  the same PR. Anything imported from `@workshop/shared/*` inside
+  `functions/**` will silently fail the CF Pages build on next merge.
 
 ### Verifying a thumbnail after deploy
 
@@ -763,6 +772,38 @@ still shows nothing.
 Apple LinkPresentation has no debug API — black-box behavior. The
 closest signal is `check-og.mjs` passing with an Apple-shaped UA and a
 visual eyeball via the agent-browser route above.
+
+### Fast deploy loop for Pages Functions (skip CI)
+
+The git-source CF Pages auto-build is slow (~3–5min) AND silent on
+failure — see the workspace-import gotcha above. For iteration on
+anything in `functions/**` or the OG renderer, deploy directly via
+wrangler instead of waiting for merge → CI → CF auto-build:
+
+```bash
+pnpm deploy:pages:preview   # builds web + deploys to a preview branch
+                            # URL (`<branch>.workshop-a2v.pages.dev`)
+                            # named after the current git branch.
+                            # ~30s end-to-end; doesn't touch prod.
+
+pnpm deploy:pages           # builds web + deploys to production
+                            # (workshop-a2v.pages.dev). Bypasses GH
+                            # Actions entirely; loud failure if the
+                            # functions bundle won't compile.
+```
+
+Both wrap `scripts/deploy-pages.sh` which handles the Node 22 switch
+(wrangler@latest needs it) via nvm automatically. Auth via either
+`wrangler login` (one-time, OAuth) or `CLOUDFLARE_API_TOKEN` in env.
+
+The CI equivalent is `.github/workflows/deploy-pages.yml`, which fires
+on push to `main` for `apps/workshop/**`, `packages/shared/**`, and
+`functions/**`, runs `wrangler pages deploy`, then asserts the
+production `/og/invite/...png` endpoint actually serves PNG bytes
+before exiting green. Required GH secrets: `CLOUDFLARE_API_TOKEN`
+and `CLOUDFLARE_ACCOUNT_ID` — see the workflow header for setup.
+Once those are set, **disable the CF Pages git integration in the
+dashboard** (Settings → Builds → Disconnect) so we don't double-deploy.
 
 ## Running commit-ready checks
 
