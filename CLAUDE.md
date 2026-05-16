@@ -696,6 +696,74 @@ Modules known to work as-is on web: `expo-router`, `expo-linking`, `expo-constan
 - `apps/workshop/README.md` — Expo app structure
 - `infra/README.md` — Terraform layout
 
+## Share-link Open Graph previews
+
+Share URLs (`https://workshop-a2v.pages.dev/invite/<token>`) get
+per-list iMessage/Facebook/Twitter previews via two Cloudflare Pages
+Functions at the repo root (`functions/invite/[token].ts` and
+`functions/og/invite/[token].ts`). The metadata flow is:
+
+```
+GET /invite/:token  →  fetch /v1/invites/:token/preview  →  HTMLRewriter injects OG tags into SPA index.html
+GET /og/invite/:token.png  →  workers-og renders 1200×630 PNG using Satori + resvg-wasm
+```
+
+Two non-obvious things to keep in sync:
+
+- **OG image must be a real raster (PNG/JPEG).** Apple Link Presentation
+  and Facebook silently drop SVG `og:image` even though both _claim_ to
+  accept it — symptom is a blank white image card with the title +
+  description still rendering correctly. The 2026-05-16 first pass
+  shipped SVG and had to be replaced. The rasterizer is `workers-og`
+  (Satori-based) running inside the Pages Function.
+- **Pure metadata helpers live in `@workshop/shared/og`**, not inside
+  the function files. They're imported via the `"./og"` subpath in
+  `packages/shared/package.json`'s `exports` map (same pattern as
+  `./constants` — see the Conventions section). Unit-tested with
+  `packages/shared/src/og.test.ts`. The function files are thin shells
+  that call `buildMetaTags(preview, …)` / `buildOgImageHtml(preview)`
+  and pipe the result into `HTMLRewriter` / `ImageResponse`.
+
+### Verifying a thumbnail after deploy
+
+The platforms cache aggressively (Facebook caches per-URL for ~30 days,
+iMessage per-conversation forever — there's no "purge my preview"
+button for users). So verify against a freshly-generated invite each
+time, not a token you've already shared:
+
+```bash
+# 1. Generate a new invite via the API (auth required for create; the
+#    /preview endpoint is intentionally public for the scrapers)
+TOKEN=$(curl -sS -H "Authorization: Bearer $JWT" -X POST \
+  https://<api>/v1/lists/<list-id>/invites -d '{}' \
+  -H "Content-Type: application/json" | jq -r .invite.token)
+
+# 2. Run the post-deploy validator against the share URL it builds
+node scripts/check-og.mjs "https://workshop-a2v.pages.dev/invite/$TOKEN"
+```
+
+`scripts/check-og.mjs` is the agent / CI verification step. It (a)
+curls the share URL with a Facebook/Apple-LP-shaped UA and asserts the
+full OG tag set is present, (b) fetches `og:image` and verifies the
+response is a valid PNG with `Content-Type: image/png` and dimensions
+matching `og:image:width/height`, and (c) flags a fallback-to-bare-SPA
+title as a failure (means the function couldn't reach the preview
+API). It exits non-zero on any mismatch with a human-readable diff.
+For a richer visual check, open the `og:image` URL in `agent-browser`
+to confirm the thumbnail composition looks right.
+
+For the gold-standard "does Facebook actually accept this image" check,
+the FB Sharing Debugger has a public API:
+`POST graph.facebook.com/v19.0/?id=<URL>&scrape=true&access_token=<APP_ID>|<APP_SECRET>`
+returns the resolved `image[]` array; empty = your image was rejected.
+We don't wire that into CI today (no FB app secret in the Pages env),
+but it's the right escalation when `check-og.mjs` passes but Facebook
+still shows nothing.
+
+Apple LinkPresentation has no debug API — black-box behavior. The
+closest signal is `check-og.mjs` passing with an Apple-shaped UA and a
+visual eyeball via the agent-browser route above.
+
 ## Running commit-ready checks
 
 ```bash

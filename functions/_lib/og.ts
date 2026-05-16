@@ -1,28 +1,20 @@
 /**
- * Shared helpers for the Cloudflare Pages Functions that render link-preview
- * HTML and OG images for share URLs. These functions intercept requests like
- * `/invite/:token` so iMessage/Slack/Twitter scrapers see proper Open Graph
- * tags + a per-list thumbnail without the recipient needing to be signed in
- * to the SPA.
- *
- * Real browsers receive the SPA `index.html` with the meta tags injected
- * into `<head>`; expo-router still handles client-side routing and forwards
- * to `/onboarding/accept-invite` once it hydrates.
+ * Cloudflare-Pages-specific glue around `@workshop/shared/og`. The pure
+ * metadata helpers live in the shared package so they can be unit-tested
+ * with vitest; this file only contains the runtime bits that depend on
+ * the Pages Functions environment (env bindings, network fetches).
  */
 
-export interface InvitePreview {
-  name: string;
-  emoji: string;
-  color: ListColor;
-  description: string | null;
-  type: ListType;
-  itemCount: number;
-  memberCount: number;
-  ownerName: string | null;
-}
+import type { InvitePreview } from "@workshop/shared/og";
 
-export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand" | "slate";
-export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip" | "album_shelf" | "game";
+export {
+  buildMetaTags,
+  buildOgImageHtml,
+  escapeXml,
+  OG_IMAGE_HEIGHT,
+  OG_IMAGE_WIDTH,
+} from "@workshop/shared/og";
+export type { InvitePreview };
 
 export interface PagesEnv {
   /** Base URL of the workshop API (e.g. `https://abc.execute-api.us-east-1.amazonaws.com`). */
@@ -33,9 +25,9 @@ export interface PagesEnv {
 
 /**
  * Fetch the safe preview metadata for an invite token. Returns `null` on
- * any non-2xx or network failure so the caller can gracefully fall back to
- * the bare SPA — a failed preview should never block the share URL from
- * loading in the recipient's browser.
+ * any non-2xx or network failure so the caller can gracefully fall back
+ * to a static thumbnail — a failed preview should never break the share
+ * link itself for the recipient.
  */
 export async function fetchInvitePreview(
   token: string,
@@ -54,52 +46,4 @@ export async function fetchInvitePreview(
   } catch {
     return null;
   }
-}
-
-/**
- * Hex gradient stops keyed by list color. Mirrors the `tokens.list[key]`
- * map in `apps/workshop/src/ui/theme.ts` so the OG thumbnail uses the same
- * palette the recipient will see inside the app. Two stops per color so we
- * can render a top-left → bottom-right gradient that doesn't read flat.
- */
-export const COLOR_GRADIENTS: Record<ListColor, [string, string]> = {
-  sunset: ["#FF8A65", "#E84C61"],
-  ocean: ["#5EC5E6", "#2A6FB0"],
-  forest: ["#7CB87C", "#2F7A4B"],
-  grape: ["#B58AE0", "#6A3FA8"],
-  rose: ["#F4A6C0", "#C94878"],
-  sand: ["#E6CFA1", "#B08858"],
-  slate: ["#9AA8B5", "#475568"],
-};
-
-/** Human label per list type for the secondary line of the thumbnail. */
-export const TYPE_LABELS: Record<ListType, string> = {
-  movie: "Movie list",
-  tv: "TV list",
-  book: "Reading list",
-  date_idea: "Date ideas",
-  trip: "Travel plans",
-  album_shelf: "Album shelf",
-  game: "Game leaderboard",
-};
-
-/** Escape minimal HTML/SVG-unsafe characters in user-provided strings. */
-export function escapeXml(input: string): string {
-  return input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/**
- * Truncate to N visible characters with an ellipsis. Operates on
- * code-point boundaries so a multi-byte emoji or accented character
- * doesn't get sliced in half.
- */
-export function truncate(input: string, max: number): string {
-  const chars = Array.from(input);
-  if (chars.length <= max) return input;
-  return `${chars.slice(0, max - 1).join("")}…`;
 }
