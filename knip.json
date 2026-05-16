@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": [".agents/**"],
+  "ignore": [".agents/**", ".claude/skills/**"],
   "workspaces": {
     ".": {
       "entry": ["scripts/*.{sh,ts,mjs,js}"],
