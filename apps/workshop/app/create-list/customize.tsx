@@ -9,7 +9,15 @@ import { useAuth } from "../../src/hooks/useAuth";
 import { pickCoverPhoto } from "../../src/lib/coverPhoto";
 import { goBack } from "../../src/lib/goBack";
 import { queryKeys } from "../../src/lib/queryKeys";
-import { Button, IconButton, type ListColorKey, Text, tokens, useToast } from "../../src/ui/index";
+import {
+  Button,
+  IconButton,
+  type ListColorKey,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "../../src/ui/index";
 
 const VALID_TYPES: readonly ListType[] = [
   "movie",
@@ -140,15 +148,18 @@ export default function CreateListCustomize() {
     mutation.mutate();
   };
 
+  const totalSteps = isAlbumShelf ? 3 : 2;
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <IconButton accessibilityLabel="Back" onPress={() => goBack("/create-list/type")}>
           <Text style={styles.backGlyph}>‹</Text>
         </IconButton>
-        <Text variant="caption" tone="muted" style={styles.step}>
-          {isAlbumShelf ? "Step 2 of 3" : "Step 2 of 2"}
-        </Text>
+        <View style={styles.stepDots} accessibilityLabel={`Step 2 of ${totalSteps}`}>
+          {Array.from({ length: totalSteps }, (_, i) => `step-${i}`).map((id, i) => (
+            <View key={id} style={[styles.stepDot, i < 2 ? styles.stepDotActive : null]} />
+          ))}
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -320,7 +331,7 @@ export default function CreateListCustomize() {
           />
         </View>
       </KeyboardStickyView>
-    </View>
+    </Screen>
   );
 }
 
@@ -336,6 +347,14 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.md,
   },
   step: { letterSpacing: 0.3, fontVariant: ["tabular-nums"] },
+  stepDots: { flexDirection: "row", gap: 6, alignItems: "center" },
+  stepDot: {
+    width: 18,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: tokens.border.subtle,
+  },
+  stepDotActive: { backgroundColor: tokens.accent.default },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   headerSpacer: { width: 40 },
   body: {

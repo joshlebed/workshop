@@ -2,7 +2,7 @@ import type { ListType } from "@workshop/shared";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { goBack } from "../../src/lib/goBack";
-import { IconButton, type ListColorKey, Text, tokens } from "../../src/ui/index";
+import { IconButton, type ListColorKey, Screen, Text, tokens } from "../../src/ui/index";
 
 interface TypeOption {
   type: ListType;
@@ -68,7 +68,7 @@ export default function CreateListType() {
   const router = useRouter();
 
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <IconButton
           accessibilityLabel="Cancel"
@@ -77,9 +77,10 @@ export default function CreateListType() {
         >
           <Text style={styles.backGlyph}>✕</Text>
         </IconButton>
-        <Text variant="caption" tone="muted" style={styles.step}>
-          Step 1 of 2
-        </Text>
+        <View style={styles.stepDots} accessibilityLabel="Step 1 of 2">
+          <View style={[styles.stepDot, styles.stepDotActive]} />
+          <View style={styles.stepDot} />
+        </View>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -107,9 +108,27 @@ export default function CreateListType() {
                     params: { type: opt.type },
                   })
                 }
-                style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+                style={({
+                  pressed,
+                  hovered,
+                  focused,
+                }: {
+                  pressed?: boolean;
+                  hovered?: boolean;
+                  focused?: boolean;
+                }) => [
+                  styles.option,
+                  hovered && styles.optionHovered,
+                  focused && styles.optionFocused,
+                  pressed && styles.optionPressed,
+                ]}
               >
-                <View style={[styles.optionBadge, { backgroundColor: `${accent}26` }]}>
+                <View
+                  style={[
+                    styles.optionBadge,
+                    { backgroundColor: `${accent}26`, borderColor: `${accent}3D` },
+                  ]}
+                >
                   <Text style={styles.optionEmoji}>{opt.emoji}</Text>
                 </View>
                 <View style={styles.optionText}>
@@ -125,7 +144,7 @@ export default function CreateListType() {
           })}
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
 
@@ -140,6 +159,14 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.md,
   },
   step: { letterSpacing: 0.3, fontVariant: ["tabular-nums"] },
+  stepDots: { flexDirection: "row", gap: 6, alignItems: "center" },
+  stepDot: {
+    width: 18,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: tokens.border.subtle,
+  },
+  stepDotActive: { backgroundColor: tokens.accent.default },
   backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
   headerSpacer: { width: 40 },
   body: {
@@ -160,11 +187,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.sm,
     borderRadius: tokens.radius.lg,
   },
-  optionPressed: { backgroundColor: tokens.bg.surface },
+  optionHovered: { backgroundColor: tokens.bg.surface },
+  optionFocused: {
+    backgroundColor: tokens.bg.surface,
+    outlineWidth: 0,
+    boxShadow: `0 0 0 1.5px ${tokens.accent.default}`,
+  },
+  optionPressed: { backgroundColor: tokens.bg.elevated },
   optionBadge: {
     width: 48,
     height: 48,
     borderRadius: 24,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },

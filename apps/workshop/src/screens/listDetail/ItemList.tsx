@@ -42,6 +42,7 @@ export function ItemList({
   newItemIds,
   memberNameById,
   showProvenance,
+  selfId,
   accent,
   onReorderOrdered,
   onRowMenu,
@@ -50,6 +51,20 @@ export function ItemList({
   refreshing,
   onRefresh,
 }: ItemListProps) {
+  // Resolve provenance attribution: shows the adder's name when collaboration
+  // is enabled AND the adder isn't the viewer. The "added by you · 1m" line on
+  // every row of a single-active-collaborator list reads as noise; suppressing
+  // for self collapses the chrome down to just the rows your collaborators
+  // contributed.
+  const resolveAddedByName = useCallback(
+    (item: Item): string | null => {
+      if (!showProvenance) return null;
+      if (selfId && item.addedBy === selfId) return null;
+      return memberNameById.get(item.addedBy) ?? null;
+    },
+    [showProvenance, selfId, memberNameById],
+  );
+
   const handleOrderedReorder = useCallback(
     ({ from, to }: ReorderableListReorderEvent) => {
       onReorderOrdered({ fromIndex: from, toIndex: to });
@@ -62,14 +77,14 @@ export function ItemList({
       <DraggableOrderedRow
         item={item}
         rank={index + 1}
-        addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+        addedByName={resolveAddedByName(item)}
         accent={accent}
         onMenu={() => onRowMenu(item, "ordered")}
         onPressBody={() => onRowPressBody(item, "ordered")}
         onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
       />
     ),
-    [memberNameById, showProvenance, accent, onRowMenu, onRowPressBody, resolveRowPressCover],
+    [resolveAddedByName, accent, onRowMenu, onRowPressBody, resolveRowPressCover],
   );
 
   return (
@@ -103,7 +118,7 @@ export function ItemList({
                 section="unordered"
                 isNew={newItemIds.has(item.id)}
                 isDragging={false}
-                addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                addedByName={resolveAddedByName(item)}
                 accent={accent}
                 onMenu={() => onRowMenu(item, "unordered")}
                 onPressBody={() => onRowPressBody(item, "unordered")}
@@ -123,7 +138,7 @@ export function ItemList({
                 section="completed"
                 isNew={false}
                 isDragging={false}
-                addedByName={showProvenance ? (memberNameById.get(item.addedBy) ?? null) : null}
+                addedByName={resolveAddedByName(item)}
                 accent={accent}
                 onMenu={() => onRowMenu(item, "completed")}
                 onPressBody={() => onRowPressBody(item, "completed")}
