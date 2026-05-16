@@ -395,6 +395,8 @@ function verbGlyphFor(type: ActivityEvent["type"]): string {
     case "invite_created":
       return "+";
     case "item_deleted":
+    case "item_archived":
+    case "list_archived":
     case "invite_revoked":
     case "member_removed":
       return "−";
@@ -443,7 +445,12 @@ function describeEvent(event: ActivityEvent): string {
     case "item_updated":
       return `edited${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_deleted":
+      // Legacy hard-delete event; pre-soft-delete builds emitted this.
       return `removed${payloadString(payload, "title", (t) => ` "${t}"`)}`;
+    case "item_archived":
+      return `archived${payloadString(payload, "title", (t) => ` "${t}"`)}`;
+    case "list_archived":
+      return `archived this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
     case "item_upvoted":
       return `upvoted${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_unupvoted":

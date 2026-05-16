@@ -14,12 +14,16 @@ export type MemberRole = "owner" | "member";
 
 export type ActivityEventType =
   | "list_created"
+  | "list_archived"
   | "member_joined"
   | "member_left"
   | "member_removed"
   | "item_added"
   | "item_updated"
+  // Legacy: emitted by pre-soft-delete builds for hard deletes. New code
+  // emits `item_archived` instead. Kept here so older feed rows still type.
   | "item_deleted"
+  | "item_archived"
   | "item_upvoted"
   | "item_unupvoted"
   | "item_completed"

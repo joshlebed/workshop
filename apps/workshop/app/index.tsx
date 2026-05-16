@@ -50,7 +50,10 @@ const TYPE_LABEL: Record<ListType, string> = {
 const EVENT_VERB: Partial<Record<ActivityEvent["type"], string>> = {
   item_added: "added",
   item_updated: "edited",
+  // Legacy: pre-soft-delete builds emitted this. New code emits item_archived.
   item_deleted: "removed an item",
+  item_archived: "archived an item",
+  list_archived: "archived the list",
   item_upvoted: "upvoted",
   item_unupvoted: "unupvoted",
   item_completed: "checked off",

@@ -131,8 +131,10 @@ activityRoutes.get("/", async (c) => {
         u.display_name AS actor_display_name
       FROM activity_events e
       JOIN list_members lm ON lm.list_id = e.list_id AND lm.user_id = ${userId}
+      JOIN lists l ON l.id = e.list_id AND l.archived_at IS NULL
+      LEFT JOIN items i ON i.id = e.item_id
       LEFT JOIN users u ON u.id = e.actor_id
-      WHERE TRUE ${cursorClause}
+      WHERE (e.item_id IS NULL OR i.archived_at IS NULL) ${cursorClause}
       ORDER BY e.created_at DESC, e.id DESC
       LIMIT ${limit + 1}
     `,

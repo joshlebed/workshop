@@ -262,7 +262,27 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   follow `POST /v1/lists/:id/{pin,archive,mute,read}` to set + `DELETE` to
   clear; the three toggleable flags also accept `DELETE`, but `read` is
   one-way (its inverse — "mark unread up to now" — doesn't have a
-  meaningful product semantic in a feed model).
+  meaningful product semantic in a feed model). Don't confuse this
+  per-viewer `archived_at` (the "stash from my home feed" toggle) with
+  the global `archived_at` columns on `lists` / `items`, which are the
+  soft-delete markers below.
+- **Lists and items are soft-deleted via `archived_at`.** `DELETE
+/v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's
+  `archived_at` instead of removing it; cascade FKs stay configured for
+  the unarchive surface that hasn't shipped yet. Every read path filters
+  `archived_at IS NULL` — `requireListMember` and `requireItemMember`
+  both 404 archived rows (so handlers downstream can trust active
+  state), `GET /v1/lists` adds `WHERE l.archived_at IS NULL`, items
+  reads filter both the item's and the parent list's marker, the
+  activity feed joins through `lists` + `items` to drop events on
+  archived parents, and the public invite preview / accept flow checks
+  the same. **When you add a new query that touches `lists` or `items`,
+  add the same filter** — the partial behavior is opt-out, not opt-in.
+  Activity events for the action itself land as `list_archived` /
+  `item_archived` (legacy `item_deleted` is kept in the enum for
+  pre-2026-05 rows). For album-shelf items the partial unique index on
+  `(list_id, spotifyAlbumId)` includes archived rows, so a refresh
+  won't resurface an album the user explicitly archived.
 - **The home unread count is server-authored, not derived client-side.**
   The bell badge is `sum(list.unreadCount across non-muted lists)`, and
   each row reads `list.unreadCount` directly from `ListSummary`. Don't

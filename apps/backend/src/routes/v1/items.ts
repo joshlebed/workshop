@@ -1,5 +1,5 @@
 import type { Item, ItemMetadata, ListItemsResponse, ListType } from "@workshop/shared";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { type ZodType, z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -189,12 +189,17 @@ function toItemShape(i: DbItem): Item {
 }
 
 /**
- * Re-selects an item by id. Returns null if the row no longer exists
- * (concurrent delete).
+ * Re-selects an item by id, skipping archived rows. Returns null if the row
+ * no longer exists (concurrent archive) or has been archived since the last
+ * read — same surface as a hard delete from the client's POV.
  */
 async function fetchItemShape(itemId: string): Promise<Item | null> {
   const db = getDb();
-  const [row] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
+  const [row] = await db
+    .select()
+    .from(items)
+    .where(and(eq(items.id, itemId), isNull(items.archivedAt)))
+    .limit(1);
   if (!row) return null;
   return toItemShape(row);
 }
@@ -263,7 +268,7 @@ export async function fetchItemsForList(listId: string): Promise<ListItemsRespon
         i.created_at,
         i.updated_at
       FROM items i
-      WHERE i.list_id = ${listId}
+      WHERE i.list_id = ${listId} AND i.archived_at IS NULL
       ORDER BY
         i.completed ASC,
         (i.metadata->>'position') IS NULL,
@@ -489,30 +494,33 @@ function pickPatchEvent(a: PickPatchEventArgs): {
   return { type: "item_updated", payload: { title: a.title } };
 }
 
+// Archive (soft delete) the item. Sets `items.archived_at` so it disappears
+// from `GET /v1/lists/:id/items`, `GET /v1/items/:id`, activity-feed item
+// scopes, and the item-member middleware. Upvotes + score rows stay so a
+// future unarchive surface can restore the item intact. The partial unique
+// index on (list_id, spotifyAlbumId) includes archived rows, so an
+// album-shelf refresh won't resurface an album the user explicitly archived.
 itemRoutes.delete("/:id", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
   const userId = c.get("userId");
   const listId = c.get("itemListId");
   const db = getDb();
-  // ON DELETE CASCADE on item_upvotes / activity_events handles dependents
-  // (including this very event row's `item_id` pointer — recording it
-  // before the delete keeps `item_id` populated for the brief window
-  // before the cascade fires).
-  const [deleted] = await db
-    .delete(items)
-    .where(eq(items.id, itemId))
+  const [archived] = await db
+    .update(items)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(and(eq(items.id, itemId), isNull(items.archivedAt)))
     .returning({ id: items.id, title: items.title });
-  if (!deleted) return err(c, "NOT_FOUND", "item not found");
+  if (!archived) return err(c, "NOT_FOUND", "item not found");
 
-  // `item_id` is intentionally null — the row is gone by the time this
-  // event is read, and the FK is `ON DELETE CASCADE` so a non-null
-  // pointer would cascade-delete this very event row on the next
-  // delete pass.
+  // `itemId` deliberately omitted (null in DB) so the activity feed's
+  // `archived_at IS NULL` filter on joined `items` doesn't hide the very
+  // event that records the archive. The payload still carries `title` for
+  // the renderer; matches the legacy `item_deleted` shape.
   await recordEvent({
     listId,
     actorId: userId,
-    type: "item_deleted",
-    payload: { title: deleted.title },
+    type: "item_archived",
+    payload: { title: archived.title },
   });
   return ok(c, { ok: true });
 });

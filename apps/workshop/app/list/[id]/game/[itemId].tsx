@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { deleteItemScore, fetchItemScores, upsertItemScore } from "../../../../src/api/gameScores";
-import { deleteItem, fetchItem, updateItem } from "../../../../src/api/items";
+import { archiveItem, fetchItem, updateItem } from "../../../../src/api/items";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { errorMessage } from "../../../../src/lib/api";
 import { confirm } from "../../../../src/lib/confirm";
@@ -175,10 +175,10 @@ export default function GameDetail() {
     },
   });
 
-  const deleteMutation = useMutation({
+  const archiveMutation = useMutation({
     mutationFn: () => {
       if (!itemId) throw new Error("missing item id");
-      return deleteItem(itemId, token);
+      return archiveItem(itemId, token);
     },
     onSuccess: async () => {
       haptics.medium();
@@ -191,7 +191,7 @@ export default function GameDetail() {
       goBack(`/list/${listId}`);
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't delete"), tone: "danger" });
+      showToast({ message: errorMessage(e, "Couldn't archive"), tone: "danger" });
     },
   });
 
@@ -273,11 +273,10 @@ export default function GameDetail() {
     setMenuOpen(false);
     const ok = await confirm({
       title: "Delete this game?",
-      message: "Deleting this item is permanent.",
       confirmLabel: "Delete",
       destructive: true,
     });
-    if (ok) deleteMutation.mutate();
+    if (ok) archiveMutation.mutate();
   };
 
   const trimmedTitleDraft = titleDraft.trim();

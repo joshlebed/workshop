@@ -4,7 +4,7 @@ import type {
   GameScore,
   ListGameScoresResponse,
 } from "@workshop/shared";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -65,7 +65,7 @@ async function assertGameItem(
   const [row] = await db
     .select({ type: items.type })
     .from(items)
-    .where(eq(items.id, itemId))
+    .where(and(eq(items.id, itemId), isNull(items.archivedAt)))
     .limit(1);
   if (!row) {
     return { ok: false, response: err(c, "NOT_FOUND", "item not found") };
@@ -165,7 +165,7 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
   const [parent] = await db
     .select({ listId: items.listId })
     .from(items)
-    .where(eq(items.id, itemId))
+    .where(and(eq(items.id, itemId), isNull(items.archivedAt)))
     .limit(1);
   if (!parent) return err(c, "NOT_FOUND", "item not found");
 
@@ -236,7 +236,8 @@ listGameScoresRoutes.get("/:id/game-scores", requireListMember, async (c) => {
   }
 
   // Fetch all scores for any item on this list for the requested date,
-  // joined with the submitter's display name.
+  // joined with the submitter's display name. Archived items are excluded so
+  // their score history doesn't bleed back into the leaderboard.
   const rows = await db
     .select({
       itemId: gameScores.itemId,
@@ -246,7 +247,7 @@ listGameScoresRoutes.get("/:id/game-scores", requireListMember, async (c) => {
       displayName: users.displayName,
     })
     .from(gameScores)
-    .innerJoin(items, eq(items.id, gameScores.itemId))
+    .innerJoin(items, and(eq(items.id, gameScores.itemId), isNull(items.archivedAt)))
     .leftJoin(users, eq(users.id, gameScores.userId))
     .where(and(eq(items.listId, listId), eq(gameScores.date, dateParsed.data)));
 

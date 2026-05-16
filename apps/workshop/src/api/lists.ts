@@ -27,7 +27,17 @@ export function updateList(
   return apiRequest<ListResponse>({ method: "PATCH", path: `/v1/lists/${id}`, body, token });
 }
 
-export function deleteList(id: string, token: string | null): Promise<{ ok: true }> {
+/**
+ * Archives (soft-deletes) the list. Owner-only. The server sets
+ * `lists.archived_at` and the row immediately disappears from every read
+ * path — list-detail returns 404, the home feed omits it, items become
+ * unreachable. The underlying rows (items, members, invites, activity
+ * events) stay in place so a future unarchive surface can restore them.
+ *
+ * Distinct from the per-(list, viewer) `archiveList` toggle in this file,
+ * which only hides a list from the requester's own home feed.
+ */
+export function archiveListEntirely(id: string, token: string | null): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/lists/${id}`, token });
 }
 

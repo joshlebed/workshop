@@ -28,7 +28,7 @@ export interface ItemRowMenuActions {
   onUncomplete?: () => void;
   /** Open the item detail screen for editing. Hidden for album_shelf. */
   onEdit?: () => void;
-  /** Permanently remove the row, with a confirmation prompt. */
+  /** Archive (soft-delete) the row, with a confirmation prompt. */
   onDelete: () => void;
 }
 

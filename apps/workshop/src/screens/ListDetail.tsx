@@ -21,7 +21,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { refreshAlbumShelf } from "../api/albumShelf";
-import { completeItem, deleteItem, fetchItems, uncompleteItem, updateItem } from "../api/items";
+import { archiveItem, completeItem, fetchItems, uncompleteItem, updateItem } from "../api/items";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
@@ -198,8 +198,11 @@ export function ListDetail({ list, members, token }: Props) {
     },
   });
 
-  const deleteMutation = useMutation<{ ok: true }, Error, { itemId: string }>({
-    mutationFn: ({ itemId }) => deleteItem(itemId, token),
+  // Archives the item (soft-delete via DELETE /v1/items/:id). The row stays
+  // in the DB with `archived_at` set; every read path filters it out so the
+  // UI behaves as if it were gone, but the data is recoverable later.
+  const archiveMutation = useMutation<{ ok: true }, Error, { itemId: string }>({
+    mutationFn: ({ itemId }) => archiveItem(itemId, token),
     onSuccess: () => {
       haptics.medium();
       queryClient.invalidateQueries({ queryKey: itemsKey });
@@ -207,7 +210,7 @@ export function ListDetail({ list, members, token }: Props) {
     },
     onError: (e) => {
       showToast({
-        message: errorMessage(e, "Couldn't delete that item."),
+        message: errorMessage(e, "Couldn't archive that item."),
         tone: "danger",
       });
     },
@@ -294,13 +297,10 @@ export function ListDetail({ list, members, token }: Props) {
     const confirmDelete = async () => {
       const ok = await confirm({
         title: "Remove this item?",
-        message: isAlbumShelf
-          ? "Removing this album won't stop it from coming back. If a track from this album is still on the source playlist, the next refresh will re-detect it."
-          : "Deleting this item is permanent.",
         confirmLabel: "Delete",
         destructive: true,
       });
-      if (ok) deleteMutation.mutate({ itemId: item.id });
+      if (ok) archiveMutation.mutate({ itemId: item.id });
     };
     setMenuItem(item);
     setMenuActions({

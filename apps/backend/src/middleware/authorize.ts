@@ -1,9 +1,9 @@
 import type { MemberRole } from "@workshop/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import { z } from "zod";
 import { getDb } from "../db/client.js";
-import { items, listMembers } from "../db/schema.js";
+import { items, listMembers, lists } from "../db/schema.js";
 import { err } from "../lib/response.js";
 
 declare module "hono" {
@@ -35,9 +35,14 @@ export const requireListMember: MiddlewareHandler = async (c, next) => {
 
   const userId = c.get("userId");
   const db = getDb();
+  // Join `lists` so an archived list (soft-deleted) reads as "not found" for
+  // every member, including the owner. Membership rows are kept so a future
+  // unarchive surface can restore visibility — but until then, the list is
+  // invisible. Treat as 404 not 403 to avoid leaking existence.
   const [row] = await db
     .select({ role: listMembers.role })
     .from(listMembers)
+    .innerJoin(lists, and(eq(lists.id, listMembers.listId), isNull(lists.archivedAt)))
     .where(and(eq(listMembers.listId, parsedId.data), eq(listMembers.userId, userId)))
     .limit(1);
 
@@ -79,6 +84,9 @@ export const requireItemMember: MiddlewareHandler = async (c, next) => {
 
   const userId = c.get("userId");
   const db = getDb();
+  // Join `lists` so an archived parent list reads as "not found" too — both
+  // the item's own `archived_at` and the parent's must be NULL for the item
+  // to be reachable.
   const [row] = await db
     .select({ listId: items.listId, role: listMembers.role })
     .from(items)
@@ -86,7 +94,8 @@ export const requireItemMember: MiddlewareHandler = async (c, next) => {
       listMembers,
       and(eq(listMembers.listId, items.listId), eq(listMembers.userId, userId)),
     )
-    .where(eq(items.id, parsedId.data))
+    .innerJoin(lists, and(eq(lists.id, items.listId), isNull(lists.archivedAt)))
+    .where(and(eq(items.id, parsedId.data), isNull(items.archivedAt)))
     .limit(1);
 
   if (!row) {
