@@ -1,21 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ListSummary, ListType } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useMemo } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
 import { fetchLists } from "../../src/api/lists";
 import { PullToRefresh } from "../../src/components/PullToRefresh";
 import { useAuth } from "../../src/hooks/useAuth";
 import { errorMessage } from "../../src/lib/api";
 import { queryKeys } from "../../src/lib/queryKeys";
-import {
-  Button,
-  Card,
-  EmptyState,
-  IconButton,
-  type ListColorKey,
-  Text,
-  tokens,
-} from "../../src/ui/index";
+import { Button, EmptyState, type ListColorKey, Text, tokens } from "../../src/ui/index";
 
 const TYPE_LABEL: Record<ListType, string> = {
   movie: "Movies",
@@ -29,8 +22,18 @@ const TYPE_LABEL: Record<ListType, string> = {
 
 // Lists that pair naturally with a shared URL (free-form items take a URL +
 // link preview). Search-flow lists (movie/tv/book) ignore prefillUrl in
-// add.tsx, so we visually de-emphasise them here.
+// add.tsx, so we visually de-emphasise them when a URL is being shared.
 const URL_FRIENDLY: ReadonlySet<ListType> = new Set<ListType>(["date_idea", "trip", "game"]);
+
+function shortHost(url: string | undefined): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return u.host.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
 
 export default function PickList() {
   const params = useLocalSearchParams<{ url?: string }>();
@@ -43,6 +46,15 @@ export default function PickList() {
     queryFn: () => fetchLists(token),
     enabled: !!token,
   });
+
+  // Sort by recency (updatedAt) so the list the user just touched lands at
+  // the top — matches home's behaviour and removes a hunt-for-the-list step.
+  const lists = useMemo(() => {
+    const data = listsQuery.data?.lists ?? [];
+    return [...data].sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  }, [listsQuery.data]);
 
   const onPick = (list: ListSummary) => {
     const target = sharedUrl
@@ -63,21 +75,35 @@ export default function PickList() {
     }
   };
 
+  const host = shortHost(sharedUrl);
+
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <IconButton accessibilityLabel="Cancel" onPress={onCancel} testID="share-pick-cancel">
-          <Text style={styles.headerGlyph}>✕</Text>
-        </IconButton>
-        <Text variant="heading">Add to a list</Text>
-        <View style={styles.headerSpacer} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cancel"
+          onPress={onCancel}
+          testID="share-pick-cancel"
+          hitSlop={10}
+          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+        >
+          <Text style={styles.navGlyph}>✕</Text>
+        </Pressable>
+        <View style={styles.headerTitleBlock}>
+          <Text variant="title" style={styles.title}>
+            Add to a list
+          </Text>
+          {sharedUrl ? (
+            <View style={styles.urlPill} testID="share-pick-url">
+              <View style={styles.urlGlobe} />
+              <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.urlText}>
+                Saving from {host ?? sharedUrl}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
-
-      {sharedUrl ? (
-        <Text tone="secondary" style={styles.urlPreview} numberOfLines={1} testID="share-pick-url">
-          {sharedUrl}
-        </Text>
-      ) : null}
 
       <View style={styles.body}>
         {listsQuery.isPending ? (
@@ -94,11 +120,15 @@ export default function PickList() {
               }
             />
           </View>
-        ) : listsQuery.data.lists.length === 0 ? (
+        ) : lists.length === 0 ? (
           <View style={styles.center}>
             <EmptyState
               title="No lists yet"
-              description="Create your first list to save this."
+              description={
+                sharedUrl
+                  ? "Create your first list to save this."
+                  : "Create your first list to start collecting."
+              }
               action={<Button label="Create a list" onPress={onCreateNew} />}
             />
           </View>
@@ -109,24 +139,27 @@ export default function PickList() {
           >
             <FlatList
               testID="share-pick-list"
-              data={listsQuery.data.lists}
+              data={lists}
               keyExtractor={(l) => l.id}
               contentContainerStyle={styles.listContent}
-              ItemSeparatorComponent={() => <View style={{ height: tokens.space.sm }} />}
-              renderItem={({ item }) => <ListRow list={item} onPress={() => onPick(item)} />}
+              ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
+              renderItem={({ item }) => (
+                <ListRow list={item} hasSharedUrl={!!sharedUrl} onPress={() => onPick(item)} />
+              )}
               ListFooterComponent={
                 <Pressable
                   accessibilityRole="button"
+                  accessibilityLabel="Create new list"
                   onPress={onCreateNew}
                   testID="share-pick-create-new"
-                  style={({ pressed }) => [pressed && styles.cardPressed]}
+                  style={({ pressed }) => [styles.createRow, pressed && styles.createRowPressed]}
                 >
-                  <Card style={styles.createCard}>
+                  <View style={styles.createGlyphBadge}>
                     <Text style={styles.createGlyph}>+</Text>
-                    <Text variant="heading" style={styles.createLabel}>
-                      Create new list
-                    </Text>
-                  </Card>
+                  </View>
+                  <Text variant="label" style={styles.createLabel}>
+                    Create new list
+                  </Text>
                 </Pressable>
               }
             />
@@ -137,31 +170,46 @@ export default function PickList() {
   );
 }
 
-function ListRow({ list, onPress }: { list: ListSummary; onPress: () => void }) {
+function ListRow({
+  list,
+  hasSharedUrl,
+  onPress,
+}: {
+  list: ListSummary;
+  hasSharedUrl: boolean;
+  onPress: () => void;
+}) {
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
-  const dim = !URL_FRIENDLY.has(list.type);
+  const itemsLabel =
+    list.itemCount === 0 ? "Empty" : `${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
+  const subtitle =
+    list.memberCount > 1
+      ? `${TYPE_LABEL[list.type]} · ${list.memberCount} members`
+      : `${TYPE_LABEL[list.type]} · ${itemsLabel}`;
+  // When the user is mid-share with a URL attached, lists that don't take
+  // free-form items (movie/tv/book go through search) are dimmed so the eye
+  // skips them. The row is still tappable — the add screen will handle it.
+  const dim = hasSharedUrl && !URL_FRIENDLY.has(list.type);
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`Add to ${list.name}`}
       onPress={onPress}
       testID={`share-pick-row-${list.id}`}
-      style={({ pressed }) => [pressed && styles.cardPressed]}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed, dim && styles.rowDim]}
     >
-      <Card style={[styles.card, dim && styles.cardDim]}>
-        <View style={[styles.cardStripe, { backgroundColor: accent }]} />
-        <View style={styles.cardBody}>
-          <Text style={styles.cardEmoji}>{list.emoji}</Text>
-          <View style={styles.cardTextBlock}>
-            <Text variant="heading" numberOfLines={1}>
-              {list.name}
-            </Text>
-            <Text variant="caption" tone="muted">
-              {TYPE_LABEL[list.type]}
-            </Text>
-          </View>
-        </View>
-      </Card>
+      <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
+        <Text style={styles.avatarEmoji}>{list.emoji}</Text>
+      </View>
+      <View style={styles.rowBody}>
+        <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
+          {list.name}
+        </Text>
+        <Text variant="caption" tone="muted" numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
     </Pressable>
   );
 }
@@ -170,54 +218,100 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.xxl,
-    paddingBottom: tokens.space.xl,
+    paddingTop: tokens.space.xl,
+    paddingBottom: tokens.space.lg,
     gap: tokens.space.md,
   },
   header: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  headerGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
-  headerSpacer: { width: 40 },
-  urlPreview: {
+    alignItems: "flex-start",
+    gap: tokens.space.xs,
     paddingHorizontal: tokens.space.sm,
+    paddingRight: tokens.space.lg,
     paddingBottom: tokens.space.sm,
   },
+  navButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.md,
+  },
+  navButtonPressed: { backgroundColor: tokens.bg.elevated },
+  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
+  headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
+  title: { fontSize: tokens.font.size.xl, letterSpacing: -0.3 },
+  urlPill: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+    maxWidth: "100%",
+  },
+  urlGlobe: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: tokens.accent.default,
+  },
+  urlText: { letterSpacing: 0.1, flexShrink: 1 },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   listContent: { paddingBottom: tokens.space.xxl },
-  card: { padding: 0, overflow: "hidden", flexDirection: "row" },
-  cardDim: { opacity: 0.6 },
-  cardPressed: { opacity: 0.85 },
-  cardStripe: { width: 4 },
-  cardBody: {
-    flex: 1,
+  row: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
-    padding: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.md,
   },
-  cardEmoji: { fontSize: tokens.font.size.xl },
-  cardTextBlock: { flex: 1, gap: 2 },
-  createCard: {
-    flexDirection: "row",
+  rowPressed: { backgroundColor: tokens.bg.surface },
+  rowDim: { opacity: 0.55 },
+  rowSeparator: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tokens.border.subtle,
+    marginLeft: tokens.space.lg + 44 + tokens.space.md,
+  },
+  rowBody: { flex: 1, gap: 2, minWidth: 0 },
+  rowTitle: { fontSize: tokens.font.size.md },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    marginTop: tokens.space.md,
+  },
+  avatarEmoji: { fontSize: 22, lineHeight: 26 },
+  createRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.md,
+    marginTop: tokens.space.sm,
+  },
+  createRowPressed: { backgroundColor: tokens.bg.surface },
+  createGlyphBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
-    borderStyle: "dashed",
     borderColor: tokens.border.default,
-    backgroundColor: tokens.bg.canvas,
+    borderStyle: "dashed",
   },
   createGlyph: {
     fontSize: tokens.font.size.lg,
-    color: tokens.accent.default,
-    fontWeight: tokens.font.weight.bold,
+    color: tokens.text.secondary,
+    fontWeight: tokens.font.weight.semibold,
+    lineHeight: tokens.font.size.lg + 2,
   },
-  createLabel: { color: tokens.accent.default },
+  createLabel: { fontSize: tokens.font.size.md, color: tokens.text.secondary },
 });
