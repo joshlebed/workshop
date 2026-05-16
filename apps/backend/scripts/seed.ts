@@ -284,28 +284,51 @@ async function main() {
     },
     {
       type: "game",
-      name: "Daily Puzzles",
-      emoji: "🎯",
-      color: "grape",
-      description: "Race friends on daily scores.",
+      name: "Ski gang games",
+      emoji: "🎮",
+      color: "ocean",
       sharedWithFriend: true,
       items: [
         {
-          title: "Wordle",
-          url: "https://www.nytimes.com/games/wordle/index.html",
+          title: "maptap",
+          url: "https://maptap.gg/",
           metadata: {
-            siteName: "NYT Games",
-            thumbnailUrl:
-              "https://www.nytimes.com/games-assets/v2/assets/wordle/wordle-logo-1024.png",
-            position: 1024,
+            siteName: "maptap.gg",
+            position: 512,
           },
         },
         {
-          title: "Connections",
-          url: "https://www.nytimes.com/games/connections",
+          title: "Globle",
+          url: "https://globle-game.com/",
           metadata: {
-            siteName: "NYT Games",
+            siteName: "Globle",
+            thumbnailUrl: "https://globle-game.com/globle-preview.png",
             position: 2048,
+          },
+        },
+        {
+          title: "Satle",
+          url: "https://satle.ca/",
+          metadata: {
+            siteName: "satle.ca",
+            position: 3072,
+          },
+        },
+        {
+          title: "travle",
+          url: "https://travle.earth",
+          metadata: {
+            siteName: "travle.earth",
+            thumbnailUrl: "https://travle.earth/images/previews/countries_preview.png",
+            position: 4096,
+          },
+        },
+        {
+          title: "Daily Tens",
+          url: "https://dailytens.com/",
+          metadata: {
+            siteName: "dailytens.com",
+            position: 5120,
           },
         },
       ],
@@ -408,22 +431,28 @@ async function main() {
         });
       }
 
-      // Wordle/Connections each get a couple of recent scores so the
-      // game-detail view has something to render.
+      // A couple of recent scores per known game so the game-detail view has
+      // something to render. Skip games we don't have plausible share text for.
       if (fixture.type === "game") {
-        const today_score =
-          seedItem.title === "Wordle"
-            ? "Wordle 1,037 4/6\n\n⬛🟨⬛⬛⬛\n⬛🟨⬛🟩⬛\n🟩🟩🟩🟩⬛\n🟩🟩🟩🟩🟩"
-            : "Connections\nPuzzle #319\n🟨🟨🟨🟨\n🟩🟩🟩🟩\n🟪🟪🟪🟪\n🟦🟦🟦🟦";
-        const yesterday_score =
-          seedItem.title === "Wordle"
-            ? "Wordle 1,036 3/6\n\n⬛⬛🟨🟨⬛\n🟨🟩⬛⬛🟩\n🟩🟩🟩🟩🟩"
-            : "Connections\nPuzzle #318\n🟨🟨🟨🟨\n🟪🟪🟪🟪\n🟦🟦🟦🟦\n🟩🟩🟩🟩";
-        await db.insert(gameScores).values([
-          { itemId: item.id, userId: previewId, date: today, score: today_score },
-          { itemId: item.id, userId: previewId, date: yesterday, score: yesterday_score },
-          { itemId: item.id, userId: friendId, date: today, score: today_score },
-        ]);
+        const sharedScores: Record<string, { today: string; yesterday: string }> = {
+          Globle: {
+            today: "🌎 May 15, 2026 🔥 1 | Avg. Guesses: 4\n🟨🟧🟥🟩\nhttps://globle-game.com",
+            yesterday:
+              "🌎 May 14, 2026 🔥 0 | Avg. Guesses: 6\n🟨🟨🟧🟧🟥🟩\nhttps://globle-game.com",
+          },
+          travle: {
+            today: "#travle #1066 +0 (100%)\n✅✅✅✅✅\nhttps://travle.earth",
+            yesterday: "#travle #1065 +1 (83%)\n✅✅🟧✅✅✅\nhttps://travle.earth",
+          },
+        };
+        const scores = sharedScores[seedItem.title];
+        if (scores) {
+          await db.insert(gameScores).values([
+            { itemId: item.id, userId: previewId, date: today, score: scores.today },
+            { itemId: item.id, userId: previewId, date: yesterday, score: scores.yesterday },
+            { itemId: item.id, userId: friendId, date: today, score: scores.today },
+          ]);
+        }
       }
     }
   }
