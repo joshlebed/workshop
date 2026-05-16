@@ -23,6 +23,11 @@ output "github_actions_role_arn" {
   value       = aws_iam_role.github_actions.arn
 }
 
+output "niteshift_role_arn" {
+  description = "Role ARN to paste into Niteshift → Settings → Repositories → workshop → AWS tab."
+  value       = aws_iam_role.niteshift.arn
+}
+
 output "aws_region" {
   value = data.aws_region.current.name
 }

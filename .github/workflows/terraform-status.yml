@@ -1,0 +1,79 @@
+name: terraform-status
+
+# Closes the "infra change merged but not applied" gap. CI doesn't apply
+# (no broad AWS write creds in CI — keeps blast radius low). But the
+# previous failure mode was silent: a PR touching infra/ merged green and
+# looked deployed, yet nothing rolled out until someone ran
+# `terraform apply` locally. This job runs a read-only `plan` against HCP
+# on every push to main; if the plan has changes, the workflow goes red
+# and the merge-commit status reflects "apply pending."
+#
+# Uses the existing TF_API_TOKEN repo secret. No AWS creds needed — HCP
+# Terraform holds state and the AWS provider only needs to read for
+# `plan`, which happens server-side in HCP (workspace is "Local" execution
+# but plan-only doesn't touch AWS write APIs in our config).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform-status.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-status
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: terraform plan (detect unapplied changes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_version: 1.14.7
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init -input=false
+
+      - name: terraform plan (detailed exit code)
+        id: plan
+        working-directory: infra
+        # -detailed-exitcode: 0 = no diff, 1 = error, 2 = diff (changes pending).
+        # We deliberately treat exit 2 as a failure so the merge commit's
+        # status check turns red until someone runs `terraform apply`.
+        run: |
+          set +e
+          terraform plan -input=false -detailed-exitcode -no-color > plan.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "── plan output ──"
+          tail -n 200 plan.txt
+          exit "$code"
+
+      - name: Summarize
+        if: always()
+        env:
+          EXIT_CODE: ${{ steps.plan.outputs.exit_code }}
+        run: |
+          case "$EXIT_CODE" in
+            0) echo "✓ Infra in sync with main — no apply needed." >> "$GITHUB_STEP_SUMMARY" ;;
+            2) {
+                 echo "⚠ Unapplied infra changes detected on main."
+                 echo ""
+                 echo "Someone needs to run \`terraform apply\` locally:"
+                 echo ""
+                 echo '```bash'
+                 echo "cd infra && AWS_PROFILE=workshop-prod terraform apply"
+                 echo '```'
+               } >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo "✗ terraform plan errored — see logs." >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
