@@ -319,7 +319,18 @@ export default function GameDetail() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        <View style={styles.titleBlock}>
+        <Pressable
+          accessibilityRole={item.url ? "link" : undefined}
+          accessibilityLabel={item.url ? `Open ${item.title}` : item.title}
+          accessibilityHint={item.url ? "Opens the game in your browser" : undefined}
+          onPress={item.url ? onOpenGame : undefined}
+          disabled={!item.url}
+          testID="game-detail-title-link"
+          style={({ pressed }) => [
+            styles.titleBlock,
+            item.url && pressed && styles.titleBlockPressed,
+          ]}
+        >
           {thumb ? (
             <Image
               source={{ uri: thumb }}
@@ -336,27 +347,17 @@ export default function GameDetail() {
               {item.title}
             </Text>
             {host ? (
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel={`Open ${item.title}`}
-                onPress={onOpenGame}
-                disabled={!item.url}
-                testID="game-detail-host"
-                style={({ pressed }) => [styles.hostRow, pressed && styles.hostRowPressed]}
-                hitSlop={6}
-              >
-                <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.hostText}>
-                  {host}
-                </Text>
-                {item.url ? (
-                  <Text variant="caption" tone="muted" style={styles.hostArrow}>
-                    →
-                  </Text>
-                ) : null}
-              </Pressable>
+              <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.hostText}>
+                {host}
+              </Text>
             ) : null}
           </View>
-        </View>
+          {item.url ? (
+            <View style={styles.titleOpenAffordance}>
+              <Text style={styles.titleOpenGlyph}>↗</Text>
+            </View>
+          ) : null}
+        </Pressable>
 
         <ScrollView
           horizontal
@@ -468,15 +469,8 @@ export default function GameDetail() {
         </View>
         <View style={styles.sheetActions}>
           <Button
-            testID="game-detail-open"
-            label="Open game"
-            onPress={onOpenGame}
-            disabled={!item.url}
-          />
-          <Button
             testID="game-detail-edit-open"
             label="Edit details"
-            variant="secondary"
             onPress={() => {
               setMenuOpen(false);
               setEditOpen(true);
@@ -709,8 +703,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
     paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.md,
+    paddingVertical: tokens.space.md,
+    marginHorizontal: tokens.space.sm,
+    borderRadius: tokens.radius.lg,
   },
+  titleBlockPressed: { backgroundColor: tokens.bg.surface },
   titleBadge: {
     width: 56,
     height: 56,
@@ -721,10 +718,20 @@ const styles = StyleSheet.create({
   titleBadgeGlyph: { fontSize: 28, lineHeight: 32 },
   titleText: { flex: 1, minWidth: 0, gap: 4 },
   titleName: { letterSpacing: -0.5, fontSize: 28, lineHeight: 32 },
-  hostRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  hostRowPressed: { opacity: 0.6 },
   hostText: { letterSpacing: 0.1 },
-  hostArrow: { fontSize: tokens.font.size.sm, lineHeight: tokens.font.size.sm + 2 },
+  titleOpenAffordance: {
+    width: 32,
+    height: 32,
+    borderRadius: tokens.radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: tokens.bg.surface,
+  },
+  titleOpenGlyph: {
+    color: tokens.text.secondary,
+    fontSize: tokens.font.size.md,
+    lineHeight: tokens.font.size.md + 2,
+  },
   dayRail: {
     paddingHorizontal: tokens.space.xl,
     gap: tokens.space.sm,
