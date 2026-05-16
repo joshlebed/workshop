@@ -8,10 +8,13 @@ name: terraform-status
 # on every push to main; if the plan has changes, the workflow goes red
 # and the merge-commit status reflects "apply pending."
 #
-# Uses the existing TF_API_TOKEN repo secret. No AWS creds needed — HCP
-# Terraform holds state and the AWS provider only needs to read for
-# `plan`, which happens server-side in HCP (workspace is "Local" execution
-# but plan-only doesn't touch AWS write APIs in our config).
+# Vars sourcing (workspace execution-mode is Local, so HCP workspace
+# vars are NOT injected automatically — we feed them from the runner):
+#   - database_url        ← SSM /workshop-prod/db/url via OIDC
+#   - niteshift_external_id ← GH repo secret NITESHIFT_EXTERNAL_ID
+# Other terraform vars use their declared defaults (empty string is fine
+# for plan since the resources that read them already exist and won't
+# change unless the .tf changes).
 
 on:
   push:
@@ -23,6 +26,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # for OIDC AWS assume
 
 concurrency:
   group: terraform-status
@@ -34,6 +38,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # v6.1.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Fetch database_url from SSM
+        id: ssm
+        run: |
+          DBURL=$(aws ssm get-parameter --name /workshop-prod/db/url \
+            --with-decryption --query 'Parameter.Value' --output text)
+          echo "::add-mask::$DBURL"
+          echo "dburl=$DBURL" >> "$GITHUB_OUTPUT"
 
       - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
         with:
@@ -47,6 +64,9 @@ jobs:
       - name: terraform plan (detailed exit code)
         id: plan
         working-directory: infra
+        env:
+          TF_VAR_database_url: ${{ steps.ssm.outputs.dburl }}
+          TF_VAR_niteshift_external_id: ${{ secrets.NITESHIFT_EXTERNAL_ID }}
         # -detailed-exitcode: 0 = no diff, 1 = error, 2 = diff (changes pending).
         # We deliberately treat exit 2 as a failure so the merge commit's
         # status check turns red until someone runs `terraform apply`.
