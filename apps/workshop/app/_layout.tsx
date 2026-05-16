@@ -5,6 +5,7 @@ import {
 } from "@react-navigation/native";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { Stack, useRouter, useSegments } from "expo-router";
+import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { useEffect, useMemo, useRef } from "react";
@@ -12,7 +13,7 @@ import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import { AuthProvider, useAuth } from "../src/hooks/useAuth";
+import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
@@ -26,8 +27,28 @@ function useApplyOtaUpdatesOnArrival() {
   }, [isUpdatePending]);
 }
 
+// iOS Share Extension hand-off. When the user taps Share → "Workshop" in
+// another app, expo-share-intent's native code stashes the payload in App
+// Group UserDefaults and opens `workshop://dataUrl=…`; the hook reads it
+// back and surfaces a `shareIntent`. We forward to `/share?url=…` which
+// the existing `app/share/index.tsx` redirect maps to `/share/pick-list`.
+// Signed-out users currently lose the payload — AuthGate bounces them to
+// `/sign-in` first; stashing through auth (cf. inviteStash) is a follow-up.
+function useShareIntentRedirect(status: AuthStatus) {
+  const router = useRouter();
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
+  useEffect(() => {
+    if (status !== "signed-in" || !hasShareIntent) return;
+    const payload = shareIntent?.webUrl ?? shareIntent?.text;
+    if (!payload) return;
+    router.replace(`/share?url=${encodeURIComponent(payload)}`);
+    resetShareIntent();
+  }, [status, hasShareIntent, shareIntent, router, resetShareIntent]);
+}
+
 function AuthGate() {
   const { status } = useAuth();
+  useShareIntentRedirect(status);
   // Widen to `string[]` so segments[1] typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
   // generated in CI.

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Workshop.dev",
     "slug": "workshop",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "scheme": "workshop",
     "userInterfaceStyle": "automatic",
@@ -10,12 +10,16 @@
       "supportsTablet": true,
       "bundleIdentifier": "dev.josh.workshop",
       "icon": "./assets/Workshop.dev.icon",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.dev.josh.workshop"]
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
           {
             "CFBundleURLSchemes": [
-              "com.googleusercontent.apps.267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33"
+              "com.googleusercontent.apps.267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33",
+              "workshop"
             ]
           }
         ]
@@ -32,7 +36,21 @@
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-share-intent",
+        {
+          "iosShareExtensionName": "Workshop Share",
+          "iosAppGroupIdentifier": "group.dev.josh.workshop",
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "iosHideView": true,
+          "disableAndroid": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

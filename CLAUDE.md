@@ -162,7 +162,19 @@ land as additional routes inside the same app.
   Developer portal. EAS Build's capability sync silently reverts any portal-only changes
   on the next build, so a manual portal toggle without a matching code declaration is
   drift waiting to happen. Currently declared: Sign In with Apple (via the
-  `expo-apple-authentication` plugin).
+  `expo-apple-authentication` plugin); App Groups `group.dev.josh.workshop`
+  (via `ios.entitlements` _and_ the `expo-share-intent` plugin — both
+  belt-and-suspenders since the share extension target also needs the
+  entitlement and the plugin handles both halves).
+- **Don't override `ios.infoPlist.CFBundleURLTypes` without re-listing the
+  app scheme.** Once you declare a `CFBundleURLTypes` entry in `app.json`
+  (e.g. for the Google OAuth reverse-client scheme), Expo stops auto-adding
+  the app's own `scheme:` value to that array — and plugins like
+  `expo-share-intent` will refuse to prebuild (`Incompatibility found, when
+you override CFBundleURLSchemes you have to manually add the application
+scheme`). Mirror the root `scheme` ("workshop") into the
+  `CFBundleURLSchemes` array yourself. The check fires at `expo config`
+  time, so `npx expo config --type public` catches it before EAS does.
 - **GitHub Actions `permissions:` blocks aren't least-privilege by default** — `permissions:
 contents: read` _replicates_ GitHub's default for push events, doesn't restrict it. Any new
   action that needs PR metadata (e.g. `dorny/paths-filter`, label-on-PR, comment-on-PR) needs
