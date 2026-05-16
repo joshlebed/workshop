@@ -8,7 +8,7 @@
 // timestamp), other types fall back to title + note + an optional poster /
 // cover from `metadata.posterUrl` or `metadata.coverUrl` / `image`.
 
-import type { AlbumShelfItemMetadata, Item } from "@workshop/shared";
+import type { AlbumShelfItemMetadata, Item, ListType } from "@workshop/shared";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -264,17 +264,19 @@ interface PositionChipProps {
   dragHandle?: (children: ReactNode) => ReactNode;
 }
 
-// The chip doubles as the drag handle for ordered rows. When we know the
-// rank, show it — the number IS the information and a drag glyph (`≡`) had
-// to be learned. Unranked unordered rows fall back to the glyph so the user
-// still sees the drag affordance.
+// Ordered rows display their rank as a bare accent-colored numeral; the
+// glyph IS the information, so a filled chip background only competes with
+// the adjacent cover thumbnail. Web unordered rows that can be dragged into
+// the ordered section show a muted `≡` instead — present but quieter than
+// the ranked numerals so the visual hierarchy reads "ranks first, drag
+// affordance second."
 function PositionChip({ isDragging, accent, rank, dragHandle }: PositionChipProps) {
   const chip = (
-    <View style={[styles.positionChip, isDragging && styles.positionChipDragging]}>
+    <View style={[styles.positionSlot, isDragging && styles.positionSlotDragging]}>
       {rank !== null ? (
-        <Text style={[styles.positionChipRank, { color: accent }]}>{rank}</Text>
+        <Text style={[styles.positionRank, { color: accent }]}>{rank}</Text>
       ) : (
-        <Text style={[styles.positionChipText, { color: accent }]}>≡</Text>
+        <Text style={styles.positionDragGlyph}>≡</Text>
       )}
     </View>
   );
@@ -385,24 +387,67 @@ function describeProvenance(
 interface SectionHeaderProps {
   kind: "ordered" | "unordered" | "completed";
   count: number;
-  /** Album-shelf renames "UNORDERED" to "DETECTED" since it's auto-detected from Spotify. */
-  isAlbumShelf?: boolean;
+  /** Drives the type-specific copy on the unordered + completed labels. */
+  listType: ListType;
+  /** When provided, the header becomes a Pressable that toggles section collapse. */
+  collapsible?: { collapsed: boolean; onToggle: () => void };
 }
 
-export function SectionHeader({ kind, count, isAlbumShelf = false }: SectionHeaderProps) {
+const UNORDERED_LABEL_BY_TYPE: Record<ListType, string> = {
+  movie: "Watchlist",
+  tv: "Watchlist",
+  book: "Reading",
+  date_idea: "Ideas",
+  trip: "Wishlist",
+  album_shelf: "Detected",
+  game: "Backlog",
+};
+
+const COMPLETED_LABEL_BY_TYPE: Record<ListType, string> = {
+  movie: "Watched",
+  tv: "Watched",
+  book: "Read",
+  date_idea: "Tried",
+  trip: "Been",
+  album_shelf: "Done",
+  game: "Played",
+};
+
+export function SectionHeader({ kind, count, listType, collapsible }: SectionHeaderProps) {
   const label =
     kind === "ordered"
       ? "Ranked"
       : kind === "completed"
-        ? "Done"
-        : isAlbumShelf
-          ? "Detected"
-          : "To watch";
-  return (
-    <View style={styles.sectionHeader} testID={`list-detail-section-${kind}`}>
+        ? COMPLETED_LABEL_BY_TYPE[listType]
+        : UNORDERED_LABEL_BY_TYPE[listType];
+
+  const body = (
+    <View style={styles.sectionHeader}>
       <Text style={styles.sectionHeaderLabel}>{label}</Text>
       <Text style={styles.sectionHeaderCount}>{count}</Text>
+      {collapsible ? (
+        <Text style={styles.sectionHeaderToggle}>{collapsible.collapsed ? "Show" : "Hide"}</Text>
+      ) : null}
     </View>
+  );
+
+  if (!collapsible) {
+    return <View testID={`list-detail-section-${kind}`}>{body}</View>;
+  }
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${collapsible.collapsed ? "Show" : "Hide"} ${label.toLowerCase()} section`}
+      onPress={collapsible.onToggle}
+      testID={`list-detail-section-${kind}`}
+      style={({ hovered, pressed }) => [
+        styles.sectionHeaderPressable,
+        (hovered || pressed) && styles.sectionHeaderPressableHover,
+      ]}
+    >
+      {body}
+    </Pressable>
   );
 }
 
@@ -447,39 +492,46 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   bodyPressed: { backgroundColor: tokens.bg.surface },
-  positionChip: {
-    width: 36,
-    height: 36,
+  positionSlot: {
+    // Narrower than before (28 vs 36): the rank glyph IS the affordance, so
+    // there's no chip background to host. Width is consistent across ordered
+    // + unordered rows so cover thumbnails align across sections.
+    width: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.surface,
   },
-  positionChipDragging: { backgroundColor: tokens.bg.elevated },
-  positionChipText: {
-    color: tokens.text.secondary,
+  positionSlotDragging: { opacity: 0.6 },
+  positionRank: {
     fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  positionChipRank: {
-    fontSize: tokens.font.size.md,
     fontWeight: tokens.font.weight.semibold,
     fontVariant: ["tabular-nums"],
     letterSpacing: -0.5,
   },
-  completedMark: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.surface,
-  },
-  completedMarkHover: { backgroundColor: tokens.bg.elevated },
-  completedGlyph: {
+  positionDragGlyph: {
     color: tokens.text.muted,
     fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
+    fontWeight: tokens.font.weight.regular,
+  },
+  completedMark: {
+    // Width matches `positionSlot` so the cover edge aligns across sections.
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.pill,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    backgroundColor: "transparent",
+  },
+  completedMarkHover: {
+    borderColor: tokens.border.strong,
+    backgroundColor: tokens.bg.surface,
+  },
+  completedGlyph: {
+    color: tokens.text.secondary,
+    fontSize: tokens.font.size.sm,
+    lineHeight: tokens.font.size.sm + 2,
+    fontWeight: tokens.font.weight.semibold,
   },
   cover: {
     width: 52,
@@ -528,22 +580,42 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     flexDirection: "row",
-    alignItems: "baseline",
+    alignItems: "center",
     gap: tokens.space.sm,
     paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    paddingBottom: tokens.space.xs,
   },
+  // Eyebrow style per DESIGN.md: uppercase, tracked, secondary tone. Reads
+  // as a divider rather than a heading — matches "calm by default."
   sectionHeaderLabel: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
+    color: tokens.text.secondary,
+    fontSize: 11,
     fontWeight: tokens.font.weight.semibold,
-    letterSpacing: -0.2,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
   },
   sectionHeaderCount: {
     color: tokens.text.muted,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.regular,
+    fontSize: 11,
+    fontWeight: tokens.font.weight.medium,
     fontVariant: ["tabular-nums"],
+    letterSpacing: 0.4,
+  },
+  sectionHeaderToggle: {
+    marginLeft: "auto",
+    color: tokens.text.muted,
+    fontSize: 11,
+    fontWeight: tokens.font.weight.medium,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  sectionHeaderPressable: {
+    borderRadius: tokens.radius.sm,
+    marginHorizontal: -tokens.space.xs,
+    paddingHorizontal: tokens.space.xs,
+  },
+  sectionHeaderPressableHover: {
+    backgroundColor: tokens.bg.surface,
   },
   orderedHint: {
     paddingTop: tokens.space.md,

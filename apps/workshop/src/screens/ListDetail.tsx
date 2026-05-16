@@ -57,10 +57,11 @@ interface Props {
  *
  * Type-specific behaviour:
  *   - album_shelf: refresh button (instead of FAB), body-press opens
- *     Spotify, "DETECTED" section label, NEW pill on freshly-detected
+ *     Spotify, "Detected" section label, NEW pill on freshly-detected
  *     rows, no Edit menu action (fields are server-derived from Spotify).
  *   - other types: FAB to add an item, body-press opens the item-detail
- *     screen, "UNORDERED" section label, kebab includes Edit.
+ *     screen, type-aware section labels (Watchlist / Reading / Ideas /
+ *     Wishlist / Backlog), kebab includes Edit.
  *
  * Drag-to-reorder is scoped to the ordered section only and delegated to
  * a platform-specific list:
@@ -268,6 +269,8 @@ export function ListDetail({ list, members, token }: Props) {
     filter.trim().length === 0;
 
   const totalRows = filtered.ordered.length + filtered.unordered.length + filtered.completed.length;
+  const filterActive = filter.trim().length > 0;
+  const totalRowsUnfiltered = orderedRaw.length + unorderedRaw.length + completedRaw.length;
 
   const onReorderOrdered = (event: ReorderEvent) => {
     const item = filtered.ordered[event.fromIndex];
@@ -400,7 +403,14 @@ export function ListDetail({ list, members, token }: Props) {
     completedRaw.length,
   ]);
 
-  const isEmptyAfterFetch = !itemsQuery.isPending && !itemsQuery.isError && totalRows === 0;
+  const isEmptyAfterFetch =
+    !itemsQuery.isPending && !itemsQuery.isError && totalRowsUnfiltered === 0;
+  const isFilterEmpty =
+    !itemsQuery.isPending &&
+    !itemsQuery.isError &&
+    filterActive &&
+    totalRows === 0 &&
+    totalRowsUnfiltered > 0;
 
   // Web-only keyboard shortcuts. `/` focuses search; `Esc` clears + blurs;
   // `N` (when no input focused) jumps to add. Ignored on native.
@@ -528,6 +538,11 @@ export function ListDetail({ list, members, token }: Props) {
               accessibilityLabel="Search items in this list"
               onSubmitEditing={() => filterInputRef.current?.blur()}
             />
+            {filterActive && totalRows > 0 && totalRows < totalRowsUnfiltered ? (
+              <Text style={styles.filterCount} tone="muted" testID="list-detail-filter-count">
+                {totalRows}/{totalRowsUnfiltered}
+              </Text>
+            ) : null}
             {filter.length > 0 ? (
               <Pressable
                 accessibilityRole="button"
@@ -567,6 +582,21 @@ export function ListDetail({ list, members, token }: Props) {
                   variant="secondary"
                   onPress={() => itemsQuery.refetch()}
                   testID="list-detail-retry"
+                />
+              }
+            />
+          </View>
+        ) : isFilterEmpty ? (
+          <View style={styles.center}>
+            <EmptyState
+              title="No matches"
+              description={`Nothing in this list matches “${filter.trim()}.”`}
+              action={
+                <Button
+                  label="Clear search"
+                  variant="secondary"
+                  onPress={() => setFilter("")}
+                  testID="list-detail-filter-clear"
                 />
               }
             />
@@ -614,6 +644,7 @@ export function ListDetail({ list, members, token }: Props) {
               ordered={filtered.ordered}
               unordered={filtered.unordered}
               completed={filtered.completed}
+              listType={list.type}
               isAlbumShelf={isAlbumShelf}
               showOrderedHint={showOrderedHint}
               newItemIds={newItemIds}
@@ -789,6 +820,12 @@ const styles = StyleSheet.create({
   },
   filterClear: { paddingHorizontal: tokens.space.xs, paddingVertical: tokens.space.xs },
   filterClearGlyph: { fontSize: tokens.font.size.sm },
+  filterCount: {
+    fontSize: 11,
+    fontVariant: ["tabular-nums"],
+    letterSpacing: 0.4,
+    paddingHorizontal: tokens.space.sm,
+  },
   filterKbd: {
     fontSize: 11,
     fontVariant: ["tabular-nums"],
