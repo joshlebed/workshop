@@ -3,23 +3,43 @@ name: TestFlight (native iOS build)
 # Runs on main. @expo/fingerprint hashes everything that affects the native
 # binary (native deps, config plugins, app.json, assets wired up as icons/
 # splash, etc.). If the hash differs from the last successful build, this
-# enqueues a new EAS build with `--no-wait --auto-submit` and exits — the
-# build + TestFlight submit happen entirely on EAS infrastructure (no GH
-# Actions polling time burned waiting ~30 minutes per build):
+# enqueues an EAS build and **waits** for it to finish before writing the
+# fingerprint tag — i.e. the tag now records what actually shipped, not
+# what got accepted into the queue.
 #
-#   fingerprint  →  enqueue (build + auto-submit) + tag
+#   fingerprint  →  build (await success) + auto-submit  →  tag
 #
-# We tag the fingerprint immediately on successful enqueue. That's a
-# deliberate trade: a build that succeeds queue-up but fails on EAS
-# (build/submit infra error, signing drift, etc.) won't trigger a rebuild
-# on the next push if the fingerprint is unchanged. Recovery for that case:
+# Trade-off vs the old fire-and-forget model: ~30 min of GH Actions
+# runner-time per native build (vs ~1 min for `--no-wait`). On a personal
+# project we ship ~5 native builds/month, so the cost is ~150 GH Actions
+# minutes/month — well under the 2000-min free-tier ceiling. In exchange:
+#   - EAS build failures (signing drift, runtime-version mismatch, infra
+#     5xx) surface as red CI rather than silent green + a stalled
+#     TestFlight pipeline.
+#   - The fingerprint tag is only written on a real green build, so a
+#     subsequent push with the same fingerprint correctly skips instead of
+#     re-trying a known-failed enqueue.
+#
+# Recovery when something gets stuck:
 #
 #   git tag -d ios-fp-<hash> && git push origin :refs/tags/ios-fp-<hash>
 #   gh workflow run testflight.yml --ref main --field force=true
 #
-# The savings vs `--wait` are large: ~400–500 Actions minutes/month on the
-# main-branch build cadence. EAS dashboard is the source of truth for build
-# status; this workflow only handles the enqueue.
+# The runtime-version policy is `appVersion` (see app.json) — not
+# `fingerprint`. This is deliberate: `@expo/fingerprint` produces different
+# hashes on the Linux GH Actions runner vs the macOS EAS Build worker (the
+# node_modules contents of several native packages — async-storage,
+# reanimated, screens, safe-area-context, worklets — diverge between
+# platforms because of postinstall artifacts, and the EAS-side prebuild
+# adds an `ios/` dir the Linux fingerprint never sees). With fingerprint
+# policy that mismatch killed every EAS build for ~24h because the
+# `Configure expo-updates` step rejects builds whose pre-submit runtime
+# version disagrees with the post-prebuild one. `appVersion` policy is
+# deterministic across OSes — the runtime version is just the `version`
+# field in app.json — and `eas update --auto` produces the same value, so
+# OTAs always target a runtime version that some real TestFlight build
+# actually has. Bump `version` in app.json when you add a native module so
+# OTAs aren't shipped to old installs that lack the new native code.
 
 on:
   push:
@@ -44,13 +64,14 @@ on:
 #     This was the source of stuck-queue minute-burn (11 cancelled runs /
 #     154 min wall-clock in a 6-day window): rapid pushes piled up behind
 #     a slow fingerprint and each waited for its turn before being killed.
-#   - enqueue: NEVER cancel — once `eas build` returns, the EAS-side build
-#     is already queued on EAS infra. Cancelling the GH job orphans the tag
-#     write, but the build itself proceeds.
+#   - build: NEVER cancel — once `eas build` returns the EAS-side build is
+#     already running on EAS infra. Cancelling the GH job here only orphans
+#     the tag write and wastes the EAS build minute that's about to land.
+#     New pushes queue behind the active build.
 # No workflow-level concurrency; the job-level groups are what matter.
 
 permissions:
-  contents: write # push fingerprint tag after successful enqueue
+  contents: write # push fingerprint tag after successful build
 
 # Pin eas-cli to a known-good version so EAS releases don't silently change
 # the JSON schema of `eas build --json` (which the build job parses) or the
@@ -81,6 +102,12 @@ jobs:
 
       - uses: ./.github/actions/setup-pnpm
 
+      # The fingerprint is just a CI idempotency key — "have I already
+      # shipped a build for this exact native shape?". It is NOT the
+      # runtime version baked into the build artifact (that's `appVersion`
+      # from app.json). So the Linux-vs-macOS hash drift that breaks the
+      # `fingerprint` runtime-version policy doesn't matter here: we only
+      # compare Linux hash to Linux hash via the tag.
       - name: Compute iOS fingerprint
         id: fp
         working-directory: apps/workshop
@@ -130,25 +157,26 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  enqueue:
-    name: Enqueue EAS build (--no-wait --auto-submit)
+  build:
+    name: Build + submit (await EAS)
     needs: fingerprint
     if: needs.fingerprint.outputs.build_needed == 'true'
     runs-on: ubuntu-latest
-    # NEVER cancel an in-flight enqueue: once `eas build` returns, the build
-    # is already queued on EAS, and cancelling here only loses the fingerprint
-    # tag write. New pushes wait their turn behind any active enqueue.
+    # NEVER cancel an in-flight build: once `eas build` returns the EAS-
+    # side build is already running on EAS infra, and cancelling here only
+    # wastes the EAS build minute and orphans the tag write. New pushes
+    # wait their turn behind any active build.
     concurrency:
-      group: testflight-enqueue
+      group: testflight-build
       cancel-in-progress: false
-    # Stop-loss: a successful enqueue completes in ~1–2 minutes. 5 minutes
-    # is enough headroom for slow EAS API responses without burning Actions
-    # minutes when EAS is down.
-    timeout-minutes: 5
+    # EAS iOS builds are ~25–30 min wall-clock plus a few minutes for
+    # auto-submit. 60 min gives slack for slow EAS queues / submit
+    # contention without burning runner time on a wedged build.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      # `eas build` does run the actual build remotely on EAS infra, but the
+      # `eas build` runs the actual build remotely on EAS infra, but the
       # _local_ eas-cli still has to read `app.json` via `npx expo config
       # --json` and resolve config plugins (`expo-router`, ...) against this
       # repo's `node_modules`. Without an install the resolve fails with
@@ -158,11 +186,11 @@ jobs:
       # ~10s, miss is ~30s.
       - uses: ./.github/actions/setup-pnpm
 
-      # `--no-wait` returns as soon as EAS accepts the job (~1–2 min) instead
-      # of polling for the full ~30–40 min build. `--auto-submit` chains the
-      # TestFlight submit on EAS's side after the build succeeds. Both happen
-      # on EAS infra — no GH Actions minutes burned for either.
-      - name: Enqueue build + auto-submit
+      # No `--no-wait`: we want this step to exit on the actual build
+      # outcome, not on enqueue acceptance. `--auto-submit` still chains
+      # the TestFlight submit on EAS's side after the build succeeds, so
+      # this step blocks on the build (~30 min) but not on the submit.
+      - name: Build + auto-submit (await success)
         id: build
         working-directory: apps/workshop
         env:
@@ -178,34 +206,55 @@ jobs:
             --platform ios \
             --profile production \
             --non-interactive \
-            --no-wait \
             --auto-submit \
             --json)
           # `eas build --json` returns an array; the [0]th element is this build.
           BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id')
+          BUILD_STATUS=$(echo "$BUILD_JSON" | jq -r '.[0].status')
           if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
             echo "Failed to extract build ID from eas build output:"
             echo "$BUILD_JSON"
             exit 1
           fi
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "build_status=$BUILD_STATUS" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize build outcome
+        if: always() && steps.build.outputs.build_id != ''
+        env:
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
+          BUILD_STATUS: ${{ steps.build.outputs.build_status }}
+          FP_HASH: ${{ needs.fingerprint.outputs.hash }}
+        run: |
+          ICON="🟢"
+          if [ "$BUILD_STATUS" != "FINISHED" ]; then
+            ICON="🔴"
+          fi
           {
-            echo "## 🟢 Build enqueued"
+            echo "## $ICON Build $BUILD_STATUS"
             echo ""
             echo "**Build ID**: \`$BUILD_ID\`"
             echo ""
+            echo "**Fingerprint**: \`$FP_HASH\`"
+            echo ""
             echo "[View build on EAS](https://expo.dev/accounts/joshlebed/projects/workshop/builds/$BUILD_ID)"
             echo ""
-            echo "EAS will build then auto-submit to TestFlight. Both run on EAS"
-            echo "infra — no GH Actions polling time consumed. Monitor status on"
-            echo "the EAS dashboard or in App Store Connect."
+            if [ "$BUILD_STATUS" = "FINISHED" ]; then
+              echo "Auto-submit to TestFlight is queued on EAS (separate from this build)."
+              echo "Check [App Store Connect](https://appstoreconnect.apple.com) once the submission lands."
+            else
+              echo "Build did not finish cleanly. See the EAS build log linked above for the failing step."
+              echo "Recovery: fix the underlying issue, delete the fingerprint tag (\`ios-fp-$FP_HASH\`),"
+              echo "and dispatch \`testflight.yml\` with \`force=true\`."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Tag immediately on successful enqueue. Trade-off: an EAS-side build
-      # or submit failure won't auto-rebuild on the next push with the same
-      # fingerprint. Recovery: delete the tag locally + remote, then dispatch
-      # with `force=true`. See workflow header comment for the exact commands.
-      - name: Tag enqueued fingerprint
+      # Tag the fingerprint only after the build is confirmed green. With
+      # `--no-wait` we used to tag on enqueue, which let an EAS-side failure
+      # poison subsequent pushes (they'd see the tag and skip). Waiting +
+      # tag-after-success removes that footgun.
+      - name: Tag successful fingerprint
+        if: success()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FP_HASH: ${{ needs.fingerprint.outputs.hash }}
