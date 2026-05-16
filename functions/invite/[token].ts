@@ -12,14 +12,7 @@
  * pipeline — the share link must keep working even without a thumbnail.
  */
 
-import {
-  escapeXml,
-  fetchInvitePreview,
-  type InvitePreview,
-  type PagesEnv,
-  TYPE_LABELS,
-  truncate,
-} from "../_lib/og.js";
+import { buildMetaTags, escapeXml, fetchInvitePreview, type PagesEnv } from "../_lib/og.js";
 
 interface PagesContext {
   request: Request;
@@ -49,7 +42,10 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
   const url = new URL(request.url);
   const origin = `${url.protocol}//${url.host}`;
   const inviteUrl = `${origin}/invite/${encodeURIComponent(token)}`;
-  const imageUrl = `${origin}/og/invite/${encodeURIComponent(token)}`;
+  // Use the absolute, fully-qualified PNG URL. Facebook's scraper rejects
+  // images served from a redirect chain or a different origin than the
+  // page itself; co-locating them eliminates that whole failure mode.
+  const imageUrl = `${origin}/og/invite/${encodeURIComponent(token)}.png`;
   const meta = buildMetaTags(preview, { inviteUrl, imageUrl });
 
   // HTMLRewriter streams the response and only mutates the bits we
@@ -68,43 +64,3 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
     })
     .transform(assetResponse);
 };
-
-function buildMetaTags(
-  preview: InvitePreview,
-  opts: { inviteUrl: string; imageUrl: string },
-): string {
-  const title = `${preview.emoji} ${preview.name}`;
-  const description = buildDescription(preview);
-  const safeTitle = escapeXml(title);
-  const safeDesc = escapeXml(description);
-  const safeUrl = escapeXml(opts.inviteUrl);
-  const safeImage = escapeXml(opts.imageUrl);
-
-  return [
-    `<meta property="og:type" content="website" />`,
-    `<meta property="og:site_name" content="Workshop.dev" />`,
-    `<meta property="og:url" content="${safeUrl}" />`,
-    `<meta property="og:title" content="${safeTitle}" />`,
-    `<meta property="og:description" content="${safeDesc}" />`,
-    `<meta property="og:image" content="${safeImage}" />`,
-    `<meta property="og:image:type" content="image/svg+xml" />`,
-    `<meta property="og:image:width" content="1200" />`,
-    `<meta property="og:image:height" content="630" />`,
-    `<meta property="og:image:alt" content="${safeTitle}" />`,
-    `<meta name="twitter:card" content="summary_large_image" />`,
-    `<meta name="twitter:title" content="${safeTitle}" />`,
-    `<meta name="twitter:description" content="${safeDesc}" />`,
-    `<meta name="twitter:image" content="${safeImage}" />`,
-    `<meta name="description" content="${safeDesc}" />`,
-  ].join("\n    ");
-}
-
-function buildDescription(preview: InvitePreview): string {
-  if (preview.description && preview.description.trim().length > 0) {
-    return truncate(preview.description.trim(), 200);
-  }
-  const typeLabel = TYPE_LABELS[preview.type];
-  const owner = preview.ownerName ? ` by ${preview.ownerName}` : "";
-  const items = preview.itemCount === 1 ? "1 item" : `${preview.itemCount} items`;
-  return `${typeLabel}${owner} · ${items}. Join on Workshop.dev.`;
-}

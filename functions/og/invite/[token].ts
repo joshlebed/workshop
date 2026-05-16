@@ -1,24 +1,28 @@
 /**
- * Cloudflare Pages Function: GET /og/invite/:token
+ * Cloudflare Pages Function: GET /og/invite/:token.png
  *
  * Renders the Open Graph thumbnail referenced by `functions/invite/
- * [token].ts`. 1200×630 (Twitter/Facebook large-card aspect ratio, which
- * iMessage's LP framework also crops to nicely). Pure SVG so the
- * function has zero external deps; iOS Image I/O renders SVG fine, and
- * the file is small enough (<2KB) to inline-cache aggressively.
+ * [token].ts`. 1200×630 PNG (Twitter/Facebook large-card aspect ratio,
+ * which iMessage's LP framework also crops to nicely).
  *
- * Layout: full-bleed gradient using the list's color token, a giant
- * emoji glyph on the left, the list name + type label on the right,
- * with a "Workshop.dev" wordmark in the corner.
+ * We deliberately rasterize to PNG rather than serving SVG: the Apple
+ * Link Presentation framework (iMessage on macOS + iOS) and Facebook's
+ * scraper both silently drop SVG `og:image` responses in practice. The
+ * earlier SVG implementation showed text + a blank white image card.
+ *
+ * Rendering goes through `workers-og` (satori → resvg-wasm) at the edge.
+ * The font (Inter) is fetched from Google Fonts on first cold render and
+ * cached by Cloudflare's HTTP cache thereafter; the PNG response itself
+ * is also edge-cached with a 5-minute TTL.
  */
 
+import { ImageResponse, loadGoogleFont } from "workers-og";
 import {
-  COLOR_GRADIENTS,
-  escapeXml,
+  buildOgImageHtml,
   fetchInvitePreview,
+  OG_IMAGE_HEIGHT,
+  OG_IMAGE_WIDTH,
   type PagesEnv,
-  TYPE_LABELS,
-  truncate,
 } from "../../_lib/og.js";
 
 interface PagesContext {
@@ -27,7 +31,13 @@ interface PagesContext {
   params: { token?: string | string[] };
 }
 
-const FALLBACK_GRADIENT = COLOR_GRADIENTS.slate;
+/**
+ * Subset of glyphs we'll ever rasterize. Restricting `loadGoogleFont`
+ * with a `text` param means we get a tiny subsetted .ttf instead of the
+ * full 200KB Inter regular file — meaningful at edge cold start.
+ */
+const TEXT_GLYPHS =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?:;'\"-—…·&/+()[]@#%*=";
 
 export const onRequestGet = async (context: PagesContext): Promise<Response> => {
   const tokenRaw = context.params.token;
@@ -35,78 +45,38 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
   if (!token) {
     return new Response("not found", { status: 404 });
   }
+  // The route file is `[token].ts`, so a request for `/og/invite/abc.png`
+  // captures `abc.png`. Strip the extension so the API lookup matches
+  // the bare token. We keep `.png` in the public URL because some
+  // scrapers (Facebook in particular) sniff URL extension as a hint and
+  // it makes manual debugging less surprising.
+  const normalizedToken = token.replace(/\.(png|webp|jpg|jpeg)$/i, "");
 
-  const preview = await fetchInvitePreview(token, context.env);
-  const svg = renderSvg(preview);
+  const preview = await fetchInvitePreview(normalizedToken, context.env);
 
-  return new Response(svg, {
-    status: 200,
+  const [bold, semibold] = await Promise.all([
+    loadGoogleFont({ family: "Inter", weight: 700, text: TEXT_GLYPHS }),
+    loadGoogleFont({ family: "Inter", weight: 600, text: TEXT_GLYPHS }),
+  ]);
+
+  return new ImageResponse(buildOgImageHtml(preview), {
+    width: OG_IMAGE_WIDTH,
+    height: OG_IMAGE_HEIGHT,
+    format: "png",
+    fonts: [
+      { name: "Inter", data: bold, weight: 700, style: "normal" },
+      { name: "Inter", data: semibold, weight: 600, style: "normal" },
+      { name: "Inter", data: semibold, weight: 500, style: "normal" },
+    ],
+    // Render emoji via Twemoji raster glyphs. Without this the renderer
+    // would fall back to drawing emoji as missing-glyph boxes since the
+    // Inter subset doesn't include them.
+    emoji: "twemoji",
+    // CF Pages auto-caches GETs with these headers at the edge. 5min
+    // active + 1h SWR balances "owner just renamed the list" against
+    // "iMessage cached this for the conversation already".
     headers: {
-      "Content-Type": "image/svg+xml; charset=utf-8",
-      // Per-token thumbnail content can change (rename, emoji swap) but
-      // not often. 5 minutes at the edge + 1 hour stale-while-revalidate
-      // keeps social bots fast on re-fetch while still picking up edits
-      // within a few minutes.
       "Cache-Control": "public, max-age=300, s-maxage=300, stale-while-revalidate=3600",
     },
   });
 };
-
-function renderSvg(preview: Awaited<ReturnType<typeof fetchInvitePreview>>): string {
-  const [start, end] = preview ? COLOR_GRADIENTS[preview.color] : FALLBACK_GRADIENT;
-  const emoji = preview ? escapeXml(preview.emoji) : "📋";
-  const title = preview ? escapeXml(truncate(preview.name, 36)) : "Workshop.dev";
-  const sub = preview ? escapeXml(buildSubtitle(preview)) : "Shared lists for the things you love";
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="${start}" />
-      <stop offset="100%" stop-color="${end}" />
-    </linearGradient>
-    <filter id="soften" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="6" />
-    </filter>
-  </defs>
-
-  <rect width="1200" height="630" fill="url(#bg)" />
-
-  <!-- Decorative blurred orbs for depth -->
-  <circle cx="980" cy="120" r="180" fill="#ffffff" fill-opacity="0.10" filter="url(#soften)" />
-  <circle cx="150" cy="540" r="140" fill="#000000" fill-opacity="0.08" filter="url(#soften)" />
-
-  <!-- Emoji medallion -->
-  <g transform="translate(120, 220)">
-    <rect x="-20" y="-20" width="260" height="260" rx="48" fill="#ffffff" fill-opacity="0.18" />
-    <text
-      x="110"
-      y="180"
-      font-size="180"
-      text-anchor="middle"
-      font-family="'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif"
-    >${emoji}</text>
-  </g>
-
-  <!-- Title block -->
-  <g transform="translate(420, 270)" fill="#ffffff" font-family="'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
-    <text x="0" y="0" font-size="76" font-weight="700" letter-spacing="-2">${title}</text>
-    <text x="0" y="68" font-size="34" font-weight="500" opacity="0.85">${sub}</text>
-  </g>
-
-  <!-- Wordmark -->
-  <g transform="translate(72, 540)" fill="#ffffff" font-family="'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
-    <circle cx="14" cy="14" r="10" fill="#ffffff" />
-    <text x="40" y="22" font-size="28" font-weight="600" letter-spacing="-0.5">Workshop.dev</text>
-  </g>
-</svg>`;
-}
-
-function buildSubtitle(
-  preview: NonNullable<Awaited<ReturnType<typeof fetchInvitePreview>>>,
-): string {
-  const typeLabel = TYPE_LABELS[preview.type];
-  const owner = preview.ownerName ? ` · ${preview.ownerName}` : "";
-  const items = preview.itemCount === 1 ? "1 item" : `${preview.itemCount} items`;
-  return truncate(`${typeLabel} · ${items}${owner}`, 60);
-}
