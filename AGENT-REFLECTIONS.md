@@ -65,6 +65,21 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
   in `apps/workshop/CLAUDE.md` listing the three modes × two vars. The sandbox already
   bakes the flags; this is purely a "make the contract discoverable" doc edit.
 
+### CI / deploy
+
+- **No CI check enforces `app.json` `version` bump when native deps change.** PR #160
+  switched the iOS runtime-version policy from `fingerprint` to `appVersion`, so the
+  human-readable `version` field in `app.json` is now what `eas build` and `eas update`
+  both target. Forgetting to bump it when adding a native module (or changing a config
+  plugin) ships an OTA whose JS references native symbols the already-installed
+  TestFlight build doesn't have — the app crashes on next launch and existing users
+  have to delete + reinstall to recover. **Fix:** add a `Quality (...)`-tier job that
+  diffs `@expo/fingerprint` between PR head and `main`, and fails the run if the
+  fingerprint changed without a `version` bump in `apps/workshop/app.json`. Both inputs
+  are already computed: fingerprint by `testflight.yml`, version is a one-line `jq`.
+  ~30m. The CLAUDE.md gotcha in the iOS deploy pipeline section is the manual
+  workaround until this lands.
+
 ### Tooling / scripts
 
 - **`scripts/dev-smoke.sh`** doesn't exist. A single script that hits home, list-detail,
