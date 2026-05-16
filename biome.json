@@ -47,7 +47,8 @@
       "!**/infra/.terraform",
       "!**/*.icon",
       "!**/test-results",
-      "!**/playwright-report"
+      "!**/playwright-report",
+      "!**/.wrangler"
     ]
   }
 }
