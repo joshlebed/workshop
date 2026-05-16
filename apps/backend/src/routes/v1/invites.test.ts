@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { signSession } from "../../lib/session.js";
-import { createInviteSchema, inviteRoutes } from "./invites.js";
+import { createInviteSchema, inviteRoutes, publicInviteRoutes } from "./invites.js";
 
 beforeAll(() => {
   process.env.STAGE = "local";
@@ -110,5 +110,16 @@ describe("inviteRoutes input validation", () => {
       headers: authHeaders(),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe("publicInviteRoutes (no auth)", () => {
+  it("GET /invites/:token/preview does not require a bearer token", async () => {
+    // Overlong token bails at the length guard before any DB access, so this
+    // exercises that the route sits outside requireAuth without needing a
+    // live DB. A 401 would mean we accidentally mounted it under auth.
+    const res = await publicInviteRoutes.request(`/invites/${"a".repeat(300)}/preview`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: "NOT_FOUND" });
   });
 });
