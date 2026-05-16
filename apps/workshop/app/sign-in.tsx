@@ -63,9 +63,6 @@ export default function SignIn() {
           <View style={styles.dot} />
           <Text style={styles.wordmarkAccent}>dev</Text>
         </View>
-        <Text tone="secondary" style={styles.tagline}>
-          A quiet place for the lists you keep together.
-        </Text>
       </View>
 
       <View style={styles.actions}>
@@ -120,9 +117,6 @@ export default function SignIn() {
       </View>
 
       <View style={styles.bottomSpacer} />
-      <Text tone="muted" style={styles.footer}>
-        A personal, experimental app. Use it gently.
-      </Text>
     </View>
   );
 }
@@ -171,11 +165,6 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.accent.default,
     transform: [{ translateY: -3 }],
   },
-  tagline: {
-    fontSize: tokens.font.size.md,
-    lineHeight: 22,
-    maxWidth: 320,
-  },
   actions: {
     gap: tokens.space.sm,
     maxWidth: 420,
@@ -199,11 +188,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 1,
     textTransform: "uppercase",
-  },
-  footer: {
-    fontSize: tokens.font.size.xs,
-    maxWidth: 320,
-    alignSelf: "center",
-    textAlign: "center",
   },
 });

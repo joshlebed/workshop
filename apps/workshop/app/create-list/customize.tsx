@@ -121,7 +121,8 @@ export default function CreateListCustomize() {
       ),
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      router.replace(`/create-list/share?listId=${res.list.id}`);
+      router.dismissAll();
+      router.replace(`/list/${res.list.id}`);
     },
     onError: (e) => {
       showToast({

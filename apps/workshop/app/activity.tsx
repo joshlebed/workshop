@@ -230,7 +230,7 @@ export default function Activity() {
       ) : events.length === 0 ? (
         <View style={styles.center}>
           <EmptyState
-            title="Quiet for now"
+            title="No activity yet"
             description="When you and your collaborators add or rank items, the action shows up here."
           />
         </View>

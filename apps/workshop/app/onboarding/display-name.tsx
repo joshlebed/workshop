@@ -30,18 +30,6 @@ export default function DisplayName() {
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.intro}>
-        <Text variant="caption" tone="muted" style={styles.eyebrow}>
-          One quick thing
-        </Text>
-        <Text variant="title" style={styles.heading}>
-          What should we call you?
-        </Text>
-        <Text tone="secondary" style={styles.tagline}>
-          This is how you'll show up to people you share lists with. Change it later in settings.
-        </Text>
-      </View>
-
       <View style={styles.form}>
         <Text variant="label" tone="secondary" style={styles.label}>
           Display name
@@ -86,15 +74,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: tokens.space.xxl,
   },
-  intro: {
-    gap: tokens.space.sm,
-    maxWidth: 420,
-    alignSelf: "center",
-    width: "100%",
-  },
-  eyebrow: { letterSpacing: 0.3 },
-  heading: { letterSpacing: -0.4 },
-  tagline: { fontSize: tokens.font.size.md, lineHeight: 22 },
   form: {
     gap: tokens.space.md,
     maxWidth: 420,
