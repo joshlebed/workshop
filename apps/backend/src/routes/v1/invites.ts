@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { Invite, ListColor, ListMemberSummary, MemberRole } from "@workshop/shared";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -15,6 +15,7 @@ import {
 import { recordEvent } from "../../lib/events.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { executeRows } from "../../lib/sql.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
 
@@ -30,6 +31,15 @@ import { requireListMember, requireListOwner } from "../../middleware/authorize.
  * `/v1/lists/...` and the list-scoped item routes.
  */
 export const inviteRoutes = new Hono();
+
+/**
+ * Public, unauthenticated subset of the invite surface. Today this is
+ * just `GET /invites/:token/preview`, which exposes a safe metadata
+ * subset for link-preview crawlers (iMessage, Slack, etc.) to render a
+ * thumbnail without the requester needing to be signed in. Mounted
+ * separately so it sits outside `requireAuth`.
+ */
+export const publicInviteRoutes = new Hono();
 
 inviteRoutes.use("*", requireAuth);
 
@@ -264,6 +274,65 @@ inviteRoutes.post("/invites/:token/accept", async (c) => {
   return ok(c, {
     list: toListShape(result.list),
     member: memberSummary,
+  });
+});
+
+// --- GET /v1/invites/:token/preview (public, link-preview crawlers) ---
+
+/**
+ * Safe metadata subset exposed to unauthenticated link-preview crawlers
+ * (iMessage, Slack, etc.). Anyone who has the token already has the
+ * full list surface via `/accept`, so showing the name/emoji/etc. here
+ * leaks nothing new. We deliberately omit member identities and item
+ * contents — those require membership.
+ */
+publicInviteRoutes.get("/invites/:token/preview", async (c) => {
+  const token = c.req.param("token");
+  if (token.length === 0 || token.length > 256) {
+    return err(c, "NOT_FOUND", "invite not found");
+  }
+
+  const db = getDb();
+  const [invite] = await db.select().from(listInvites).where(eq(listInvites.token, token)).limit(1);
+  if (!invite || invite.revokedAt) {
+    return err(c, "NOT_FOUND", "invite not found");
+  }
+  if (invite.expiresAt && invite.expiresAt.getTime() < Date.now()) {
+    return err(c, "NOT_FOUND", "invite not found");
+  }
+
+  const [list] = await db.select().from(lists).where(eq(lists.id, invite.listId)).limit(1);
+  if (!list) {
+    return err(c, "NOT_FOUND", "invite not found");
+  }
+
+  const [owner] = await db
+    .select({ displayName: users.displayName })
+    .from(users)
+    .where(eq(users.id, list.ownerId))
+    .limit(1);
+
+  const countRows = await executeRows<{ item_count: number; member_count: number }>(
+    db,
+    sql`
+      SELECT
+        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = ${list.id}) AS item_count,
+        (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = ${list.id}) AS member_count
+    `,
+  );
+  const counts = countRows[0] ?? { item_count: 0, member_count: 0 };
+
+  return ok(c, {
+    preview: {
+      name: list.name,
+      emoji: list.emoji,
+      color: list.color as ListColor,
+      description: list.description,
+      type: list.type,
+      itemCount: Number(counts.item_count),
+      memberCount: Number(counts.member_count),
+      ownerName: owner?.displayName ?? null,
+    },
   });
 });
 

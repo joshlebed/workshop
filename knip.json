@@ -3,7 +3,7 @@
   "ignore": [".agents/**", ".claude/skills/**"],
   "workspaces": {
     ".": {
-      "entry": ["scripts/*.{sh,ts,mjs,js}"],
+      "entry": ["scripts/*.{sh,ts,mjs,js}", "functions/**/*.ts"],
       "ignoreDependencies": ["concurrently"]
     },
     "apps/backend": {

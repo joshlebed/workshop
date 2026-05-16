@@ -10,7 +10,7 @@ import { activityRoutes } from "./routes/v1/activity.js";
 import { albumShelfRoutes } from "./routes/v1/album-shelf.js";
 import { authRoutes } from "./routes/v1/auth.js";
 import { itemScoreRoutes, listGameScoresRoutes } from "./routes/v1/game-scores.js";
-import { inviteRoutes } from "./routes/v1/invites.js";
+import { inviteRoutes, publicInviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
 import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
 import { listRoutes } from "./routes/v1/lists.js";
@@ -94,6 +94,7 @@ export function buildApp() {
   // Invite routes split across two URL roots (`/v1/lists/:id/invites/...`
   // and `/v1/invites/:token/accept`). Mount under `/v1` so both shapes
   // resolve from a single Hono sub-router.
+  app.route("/v1", publicInviteRoutes);
   app.route("/v1", inviteRoutes);
 
   return app;
