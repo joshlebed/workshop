@@ -36,6 +36,7 @@ import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { PullToRefresh } from "../../components/PullToRefresh";
 import { Text, tokens } from "../../ui/index";
+import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
 import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
 
@@ -45,6 +46,7 @@ export function ItemList({
   ordered,
   unordered,
   completed,
+  listType,
   isAlbumShelf,
   showOrderedHint,
   newItemIds,
@@ -61,6 +63,13 @@ export function ItemList({
   refreshing,
   onRefresh,
 }: ItemListProps) {
+  // Mirror the native side: auto-collapse the completed section past the
+  // shared threshold; users can expand by tapping the section header.
+  const [completedCollapsed, setCompletedCollapsed] = useState(
+    completed.length > COMPLETED_COLLAPSE_THRESHOLD,
+  );
+  const showCompletedToggle = completed.length > COMPLETED_COLLAPSE_THRESHOLD;
+  const completedToRender = showCompletedToggle && completedCollapsed ? [] : completed;
   // See ItemList.tsx for rationale: suppresses "added by you" provenance on
   // every row when the viewer is also the adder; collapses chrome to the
   // collaborator-attributed rows only.
@@ -144,7 +153,9 @@ export function ItemList({
     >
       <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
         <ScrollView contentContainerStyle={styles.listContent} testID="list-detail-list">
-          {ordered.length > 0 ? <SectionHeader kind="ordered" count={ordered.length} /> : null}
+          {ordered.length > 0 ? (
+            <SectionHeader kind="ordered" count={ordered.length} listType={listType} />
+          ) : null}
           <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
             {ordered.map((item, index) => (
               <SortableOrderedRow
@@ -166,11 +177,7 @@ export function ItemList({
 
           {unordered.length > 0 ? (
             <>
-              <SectionHeader
-                kind="unordered"
-                count={unordered.length}
-                isAlbumShelf={isAlbumShelf}
-              />
+              <SectionHeader kind="unordered" count={unordered.length} listType={listType} />
               {unordered.map((item) => (
                 <DraggableUnorderedRow
                   key={item.id}
@@ -188,8 +195,20 @@ export function ItemList({
 
           {completed.length > 0 ? (
             <>
-              <SectionHeader kind="completed" count={completed.length} />
-              {completed.map((item) => (
+              <SectionHeader
+                kind="completed"
+                count={completed.length}
+                listType={listType}
+                collapsible={
+                  showCompletedToggle
+                    ? {
+                        collapsed: completedCollapsed,
+                        onToggle: () => setCompletedCollapsed((c) => !c),
+                      }
+                    : undefined
+                }
+              />
+              {completedToRender.map((item) => (
                 <ItemRow
                   key={item.id}
                   item={item}

@@ -3,7 +3,7 @@
 // list-detail row container. Lives in its own file so the .web variant can
 // import it without dragging in the native list's runtime dependency.
 
-import type { Item } from "@workshop/shared";
+import type { Item, ListType } from "@workshop/shared";
 import type { Section } from "./types";
 
 export interface ReorderEvent {
@@ -21,7 +21,12 @@ export interface ItemListProps {
   ordered: Item[];
   unordered: Item[];
   completed: Item[];
-  /** Renames "UNORDERED" → "DETECTED" and tweaks the hint copy. */
+  /**
+   * List type drives type-aware section labels (Watchlist / Reading / Ideas
+   * / Wishlist / Detected / Backlog) and the empty-state copy.
+   */
+  listType: ListType;
+  /** Renames the unordered-hint copy and disables completion semantics. */
   isAlbumShelf: boolean;
   /**
    * Render the "use the menu to start ranking" hint between the (empty)

@@ -19,7 +19,7 @@
 
 import type { Item } from "@workshop/shared";
 import * as Haptics from "expo-haptics";
-import { memo, type ReactNode, useCallback } from "react";
+import { memo, type ReactNode, useCallback, useState } from "react";
 import { type ListRenderItemInfo, StyleSheet, View } from "react-native";
 import {
   NestedReorderableList,
@@ -30,6 +30,7 @@ import {
 } from "react-native-reorderable-list";
 import { PullToRefresh } from "../../components/PullToRefresh";
 import { tokens } from "../../ui/index";
+import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
 import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
 
@@ -37,6 +38,7 @@ export function ItemList({
   ordered,
   unordered,
   completed,
+  listType,
   isAlbumShelf,
   showOrderedHint,
   newItemIds,
@@ -52,6 +54,15 @@ export function ItemList({
   refreshing,
   onRefresh,
 }: ItemListProps) {
+  // Completed section auto-collapses past the threshold so the active part of
+  // the list (ranked + unordered) stays in view. Tap the header to expand.
+  // The toggle below the threshold is a no-op (the section is always shown),
+  // so the affordance only appears when there's actually something to hide.
+  const [completedCollapsed, setCompletedCollapsed] = useState(
+    completed.length > COMPLETED_COLLAPSE_THRESHOLD,
+  );
+  const showCompletedToggle = completed.length > COMPLETED_COLLAPSE_THRESHOLD;
+  const completedToRender = showCompletedToggle && completedCollapsed ? [] : completed;
   // Resolve provenance attribution: shows the adder's name when collaboration
   // is enabled AND the adder isn't the viewer. The "added by you · 1m" line on
   // every row of a single-active-collaborator list reads as noise; suppressing
@@ -93,7 +104,7 @@ export function ItemList({
       <ScrollViewContainer contentContainerStyle={styles.listContent} testID="list-detail-list">
         {ordered.length > 0 ? (
           <>
-            <SectionHeader kind="ordered" count={ordered.length} />
+            <SectionHeader kind="ordered" count={ordered.length} listType={listType} />
             <NestedReorderableList
               data={ordered}
               keyExtractor={keyExtractor}
@@ -111,7 +122,7 @@ export function ItemList({
 
         {unordered.length > 0 ? (
           <>
-            <SectionHeader kind="unordered" count={unordered.length} isAlbumShelf={isAlbumShelf} />
+            <SectionHeader kind="unordered" count={unordered.length} listType={listType} />
             {unordered.map((item) => (
               <ItemRow
                 key={item.id}
@@ -131,8 +142,20 @@ export function ItemList({
 
         {completed.length > 0 ? (
           <>
-            <SectionHeader kind="completed" count={completed.length} />
-            {completed.map((item) => (
+            <SectionHeader
+              kind="completed"
+              count={completed.length}
+              listType={listType}
+              collapsible={
+                showCompletedToggle
+                  ? {
+                      collapsed: completedCollapsed,
+                      onToggle: () => setCompletedCollapsed((c) => !c),
+                    }
+                  : undefined
+              }
+            />
+            {completedToRender.map((item) => (
               <ItemRow
                 key={item.id}
                 item={item}
