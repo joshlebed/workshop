@@ -129,6 +129,7 @@ function AuthGate() {
         <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="list/[id]/index" />
         <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
+        <Stack.Screen name="list/[id]/add-bulk" options={{ presentation: "modal" }} />
         <Stack.Screen name="list/[id]/settings" options={{ presentation: "modal" }} />
         <Stack.Screen name="list/[id]/item/[itemId]" />
         <Stack.Screen name="onboarding/accept-invite" />

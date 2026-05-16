@@ -30,3 +30,35 @@ export function updateList(
 export function deleteList(id: string, token: string | null): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/lists/${id}`, token });
 }
+
+// Per-(list, viewer) view-state toggles. All four return `{ ok: true }` and
+// expect the caller to invalidate the lists query so the resulting
+// `unreadCount` / `pinnedAt` / `archivedAt` / `mutedAt` show up.
+
+export function markListRead(id: string, token: string | null): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({ method: "POST", path: `/v1/lists/${id}/read`, token });
+}
+
+export function pinList(id: string, token: string | null): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({ method: "POST", path: `/v1/lists/${id}/pin`, token });
+}
+
+export function unpinList(id: string, token: string | null): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/lists/${id}/pin`, token });
+}
+
+export function archiveList(id: string, token: string | null): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({ method: "POST", path: `/v1/lists/${id}/archive`, token });
+}
+
+export function unarchiveList(id: string, token: string | null): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/lists/${id}/archive`, token });
+}
+
+export function muteList(id: string, token: string | null): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({ method: "POST", path: `/v1/lists/${id}/mute`, token });
+}
+
+export function unmuteList(id: string, token: string | null): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/lists/${id}/mute`, token });
+}

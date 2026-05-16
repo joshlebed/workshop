@@ -57,6 +57,12 @@ export interface ItemListProps {
   /** Body click on a row — type-specific handler (Spotify or item detail page). */
   onRowPressBody: (item: Item, section: Section) => void;
   /**
+   * Tap-to-uncomplete: wired into the leading check glyph on completed-section
+   * rows so users can flip the state without going through the row menu.
+   * Skipped on album_shelf items (no completion semantics).
+   */
+  onUncompleteItem: (item: Item) => void;
+  /**
    * Per-row cover-press resolver. Return a handler when the row's
    * thumbnail should be its own tap target (launches the item's external
    * URL / Spotify album / game URL); return `null` for items where the

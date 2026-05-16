@@ -1,4 +1,6 @@
 import type {
+  BulkCreateItemsRequest,
+  BulkCreateItemsResponse,
   CreateItemRequest,
   ItemResponse,
   ListItemsResponse,
@@ -31,6 +33,25 @@ export function createItem(
   return apiRequest<ItemResponse>({
     method: "POST",
     path: `/v1/lists/${listId}/items`,
+    body,
+    token,
+  });
+}
+
+/**
+ * Bulk variant — server caps at 50 entries per call. Caller chunks if more
+ * are pasted. Each entry has the same shape as `CreateItemRequest`, minus
+ * the per-list-type metadata blob (bulk path is meant for raw-title pastes;
+ * enrichment via TMDB / Google Books happens as a follow-up).
+ */
+export function createItemsBulk(
+  listId: string,
+  body: BulkCreateItemsRequest,
+  token: string | null,
+): Promise<BulkCreateItemsResponse> {
+  return apiRequest<BulkCreateItemsResponse>({
+    method: "POST",
+    path: `/v1/lists/${listId}/items/bulk`,
     body,
     token,
   });

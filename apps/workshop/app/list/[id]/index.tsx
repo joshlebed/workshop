@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
+import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { fetchListDetail } from "../../../src/api/lists";
+import { fetchListDetail, markListRead } from "../../../src/api/lists";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { errorMessage } from "../../../src/lib/api";
 import { queryKeys } from "../../../src/lib/queryKeys";
@@ -18,12 +19,25 @@ export default function ListDetailRoute() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const { token } = useAuth();
+  const queryClient = useQueryClient();
 
   const listQuery = useQuery({
     queryKey: queryKeys.lists.detail(id ?? ""),
     queryFn: () => fetchListDetail(id ?? "", token),
     enabled: !!token && !!id,
   });
+
+  // Mark this list as read whenever the route mounts (and re-mounts on
+  // navigate-back via the stack). Decays the per-list unread badge on home.
+  // Fire-and-forget — a failure here is invisible to the user.
+  useEffect(() => {
+    if (!id || !token) return;
+    markListRead(id, token)
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+      })
+      .catch(() => {});
+  }, [id, token, queryClient]);
 
   if (!id) {
     return (

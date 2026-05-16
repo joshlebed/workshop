@@ -103,6 +103,19 @@ export const listMembers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     role: memberRoleEnum("role").notNull(),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().default(sql`now()`),
+    // Per-(list, viewer) presentation state. Nullable because the natural
+    // unset value is "never pinned / never archived / never muted"; we treat
+    // NULL as the absence of the flag rather than encoding a sentinel
+    // timestamp. Each collaborator has their own per-list opinion — Alex's
+    // pin doesn't surface on Sarah's home.
+    //
+    // Per-list `lastReadAt` lives in `user_activity_reads` (composite-keyed
+    // on (user_id, list_id)). That table predates these columns and the
+    // `POST /v1/activity/read` endpoint already populates it; the unread
+    // count on `GET /v1/lists` reads from there.
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    mutedAt: timestamp("muted_at", { withTimezone: true }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.listId, t.userId] }),

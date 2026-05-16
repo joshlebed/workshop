@@ -23,6 +23,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { refreshAlbumShelf } from "../api/albumShelf";
 import { completeItem, deleteItem, fetchItems, uncompleteItem, updateItem } from "../api/items";
 import { useAuth } from "../hooks/useAuth";
+import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
 import {
   applyPositionPatch,
@@ -82,11 +83,13 @@ export function ListDetail({ list, members, token }: Props) {
   const [filter, setFilter] = useState("");
   const isAlbumShelf = list.type === "album_shelf";
   const itemsKey = queryKeys.items.byList(list.id);
+  const livePoll = useLivePollingInterval();
 
   const itemsQuery = useQuery({
     queryKey: itemsKey,
     queryFn: () => fetchItems(list.id, token),
     enabled: !!token,
+    refetchInterval: livePoll,
   });
 
   // After a successful refresh we mark item ids that are newly arrived so
@@ -622,6 +625,7 @@ export function ListDetail({ list, members, token }: Props) {
               onPromoteToOrdered={onPromoteToOrdered}
               onRowMenu={onRowMenu}
               onRowPressBody={onRowPressBody}
+              onUncompleteItem={(item) => completeMutation.mutate({ item, nextCompleted: false })}
               resolveRowPressCover={resolveRowPressCover}
               refreshing={itemsQuery.isRefetching}
               onRefresh={() => {

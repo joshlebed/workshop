@@ -78,6 +78,13 @@
       "when": 1778880669812,
       "tag": "0010_add_games_list_type",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1778900092733,
+      "tag": "0011_list_member_view_state",
+      "breakpoints": true
     }
   ]
 }

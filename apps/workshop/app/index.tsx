@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActivityEvent, ListSummary, ListType } from "@workshop/shared";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,12 +12,20 @@ import {
   View,
 } from "react-native";
 import { fetchActivity } from "../src/api/activity";
-import { fetchLists } from "../src/api/lists";
+import {
+  archiveList,
+  fetchLists,
+  muteList,
+  pinList,
+  unarchiveList,
+  unmuteList,
+  unpinList,
+} from "../src/api/lists";
 import { PullToRefresh } from "../src/components/PullToRefresh";
 import { useAuth } from "../src/hooks/useAuth";
+import { useLivePollingInterval } from "../src/hooks/useLivePollingInterval";
 import { errorMessage } from "../src/lib/api";
 import { confirm } from "../src/lib/confirm";
-import { getActivityLastViewedAt } from "../src/lib/lastViewed";
 import { queryKeys } from "../src/lib/queryKeys";
 import {
   Button,
@@ -83,10 +91,13 @@ function initialsFor(name: string | null | undefined): string {
 export default function Home() {
   const { user, token, signOut } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const livePoll = useLivePollingInterval();
   const listsQuery = useQuery({
     queryKey: queryKeys.lists.all,
     queryFn: () => fetchLists(token),
     enabled: !!token,
+    refetchInterval: livePoll,
   });
 
   const activityFeedQuery = useQuery({
@@ -94,38 +105,28 @@ export default function Home() {
     queryFn: () => fetchActivity({ limit: 50 }, token),
     enabled: !!token,
     staleTime: 30_000,
+    refetchInterval: livePoll,
   });
   const events = activityFeedQuery.data?.events ?? [];
 
-  const [lastViewedAt, setLastViewedAt] = useState<string | null>(null);
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      getActivityLastViewedAt()
-        .then((v) => {
-          if (!cancelled) setLastViewedAt(v);
-        })
-        .catch(() => {});
-      return () => {
-        cancelled = true;
-      };
-    }, []),
-  );
+  const allLists = listsQuery.data?.lists ?? [];
 
-  const unreadCount = useMemo(() => {
+  // The header bell sums server-side `unreadCount` across non-muted lists.
+  // Muted lists report 0 from the server, but we filter again here as
+  // belt-and-braces and to make the intent obvious at the read site.
+  const totalUnread = useMemo(() => {
     let n = 0;
-    for (const e of events) {
-      if (e.actorId === user?.id) continue;
-      if (lastViewedAt && new Date(e.createdAt).getTime() <= new Date(lastViewedAt).getTime()) {
-        continue;
-      }
-      n++;
+    for (const l of allLists) {
+      if (l.mutedAt) continue;
+      n += l.unreadCount;
     }
     return n;
-  }, [events, user?.id, lastViewedAt]);
-  const hasUnread = unreadCount > 0;
+  }, [allLists]);
+  const hasUnread = totalUnread > 0;
 
-  // The latest event per list — used as the subtitle when present.
+  // The latest event per list — used as the subtitle when present, and as
+  // the attribution source for the "X new from Sarah" copy (we look up the
+  // latest event with a non-self actor on a given list).
   const latestByList = useMemo(() => {
     const map = new Map<string, ActivityEvent>();
     for (const e of events) {
@@ -134,46 +135,86 @@ export default function Home() {
     return map;
   }, [events]);
 
-  // Per-list unread state: count + latest unread event from another collaborator
-  // since the user last viewed /activity. Drives the per-row accent affordance,
-  // the multiplayer signal PRODUCT.md asks to make first-class. We track the
-  // latest unread event separately (not just count) so the subtitle attributes
-  // accurately — using the overall latestEvent would credit "Preview and others"
-  // when self made the most recent action but Friend's earlier actions are unread.
-  const unreadByList = useMemo(() => {
-    const map = new Map<string, { count: number; latest: ActivityEvent; actorIds: Set<string> }>();
-    const cutoff = lastViewedAt ? new Date(lastViewedAt).getTime() : 0;
+  // For attribution on unread rows: latest event on that list authored by
+  // someone other than the viewer. The count itself comes from the server
+  // (`list.unreadCount`); this just supplies the name + a hint at whether
+  // multiple collaborators were involved (by checking if any earlier
+  // non-self event on the same list has a different actorId).
+  const latestUnreadByList = useMemo(() => {
+    const map = new Map<string, { latest: ActivityEvent; actorIds: Set<string> }>();
     for (const e of events) {
       if (e.actorId === user?.id) continue;
-      if (cutoff && new Date(e.createdAt).getTime() <= cutoff) continue;
       const prev = map.get(e.listId);
-      if (!prev) {
-        // events are newest-first, so the first one we see per list is the latest.
-        map.set(e.listId, {
-          count: 1,
-          latest: e,
-          actorIds: new Set([e.actorId]),
-        });
-      } else {
-        prev.count++;
-        prev.actorIds.add(e.actorId);
-      }
+      if (!prev) map.set(e.listId, { latest: e, actorIds: new Set([e.actorId]) });
+      else prev.actorIds.add(e.actorId);
     }
     return map;
-  }, [events, user?.id, lastViewedAt]);
+  }, [events, user?.id]);
 
-  // Sort lists by recency of their last activity (or updatedAt fallback).
-  const sortedLists = useMemo(() => {
-    const lists = listsQuery.data?.lists ?? [];
+  // Pinned first (pinned-most-recently within pinned), then by recency of
+  // last activity (or updatedAt fallback). Archived lists are filtered out
+  // of the main view and only visible from the profile sheet.
+  const visibleLists = useMemo(() => {
+    const lists = allLists.filter((l) => !l.archivedAt);
     return [...lists].sort((a, b) => {
+      const ap = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+      const bp = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
+      if (ap !== bp) return bp - ap; // pinned (highest pinnedAt) first
       const ta = latestByList.get(a.id)?.createdAt ?? a.updatedAt;
       const tb = latestByList.get(b.id)?.createdAt ?? b.updatedAt;
       return new Date(tb).getTime() - new Date(ta).getTime();
     });
-  }, [listsQuery.data, latestByList]);
+  }, [allLists, latestByList]);
+
+  const archivedLists = useMemo(() => allLists.filter((l) => !!l.archivedAt), [allLists]);
 
   const [profileOpen, setProfileOpen] = useState(false);
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const [rowMenuFor, setRowMenuFor] = useState<ListSummary | null>(null);
+
+  // Per-list view-state toggles. Each is optimistic on the query cache so the
+  // row's pin/archive/mute affordance flips before the network round-trip.
+  // On error we invalidate to snap back to server truth — the toast surfaces
+  // the failure to the user.
+  const viewStateMutation = useMutation<
+    { ok: true },
+    Error,
+    { id: string; field: "pinnedAt" | "archivedAt" | "mutedAt"; value: string | null }
+  >({
+    mutationFn: async ({ id, field, value }) => {
+      if (field === "pinnedAt") return value ? pinList(id, token) : unpinList(id, token);
+      if (field === "archivedAt") return value ? archiveList(id, token) : unarchiveList(id, token);
+      return value ? muteList(id, token) : unmuteList(id, token);
+    },
+    onMutate: async ({ id, field, value }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.lists.all });
+      const prev = queryClient.getQueryData<{ lists: ListSummary[] }>(queryKeys.lists.all);
+      if (prev) {
+        queryClient.setQueryData<{ lists: ListSummary[] }>(queryKeys.lists.all, {
+          lists: prev.lists.map((l) =>
+            l.id === id
+              ? {
+                  ...l,
+                  [field]: value,
+                  // muting zeroes unread on the server; mirror that locally so
+                  // the header bell updates immediately.
+                  ...(field === "mutedAt" && value ? { unreadCount: 0 } : null),
+                }
+              : l,
+          ),
+        });
+      }
+      return prev ? { previous: prev } : {};
+    },
+    onError: (_e, _vars, ctx) => {
+      const previous = (ctx as { previous?: { lists: ListSummary[] } } | undefined)?.previous;
+      if (previous) queryClient.setQueryData(queryKeys.lists.all, previous);
+      queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+    },
+  });
 
   const onCreateList = useCallback(() => router.push("/create-list/type"), [router]);
   const onActivity = useCallback(() => router.push("/activity"), [router]);
@@ -228,7 +269,7 @@ export default function Home() {
               activityFeedQuery.isError
                 ? "Activity (couldn't load, tap to retry)"
                 : hasUnread
-                  ? `Activity, ${unreadCount} new`
+                  ? `Activity, ${totalUnread} new`
                   : "Activity"
             }
             onPress={() => {
@@ -247,7 +288,7 @@ export default function Home() {
             {hasUnread && !activityFeedQuery.isError ? (
               <View style={styles.unreadBadge} testID="activity-unread-badge">
                 <Text style={styles.unreadBadgeText} tone="onAccent">
-                  {unreadCount > 9 ? "9+" : String(unreadCount)}
+                  {totalUnread > 9 ? "9+" : String(totalUnread)}
                 </Text>
               </View>
             ) : null}
@@ -295,7 +336,7 @@ export default function Home() {
               }
             />
           </View>
-        ) : sortedLists.length === 0 ? (
+        ) : visibleLists.length === 0 ? (
           <View style={styles.center}>
             <View style={styles.emptyGlyphBadge}>
               <Text style={styles.emptyGlyph}>✦</Text>
@@ -312,19 +353,18 @@ export default function Home() {
             onRefresh={() => listsQuery.refetch()}
           >
             <FlatList
-              data={sortedLists}
+              data={visibleLists}
               keyExtractor={(l) => l.id}
               contentContainerStyle={styles.listContent}
               ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
               renderItem={({ item }) => {
-                const unread = unreadByList.get(item.id);
+                const unreadMeta = latestUnreadByList.get(item.id);
                 return (
                   <ListRow
                     list={item}
                     latestEvent={latestByList.get(item.id) ?? null}
-                    unreadCount={unread?.count ?? 0}
-                    latestUnreadEvent={unread?.latest ?? null}
-                    unreadActorCount={unread?.actorIds.size ?? 0}
+                    latestUnreadEvent={unreadMeta?.latest ?? null}
+                    unreadActorCount={unreadMeta?.actorIds.size ?? 0}
                     selfId={user?.id ?? null}
                     onPress={() => router.push(`/list/${item.id}`)}
                     onContextMenu={() => setRowMenuFor(item)}
@@ -397,15 +437,40 @@ export default function Home() {
                 }}
               />
               <RowMenuAction
-                label="List settings"
+                label={rowMenuFor.pinnedAt ? "Unpin from top" : "Pin to top"}
                 onPress={() => {
-                  const id = rowMenuFor.id;
+                  viewStateMutation.mutate({
+                    id: rowMenuFor.id,
+                    field: "pinnedAt",
+                    value: rowMenuFor.pinnedAt ? null : new Date().toISOString(),
+                  });
                   setRowMenuFor(null);
-                  router.push(`/list/${id}/settings`);
                 }}
               />
               <RowMenuAction
-                label={rowMenuFor.memberCount > 1 ? "Share again" : "Share with someone"}
+                label={rowMenuFor.mutedAt ? "Unmute" : "Mute notifications"}
+                onPress={() => {
+                  viewStateMutation.mutate({
+                    id: rowMenuFor.id,
+                    field: "mutedAt",
+                    value: rowMenuFor.mutedAt ? null : new Date().toISOString(),
+                  });
+                  setRowMenuFor(null);
+                }}
+              />
+              <RowMenuAction
+                label={rowMenuFor.archivedAt ? "Unarchive" : "Archive"}
+                onPress={() => {
+                  viewStateMutation.mutate({
+                    id: rowMenuFor.id,
+                    field: "archivedAt",
+                    value: rowMenuFor.archivedAt ? null : new Date().toISOString(),
+                  });
+                  setRowMenuFor(null);
+                }}
+              />
+              <RowMenuAction
+                label="List settings"
                 onPress={() => {
                   const id = rowMenuFor.id;
                   setRowMenuFor(null);
@@ -440,7 +505,79 @@ export default function Home() {
           </View>
         </View>
         <View style={styles.profileSheetActions}>
+          {archivedLists.length > 0 ? (
+            <Button
+              label={`Archived lists  (${archivedLists.length})`}
+              variant="secondary"
+              onPress={() => {
+                setProfileOpen(false);
+                setArchivedOpen(true);
+              }}
+              testID="open-archived"
+            />
+          ) : null}
           <Button label="Sign out" variant="secondary" onPress={onSignOut} testID="sign-out" />
+        </View>
+      </Sheet>
+
+      <Sheet
+        visible={archivedOpen}
+        onRequestClose={() => setArchivedOpen(false)}
+        testID="archived-sheet"
+      >
+        <View>
+          <Text variant="heading" style={styles.archivedHeading}>
+            Archived lists
+          </Text>
+          <Text variant="caption" tone="muted" style={styles.archivedSub}>
+            Hidden from home. Unarchive to bring them back.
+          </Text>
+          {archivedLists.length === 0 ? (
+            <Text tone="muted" style={styles.archivedEmpty}>
+              Nothing archived.
+            </Text>
+          ) : (
+            <View style={styles.archivedList}>
+              {archivedLists.map((l) => {
+                const accent = tokens.list[l.color as ListColorKey] ?? tokens.accent.default;
+                return (
+                  <View key={l.id} style={styles.archivedRow}>
+                    <View
+                      style={[
+                        styles.archivedAvatar,
+                        { backgroundColor: `${accent}26`, borderColor: `${accent}3D` },
+                      ]}
+                    >
+                      <Text style={styles.avatarEmoji}>{l.emoji}</Text>
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
+                        {l.name}
+                      </Text>
+                      <Text variant="caption" tone="muted" numberOfLines={1}>
+                        {TYPE_LABEL[l.type]} ·{" "}
+                        {l.itemCount === 0
+                          ? "empty"
+                          : `${l.itemCount} ${l.itemCount === 1 ? "item" : "items"}`}
+                      </Text>
+                    </View>
+                    <Button
+                      label="Unarchive"
+                      size="md"
+                      variant="secondary"
+                      onPress={() =>
+                        viewStateMutation.mutate({
+                          id: l.id,
+                          field: "archivedAt",
+                          value: null,
+                        })
+                      }
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
       </Sheet>
     </Screen>
@@ -591,6 +728,19 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     letterSpacing: 0.2,
   },
+  rowPinGlyph: {
+    color: tokens.accent.default,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  rowMutedGlyph: {
+    fontSize: 10,
+    lineHeight: 14,
+    color: tokens.text.muted,
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+    fontWeight: tokens.font.weight.semibold,
+  },
   rowSubtitle: { fontSize: 12, lineHeight: 16 },
   rowSubtitleEmphasis: { color: tokens.text.secondary },
   rowSeparator: {
@@ -670,12 +820,32 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.md,
     fontWeight: tokens.font.weight.medium,
   },
+  archivedHeading: { paddingBottom: tokens.space.xs },
+  archivedSub: { paddingBottom: tokens.space.md },
+  archivedEmpty: {
+    paddingVertical: tokens.space.lg,
+    textAlign: "center",
+  },
+  archivedList: { gap: tokens.space.sm },
+  archivedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+  },
+  archivedAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
 
 function ListRow({
   list,
   latestEvent,
-  unreadCount,
   latestUnreadEvent,
   unreadActorCount,
   selfId,
@@ -684,7 +854,6 @@ function ListRow({
 }: {
   list: ListSummary;
   latestEvent: ActivityEvent | null;
-  unreadCount: number;
   latestUnreadEvent: ActivityEvent | null;
   unreadActorCount: number;
   selfId: string | null;
@@ -694,6 +863,9 @@ function ListRow({
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
   const itemsLabel =
     list.itemCount === 0 ? "Empty" : `${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
+  // Unread count is server-authored on `list.unreadCount`. Muted lists
+  // report 0, so the per-row pip and accent subtitle naturally hide.
+  const unreadCount = list.unreadCount;
 
   // Subtitle resolution. Priority:
   //  1. Unread events by collaborators since last view → "N new from Sarah".
@@ -792,9 +964,19 @@ function ListRow({
       </View>
       <View style={styles.rowBody}>
         <View style={styles.rowTitleRow}>
+          {list.pinnedAt ? (
+            <Text style={styles.rowPinGlyph} accessibilityLabel="Pinned">
+              ✦
+            </Text>
+          ) : null}
           <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
             {list.name}
           </Text>
+          {list.mutedAt ? (
+            <Text style={styles.rowMutedGlyph} accessibilityLabel="Muted">
+              muted
+            </Text>
+          ) : null}
           {shared ? (
             <Text
               style={styles.rowMembersInline}

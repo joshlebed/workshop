@@ -132,6 +132,20 @@ export interface ListSummary extends List {
   role: MemberRole;
   itemCount: number;
   memberCount: number;
+  /**
+   * Server-side per-(list, viewer) presentation state. Each viewer has their
+   * own opinion on a list — Alex's pin doesn't show up on Sarah's home, and
+   * Sarah muting "Reading List" doesn't quiet anyone else's badges.
+   *
+   * `unreadCount` is the number of events on this list authored by someone
+   * other than the viewer since the viewer's `lastReadAt`. The server
+   * suppresses muted lists to 0 so a muted list never contributes to the
+   * global unread total either.
+   */
+  unreadCount: number;
+  pinnedAt: string | null;
+  archivedAt: string | null;
+  mutedAt: string | null;
 }
 
 export interface ListMemberSummary {
@@ -188,6 +202,25 @@ export interface UpdateListRequest {
 
 export interface ListListResponse {
   lists: ListSummary[];
+}
+
+/**
+ * Body for `POST /v1/lists/:id/items/bulk`. Each entry produces a regular
+ * item — the same shape `createItem` produces for one-at-a-time adds.
+ * Limited server-side to 50 per request so a runaway paste can't melt the
+ * DB; clients chunk if the user pasted more.
+ */
+export interface BulkCreateItemsRequest {
+  items: Array<{
+    title: string;
+    url?: string;
+    note?: string;
+  }>;
+}
+
+export interface BulkCreateItemsResponse {
+  created: number;
+  items: Item[];
 }
 
 export interface ListResponse {

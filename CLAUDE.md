@@ -252,6 +252,33 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   Mouse/Touch sensors (no KeyboardSensor), so strip `role` and `tabIndex`
   before spreading — see the `stripButtonRole` helper in
   `apps/workshop/src/screens/listDetail/ItemList.web.tsx`.
+- **Per-(list, viewer) presentation state lives on `list_members`.** The
+  `pinned_at`, `archived_at`, `muted_at` columns are timestamps that double
+  as flags (NULL = not set). `last_read_at` for unread-count derivation
+  lives in the older `user_activity_reads` table — don't duplicate it on
+  `list_members` (we did once during PR #165's first draft and ripped it
+  back out). `GET /v1/lists` joins both into `ListSummary` so the home
+  client gets the full per-viewer picture in one round trip. Endpoints
+  follow `POST /v1/lists/:id/{pin,archive,mute,read}` to set + `DELETE` to
+  clear; the three toggleable flags also accept `DELETE`, but `read` is
+  one-way (its inverse — "mark unread up to now" — doesn't have a
+  meaningful product semantic in a feed model).
+- **The home unread count is server-authored, not derived client-side.**
+  The bell badge is `sum(list.unreadCount across non-muted lists)`, and
+  each row reads `list.unreadCount` directly from `ListSummary`. Don't
+  reintroduce the client-side cutoff-against-`getActivityLastViewedAt`
+  derivation — it was wrong on multiple axes (no per-list granularity,
+  cleared everything on a single `/activity` visit). The latest event
+  array is still loaded for subtitle attribution ("2 new from Sarah"),
+  which needs an actor name the count alone doesn't supply.
+- **Real-time on web today is `useLivePollingInterval` (15s, visibility-
+  gated).** No SSE / WebSocket transport yet — Lambda Function URLs with
+  response streaming is the natural next step. The hook is at
+  `src/hooks/useLivePollingInterval.ts`; wire it into queries on
+  multiplayer surfaces by passing the result to `refetchInterval`. On
+  native it returns `false` (no polling) — the existing
+  `refetchOnWindowFocus` + AppState integration handles foreground
+  refresh, and a background timer would be a battery tax we don't ship.
 - **Wrap top-level screens in `Screen` from `src/ui/Layout.tsx`** when adding a
   new route. On native it's a no-op `flex: 1` view; on web it constrains the
   content to a ~560px reading column with `alignSelf: center`. Without it, a

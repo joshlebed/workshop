@@ -10,7 +10,7 @@ import type {
   MediaSearchResponse,
   MediaSearchType,
 } from "@workshop/shared";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -45,6 +45,7 @@ export default function AddItem() {
     : params.prefillUrl;
   const { token } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { showToast } = useToast();
 
   // Fetch the parent list so the screen knows whether to render the search
@@ -205,7 +206,17 @@ export default function AddItem() {
           <Text style={styles.headerGlyph}>✕</Text>
         </IconButton>
         <Text variant="heading">Add item</Text>
-        <View style={styles.headerSpacer} />
+        {listType && !isSearchType && listType !== "album_shelf" && id ? (
+          <Button
+            label="Paste many"
+            variant="ghost"
+            size="md"
+            testID="add-item-bulk-link"
+            onPress={() => router.push(`/list/${id}/add-bulk`)}
+          />
+        ) : (
+          <View style={styles.headerSpacer} />
+        )}
       </View>
 
       {isSearchType ? (
