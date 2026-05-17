@@ -2,15 +2,17 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useAuth } from "../src/hooks/useAuth";
 import { useAppleSignIn } from "../src/lib/oauth/apple";
-import { useGoogleSignIn } from "../src/lib/oauth/google";
+import { GoogleSignInButton } from "../src/lib/oauth/GoogleSignInButton";
 import { Button, Text, tokens } from "../src/ui/index";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
+const GOOGLE_CONFIGURED = Boolean(
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+);
 
 export default function SignIn() {
   const { signInWithApple, signInWithGoogle, signInDev } = useAuth();
   const apple = useAppleSignIn();
-  const google = useGoogleSignIn();
   const [busy, setBusy] = useState<"apple" | "google" | "dev" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,12 +30,10 @@ export default function SignIn() {
     }
   }
 
-  async function handleGoogle() {
+  async function handleGoogleCredential(result: { idToken: string }) {
     try {
       setBusy("google");
       setError(null);
-      const result = await google.signIn();
-      if (!result) return;
       await signInWithGoogle(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Google sign-in failed");
@@ -75,14 +75,11 @@ export default function SignIn() {
           disabled={busy !== null || !apple.available}
           onPress={handleApple}
         />
-        <Button
-          testID="sign-in-google"
-          label="Continue with Google"
-          variant="secondary"
-          size="lg"
+        <GoogleSignInButton
+          onCredential={handleGoogleCredential}
+          onError={(e) => setError(e.message)}
           loading={busy === "google"}
-          disabled={busy !== null || !google.available}
-          onPress={handleGoogle}
+          disabled={busy !== null && busy !== "google"}
         />
         {DEV_AUTH_ENABLED ? (
           <>
@@ -104,7 +101,7 @@ export default function SignIn() {
             />
           </>
         ) : null}
-        {!apple.available && !google.available && !DEV_AUTH_ENABLED ? (
+        {!apple.available && !GOOGLE_CONFIGURED && !DEV_AUTH_ENABLED ? (
           <Text tone="muted" style={styles.help} testID="sign-in-providers-unconfigured">
             Sign-in providers are still being configured.
           </Text>

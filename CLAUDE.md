@@ -85,8 +85,8 @@ small products — first feature is **watchlist** (movie tracker). New features 
   **before** enabling in the Apple Developer Portal. EAS's capability sync reverts portal-only
   changes on the next build. Currently declared: Sign In with Apple (via
   `expo-apple-authentication`); App Groups `group.dev.josh.workshop` (via `ios.entitlements`
-  + `expo-share-intent` plugin — both are needed since the share extension also requires the
-  entitlement).
+  - `expo-share-intent` plugin — both are needed since the share extension also requires the
+    entitlement).
 - **Don't override `ios.infoPlist.CFBundleURLTypes` without re-listing the app scheme.** Once
   declared, Expo stops auto-adding the `scheme:` value. Mirror the root `scheme` ("workshop")
   into `CFBundleURLSchemes` manually. `npx expo config --type public` catches it before EAS does.
@@ -211,21 +211,21 @@ Most commands need admin credentials.
   Niteshift → Settings → Repositories → workshop → AWS → "Generate New ID", then update
   `var.niteshift_external_id` and apply.
 
-| Goal                                            | Command                                                                                                                                                                |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ship an infra change                            | Open PR; plan posts as comment. Merge → auto-applies.                                                                                                                  |
-| Preview infra change locally                    | `cd infra && AWS_PROFILE=workshop-prod terraform plan`                                                                                                                 |
-| See what infra would change on main             | `gh workflow run terraform.yml --ref main`                                                                                                                             |
-| Tail prod logs                                  | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 10m --filter error`                                                                                               |
-| Trace one request                               | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --filter <reqid>`                                                                                                         |
-| psql into Neon prod                             | `AWS_PROFILE=workshop-prod ./scripts/db-connect.sh`                                                                                                                    |
-| Neon branch for risky migration                 | `neonctl branches create --name pre-<feature>` (needs `NEON_API_KEY`)                                                                                                  |
-| Read SSM secret                                 | `AWS_PROFILE=workshop-prod aws ssm get-parameter --name /workshop-prod/X --with-decryption --query 'Parameter.Value' --output text`                                    |
-| Rotate SSM secret                               | `aws ssm put-parameter --name /workshop-prod/X --value … --overwrite --type SecureString` (SSM resources have `ignore_changes = [value]`)                              |
-| Deploy web to preview                           | `pnpm deploy:pages:preview`                                                                                                                                            |
-| Deploy web to prod                              | `pnpm deploy:pages` (always-confirm)                                                                                                                                   |
-| Force a fresh TestFlight build                  | `gh workflow run testflight.yml --ref main --field force=true`                                                                                                         |
-| Bypass EAS submit (queue jammed)                | Download IPA from EAS dashboard, then `xcrun altool --upload-app --type ios -f ~/Downloads/workshop.ipa -u joshlebed@gmail.com -p "$APPLE_APP_SPECIFIC_PASSWORD"`      |
+| Goal                                | Command                                                                                                                                                           |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ship an infra change                | Open PR; plan posts as comment. Merge → auto-applies.                                                                                                             |
+| Preview infra change locally        | `cd infra && AWS_PROFILE=workshop-prod terraform plan`                                                                                                            |
+| See what infra would change on main | `gh workflow run terraform.yml --ref main`                                                                                                                        |
+| Tail prod logs                      | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 10m --filter error`                                                                                          |
+| Trace one request                   | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --filter <reqid>`                                                                                                    |
+| psql into Neon prod                 | `AWS_PROFILE=workshop-prod ./scripts/db-connect.sh`                                                                                                               |
+| Neon branch for risky migration     | `neonctl branches create --name pre-<feature>` (needs `NEON_API_KEY`)                                                                                             |
+| Read SSM secret                     | `AWS_PROFILE=workshop-prod aws ssm get-parameter --name /workshop-prod/X --with-decryption --query 'Parameter.Value' --output text`                               |
+| Rotate SSM secret                   | `aws ssm put-parameter --name /workshop-prod/X --value … --overwrite --type SecureString` (SSM resources have `ignore_changes = [value]`)                         |
+| Deploy web to preview               | `pnpm deploy:pages:preview`                                                                                                                                       |
+| Deploy web to prod                  | `pnpm deploy:pages` (always-confirm)                                                                                                                              |
+| Force a fresh TestFlight build      | `gh workflow run testflight.yml --ref main --field force=true`                                                                                                    |
+| Bypass EAS submit (queue jammed)    | Download IPA from EAS dashboard, then `xcrun altool --upload-app --type ios -f ~/Downloads/workshop.ipa -u joshlebed@gmail.com -p "$APPLE_APP_SPECIFIC_PASSWORD"` |
 
 ## iOS deploy pipeline
 
@@ -300,18 +300,18 @@ behind it. Cancel with `gh run cancel <run-id>`; the EAS build keeps running on 
 
 ## Sources of truth
 
-| System                          | URL                                                                                    | Owns                                                                                          |
-| ------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| **EAS dashboard**               | <https://expo.dev/accounts/joshlebed/projects/workshop>                                | iOS build history + IPAs, submission queue, fingerprint tags, EAS Update channels             |
-| **App Store Connect**           | <https://appstoreconnect.apple.com>                                                    | TestFlight builds, app metadata, ASC API keys                                                 |
-| **Apple Developer Portal**      | <https://developer.apple.com/account/resources/identifiers/list>                       | App IDs, capabilities, App Groups, provisioning profiles, signing certificates                |
-| **Google Cloud Console**        | <https://console.cloud.google.com/apis/credentials?project=workshop-494616&authuser=1> | OAuth client IDs, API keys (Books)                                                            |
-| **TMDB**                        | <https://www.themoviedb.org/settings/api>                                              | TMDB v3 API key                                                                               |
-| **AWS SSM Parameter Store**     | `aws ssm describe-parameters` (prefix `/workshop-prod/`)                               | Lambda env values; SSM resources have `lifecycle { ignore_changes = [value] }`                |
-| **HCP Terraform**               | <https://app.terraform.io/app/josh-personal-org/workspaces/workshop-prod>              | All AWS infra state                                                                           |
-| **Cloudflare Pages**            | <https://dash.cloudflare.com/?to=/:account/pages/view/workshop>                        | Web build env vars (`EXPO_PUBLIC_*`), production URL `workshop-a2v.pages.dev`                 |
-| **GitHub Actions**              | <https://github.com/joshlebed/workshop/actions>                                        | CI runs, deploy runs, fingerprint tags (as git tags)                                          |
-| **Neon**                        | connection string in SSM `/workshop-prod/db/url`                                       | Production Postgres                                                                           |
+| System                          | URL                                                                                    | Owns                                                                                             |
+| ------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| **EAS dashboard**               | <https://expo.dev/accounts/joshlebed/projects/workshop>                                | iOS build history + IPAs, submission queue, fingerprint tags, EAS Update channels                |
+| **App Store Connect**           | <https://appstoreconnect.apple.com>                                                    | TestFlight builds, app metadata, ASC API keys                                                    |
+| **Apple Developer Portal**      | <https://developer.apple.com/account/resources/identifiers/list>                       | App IDs, capabilities, App Groups, provisioning profiles, signing certificates                   |
+| **Google Cloud Console**        | <https://console.cloud.google.com/apis/credentials?project=workshop-494616&authuser=1> | OAuth client IDs, API keys (Books)                                                               |
+| **TMDB**                        | <https://www.themoviedb.org/settings/api>                                              | TMDB v3 API key                                                                                  |
+| **AWS SSM Parameter Store**     | `aws ssm describe-parameters` (prefix `/workshop-prod/`)                               | Lambda env values; SSM resources have `lifecycle { ignore_changes = [value] }`                   |
+| **HCP Terraform**               | <https://app.terraform.io/app/josh-personal-org/workspaces/workshop-prod>              | All AWS infra state                                                                              |
+| **Cloudflare Pages**            | <https://dash.cloudflare.com/?to=/:account/pages/view/workshop>                        | Web build env vars (`EXPO_PUBLIC_*`), production URL `workshop-a2v.pages.dev`                    |
+| **GitHub Actions**              | <https://github.com/joshlebed/workshop/actions>                                        | CI runs, deploy runs, fingerprint tags (as git tags)                                             |
+| **Neon**                        | connection string in SSM `/workshop-prod/db/url`                                       | Production Postgres                                                                              |
 | **Discord (`#workshop-admin`)** | webhook in SSM `/workshop-prod/discord/notify_webhook_url`                             | Operator notifications. Rotate via channel ⚙ → Integrations → Webhooks, then `ssm put-parameter` |
 
 Change something in the system above; don't trust caches in code or Terraform.
@@ -325,7 +325,7 @@ state lock`. Fix: workspace UI → **Unlock** (top right). Prefer UI unlock over
 
 `.github/workflows/terraform.yml` owns the full lifecycle:
 
-- **PR (paths: `infra/**` or `terraform.yml`)** → `terraform plan -detailed-exitcode -refresh=false`,
+- **PR (paths: `infra/**`or`terraform.yml`)** → `terraform plan -detailed-exitcode -refresh=false`,
   sticky PR comment. Informational, not a required check.
 - **Push to `main`** → `terraform apply -auto-approve` + `/health` smoke test. No human gate
   beyond the PR review.
