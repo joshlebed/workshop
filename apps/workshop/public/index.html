@@ -19,13 +19,13 @@
       and Android Chrome tints the address bar the same way. Declare both
       light + dark media variants because Safari historically only honored
       theme-color when an explicit media match was present. The app shell
-      always paints the dark canvas (tokens.bg.canvas = #0E0E10) regardless
+      always paints the dark canvas (tokens.bg.canvas = #2C2C2E) regardless
       of the system color scheme, so we hard-pin both modes to that value
       to avoid a white flash above/below the page in iOS light mode.
     -->
-    <meta name="theme-color" content="#0E0E10" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0E0E10" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0E10" />
+    <meta name="theme-color" content="#2C2C2E" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#2C2C2E" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#2C2C2E" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -37,7 +37,7 @@
       html,
       body {
         height: 100%;
-        background-color: #0e0e10;
+        background-color: #2c2c2e;
         color-scheme: dark;
       }
       body {

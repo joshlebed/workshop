@@ -15,7 +15,7 @@ type ColorScheme = {
 };
 
 const darkColors: ColorScheme = {
-  bg: { canvas: "#0E0E10", surface: "#16161A", elevated: "#1F1F25" },
+  bg: { canvas: "#2C2C2E", surface: "#16161A", elevated: "#1F1F25" },
   text: {
     primary: "#F2F2F5",
     secondary: "#A8A8B3",
