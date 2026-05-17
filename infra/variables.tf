@@ -73,6 +73,13 @@ variable "spotify_client_secret" {
   description = "Spotify Web API client secret. Used by the Album Shelf feature's Client Credentials flow to read public playlists."
 }
 
+variable "discord_notify_webhook_url" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Discord webhook URL for operator notifications (new signups, new lists). Empty default lets infra apply before the webhook is created; the SSM param has ignore_changes so ops rotates via `aws ssm put-parameter --overwrite` without TF drift."
+}
+
 variable "niteshift_aws_account_id" {
   type        = string
   default     = "283250832593"

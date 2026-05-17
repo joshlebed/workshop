@@ -104,3 +104,25 @@ resource "aws_ssm_parameter" "spotify_client_secret" {
     ignore_changes = [value]
   }
 }
+
+resource "aws_ssm_parameter" "discord_notify_webhook_url" {
+  name  = "/${local.prefix}/discord/notify_webhook_url"
+  type  = "SecureString"
+  value = var.discord_notify_webhook_url
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+# The SSM param above was bootstrapped via `aws ssm put-parameter` in the same
+# PR that introduced this resource — so the first `terraform apply` would
+# otherwise hit ParameterAlreadyExists. The import block hands the existing
+# param to Terraform without recreating it; combined with `ignore_changes =
+# [value]`, ops keeps rotating the webhook via the CLI and Lambda picks up the
+# current value on the next refresh. Safe to leave in place (no-op once
+# imported) or delete in a follow-up cleanup PR.
+import {
+  to = aws_ssm_parameter.discord_notify_webhook_url
+  id = "/workshop-prod/discord/notify_webhook_url"
+}

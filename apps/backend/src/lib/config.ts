@@ -44,6 +44,9 @@ const configSchema = z.object({
   // without Spotify configured; Album Shelf routes 503 until these are set.
   spotifyClientId: z.string().optional().default(""),
   spotifyClientSecret: z.string().optional().default(""),
+  // Discord webhook URL for operator-facing notifications (new signups, new
+  // lists). Empty in local dev — the notifier no-ops. See lib/discord.ts.
+  discordNotifyWebhookUrl: z.string().optional().default(""),
 });
 
 type Config = z.infer<typeof configSchema> & { isLocal: boolean };
@@ -69,6 +72,7 @@ export function getConfig(): Config {
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    discordNotifyWebhookUrl: process.env.DISCORD_NOTIFY_WEBHOOK_URL,
   });
   cached = { ...parsed, isLocal: parsed.stage === "local" };
   return cached;
