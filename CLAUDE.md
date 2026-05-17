@@ -200,7 +200,7 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   should respond with `Access-Control-Allow-Methods` containing the verb.
 
 - **Auto-merge is on.** The repo is public (which gives us free branch protection + unlimited
-  Actions minutes) and `main` requires three checks to pass:
+  Actions minutes) and `main` requires four checks to pass:
   - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs on PRs.
   - `Mobile Metro bundle` — runs only when `apps/workshop/**`, `packages/shared/**`, or
     `pnpm-lock.yaml` changes; skipped (and treated as passing) otherwise. Catches RN/Expo
@@ -210,6 +210,16 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
     `apps/backend/drizzle/**`, `apps/backend/src/db/**`, or `pnpm-lock.yaml` changes;
     skipped (and treated as passing) otherwise. Catches Drizzle journal-vs-files drift
     before it can desync prod (the 2026-04-24 backend-deploy outage).
+  - `terraform plan` — always runs on PRs (no paths filter on the workflow's
+    `pull_request` trigger). Catches infra mistakes before merge so a bad apply
+    can't wedge prod state. Exit 2 ("changes detected") is success — that's the
+    expected state for any PR that touches infra; only exit 1 (HCL error, missing
+    var, IAM 403 on a managed resource) fails the check. Plan runs with
+    `-refresh=false` and the narrow plan role; that role has `ssm:GetParameter*`
+    on `/workshop-prod/*` so SSM-imports / SSM-data-sources don't 403, but a
+    future `import {}` block or `data` source on a non-SSM resource the plan
+    role can't read (IAM, future services) WILL fail plan and block merge —
+    expand the plan role's policy in the same PR or carve the change in two.
 
   `gh pr merge <PR> --auto --squash --delete-branch` is the canonical merge path: it arms
   a queued merge that fires when all required checks go green, including across reruns and

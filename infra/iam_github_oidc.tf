@@ -52,16 +52,24 @@ data "aws_iam_policy_document" "github_permissions" {
     resources = [aws_lambda_function.api.arn]
   }
 
+  # Read access for all /workshop-prod/* params. Two callers share this:
+  #   - deploy-backend.yml reads db_url + session_secret for migrations.
+  #   - terraform.yml plan refreshes every SSM resource it manages, which
+  #     is the full set under this prefix. Scoping tighter than the prefix
+  #     means every new SSM param needs a paired IAM grant or plan 403s
+  #     and the required `terraform plan` check blocks the PR. Apply uses
+  #     a separate AdministratorAccess role, so this prefix grant is the
+  #     least-privilege ceiling for what plan can read.
   statement {
-    sid    = "ReadSecretsForMigrations"
+    sid    = "ReadWorkshopProdSecrets"
     effect = "Allow"
     actions = [
       "ssm:GetParameter",
       "ssm:GetParameters",
+      "ssm:GetParametersByPath",
     ]
     resources = [
-      aws_ssm_parameter.db_url.arn,
-      aws_ssm_parameter.session_secret.arn,
+      "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${local.prefix}/*",
     ]
   }
 
