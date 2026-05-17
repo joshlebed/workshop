@@ -229,6 +229,17 @@ contents: read` _replicates_ GitHub's default for push events, doesn't restrict 
   Updating the required-check list is a GitHub admin action (Settings → Branches → main →
   edit rule), not a repo file. Keep the bullets above in sync if the gate ever changes.
 
+  **If your PR adds a new CI check that should block merge, flag it to the user in the PR
+  description.** Agents can't toggle branch protection (the Niteshift GitHub App token is
+  user-to-server scope and 403s on that endpoint), so a new "should-be-required" check is
+  silently non-required until a human ticks the box. The trap is invisible: CI looks green,
+  PRs merge, and the new gate catches nothing. The 2026-05-16 audit found `Mobile Metro
+bundle` and `Migrate smoke` had been shipped as designed-to-be-required but never wired
+  in — both 2026-04-24 outages would have shipped again. When opening the PR, end the
+  description with an "After merge" section telling the user exactly what to add and why
+  (mirror the format of #182's PR description). Also bump the bullet list above in the
+  same PR so the doc and reality stay aligned post-flip.
+
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
   unless there's a specific reason (security fix, unblocking work). Monthly PRs on the first
   Monday, aggressively grouped.
