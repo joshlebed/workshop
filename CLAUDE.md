@@ -380,7 +380,7 @@ do this without asking" gating, see "Safe changes vs careful changes" below.
 
 Most of these need admin credentials. Two surfaces:
 
-- **Laptop sessions** — secrets live in `~/.workshop-admin.env` (gitignored, mode 600).
+- **Laptop sessions** — secrets live in `.admin.env` at the repo root (gitignored, mode 600).
   Run the `/admin-elevate` skill at the start of a session that needs writes — it sources
   the file and runs a health-check sweep, then echoes which credentials are live.
 - **Niteshift sandbox sessions** — secrets are injected as env vars at task start. AWS
