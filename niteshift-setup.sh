@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Niteshift setup for joshlebed/workshop
-# - Starts PostgreSQL 16 in a docker container using host networking
-#   (Niteshift DinD bridge networking is broken, so --network=host is required).
+# - If the sandbox has a remote DATABASE_URL injected (e.g. a Neon branch from
+#   Niteshift's database-branches integration), use it directly and skip the
+#   local docker postgres. Otherwise start PostgreSQL 16 in a docker container
+#   using host networking (Niteshift DinD bridge networking is broken, so
+#   --network=host is required).
 # - Installs pnpm deps, writes apps/backend/.env from sandbox env, runs Drizzle
 #   migrations, then runs the Hono backend (:8787) AND the Expo web app (:8081)
 #   side-by-side via `concurrently`. The web app is the primary preview surface
@@ -36,47 +39,63 @@ for entry in "apps/backend/.env" ".claude/"; do
 done
 
 # ---------------------------------------------------------------------------
-# 2) Start Postgres 16 (idempotent, host networking)
+# 2) Start Postgres 16 (idempotent, host networking) — unless Niteshift has
+#    already injected a remote DATABASE_URL (e.g. a Neon branch from the
+#    database-branches integration). The injected URL takes precedence; a
+#    localhost-shaped value means we're running standalone and need docker.
 # ---------------------------------------------------------------------------
 PG_CONTAINER="workshop-pg"
+USE_REMOTE_DB=0
+case "${DATABASE_URL:-}" in
+  ""|*localhost*|*127.0.0.1*) USE_REMOTE_DB=0 ;;
+  *) USE_REMOTE_DB=1 ;;
+esac
 
-if ! docker info >/dev/null 2>&1; then
-  log "docker not available" >&2
-  exit 1
-fi
-
-if docker ps -a --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
-  if ! docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
-    log "starting existing postgres container"
-    docker start "$PG_CONTAINER" >/dev/null
-  else
-    log "postgres container already running"
-  fi
+if [ "$USE_REMOTE_DB" = "1" ]; then
+  log "remote DATABASE_URL detected — skipping local postgres container"
 else
-  log "creating postgres container ($PG_CONTAINER) with host networking"
-  docker run -d \
-    --name "$PG_CONTAINER" \
-    --network=host \
-    --restart=unless-stopped \
-    -e POSTGRES_PASSWORD=postgres \
-    -e POSTGRES_USER=postgres \
-    -e POSTGRES_DB=workshop \
-    postgres:16 >/dev/null
-fi
-
-log "waiting for postgres to accept connections"
-for i in $(seq 1 60); do
-  if docker exec "$PG_CONTAINER" pg_isready -U postgres -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
-    log "postgres ready"
-    break
-  fi
-  if [ "$i" = 60 ]; then
-    log "postgres did not become ready in 30s" >&2
-    docker logs --tail 50 "$PG_CONTAINER" >&2 || true
+  if ! docker info >/dev/null 2>&1; then
+    log "docker not available" >&2
     exit 1
   fi
-  sleep 0.5
-done
+
+  if docker ps -a --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
+    if ! docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
+      log "starting existing postgres container"
+      docker start "$PG_CONTAINER" >/dev/null
+    else
+      log "postgres container already running"
+    fi
+  else
+    log "creating postgres container ($PG_CONTAINER) with host networking"
+    docker run -d \
+      --name "$PG_CONTAINER" \
+      --network=host \
+      --restart=unless-stopped \
+      -e POSTGRES_PASSWORD=postgres \
+      -e POSTGRES_USER=postgres \
+      -e POSTGRES_DB=workshop \
+      postgres:16 >/dev/null
+  fi
+
+  log "waiting for postgres to accept connections"
+  for i in $(seq 1 60); do
+    if docker exec "$PG_CONTAINER" pg_isready -U postgres -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
+      log "postgres ready"
+      break
+    fi
+    if [ "$i" = 60 ]; then
+      log "postgres did not become ready in 30s" >&2
+      docker logs --tail 50 "$PG_CONTAINER" >&2 || true
+      exit 1
+    fi
+    sleep 0.5
+  done
+
+  # No injected DATABASE_URL — fall back to the local docker container.
+  : "${DATABASE_URL:=postgres://postgres:postgres@localhost:5432/workshop}"
+  export DATABASE_URL
+fi
 
 # ---------------------------------------------------------------------------
 # 3) Install dependencies (idempotent)
@@ -123,12 +142,20 @@ pnpm --filter @workshop/backend run db:migrate
 #    web app's auto-dev-sign-in uses) with a mix of movie/tv/book/date/trip/game
 #    lists so the agent or human lands on a non-empty UI on first load. Set
 #    SEED_DEV_DATA=0 to skip (e.g. when reproducing an empty-state bug).
+#
+#    Default off when running against a remote DB (e.g. a Neon branch forked
+#    from prod) — the branch already has real-shaped data, and adding the
+#    preview-user fixtures on top would muddy it. Set SEED_DEV_DATA=1 to force.
 # ---------------------------------------------------------------------------
-if [ "${SEED_DEV_DATA:-1}" = "1" ]; then
+SEED_DEFAULT=1
+if [ "$USE_REMOTE_DB" = "1" ]; then
+  SEED_DEFAULT=0
+fi
+if [ "${SEED_DEV_DATA:-$SEED_DEFAULT}" = "1" ]; then
   log "seeding dev data"
   pnpm --filter @workshop/backend run db:seed
 else
-  log "SEED_DEV_DATA=0 — skipping dev data seed"
+  log "skipping dev data seed (remote DB or SEED_DEV_DATA=0)"
 fi
 
 # ---------------------------------------------------------------------------

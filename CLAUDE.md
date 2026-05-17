@@ -821,6 +821,24 @@ run the backend (`tsx watch`) and `expo start --web` with `[backend]` / `[web]` 
 single terminal. Ctrl-C stops both. `app.json` already points `apiUrl` at
 `http://localhost:8787`; backend CORS is `origin: "*"`.
 
+### Database in the Niteshift sandbox
+
+Local `pnpm dev` always uses docker postgres. The Niteshift sandbox can run against
+**either** docker postgres _or_ a per-task Neon branch, depending on whether the
+repo's Niteshift Database integration is configured (Settings → Repositories →
+`joshlebed/workshop` → Database). When enabled, every task gets a fresh Neon branch
+forked from the configured parent on startup with `DATABASE_URL` injected; resumed
+tasks reuse their branch and archived tasks are GC'd. `niteshift-setup.sh` detects
+this by shape — any non-localhost `DATABASE_URL` skips the docker container and uses
+the injected URL directly. Migrations still run (the Neon branch's schema may lag
+`drizzle/`); the dev seed is **skipped by default** when running against a remote DB
+so it doesn't smear preview-user fixtures over real-shaped data. Force the seed with
+`SEED_DEV_DATA=1` if you need it.
+
+**PII caveat**: if the parent branch is prod, every sandbox (yours and any cloud
+agent's) gets a copy of real user data. Point the integration at a scrubbed staging
+branch if that's not OK.
+
 ### Dev data seed
 
 `apps/backend/scripts/seed.ts` populates the local Postgres with a "lived-in" set of lists
