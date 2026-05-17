@@ -28,6 +28,7 @@ web-build/
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.*
+tfplan
 *.tfplan
 *.tfvars
 *.tfvars.local
