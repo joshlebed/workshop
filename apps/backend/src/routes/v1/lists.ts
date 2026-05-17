@@ -14,6 +14,7 @@ import { getDb } from "../../db/client.js";
 import { type DbList, listMembers, lists, users } from "../../db/schema.js";
 import { asAlbumShelfMetadata, refreshAlbumShelfItems } from "../../lib/album-shelf.js";
 import { toIsoString } from "../../lib/dates.js";
+import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -327,6 +328,16 @@ listRoutes.post("/", async (c) => {
     if (mapped) return mapped;
     throw e;
   }
+
+  const [actor] = await db
+    .select({ displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const actorLabel = actor?.displayName ?? actor?.email ?? userId;
+  await notifyDiscord(
+    `:clipboard: new list — "${created.name}" (${created.type}) by ${actorLabel}`,
+  );
 
   return ok(c, { list: toListShape(created) }, 201);
 });

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbUser, users } from "../../db/schema.js";
 import { getConfig } from "../../lib/config.js";
+import { notifyDiscord } from "../../lib/discord.js";
 import { logger } from "../../lib/logger.js";
 import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
 import { verifyGoogleIdentityToken } from "../../lib/oauth/google.js";
@@ -78,6 +79,8 @@ async function upsertUser({ provider, sub, email, displayName }: UpsertInput): P
     })
     .returning();
   if (!created) throw new Error("user insert returned no row");
+  const label = created.displayName ?? created.email ?? created.id;
+  await notifyDiscord(`:wave: new signup — ${label} via ${provider}`);
   return created;
 }
 
