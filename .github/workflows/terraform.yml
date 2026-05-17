@@ -2,11 +2,14 @@ name: Terraform
 
 # Three-trigger workflow that owns the Terraform lifecycle end-to-end.
 #
-#   pull_request (paths: infra/** or this file)
+#   pull_request (every PR — no paths filter)
 #     → `terraform plan -detailed-exitcode -refresh=false`
-#     → sticky-comment the plan output on the PR (informational; not required)
+#     → sticky-comment the plan output on the PR
+#     → REQUIRED status check; exit 1 (plan error) blocks merge. Exit 2
+#       ("changes detected") is success — that's the expected state for
+#       any PR that touches infra. State-matches-code PRs exit 0.
 #
-#   push to main (same paths)
+#   push to main (paths: infra/** or this file)
 #     → `terraform apply -auto-approve` + `/health` smoke test
 #     → no human gate; main is already gated by branch protection + PR review
 #
@@ -32,11 +35,13 @@ name: Terraform
 # main-only sub claim) so it can write the full graph.
 
 on:
+  # Plan runs on every PR (no paths filter) because it's a required status
+  # check — restricting the trigger would deadlock non-infra PRs the way
+  # docs-only PRs used to deadlock before ci-docs.yml. The plan job exits 0
+  # for PRs with no infra changes (state matches code), so the CI cost is
+  # ~25s on the AWS API per PR. Apply still only fires on infra changes.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - "infra/**"
-      - ".github/workflows/terraform.yml"
   push:
     branches: [main]
     paths:
@@ -129,8 +134,13 @@ jobs:
           path: infra/plan.txt
           retention-days: 14
 
+      # Skip the sticky comment when there's nothing to say. Plan runs on
+      # every PR (it's a required check), so a "no changes" comment on every
+      # non-infra PR would be noise. Only post for exit 2 (changes pending)
+      # and exit 1 (plan error — surface the failure inline so the author
+      # doesn't have to dig through the workflow log to see why CI is red).
       - name: Comment plan on PR
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.plan.outputs.exit_code != '0'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           EXIT_CODE: ${{ steps.plan.outputs.exit_code }}
