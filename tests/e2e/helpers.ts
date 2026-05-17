@@ -27,9 +27,10 @@ export async function disableAutoDevSignIn(page: Page): Promise<void> {
 /**
  * Install a Google Identity Services stub on `window.google` BEFORE the
  * page loads. The stub records the callback registered via initialize()
- * and resolves it with the supplied JWT when prompt() is called. The
- * production code paths in src/lib/oauth/google.web.ts fall back to
- * `prompt()` when no rendered button can be found, so this is reachable.
+ * and, when renderButton() is called, inserts a plain <button> into the
+ * given parent — production code (src/lib/oauth/GoogleSignInButton.web.tsx)
+ * mounts that button into a View, so clicking the view's first descendant
+ * fires the credential callback with the supplied JWT.
  */
 export async function stubGoogleIdentityServices(page: Page, jwt: string): Promise<void> {
   await page.addInitScript((credential: string) => {
@@ -40,12 +41,21 @@ export async function stubGoogleIdentityServices(page: Page, jwt: string): Promi
           initialize: ({ callback }: { callback: (r: { credential: string }) => void }) => {
             cb = callback;
           },
+          renderButton: (parent: HTMLElement) => {
+            while (parent.firstChild) parent.removeChild(parent.firstChild);
+            const btn = parent.ownerDocument.createElement("button");
+            btn.type = "button";
+            btn.textContent = "Continue with Google";
+            btn.style.cssText =
+              "all: unset; cursor: pointer; padding: 12px 24px; border: 1px solid #444;";
+            btn.addEventListener("click", () => {
+              cb?.({ credential });
+            });
+            parent.appendChild(btn);
+          },
           prompt: () => {
             queueMicrotask(() => cb?.({ credential }));
           },
-          // No-op renderButton — the production code falls back to prompt()
-          // when it can't find a clickable element inside the host.
-          renderButton: () => {},
           cancel: () => {},
           disableAutoSelect: () => {},
         },
