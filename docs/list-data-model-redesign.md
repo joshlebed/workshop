@@ -1,4 +1,4 @@
-# List data model redesign — modules + content_type + duplication
+# List data model redesign — modules + kind + duplication
 
 Status: proposal, not yet implemented.
 Tracking branch: `joshlebed/rethink-list-data-model-3n415b`.
@@ -34,18 +34,18 @@ Three changes replace the type-driven model:
 
 ### Items get a typed content shape
 
-An item carries a `content_type` (movie, tv, book, link, spotify_album,
+An item carries a `kind` (movie, tv, book, link, spotify_album,
 plain) and a `content` jsonb whose shape is determined by that type. Items
 still belong to exactly one list (`items.list_id` stays). Each
-`content_type` has a zod schema in a shared registry (see §3.1) and writes
-are validated server-side; unknown content_types are rejected. Adding a new
-content_type is a code-only change.
+`kind` has a zod schema in a shared registry (see §3.1) and writes
+are validated server-side; unknown kinds are rejected. Adding a new
+kind is a code-only change.
 
 ### Lists are compositions of modules
 
 A list declares which **modules** are enabled (`todo`, `voting`, `ranking`,
 `leaderboard`, `sources`). The current `lists.type` enum becomes a
-client-side preset — picking "Movie Watchlist" sets `item_kind_default=movie`
+client-side preset — picking "Movie Watchlist" sets `item_kind=movie`
 and `modules=[voting,todo,ranking]`. The DB no longer knows about the preset.
 
 ### Sources are first-class, external-only
@@ -59,7 +59,7 @@ internal re-use is via duplication only.
 
 `POST /v1/lists/:id/duplicate` clones a list and its items into a brand-new
 list owned by the requester. Future changes on either side don't propagate.
-The requester can override `modules` / `item_kind_default` in the duplicate
+The requester can override `modules` / `item_kind` in the duplicate
 request — the album-shelf-to-voting-poll flow is exactly:
 
 ```
@@ -76,19 +76,24 @@ original album shelf does nothing to the poll.
 ## 3. Schema diff
 
 ```sql
--- lists: drop type+metadata, add modules + item_kind_default
+-- lists: drop type+metadata, add modules + item_kind
 ALTER TABLE lists
   ADD COLUMN modules text[] NOT NULL DEFAULT '{}',
-  ADD COLUMN item_kind_default text;
+  ADD COLUMN item_kind text;
 -- drop after migration: lists.type, lists.metadata
 
--- items: add typed content; list_id stays
--- content_type is text (not a Postgres enum) so adding new types is a
+-- items: add typed content + a real position column; list_id stays
+-- kind is text (not a Postgres enum) so adding new types is a
 -- code-only change; the zod registry is the source of truth.
 ALTER TABLE items
-  ADD COLUMN content_type text,
-  ADD COLUMN content jsonb NOT NULL DEFAULT '{}'::jsonb;
--- drop after migration: items.type, items.metadata
+  ADD COLUMN kind text,
+  ADD COLUMN content jsonb NOT NULL DEFAULT '{}'::jsonb,
+  ADD COLUMN position integer;     -- NULL = unordered (see §3.4)
+CREATE INDEX items_list_position_idx
+  ON items (list_id, position)
+  WHERE position IS NOT NULL AND archived_at IS NULL;
+-- drop after migration: items.type, items.metadata (and the now-redundant
+-- `metadata.position` key inside it, backfilled into items.position above)
 -- keep: items.list_id, items.title, items.url, items.note, items.completed,
 --       items.completed_at, items.completed_by, items.added_by,
 --       items.created_at, items.updated_at, items.archived_at
@@ -135,18 +140,19 @@ The Spotify per-list partial unique index moves columns only:
 `(list_id, metadata->>'spotifyAlbumId')` becomes
 `(list_id, content->>'spotifyAlbumId')` — same shape, new column.
 
-### 3.1 Content schemas (the substrate beneath `items.content`)
+### 3.1 Item kinds — the substrate beneath `items.content`
 
-Every `content_type` is defined by a zod schema in a shared registry. The
+Every `kind` is defined by a zod schema in a shared registry. The
 registry is the single source of truth for what `items.content` may contain
-for each type, what's validated on write, and what TypeScript clients see
-on read.
+for each kind, what's validated on write, and what TypeScript clients see
+on read. `lists.item_kind` (if set) constrains the kind of items the list
+accepts; see §3.2 for the invariant + enforcement.
 
 #### Where the registry lives
 
 ```
-packages/shared/src/content.ts         // the registry + types + helpers
-packages/shared/package.json           // add "./content": "./src/content.ts"
+packages/shared/src/itemKinds.ts         // the registry + types + helpers
+packages/shared/package.json           // add "./itemKinds": "./src/itemKinds.ts"
                                        // to the exports map (per the @workshop/shared
                                        // barrel constraint — same pattern as templates
                                        // and constants)
@@ -157,14 +163,14 @@ the inferred TypeScript types.
 
 #### Initial catalog
 
-Six content_types ship with the redesign. This is one fewer than today
+Six kinds ship with the redesign. This is one fewer than today
 because `date_idea`, `trip`, and the per-item content of `game` are all
 structurally identical (open-graph link preview with optional geo); they
 unify into `link`. Module-level differences (game scores, geo-aware
 trip UI) are expressed through modules and template UX, not through
-content_type.
+kind.
 
-| content_type    | shape (zod, all fields optional unless noted)                                                                                            | enrichment surface     |
+| kind            | shape (zod, all fields optional unless noted)                                                                                            | enrichment surface     |
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------- |
 | `movie`         | `{ source?: 'tmdb'\|'manual', sourceId?, posterUrl?, year?, runtimeMinutes?, overview? }`                                                | TMDB search            |
 | `tv`            | `{ source?: 'tmdb'\|'manual', sourceId?, posterUrl?, year?, runtimeMinutes?, overview? }`                                                | TMDB search            |
@@ -195,7 +201,7 @@ export const movieContent = z
 
 // …tvContent, bookContent, linkContent, spotifyAlbumContent, plainContent…
 
-export const CONTENT_SCHEMAS = {
+export const ITEM_KINDS = {
   movie: movieContent,
   tv: tvContent,
   book: bookContent,
@@ -204,26 +210,23 @@ export const CONTENT_SCHEMAS = {
   plain: plainContent,
 } as const;
 
-export type ContentType = keyof typeof CONTENT_SCHEMAS;
-export type ContentFor<T extends ContentType> = z.infer<(typeof CONTENT_SCHEMAS)[T]>;
+export type ItemKind = keyof typeof ITEM_KINDS;
+export type ContentFor<T extends ItemKind> = z.infer<(typeof ITEM_KINDS)[T]>;
 
-export function validateContent<T extends ContentType>(
-  contentType: T,
-  content: unknown,
-): ContentFor<T> {
-  const schema = CONTENT_SCHEMAS[contentType];
-  if (!schema) throw new UnknownContentTypeError(contentType);
+export function validateContent<T extends ItemKind>(kind: T, content: unknown): ContentFor<T> {
+  const schema = ITEM_KINDS[kind];
+  if (!schema) throw new UnknownItemKindError(kind);
   return schema.parse(content) as ContentFor<T>;
 }
 ```
 
 The discriminated-union helper `ContentFor<T>` gives clients
-type-narrowed access to the content payload once `contentType` is known.
+type-narrowed access to the content payload once `kind` is known.
 
 #### Write path
 
 Item creation (`POST /v1/lists/:id/items`) and item update
-(`PATCH /v1/items/:id`) both call `validateContent(contentType, content)`
+(`PATCH /v1/items/:id`) both call `validateContent(kind, content)`
 before writing. Failures return `400 Bad Request` with the zod error path
 
 - message (`{ error: "invalid_content", field: "content.year", message:
@@ -254,9 +257,9 @@ The hardening rules that keep this evolving cleanly:
   old rows still parse. Truly cleaning up is a one-shot Drizzle migration
   that rewrites `items.content` in place, and shouldn't be necessary
   until the schema accumulates real dead weight.
-- **`content_type` is a registry key, not an enum value.** Adding a new
+- **`kind` is a registry key, not an enum value.** Adding a new
   type (`vinyl`, `recipe`, `restaurant`) is one entry in
-  `CONTENT_SCHEMAS` plus the zod object. No Postgres migration. No
+  `ITEM_KINDS` plus the zod object. No Postgres migration. No
   client deploy required to read existing rows; writes of the new type
   fail at validation in the old client, which is correct behavior.
 
@@ -270,19 +273,273 @@ schema's signal. Strict-on-write is the cheap rule that keeps the
 content shape honest; the cost (coordinated client+server deploys for
 new fields) is small and we already pair-deploy via PR-A and friends.
 
+### 3.2 List/item kind invariant — server-enforced homogeneity
+
+`lists.item_kind` (when set) is an enforced constraint, not a default.
+For every item in the list, `items.kind = list.item_kind` must hold.
+The Blank List escape hatch is `list.item_kind IS NULL`, which means
+"no constraint — items of any kind are allowed."
+
+This invariant is checked server-side at every write that could break
+it. The helper is a few lines and lives next to `validateContent`:
+
+```ts
+// packages/shared/src/itemKinds.ts
+export function assertItemFitsList(
+  list: { item_kind: ItemKind | null },
+  item: { kind: ItemKind },
+): void {
+  if (list.item_kind === null) return; // unconstrained list
+  if (list.item_kind === item.kind) return;
+  throw new ItemKindMismatchError(list.item_kind, item.kind);
+}
+```
+
+#### Where it's enforced
+
+- **`POST /v1/lists/:id/items`** — call `assertItemFitsList(list, body)`
+  before insert. 400 with `{ error: "kind_mismatch", listItemKind,
+itemKind }` on failure.
+- **`POST /v1/lists/:id/items/bulk`** — same check per item; any
+  mismatch fails the whole batch (no partial inserts).
+- **`PATCH /v1/items/:id`** — if `body.kind` is present and changes,
+  re-check against the parent list. 400 on mismatch.
+- **`PATCH /v1/lists/:id`** — if `body.item_kind` is being changed, run
+  the inverse check: are there any non-archived items in the list whose
+  `kind` doesn't match the new value? If yes, 409 with
+  `{ error: "kind_constraint_violation", mismatchCount, mismatchedItemIds }`
+  and the user must clean up first. Loosening (X → null) is always
+  allowed; tightening (null → X) is allowed only when all items already
+  match X.
+
+A bulk "convert all items in this list from X to Y" operation is out of
+scope for v1; if a user wants to change kinds in bulk, they can edit
+items individually or duplicate-and-strip via PR-D.
+
+#### Why server-side enforcement, not client-side suggestion
+
+Two reasons. (a) The invariant is what makes the per-kind UI affordances
+correct — a movie list's poster grid breaks if a book item slips in. (b)
+Without server enforcement, a buggy or out-of-date client can quietly
+corrupt the list's shape forever; jsonb makes that especially hard to
+detect later. Hard guardrails at the API boundary keep the rest of the
+codebase (renderers, search, future migrations) free to assume the
+invariant holds.
+
+### 3.3 Source kind manifests — the `list_sources` extensibility surface
+
+A `list_sources` row is `{ kind, config jsonb, last_synced_at, … }`. The
+kind is a registry key; each kind's manifest declares the shape of its
+`config`, which `items.kind` it produces, and (server-side) its sync
+implementation. Same shape as item kinds and modules: a small typed
+registry that grows by appending entries, no schema migration per kind.
+
+```ts
+// packages/shared/src/sourceKinds.ts (new)
+export type SourceKindManifest<C = unknown> = {
+  kind: string; // 'spotify_playlist' | 'letterboxd_list' | …
+  displayName: string; // 'Spotify Playlist'
+  configSchema: z.ZodType<C>; // strict zod schema for `config`
+  producesItemKind: ItemKind; // 'spotify_album' | 'movie' | …
+};
+
+export const SOURCE_KINDS = {
+  spotify_playlist: {
+    kind: "spotify_playlist",
+    displayName: "Spotify Playlist",
+    configSchema: z
+      .object({
+        spotifyPlaylistUrl: z.string().url(),
+        spotifyPlaylistId: z.string(),
+      })
+      .strict(),
+    producesItemKind: "spotify_album",
+  },
+  letterboxd_list: {
+    kind: "letterboxd_list",
+    displayName: "Letterboxd List",
+    configSchema: z
+      .object({
+        letterboxdUrl: z.string().url(),
+        letterboxdUsername: z.string(),
+        letterboxdListSlug: z.string(),
+      })
+      .strict(),
+    producesItemKind: "movie",
+  },
+} as const satisfies Record<string, SourceKindManifest>;
+
+export type SourceKind = keyof typeof SOURCE_KINDS;
+```
+
+Server-side, each manifest has a paired implementation file with the
+sync logic (`apps/backend/src/sources/spotifyPlaylist.ts`,
+`apps/backend/src/sources/letterboxdList.ts`) that exports a
+`syncSource(source, db)` function. Adding a new source kind = one
+manifest entry + one implementation file + tests; no schema migration,
+no changes to `list_sources` columns.
+
+#### Letterboxd as the second kind (PR-F)
+
+Letterboxd is the concrete pressure test for whether the abstraction
+holds beyond Spotify. The headline check: a Letterboxd source produces
+`items.kind = 'movie'` (existing kind, full TMDB enrichment of the
+content jsonb), not a new `letterboxd_film` kind. This is the right
+factoring — the source kind tells us _where the data came from_; the
+item kind tells us _what shape the content has_. Many sources can
+produce the same item kind (Spotify, future Apple Music → both produce
+`spotify_album`-shaped items; Letterboxd, future TMDB watchlist, future
+Trakt → all produce `movie`-shaped items).
+
+A `letterboxd_watchlist` template ships in PR-F:
+
+| template id            | display name         | `item_kind` | `modules`                              | extras                              |
+| ---------------------- | -------------------- | ----------- | -------------------------------------- | ----------------------------------- |
+| `letterboxd_watchlist` | Letterboxd Watchlist | `movie`     | `voting`, `todo`, `ranking`, `sources` | requires Letterboxd public list URL |
+
+#### What the abstraction had to accommodate (and did)
+
+- **Different auth models.** Spotify uses Client Credentials; Letterboxd
+  is unauthenticated public HTML/RSS scraping. Both fit
+  `configSchema` because auth is the server's problem, not the row's.
+- **Different dedup keys.** Spotify dedups on `spotifyAlbumId` (in the
+  produced item's `content`); Letterboxd will dedup on the Letterboxd
+  film URL or the enriched TMDB ID (whichever is more reliable). The
+  partial unique index pattern from §3 generalizes — each item kind
+  declares its dedup field; the index is on
+  `(list_id, content->>'<dedupField>')`. Could move the dedup field
+  into the item-kind manifest as `dedupField?: string` if multiple
+  sources want to share the same field.
+- **Different content-enrichment paths.** Spotify produces
+  `spotify_album` items directly; Letterboxd produces `movie` items
+  but the source row's sync logic is responsible for the TMDB lookup
+  needed to fill in poster/year/runtime. The item kind enforces the
+  output shape regardless of which path produced it.
+
+#### What it can't accommodate (flag for the future)
+
+- **Per-source secrets** (OAuth refresh tokens, API keys per user).
+  v1 sources are all read-only public data, so `config` is non-secret.
+  When the first source kind needs per-source secrets, `list_sources`
+  grows a `secrets jsonb` column encrypted at rest, or secrets move
+  to SSM keyed by `list_sources.id`. Out of scope for now.
+- **Webhook / push-driven sync.** All v1 sources are pull-based. A
+  push source (e.g., RSS via WebSub) needs an inbound URL keyed to
+  the source ID, plus signature verification. Schema is ready
+  (`last_synced_at` is also useful for "most recent push"); the work
+  is in routing + verification, not in the data model.
+
+### 3.4 Item position — column on items, sparse integers, eager rebalance
+
+`items.position integer NULL` is the right home for ordering:
+
+```sql
+ALTER TABLE items ADD COLUMN position integer;
+CREATE INDEX items_list_position_idx
+  ON items (list_id, position)
+  WHERE position IS NOT NULL AND archived_at IS NULL;
+```
+
+Two-section semantics (preserving today's product):
+
+- `position IS NOT NULL` → **Ordered** section, sorted by `position ASC`.
+- `position IS NULL` → **Unordered** section, sorted by `added_at DESC`.
+
+(The `ranking` module is what decides whether the two-section split is
+shown at all — per §6.1, when `ranking` is off, position is ignored and
+items appear in a single recency-sorted list. The data is preserved.)
+
+#### Why a column on items, not a `lists.item_order uuid[]` array
+
+- **Referential integrity.** A column FK chain is straightforward; an
+  array of UUIDs requires manual sync on every item delete / archive.
+- **Concurrent writes don't contend.** Two users adding items hit
+  independent item rows. An array forces both writes onto the same
+  `lists` row.
+- **Soft-delete friendly.** Archive doesn't disturb the slot; restore
+  brings the item back to the same position. With an array, archive
+  forces a rewrite or a separate "ignore archived" filter at read.
+- **Indexable.** `(list_id, position)` is a vanilla B-tree; `ORDER BY
+position` uses it directly. An array requires `unnest WITH ORDINALITY`
+  joins.
+
+#### Allocation policy (sparse integers, ~10⁹ headroom)
+
+- **Append to ordered section** (drag from unordered → bottom of
+  ordered, or "promote to bottom"): `position = COALESCE(MAX(position),
+
+0. - 1024`.
+
+- **Insert between two items A and B** with positions `Pa < Pb`:
+  - If `Pb - Pa > 1`: `position = (Pa + Pb) / 2`.
+  - If `Pb - Pa = 1` (collision — no integer between): **rebalance the
+    list's ordered section** then retry the insert.
+- **Insert at top** (above A with position `Pa`): `position = Pa - 1024`.
+- **Demote to unordered**: `position = NULL`.
+
+Negative positions are fine — they cost nothing and avoid an extra
+rebalance every time the user moves items to the top.
+
+#### Rebalance
+
+```sql
+WITH renumbered AS (
+  SELECT id, ROW_NUMBER() OVER (ORDER BY position) * 1024 AS new_position
+  FROM items
+  WHERE list_id = $1 AND position IS NOT NULL AND archived_at IS NULL
+)
+UPDATE items
+SET position = renumbered.new_position
+FROM renumbered
+WHERE items.id = renumbered.id;
+```
+
+One statement per rebalance, indexed, runs in milliseconds at Workshop's
+scale. Eager (during the reorder request itself) so the next user
+doesn't hit fresh tight spacing. No background job needed.
+
+#### API: a dedicated move endpoint, not raw position PATCH
+
+Clients shouldn't have to know about the spacing math or trigger
+rebalances. The server takes "place between A and B" instructions:
+
+- `POST /v1/items/:id/move` — body: `{ beforeItemId?: string,
+afterItemId?: string }`
+  - both null → demote to unordered (`position = NULL`)
+  - only `beforeItemId` → promote, just below `before`
+  - only `afterItemId` → promote, just above `after`
+  - both → insert between them
+  - on collision, server rebalances + retries internally before
+    returning
+  - response: the updated `Item` (with new `position`)
+
+Direct `PATCH /v1/items/:id { position: 42 }` is still valid but is the
+escape hatch for advanced tooling (data backfills, admin scripts) — the
+mobile/web client always uses `/move`.
+
+#### When this stops being enough
+
+Lexorank (lexicographically-sortable string ranks) is the next stop if
+collisions and rebalances become hot. For Workshop's scale (small
+lists, infrequent reorders), this is years away. The migration path is
+straightforward: alter `position` from `integer` to `text`, write a
+backfill that maps current integers to lexorank strings, switch the
+allocator. Comments left in the move endpoint should flag this so a
+future agent knows it's a planned-extensibility point, not a bug.
+
 ### Type → modules / item_kind mapping
 
-| old `type`    | `item_kind_default` | `modules`                          |
-| ------------- | ------------------- | ---------------------------------- |
-| `movie`       | `movie`             | `voting`, `todo`, `ranking`        |
-| `tv`          | `tv`                | `voting`, `todo`, `ranking`        |
-| `book`        | `book`              | `voting`, `todo`, `ranking`        |
-| `date_idea`   | `link`              | `voting`, `todo`, `ranking`        |
-| `trip`        | `link`              | `voting`, `todo`, `ranking`        |
-| `album_shelf` | `spotify_album`     | `voting`, `ranking`, `sources`     |
-| `game`        | `link`              | `voting`, `leaderboard`, `ranking` |
+| old `type`    | `item_kind`     | `modules`                          |
+| ------------- | --------------- | ---------------------------------- |
+| `movie`       | `movie`         | `voting`, `todo`, `ranking`        |
+| `tv`          | `tv`            | `voting`, `todo`, `ranking`        |
+| `book`        | `book`          | `voting`, `todo`, `ranking`        |
+| `date_idea`   | `link`          | `voting`, `todo`, `ranking`        |
+| `trip`        | `link`          | `voting`, `todo`, `ranking`        |
+| `album_shelf` | `spotify_album` | `voting`, `ranking`, `sources`     |
+| `game`        | `link`          | `voting`, `leaderboard`, `ranking` |
 
-`date_idea`, `trip`, and `game` all collapse into the `link` content_type
+`date_idea`, `trip`, and `game` all collapse into the `link` kind
 because their stored item shape is structurally identical (OG-preview +
 optional geo). The semantic difference (a trip itinerary vs a daily game
 tracker) lives in the template, the modules, and the UI — not in the
@@ -306,22 +563,23 @@ A single Drizzle migration. Solo-dev / low-traffic, so we don't need an
 online-migration dance.
 
 1. **Add new columns and tables.**
-   - `lists.modules`, `lists.item_kind_default`
-   - `items.content_type`, `items.content`
+   - `lists.modules`, `lists.item_kind`
+   - `items.kind`, `items.content`
    - tables: `list_sources`, `item_scores`
 
 2. **Backfill in one transaction.**
    - For each `items` row:
-     - `content_type` ← map of old `items.type`:
+     - `kind` ← map of old `items.type`:
        `movie`→`movie`, `tv`→`tv`, `book`→`book`, `album_shelf`→`spotify_album`,
        `date_idea`/`trip`/`game`→`link`.
-     - `content` ← `items.metadata` minus any keys not in the new content
-       schema (e.g., the old `position` jsonb key, which moves to a real
-       column in a future revision; today it stays in `content` since
-       `items.position` doesn't exist as a real column yet — see open
-       question 9.7).
+     - `content` ← `items.metadata` minus the `position` key (which moves
+       to a real column, see next bullet).
+     - `position` ← `(items.metadata->>'position')::int` (or NULL if absent).
+     - After backfill, rebalance each list's ordered section to the
+       sparse `n * 1024` spacing per §3.4 so post-migration reorders
+       have headroom without an immediate rebalance.
    - For each `lists` row:
-     - `item_kind_default`, `modules` ← from the mapping table above.
+     - `item_kind`, `modules` ← from the mapping table above.
    - For each `lists` row with `type='album_shelf'` and a
      `metadata.spotifyPlaylistUrl`: insert a `list_sources` row with
      `kind='spotify_playlist'`,
@@ -336,7 +594,7 @@ online-migration dance.
    are renamed in place via `UPDATE activity_events SET event_type = …`;
    no rows are deleted.
 
-4. **Make new columns NOT NULL.** `items.content_type`.
+4. **Make new columns NOT NULL.** `items.kind`.
 
 5. **Cut over code in the same PR.** All read/write paths use the new
    columns. No dual-write window — the old columns are dead the moment the
@@ -352,7 +610,7 @@ The current `activity_event_type` Postgres enum has 22 values. The
 redesign retires four album-shelf-specific events into the new generic
 source/item events, adds seven new event types for the module / source /
 duplicate surfaces, and migrates the column from a Postgres enum to a
-typed-registry-backed text column (same reasoning as `content_type` and
+typed-registry-backed text column (same reasoning as `kind` and
 `lists.modules`: app-layer registry, no `ALTER TYPE` ceremony to add a
 new event).
 
@@ -422,18 +680,18 @@ list duplication); items keep their current `/v1/items/:id` and
 
 - `GET /v1/lists` — unchanged shape.
 - `POST /v1/lists` — body: `{ name, emoji, color, description?,
-itemKindDefault, modules[], sources?[] }`. Presets ("Movie Watchlist")
+itemKind, modules[], sources?[] }`. Presets ("Movie Watchlist")
   are client-side templates that build the request body. `sources?[]` at
   create time replaces today's "create with a Spotify URL" special case.
 - `GET /v1/lists/:id` — unchanged shape; response now includes `modules`,
-  `itemKindDefault`, and attached `sources[]`.
-- `PATCH /v1/lists/:id` — can update `modules`, `item_kind_default`, plus
+  `itemKind`, and attached `sources[]`.
+- `PATCH /v1/lists/:id` — can update `modules`, `item_kind`, plus
   the existing presentation fields. Destructive module changes require an
   `acknowledgedWarnings: string[]` field echoing the warning codes returned
   by the config-preview endpoint below; without it, the server returns
   `409 Conflict` with the warning list. See §6.
 - `POST /v1/lists/:id/config-preview` — body:
-  `{ modules?: string[], itemKindDefault?: string }` → returns
+  `{ modules?: string[], itemKind?: string }` → returns
   `{ warnings: ConfigWarning[] }` where each warning is
   `{ code: string, message: string, affectedCount?: number }`. The client
   uses this to render a confirmation sheet before applying. Always-empty
@@ -442,11 +700,11 @@ itemKindDefault, modules[], sources?[] }`. Presets ("Movie Watchlist")
 ### Duplicate
 
 - `POST /v1/lists/:id/duplicate` — body:
-  `{ name?, emoji?, color?, description?, modules?, itemKindDefault?,
+  `{ name?, emoji?, color?, description?, modules?, itemKind?,
 preserveCompletion?: boolean, copySources?: boolean }`.
   Creates a new list with the requester as owner and sole member.
   Deep-copies non-archived items (new IDs, copied
-  title/url/note/content/content_type/position). Does **not** copy:
+  title/url/note/content/kind/position). Does **not** copy:
   upvotes, scores, activity events, invites, members. Completion state
   resets to false unless `preserveCompletion: true`. Sources are dropped
   unless `copySources: true` (in which case configs clone with
@@ -476,8 +734,8 @@ preserveCompletion?: boolean, copySources?: boolean }`.
 Essentially unchanged from today — minor field renames only.
 
 - `GET /v1/lists/:id/items` — same three-way split (ordered / unordered /
-  completed). Item shape now includes `contentType` + `content`.
-- `POST /v1/lists/:id/items` — body: `{ contentType, content, title?, url?,
+  completed). Item shape now includes `kind` + `content`.
+- `POST /v1/lists/:id/items` — body: `{ kind, content, title?, url?,
 note? }`.
 - `POST /v1/lists/:id/items/bulk` — unchanged.
 - `GET /v1/items/:id`, `PATCH /v1/items/:id`, `DELETE /v1/items/:id` —
@@ -486,6 +744,12 @@ note? }`.
   gated on the parent list having the `voting` module (see §5.1).
 - `POST /v1/items/:id/complete`, `POST /v1/items/:id/uncomplete` — gated
   on the `todo` module (see §5.1).
+- `POST /v1/items/:id/move` — body: `{ beforeItemId?, afterItemId? }`.
+  Server computes the new `position` per §3.4 (sparse spacing, eager
+  rebalance on collision). Gated on the `ranking` module. Both null →
+  demote to unordered. Replaces the previous "PATCH metadata.position
+  directly" pattern; the older PATCH path stays as an admin escape
+  hatch.
 
 ### Scores (generalized)
 
@@ -546,9 +810,100 @@ module-gated endpoints when the gating module is off — they read
 stale cached lists, race conditions where a module is disabled mid-flow,
 buggy or out-of-date clients, and third-party API consumers.
 
+### 5.2 Permissions matrix
+
+Roles stay as `owner | member` (today's `list_members.role`). One owner
+per list, enforced by the existing unique partial index. The matrix
+below covers every operation that could plausibly require a check;
+unauthenticated requests universally 401.
+
+**Guiding principle:** an **owner** is responsible for the **shape** of
+the list (config that's destructive or permanent — modules, sources,
+item_kind constraint, name/metadata, member roster). A **member**
+operates **within** that shape (adds/edits/votes/completes/duplicates).
+A **non-member authenticated user** is invisible to the list except via
+an invite token.
+
+| operation                                                            | owner | member | non-member auth'd |
+| -------------------------------------------------------------------- | :---: | :----: | :---------------: |
+| `GET /v1/lists/:id`, `…/items`, `…/sources`, `…/scores`, `/activity` |   ✓   |   ✓    |      ✗ (404)      |
+| `PATCH /v1/lists/:id` — name/emoji/color/description/cover/avatar    |   ✓   |   ✗    |         ✗         |
+| `PATCH /v1/lists/:id` — `modules`                                    |   ✓   |   ✗    |         ✗         |
+| `PATCH /v1/lists/:id` — `item_kind`                                  |   ✓   |   ✗    |         ✗         |
+| `POST /v1/lists/:id/config-preview`                                  |   ✓   |   ✗    |         ✗         |
+| `DELETE /v1/lists/:id` (archive)                                     |   ✓   |   ✗    |         ✗         |
+| `POST /v1/lists/:id/sources`                                         |   ✓   |   ✗    |         ✗         |
+| `DELETE /v1/lists/:id/sources/:sourceId`                             |   ✓   |   ✗    |         ✗         |
+| `PATCH /v1/lists/:id/sources/:sourceId` (edit config)                |   ✓   |   ✗    |         ✗         |
+| `POST /v1/lists/:id/sources/:sourceId/sync` (manual refresh)         |   ✓   |   ✓    |         ✗         |
+| `POST /v1/lists/:id/items` (add)                                     |   ✓   |   ✓    |         ✗         |
+| `POST /v1/lists/:id/items/bulk`                                      |   ✓   |   ✓    |         ✗         |
+| `PATCH /v1/items/:id` (edit title/url/note/content/kind)             |   ✓   |   ✓    |         ✗         |
+| `DELETE /v1/items/:id` (archive item)                                |   ✓   |   ✓    |         ✗         |
+| `POST /v1/items/:id/{upvote,unupvote}`                               |   ✓   |   ✓    |         ✗         |
+| `POST /v1/items/:id/{complete,uncomplete}`                           |   ✓   |   ✓    |         ✗         |
+| `POST /v1/items/:id/move` (reorder)                                  |   ✓   |   ✓    |         ✗         |
+| `PUT /v1/items/:id/scores`                                           |   ✓   |   ✓    |         ✗         |
+| `POST /v1/lists/:id/duplicate`                                       |   ✓   |   ✓    |         ✗         |
+| `POST /v1/lists/:id/invites`                                         |   ✓   |   ✗    |         ✗         |
+| `DELETE /v1/lists/:id/invites/:inviteId`                             |   ✓   |   ✗    |         ✗         |
+| `POST /v1/invites/:token/accept`                                     |  n/a  |  n/a   |         ✓         |
+| `DELETE /v1/lists/:id/members/:userId` (remove someone else)         |   ✓   |   ✗    |         ✗         |
+| `DELETE /v1/lists/:id/members/:userId` (self-leave, userId = self)   | ✗ \*  |   ✓    |         ✗         |
+| `POST /v1/lists/:id/transfer-ownership`                              |   ✓   |   ✗    |         ✗         |
+| `POST /v1/lists/:id/{pin,archive,mute}` (per-viewer state)           | self  |  self  |         ✗         |
+
+\* Owners cannot self-leave a non-archived list directly. They must
+either transfer ownership first or archive the list (both rules
+preserve the invariant that every active list has exactly one owner).
+
+**Authorization helper.** A small server-side helper centralizes the
+check so handlers don't reimplement it:
+
+```ts
+// apps/backend/src/lib/permissions.ts
+type Capability =
+  | "view"
+  | "edit_items"
+  | "reorder_items"
+  | "vote"
+  | "complete"
+  | "score"
+  | "sync_source"
+  | "duplicate"
+  | "edit_list_metadata" // name/emoji/etc.
+  | "edit_modules"
+  | "edit_item_kind"
+  | "edit_sources"
+  | "invite"
+  | "remove_member"
+  | "transfer_ownership"
+  | "archive_list";
+
+export function requireCapability(
+  user: { id: string },
+  list: { id: string; owner_id: string },
+  membership: ListMember | null,
+  capability: Capability,
+): void {
+  // … 403 if denied, no-op if allowed; resolves to the matrix above
+}
+```
+
+Every list-scoped handler resolves the (user, list, membership) triple
+once and then asks the helper for each capability it exercises. New
+operations get one line in the matrix and one case in the helper —
+neither file touches the underlying SQL.
+
+**403 contract.** Permission failures return `403 Forbidden` with
+`{ error: "permission_denied", capability: "edit_modules", role: "member" }`
+so clients can render copy like "Only the list owner can change
+modules." Don't conflate with `409 module_disabled` (§5.1) — those are
+orthogonal axes (can-you-do-it vs. is-the-feature-on).
+
 ## 6. Mutating list config after creation
 
-A list's `modules` and `item_kind_default` aren't frozen at create time — a
+A list's `modules` and `item_kind` aren't frozen at create time — a
 user can switch a `[ranking]` shopping list into a `[voting]` poll, add a
 `leaderboard` to a watchlist, or turn off `todo` and treat a list as a pure
 notes board. Two principles govern how those mutations work:
@@ -571,19 +926,19 @@ For a non-empty list, here's what each delta does and whether the user is
 warned. Warnings have stable codes so clients can render localized copy and
 echo them back on the PATCH:
 
-| change                   | impact on data                                                    | warning code                 |
-| ------------------------ | ----------------------------------------------------------------- | ---------------------------- |
-| add `todo`               | new "Done" section appears; items default to incomplete           | none                         |
-| remove `todo`            | done section hidden; `items.completed*` columns preserved         | `todo.hide_completed`        |
-| add `voting`             | upvote affordance appears                                         | none                         |
-| remove `voting`          | upvote affordance hidden; `item_upvotes` rows preserved           | `voting.hide_upvotes`        |
-| add `ranking`            | items gain manual `position`; default to unordered                | none                         |
-| remove `ranking`         | manual-order section hidden; `items.position` preserved           | `ranking.hide_order`         |
-| add `leaderboard`        | score submission appears                                          | none                         |
-| remove `leaderboard`     | scores hidden; `item_scores` rows preserved                       | `leaderboard.hide_scores`    |
-| add `sources`            | source attachment becomes possible                                | none                         |
-| remove `sources`         | sources stop syncing; `list_sources` rows preserved; items stay   | `sources.deactivate_sources` |
-| change `itemKindDefault` | affects future items only; existing items keep their content_type | none (informational hint OK) |
+| change               | impact on data                                                  | warning code                 |
+| -------------------- | --------------------------------------------------------------- | ---------------------------- |
+| add `todo`           | new "Done" section appears; items default to incomplete         | none                         |
+| remove `todo`        | done section hidden; `items.completed*` columns preserved       | `todo.hide_completed`        |
+| add `voting`         | upvote affordance appears                                       | none                         |
+| remove `voting`      | upvote affordance hidden; `item_upvotes` rows preserved         | `voting.hide_upvotes`        |
+| add `ranking`        | items gain manual `position`; default to unordered              | none                         |
+| remove `ranking`     | manual-order section hidden; `items.position` preserved         | `ranking.hide_order`         |
+| add `leaderboard`    | score submission appears                                        | none                         |
+| remove `leaderboard` | scores hidden; `item_scores` rows preserved                     | `leaderboard.hide_scores`    |
+| add `sources`        | source attachment becomes possible                              | none                         |
+| remove `sources`     | sources stop syncing; `list_sources` rows preserved; items stay | `sources.deactivate_sources` |
+| change `itemKind`    | affects future items only; existing items keep their kind       | none (informational hint OK) |
 
 Two rules read off this table: **adding any module is always silent** (the
 new affordance turns on, no data is at risk); **removing a module that has
@@ -634,26 +989,26 @@ the registry; everything else is generic.
 ### Content schema evolution (separate from modules)
 
 Module toggles never touch `items.content`. The other axis of config drift
-is the **shape** of `content` for a given `content_type` — e.g., we want
+is the **shape** of `content` for a given `kind` — e.g., we want
 to add a `runtimeMinutes` field to `movie` items. The rule there is
 forward-compatible: every `content` schema is a zod object with optional
 fields and sensible defaults; readers never assume newer fields exist on
 older rows. Adding a field is a code-only change. Removing a field is
 allowed but the underlying jsonb is left intact (next-time-read just
-ignores it). If a future content_type evolves enough to need a hard
+ignores it). If a future kind evolves enough to need a hard
 migration, the path is a dedicated one-shot Drizzle migration that
-rewrites `items.content` in place — but the v1 module/content_type set
+rewrites `items.content` in place — but the v1 module/kind set
 shouldn't need that.
 
-### Content-type conversion on existing items
+### Item-kind conversion on existing items
 
-Out of scope for v1. A user converting an `[item_kind_default=movie]` list
-into a `[voting]` poll keeps the existing items as `content_type=movie`;
+Out of scope for v1. A user converting an `[item_kind=movie]` list
+into a `[voting]` poll keeps the existing items as `kind=movie`;
 the list's poll affordances just operate on whatever items are present.
-"Bulk-convert every item in this list to a different content_type" is a
+"Bulk-convert every item in this list to a different kind" is a
 sharper-edged operation that, if it ever ships, gets its own dedicated
 endpoint with its own warning surface — not a side effect of changing
-`item_kind_default`.
+`item_kind`.
 
 ### Why not store derived flags on items
 
@@ -732,7 +1087,7 @@ The item detail screen renders each section conditionally on its module:
 
 - Title / URL / note — always shown.
 - Content fields (poster, year, authors, lat/lng, etc.) — always shown
-  if present, since they're content_type-driven, not module-driven.
+  if present, since they're kind-driven, not module-driven.
 - Upvote pill — only if `voting` is on.
 - Completion toggle — only if `todo` is on.
 - Position controls / Move to top / Move to bottom — only if `ranking` is on.
@@ -772,7 +1127,7 @@ Watchlist" goes away — it just stops being a database column. The
 replacement is a **template**: a hardcoded, client-side, named bundle of
 defaults that the create-list flow uses to construct a `POST /v1/lists`
 body. Templates exist only in the client; the server stores the
-materialized config (`modules`, `item_kind_default`, attached `sources`)
+materialized config (`modules`, `item_kind`, attached `sources`)
 and never learns which template seeded it.
 
 ### Continuity with today's `lists.type`
@@ -780,7 +1135,7 @@ and never learns which template seeded it.
 Every value of today's `type` enum maps 1:1 to an initial template. The
 post-migration data is identical: a `type='movie'` list and a list
 created from the `movie_watchlist` template both have
-`item_kind_default='movie'` and `modules=['voting','todo','ranking']`.
+`item_kind='movie'` and `modules=['voting','todo','ranking']`.
 Users see the same set of options in the create-list picker; the
 underlying representation is just decoupled from it.
 
@@ -788,22 +1143,23 @@ underlying representation is just decoupled from it.
 
 Shipped with the redesign:
 
-| template id       | display name       | `item_kind_default` | `modules`                          | extras                                               |
-| ----------------- | ------------------ | ------------------- | ---------------------------------- | ---------------------------------------------------- |
-| `movie_watchlist` | Movie Watchlist    | `movie`             | `voting`, `todo`, `ranking`        | emoji 🎬, color sunset                               |
-| `tv_watchlist`    | TV Watchlist       | `tv`                | `voting`, `todo`, `ranking`        | emoji 📺, color ocean                                |
-| `reading_list`    | Reading List       | `book`              | `voting`, `todo`, `ranking`        | emoji 📚, color forest                               |
-| `date_ideas`      | Date Ideas         | `date_idea`         | `voting`, `todo`, `ranking`        | emoji ✨, color rose                                 |
-| `trip_plan`       | Trip Plan          | `trip`              | `voting`, `todo`, `ranking`        | emoji ✈️, color sand                                 |
-| `album_shelf`     | Album Shelf        | `spotify_album`     | `voting`, `ranking`, `sources`     | prompts for Spotify playlist URL (`requiresSource`)  |
-| `daily_games`     | Daily Game Tracker | `game`              | `voting`, `leaderboard`, `ranking` | emoji 🎮, color slate                                |
-| `voting_poll`     | Voting Poll        | `plain`             | `voting`                           | new — flagship example of the redesign's flexibility |
-| `shared_todo`     | Shared To-Do List  | `plain`             | `todo`, `ranking`                  | new                                                  |
-| `blank_list`      | Blank List         | `plain`             | `ranking`                          | new — escape hatch for "just give me a list"         |
+| template id            | display name         | `item_kind`     | `modules`                              | extras                                                                |
+| ---------------------- | -------------------- | --------------- | -------------------------------------- | --------------------------------------------------------------------- |
+| `movie_watchlist`      | Movie Watchlist      | `movie`         | `voting`, `todo`, `ranking`            | emoji 🎬, color sunset                                                |
+| `tv_watchlist`         | TV Watchlist         | `tv`            | `voting`, `todo`, `ranking`            | emoji 📺, color ocean                                                 |
+| `reading_list`         | Reading List         | `book`          | `voting`, `todo`, `ranking`            | emoji 📚, color forest                                                |
+| `date_ideas`           | Date Ideas           | `link`          | `voting`, `todo`, `ranking`            | emoji ✨, color rose                                                  |
+| `trip_plan`            | Trip Plan            | `link`          | `voting`, `todo`, `ranking`            | emoji ✈️, color sand                                                  |
+| `album_shelf`          | Album Shelf          | `spotify_album` | `voting`, `ranking`, `sources`         | requires Spotify playlist URL (`requiresSource`)                      |
+| `daily_games`          | Daily Game Tracker   | `link`          | `voting`, `leaderboard`, `ranking`     | emoji 🎮, color slate                                                 |
+| `letterboxd_watchlist` | Letterboxd Watchlist | `movie`         | `voting`, `todo`, `ranking`, `sources` | requires Letterboxd public list URL (`requiresSource`); ships in PR-F |
+| `voting_poll`          | Voting Poll          | `plain`         | `voting`                               | new — flagship example of the redesign's flexibility                  |
+| `shared_todo`          | Shared To-Do List    | `plain`         | `todo`, `ranking`                      | new                                                                   |
+| `blank_list`           | Blank List           | `plain`         | `ranking`                              | new — escape hatch for "just give me a list"                          |
 
-The first seven preserve today's product. The last three are new shapes
-the redesign unlocks; they're worth shipping at the same time so users
-feel the win.
+The first seven preserve today's product. `letterboxd_watchlist` and the
+three trailing entries are new shapes the redesign unlocks; ship them
+in their respective PRs so users feel the win.
 
 ### Where templates live
 
@@ -826,7 +1182,7 @@ export type ListTemplate = {
   displayName: string;
   description: string; // short copy for the picker card
   defaults: {
-    itemKindDefault: ContentType;
+    itemKind: ItemKind;
     modules: ModuleName[];
     emoji?: string;
     color?: ListColor;
@@ -852,7 +1208,7 @@ does not — templates are a UI affordance, not a DB concept.
 The moment a list exists, its template ID is forgotten. The user can:
 
 - Change modules via the settings sheet (§6 governs the warnings).
-- Change `item_kind_default` (new items only, see §6).
+- Change `item_kind` (new items only, see §6).
 - Add or remove sources independently of `requiresSource`.
 
 There's no "this list deviates from its template" UX — the list just is
@@ -889,7 +1245,7 @@ Today the backend's Discord webhook (`apps/backend/src/lib/discord.ts`)
 fires "new list created" pings that read `list.type` for the message
 body. Post-redesign, that field doesn't exist; the server doesn't know
 which template seeded the list. The replacement is to render the
-notification from `list.name` + `list.modules` (and `itemKindDefault`
+notification from `list.name` + `list.modules` (and `itemKind`
 when worth surfacing): "Sarah created **Movie Watchlist** (movie list,
 voting · todo · ranking)" or just "Sarah created **Movie Watchlist**"
 when terse is fine. Analytics treat modules as the categorical axis,
@@ -921,47 +1277,47 @@ separately, mostly about flow entry points and chrome:
 
 ## 9. Open questions
 
-9.1. **Who can duplicate a list?** Three options: owner only / owner +
-members / anyone with an accepted invite. Recommendation: any member.
-The duplicate is fully independent, so there's no privacy leak beyond
-what the duplicating user already saw — Discord-style "I can fork a
-server I'm in."
+Resolved questions move to §3.x, §5.x, and §6.x. What's left after the
+latest revision:
 
-9.2. **Should completion state copy on duplicate?** Default no. Reason:
-the common case (album-shelf → poll, watchlist → recommend-to-friend) is
-a fresh start. `preserveCompletion: true` is the opt-in for "duplicate
-this and let me keep going from where I left off."
-
-9.3. **Mixed `content_type` in one list.** Schema allows it
-(`item_kind_default` is only a default). v1 product can restrict to
-homogeneous; lifting it later when use cases appear (a Trip list with
-restaurants + flights + hotels) costs nothing.
-
-9.4. **Sync cadence for `sources` module.** Manual refresh only (today's
+9.1. **Sync cadence for `sources` module.** Manual refresh only (today's
 album-shelf behavior, generalized). Scheduled pull and webhook-driven
 sync are future work; the table has the columns ready.
 
-9.5. **"Show hidden module data" as an admin escape hatch.** Per §6, data
-from a disabled module is preserved but invisible. The confirmation
-sheet for _enabling_ a module shows the preserved-data summary,
-mirroring the disable warning. No separate viewer needed.
-
-9.6. **Should templates be discoverable post-creation?** Currently no —
+9.2. **Should templates be discoverable post-creation?** Currently no —
 the template ID is lost the moment the list exists. If template browsing
 turns out to be useful (e.g., "duplicate as a different template"), the
 cheapest path is to derive a best-match template from the current
-`(item_kind_default, modules)` tuple at render time; no schema needed.
+`(item_kind, modules)` tuple at render time; no schema needed.
 Defer until use cases demand it.
 
-9.7. **`items.position` should probably move out of `items.content`.**
-Today's `metadata.position` jsonb key technically maps to a `content`
-key under the literal-translation rule in §4, but `position` is a
-list-ordering concern, not a content-shape concern — it makes more
-sense as `items.position integer NULL` so the §3.1 zod schemas don't
-have to carry it. The migration cost is one extra column and a
-backfill step. Recommendation: promote in PR-A; flag here so the
-next revision either lifts it into the §3 schema diff or explicitly
-defers.
+9.3. **Per-item-kind dedup field declaration.** §3.3 mentions that
+each item kind could declare its dedup field (e.g.,
+`spotify_album.dedupField = 'spotifyAlbumId'`) so the partial unique
+index pattern generalizes. v1 keeps the Spotify-specific index;
+Letterboxd will add a second per-kind index in PR-F. If a third kind
+shows up wanting dedup, lift the per-kind dedup field into the item
+kind manifest and generate the indexes from it.
+
+9.4. **Rebalance overflow** (negative positions accumulating from
+"move to top" forever). §3.4 says negatives are fine; the long tail
+is that positions could end up as `−10⁹` after enough top-moves.
+Trigger a normalizing rebalance (renumber to start at 1024) when
+`MIN(position) < some_threshold` (e.g., `-10⁹`). Implementation detail
+for PR-A; flagging only because if it's never wired, eventually a
+list's positions are inscrutable in the DB.
+
+9.5. **Per-source secrets / push sources.** §3.3 flags both as
+out-of-scope for v1. When the first OAuth-bearing source kind ships
+(or the first push-based one), add a `secrets jsonb` (encrypted) or
+SSM-keyed mapping, and a webhook inbound surface. Schema is ready;
+work is in implementation, not in the data model.
+
+9.6. **What does duplicate do with a non-owner duplicator's choice
+to enable `sources` on the duplicate?** Adding a source requires
+owner role (§5.2). Since the duplicator becomes the owner of the
+duplicate, this is allowed by construction — but worth noting as a
+side effect of the matrix.
 
 ## 10. Sequencing
 
@@ -970,15 +1326,21 @@ sources abstraction proves itself beyond Spotify before it ossifies.
 Only PR-A has a migration.
 
 1. **PR-A: schema migration + code cut-over.** Adds new columns/tables,
-   backfills (including the activity-event renames per §4.1), drops
-   old columns, ships `@workshop/shared/content` with the §3.1 zod
-   registry and server-side `validateContent`, updates handlers in one
-   shot. Same external API shape — clients see
-   `modules`/`itemKindDefault`/`contentType`/`content` fields appear,
-   `type`/`metadata` disappear. Protected by Neon-branch + migrate-smoke.
+   backfills (including the activity-event renames per §4.1 and the
+   `items.position` promotion per §3.4), drops old columns, ships
+   `@workshop/shared/itemKinds` with the §3.1 zod registry +
+   `validateContent` + `assertItemFitsList` (§3.2), ships the
+   `@workshop/shared/sourceKinds` registry (§3.3) with the Spotify
+   manifest only, ships the `apps/backend/src/lib/permissions.ts`
+   helper that codifies §5.2 and gates every list-scoped handler. Adds
+   `POST /v1/items/:id/move` (§3.4). Same external API shape — clients
+   see `modules`/`itemKind`/`kind`/`content`/`position` appear,
+   `type`/`metadata` disappear. Protected by Neon-branch +
+   migrate-smoke.
 2. **PR-B: list_sources surface.** New endpoints + the `sources` module
    wired through. Album-shelf's Spotify integration moves onto the new
-   primitive; legacy `lists.metadata`-driven code paths deleted.
+   primitive; legacy `lists.metadata`-driven code paths deleted. The
+   sources-related rows of the §5.2 matrix become enforceable here.
 3. **PR-C: leaderboard generalization.** `item_scores` is the only path;
    game-specific code paths deleted. Leaderboard module surfaces in the
    list-detail UI.
@@ -993,11 +1355,14 @@ Only PR-A has a migration.
    and the warning-acknowledgement protocol from §6 land here; the
    module-gate 409 error contract (§5.1) is enforced server-side and
    rendered client-side. Discord notifications + analytics rewired to
-   read `(name, modules, itemKindDefault)` instead of legacy `type`.
-6. **PR-F: Letterboxd source kind.** Second `list_sources.kind` value
-   (`letterboxd_list`). Proves the abstraction beyond a single
-   integration before it ossifies; concrete deliverable is "import a
-   Letterboxd public list into a movie watchlist." Validates that the
-   `list_sources` shape is genuinely kind-agnostic (no Spotify-shaped
-   leakage). Lives downstream of PR-B so the surface already exists;
-   independent of the rest.
+   read `(name, modules, itemKind)` instead of legacy `type`.
+6. **PR-F: Letterboxd source kind.** Adds the `letterboxd_list`
+   manifest to `SOURCE_KINDS` (§3.3) and the matching server-side
+   sync implementation; ships the `letterboxd_watchlist` template
+   (§7) that materializes into `{ item_kind: 'movie', modules:
+[voting, todo, ranking, sources] }` + a Letterboxd source. Headline
+   test: produces `items.kind = 'movie'` (not a new
+   `letterboxd_film` kind), proving source kind and item kind are
+   genuinely orthogonal. Validates that no Spotify-shaped assumptions
+   leaked into the `list_sources` shape. Lives downstream of PR-B so
+   the surface already exists; independent of the rest.
