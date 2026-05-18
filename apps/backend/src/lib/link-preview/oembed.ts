@@ -266,5 +266,3 @@ async function readCapped(res: Response): Promise<string | null> {
   }
   return new TextDecoder("utf-8", { fatal: false }).decode(merged);
 }
-
-export const __internal = { attrText };

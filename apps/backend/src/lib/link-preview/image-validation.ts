@@ -19,7 +19,7 @@ const PROBE_TIMEOUT_MS = 2000;
 // Smaller than the HTML cap — we just need magic bytes + dimensions.
 const PROBE_MAX_BYTES = 4096;
 
-export interface ProbeResult {
+interface ProbeResult {
   ok: boolean;
   contentType: string | null;
   byteLength: number | null;
