@@ -29,6 +29,24 @@ fi
 cd "$REPO_DIR"
 
 # ---------------------------------------------------------------------------
+# 0) Bootstrap mise + install pinned toolchain (node, pnpm, …).
+#    The sandbox base image ships Node 22, but the repo pins Node 20.19 in
+#    .mise.toml / .nvmrc and root package.json engines (`>=20.19 <21`).
+#    Without mise, every pnpm invocation emits `WARN Unsupported engine`
+#    and we're running the dev servers on a node version CI never sees.
+#    Idempotent: mise install is a no-op once the pinned versions are cached.
+# ---------------------------------------------------------------------------
+export MISE_DATA_DIR="${MISE_DATA_DIR:-$HOME/.local/share/mise}"
+if ! command -v mise >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/mise" ]; then
+  log "installing mise"
+  curl -fsSL https://mise.run | sh
+fi
+export PATH="$HOME/.local/bin:$MISE_DATA_DIR/shims:$PATH"
+log "installing pinned toolchain via mise ($(mise --version))"
+mise trust --quiet "$REPO_DIR/.mise.toml"
+mise install
+
+# ---------------------------------------------------------------------------
 # 1) Keep working tree clean — exclude files we create from git status
 # ---------------------------------------------------------------------------
 EXCLUDE_FILE=".git/info/exclude"
