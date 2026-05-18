@@ -32,6 +32,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
+import { hasModule } from "@workshop/shared/modules";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { PullToRefresh } from "../../components/PullToRefresh";
@@ -47,6 +48,7 @@ export function ItemList({
   unordered,
   completed,
   listItemKind,
+  modules,
   isAlbumShelf,
   showOrderedHint,
   newItemIds,
@@ -63,6 +65,12 @@ export function ItemList({
   refreshing,
   onRefresh,
 }: ItemListProps) {
+  // When `ranking` is off the backend collapses every item into `unordered`,
+  // so there's no Ranked section to drag into. Drop the drag affordances on
+  // unordered rows and the cross-section drop zone — otherwise the row offers
+  // a "drop here to add to ranked list" target that the backend rejects with
+  // `module_disabled`.
+  const rankingOn = hasModule(modules, "ranking");
   // Mirror the native side: auto-collapse the completed section past the
   // shared threshold; users can expand by tapping the section header.
   const [completedCollapsed, setCompletedCollapsed] = useState(
@@ -141,7 +149,13 @@ export function ItemList({
   const handleDragCancel = useCallback(() => setActiveSection(null), []);
 
   const draggingFromUnordered = activeSection === "unordered";
-  const showOrderedDropEnd = ordered.length > 0 || draggingFromUnordered;
+  const showOrderedDropEnd = rankingOn && (ordered.length > 0 || draggingFromUnordered);
+  const visibleSectionCount =
+    (ordered.length > 0 ? 1 : 0) + (unordered.length > 0 ? 1 : 0) + (completed.length > 0 ? 1 : 0);
+  // Single-section lists don't need a section header — the section IS the
+  // list. The completed section keeps its header when collapsible since the
+  // header hosts the show/hide toggle.
+  const showMultiSectionHeaders = visibleSectionCount > 1;
 
   return (
     <DndContext
@@ -153,7 +167,7 @@ export function ItemList({
     >
       <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
         <ScrollView contentContainerStyle={styles.listContent} testID="list-detail-list">
-          {ordered.length > 0 ? (
+          {ordered.length > 0 && showMultiSectionHeaders ? (
             <SectionHeader kind="ordered" count={ordered.length} listItemKind={listItemKind} />
           ) : null}
           <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
@@ -177,14 +191,17 @@ export function ItemList({
 
           {unordered.length > 0 ? (
             <>
-              <SectionHeader
-                kind="unordered"
-                count={unordered.length}
-                listItemKind={listItemKind}
-              />
+              {showMultiSectionHeaders ? (
+                <SectionHeader
+                  kind="unordered"
+                  count={unordered.length}
+                  listItemKind={listItemKind}
+                />
+              ) : null}
               {unordered.map((item) => (
-                <DraggableUnorderedRow
+                <UnorderedRow
                   key={item.id}
+                  draggable={rankingOn}
                   item={item}
                   isNew={newItemIds.has(item.id)}
                   addedByName={resolveAddedByName(item)}
@@ -199,19 +216,21 @@ export function ItemList({
 
           {completed.length > 0 ? (
             <>
-              <SectionHeader
-                kind="completed"
-                count={completed.length}
-                listItemKind={listItemKind}
-                collapsible={
-                  showCompletedToggle
-                    ? {
-                        collapsed: completedCollapsed,
-                        onToggle: () => setCompletedCollapsed((c) => !c),
-                      }
-                    : undefined
-                }
-              />
+              {showMultiSectionHeaders || showCompletedToggle ? (
+                <SectionHeader
+                  kind="completed"
+                  count={completed.length}
+                  listItemKind={listItemKind}
+                  collapsible={
+                    showCompletedToggle
+                      ? {
+                          collapsed: completedCollapsed,
+                          onToggle: () => setCompletedCollapsed((c) => !c),
+                        }
+                      : undefined
+                  }
+                />
+              ) : null}
               {completedToRender.map((item) => (
                 <ItemRow
                   key={item.id}
@@ -313,7 +332,7 @@ function stripButtonRole(attributes: unknown): Record<string, unknown> {
   return rest;
 }
 
-interface DraggableUnorderedRowProps {
+interface UnorderedRowProps {
   item: Item;
   isNew: boolean;
   addedByName: string | null;
@@ -321,6 +340,29 @@ interface DraggableUnorderedRowProps {
   onMenu: () => void;
   onPressBody: () => void;
   onPressCover?: () => void;
+}
+
+// Dispatches between the draggable variant (when `ranking` is on, so the row
+// can be promoted into the Ranked section) and a plain non-draggable row.
+// `useDraggable` is a hook so the variants have to live in separate
+// components — gating inside one component would violate rules-of-hooks.
+function UnorderedRow({ draggable, ...props }: UnorderedRowProps & { draggable: boolean }) {
+  if (draggable) {
+    return <DraggableUnorderedRow {...props} />;
+  }
+  return (
+    <ItemRow
+      item={props.item}
+      section="unordered"
+      isNew={props.isNew}
+      isDragging={false}
+      addedByName={props.addedByName}
+      accent={props.accent}
+      onMenu={props.onMenu}
+      onPressBody={props.onPressBody}
+      onPressCover={props.onPressCover}
+    />
+  );
 }
 
 function DraggableUnorderedRow({
@@ -331,7 +373,7 @@ function DraggableUnorderedRow({
   onMenu,
   onPressBody,
   onPressCover,
-}: DraggableUnorderedRowProps) {
+}: UnorderedRowProps) {
   const { setNodeRef, transform, listeners, attributes, isDragging } = useDraggable({
     id: item.id,
     data: { section: "unordered" },

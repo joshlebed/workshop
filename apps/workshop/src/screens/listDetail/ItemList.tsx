@@ -63,6 +63,12 @@ export function ItemList({
   );
   const showCompletedToggle = completed.length > COMPLETED_COLLAPSE_THRESHOLD;
   const completedToRender = showCompletedToggle && completedCollapsed ? [] : completed;
+  // Single-section lists drop their section header — the section IS the list.
+  // Completed keeps its header when collapsible since the header hosts the
+  // show/hide toggle.
+  const visibleSectionCount =
+    (ordered.length > 0 ? 1 : 0) + (unordered.length > 0 ? 1 : 0) + (completed.length > 0 ? 1 : 0);
+  const showMultiSectionHeaders = visibleSectionCount > 1;
   // Resolve provenance attribution: shows the adder's name when collaboration
   // is enabled AND the adder isn't the viewer. The "added by you · 1m" line on
   // every row of a single-active-collaborator list reads as noise; suppressing
@@ -104,7 +110,9 @@ export function ItemList({
       <ScrollViewContainer contentContainerStyle={styles.listContent} testID="list-detail-list">
         {ordered.length > 0 ? (
           <>
-            <SectionHeader kind="ordered" count={ordered.length} listItemKind={listItemKind} />
+            {showMultiSectionHeaders ? (
+              <SectionHeader kind="ordered" count={ordered.length} listItemKind={listItemKind} />
+            ) : null}
             <NestedReorderableList
               data={ordered}
               keyExtractor={keyExtractor}
@@ -122,7 +130,13 @@ export function ItemList({
 
         {unordered.length > 0 ? (
           <>
-            <SectionHeader kind="unordered" count={unordered.length} listItemKind={listItemKind} />
+            {showMultiSectionHeaders ? (
+              <SectionHeader
+                kind="unordered"
+                count={unordered.length}
+                listItemKind={listItemKind}
+              />
+            ) : null}
             {unordered.map((item) => (
               <ItemRow
                 key={item.id}
@@ -142,19 +156,21 @@ export function ItemList({
 
         {completed.length > 0 ? (
           <>
-            <SectionHeader
-              kind="completed"
-              count={completed.length}
-              listItemKind={listItemKind}
-              collapsible={
-                showCompletedToggle
-                  ? {
-                      collapsed: completedCollapsed,
-                      onToggle: () => setCompletedCollapsed((c) => !c),
-                    }
-                  : undefined
-              }
-            />
+            {showMultiSectionHeaders || showCompletedToggle ? (
+              <SectionHeader
+                kind="completed"
+                count={completed.length}
+                listItemKind={listItemKind}
+                collapsible={
+                  showCompletedToggle
+                    ? {
+                        collapsed: completedCollapsed,
+                        onToggle: () => setCompletedCollapsed((c) => !c),
+                      }
+                    : undefined
+                }
+              />
+            ) : null}
             {completedToRender.map((item) => (
               <ItemRow
                 key={item.id}
