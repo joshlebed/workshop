@@ -15,8 +15,16 @@ const optionalInt = (min: number, max: number) => z.number().int().min(min).max(
 
 const movieContent = z
   .object({
-    source: z.enum(["tmdb", "manual"]).optional(),
+    source: z.enum(["tmdb", "manual", "letterboxd"]).optional(),
     sourceId: optionalString(64),
+    /**
+     * Canonical TMDB id (string form). Used as the per-list dedup field
+     * so the same film added by manual TMDB search + Letterboxd sync
+     * collapses to one row. See `ITEM_KIND_DEDUP_FIELD`.
+     */
+    tmdbId: optionalString(32),
+    /** Original Letterboxd film URL — kept on the row for provenance. */
+    letterboxdUrl: optionalString(2048),
     posterUrl: optionalString(2048),
     year: optionalInt(1800, 2200),
     runtimeMinutes: optionalInt(0, 10_000),
@@ -90,6 +98,28 @@ export const ITEM_KINDS = {
 export const ITEM_KIND_NAMES = ["movie", "tv", "book", "link", "spotify_album", "plain"] as const;
 
 export type ItemKind = (typeof ITEM_KIND_NAMES)[number];
+
+/**
+ * Per-kind dedup field (§9.3). When set, the `(list_id, content->>'<field>')`
+ * partial unique index gives "same source row syncs at most once per list"
+ * semantics. Sources can then INSERT ... ON CONFLICT DO NOTHING and let the
+ * DB enforce uniqueness instead of pre-checking. The migration ships the
+ * per-kind index only when the manifest declares a dedupField; adding one
+ * later is a code-only change followed by a one-shot index creation.
+ *
+ * The Letterboxd source uses `tmdbId` after enriching scraped films via
+ * TMDB — that's why the dedupField lives on the *item* kind, not the
+ * *source* kind: multiple sources (Letterboxd, future TMDB watchlist,
+ * future Trakt) all produce `movie` items and should share a dedup key.
+ */
+export const ITEM_KIND_DEDUP_FIELD: Partial<Record<ItemKind, string>> = {
+  spotify_album: "spotifyAlbumId",
+  movie: "tmdbId",
+};
+
+export function getDedupField(kind: ItemKind): string | null {
+  return ITEM_KIND_DEDUP_FIELD[kind] ?? null;
+}
 
 export type ContentFor<T extends ItemKind> = z.infer<(typeof ITEM_KINDS)[T]>;
 

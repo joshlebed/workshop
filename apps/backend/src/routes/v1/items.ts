@@ -73,6 +73,8 @@ const moveItemSchema = z.object({
   afterItemId: z.union([z.string().uuid(), z.null()]).optional(),
 });
 
+export const __test = { updateItemSchema, moveItemSchema };
+
 // --- Shape helpers ---
 
 interface ItemRow {

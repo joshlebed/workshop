@@ -9,7 +9,7 @@ import type {
 } from "@workshop/shared";
 import { ITEM_KIND_NAMES, type ItemKind, isItemKind } from "@workshop/shared/itemKinds";
 import { MODULE_NAMES, type ModuleName, normalizeModules } from "@workshop/shared/modules";
-import { isSourceKind, SOURCE_KIND_NAMES, type SourceKind } from "@workshop/shared/sourceKinds";
+import { SOURCE_KIND_NAMES, type SourceKind } from "@workshop/shared/sourceKinds";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -30,10 +30,7 @@ import { inspectModuleChange } from "../../lib/moduleManifests.js";
 import { requireCapability } from "../../lib/permissions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
-import {
-  previewSpotifyPlaylist,
-  syncSpotifyPlaylistSource,
-} from "../../lib/sources/spotifyPlaylist.js";
+import { dispatchFor } from "../../lib/sources/registry.js";
 import { executeRows } from "../../lib/sql.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember } from "../../middleware/authorize.js";
@@ -143,6 +140,14 @@ const createSourceSchema = z.object({
   kind: z.enum(SOURCE_KIND_NAMES),
   config: sourceConfigSchema,
 });
+
+export const __test = {
+  createListSchema,
+  updateListSchema,
+  configPreviewSchema,
+  duplicateListSchema,
+  createSourceSchema,
+};
 
 function toListShape(l: DbList): List {
   return {
@@ -258,107 +263,87 @@ listRoutes.post("/", async (c) => {
   const db = getDb();
   const data = parsed.data;
 
-  // Validate any sources up-front so we don't create an orphan list.
+  // Validate any sources up-front so we don't create an orphan list. The
+  // dispatcher rejects unknown kinds with a v1 error envelope.
   const validatedSources: Array<{ kind: SourceKind; config: Record<string, unknown> }> = [];
   for (const source of data.sources ?? []) {
-    if (source.kind === "spotify_playlist") {
-      const url =
-        typeof source.config.spotifyPlaylistUrl === "string"
-          ? source.config.spotifyPlaylistUrl
-          : "";
-      const validated = await previewSpotifyPlaylist(c, url);
-      if (!validated.ok) return validated.response;
-      validatedSources.push({
-        kind: source.kind,
-        config: validated.config as unknown as Record<string, unknown>,
-      });
-    } else if (!isSourceKind(source.kind)) {
-      return err(c, "VALIDATION", `unknown source kind: ${source.kind}`);
-    } else {
-      validatedSources.push(source as { kind: SourceKind; config: Record<string, unknown> });
-    }
+    const dispatch = dispatchFor(source.kind);
+    const validated = await dispatch.preview(c, source.config);
+    if (!validated.ok) return validated.response;
+    validatedSources.push({ kind: source.kind, config: validated.config });
   }
 
-  let created: DbList;
-  try {
-    created = await db.transaction(async (tx) => {
-      const [list] = await tx
-        .insert(lists)
+  const created: DbList = await db.transaction(async (tx) => {
+    const [list] = await tx
+      .insert(lists)
+      .values({
+        name: data.name,
+        emoji: data.emoji,
+        color: data.color,
+        description: data.description ?? null,
+        coverPhotoUrl: data.coverPhotoUrl ?? null,
+        ownerId: userId,
+        itemKind: data.itemKind ?? null,
+        modules: data.modules,
+      })
+      .returning();
+    if (!list) throw new Error("list insert returned no row");
+
+    await tx.insert(listMembers).values({
+      listId: list.id,
+      userId,
+      role: "owner",
+    });
+
+    await recordEvent({
+      db: tx,
+      listId: list.id,
+      actorId: userId,
+      type: "list_created",
+      payload: { name: list.name, itemKind: list.itemKind, modules: list.modules },
+    });
+
+    for (const source of validatedSources) {
+      const [src] = await tx
+        .insert(listSources)
         .values({
-          name: data.name,
-          emoji: data.emoji,
-          color: data.color,
-          description: data.description ?? null,
-          coverPhotoUrl: data.coverPhotoUrl ?? null,
-          ownerId: userId,
-          itemKind: data.itemKind ?? null,
-          modules: data.modules,
+          listId: list.id,
+          kind: source.kind,
+          config: source.config,
         })
         .returning();
-      if (!list) throw new Error("list insert returned no row");
-
-      await tx.insert(listMembers).values({
-        listId: list.id,
-        userId,
-        role: "owner",
-      });
-
+      if (!src) continue;
       await recordEvent({
         db: tx,
         listId: list.id,
         actorId: userId,
-        type: "list_created",
-        payload: { name: list.name, itemKind: list.itemKind, modules: list.modules },
+        type: "source_added",
+        payload: { kind: source.kind, config: source.config },
       });
 
-      for (const source of validatedSources) {
-        const [src] = await tx
-          .insert(listSources)
-          .values({
-            listId: list.id,
-            kind: source.kind,
-            config: source.config,
-          })
-          .returning();
-        if (!src) continue;
-        await recordEvent({
-          db: tx,
-          listId: list.id,
-          actorId: userId,
-          type: "source_added",
-          payload: { kind: source.kind, config: source.config },
-        });
+      const dispatch = dispatchFor(source.kind);
+      const result = await dispatch.sync({
+        listId: list.id,
+        userId,
+        config: source.config,
+        db: tx,
+      });
+      await tx
+        .update(listSources)
+        .set({ lastSyncedAt: result.refreshedAt, lastSyncedBy: userId })
+        .where(eq(listSources.id, src.id));
+      await recordEvent({
+        db: tx,
+        listId: list.id,
+        actorId: userId,
+        type: "source_synced",
+        payload: { kind: source.kind, addedCount: result.addedCount },
+      });
+    }
 
-        if (source.kind === "spotify_playlist") {
-          const result = await syncSpotifyPlaylistSource({
-            listId: list.id,
-            userId,
-            config: source.config as {
-              spotifyPlaylistUrl: string;
-              spotifyPlaylistId: string;
-            },
-            db: tx,
-          });
-          await tx
-            .update(listSources)
-            .set({ lastSyncedAt: result.refreshedAt, lastSyncedBy: userId })
-            .where(eq(listSources.id, src.id));
-          await recordEvent({
-            db: tx,
-            listId: list.id,
-            actorId: userId,
-            type: "source_synced",
-            payload: { kind: source.kind, addedCount: result.addedCount },
-          });
-        }
-      }
-
-      const [refreshed] = await tx.select().from(lists).where(eq(lists.id, list.id)).limit(1);
-      return refreshed ?? list;
-    });
-  } catch (e) {
-    throw e;
-  }
+    const [refreshed] = await tx.select().from(lists).where(eq(lists.id, list.id)).limit(1);
+    return refreshed ?? list;
+  });
 
   const [actor] = await db
     .select({ displayName: users.displayName, email: users.email })
@@ -957,59 +942,53 @@ listRoutes.post("/:id/sources", requireListMember, async (c) => {
     );
   }
 
-  if (parsed.data.kind === "spotify_playlist") {
-    const url =
-      typeof parsed.data.config.spotifyPlaylistUrl === "string"
-        ? parsed.data.config.spotifyPlaylistUrl
-        : "";
-    const validated = await previewSpotifyPlaylist(c, url);
-    if (!validated.ok) return validated.response;
+  const dispatch = dispatchFor(parsed.data.kind);
+  const validated = await dispatch.preview(c, parsed.data.config);
+  if (!validated.ok) return validated.response;
 
-    const result = await db.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(listSources)
-        .values({
-          listId,
-          kind: "spotify_playlist",
-          config: validated.config,
-        })
-        .returning();
-      if (!created) throw new Error("source insert returned no row");
-      await recordEvent({
-        db: tx,
+  const result = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(listSources)
+      .values({
         listId,
-        actorId: userId,
-        type: "source_added",
-        payload: { kind: created.kind, config: validated.config },
-      });
-      const sync = await syncSpotifyPlaylistSource({
-        listId,
-        userId,
+        kind: parsed.data.kind,
         config: validated.config,
-        db: tx,
-      });
-      await tx
-        .update(listSources)
-        .set({ lastSyncedAt: sync.refreshedAt, lastSyncedBy: userId })
-        .where(eq(listSources.id, created.id));
-      await recordEvent({
-        db: tx,
-        listId,
-        actorId: userId,
-        type: "source_synced",
-        payload: { kind: created.kind, addedCount: sync.addedCount },
-      });
-      const [reread] = await tx
-        .select()
-        .from(listSources)
-        .where(eq(listSources.id, created.id))
-        .limit(1);
-      return { source: reread ?? created, addedCount: sync.addedCount };
+      })
+      .returning();
+    if (!created) throw new Error("source insert returned no row");
+    await recordEvent({
+      db: tx,
+      listId,
+      actorId: userId,
+      type: "source_added",
+      payload: { kind: created.kind, config: validated.config },
     });
+    const sync = await dispatch.sync({
+      listId,
+      userId,
+      config: validated.config,
+      db: tx,
+    });
+    await tx
+      .update(listSources)
+      .set({ lastSyncedAt: sync.refreshedAt, lastSyncedBy: userId })
+      .where(eq(listSources.id, created.id));
+    await recordEvent({
+      db: tx,
+      listId,
+      actorId: userId,
+      type: "source_synced",
+      payload: { kind: created.kind, addedCount: sync.addedCount },
+    });
+    const [reread] = await tx
+      .select()
+      .from(listSources)
+      .where(eq(listSources.id, created.id))
+      .limit(1);
+    return { source: reread ?? created, addedCount: sync.addedCount };
+  });
 
-    return ok(c, { source: toSourceShape(result.source), addedCount: result.addedCount }, 201);
-  }
-  return err(c, "VALIDATION", `unsupported source kind: ${parsed.data.kind}`);
+  return ok(c, { source: toSourceShape(result.source), addedCount: result.addedCount }, 201);
 });
 
 listRoutes.delete("/:id/sources/:sourceId", requireListMember, async (c) => {
@@ -1058,14 +1037,14 @@ listRoutes.post(
       .limit(1);
     if (!source) return err(c, "NOT_FOUND", "source not found");
 
-    if (source.kind !== "spotify_playlist") {
+    if (!(SOURCE_KIND_NAMES as readonly string[]).includes(source.kind)) {
       return err(c, "VALIDATION", `cannot sync source kind: ${source.kind}`);
     }
-    const cfg = source.config as { spotifyPlaylistUrl: string; spotifyPlaylistId: string };
-    const result = await syncSpotifyPlaylistSource({
+    const dispatch = dispatchFor(source.kind as SourceKind);
+    const result = await dispatch.sync({
       listId,
       userId,
-      config: cfg,
+      config: (source.config ?? {}) as Record<string, unknown>,
       db,
     });
     await db
@@ -1115,11 +1094,11 @@ listRoutes.post(
       .limit(1);
     if (!source) return err(c, "VALIDATION", "no syncable source attached to this list");
 
-    const cfg = source.config as { spotifyPlaylistUrl: string; spotifyPlaylistId: string };
-    const result = await syncSpotifyPlaylistSource({
+    const dispatch = dispatchFor("spotify_playlist");
+    const result = await dispatch.sync({
       listId,
       userId,
-      config: cfg,
+      config: (source.config ?? {}) as Record<string, unknown>,
       db,
     });
     await db

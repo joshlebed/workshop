@@ -22,6 +22,16 @@ export const spotifyPlaylistConfigSchema = z
 
 export type SpotifyPlaylistConfig = z.infer<typeof spotifyPlaylistConfigSchema>;
 
+export const letterboxdListConfigSchema = z
+  .object({
+    letterboxdUrl: z.string().min(1).max(2048),
+    letterboxdUsername: z.string().min(1).max(64),
+    letterboxdListSlug: z.string().min(1).max(128),
+  })
+  .strict();
+
+export type LetterboxdListConfig = z.infer<typeof letterboxdListConfigSchema>;
+
 export const SOURCE_KINDS = {
   spotify_playlist: {
     kind: "spotify_playlist",
@@ -29,11 +39,21 @@ export const SOURCE_KINDS = {
     configSchema: spotifyPlaylistConfigSchema,
     producesItemKind: "spotify_album",
   } satisfies SourceKindManifest<SpotifyPlaylistConfig>,
+  letterboxd_list: {
+    kind: "letterboxd_list",
+    displayName: "Letterboxd List",
+    configSchema: letterboxdListConfigSchema,
+    // Letterboxd lists are scraped, then each film is enriched via TMDB —
+    // the produced items are plain `movie`s, not a Letterboxd-specific kind.
+    // Spec §3.3: "source kind tells us where the data came from; the item
+    // kind tells us what shape the content has."
+    producesItemKind: "movie",
+  } satisfies SourceKindManifest<LetterboxdListConfig>,
 } as const;
 
 export type SourceKind = keyof typeof SOURCE_KINDS;
 
-export const SOURCE_KIND_NAMES = ["spotify_playlist"] as const;
+export const SOURCE_KIND_NAMES = ["spotify_playlist", "letterboxd_list"] as const;
 
 export function isSourceKind(value: unknown): value is SourceKind {
   return typeof value === "string" && (SOURCE_KIND_NAMES as readonly string[]).includes(value);
