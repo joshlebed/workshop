@@ -186,6 +186,36 @@ jobs:
       # ~10s, miss is ~30s.
       - uses: ./.github/actions/setup-pnpm
 
+      # Write the App Store Connect API key to disk so eas-cli can
+      # authenticate with Apple non-interactively. Required whenever a
+      # build needs to create or rotate credentials — most commonly the
+      # FIRST build of a new bundle id (share extension, widget, push
+      # extension target). Without this, eas-cli falls through to
+      # interactive Apple-ID prompts and fails the build at
+      # `Distribution Certificate is not validated for non-interactive
+      # builds` / `Credentials are not set up. Run this command again in
+      # interactive mode`. The .p8 lives in `runner.temp` so it's wiped
+      # at job teardown.
+      #
+      # Provisioning the secrets is a one-time human step (Apple won't
+      # mint an ASC API key without an interactive Apple-ID session).
+      # See `docs/manual-setup.md` §5 for the website-only flow.
+      - name: Write ASC API key
+        env:
+          ASC_API_KEY_CONTENT: ${{ secrets.ASC_API_KEY_CONTENT }}
+          ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+        run: |
+          set -euo pipefail
+          if [ -z "$ASC_API_KEY_CONTENT" ]; then
+            echo "::error::ASC_API_KEY_CONTENT secret is not set. See docs/manual-setup.md §5"
+            echo "::error::for the one-time setup: create an App Store Connect API key, then add"
+            echo "::error::ASC_API_KEY_CONTENT (.p8 contents), ASC_API_KEY_ID (10-char), and"
+            echo "::error::ASC_API_ISSUER_ID (UUID) as GitHub Actions secrets."
+            exit 1
+          fi
+          printf '%s' "$ASC_API_KEY_CONTENT" > "$ASC_API_KEY_PATH"
+          chmod 600 "$ASC_API_KEY_PATH"
+
       # No `--no-wait`: we want this step to exit on the actual build
       # outcome, not on enqueue acceptance. `--auto-submit` still chains
       # the TestFlight submit on EAS's side after the build succeeds, so
@@ -200,6 +230,12 @@ jobs:
           EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33.apps.googleusercontent.com
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com
           CLI_VERSION: ${{ env.EAS_CLI_VERSION }}
+          # ASC API key auth for both credentials management (cert/profile
+          # generation) and `--auto-submit`. Takes precedence over any
+          # ASC key registered server-side on EAS for this project.
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
         run: |
           set -euo pipefail
           BUILD_JSON=$(npx "eas-cli@$CLI_VERSION" build \

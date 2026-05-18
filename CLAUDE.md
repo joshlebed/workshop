@@ -241,11 +241,15 @@ Almost always the deploy pipeline, not per-platform code. Check in order:
 2. **Does the installed TestFlight build's runtime version match the OTA's?** Runtime version
    is `app.json` `version` at build time. A `0.1.0` TestFlight build never applies a `0.2.0` OTA.
 3. **Has the latest TestFlight build landed?** `testflight.yml` awaits the EAS build. Red run =
-   no matching binary exists yet. If runs have been red across multiple commits and the failing
-   step is `Build + auto-submit (await success)` with `Distribution Certificate is not validated
-for non-interactive builds` / `Credentials are not set up. Run this command again in
-interactive mode`, the cause is almost always a new bundle id (e.g. a share / widget / push
-   extension target) that EAS has no credentials for yet — see Recovery below.
+   no matching binary exists yet. Two common failure shapes:
+   - Fails at the `Write ASC API key` step → the `ASC_API_KEY_*` GitHub Actions secrets are
+     unset or stale. One-time fix via the website in `docs/manual-setup.md` §5.
+   - Fails at `Build + auto-submit (await success)` with `Distribution Certificate is not
+validated for non-interactive builds` → the ASC API key the secrets point to was revoked
+     or doesn't have App Manager+. Rotate the key (same §5 flow) and re-fire. Before the ASC
+     API key was wired into the workflow, any new bundle id (share / widget / push extension
+     target) would also surface this error because EAS fell through to interactive Apple auth;
+     that's no longer a risk as long as the secrets are populated.
 
 ### Runtime-version policy: `appVersion` (not `fingerprint`)
 
@@ -293,22 +297,15 @@ read -s "ASP?Paste app-specific password: " && echo "" && \
 
 App-specific password: <https://appleid.apple.com> → Sign-In and Security. macOS only.
 
-New bundle id (e.g. share extension, widget, push extension) added but every TestFlight build
-since is red: EAS doesn't have credentials for the new target and can't generate them
-non-interactively. One-time fix from a laptop with an active Apple session:
-
-```bash
-cd apps/workshop && npx eas-cli@latest credentials --platform ios
-# → production → App Store Connect: Manage your API Key
-#   → Set up an App Store Connect API Key for your project
-#   → reuse the existing `[Expo] EAS Submit` key (it has ADMIN role, which is sufficient)
-#     OR create a new one at https://appstoreconnect.apple.com/access/api (App Manager+)
-```
-
-Then force a fresh build: `gh workflow run testflight.yml --ref main --field force=true`.
-With the ASC API key registered EAS auto-generates the cert + provisioning profile for the
-new target on the next build, and every future capability/target change in CI just works.
-Full one-time setup is in `docs/manual-setup.md` §5.
+ASC API key secret missing or revoked (every TestFlight build since is red, failing at
+`Write ASC API key` or `Distribution Certificate is not validated for non-interactive builds`):
+the workflow now reads the App Store Connect API key from three GitHub Actions secrets
+(`ASC_API_KEY_CONTENT`, `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`) and passes it to eas-cli via
+`EXPO_ASC_*` env vars for both build-credentials management and `--auto-submit`. Generate a
+new key + populate the secrets via the website-only flow in `docs/manual-setup.md` §5, then
+re-fire: `gh workflow run testflight.yml --ref main --field force=true`. With the key in place
+EAS auto-generates the cert + provisioning profile for any new bundle id (share extension,
+widget, push extension) on the next build with zero human-in-loop.
 
 ### GitHub Actions concurrency
 

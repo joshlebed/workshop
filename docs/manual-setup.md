@@ -69,25 +69,30 @@ In SES sandbox mode, you can only send mail to _verified_ addresses. So for solo
       `eas.json`.
 - [ ] `npx eas-cli@latest credentials` — interactively generate push certs + provisioning profile.
       EAS manages these going forward.
-- [ ] **Register an App Store Connect API key with EAS Build for non-interactive credential ops.**
-      EAS sets up an ASC API key automatically for the _submit_ step (`[Expo] EAS Submit ...`),
-      but the _build_ step needs its own registration so it can regenerate provisioning profiles
-      in CI without prompting for Apple credentials. Without this, any future capability change
-      on the App ID (e.g. enabling Sign In with Apple, App Groups, Push Notifications) breaks
-      `testflight.yml` until someone runs `eas credentials` interactively from a laptop with an
-      active Apple session.
+- [ ] **Provision an App Store Connect API key as GitHub Actions secrets.** `testflight.yml`
+      reads three secrets (`ASC_API_KEY_CONTENT`, `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`) and
+      passes them to eas-cli via `EXPO_ASC_*` env vars for both build-credentials management
+      and `--auto-submit`. Without these, eas-cli falls through to interactive Apple-ID auth
+      and any future bundle-id addition (share extension, widget, push extension target) or
+      capability toggle (Sign In with Apple, App Groups, Push) breaks the TestFlight pipeline.
 
-      Setup:
-        1. Open `eas credentials --platform ios` (CWD: `apps/workshop`), pick `production`.
-        2. Pick **`App Store Connect: Manage your API Key`** → **Set up an App Store Connect API Key for your project**.
-        3. Either reuse the existing `[Expo] EAS Submit` key (it has the ADMIN role, which is
-           sufficient) or create a new one at
-           <https://appstoreconnect.apple.com/access/api> with role **App Manager** or higher.
-        4. Confirm. Key is stored on EAS's servers — nothing to commit.
+      One-time setup (website only, no laptop CLI required):
 
-      Verify with: trigger `gh workflow run testflight.yml --ref main --field force=true`
-      after a capability change. The build should auto-regenerate the profile without asking
-      for Apple auth.
+      1. **Generate the API key.** <https://appstoreconnect.apple.com/access/api> → **Keys**
+         tab → **+** → name "Workshop CI", access "App Manager" → **Generate**. Download the
+         `.p8` file (one-time only — Apple won't re-show it). Copy the **Key ID** (10-char,
+         shown in the row) and the **Issuer ID** (UUID shown at the top of the page).
+      2. **Add the secrets.** <https://github.com/joshlebed/workshop/settings/secrets/actions>:
+         - `ASC_API_KEY_CONTENT` — paste the entire contents of the `.p8` file (multiline,
+           including the `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` lines).
+         - `ASC_API_KEY_ID` — the 10-char Key ID.
+         - `ASC_API_ISSUER_ID` — the UUID Issuer ID.
+      3. **Re-fire the build.** `gh workflow run testflight.yml --ref main --field force=true`.
+         The next build should pass through `Write ASC API key` and `Build + auto-submit`
+         without prompting. After this, every future capability/target change in CI just works.
+
+      Rotation: regenerate the key in App Store Connect, update the three secrets, optionally
+      revoke the old key. No code change required.
 
 - [ ] Create an **Expo access token** at <https://expo.dev/settings/access-tokens> (for CI).
 
@@ -189,15 +194,19 @@ updates needed.
 
 ### 10.3 ASC API key rotation
 
-```bash
-cd apps/workshop && npx eas-cli@latest credentials --platform ios
-# → production → App Store Connect: Manage your API Key
-# → "Remove App Store Connect API Key" then "Set up an App Store Connect API Key"
-```
+Website-only. CI reads the key from three GitHub Actions secrets, so rotation is just
+re-issuing the key and overwriting the secrets.
 
-Generate the new key in App Store Connect (<https://appstoreconnect.apple.com/access/api>)
-with role **App Manager** or higher; download the `.p8` once at creation time (Apple won't
-re-show it), paste into the eas-cli prompt. EAS stores it server-side; nothing to commit.
+1. <https://appstoreconnect.apple.com/access/api> → **Keys** → **+** → name, access
+   **App Manager** or higher → **Generate**. Download the `.p8` (one-time). Note the Key ID
+   and Issuer ID.
+2. Update three GitHub Actions secrets at
+   <https://github.com/joshlebed/workshop/settings/secrets/actions>:
+   - `ASC_API_KEY_CONTENT` — full `.p8` contents (multiline)
+   - `ASC_API_KEY_ID` — 10-char key ID
+   - `ASC_API_ISSUER_ID` — UUID
+3. Trigger `gh workflow run testflight.yml --ref main --field force=true` to verify, then
+   revoke the old key in App Store Connect.
 
 ### 10.4 Database connection string rotation
 
