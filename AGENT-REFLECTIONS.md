@@ -29,14 +29,6 @@ trail.
 
 ### Dev / sandbox environment
 
-- **Sandbox runs Node 22; repo pins Node 20.19.** Every `pnpm` command in the Niteshift
-  sandbox emits `WARN  Unsupported engine: wanted: {"node":">=20.19 <21"} (current:
-{"node":"v22.14.0"})`. Non-fatal but clutters `$NITESHIFT_LOG_FILE` enough that
-  `grep -iE "warn"` needs an explicit `-v "Unsupported engine"` filter, and there's a
-  latent risk of Node-22-only behavior slipping past CI (on 20.19). **Fix:** have
-  `niteshift-setup.sh` run `mise install && mise use node` (the repo already has
-  `.mise.toml`) before `pnpm install`, or bake Node 20.19 into the sandbox base image.
-
 - **Expo RN DevTools auto-install crashes as root in the sandbox.** Every `expo start
 --web` start logs `[FATAL:electron/shell/app/electron_main_delegate.cc:290] Running as
 root without --no-sandbox is not supported`. The dev server still serves fine — DevTools
