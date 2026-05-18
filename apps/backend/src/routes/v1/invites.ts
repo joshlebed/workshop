@@ -173,12 +173,13 @@ inviteRoutes.delete(
 function toListShape(l: DbList) {
   return {
     id: l.id,
-    type: l.type,
     name: l.name,
     emoji: l.emoji,
     color: l.color as ListColor,
     description: l.description,
     ownerId: l.ownerId,
+    itemKind: l.itemKind,
+    modules: l.modules,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
   };
@@ -336,7 +337,8 @@ publicInviteRoutes.get("/invites/:token/preview", async (c) => {
       emoji: list.emoji,
       color: list.color as ListColor,
       description: list.description,
-      type: list.type,
+      itemKind: list.itemKind,
+      modules: list.modules,
       itemCount: Number(counts.item_count),
       memberCount: Number(counts.member_count),
       ownerName: owner?.displayName ?? null,

@@ -112,6 +112,21 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     },
   },
   {
+    id: "letterboxd_watchlist",
+    displayName: "Letterboxd Watchlist",
+    description: "Mirrors a public Letterboxd list — films land enriched via TMDB.",
+    defaults: {
+      itemKind: "movie",
+      modules: ["voting", "todo", "ranking", "sources"],
+      emoji: "🎞️",
+      color: "ocean",
+    },
+    requiresSource: {
+      kind: "letterboxd_list",
+      promptCopy: "Paste a public Letterboxd list URL — Workshop will mirror it as a watchlist.",
+    },
+  },
+  {
     id: "voting_poll",
     displayName: "Voting Poll",
     description: "A quick poll — add options, vote, see the winner.",

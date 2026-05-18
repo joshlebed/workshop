@@ -5,8 +5,11 @@ shipped, what's tech debt, and what's still on the spec but not yet built.** Rea
 get the state in one pass; jump to a section heading to find the open work in your area.
 
 **Last updated:** 2026-05-18. Big bang ship via [#199](https://github.com/joshlebed/workshop/pull/199).
-The original plan was 6 sequential PRs (PR-A through PR-F); we collapsed PR-A–E into one and
-deferred PR-F.
+Follow-up PR landed all of week-one (#202): backend route tests restored on the new shape,
+PR-F (Letterboxd source kind, second `kind` proving the source/item-kind decoupling), the
+`dedupField` lifted into the item-kind manifest, the source dispatch generalized into a
+registry-driven table, and migration 0015 dropping the legacy columns (`lists.type`,
+`lists.metadata`, `items.type`, `items.metadata`, `game_scores`, `list_type` enum).
 
 ## Status one-liner
 

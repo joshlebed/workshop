@@ -31,6 +31,8 @@ const upsertScoreSchema = z.object({
   scoreRaw: scoreRawSchema,
 });
 
+export const __test = { periodKeySchema, scoreRawSchema, upsertScoreSchema, tryParseScoreValue };
+
 function tryParseScoreValue(raw: string): number | null {
   const match = raw.match(/-?\d+(\.\d+)?/);
   if (!match) return null;
