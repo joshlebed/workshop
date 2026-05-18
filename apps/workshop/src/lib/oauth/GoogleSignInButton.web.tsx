@@ -1,17 +1,17 @@
-// Web variant: renders the official Google Identity Services button
-// directly. The previous approach (render GIS into a hidden host, then
-// programmatically click it from our own styled button) is broken — the
-// rendered button lives in a cross-origin iframe so the inner querySelector
-// finds nothing, and the fall-back `prompt()` path uses FedCM which hangs
-// silently when the visitor has no Google session. Showing the real button
-// is what Google supports, and it works for both FedCM and the legacy
-// popup flow.
+// Web variant. To match the Apple button visually, we render our own
+// styled "Continue with Google" button and stack an invisible Google
+// Identity Services iframe on top of it. Clicks land on the GIS iframe
+// (which runs Google's real flow); sighted users see only our button.
+//
+// We can't programmatically click GIS's button (cross-origin iframe), and
+// the prompt() fallback uses FedCM which silently hangs for visitors with
+// no Google session — so the iframe-overlay approach is the cleanest way
+// to keep a real GIS click without giving up the visual.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
+import { Button, tokens } from "../../ui/index";
 
-// Local copy of the shape returned by the native flow — kept inline so this
-// web-only file doesn't pull in the native module graph (expo-auth-session).
 interface GoogleSignInResult {
   idToken: string;
 }
@@ -39,6 +39,13 @@ interface GoogleAccountsId {
 interface GoogleGlobal {
   accounts: { id: GoogleAccountsId };
 }
+
+// GIS rejects width < 200 and clamps width > 400. Anything in between is
+// honoured, so we measure the visible button's actual width and pass it
+// through (clamped) so the invisible iframe matches the visible button's
+// click target as closely as possible.
+const GIS_MIN_WIDTH = 200;
+const GIS_MAX_WIDTH = 400;
 
 function getGoogle(): GoogleGlobal | null {
   if (typeof window === "undefined") return null;
@@ -82,19 +89,22 @@ export function GoogleSignInButton({
   disabled,
 }: GoogleSignInButtonProps) {
   const clientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "";
-  const hostRef = useRef<HTMLDivElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [available, setAvailable] = useState(false);
 
-  // Keep the latest callbacks in refs so the GIS init effect doesn't have to
-  // re-run when the parent re-renders with new closures.
+  // Keep latest callbacks in refs so the GIS init effect doesn't re-run on
+  // parent re-renders.
   const onCredentialRef = useRef(onCredential);
   const onErrorRef = useRef(onError);
   onCredentialRef.current = onCredential;
   onErrorRef.current = onError;
 
-  const setHost = useCallback((node: View | null) => {
-    // react-native-web's View ref points at the underlying DOM element.
-    hostRef.current = node as unknown as HTMLDivElement | null;
+  const setOverlay = useCallback((node: View | null) => {
+    overlayRef.current = node as unknown as HTMLDivElement | null;
+  }, []);
+  const setWrapper = useCallback((node: View | null) => {
+    wrapperRef.current = node as unknown as HTMLDivElement | null;
   }, []);
 
   useEffect(() => {
@@ -107,13 +117,14 @@ export function GoogleSignInButton({
       .then(() => {
         if (cancelled) return;
         const google = getGoogle();
-        const host = hostRef.current;
-        if (!google || !host) {
+        const overlay = overlayRef.current;
+        const wrapper = wrapperRef.current;
+        if (!google || !overlay) {
           setAvailable(false);
           return;
         }
-        // Clear any previous render (e.g. from React strict mode double-invoke).
-        while (host.firstChild) host.removeChild(host.firstChild);
+        // Clear any previous render (React strict mode, hot reload).
+        while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
         google.accounts.id.initialize({
           client_id: clientId,
           callback: (response) => {
@@ -130,14 +141,16 @@ export function GoogleSignInButton({
           auto_select: false,
           use_fedcm_for_prompt: false,
         });
-        google.accounts.id.renderButton(host, {
+        const wrapperWidth = wrapper?.getBoundingClientRect().width ?? GIS_MAX_WIDTH;
+        const width = Math.min(GIS_MAX_WIDTH, Math.max(GIS_MIN_WIDTH, Math.round(wrapperWidth)));
+        google.accounts.id.renderButton(overlay, {
           type: "standard",
           theme: "filled_black",
           size: "large",
           text: "continue_with",
           shape: "rectangular",
-          logo_alignment: "left",
-          width: 320,
+          logo_alignment: "center",
+          width,
         });
         setAvailable(true);
       })
@@ -153,20 +166,42 @@ export function GoogleSignInButton({
 
   const interactive = available && !loading && !disabled;
   return (
-    <View
-      ref={setHost}
-      testID="sign-in-google"
-      accessibilityRole="button"
-      accessibilityLabel="Continue with Google"
-      // GIS's button is a fixed-size iframe; centre it and give the row a
-      // predictable height so the layout matches the neighbouring buttons.
-      style={{
-        minHeight: 44,
-        alignSelf: "center",
-        // Suppress interaction while the parent is busy with another flow.
-        opacity: disabled || loading ? 0.5 : 1,
-        pointerEvents: interactive ? "auto" : "none",
-      }}
-    />
+    <View ref={setWrapper} style={{ position: "relative" }}>
+      {/* Visual button — purely cosmetic, click target is the overlay. */}
+      <Button
+        label="Continue with Google"
+        variant="secondary"
+        size="lg"
+        loading={loading}
+        disabled={disabled || !available}
+        // Hidden from the a11y tree so screen readers route through the GIS
+        // iframe (whose embedded button has its own a11y labels).
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
+      {/* GIS button: positioned over the visible button, near-invisible so
+          clicks (and keyboard activation via the iframe's own focusable
+          element) reach Google's real button. Centered horizontally and
+          vertically since GIS picks its own height. */}
+      <View
+        ref={setOverlay}
+        testID="sign-in-google"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: tokens.radius.md,
+          overflow: "hidden",
+          // Slightly above zero so browsers register clicks but the iframe
+          // doesn't visually compete with the styled button underneath.
+          opacity: interactive ? 0.001 : 0,
+          pointerEvents: interactive ? "auto" : "none",
+        }}
+      />
+    </View>
   );
 }
