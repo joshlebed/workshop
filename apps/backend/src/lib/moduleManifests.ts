@@ -29,7 +29,7 @@ async function countItemsWith(
   return Number(row?.count ?? 0);
 }
 
-export const MODULE_MANIFESTS: Record<ModuleName, ModuleManifest> = {
+const MODULE_MANIFESTS: Record<ModuleName, ModuleManifest> = {
   todo: {
     name: "todo",
     inspectRemoval: async (listId, db) => {

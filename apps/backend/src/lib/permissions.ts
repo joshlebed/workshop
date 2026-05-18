@@ -6,7 +6,7 @@ import type { MemberRole } from "@workshop/shared";
 import type { Context } from "hono";
 import { err } from "./response.js";
 
-export type Capability =
+type Capability =
   | "view"
   | "edit_items"
   | "vote"
@@ -34,18 +34,7 @@ const OWNER_ONLY: ReadonlySet<Capability> = new Set<Capability>([
   "archive_list",
 ]);
 
-const MEMBER_OR_OWNER: ReadonlySet<Capability> = new Set<Capability>([
-  "view",
-  "edit_items",
-  "vote",
-  "complete",
-  "score",
-  "sync_source",
-  "duplicate",
-]);
-void MEMBER_OR_OWNER;
-
-export function isCapabilityAllowed(role: MemberRole | null, capability: Capability): boolean {
+function isCapabilityAllowed(role: MemberRole | null, capability: Capability): boolean {
   if (role === "owner") return true;
   if (role === "member") return !OWNER_ONLY.has(capability);
   // null role = not a member; everything denied (the caller should have run

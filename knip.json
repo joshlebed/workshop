@@ -4,7 +4,7 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/*.{sh,ts,mjs,js}", "functions/**/*.ts"],
-      "ignoreDependencies": ["concurrently", "@workshop/shared"]
+      "ignoreDependencies": ["concurrently"]
     },
     "apps/backend": {
       "entry": ["src/lambda.ts"]

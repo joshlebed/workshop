@@ -18,13 +18,12 @@ import {
   type DbList,
   type DbListSource,
   items,
-  itemUpvotes,
   listMembers,
   listSources,
   lists,
   users,
 } from "../../db/schema.js";
-import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
+import { toIsoString } from "../../lib/dates.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
 import { inspectModuleChange } from "../../lib/moduleManifests.js";
@@ -1142,9 +1141,3 @@ listRoutes.post(
     });
   },
 );
-
-// Suppress unused-import linter complaints for shared types referenced only
-// in JSDoc.
-export const _ListSummaryRef: ListSummary | null = null;
-export const _itemUpvotesRef = itemUpvotes;
-export const _toIsoOrNullRef = toIsoOrNull;

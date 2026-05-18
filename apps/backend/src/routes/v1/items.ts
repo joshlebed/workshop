@@ -58,7 +58,7 @@ export const createItemSchema = z.object({
   content: contentSchema.optional(),
 });
 
-export const updateItemSchema = z
+const updateItemSchema = z
   .object({
     kind: kindSchema.optional(),
     title: titleSchema.optional(),
@@ -115,7 +115,7 @@ function rowToItem(r: ItemRow): Item {
   };
 }
 
-export function applyModuleFilters(item: Item, modules: readonly string[]): Item {
+function applyModuleFilters(item: Item, modules: readonly string[]): Item {
   return stripModuleGatedItemFields(item, modules) as Item;
 }
 
@@ -123,7 +123,7 @@ export function applyModuleFilters(item: Item, modules: readonly string[]): Item
  * Fetch one item by id with upvote aggregates joined and module-gated fields
  * stripped per the parent list's `modules`.
  */
-export async function fetchItemShape(
+async function fetchItemShape(
   itemId: string,
   viewerId: string,
   db: DbClient = getDb(),

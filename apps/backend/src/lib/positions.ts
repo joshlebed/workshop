@@ -4,10 +4,10 @@
 // ordered section in a single SQL statement.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { type DbItem, items } from "../db/schema.js";
+import { items } from "../db/schema.js";
 import type { DbClient } from "./sql.js";
 
-export const POSITION_SPACING = 1024;
+const POSITION_SPACING = 1024;
 
 interface MoveArgs {
   listId: string;
@@ -119,7 +119,7 @@ function computeBetween(lower: number | null, upper: number | null): number | nu
  * Rebalance the list's ordered section to fresh n*1024 spacing. Single SQL
  * statement; runs in milliseconds at Workshop's scale.
  */
-export async function rebalanceList(listId: string, db: DbClient): Promise<void> {
+async function rebalanceList(listId: string, db: DbClient): Promise<void> {
   await db.execute(sql`
     WITH renumbered AS (
       SELECT id,
@@ -147,8 +147,4 @@ export async function appendPosition(listId: string, db: DbClient): Promise<numb
     .from(items)
     .where(and(eq(items.listId, listId), isNull(items.archivedAt), sql`position IS NOT NULL`));
   return Number(row?.max ?? 0) + POSITION_SPACING;
-}
-
-export function isOrdered(item: Pick<DbItem, "position">): boolean {
-  return item.position !== null;
 }

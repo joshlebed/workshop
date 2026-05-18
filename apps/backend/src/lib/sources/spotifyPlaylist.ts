@@ -14,12 +14,12 @@ import { mapSpotifyError } from "../spotify/error-mapping.js";
 import { InvalidPlaylistUrlError, parsePlaylistId } from "../spotify/playlist-parser.js";
 import { type DbClient, executeRows } from "../sql.js";
 
-export interface SpotifyPlaylistConfig {
+interface SpotifyPlaylistConfig {
   spotifyPlaylistUrl: string;
   spotifyPlaylistId: string;
 }
 
-export interface SpotifyPlaylistPreview {
+interface SpotifyPlaylistPreview {
   kind: "spotify_playlist";
   playlistId: string;
   name: string;
@@ -150,10 +150,4 @@ async function insertExtractIfMissing(args: {
     `,
   );
   return rows.length;
-}
-
-export function isSpotifyPlaylistConfig(config: unknown): config is SpotifyPlaylistConfig {
-  if (typeof config !== "object" || config === null) return false;
-  const c = config as Record<string, unknown>;
-  return typeof c.spotifyPlaylistUrl === "string" && typeof c.spotifyPlaylistId === "string";
 }

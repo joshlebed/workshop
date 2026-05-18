@@ -13,7 +13,7 @@ import { z } from "zod";
 const optionalString = (max: number) => z.string().max(max).optional();
 const optionalInt = (min: number, max: number) => z.number().int().min(min).max(max).optional();
 
-export const movieContent = z
+const movieContent = z
   .object({
     source: z.enum(["tmdb", "manual"]).optional(),
     sourceId: optionalString(64),
@@ -24,9 +24,9 @@ export const movieContent = z
   })
   .strict();
 
-export const tvContent = movieContent;
+const tvContent = movieContent;
 
-export const bookContent = z
+const bookContent = z
   .object({
     source: z.enum(["google_books", "manual"]).optional(),
     sourceId: optionalString(64),
@@ -38,7 +38,7 @@ export const bookContent = z
   })
   .strict();
 
-export const linkContent = z
+const linkContent = z
   .object({
     source: z.enum(["link_preview", "manual"]).optional(),
     sourceId: optionalString(128),
@@ -55,7 +55,7 @@ export const linkContent = z
   })
   .strict();
 
-export const spotifyAlbumContent = z
+const spotifyAlbumContent = z
   .object({
     source: z.literal("spotify"),
     spotifyAlbumId: z.string().min(1).max(64),
@@ -69,7 +69,7 @@ export const spotifyAlbumContent = z
   })
   .strict();
 
-export const plainContent = z.object({}).strict();
+const plainContent = z.object({}).strict();
 
 export const ITEM_KINDS = {
   movie: movieContent,
@@ -128,10 +128,3 @@ export function assertItemFitsList(
   if (list.itemKind === item.kind) return;
   throw new ItemKindMismatchError(String(list.itemKind), String(item.kind));
 }
-
-// Per-kind dedup field — when set, the partial unique index on items keys on
-// `(list_id, content->>'<dedupField>')` for that kind. Only spotify_album
-// dedups today (the legacy album_shelf behavior, generalized).
-export const ITEM_KIND_DEDUP_FIELDS: Partial<Record<ItemKind, string>> = {
-  spotify_album: "spotifyAlbumId",
-};

@@ -68,12 +68,12 @@ ALTER TABLE "lists" ADD COLUMN "item_kind" text;--> statement-breakpoint
 
 UPDATE "lists" SET
   "modules" = CASE
-    WHEN "type" = 'album_shelf' THEN ARRAY['voting','ranking','sources']::text[]
-    WHEN "type" = 'game'        THEN ARRAY['voting','leaderboard','ranking']::text[]
+    WHEN "type"::text = 'album_shelf' THEN ARRAY['voting','ranking','sources']::text[]
+    WHEN "type"::text = 'game'        THEN ARRAY['voting','leaderboard','ranking']::text[]
     WHEN "type" IS NULL         THEN ARRAY['ranking']::text[]
     ELSE                              ARRAY['voting','todo','ranking']::text[]
   END,
-  "item_kind" = CASE "type"
+  "item_kind" = CASE "type"::text
     WHEN 'movie'       THEN 'movie'
     WHEN 'tv'          THEN 'tv'
     WHEN 'book'        THEN 'book'
@@ -90,7 +90,7 @@ WHERE "modules" = '{}'::text[];
 -- content (stripping the now-dedicated `position` key), and promote
 -- `metadata.position` to a real integer column.
 UPDATE "items" i SET
-  "kind" = CASE l."type"
+  "kind" = CASE l."type"::text
     WHEN 'movie'       THEN 'movie'
     WHEN 'tv'          THEN 'tv'
     WHEN 'book'        THEN 'book'
@@ -130,7 +130,8 @@ SELECT
        ELSE NULL
   END
 FROM "lists" l
-WHERE l."type" = 'album_shelf'
+WHERE l."type"::text = 'album_shelf'
+  AND l."metadata" IS NOT NULL
   AND l."metadata" ? 'spotifyPlaylistUrl'
   AND l."metadata" ? 'spotifyPlaylistId'
   AND NOT EXISTS (
