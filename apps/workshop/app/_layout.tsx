@@ -29,9 +29,12 @@ function useApplyOtaUpdatesOnArrival() {
 
 // iOS Share Extension hand-off. When the user taps Share → "Workshop" in
 // another app, expo-share-intent's native code stashes the payload in App
-// Group UserDefaults and opens `workshop://dataUrl=…`; the hook reads it
-// back and surfaces a `shareIntent`. We forward to `/share?url=…` which
-// the existing `app/share/index.tsx` redirect maps to `/share/pick-list`.
+// Group UserDefaults and opens `workshop:///dataUrl=workshopShareKey`; the
+// hook reads it back and surfaces a `shareIntent`. We forward to
+// `/share?url=…` which the existing `app/share/index.tsx` redirect maps to
+// `/share/pick-list`. The sentinel URL is swallowed by
+// `app/+native-intent.tsx`; without that, expo-router would render its
+// "Unmatched Route" screen before this hook fires.
 // Signed-out users currently lose the payload — AuthGate bounces them to
 // `/sign-in` first; stashing through auth (cf. inviteStash) is a follow-up.
 function useShareIntentRedirect(status: AuthStatus) {
