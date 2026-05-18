@@ -4,9 +4,10 @@ import postgres from "postgres";
 import { getConfig } from "../lib/config.js";
 
 async function main() {
-  const { databaseUrl, isLocal } = getConfig();
+  const { databaseUrl } = getConfig();
+  const isLocalDb = /@(localhost|127\.0\.0\.1)[:/]/.test(databaseUrl);
   const client = postgres(databaseUrl, {
-    ssl: isLocal ? false : "require",
+    ssl: isLocalDb ? false : "require",
     max: 1,
   });
   const db = drizzle(client);
