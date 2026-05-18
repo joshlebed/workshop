@@ -601,6 +601,12 @@ CI equivalent is `.github/workflows/deploy-pages.yml`, fires on push to `main` f
 `/og/invite/...png` endpoint serves PNG bytes before exiting green. Required GH secrets:
 `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
 
+The deploy step calls `npx -y wrangler@latest pages deploy` directly rather than
+`cloudflare/wrangler-action`. The action installs wrangler with `pnpm add wrangler@…`
+inside the workspace root, which **pnpm 10 refuses without `-w`** (`ERR_PNPM_ADDING_TO_ROOT`),
+so the action fails every run and prod silently stops deploying. If you reach for that
+action again, either pass `-w`/`packageManager` overrides or stay with `npx`.
+
 ## Running commit-ready checks
 
 ```bash

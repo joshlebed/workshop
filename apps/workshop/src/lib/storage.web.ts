@@ -21,8 +21,9 @@ export async function setItem(key: string, value: string): Promise<void> {
   try {
     ls()?.setItem(key, value);
   } catch {
-    // Restricted WebViews (iOS Messages preview, Safari private mode) throw
-    // on write. Drop silently — callers treat persistence as best-effort.
+    // Browsers that block storage (Safari "Block All Cookies", some private
+    // browsing modes) throw on write. Drop silently — callers treat
+    // persistence as best-effort.
   }
 }
 

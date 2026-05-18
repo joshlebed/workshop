@@ -66,12 +66,19 @@ jobs:
       - name: Build web bundle
         run: pnpm --filter workshop-app exec expo export --platform web
 
+      # cloudflare/wrangler-action@v3 ran `pnpm add wrangler@3.90.0` inside the
+      # workspace root, which pnpm 10 refuses without `-w`. Invoke wrangler via
+      # npx directly (mirrors `scripts/deploy-pages.sh`) so deploys don't break
+      # on the next pnpm-10 sandbox enforcement.
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.14.1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/workshop/dist --project-name=workshop --branch=main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx -y wrangler@latest pages deploy apps/workshop/dist \
+            --project-name=workshop \
+            --branch=main \
+            --commit-dirty=true
 
       - name: Verify production OG endpoint serves PNG
         run: |
