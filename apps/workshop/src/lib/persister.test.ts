@@ -12,9 +12,10 @@ describe("createPersister (web)", () => {
   });
 
   it("constructs even when window.localStorage access throws", async () => {
-    // iOS Messages's in-app browser blocks localStorage access by throwing on
-    // the property getter. Without a try/catch here, RootLayout's `useMemo`
-    // would surface the throw and the whole page renders blank.
+    // When the browser blocks storage (Safari "Block All Cookies", some
+    // private-browsing setups), the `window.localStorage` getter throws.
+    // Without a try/catch, RootLayout's `useMemo` would surface the throw
+    // and the whole page would render blank.
     vi.stubGlobal(
       "window",
       new Proxy(

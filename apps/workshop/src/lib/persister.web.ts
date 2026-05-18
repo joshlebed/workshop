@@ -19,11 +19,12 @@ const memoryStorageFallback = (): Storage => {
   };
 };
 
-// Reading `window.localStorage` can throw in restricted WebViews — notably
-// iOS Messages's in-app preview ("Open in Safari" sheet). An uncaught throw
-// here crashes the React tree on first render because this runs inside
-// `getPersistOptions()` from `RootLayout`'s `useMemo`. Wrap the access, fall
-// back to memory storage, and let the rest of the app come up.
+// Reading `window.localStorage` can throw when the browser blocks storage —
+// e.g. iOS Safari with "Block All Cookies" on, certain content blockers, or
+// some private-browsing configurations. An uncaught throw here crashes the
+// React tree on first render because this runs inside `getPersistOptions()`
+// from `RootLayout`'s `useMemo`. Wrap the access, fall back to memory
+// storage, and let the rest of the app come up.
 function safeLocalStorage(): Storage | null {
   if (typeof window === "undefined") return null;
   try {
