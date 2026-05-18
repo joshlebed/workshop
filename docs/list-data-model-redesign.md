@@ -401,44 +401,168 @@ the activity feed can render "@josh turned off completion (3 done items
 hidden)." Re-enabling restores both data and the activity-feed
 attribution; the disable+enable pair forms a clean round-trip.
 
-## 7. UX implications worth flagging
+## 7. Templates (the new home for "list types")
+
+`lists.type` going away doesn't mean the user-facing concept of "a Movie
+Watchlist" goes away — it just stops being a database column. The
+replacement is a **template**: a hardcoded, client-side, named bundle of
+defaults that the create-list flow uses to construct a `POST /v1/lists`
+body. Templates exist only in the client; the server stores the
+materialized config (`modules`, `item_kind_default`, attached `sources`)
+and never learns which template seeded it.
+
+### Continuity with today's `lists.type`
+
+Every value of today's `type` enum maps 1:1 to an initial template. The
+post-migration data is identical: a `type='movie'` list and a list
+created from the `movie_watchlist` template both have
+`item_kind_default='movie'` and `modules=['voting','todo','ranking']`.
+Users see the same set of options in the create-list picker; the
+underlying representation is just decoupled from it.
+
+### Initial catalog
+
+Shipped with the redesign:
+
+| template id       | display name       | `item_kind_default` | `modules`                          | extras                                               |
+| ----------------- | ------------------ | ------------------- | ---------------------------------- | ---------------------------------------------------- |
+| `movie_watchlist` | Movie Watchlist    | `movie`             | `voting`, `todo`, `ranking`        | emoji 🎬, color sunset                               |
+| `tv_watchlist`    | TV Watchlist       | `tv`                | `voting`, `todo`, `ranking`        | emoji 📺, color ocean                                |
+| `reading_list`    | Reading List       | `book`              | `voting`, `todo`, `ranking`        | emoji 📚, color forest                               |
+| `date_ideas`      | Date Ideas         | `date_idea`         | `voting`, `todo`, `ranking`        | emoji ✨, color rose                                 |
+| `trip_plan`       | Trip Plan          | `trip`              | `voting`, `todo`, `ranking`        | emoji ✈️, color sand                                 |
+| `album_shelf`     | Album Shelf        | `spotify_album`     | `voting`, `ranking`, `sources`     | prompts for Spotify playlist URL (`requiresSource`)  |
+| `daily_games`     | Daily Game Tracker | `game`              | `voting`, `leaderboard`, `ranking` | emoji 🎮, color slate                                |
+| `voting_poll`     | Voting Poll        | `plain`             | `voting`                           | new — flagship example of the redesign's flexibility |
+| `shared_todo`     | Shared To-Do List  | `plain`             | `todo`, `ranking`                  | new                                                  |
+| `blank_list`      | Blank List         | `plain`             | `ranking`                          | new — escape hatch for "just give me a list"         |
+
+The first seven preserve today's product. The last three are new shapes
+the redesign unlocks; they're worth shipping at the same time so users
+feel the win.
+
+### Where templates live
+
+Pure-runtime constants in the workspace shared package, exported via a
+dedicated subpath because of the `@workshop/shared` barrel constraint
+documented in CLAUDE.md (the barrel re-exports `./types.js`, which Metro
+can't resolve at runtime — runtime values must come from a subpath):
+
+```
+packages/shared/src/templates.ts          // catalog + type
+packages/shared/package.json              // add "./templates": "./src/templates.ts"
+                                          //   to the exports map
+```
+
+Shape:
+
+```ts
+export type ListTemplate = {
+  id: string;
+  displayName: string;
+  description: string; // short copy for the picker card
+  defaults: {
+    itemKindDefault: ContentType;
+    modules: ModuleName[];
+    emoji?: string;
+    color?: ListColor;
+  };
+  // Optional — if set, the create flow prompts for source config
+  // (e.g., the Spotify playlist URL) before commit.
+  requiresSource?: {
+    kind: SourceKind;
+    promptCopy: string;
+  };
+};
+
+export const LIST_TEMPLATES: readonly ListTemplate[] = [
+  /* … */
+];
+```
+
+Both the mobile app and the web build import this catalog. The backend
+does not — templates are a UI affordance, not a DB concept.
+
+### How users diverge from a template
+
+The moment a list exists, its template ID is forgotten. The user can:
+
+- Change modules via the settings sheet (§6 governs the warnings).
+- Change `item_kind_default` (new items only, see §6).
+- Add or remove sources independently of `requiresSource`.
+
+There's no "this list deviates from its template" UX — the list just is
+what it is. This is intentional. Templates are nudges, not constraints;
+binding the runtime config to a template would re-introduce the
+`type`-enum coupling we're explicitly dismantling.
+
+### Adding new templates
+
+A new template is one entry in `LIST_TEMPLATES`. No schema migration, no
+backend change, no API change. The expectation is that the catalog grows
+freely (`fantasy_draft`, `book_club`, `weekend_chores`, etc.) as the
+product surfaces more presets — each one is a few lines of TypeScript
+and a copy review.
+
+If a new template needs a module that doesn't exist yet, the module is
+the migration-worthy step (register a manifest per §6); adding the
+template afterward is trivial.
+
+### Templates vs modules — a quick mental model
+
+- **Module** — a durable, server-known unit of behavior on a list.
+  Stored on `lists.modules`. The thing the engineer reasons about.
+- **Template** — a friendly client-side preset that materializes into a
+  module set at create time. The thing the user reasons about. Lives
+  in `@workshop/shared/templates`, never touches the server.
+
+The mapping is one-way: template → modules. Two lists from the same
+template diverge the moment either is edited; that's fine.
+
+## 8. UX implications worth flagging
 
 - **Duplicate affordance.** The list detail screen gets a "Duplicate"
   action. The duplicate flow lets the user rename, re-emoji, and toggle
   modules in one step. The album-shelf → voting-poll workflow is the
   canonical example to design against.
-- **Module pickers.** The create-list flow needs a way to express modules
-  beyond preset bundles. v1 can keep presets only ("Movie Watchlist,"
-  "Voting Poll," "Reading List," "Daily Game Tracker") and surface module
-  toggles in the list settings sheet. Custom-module-set creation from
-  scratch can wait until the presets feel constraining.
+- **Template picker as the entry point.** The create-list flow is a
+  vertical list of template cards (the §7 catalog), each showing
+  display name, description, and a representative emoji/color. Picking
+  one drops the user into the per-template prompt (e.g., name + optional
+  source URL for `album_shelf`); the "Blank List" template gives the
+  power-user escape hatch into manual module selection.
 - **`sources` module visibility.** The list detail header gets a "Synced
   from Spotify" affordance and a manual refresh button — generic across
   any list with the `sources` module on, not just album shelves.
+- **Settings sheet ≠ template picker.** Once a list exists, the settings
+  sheet exposes raw module toggles (§6) — templates aren't shown there.
+  Re-deriving "this looks like a Reading List" from the current module
+  set is possible but not worth the complexity; better to let the user
+  shape the list freely.
 
-## 8. Open questions
+## 9. Open questions
 
-8.1. **Who can duplicate a list?** Three options: owner only / owner +
+9.1. **Who can duplicate a list?** Three options: owner only / owner +
 members / anyone with an accepted invite. Recommendation: any member.
 The duplicate is fully independent, so there's no privacy leak beyond
 what the duplicating user already saw — Discord-style "I can fork a
 server I'm in."
 
-8.2. **Should completion state copy on duplicate?** Default no. Reason:
+9.2. **Should completion state copy on duplicate?** Default no. Reason:
 the common case (album-shelf → poll, watchlist → recommend-to-friend) is
 a fresh start. `preserveCompletion: true` is the opt-in for "duplicate
 this and let me keep going from where I left off."
 
-8.3. **Mixed `content_type` in one list.** Schema allows it
+9.3. **Mixed `content_type` in one list.** Schema allows it
 (`item_kind_default` is only a default). v1 product can restrict to
 homogeneous; lifting it later when use cases appear (a Trip list with
 restaurants + flights + hotels) costs nothing.
 
-8.4. **Sync cadence for `sources` module.** Manual refresh only (today's
+9.4. **Sync cadence for `sources` module.** Manual refresh only (today's
 album-shelf behavior, generalized). Scheduled pull and webhook-driven
 sync are future work; the table has the columns ready.
 
-8.5. **"Show hidden module data" as an admin escape hatch.** Per §6, data
+9.5. **"Show hidden module data" as an admin escape hatch.** Per §6, data
 from a disabled module is preserved but invisible. Should there be a
 debug surface (or a "restore" action) that lets the user see _what_ would
 come back if they re-enabled the module, without committing to it?
@@ -446,7 +570,14 @@ Cheapest answer: the confirmation sheet for _enabling_ a module shows the
 preserved-data summary, mirroring the disable warning. No separate
 viewer needed.
 
-## 9. Sequencing
+9.6. **Should templates be discoverable post-creation?** Currently no —
+the template ID is lost the moment the list exists. If template browsing
+turns out to be useful (e.g., "duplicate as a different template"), the
+cheapest path is to derive a best-match template from the current
+`(item_kind_default, modules)` tuple at render time; no schema needed.
+Defer until use cases demand it.
+
+## 10. Sequencing
 
 Five PRs, each independently shippable. Only PR-A has a migration.
 
@@ -464,9 +595,10 @@ Five PRs, each independently shippable. Only PR-A has a migration.
 4. **PR-D: duplicate endpoint + UI.** The album-shelf-to-poll flow lands
    here. Server-side endpoint + the duplicate sheet in the mobile/web
    client.
-5. **PR-E: modules in create/edit flow + config-preview.** Module toggles
-   in the list settings sheet; preset bundles re-expressed as client-side
-   templates; legacy `type`-driven UI branches removed; the
-   `/config-preview` endpoint and the warning-acknowledgement protocol
-   from §6 land here, since they only have a user-visible surface once
-   the toggles are in the UI.
+5. **PR-E: templates + module-toggle UI + config-preview.** Ships the
+   `@workshop/shared/templates` catalog (§7); the create-list flow
+   becomes a template picker that builds the `POST /v1/lists` body
+   accordingly; the settings sheet exposes raw module toggles; legacy
+   `type`-driven UI branches removed; the `/config-preview` endpoint
+   and the warning-acknowledgement protocol from §6 land here, since
+   they only have a user-visible surface once the toggles are in the UI.
