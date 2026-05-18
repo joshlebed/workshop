@@ -8,9 +8,10 @@ let cachedClient: ReturnType<typeof postgres> | null = null;
 
 export function getDb() {
   if (cached) return cached;
-  const { databaseUrl, isLocal } = getConfig();
+  const { databaseUrl } = getConfig();
+  const isLocalDb = /@(localhost|127\.0\.0\.1)[:/]/.test(databaseUrl);
   cachedClient = postgres(databaseUrl, {
-    ssl: isLocal ? false : "require",
+    ssl: isLocalDb ? false : "require",
     max: 1,
     idle_timeout: 20,
     connect_timeout: 10,
