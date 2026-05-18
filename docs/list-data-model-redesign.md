@@ -1,7 +1,22 @@
 # List data model redesign — modules + kind + duplication
 
-Status: proposal, not yet implemented.
-Tracking branch: `joshlebed/rethink-list-data-model-3n415b`.
+**Status: shipped (most of it).** Big-bang merge in
+[#199](https://github.com/joshlebed/workshop/pull/199) on 2026-05-18 cut over the schema,
+backend, and client to the new shape in a single PR. The follow-up state — what's deployed,
+what's tech debt, what's still on this spec but not yet built, and the suggested ordering for
+the next round of work — lives in
+[`docs/list-data-model-redesign-status.md`](./list-data-model-redesign-status.md). Read this
+doc for the **design** (the why and the shape); read the status doc for the **state** (the
+what's-done and the what's-left).
+
+The original plan called for six sequential PRs (PR-A through PR-F per §10). PR-A through
+PR-E collapsed into #199; PR-F (Letterboxd, §3.3 + §10) is deferred and is the highest-value
+remaining work — it's the proof point that the source-kind abstraction isn't accidentally
+Spotify-shaped.
+
+> The rest of this doc is preserved verbatim from the proposal so the design rationale stays
+> readable next to the shipped code. Where the implementation deviates from the proposal, the
+> status doc is the source of truth.
 
 ## 1. Motivation
 

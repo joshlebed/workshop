@@ -8,6 +8,9 @@ get the state in one pass; jump to a section heading to find the open work in yo
 The original plan was 6 sequential PRs (PR-A through PR-F); we collapsed PR-A–E into one and
 deferred PR-F.
 
+**Quick links:** the design spec is at [`docs/list-data-model-redesign.md`](./list-data-model-redesign.md);
+the proposed next-week scope for an engineer is §5 below.
+
 ## Status one-liner
 
 The core redesign is **live in prod**: lists carry `modules` and `item_kind`, items carry
@@ -308,17 +311,70 @@ unit tests carried the burden in #199.
 
 ---
 
-## 5. Suggested ordering for the follow-up work
+## 5. One-week scope for the next engineer
 
-The two highest-value follow-ups, in order:
+If you have ~5 working days to spend on this, here's the recommended slice. The ordering
+front-loads the foundation (tests before features) so the riskier feature work (PR-F) lands
+on top of a safety net.
 
-1. **Backend route tests** (§2.2) — restores the safety net on the new shape before we add
-   complexity (Letterboxd, new modules, etc.). One PR per route file is fine.
-2. **PR-F: Letterboxd source kind** (§3.1) — proves the source abstraction. Touches
-   `sourceKinds`, `lists.ts`, a new `lib/sources/letterboxdList.ts`, the templates catalog,
-   and the per-kind dedup story (§3.9 falls out naturally).
+### Days 1–2 — Backend route tests for the new shape (§2.2)
 
-After those, the cleanup PRs (§2.1, §2.3, §2.4, §2.5) are all small and parallelizable.
+Restore the test coverage that was deleted in #199. Five files, each in the pattern of the
+surviving `activity.test.ts` / `members.test.ts`:
 
-Everything else (§3.2 polish, §3.5/3.6/3.7 future-source plumbing, §3.8 rebalance overflow,
-§3.10 new modules) is product-pull work — land when the feature pulls it in.
+- `items.test.ts` — create / move / upvote / complete / archive, plus per-kind content
+  validation, plus the module-gate 409 contract (≥3 assertions per gated endpoint).
+- `lists.test.ts` — create with modules, PATCH with `acknowledgedWarnings`, config-preview,
+  item_kind tightening guard, duplicate.
+- `sources.test.ts` — CRUD + sync + preview (mock Spotify client per the existing pattern).
+- `scores.test.ts` — upsert / delete / list, `period_key` shape.
+- `duplicate.test.ts` — `preserveCompletion` × `copySources` matrix.
+
+Sizing: ~300 lines each. Mostly mechanical.
+
+### Days 3–4 — PR-F: Letterboxd source kind (§3.1, §3.9)
+
+The headline extensibility proof. Touches:
+
+- `packages/shared/src/sourceKinds.ts` — `letterboxd_list` manifest with
+  `producesItemKind: 'movie'`.
+- `apps/backend/src/lib/sources/letterboxdList.ts` — `previewLetterboxdList` +
+  `syncLetterboxdListSource`. TMDB enrichment to fill `movie` content (poster, year,
+  runtime).
+- `lists.ts` — generalize the hard-coded `if (kind === 'spotify_playlist')` branches into a
+  dispatch table over `SOURCE_KINDS`.
+- `packages/shared/src/templates.ts` — add `letterboxd_watchlist` (already designed in
+  §7).
+- Per-kind dedup story: lift `dedupField` into the item-kind manifest (§3.9). Pull this
+  follow-up in here naturally since you're touching the dedup index path.
+- Tests follow Day 1–2's pattern.
+
+The **headline assertion** to write: a Letterboxd source produces `items.kind = 'movie'` —
+not `letterboxd_film` — proving the source-kind / item-kind decoupling is real.
+
+### Day 5 — Cleanup + buffer
+
+- Drop-old-columns migration (`lists.type`, `lists.metadata`, `items.type`,
+  `items.metadata`, `game_scores`, `list_type` enum). Small and well-defined, see §2.1.
+- iOS smoke against TestFlight, since #199 was web-only.
+- Buffer for whichever Day 1–4 task slipped.
+
+### Why this order
+
+- **Tests before features.** Letterboxd will touch dispatch, dedup, and source plumbing;
+  building those changes on top of a route-test gap is asking to break things invisibly.
+- **PR-F before any polish.** It's the highest-information PR — if the source abstraction
+  is subtly wrong, it'll surface here, which is much better than discovering it after six
+  more source kinds have crystallized around the wrong shape.
+- **Cleanup last** so it benefits from a few extra days of prod soak on the additive
+  migration.
+
+### What to defer past the week
+
+The remaining items in §3 are product-pull work — land them when a feature pulls them in,
+not on a calendar:
+
+- §3.2 Module-removal warning UI polish (per-code copy + localization).
+- §3.5–3.7 Future-source plumbing (per-source secrets, webhooks, scheduled sync).
+- §3.8 Rebalance overflow trigger (no urgency until somebody moves to top 10⁹ times).
+- §3.10 New modules (`scheduling`, `comments`, `attachments`).
