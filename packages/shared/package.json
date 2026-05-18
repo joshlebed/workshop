@@ -8,11 +8,18 @@
   "exports": {
     ".": "./src/index.ts",
     "./constants": "./src/constants.ts",
-    "./og": "./src/og.ts"
+    "./og": "./src/og.ts",
+    "./itemKinds": "./src/itemKinds.ts",
+    "./sourceKinds": "./src/sourceKinds.ts",
+    "./modules": "./src/modules.ts",
+    "./templates": "./src/templates.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "typescript": "6.0.3",

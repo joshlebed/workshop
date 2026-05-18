@@ -67,7 +67,14 @@ export default function ListDetailRoute() {
     );
   }
 
-  return <ListDetail list={listQuery.data.list} members={listQuery.data.members} token={token} />;
+  return (
+    <ListDetail
+      list={listQuery.data.list}
+      members={listQuery.data.members}
+      sources={listQuery.data.sources ?? []}
+      token={token}
+    />
+  );
 }
 
 const styles = StyleSheet.create({

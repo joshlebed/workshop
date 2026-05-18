@@ -1,40 +1,58 @@
 import type {
-  AlbumShelfListMetadata,
+  ConfigWarning,
   List,
   ListColor,
   ListMemberSummary,
-  ListMetadata,
+  ListSource,
   ListSummary,
   MemberRole,
 } from "@workshop/shared";
+import { ITEM_KIND_NAMES, type ItemKind, isItemKind } from "@workshop/shared/itemKinds";
+import { MODULE_NAMES, type ModuleName, normalizeModules } from "@workshop/shared/modules";
+import { isSourceKind, SOURCE_KIND_NAMES, type SourceKind } from "@workshop/shared/sourceKinds";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { type DbList, listMembers, lists, users } from "../../db/schema.js";
-import { asAlbumShelfMetadata, refreshAlbumShelfItems } from "../../lib/album-shelf.js";
-import { toIsoString } from "../../lib/dates.js";
+import {
+  type DbList,
+  type DbListSource,
+  items,
+  itemUpvotes,
+  listMembers,
+  listSources,
+  lists,
+  users,
+} from "../../db/schema.js";
+import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
+import { inspectModuleChange } from "../../lib/moduleManifests.js";
+import { requireCapability } from "../../lib/permissions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
-import { fetchPlaylistMeta } from "../../lib/spotify/app-client.js";
-import { mapSpotifyError } from "../../lib/spotify/error-mapping.js";
-import { InvalidPlaylistUrlError, parsePlaylistId } from "../../lib/spotify/playlist-parser.js";
+import {
+  previewSpotifyPlaylist,
+  syncSpotifyPlaylistSource,
+} from "../../lib/sources/spotifyPlaylist.js";
 import { executeRows } from "../../lib/sql.js";
-import { albumShelfListMetadataPatchSchema } from "../../lib/validators/album-shelf.js";
 import { requireAuth } from "../../middleware/auth.js";
-import { requireListMember, requireListOwner } from "../../middleware/authorize.js";
+import { requireListMember } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 import { fetchPendingInvitesForList } from "./invites.js";
-import { createItem, createItemSchema, fetchItemsForList, ItemMetadataError } from "./items.js";
+import {
+  createItem,
+  createItemSchema,
+  fetchItemsForList,
+  ItemContentError,
+  ItemKindMismatchRouteError,
+} from "./items.js";
 
 export const listRoutes = new Hono();
 
 listRoutes.use("*", requireAuth);
 
 const listColors = ["sunset", "ocean", "forest", "grape", "rose", "sand", "slate"] as const;
-const listTypes = ["movie", "tv", "book", "date_idea", "trip", "album_shelf", "game"] as const;
 
 const nameSchema = z
   .string()
@@ -49,15 +67,12 @@ const emojiSchema = z
   .refine((s) => !/[\r\n]/.test(s), "emoji must be a single line");
 
 const colorSchema = z.enum(listColors);
-const typeSchema = z.enum(listTypes);
 
 const descriptionSchema = z
   .string()
   .transform((s) => s.trim())
   .pipe(z.string().max(280, "description too long"));
 
-// ~1.5 MB cap on the data URL (base64 inflates ~4/3, so ≈1.1 MB raw).
-// Clients are expected to resize/compress before upload.
 const COVER_PHOTO_MAX_CHARS = 1_500_000;
 const coverPhotoUrlSchema = z
   .string()
@@ -67,107 +82,116 @@ const coverPhotoUrlSchema = z
     "cover photo must be a base64 data URL",
   );
 
-export const createListSchema = z.object({
-  type: typeSchema,
+const modulesSchema = z
+  .array(z.enum(MODULE_NAMES))
+  .max(MODULE_NAMES.length)
+  .transform((m) => normalizeModules(m));
+
+const itemKindSchema = z.enum(ITEM_KIND_NAMES);
+
+const sourceConfigSchema = z.record(z.string(), z.unknown());
+
+const sourcesSchema = z
+  .array(
+    z.object({
+      kind: z.enum(SOURCE_KIND_NAMES),
+      config: sourceConfigSchema,
+    }),
+  )
+  .max(4);
+
+const createListSchema = z.object({
   name: nameSchema,
   emoji: emojiSchema,
   color: colorSchema,
   description: descriptionSchema.optional(),
   coverPhotoUrl: coverPhotoUrlSchema.optional(),
-  // Required iff type === 'album_shelf'. Verified at the route layer so we
-  // can return a structured error code distinguishing missing vs. malformed.
-  spotifyPlaylistUrl: z.string().min(1).max(2048).optional(),
+  itemKind: z.union([itemKindSchema, z.null()]).optional(),
+  modules: modulesSchema,
+  sources: sourcesSchema.optional(),
 });
 
-export const updateListSchema = z
+const updateListSchema = z
   .object({
     name: nameSchema.optional(),
     emoji: emojiSchema.optional(),
     color: colorSchema.optional(),
-    // null clears, undefined leaves alone, string updates.
     description: z.union([descriptionSchema, z.null()]).optional(),
     coverPhotoUrl: z.union([coverPhotoUrlSchema, z.null()]).optional(),
-    // For album_shelf lists, members can patch `metadata.spotifyPlaylistUrl`
-    // (per spec §3.5) — that path is open to any member, not owner-only.
-    metadata: z.record(z.string(), z.unknown()).optional(),
+    itemKind: z.union([itemKindSchema, z.null()]).optional(),
+    modules: modulesSchema.optional(),
+    acknowledgedWarnings: z.array(z.string()).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "at least one field required");
+
+const duplicateListSchema = z.object({
+  name: nameSchema.optional(),
+  emoji: emojiSchema.optional(),
+  color: colorSchema.optional(),
+  description: descriptionSchema.optional(),
+  modules: modulesSchema.optional(),
+  itemKind: z.union([itemKindSchema, z.null()]).optional(),
+  preserveCompletion: z.boolean().optional(),
+  copySources: z.boolean().optional(),
+});
+
+const configPreviewSchema = z.object({
+  modules: modulesSchema.optional(),
+  itemKind: z.union([itemKindSchema, z.null()]).optional(),
+});
+
+const createSourceSchema = z.object({
+  kind: z.enum(SOURCE_KIND_NAMES),
+  config: sourceConfigSchema,
+});
 
 function toListShape(l: DbList): List {
   return {
     id: l.id,
-    type: l.type,
     name: l.name,
     emoji: l.emoji,
     color: l.color as ListColor,
     description: l.description,
     coverPhotoUrl: l.coverPhotoUrl,
     ownerId: l.ownerId,
-    metadata: (l.metadata ?? {}) as ListMetadata,
+    itemKind: (l.itemKind && isItemKind(l.itemKind) ? (l.itemKind as ItemKind) : null) ?? null,
+    modules: (l.modules ?? []) as ModuleName[],
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
   };
 }
 
-/**
- * Parse + verify a public-playlist URL once. Returns the v1 error envelope on
- * failure; caller should `return` it. On success the parsed playlist id is
- * returned alongside the original URL so callers can persist both.
- */
-async function validatePlaylistUrl(
-  c: Context,
-  url: string,
-): Promise<{ ok: true; playlistId: string; url: string } | { ok: false; response: Response }> {
-  let playlistId: string;
-  try {
-    playlistId = parsePlaylistId(url);
-  } catch (e) {
-    if (e instanceof InvalidPlaylistUrlError) {
-      return {
-        ok: false,
-        response: err(c, "VALIDATION", "invalid playlist URL", { code: "INVALID_PLAYLIST_URL" }),
-      };
-    }
-    throw e;
-  }
-  try {
-    const meta = await fetchPlaylistMeta(playlistId);
-    if (meta.public === false) {
-      return {
-        ok: false,
-        response: err(c, "VALIDATION", "playlist must be public", {
-          code: "PLAYLIST_NOT_AVAILABLE",
-        }),
-      };
-    }
-  } catch (e) {
-    const mapped = mapSpotifyError(c, e);
-    if (mapped) return { ok: false, response: mapped };
-    throw e;
-  }
-  return { ok: true, playlistId, url };
+function toSourceShape(s: DbListSource): ListSource {
+  return {
+    id: s.id,
+    listId: s.listId,
+    kind: s.kind as SourceKind,
+    config: (s.config ?? {}) as Record<string, unknown>,
+    lastSyncedAt: s.lastSyncedAt ? s.lastSyncedAt.toISOString() : null,
+    lastSyncedBy: s.lastSyncedBy ?? null,
+    createdAt: s.createdAt.toISOString(),
+  };
+}
+
+async function fetchSourcesForList(listId: string): Promise<ListSource[]> {
+  const db = getDb();
+  const rows = await db.select().from(listSources).where(eq(listSources.listId, listId));
+  return rows.map(toSourceShape);
 }
 
 listRoutes.get("/", async (c) => {
   const userId = c.get("userId");
   const db = getDb();
-  // One query: every list the user is a member of, plus their role + the
-  // member/item counts + the per-viewer view state (pin/archive/mute) and
-  // unread count. Unread is "events on this list by someone other than the
-  // viewer, since the viewer's lastReadAt"; capped at 99 in the SQL to keep
-  // a runaway feed from materialising thousands of rows just for a badge.
-  // Muted lists report 0 so a muted list never contributes to the global
-  // unread total either.
   const rows = await executeRows<{
     id: string;
-    type: string;
     name: string;
     emoji: string;
     color: string;
     description: string | null;
     cover_photo_url: string | null;
     owner_id: string;
-    metadata: Record<string, unknown> | null;
+    item_kind: string | null;
+    modules: string[];
     created_at: Date | string;
     updated_at: Date | string;
     my_role: string;
@@ -181,37 +205,21 @@ listRoutes.get("/", async (c) => {
     db,
     sql`
       SELECT
-        l.id,
-        l.type::text AS type,
-        l.name,
-        l.emoji,
-        l.color,
-        l.description,
-        l.cover_photo_url,
-        l.owner_id,
-        l.metadata,
-        l.created_at,
-        l.updated_at,
-        me.role::text AS my_role,
-        me.pinned_at,
-        me.archived_at,
-        me.muted_at,
+        l.id, l.name, l.emoji, l.color, l.description, l.cover_photo_url, l.owner_id,
+        l.item_kind, l.modules, l.created_at, l.updated_at,
+        me.role::text AS my_role, me.pinned_at, me.archived_at, me.muted_at,
         (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
         (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id AND i.archived_at IS NULL) AS item_count,
         CASE
           WHEN me.muted_at IS NOT NULL THEN 0
-          ELSE LEAST(
-            99,
-            (
-              SELECT COUNT(*)::int
-              FROM activity_events e
-              LEFT JOIN user_activity_reads r
-                ON r.user_id = ${userId} AND r.list_id = l.id
-              WHERE e.list_id = l.id
-                AND e.actor_id <> ${userId}
-                AND (r.last_read_at IS NULL OR e.created_at > r.last_read_at)
-            )
-          )
+          ELSE LEAST(99, (
+            SELECT COUNT(*)::int FROM activity_events e
+            LEFT JOIN user_activity_reads r
+              ON r.user_id = ${userId} AND r.list_id = l.id
+            WHERE e.list_id = l.id
+              AND e.actor_id <> ${userId}
+              AND (r.last_read_at IS NULL OR e.created_at > r.last_read_at)
+          ))
         END AS unread_count
       FROM lists l
       JOIN list_members me ON me.list_id = l.id AND me.user_id = ${userId}
@@ -222,14 +230,14 @@ listRoutes.get("/", async (c) => {
 
   const summaries: ListSummary[] = rows.map((r) => ({
     id: r.id,
-    type: r.type as ListSummary["type"],
     name: r.name,
     emoji: r.emoji,
     color: r.color as ListColor,
     description: r.description,
     coverPhotoUrl: r.cover_photo_url,
     ownerId: r.owner_id,
-    metadata: (r.metadata ?? {}) as ListMetadata,
+    itemKind: (r.item_kind && isItemKind(r.item_kind) ? r.item_kind : null) as ItemKind | null,
+    modules: (r.modules ?? []) as ModuleName[],
     createdAt: toIsoString(r.created_at),
     updatedAt: toIsoString(r.updated_at),
     role: r.my_role as MemberRole,
@@ -251,24 +259,25 @@ listRoutes.post("/", async (c) => {
   const db = getDb();
   const data = parsed.data;
 
-  // album_shelf: validate the playlist URL up-front so we don't create
-  // an orphan list if Spotify rejects it. The actual album fetch happens
-  // inside the transaction below.
-  let playlistMetadata: AlbumShelfListMetadata | null = null;
-  if (data.type === "album_shelf") {
-    if (!data.spotifyPlaylistUrl) {
-      return err(c, "VALIDATION", "spotifyPlaylistUrl required for album_shelf lists");
+  // Validate any sources up-front so we don't create an orphan list.
+  const validatedSources: Array<{ kind: SourceKind; config: Record<string, unknown> }> = [];
+  for (const source of data.sources ?? []) {
+    if (source.kind === "spotify_playlist") {
+      const url =
+        typeof source.config.spotifyPlaylistUrl === "string"
+          ? source.config.spotifyPlaylistUrl
+          : "";
+      const validated = await previewSpotifyPlaylist(c, url);
+      if (!validated.ok) return validated.response;
+      validatedSources.push({
+        kind: source.kind,
+        config: validated.config as unknown as Record<string, unknown>,
+      });
+    } else if (!isSourceKind(source.kind)) {
+      return err(c, "VALIDATION", `unknown source kind: ${source.kind}`);
+    } else {
+      validatedSources.push(source as { kind: SourceKind; config: Record<string, unknown> });
     }
-    const validated = await validatePlaylistUrl(c, data.spotifyPlaylistUrl);
-    if (!validated.ok) return validated.response;
-    playlistMetadata = {
-      spotifyPlaylistUrl: validated.url,
-      spotifyPlaylistId: validated.playlistId,
-      lastRefreshedAt: null,
-      lastRefreshedBy: null,
-    };
-  } else if (data.spotifyPlaylistUrl !== undefined) {
-    return err(c, "VALIDATION", "spotifyPlaylistUrl only valid for album_shelf lists");
   }
 
   let created: DbList;
@@ -277,55 +286,78 @@ listRoutes.post("/", async (c) => {
       const [list] = await tx
         .insert(lists)
         .values({
-          type: data.type,
           name: data.name,
           emoji: data.emoji,
           color: data.color,
           description: data.description ?? null,
           coverPhotoUrl: data.coverPhotoUrl ?? null,
           ownerId: userId,
-          metadata: playlistMetadata ?? {},
+          itemKind: data.itemKind ?? null,
+          modules: data.modules,
         })
         .returning();
       if (!list) throw new Error("list insert returned no row");
+
       await tx.insert(listMembers).values({
         listId: list.id,
         userId,
         role: "owner",
       });
+
       await recordEvent({
         db: tx,
         listId: list.id,
         actorId: userId,
         type: "list_created",
-        payload: { name: list.name, type: list.type },
+        payload: { name: list.name, itemKind: list.itemKind, modules: list.modules },
       });
 
-      if (data.type === "album_shelf" && playlistMetadata) {
-        const result = await refreshAlbumShelfItems({
-          listId: list.id,
-          userId,
-          spotifyPlaylistId: playlistMetadata.spotifyPlaylistId,
-          spotifyPlaylistUrl: playlistMetadata.spotifyPlaylistUrl,
-          db: tx,
-        });
+      for (const source of validatedSources) {
+        const [src] = await tx
+          .insert(listSources)
+          .values({
+            listId: list.id,
+            kind: source.kind,
+            config: source.config,
+          })
+          .returning();
+        if (!src) continue;
         await recordEvent({
           db: tx,
           listId: list.id,
           actorId: userId,
-          type: "album_shelf_refreshed",
-          payload: { added: result.addedCount, source: result.source },
+          type: "source_added",
+          payload: { kind: source.kind, config: source.config },
         });
-        // Re-select so the returned shape reflects the updated metadata
-        // (lastRefreshedAt populated by refreshAlbumShelfItems).
-        const [refreshed] = await tx.select().from(lists).where(eq(lists.id, list.id)).limit(1);
-        return refreshed ?? list;
+
+        if (source.kind === "spotify_playlist") {
+          const result = await syncSpotifyPlaylistSource({
+            listId: list.id,
+            userId,
+            config: source.config as {
+              spotifyPlaylistUrl: string;
+              spotifyPlaylistId: string;
+            },
+            db: tx,
+          });
+          await tx
+            .update(listSources)
+            .set({ lastSyncedAt: result.refreshedAt, lastSyncedBy: userId })
+            .where(eq(listSources.id, src.id));
+          await recordEvent({
+            db: tx,
+            listId: list.id,
+            actorId: userId,
+            type: "source_synced",
+            payload: { kind: source.kind, addedCount: result.addedCount },
+          });
+        }
       }
-      return list;
+
+      const [refreshed] = await tx.select().from(lists).where(eq(lists.id, list.id)).limit(1);
+      return refreshed ?? list;
     });
   } catch (e) {
-    const mapped = mapSpotifyError(c, e);
-    if (mapped) return mapped;
     throw e;
   }
 
@@ -335,8 +367,10 @@ listRoutes.post("/", async (c) => {
     .where(eq(users.id, userId))
     .limit(1);
   const actorLabel = actor?.displayName ?? actor?.email ?? userId;
+  const modulesLabel = (created.modules ?? []).join(" · ");
+  const kindLabel = created.itemKind ?? "any";
   await notifyDiscord(
-    `:clipboard: new list — "${created.name}" (${created.type}) by ${actorLabel}`,
+    `:clipboard: new list — "${created.name}" (${kindLabel}${modulesLabel ? `, ${modulesLabel}` : ""}) by ${actorLabel}`,
   );
 
   return ok(c, { list: toListShape(created) }, 201);
@@ -370,18 +404,16 @@ listRoutes.get("/:id", requireListMember, async (c) => {
     joinedAt: m.joinedAt.toISOString(),
   }));
 
-  // Owners see real pending-invite rows (token omitted); non-owners
-  // see an empty array. Spec §4.9: "Pending invites — shown if the
-  // list has unaccepted email invites". v1 only has share-link
-  // invites, but the same restriction applies — the share UX surface
-  // is owner-only.
   const role = c.get("listMemberRole");
   const pendingInvites = role === "owner" ? await fetchPendingInvitesForList(listId) : [];
+
+  const sources = await fetchSourcesForList(listId);
 
   return ok(c, {
     list: toListShape(list),
     members,
     pendingInvites,
+    sources,
   });
 });
 
@@ -394,20 +426,71 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   const db = getDb();
   const data = parsed.data;
 
-  // Permission split (spec §3.5): owner-only for rename / emoji / color /
-  // description; any member can patch metadata (the only metadata patch we
-  // currently allow is album_shelf source URL change).
-  const ownerOnlyKeys = (
-    ["name", "emoji", "color", "description", "coverPhotoUrl"] as const
-  ).filter((k) => data[k] !== undefined);
-  if (ownerOnlyKeys.length > 0 && role !== "owner") {
-    return err(c, "FORBIDDEN", "owner-only patch fields", { keys: ownerOnlyKeys });
+  const wantsMetadata =
+    data.name !== undefined ||
+    data.emoji !== undefined ||
+    data.color !== undefined ||
+    data.description !== undefined ||
+    data.coverPhotoUrl !== undefined;
+  const wantsModules = data.modules !== undefined;
+  const wantsItemKind = data.itemKind !== undefined;
+
+  if (wantsMetadata) {
+    const denied = requireCapability(c, role, "edit_list_metadata");
+    if (denied) return denied;
+  }
+  if (wantsModules) {
+    const denied = requireCapability(c, role, "edit_modules");
+    if (denied) return denied;
+  }
+  if (wantsItemKind) {
+    const denied = requireCapability(c, role, "edit_item_kind");
+    if (denied) return denied;
   }
 
-  // Look up the current list to know its type (gates whether `metadata`
-  // patches are allowed and what schema applies).
   const [existing] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
   if (!existing) return err(c, "NOT_FOUND", "list not found");
+
+  // item_kind tightening: must not violate the homogeneity invariant.
+  if (wantsItemKind && data.itemKind !== null && data.itemKind !== existing.itemKind) {
+    const mismatchRows = await executeRows<{ count: number }>(
+      db,
+      sql`SELECT COUNT(*)::int AS count FROM items WHERE list_id = ${listId} AND archived_at IS NULL AND kind <> ${data.itemKind}`,
+    );
+    const mismatchCount = Number(mismatchRows[0]?.count ?? 0);
+    if (mismatchCount > 0) {
+      return err(
+        c,
+        "CONFLICT",
+        "kind_constraint_violation",
+        {
+          code: "kind_constraint_violation",
+          mismatchCount,
+        },
+        409,
+      );
+    }
+  }
+
+  // Module removal warnings.
+  if (wantsModules) {
+    const nextModules = data.modules ?? [];
+    const currentModules = existing.modules ?? [];
+    const removedCount = currentModules.filter((m) => !nextModules.includes(m)).length;
+    if (removedCount > 0) {
+      const warnings = await inspectModuleChange({
+        listId,
+        currentModules,
+        nextModules,
+        db,
+      });
+      const acknowledged = new Set(data.acknowledgedWarnings ?? []);
+      const unacknowledged = warnings.filter((w) => !acknowledged.has(w.code));
+      if (unacknowledged.length > 0) {
+        return err(c, "CONFLICT", "unacknowledged_warnings", { warnings: unacknowledged }, 409);
+      }
+    }
+  }
 
   const patch: Partial<DbList> = { updatedAt: new Date() };
   if (data.name !== undefined) patch.name = data.name;
@@ -415,98 +498,90 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   if (data.color !== undefined) patch.color = data.color;
   if (data.description !== undefined) patch.description = data.description;
   if (data.coverPhotoUrl !== undefined) patch.coverPhotoUrl = data.coverPhotoUrl;
-
-  let triggerAlbumShelfRefresh = false;
-  let oldSourceUrl: string | null = null;
-  let newPlaylistId: string | null = null;
-  let newSourceUrl: string | null = null;
-  if (data.metadata !== undefined) {
-    if (existing.type !== "album_shelf") {
-      return err(c, "VALIDATION", "metadata patch only supported for album_shelf lists");
-    }
-    const v = albumShelfListMetadataPatchSchema.safeParse(data.metadata);
-    if (!v.success) {
-      return err(c, "VALIDATION", "invalid metadata patch", v.error.issues);
-    }
-    if (v.data.spotifyPlaylistUrl !== undefined) {
-      const validated = await validatePlaylistUrl(c, v.data.spotifyPlaylistUrl);
-      if (!validated.ok) return validated.response;
-
-      const prevMeta = (existing.metadata ?? {}) as Record<string, unknown>;
-      oldSourceUrl =
-        typeof prevMeta.spotifyPlaylistUrl === "string" ? prevMeta.spotifyPlaylistUrl : null;
-      newSourceUrl = validated.url;
-      newPlaylistId = validated.playlistId;
-      triggerAlbumShelfRefresh = true;
-      patch.metadata = {
-        ...prevMeta,
-        spotifyPlaylistUrl: validated.url,
-        spotifyPlaylistId: validated.playlistId,
-      };
-    }
-  }
-
-  if (
-    data.name === undefined &&
-    data.emoji === undefined &&
-    data.color === undefined &&
-    data.description === undefined &&
-    data.coverPhotoUrl === undefined &&
-    !triggerAlbumShelfRefresh
-  ) {
-    // Nothing actionable in the patch (e.g. metadata blob without
-    // spotifyPlaylistUrl). Return the row as-is.
-    return ok(c, { list: toListShape(existing) });
-  }
+  if (wantsItemKind) patch.itemKind = data.itemKind ?? null;
+  if (wantsModules && data.modules !== undefined) patch.modules = data.modules as ModuleName[];
 
   const [updated] = await db.update(lists).set(patch).where(eq(lists.id, listId)).returning();
   if (!updated) return err(c, "NOT_FOUND", "list not found");
 
-  if (triggerAlbumShelfRefresh && newPlaylistId && newSourceUrl) {
-    try {
-      const result = await refreshAlbumShelfItems({
-        listId,
-        userId,
-        spotifyPlaylistId: newPlaylistId,
-        spotifyPlaylistUrl: newSourceUrl,
-        db,
-      });
-      await recordEvent({
-        listId,
-        actorId: userId,
-        type: "album_shelf_source_changed",
-        payload: { from: oldSourceUrl ?? "", to: newSourceUrl },
-      });
-      await recordEvent({
-        listId,
-        actorId: userId,
-        type: "album_shelf_refreshed",
-        payload: { added: result.addedCount, source: result.source },
-      });
-      const [reread] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
-      return ok(c, { list: toListShape(reread ?? updated) });
-    } catch (e) {
-      const mapped = mapSpotifyError(c, e);
-      if (mapped) return mapped;
-      throw e;
+  // Activity events for module + item_kind transitions.
+  if (wantsModules) {
+    const next = data.modules ?? [];
+    const prev = existing.modules ?? [];
+    for (const m of next) {
+      if (!prev.includes(m)) {
+        await recordEvent({
+          listId,
+          actorId: userId,
+          type: "module_enabled",
+          payload: { module: m },
+        });
+      }
+    }
+    for (const m of prev) {
+      if (!next.includes(m)) {
+        await recordEvent({
+          listId,
+          actorId: userId,
+          type: "module_disabled",
+          payload: { module: m },
+        });
+      }
     }
   }
 
   return ok(c, { list: toListShape(updated) });
 });
 
+// --- Config preview ---
+
+listRoutes.post("/:id/config-preview", requireListMember, async (c) => {
+  const parsed = await parseJsonBody(c, configPreviewSchema);
+  if (!parsed.ok) return parsed.response;
+  const listId = c.req.param("id");
+  const role = c.get("listMemberRole");
+  const denied = requireCapability(c, role, "edit_modules");
+  if (denied) return denied;
+
+  const db = getDb();
+  const [existing] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
+  if (!existing) return err(c, "NOT_FOUND", "list not found");
+
+  const warnings: ConfigWarning[] = [];
+  if (parsed.data.modules !== undefined) {
+    warnings.push(
+      ...(await inspectModuleChange({
+        listId,
+        currentModules: existing.modules ?? [],
+        nextModules: parsed.data.modules,
+        db,
+      })),
+    );
+  }
+
+  if (
+    parsed.data.itemKind !== undefined &&
+    parsed.data.itemKind !== null &&
+    parsed.data.itemKind !== existing.itemKind
+  ) {
+    const mismatchRows = await executeRows<{ count: number }>(
+      db,
+      sql`SELECT COUNT(*)::int AS count FROM items WHERE list_id = ${listId} AND archived_at IS NULL AND kind <> ${parsed.data.itemKind}`,
+    );
+    const mismatchCount = Number(mismatchRows[0]?.count ?? 0);
+    if (mismatchCount > 0) {
+      warnings.push({
+        code: "item_kind.tighten_blocked",
+        message: `${mismatchCount} item${mismatchCount === 1 ? "" : "s"} of a different kind would block this change. Convert or archive them first.`,
+        affectedCount: mismatchCount,
+      });
+    }
+  }
+
+  return ok(c, { warnings });
+});
+
 // --- Per-(list, viewer) presentation state ---
-//
-// `/v1/lists/:id/{read,pin,archive,mute}` toggle four per-member flags via a
-// single shared handler. POST sets the relevant timestamp to now(); DELETE
-// clears it. Body is intentionally empty — the resource identity already
-// captures (listId, userId, flag), no further input needed. All four endpoints
-// require listMember; pin/archive/mute have no role gate beyond that since
-// they're each viewer-private state.
-//
-// `read` is one-way (POST only). The natural semantics of "mark as read up to
-// now" don't have a meaningful inverse — there's no notion of "unmark read"
-// in a feed-style activity model. The other three are toggleable.
 
 type ViewStateColumn = "pinnedAt" | "archivedAt" | "mutedAt";
 
@@ -517,18 +592,12 @@ async function setViewStateFlag(
   value: Date | null,
 ): Promise<void> {
   const db = getDb();
-  // listMembers is composite-keyed (listId, userId); requireListMember has
-  // already verified the row exists, so a plain UPDATE is sufficient.
   await db
     .update(listMembers)
     .set({ [column]: value })
     .where(sql`${listMembers.listId} = ${listId} AND ${listMembers.userId} = ${userId}`);
 }
 
-// `read` is a per-list one-way mark, persisted in `user_activity_reads`
-// (predates the other view-state columns; `POST /v1/activity/read` writes
-// the same table). Opening a list calls this so the home unread badge
-// decreases as the viewer visits collaborator-edited lists.
 listRoutes.post("/:id/read", requireListMember, async (c) => {
   const listId = c.req.param("id");
   const userId = c.get("userId");
@@ -545,42 +614,35 @@ listRoutes.post("/:id/pin", requireListMember, async (c) => {
   await setViewStateFlag(c.req.param("id"), c.get("userId"), "pinnedAt", new Date());
   return ok(c, { ok: true });
 });
-
 listRoutes.delete("/:id/pin", requireListMember, async (c) => {
   await setViewStateFlag(c.req.param("id"), c.get("userId"), "pinnedAt", null);
   return ok(c, { ok: true });
 });
-
 listRoutes.post("/:id/archive", requireListMember, async (c) => {
   await setViewStateFlag(c.req.param("id"), c.get("userId"), "archivedAt", new Date());
   return ok(c, { ok: true });
 });
-
 listRoutes.delete("/:id/archive", requireListMember, async (c) => {
   await setViewStateFlag(c.req.param("id"), c.get("userId"), "archivedAt", null);
   return ok(c, { ok: true });
 });
-
 listRoutes.post("/:id/mute", requireListMember, async (c) => {
   await setViewStateFlag(c.req.param("id"), c.get("userId"), "mutedAt", new Date());
   return ok(c, { ok: true });
 });
-
 listRoutes.delete("/:id/mute", requireListMember, async (c) => {
   await setViewStateFlag(c.req.param("id"), c.get("userId"), "mutedAt", null);
   return ok(c, { ok: true });
 });
 
-// Archive (soft delete) the list. Owner-only. Sets `lists.archived_at` so the
-// row is filtered out of every read path — `GET /v1/lists`, `GET
-// /v1/lists/:id`, item reads, activity feed, middleware. The dependent rows
-// (members, items, invites, activity events, reads, upvotes) stay in place
-// so a future unarchive surface can restore them in one shot. Idempotent: a
-// repeat archive on an already-archived list returns 404 because the
-// requester can no longer see the list as a member.
-listRoutes.delete("/:id", requireListMember, requireListOwner, async (c) => {
+// --- Soft-archive (owner-only) ---
+
+listRoutes.delete("/:id", requireListMember, async (c) => {
   const listId = c.req.param("id");
   const userId = c.get("userId");
+  const role = c.get("listMemberRole");
+  const denied = requireCapability(c, role, "archive_list");
+  if (denied) return denied;
   const db = getDb();
   const archived = await db
     .update(lists)
@@ -601,14 +663,138 @@ listRoutes.delete("/:id", requireListMember, requireListOwner, async (c) => {
   return ok(c, { ok: true });
 });
 
-// --- List-scoped item routes (Phase 1a-2) ---
-//
-// Mounted under `/v1/lists/:id/items`. The item-id-scoped routes
-// (`/v1/items/:id/...`) live in `items.ts` and ship under their own router.
+// --- Duplicate ---
+
+listRoutes.post(
+  "/:id/duplicate",
+  requireListMember,
+  rateLimit({
+    family: "v1.lists.duplicate",
+    limit: 20,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, duplicateListSchema);
+    if (!parsed.ok) return parsed.response;
+    const sourceListId = c.req.param("id");
+    const userId = c.get("userId");
+    const role = c.get("listMemberRole");
+    const denied = requireCapability(c, role, "duplicate");
+    if (denied) return denied;
+    const db = getDb();
+
+    const [source] = await db
+      .select()
+      .from(lists)
+      .where(and(eq(lists.id, sourceListId), isNull(lists.archivedAt)))
+      .limit(1);
+    if (!source) return err(c, "NOT_FOUND", "list not found");
+
+    const nextModules = parsed.data.modules ?? (source.modules as ModuleName[]) ?? [];
+    const nextItemKind =
+      parsed.data.itemKind !== undefined
+        ? parsed.data.itemKind
+        : (source.itemKind as ItemKind | null);
+
+    const dup = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(lists)
+        .values({
+          name: parsed.data.name ?? `${source.name} (copy)`,
+          emoji: parsed.data.emoji ?? source.emoji,
+          color: (parsed.data.color ?? source.color) as ListColor,
+          description: parsed.data.description ?? source.description,
+          coverPhotoUrl: source.coverPhotoUrl,
+          ownerId: userId,
+          itemKind: nextItemKind,
+          modules: nextModules,
+        })
+        .returning();
+      if (!created) throw new Error("duplicate insert returned no row");
+      await tx.insert(listMembers).values({
+        listId: created.id,
+        userId,
+        role: "owner",
+      });
+      await recordEvent({
+        db: tx,
+        listId: created.id,
+        actorId: userId,
+        type: "list_created",
+        payload: { name: created.name, itemKind: created.itemKind, modules: created.modules },
+      });
+      // Source list activity event.
+      await recordEvent({
+        db: tx,
+        listId: source.id,
+        actorId: userId,
+        type: "list_duplicated",
+        payload: { sourceListId: source.id, duplicateListId: created.id, name: created.name },
+      });
+
+      // Copy non-archived items.
+      const sourceItems = await tx
+        .select()
+        .from(items)
+        .where(and(eq(items.listId, source.id), isNull(items.archivedAt)));
+      const preserveCompletion = parsed.data.preserveCompletion ?? false;
+      for (const it of sourceItems) {
+        const [newItem] = await tx
+          .insert(items)
+          .values({
+            listId: created.id,
+            kind: it.kind,
+            title: it.title,
+            url: it.url,
+            note: it.note,
+            content: it.content,
+            position: it.position,
+            addedBy: userId,
+            completed: preserveCompletion ? it.completed : false,
+            completedAt: preserveCompletion ? it.completedAt : null,
+            completedBy: preserveCompletion ? it.completedBy : null,
+          })
+          .returning({ id: items.id });
+        if (newItem) {
+          await recordEvent({
+            db: tx,
+            listId: created.id,
+            actorId: userId,
+            type: "item_added",
+            itemId: newItem.id,
+            payload: { title: it.title, kind: it.kind, copiedFrom: source.id },
+          });
+        }
+      }
+
+      if (parsed.data.copySources) {
+        const sourceRows = await tx
+          .select()
+          .from(listSources)
+          .where(eq(listSources.listId, source.id));
+        for (const s of sourceRows) {
+          await tx.insert(listSources).values({
+            listId: created.id,
+            kind: s.kind,
+            config: s.config,
+          });
+        }
+      }
+
+      return created;
+    });
+
+    return ok(c, { list: toListShape(dup) }, 201);
+  },
+);
+
+// --- List-scoped items ---
 
 listRoutes.get("/:id/items", requireListMember, async (c) => {
   const listId = c.req.param("id");
-  const split = await fetchItemsForList(listId);
+  const userId = c.get("userId");
+  const split = await fetchItemsForList(listId, userId);
   return ok(c, split);
 });
 
@@ -627,40 +813,38 @@ listRoutes.post(
     const listId = c.req.param("id");
     const userId = c.get("userId");
 
-    // album_shelf items only enter via refresh — manual add isn't a UX entry
-    // point on the client and accepting it here would let stale clients
-    // smuggle in rows that don't satisfy the type's metadata invariants.
     const db = getDb();
     const [parent] = await db
-      .select({ type: lists.type })
+      .select({ itemKind: lists.itemKind })
       .from(lists)
       .where(eq(lists.id, listId))
       .limit(1);
-    if (parent?.type === "album_shelf") {
-      return err(c, "VALIDATION", "items cannot be added manually to an album_shelf list");
+    if (!parent) return err(c, "NOT_FOUND", "list not found");
+    // Spotify-sourced kinds aren't manually added — the source's sync runs
+    // for that. Block manual adds.
+    if (parent.itemKind === "spotify_album") {
+      return err(c, "VALIDATION", "items cannot be added manually to a Spotify-sourced list");
     }
 
-    let item: Awaited<ReturnType<typeof createItem>>;
     try {
-      item = await createItem(listId, userId, parsed.data);
+      const item = await createItem(listId, userId, parsed.data);
+      return ok(c, { item }, 201);
     } catch (e) {
-      if (e instanceof ItemMetadataError) {
-        return err(c, "VALIDATION", "invalid metadata for list type", e.issues);
+      if (e instanceof ItemContentError) {
+        return err(c, "VALIDATION", "invalid content for item kind", e.issues);
+      }
+      if (e instanceof ItemKindMismatchRouteError) {
+        return err(c, "VALIDATION", "kind_mismatch", {
+          code: "kind_mismatch",
+          listItemKind: e.listItemKind,
+          itemKind: e.itemKind,
+        });
       }
       throw e;
     }
-    return ok(c, { item }, 201);
   },
 );
 
-// --- POST /v1/lists/:id/items/bulk ---
-//
-// Bulk-create items from one paste. Reuses the single-item createItem
-// transaction for each row (one transaction per row rather than one wrapping
-// transaction so a single bad row doesn't roll back the whole batch — we
-// stop at the first error and return partial success). Capped at 50/request;
-// clients chunk anything larger. album_shelf is rejected for the same
-// reason the single-item route is.
 const BULK_LIMIT = 50;
 const bulkCreateItemsSchema = z.object({
   items: z
@@ -669,6 +853,8 @@ const bulkCreateItemsSchema = z.object({
         title: z.string().min(1).max(500).trim(),
         url: z.string().min(1).max(2048).trim().optional(),
         note: z.string().max(1000).trim().optional(),
+        kind: z.enum(ITEM_KIND_NAMES).optional(),
+        content: z.record(z.string(), z.unknown()).optional(),
       }),
     )
     .min(1)
@@ -691,31 +877,39 @@ listRoutes.post(
     const userId = c.get("userId");
     const db = getDb();
     const [parent] = await db
-      .select({ type: lists.type })
+      .select({ itemKind: lists.itemKind })
       .from(lists)
       .where(eq(lists.id, listId))
       .limit(1);
     if (!parent) return err(c, "NOT_FOUND", "list not found");
-    if (parent.type === "album_shelf") {
-      return err(c, "VALIDATION", "items cannot be added manually to an album_shelf list");
+    if (parent.itemKind === "spotify_album") {
+      return err(c, "VALIDATION", "items cannot be added manually to a Spotify-sourced list");
     }
 
     const created: Awaited<ReturnType<typeof createItem>>[] = [];
     for (const row of parsed.data.items) {
-      // Skip blank-after-trim entries silently so a paste with stray empty
-      // lines doesn't 400 the whole call.
       if (!row.title.trim()) continue;
       try {
         const item = await createItem(listId, userId, {
           title: row.title,
           url: row.url,
           note: row.note,
+          kind: row.kind,
+          content: row.content,
         });
         created.push(item);
       } catch (e) {
-        if (e instanceof ItemMetadataError) {
-          return err(c, "VALIDATION", "invalid metadata for list type", {
+        if (e instanceof ItemContentError) {
+          return err(c, "VALIDATION", "invalid content", {
             issues: e.issues,
+            createdSoFar: created.length,
+          });
+        }
+        if (e instanceof ItemKindMismatchRouteError) {
+          return err(c, "VALIDATION", "kind_mismatch", {
+            code: "kind_mismatch",
+            listItemKind: e.listItemKind,
+            itemKind: e.itemKind,
             createdSoFar: created.length,
           });
         }
@@ -726,18 +920,187 @@ listRoutes.post(
   },
 );
 
-// --- Album-shelf refresh ---
-//
-// Pulls the current playlist from Spotify and adds any new (list_id,
-// spotifyAlbumId) rows as detected items. Pure-additive: existing rows
-// (ordered or detected) stay even if their tracks left the playlist.
-// Member-level (any member can refresh).
+// --- Sources ---
 
+listRoutes.get("/:id/sources", requireListMember, async (c) => {
+  const listId = c.req.param("id");
+  const sources = await fetchSourcesForList(listId);
+  return ok(c, { sources });
+});
+
+listRoutes.post("/:id/sources", requireListMember, async (c) => {
+  const parsed = await parseJsonBody(c, createSourceSchema);
+  if (!parsed.ok) return parsed.response;
+  const listId = c.req.param("id");
+  const userId = c.get("userId");
+  const role = c.get("listMemberRole");
+  const denied = requireCapability(c, role, "edit_sources");
+  if (denied) return denied;
+  const db = getDb();
+  const [list] = await db
+    .select({ modules: lists.modules })
+    .from(lists)
+    .where(eq(lists.id, listId))
+    .limit(1);
+  if (!list) return err(c, "NOT_FOUND", "list not found");
+  if (!(list.modules ?? []).includes("sources")) {
+    return err(
+      c,
+      "CONFLICT",
+      "module_disabled",
+      {
+        code: "sources.disabled",
+        module: "sources",
+        message:
+          "This list doesn't have external sources enabled. Turn on Sources in list settings to attach a source.",
+      },
+      409,
+    );
+  }
+
+  if (parsed.data.kind === "spotify_playlist") {
+    const url =
+      typeof parsed.data.config.spotifyPlaylistUrl === "string"
+        ? parsed.data.config.spotifyPlaylistUrl
+        : "";
+    const validated = await previewSpotifyPlaylist(c, url);
+    if (!validated.ok) return validated.response;
+
+    const result = await db.transaction(async (tx) => {
+      const [created] = await tx
+        .insert(listSources)
+        .values({
+          listId,
+          kind: "spotify_playlist",
+          config: validated.config,
+        })
+        .returning();
+      if (!created) throw new Error("source insert returned no row");
+      await recordEvent({
+        db: tx,
+        listId,
+        actorId: userId,
+        type: "source_added",
+        payload: { kind: created.kind, config: validated.config },
+      });
+      const sync = await syncSpotifyPlaylistSource({
+        listId,
+        userId,
+        config: validated.config,
+        db: tx,
+      });
+      await tx
+        .update(listSources)
+        .set({ lastSyncedAt: sync.refreshedAt, lastSyncedBy: userId })
+        .where(eq(listSources.id, created.id));
+      await recordEvent({
+        db: tx,
+        listId,
+        actorId: userId,
+        type: "source_synced",
+        payload: { kind: created.kind, addedCount: sync.addedCount },
+      });
+      const [reread] = await tx
+        .select()
+        .from(listSources)
+        .where(eq(listSources.id, created.id))
+        .limit(1);
+      return { source: reread ?? created, addedCount: sync.addedCount };
+    });
+
+    return ok(c, { source: toSourceShape(result.source), addedCount: result.addedCount }, 201);
+  }
+  return err(c, "VALIDATION", `unsupported source kind: ${parsed.data.kind}`);
+});
+
+listRoutes.delete("/:id/sources/:sourceId", requireListMember, async (c) => {
+  const listId = c.req.param("id");
+  const sourceId = c.req.param("sourceId");
+  const userId = c.get("userId");
+  const role = c.get("listMemberRole");
+  const denied = requireCapability(c, role, "edit_sources");
+  if (denied) return denied;
+  const db = getDb();
+  const [row] = await db
+    .delete(listSources)
+    .where(and(eq(listSources.id, sourceId), eq(listSources.listId, listId)))
+    .returning({ kind: listSources.kind });
+  if (!row) return err(c, "NOT_FOUND", "source not found");
+  await recordEvent({
+    listId,
+    actorId: userId,
+    type: "source_removed",
+    payload: { kind: row.kind },
+  });
+  return ok(c, { ok: true });
+});
+
+listRoutes.post(
+  "/:id/sources/:sourceId/sync",
+  requireListMember,
+  rateLimit({
+    family: "v1.sources.sync",
+    limit: 30,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const listId = c.req.param("id");
+    const sourceId = c.req.param("sourceId");
+    const userId = c.get("userId");
+    const role = c.get("listMemberRole");
+    const denied = requireCapability(c, role, "sync_source");
+    if (denied) return denied;
+    const db = getDb();
+    const [source] = await db
+      .select()
+      .from(listSources)
+      .where(and(eq(listSources.id, sourceId), eq(listSources.listId, listId)))
+      .limit(1);
+    if (!source) return err(c, "NOT_FOUND", "source not found");
+
+    if (source.kind !== "spotify_playlist") {
+      return err(c, "VALIDATION", `cannot sync source kind: ${source.kind}`);
+    }
+    const cfg = source.config as { spotifyPlaylistUrl: string; spotifyPlaylistId: string };
+    const result = await syncSpotifyPlaylistSource({
+      listId,
+      userId,
+      config: cfg,
+      db,
+    });
+    await db
+      .update(listSources)
+      .set({ lastSyncedAt: result.refreshedAt, lastSyncedBy: userId })
+      .where(eq(listSources.id, sourceId));
+    await recordEvent({
+      listId,
+      actorId: userId,
+      type: "source_synced",
+      payload: { kind: source.kind, addedCount: result.addedCount },
+    });
+    const split = await fetchItemsForList(listId, userId);
+    const [reread] = await db
+      .select()
+      .from(listSources)
+      .where(eq(listSources.id, sourceId))
+      .limit(1);
+    return ok(c, {
+      ...split,
+      source: reread ? toSourceShape(reread) : null,
+      addedCount: result.addedCount,
+    });
+  },
+);
+
+// Legacy alias preserved so the existing mobile client's "refresh" button
+// (`POST /v1/lists/:id/refresh`) still works against any list with a single
+// Spotify source. New code uses `POST /v1/lists/:id/sources/:id/sync` instead.
 listRoutes.post(
   "/:id/refresh",
   requireListMember,
   rateLimit({
-    family: "v1.album-shelf.refresh",
+    family: "v1.sources.sync",
     limit: 30,
     windowSec: 60,
     key: (c) => c.get("userId") ?? null,
@@ -746,42 +1109,31 @@ listRoutes.post(
     const listId = c.req.param("id");
     const userId = c.get("userId");
     const db = getDb();
-    const [list] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
-    if (!list) return err(c, "NOT_FOUND", "list not found");
-    if (list.type !== "album_shelf") {
-      return err(c, "VALIDATION", "refresh only supported for album_shelf lists");
-    }
+    const [source] = await db
+      .select()
+      .from(listSources)
+      .where(and(eq(listSources.listId, listId), eq(listSources.kind, "spotify_playlist")))
+      .limit(1);
+    if (!source) return err(c, "VALIDATION", "no syncable source attached to this list");
 
-    let meta: AlbumShelfListMetadata;
-    try {
-      meta = asAlbumShelfMetadata(list.metadata);
-    } catch {
-      return err(c, "VALIDATION", "album shelf playlist not configured");
-    }
-
-    let result: Awaited<ReturnType<typeof refreshAlbumShelfItems>>;
-    try {
-      result = await refreshAlbumShelfItems({
-        listId,
-        userId,
-        spotifyPlaylistId: meta.spotifyPlaylistId,
-        spotifyPlaylistUrl: meta.spotifyPlaylistUrl,
-        db,
-      });
-    } catch (e) {
-      const mapped = mapSpotifyError(c, e);
-      if (mapped) return mapped;
-      throw e;
-    }
-
+    const cfg = source.config as { spotifyPlaylistUrl: string; spotifyPlaylistId: string };
+    const result = await syncSpotifyPlaylistSource({
+      listId,
+      userId,
+      config: cfg,
+      db,
+    });
+    await db
+      .update(listSources)
+      .set({ lastSyncedAt: result.refreshedAt, lastSyncedBy: userId })
+      .where(eq(listSources.id, source.id));
     await recordEvent({
       listId,
       actorId: userId,
-      type: "album_shelf_refreshed",
-      payload: { added: result.addedCount, source: result.source },
+      type: "source_synced",
+      payload: { kind: source.kind, addedCount: result.addedCount },
     });
-
-    const split = await fetchItemsForList(listId);
+    const split = await fetchItemsForList(listId, userId);
     return ok(c, {
       ...split,
       refreshedAt: result.refreshedAt.toISOString(),
@@ -790,3 +1142,9 @@ listRoutes.post(
     });
   },
 );
+
+// Suppress unused-import linter complaints for shared types referenced only
+// in JSDoc.
+export const _ListSummaryRef: ListSummary | null = null;
+export const _itemUpvotesRef = itemUpvotes;
+export const _toIsoOrNullRef = toIsoOrNull;

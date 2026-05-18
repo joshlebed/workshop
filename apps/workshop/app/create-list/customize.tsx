@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { ListColor, ListType } from "@workshop/shared";
+import type { ListColor } from "@workshop/shared";
+import { LIST_TEMPLATES, type ListTemplate } from "@workshop/shared/templates";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Image, Pressable, StyleSheet, TextInput, View } from "react-native";
@@ -19,46 +20,6 @@ import {
   useToast,
 } from "../../src/ui/index";
 
-const VALID_TYPES: readonly ListType[] = [
-  "movie",
-  "tv",
-  "book",
-  "date_idea",
-  "trip",
-  "album_shelf",
-  "game",
-];
-
-const TYPE_LABEL: Record<ListType, string> = {
-  movie: "Movies",
-  tv: "TV shows",
-  book: "Books",
-  date_idea: "Date ideas",
-  trip: "Trips",
-  album_shelf: "Album shelf",
-  game: "Games",
-};
-
-const DEFAULT_EMOJI: Record<ListType, string> = {
-  movie: "🎬",
-  tv: "📺",
-  book: "📚",
-  date_idea: "💡",
-  trip: "✈️",
-  album_shelf: "📀",
-  game: "🎮",
-};
-
-const DEFAULT_COLOR: Record<ListType, ListColor> = {
-  movie: "sunset",
-  tv: "ocean",
-  book: "forest",
-  date_idea: "rose",
-  trip: "grape",
-  album_shelf: "slate",
-  game: "ocean",
-};
-
 const COLOR_KEYS: readonly ListColorKey[] = [
   "sunset",
   "ocean",
@@ -69,51 +30,64 @@ const COLOR_KEYS: readonly ListColorKey[] = [
   "slate",
 ];
 
-const EMOJI_CHOICES = ["🎬", "📺", "📚", "💡", "✈️", "🍿", "🎮", "🎵", "🍔", "🌅", "🏔️", "🎨"];
+const EMOJI_CHOICES = [
+  "🎬",
+  "📺",
+  "📚",
+  "💜",
+  "✈️",
+  "🍿",
+  "🎮",
+  "🎵",
+  "🍔",
+  "🌅",
+  "🏔️",
+  "🎨",
+  "🗳️",
+  "✅",
+  "📝",
+];
 
-const NAME_PLACEHOLDERS: Record<ListType, string> = {
-  movie: "Friday night movies",
-  tv: "Shows we're both watching",
-  book: "Books for the trip",
-  date_idea: "Date ideas",
-  trip: "Summer trip",
-  album_shelf: "Album shelf",
-  game: "Daily games",
-};
-
-function parseType(value: string | string[] | undefined): ListType {
+function lookupTemplate(value: string | string[] | undefined): ListTemplate {
   const raw = Array.isArray(value) ? value[0] : value;
-  if (raw && (VALID_TYPES as readonly string[]).includes(raw)) return raw as ListType;
-  return "date_idea";
+  return LIST_TEMPLATES.find((t) => t.id === raw) ?? LIST_TEMPLATES[LIST_TEMPLATES.length - 1]!;
 }
 
 export default function CreateListCustomize() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ type?: string }>();
-  const type = parseType(params.type);
+  const params = useLocalSearchParams<{ template?: string; type?: string }>();
+  // Back-compat: old links used `type`, new ones use `template`. Treat
+  // `type=movie` as the `movie_watchlist` template.
+  const templateParam =
+    params.template ??
+    (params.type
+      ? `${Array.isArray(params.type) ? params.type[0] : params.type}_watchlist`
+      : undefined);
+  const template = lookupTemplate(templateParam);
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   const [name, setName] = useState("");
-  const [emoji, setEmoji] = useState(DEFAULT_EMOJI[type]);
-  const [color, setColor] = useState<ListColor>(DEFAULT_COLOR[type]);
+  const [emoji, setEmoji] = useState(template.defaults.emoji);
+  const [color, setColor] = useState<ListColor>(template.defaults.color);
   const [description, setDescription] = useState("");
   const [coverPhotoUrl, setCoverPhotoUrl] = useState<string | null>(null);
 
   const trimmedName = name.trim();
   const canSubmit = trimmedName.length >= 1 && trimmedName.length <= 80;
   const accentHex = tokens.list[color as ListColorKey];
-  const isAlbumShelf = type === "album_shelf";
+  const requiresSource = Boolean(template.requiresSource);
 
   const mutation = useMutation({
     mutationFn: () =>
       createList(
         {
-          type,
           name: trimmedName,
           emoji,
           color,
+          itemKind: template.defaults.itemKind,
+          modules: template.defaults.modules,
           ...(description.trim().length > 0 ? { description: description.trim() } : {}),
           ...(coverPhotoUrl ? { coverPhotoUrl } : {}),
         },
@@ -133,11 +107,11 @@ export default function CreateListCustomize() {
   });
 
   const onSubmit = () => {
-    if (isAlbumShelf) {
+    if (requiresSource) {
       router.push({
         pathname: "/create-list/playlist",
         params: {
-          type,
+          template: template.id,
           name: trimmedName,
           emoji,
           color,
@@ -149,7 +123,7 @@ export default function CreateListCustomize() {
     mutation.mutate();
   };
 
-  const totalSteps = isAlbumShelf ? 3 : 2;
+  const totalSteps = requiresSource ? 3 : 2;
   return (
     <Screen style={styles.root}>
       <View style={styles.header}>
@@ -185,10 +159,13 @@ export default function CreateListCustomize() {
           )}
           <View style={styles.previewText}>
             <Text variant="caption" tone="muted" style={styles.previewKind}>
-              {TYPE_LABEL[type]}
+              {template.displayName}
             </Text>
             <Text variant="title" numberOfLines={1} style={styles.previewName}>
               {trimmedName.length > 0 ? trimmedName : "Untitled list"}
+            </Text>
+            <Text variant="caption" tone="muted" style={styles.previewModules}>
+              {template.defaults.modules.join(" · ")}
             </Text>
           </View>
         </View>
@@ -201,7 +178,7 @@ export default function CreateListCustomize() {
             testID="create-list-name"
             value={name}
             onChangeText={setName}
-            placeholder={NAME_PLACEHOLDERS[type]}
+            placeholder={template.displayName}
             placeholderTextColor={tokens.text.muted}
             autoFocus
             maxLength={80}
@@ -210,7 +187,7 @@ export default function CreateListCustomize() {
           />
         </View>
 
-        {!isAlbumShelf ? (
+        {!requiresSource ? (
           <View style={styles.field}>
             <View style={styles.fieldLabelRow}>
               <Text variant="label" tone="secondary" style={styles.fieldLabel}>
@@ -314,17 +291,11 @@ export default function CreateListCustomize() {
         </View>
       </KeyboardAwareScrollView>
 
-      {/* `KeyboardStickyView` tracks the real keyboard frame (including the
-          iOS autocorrect-suggestions bar). Pinning the CTA this way is the
-          documented pattern for "sticky button above the keyboard" in
-          react-native-keyboard-controller — `KeyboardAvoidingView` with
-          `padding` measured the keys-only height and clipped this button
-          behind the suggestions strip. */}
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
         <View style={styles.footer}>
           <Button
             testID="create-list-submit"
-            label={isAlbumShelf ? "Continue" : "Create list"}
+            label={requiresSource ? "Continue" : "Create list"}
             size="lg"
             disabled={!canSubmit || mutation.isPending}
             loading={mutation.isPending}
@@ -347,7 +318,6 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
-  step: { letterSpacing: 0.3, fontVariant: ["tabular-nums"] },
   stepDots: { flexDirection: "row", gap: 6, alignItems: "center" },
   stepDot: {
     width: 18,
@@ -387,6 +357,7 @@ const styles = StyleSheet.create({
   previewText: { flex: 1, minWidth: 0, gap: 2 },
   previewKind: { letterSpacing: 0.2 },
   previewName: { letterSpacing: -0.4 },
+  previewModules: { letterSpacing: 0.5, textTransform: "uppercase", marginTop: 2 },
   field: { gap: tokens.space.sm },
   fieldLabel: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   fieldLabelRow: {

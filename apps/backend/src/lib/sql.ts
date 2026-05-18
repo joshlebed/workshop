@@ -1,14 +1,23 @@
 import type { sql } from "drizzle-orm";
+import type { getDb } from "../db/client.js";
 
 /**
- * Drizzle's `db.execute(sql)` returns either an array (postgres-js driver) or
- * `{ rows }` (node-postgres driver). Every raw-SQL caller in the backend has
- * been normalising that the same way; this helper centralises the coercion
- * and the cast to a typed row shape.
+ * Narrow interface for raw-SQL callers — only `.execute(sql)` is required.
+ * Useful for unit tests that mock the drizzle client. Returns either an
+ * array (postgres-js driver) or `{ rows }` (node-postgres driver).
  */
 export interface SqlExecutor {
   execute: (q: ReturnType<typeof sql>) => Promise<unknown>;
 }
+
+/**
+ * Full drizzle client (or transaction proxy) — exposes typed `.select`,
+ * `.insert`, `.update`, `.delete` in addition to `.execute`. Use this when
+ * the helper needs structured queries.
+ */
+export type DbClient =
+  | ReturnType<typeof getDb>
+  | Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
 
 export async function executeRows<TRow = Record<string, unknown>>(
   db: SqlExecutor,

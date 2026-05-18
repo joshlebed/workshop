@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ActivityEvent, ListSummary, ListType } from "@workshop/shared";
+import type { ActivityEvent, ItemKind, ListSummary, ModuleName } from "@workshop/shared";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -37,15 +37,22 @@ import {
   tokens,
 } from "../src/ui/index";
 
-const TYPE_LABEL: Record<ListType, string> = {
+const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
   tv: "TV",
   book: "Books",
-  date_idea: "Date ideas",
-  trip: "Trips",
-  album_shelf: "Album shelf",
-  game: "Games",
+  link: "Links",
+  spotify_album: "Album shelf",
+  plain: "List",
 };
+
+function summaryLabel(list: { itemKind: ItemKind | null; modules: ModuleName[] }): string {
+  if (list.itemKind && KIND_LABEL[list.itemKind]) return KIND_LABEL[list.itemKind]!;
+  if (list.modules.includes("leaderboard")) return "Leaderboard";
+  if (list.modules.includes("voting")) return "Poll";
+  if (list.modules.includes("todo")) return "Checklist";
+  return "List";
+}
 
 const EVENT_VERB: Partial<Record<ActivityEvent["type"], string>> = {
   item_added: "added",
@@ -419,7 +426,7 @@ export default function Home() {
                   {rowMenuFor.name}
                 </Text>
                 <Text variant="caption" tone="muted" numberOfLines={1}>
-                  {TYPE_LABEL[rowMenuFor.type]} ·{" "}
+                  {summaryLabel(rowMenuFor)} ·{" "}
                   {rowMenuFor.itemCount === 0
                     ? "empty"
                     : `${rowMenuFor.itemCount} ${rowMenuFor.itemCount === 1 ? "item" : "items"}`}
@@ -554,7 +561,7 @@ export default function Home() {
                         {l.name}
                       </Text>
                       <Text variant="caption" tone="muted" numberOfLines={1}>
-                        {TYPE_LABEL[l.type]} ·{" "}
+                        {summaryLabel(l)} ·{" "}
                         {l.itemCount === 0
                           ? "empty"
                           : `${l.itemCount} ${l.itemCount === 1 ? "item" : "items"}`}
@@ -897,7 +904,7 @@ function ListRow({
   } else if (list.description?.trim()) {
     subtitle = list.description.trim();
   } else {
-    subtitle = `${TYPE_LABEL[list.type]} · ${itemsLabel}`;
+    subtitle = `${summaryLabel(list)} · ${itemsLabel}`;
   }
 
   const shared = list.memberCount > 1;

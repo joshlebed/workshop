@@ -46,7 +46,7 @@ export function ItemList({
   ordered,
   unordered,
   completed,
-  listType,
+  listItemKind,
   isAlbumShelf,
   showOrderedHint,
   newItemIds,
@@ -154,7 +154,7 @@ export function ItemList({
       <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
         <ScrollView contentContainerStyle={styles.listContent} testID="list-detail-list">
           {ordered.length > 0 ? (
-            <SectionHeader kind="ordered" count={ordered.length} listType={listType} />
+            <SectionHeader kind="ordered" count={ordered.length} listItemKind={listItemKind} />
           ) : null}
           <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
             {ordered.map((item, index) => (
@@ -177,7 +177,11 @@ export function ItemList({
 
           {unordered.length > 0 ? (
             <>
-              <SectionHeader kind="unordered" count={unordered.length} listType={listType} />
+              <SectionHeader
+                kind="unordered"
+                count={unordered.length}
+                listItemKind={listItemKind}
+              />
               {unordered.map((item) => (
                 <DraggableUnorderedRow
                   key={item.id}
@@ -198,7 +202,7 @@ export function ItemList({
               <SectionHeader
                 kind="completed"
                 count={completed.length}
-                listType={listType}
+                listItemKind={listItemKind}
                 collapsible={
                   showCompletedToggle
                     ? {
@@ -220,7 +224,7 @@ export function ItemList({
                   onMenu={() => onRowMenu(item, "completed")}
                   onPressBody={() => onRowPressBody(item, "completed")}
                   onTapCompleted={
-                    item.type !== "album_shelf" ? () => onUncompleteItem(item) : undefined
+                    item.kind !== "spotify_album" ? () => onUncompleteItem(item) : undefined
                   }
                   onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
                 />
