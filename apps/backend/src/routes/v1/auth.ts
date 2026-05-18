@@ -1,5 +1,5 @@
 import type { AuthProvider } from "@workshop/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -46,6 +46,22 @@ interface UpsertInput {
   displayName: string | null;
 }
 
+// Thrown when a sign-in's (provider, sub) doesn't match an existing user but
+// its email matches a user under a *different* provider. Without this guard
+// `upsertUser` would silently create a second user row with the same email,
+// stranding the original account's data (lists, items, history) behind the
+// old provider — exactly what happened to joshlebed@gmail.com on 2026-05-18.
+export class EmailProviderConflictError extends Error {
+  constructor(
+    public readonly existingProvider: AuthProvider,
+    public readonly attemptedProvider: AuthProvider,
+    public readonly email: string,
+  ) {
+    super(`email ${email} already registered via ${existingProvider}`);
+    this.name = "EmailProviderConflictError";
+  }
+}
+
 async function upsertUser({ provider, sub, email, displayName }: UpsertInput): Promise<DbUser> {
   const db = getDb();
   const [existing] = await db
@@ -69,6 +85,25 @@ async function upsertUser({ provider, sub, email, displayName }: UpsertInput): P
     return updated ?? existing;
   }
 
+  // No (provider, sub) match — about to create a new user. First make sure the
+  // email isn't already in use by another provider, or we'd silently fork the
+  // account in two. Match is case-insensitive: providers don't normalise case
+  // and our schema stores raw email.
+  if (email) {
+    const [emailMatch] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = lower(${email})`)
+      .limit(1);
+    if (emailMatch && emailMatch.authProvider !== provider) {
+      throw new EmailProviderConflictError(
+        emailMatch.authProvider as AuthProvider,
+        provider,
+        email,
+      );
+    }
+  }
+
   const [created] = await db
     .insert(users)
     .values({
@@ -82,6 +117,14 @@ async function upsertUser({ provider, sub, email, displayName }: UpsertInput): P
   const label = created.displayName ?? created.email ?? created.id;
   await notifyDiscord(`:wave: new signup — ${label} via ${provider}`);
   return created;
+}
+
+function providerLabel(p: AuthProvider): string {
+  return p === "apple" ? "Apple" : p === "google" ? "Google" : p;
+}
+
+function emailConflictMessage(e: EmailProviderConflictError): string {
+  return `This email is already registered with ${providerLabel(e.existingProvider)}. Please sign in with ${providerLabel(e.existingProvider)} instead.`;
 }
 
 authRoutes.post("/apple", async (c) => {
@@ -108,12 +151,24 @@ authRoutes.post("/apple", async (c) => {
   const tokenEmail = typeof claims.email === "string" ? claims.email : null;
   const email = clientEmail ?? tokenEmail;
 
-  const user = await upsertUser({
-    provider: "apple",
-    sub: claims.sub,
-    email,
-    displayName: fullName ?? null,
-  });
+  let user: DbUser;
+  try {
+    user = await upsertUser({
+      provider: "apple",
+      sub: claims.sub,
+      email,
+      displayName: fullName ?? null,
+    });
+  } catch (e) {
+    if (e instanceof EmailProviderConflictError) {
+      logger.info("apple sign-in blocked by email collision", {
+        email: e.email,
+        existingProvider: e.existingProvider,
+      });
+      return err(c, "CONFLICT", emailConflictMessage(e));
+    }
+    throw e;
+  }
 
   const token = signSession(user.id);
   return ok(c, {
@@ -141,12 +196,24 @@ authRoutes.post("/google", async (c) => {
   const email = typeof claims.email === "string" ? claims.email : null;
   const displayName = typeof claims.name === "string" ? claims.name : null;
 
-  const user = await upsertUser({
-    provider: "google",
-    sub: claims.sub,
-    email,
-    displayName,
-  });
+  let user: DbUser;
+  try {
+    user = await upsertUser({
+      provider: "google",
+      sub: claims.sub,
+      email,
+      displayName,
+    });
+  } catch (e) {
+    if (e instanceof EmailProviderConflictError) {
+      logger.info("google sign-in blocked by email collision", {
+        email: e.email,
+        existingProvider: e.existingProvider,
+      });
+      return err(c, "CONFLICT", emailConflictMessage(e));
+    }
+    throw e;
+  }
 
   const token = signSession(user.id);
   return ok(c, {
@@ -173,12 +240,20 @@ authRoutes.post("/dev", async (c) => {
   const { email, displayName } = parsed.data;
   const sub = `dev:${email}`;
 
-  const user = await upsertUser({
-    provider: "google",
-    sub,
-    email,
-    displayName: displayName ?? null,
-  });
+  let user: DbUser;
+  try {
+    user = await upsertUser({
+      provider: "google",
+      sub,
+      email,
+      displayName: displayName ?? null,
+    });
+  } catch (e) {
+    if (e instanceof EmailProviderConflictError) {
+      return err(c, "CONFLICT", emailConflictMessage(e));
+    }
+    throw e;
+  }
 
   const token = signSession(user.id);
   logger.info("dev sign-in issued", { userId: user.id, email });
