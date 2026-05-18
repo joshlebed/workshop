@@ -102,18 +102,44 @@ if [[ ! "$ISSUER_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f
   exit 1
 fi
 
+# Run gh and capture combined output. When stdout isn't a TTY (because we're
+# piping into command substitution), gh skips its TUI rendering — which
+# otherwise queries the terminal for background color and cursor position,
+# and on some terminals (Warp, recent iTerm) those responses leak back onto
+# stdout as `\x1b]11;rgb:...\x1b\\` / `\x1b[<row>;<col>R` noise. We print
+# our own success/failure line either way.
+run_gh() {
+  local label=$1
+  shift
+  local out
+  if ! out=$("$@" 2>&1); then
+    red "✗ $label failed:"
+    echo "$out" >&2
+    exit 1
+  fi
+}
+
 echo
 bold "Step 4 — Push secrets to $REPO"
-gh secret set ASC_API_KEY_CONTENT --repo "$REPO" < "$P8_PATH"
-gh secret set ASC_API_KEY_ID      --repo "$REPO" --body "$KEY_ID"
-gh secret set ASC_API_ISSUER_ID   --repo "$REPO" --body "$ISSUER_ID"
-green "✓ Three secrets set: ASC_API_KEY_CONTENT, ASC_API_KEY_ID, ASC_API_ISSUER_ID"
+# `gh secret set` reads from stdin when --body is omitted. We can't redirect
+# stdin through `run_gh` cleanly, so handle the .p8 case inline.
+if ! out=$(gh secret set ASC_API_KEY_CONTENT --repo "$REPO" < "$P8_PATH" 2>&1); then
+  red "✗ ASC_API_KEY_CONTENT failed:"
+  echo "$out" >&2
+  exit 1
+fi
+green "✓ ASC_API_KEY_CONTENT"
+run_gh ASC_API_KEY_ID    gh secret set ASC_API_KEY_ID    --repo "$REPO" --body "$KEY_ID"
+green "✓ ASC_API_KEY_ID"
+run_gh ASC_API_ISSUER_ID gh secret set ASC_API_ISSUER_ID --repo "$REPO" --body "$ISSUER_ID"
+green "✓ ASC_API_ISSUER_ID"
 
 echo
 bold "Step 5 — Trigger a fresh TestFlight build"
 read -rp "Fire 'gh workflow run testflight.yml --field force=true' now? [Y/n] " yn
 if [[ ! "$yn" =~ ^[Nn] ]]; then
-  gh workflow run testflight.yml --ref main --field force=true --repo "$REPO"
+  run_gh "workflow run" \
+    gh workflow run testflight.yml --ref main --field force=true --repo "$REPO"
   green "✓ Build queued. Monitor:"
   green "    https://github.com/$REPO/actions/workflows/testflight.yml"
 else
