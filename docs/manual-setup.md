@@ -76,23 +76,34 @@ In SES sandbox mode, you can only send mail to _verified_ addresses. So for solo
       and any future bundle-id addition (share extension, widget, push extension target) or
       capability toggle (Sign In with Apple, App Groups, Push) breaks the TestFlight pipeline.
 
-      One-time setup (website only, no laptop CLI required):
+      Use the helper script — one command from the repo root, after generating the key in
+      the browser:
 
-      1. **Generate the API key.** <https://appstoreconnect.apple.com/access/api> → **Keys**
-         tab → **+** → name "Workshop CI", access "App Manager" → **Generate**. Download the
-         `.p8` file (one-time only — Apple won't re-show it). Copy the **Key ID** (10-char,
-         shown in the row) and the **Issuer ID** (UUID shown at the top of the page).
-      2. **Add the secrets.** <https://github.com/joshlebed/workshop/settings/secrets/actions>:
-         - `ASC_API_KEY_CONTENT` — paste the entire contents of the `.p8` file (multiline,
-           including the `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` lines).
-         - `ASC_API_KEY_ID` — the 10-char Key ID.
-         - `ASC_API_ISSUER_ID` — the UUID Issuer ID.
-      3. **Re-fire the build.** `gh workflow run testflight.yml --ref main --field force=true`.
-         The next build should pass through `Write ASC API key` and `Build + auto-submit`
-         without prompting. After this, every future capability/target change in CI just works.
+      ```bash
+      pnpm setup:asc-key
+      ```
 
-      Rotation: regenerate the key in App Store Connect, update the three secrets, optionally
-      revoke the old key. No code change required.
+      It opens <https://appstoreconnect.apple.com/access/api> (Keys → + → App Manager → Generate
+      → download the `.p8`), auto-detects the downloaded `AuthKey_<KEYID>.p8` in `~/Downloads`,
+      pre-fills the Key ID from the filename, prompts for the Issuer ID (UUID at top of the
+      page), pushes the three secrets via `gh secret set`, and offers to re-fire
+      `testflight.yml` with `force=true`. Idempotent — run again to rotate.
+
+- [ ] **Set the Discord webhook for TestFlight failure pings.** `testflight.yml` posts to a
+      Discord webhook on red runs so a silent ~2-day-dark deploy can't happen again. Webhook
+      URL also lives in SSM (`/workshop-prod/discord/notify_webhook_url`) for other operator
+      notifications; CI reads the GH secret directly to avoid an OIDC round-trip on the
+      notify path.
+
+      ```bash
+      gh secret set DISCORD_NOTIFY_WEBHOOK_URL \
+        --body "$(aws ssm get-parameter \
+          --name /workshop-prod/discord/notify_webhook_url \
+          --with-decryption --query Parameter.Value --output text)"
+      ```
+
+      Missing secret degrades to a `::warning::` annotation rather than a hard failure — the
+      notification is best-effort, the build status is the source of truth.
 
 - [ ] Create an **Expo access token** at <https://expo.dev/settings/access-tokens> (for CI).
 
@@ -194,19 +205,14 @@ updates needed.
 
 ### 10.3 ASC API key rotation
 
-Website-only. CI reads the key from three GitHub Actions secrets, so rotation is just
-re-issuing the key and overwriting the secrets.
+```bash
+pnpm setup:asc-key
+```
 
-1. <https://appstoreconnect.apple.com/access/api> → **Keys** → **+** → name, access
-   **App Manager** or higher → **Generate**. Download the `.p8` (one-time). Note the Key ID
-   and Issuer ID.
-2. Update three GitHub Actions secrets at
-   <https://github.com/joshlebed/workshop/settings/secrets/actions>:
-   - `ASC_API_KEY_CONTENT` — full `.p8` contents (multiline)
-   - `ASC_API_KEY_ID` — 10-char key ID
-   - `ASC_API_ISSUER_ID` — UUID
-3. Trigger `gh workflow run testflight.yml --ref main --field force=true` to verify, then
-   revoke the old key in App Store Connect.
+Walks the same flow as the one-time setup in §5 — opens
+<https://appstoreconnect.apple.com/access/api>, prompts for the new `.p8` / Key ID / Issuer
+ID, overwrites the three GH Actions secrets, and offers to re-fire the TestFlight workflow.
+Revoke the old key in App Store Connect once the new build is green.
 
 ### 10.4 Database connection string rotation
 

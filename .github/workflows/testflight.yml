@@ -298,3 +298,63 @@ jobs:
           TAG="ios-fp-$FP_HASH"
           git tag "$TAG"
           git push origin "$TAG"
+
+  # Wake the operator when a TestFlight run fails. Native iOS builds happen
+  # ~5×/month on personal-project cadence, so a silent red run is easy to
+  # miss — and we just spent 2 days in that state with the share extension
+  # build broken. Ping `#workshop-admin` via Discord webhook with the run
+  # URL and a self-help hint pointing at `pnpm setup:asc-key`. The
+  # notification fires on `failure` only; a `skipped` build (fingerprint
+  # unchanged, no native diff) is not a problem and stays silent.
+  #
+  # Webhook URL lives in `DISCORD_NOTIFY_WEBHOOK_URL` GH Actions secret.
+  # Missing secret degrades to a CI warning rather than a hard failure —
+  # the notification is best-effort, the underlying build status is the
+  # source of truth.
+  notify:
+    name: Notify on failure
+    needs: [fingerprint, build]
+    if: always() && (needs.fingerprint.result == 'failure' || needs.build.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_NOTIFY_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          FP_RESULT: ${{ needs.fingerprint.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::DISCORD_NOTIFY_WEBHOOK_URL not set — skipping Discord ping. See docs/manual-setup.md §5 for setup."
+            exit 0
+          fi
+          FIRST_LINE=$(printf '%s' "${COMMIT_MSG:-(no message)}" | head -n1)
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          FAILED_JOB="build"
+          if [ "$FP_RESULT" = "failure" ]; then FAILED_JOB="fingerprint"; fi
+          PAYLOAD=$(jq -n \
+            --arg content "🔴 **TestFlight \`${FAILED_JOB}\` job failed** — a human is needed" \
+            --arg title "Action required" \
+            --arg url "$RUN_URL" \
+            --arg sha "$SHORT_SHA" \
+            --arg msg "$FIRST_LINE" \
+            --arg desc "Check the run for \`::error::\` annotations.\n\n• If \`Write ASC API key\` failed → secret is missing or stale. Run \`pnpm setup:asc-key\` locally (interactive, ~3 min) to rotate.\n• If \`Build + auto-submit\` failed → check the EAS build log. Recovery patterns in \`CLAUDE.md\` → iOS deploy pipeline." \
+            '{
+              content: $content,
+              embeds: [{
+                title: $title,
+                description: $desc,
+                url: $url,
+                color: 15158332,
+                fields: [
+                  {name: "Commit", value: ($sha + " — " + $msg), inline: false},
+                  {name: "Run",    value: $url, inline: false}
+                ]
+              }]
+            }')
+          curl -fsS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK"
+          echo "Posted failure notification to Discord."

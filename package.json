@@ -29,6 +29,7 @@
     "deploy:ios:local": "./scripts/deploy-ios-xcode.sh",
     "deploy": "pnpm run deploy:backend && pnpm run deploy:ota && pnpm run deploy:ios",
     "deploy:local": "pnpm run deploy:backend && pnpm run deploy:ota && pnpm run deploy:ios:local",
+    "setup:asc-key": "./scripts/setup-asc-key.sh",
     "prepare": "lefthook install || true"
   },
   "devDependencies": {
