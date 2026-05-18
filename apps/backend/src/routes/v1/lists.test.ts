@@ -83,9 +83,9 @@ describe("createListSchema", () => {
   });
 
   it("rejects an unknown module", () => {
-    expect(
-      createListSchema.safeParse({ ...base(), modules: ["voting", "scheduling"] }).success,
-    ).toBe(false);
+    expect(createListSchema.safeParse({ ...base(), modules: ["voting", "made_up"] }).success).toBe(
+      false,
+    );
   });
 
   it("rejects an unknown itemKind", () => {
@@ -214,7 +214,7 @@ describe("configPreviewSchema", () => {
   });
 
   it("rejects an unknown module", () => {
-    expect(configPreviewSchema.safeParse({ modules: ["scheduling"] }).success).toBe(false);
+    expect(configPreviewSchema.safeParse({ modules: ["made_up"] }).success).toBe(false);
   });
 });
 

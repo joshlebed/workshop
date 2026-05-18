@@ -7,7 +7,12 @@
       "ignoreDependencies": ["concurrently"]
     },
     "apps/backend": {
-      "entry": ["src/lambda.ts"]
+      "entry": [
+        "src/lambda.ts",
+        "src/lib/sources/scheduler.ts",
+        "src/lib/sources/webhookSignature.ts",
+        "src/lib/sources/secrets.ts"
+      ]
     },
     "apps/workshop": {
       "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"],

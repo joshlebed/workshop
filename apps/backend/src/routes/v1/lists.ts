@@ -1071,52 +1071,5 @@ listRoutes.post(
   },
 );
 
-// Legacy alias preserved so the existing mobile client's "refresh" button
-// (`POST /v1/lists/:id/refresh`) still works against any list with a single
-// Spotify source. New code uses `POST /v1/lists/:id/sources/:id/sync` instead.
-listRoutes.post(
-  "/:id/refresh",
-  requireListMember,
-  rateLimit({
-    family: "v1.sources.sync",
-    limit: 30,
-    windowSec: 60,
-    key: (c) => c.get("userId") ?? null,
-  }),
-  async (c) => {
-    const listId = c.req.param("id");
-    const userId = c.get("userId");
-    const db = getDb();
-    const [source] = await db
-      .select()
-      .from(listSources)
-      .where(and(eq(listSources.listId, listId), eq(listSources.kind, "spotify_playlist")))
-      .limit(1);
-    if (!source) return err(c, "VALIDATION", "no syncable source attached to this list");
-
-    const dispatch = dispatchFor("spotify_playlist");
-    const result = await dispatch.sync({
-      listId,
-      userId,
-      config: (source.config ?? {}) as Record<string, unknown>,
-      db,
-    });
-    await db
-      .update(listSources)
-      .set({ lastSyncedAt: result.refreshedAt, lastSyncedBy: userId })
-      .where(eq(listSources.id, source.id));
-    await recordEvent({
-      listId,
-      actorId: userId,
-      type: "source_synced",
-      payload: { kind: source.kind, addedCount: result.addedCount },
-    });
-    const split = await fetchItemsForList(listId, userId);
-    return ok(c, {
-      ...split,
-      refreshedAt: result.refreshedAt.toISOString(),
-      refreshedBy: userId,
-      addedCount: result.addedCount,
-    });
-  },
-);
+// Note: the legacy `POST /v1/lists/:id/refresh` alias was removed.
+// Use `POST /v1/lists/:id/sources/:sourceId/sync` instead.

@@ -5,22 +5,25 @@ shipped, what's tech debt, and what's still on the spec but not yet built.** Rea
 get the state in one pass; jump to a section heading to find the open work in your area.
 
 **Last updated:** 2026-05-18. Big bang ship via [#199](https://github.com/joshlebed/workshop/pull/199).
-Follow-up PR landed all of week-one (#202): backend route tests restored on the new shape,
-PR-F (Letterboxd source kind, second `kind` proving the source/item-kind decoupling), the
-`dedupField` lifted into the item-kind manifest, the source dispatch generalized into a
-registry-driven table, and migration 0015 dropping the legacy columns (`lists.type`,
-`lists.metadata`, `items.type`, `items.metadata`, `game_scores`, `list_type` enum).
+Week-one follow-up landed in [#211](https://github.com/joshlebed/workshop/pull/211): backend
+route tests restored on the new shape, PR-F (Letterboxd source kind, proving the
+source/item-kind decoupling), `dedupField` lifted into the item-kind manifest, source dispatch
+generalized into a registry-driven table, and migration 0015 dropping the legacy columns. This
+PR (tiers 2–3) ships on top of #211: legacy aliases removed, `ActivityEventType` union trimmed,
+and tier-3 scaffolding (per-source secrets envelope, webhook inbound route, scheduled-sync
+worker, rebalance overflow trigger, three reserved modules).
 
-**Quick links:** the design spec is at [`docs/list-data-model-redesign.md`](./list-data-model-redesign.md);
-the proposed next-week scope for an engineer is §5 below.
+**Quick links:** the design spec is at [`docs/list-data-model-redesign.md`](./list-data-model-redesign.md).
 
 ## Status one-liner
 
 The core redesign is **live in prod**: lists carry `modules` and `item_kind`, items carry
-`kind` / `content` / `position`, sources are first-class, leaderboards generalize, and the
-template picker replaces the type picker. The follow-up work is mostly **cleanup** (drop old
-columns), **extensibility proof points** (Letterboxd, second source kind), and **polish gaps**
-(client-side warning UX, mobile verification).
+`kind` / `content` / `position`, sources are first-class (Spotify + Letterboxd), leaderboards
+generalize, and the template picker replaces the type picker. This PR retires the last legacy
+mobile-API aliases and lands scaffolding for the deferred spec items (encrypted per-source
+secrets, webhook + cron worker hooks, three reserved modules). What's left is **product-pull
+work** — webhook + cron handlers for the first push-bearing source, UI for the reserved
+modules.
 
 ---
 
@@ -143,27 +146,23 @@ routes that didn't change shape.
 - The position allocator (collision → rebalance → retry)
 - Duplicate's `preserveCompletion` / `copySources` toggles
 
-### 2.3 Activity-event union still carries legacy values
+### 2.3 ~~Activity-event union still carries legacy values~~ — RETIRED in this PR
 
-`packages/shared/src/types.ts` `ActivityEventType` keeps the legacy values
-(`album_shelf_refreshed`, `album_shelf_source_changed`, `album_promoted`, `album_demoted`,
-`item_deleted`) because **the migration renamed them in place** — there should be no rows of
-the old values left. But the union still lists them for safety.
+Legacy values (`album_shelf_refreshed`, `album_shelf_source_changed`, `album_promoted`,
+`album_demoted`, `item_deleted`) were dropped from `ActivityEventType` in this PR. The
+client-side renderer in `activity.tsx` and the home-screen verb map in `index.tsx` lost the
+matching cases at the same time. Old rows had been renamed in place by the 0014 migration;
+verify before merge with `SELECT DISTINCT event_type FROM activity_events;` on prod.
 
-**Cleanup PR shape:** after the prod migration has run cleanly and `SELECT DISTINCT event_type
-FROM activity_events;` confirms zero rows with the old types, drop those values from the union.
+### 2.4 ~~`/v1/album-shelf/preview` legacy alias~~ — RETIRED in this PR
 
-### 2.4 `/v1/album-shelf/preview` legacy alias
+`apps/backend/src/routes/v1/album-shelf.ts` deleted and its mount in `app.ts` removed. The
+mobile client moved to `POST /v1/sources/preview` in #199.
 
-The old mobile clients call this endpoint during the create-list playlist step. We kept it as
-a thin shim that delegates to `previewSpotifyPlaylist`. Once every mobile build that's been
-through TestFlight has the new client code, drop the route + the `albumShelfRoutes` mount in
-`app.ts`.
+### 2.5 ~~`POST /v1/lists/:id/refresh` legacy alias~~ — RETIRED in this PR
 
-### 2.5 `POST /v1/lists/:id/refresh` legacy alias
-
-Same story for the old "refresh album shelf" endpoint — kept as a shim that picks the first
-attached source and calls `syncSpotifyPlaylistSource`. Drop once mobile is rolled forward.
+The route handler in `lists.ts` is gone. The mobile client moved to
+`POST /v1/lists/:id/sources/:sourceId/sync` in #199.
 
 ---
 
@@ -194,17 +193,15 @@ shipped.
    so each kind can declare its key. If Letterboxd needs a second dedup index, do this when it
    lands instead of hand-coding a second partial unique index.
 
-### 3.2 Module-removal warning UI on the client (spec §6)
+### 3.2 ~~Module-removal warning UI on the client~~ — POLISHED in this PR
 
-Backend ships the warning contract (`/v1/lists/:id/config-preview` + `acknowledgedWarnings` on
-PATCH); the settings sheet implements the basic round-trip (preview → show warnings → "Apply
-anyway"). What's missing is the **polish**:
+Backend ships the warning contract; the settings sheet now renders per-code pretty copy via
+`formatConfigWarning` in `@workshop/shared/modules`. The helper returns `{ headline, detail }`
+per code with proper pluralization; unknown codes fall back to the server-authored message
+(forward compatible). Test coverage in `packages/shared/src/modules.test.ts`.
 
-- Pretty per-warning copy keyed off the code (today's UI renders the server-authored
-  `message` verbatim).
-- Localization story.
-- Inline "X completed items hidden" mini-banner on the list-detail screen when a module is
-  re-enabled — spec §6 mentions "re-enabling restores data and the activity-feed attribution".
+Still deferred: full i18n layer (we're solo-dev English-only today) and the inline
+"X completed items hidden" mini-banner on the list-detail screen when a module is re-enabled.
 
 ### 3.3 Bulk-convert items in a list (spec §6.4)
 
@@ -216,33 +213,34 @@ out of scope for v1"). Flag here only so it shows up in the inventory.
 Same — out of scope per the spec. A `[item_kind=movie]` list keeps its existing movie items
 even when the user changes `item_kind` to `null`; the new items can be anything.
 
-### 3.5 Per-source secrets / OAuth-bearing sources (spec §3.3 "What it can't accommodate")
+### 3.5 ~~Per-source secrets / OAuth-bearing sources~~ — SCAFFOLDED in this PR
 
-Today's only source (`spotify_playlist`) uses app-level credentials, so `config` is non-
-secret. When the first OAuth-bearing source lands, `list_sources` needs a `secrets jsonb`
-column (encrypted at rest) or an SSM-keyed mapping. Schema is ready (no FK constraints that
-would block the column add).
+Migration 0016 adds `list_sources.secrets jsonb` (nullable). `lib/sources/secrets.ts` ships
+`sealSecrets` / `openSecrets` — an AES-256-GCM envelope whose key is HKDF-derived from
+`SESSION_SECRET` (domain-separated label). No source kind populates the column yet; the first
+OAuth-bearing kind lands on top of this primitive. Test coverage in `secrets.test.ts`.
 
-### 3.6 Webhook / push-driven sources (spec §3.3 same section)
+### 3.6 ~~Webhook / push-driven sources~~ — SCAFFOLDED in this PR
 
-All sources today are pull-based via `POST /v1/lists/:id/sources/:id/sync`. A webhook source
-would need an inbound URL keyed to `list_sources.id`, plus signature verification — the data
-model is fine, the work is routing + verification.
+Migration 0016 adds `list_sources.webhook_slug text` with a partial unique index.
+`lib/sources/webhookSignature.ts` ships a generic HMAC-SHA-256 verifier and an empty
+`WEBHOOK_VERIFIERS` registry; `POST /v1/sources/webhooks/:slug` is mounted unauthenticated (the
+shared-secret signature is the auth) and dispatches to the kind's sync impl on verify. The
+first push-bearing source kind registers a verifier and writes a `webhookSharedSecret` into
+`secrets`.
 
-### 3.7 Scheduled source sync (spec §9.1)
+### 3.7 ~~Scheduled source sync~~ — SCAFFOLDED in this PR
 
-Manual refresh only today (the album-shelf behavior, generalized). The `last_synced_at`
-column is ready for the cron worker that would set it; we just don't have the worker.
+Migration 0016 adds `list_sources.sync_schedule text` (interval encoded as seconds).
+`lib/sources/scheduler.ts` ships `runScheduledSyncTick()` which selects elapsed sources and
+re-syncs them via `dispatchFor`. Cron-rule wiring (Lambda EventBridge schedule + handler entry
+point) is deferred until the first source row opts in.
 
-### 3.8 Negative-position rebalance trigger (spec §9.4)
+### 3.8 ~~Negative-position rebalance trigger~~ — WIRED in this PR
 
-Move-to-top forever pushes `position` ever more negative. Spec calls for triggering a
-normalizing rebalance when `MIN(position) < -10⁹`. Not wired today — the rebalance code path
-in `lib/positions.ts` is `moveItemPosition`'s collision recovery, not a periodic sweep.
-
-**What's needed:** either a cron tick (cheap, predictable) or piggyback on the existing
-collision-rebalance code: when `moveItemPosition` computes a new position, also check
-`MIN(position) < threshold` and trigger a full rebalance if so.
+`moveItemPosition` now opportunistically rebalances when `MIN(position) < REBALANCE_FLOOR`
+(-10⁹). The check is a single indexed MIN probe and amortizes across many moves before firing.
+Tested via `shouldRebalanceForOverflow` in `positions.test.ts`.
 
 ### 3.9 Per-item-kind dedup field declared in the registry (spec §9.3)
 
@@ -251,11 +249,12 @@ INSERT. Spec §9.3 floats lifting this into the item-kind manifest as `dedupFiel
 the partial unique indexes can be generated from the registry. Not wired today; do this when
 the second dedupping kind lands (Letterboxd, probably).
 
-### 3.10 Module set extensions (spec §6 "Module catalog (initial)")
+### 3.10 ~~Module set extensions~~ — RESERVED SLOTS ADDED in this PR
 
-The 5 modules shipped are the catalog. Spec floats `scheduling`, `comments`, `attachments` as
-future additions — each one is one entry in `MODULE_NAMES`, one manifest in
-`moduleManifests.ts`, and however much new UI the feature needs.
+`scheduling`, `comments`, `attachments` are now in `MODULE_NAMES` with no-data
+`inspectRemoval` manifests (disabling them is silent until the feature PR adds data), gate
+copy in `moduleGate.ts`, and "coming soon" labels in the settings sheet. The feature surfaces
+themselves (date pickers, comment threads, file attachments) still need their own PRs.
 
 ---
 

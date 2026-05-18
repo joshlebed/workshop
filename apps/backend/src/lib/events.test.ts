@@ -67,17 +67,17 @@ describe("recordEvent", () => {
     ]);
   });
 
-  it("accepts every enum value", async () => {
+  it("accepts every supported event type", async () => {
     const db = fakeDb();
     const types = [
       "list_created",
       "list_archived",
+      "list_duplicated",
       "member_joined",
       "member_left",
       "member_removed",
       "item_added",
       "item_updated",
-      "item_deleted",
       "item_archived",
       "item_upvoted",
       "item_unupvoted",
@@ -87,6 +87,12 @@ describe("recordEvent", () => {
       "item_demoted",
       "invite_created",
       "invite_revoked",
+      "module_enabled",
+      "module_disabled",
+      "source_added",
+      "source_removed",
+      "source_updated",
+      "source_synced",
     ] as const;
     for (const type of types) {
       await recordEvent({ db, listId, actorId, type });

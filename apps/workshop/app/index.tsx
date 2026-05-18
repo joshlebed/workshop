@@ -57,8 +57,6 @@ function summaryLabel(list: { itemKind: ItemKind | null; modules: ModuleName[] }
 const EVENT_VERB: Partial<Record<ActivityEvent["type"], string>> = {
   item_added: "added",
   item_updated: "edited",
-  // Legacy: pre-soft-delete builds emitted this. New code emits item_archived.
-  item_deleted: "removed an item",
   item_archived: "archived an item",
   list_archived: "archived the list",
   item_upvoted: "upvoted",
@@ -69,8 +67,6 @@ const EVENT_VERB: Partial<Record<ActivityEvent["type"], string>> = {
   item_demoted: "unpinned",
   member_joined: "joined",
   member_left: "left",
-  album_promoted: "pinned an album",
-  album_demoted: "unpinned an album",
 };
 
 function relativeShort(iso: string, now = Date.now()): string {

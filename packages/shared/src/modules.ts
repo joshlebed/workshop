@@ -2,7 +2,21 @@
 // active. Each module is a pure string identifier; the DB stores names and
 // the app interprets them.
 
-export const MODULE_NAMES = ["todo", "voting", "ranking", "leaderboard", "sources"] as const;
+// `todo` / `voting` / `ranking` / `leaderboard` / `sources` shipped with
+// #199 as the core compositional set. `scheduling` / `comments` /
+// `attachments` are reserved slots from §3.10 of the redesign — manifests
+// exist so a list can opt in and the UI can hide unused affordances by
+// default, but the rich features live in their respective follow-up PRs.
+export const MODULE_NAMES = [
+  "todo",
+  "voting",
+  "ranking",
+  "leaderboard",
+  "sources",
+  "scheduling",
+  "comments",
+  "attachments",
+] as const;
 
 export type ModuleName = (typeof MODULE_NAMES)[number];
 
@@ -31,6 +45,9 @@ export const MODULE_REMOVAL_WARNINGS = {
   ranking: "ranking.hide_order",
   leaderboard: "leaderboard.hide_scores",
   sources: "sources.deactivate_sources",
+  scheduling: "scheduling.hide_schedules",
+  comments: "comments.hide_threads",
+  attachments: "attachments.hide_files",
 } as const satisfies Record<ModuleName, string>;
 
 export type ModuleWarningCode = (typeof MODULE_REMOVAL_WARNINGS)[ModuleName];
@@ -39,4 +56,60 @@ export interface ConfigWarning {
   code: string;
   message: string;
   affectedCount?: number;
+}
+
+/**
+ * Per-code client-side copy for module-removal warnings. Centralizes the
+ * pretty copy off the server's bare "N completed items will be hidden." so
+ * the UI can ship localized strings later without coordinating with the
+ * backend. Fall back to the server's `message` for codes the client doesn't
+ * know (forward compatible — adding a new module warning code works on
+ * stale clients via the server message).
+ *
+ * Returns `{ headline, detail }`:
+ * - `headline` — bold, scannable lead ("Hide 3 completed items?")
+ * - `detail`   — secondary explanatory line preserving the safety net
+ *                ("They stay in the database — re-enable To-Do anytime to
+ *                bring them back.")
+ */
+export interface PrettyWarningCopy {
+  headline: string;
+  detail: string;
+}
+
+function plural(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
+}
+
+export function formatConfigWarning(warning: ConfigWarning): PrettyWarningCopy {
+  const count = warning.affectedCount ?? 0;
+  switch (warning.code) {
+    case MODULE_REMOVAL_WARNINGS.todo:
+      return {
+        headline: `Hide ${count} completed ${plural(count, "item", "items")}?`,
+        detail: "They stay in the database — re-enable To-Do anytime to bring them back.",
+      };
+    case MODULE_REMOVAL_WARNINGS.voting:
+      return {
+        headline: `Hide ${count} ${plural(count, "upvote", "upvotes")}?`,
+        detail: "Upvotes are preserved on items — re-enable Voting to bring the pills back.",
+      };
+    case MODULE_REMOVAL_WARNINGS.ranking:
+      return {
+        headline: `Drop the manual order from ${count} ${plural(count, "item", "items")}?`,
+        detail: "Positions stay on the rows; re-enable Ranking to restore the order.",
+      };
+    case MODULE_REMOVAL_WARNINGS.leaderboard:
+      return {
+        headline: `Hide ${count} ${plural(count, "score", "scores")}?`,
+        detail: "Scores are preserved — re-enable Leaderboard to surface them again.",
+      };
+    case MODULE_REMOVAL_WARNINGS.sources:
+      return {
+        headline: `Stop syncing ${count} attached ${plural(count, "source", "sources")}?`,
+        detail: "Items already imported stay. Re-enable Sources to resume syncing.",
+      };
+    default:
+      return { headline: "Heads up", detail: warning.message };
+  }
 }

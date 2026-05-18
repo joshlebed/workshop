@@ -271,12 +271,27 @@ export const listSources = pgTable(
       .references(() => lists.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     config: jsonb("config").notNull(),
+    /**
+     * Per-source secrets (OAuth refresh tokens, per-user API keys) — sealed
+     * at the application layer before insert. NULL for sources using
+     * app-level credentials (today's spotify_playlist + the
+     * letterboxd_list public RSS feed). See `lib/sources/secrets.ts` for
+     * the seal/open envelope. §3.5 of the redesign.
+     */
+    secrets: jsonb("secrets"),
+    /** Inbound webhook path slug — set for push-driven sources, NULL for pull. */
+    webhookSlug: text("webhook_slug"),
+    /** Cron interval expressed in seconds. NULL = manual sync only. */
+    syncSchedule: text("sync_schedule"),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     lastSyncedBy: uuid("last_synced_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => ({
     listIdx: index("list_sources_list_idx").on(t.listId),
+    webhookSlugIdx: uniqueIndex("list_sources_webhook_slug_idx")
+      .on(t.webhookSlug)
+      .where(sql`webhook_slug IS NOT NULL`),
   }),
 );
 

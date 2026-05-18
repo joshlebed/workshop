@@ -392,15 +392,20 @@ function verbGlyphFor(type: ActivityEvent["type"]): string {
   switch (type) {
     case "item_added":
     case "list_created":
+    case "list_duplicated":
     case "invite_created":
+    case "source_added":
+    case "module_enabled":
       return "+";
-    case "item_deleted":
     case "item_archived":
     case "list_archived":
     case "invite_revoked":
     case "member_removed":
+    case "source_removed":
+    case "module_disabled":
       return "−";
     case "item_updated":
+    case "source_updated":
       return "·";
     case "item_upvoted":
       return "↑";
@@ -411,19 +416,15 @@ function verbGlyphFor(type: ActivityEvent["type"]): string {
     case "item_uncompleted":
       return "↺";
     case "item_promoted":
-    case "album_promoted":
       return "★";
     case "item_demoted":
-    case "album_demoted":
       return "☆";
     case "member_joined":
       return "→";
     case "member_left":
       return "←";
-    case "album_shelf_refreshed":
+    case "source_synced":
       return "↻";
-    case "album_shelf_source_changed":
-      return "⇄";
     default:
       return "·";
   }
@@ -444,13 +445,12 @@ function describeEvent(event: ActivityEvent): string {
       return `added${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_updated":
       return `edited${payloadString(payload, "title", (t) => ` "${t}"`)}`;
-    case "item_deleted":
-      // Legacy hard-delete event; pre-soft-delete builds emitted this.
-      return `removed${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_archived":
       return `archived${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "list_archived":
       return `archived this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
+    case "list_duplicated":
+      return `duplicated this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
     case "item_upvoted":
       return `upvoted${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_unupvoted":
@@ -467,17 +467,21 @@ function describeEvent(event: ActivityEvent): string {
       return "shared a link";
     case "invite_revoked":
       return "revoked a share link";
-    case "album_shelf_refreshed": {
-      const added = typeof payload.added === "number" ? payload.added : 0;
-      if (added === 0) return "refreshed the shelf · no new albums";
-      return `refreshed · ${added} new album${added === 1 ? "" : "s"}`;
+    case "module_enabled":
+      return `turned on ${payloadString(payload, "module", (m) => m) || "a module"}`;
+    case "module_disabled":
+      return `turned off ${payloadString(payload, "module", (m) => m) || "a module"}`;
+    case "source_added":
+      return "attached a source";
+    case "source_removed":
+      return "detached a source";
+    case "source_updated":
+      return "updated a source";
+    case "source_synced": {
+      const added = typeof payload.addedCount === "number" ? payload.addedCount : 0;
+      if (added === 0) return "refreshed the source · no new items";
+      return `refreshed the source · ${added} new item${added === 1 ? "" : "s"}`;
     }
-    case "album_shelf_source_changed":
-      return "changed the source playlist";
-    case "album_promoted":
-      return `pinned${payloadString(payload, "albumTitle", (t) => ` "${t}"`)}`;
-    case "album_demoted":
-      return `unpinned${payloadString(payload, "albumTitle", (t) => ` "${t}"`)}`;
     default: {
       const _exhaustive: never = event.type as never;
       void _exhaustive;

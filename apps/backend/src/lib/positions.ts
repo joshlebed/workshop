@@ -9,6 +9,15 @@ import type { DbClient } from "./sql.js";
 
 const POSITION_SPACING = 1024;
 
+/**
+ * Trigger a normalizing rebalance when `MIN(position) < REBALANCE_FLOOR`.
+ * The "move to top" operation forever decrements positions; in practice
+ * the rebalance never fires under normal usage, but it bounds the long
+ * tail before positions become inscrutable in the DB (§3.8 of the
+ * redesign).
+ */
+export const REBALANCE_FLOOR = -1_000_000_000;
+
 interface MoveArgs {
   listId: string;
   itemId: string;
@@ -78,7 +87,30 @@ export async function moveItemPosition(args: MoveArgs): Promise<MoveResult> {
     .update(items)
     .set({ position: newPos, updatedAt: new Date() })
     .where(eq(items.id, itemId));
+
+  // §3.8: opportunistic rebalance when "move-to-top forever" has driven the
+  // list's MIN(position) below the floor. Cheap to check (single-row index
+  // probe) and amortizes across many moves before firing.
+  if (!rebalanced) {
+    const min = await minPositionForList(db, listId);
+    if (shouldRebalanceForOverflow(min)) {
+      await rebalanceList(listId, db);
+      rebalanced = true;
+      newPos = await lookupPosition(db, itemId);
+    }
+  }
+
   return { position: newPos, rebalanced };
+}
+
+async function minPositionForList(db: DbClient, listId: string): Promise<number | null> {
+  const [row] = await db
+    .select({ min: sql<number | null>`MIN(position)::int` })
+    .from(items)
+    .where(and(eq(items.listId, listId), isNull(items.archivedAt), sql`position IS NOT NULL`));
+  const min = row?.min;
+  if (min === null || min === undefined) return null;
+  return Number(min);
 }
 
 async function lookupPosition(db: DbClient, id: string): Promise<number | null> {
@@ -107,12 +139,23 @@ async function neighborPosition(
   return rows[0]?.position ?? null;
 }
 
-function computeBetween(lower: number | null, upper: number | null): number | null {
+export function computeBetween(lower: number | null, upper: number | null): number | null {
   if (lower === null && upper === null) return POSITION_SPACING;
   if (lower === null && upper !== null) return upper - POSITION_SPACING;
   if (lower !== null && upper === null) return lower + POSITION_SPACING;
   if (upper! - lower! <= 1) return null;
   return Math.floor((lower! + upper!) / 2);
+}
+
+/**
+ * Returns true when the list's ordered section has drifted into negative
+ * territory deep enough to warrant a normalizing rebalance. Callers check
+ * this post-move; an opportunistic rebalance keeps the long tail of
+ * "move-to-top forever" from producing inscrutable positions in the DB.
+ */
+export function shouldRebalanceForOverflow(minPosition: number | null): boolean {
+  if (minPosition === null) return false;
+  return minPosition < REBALANCE_FLOOR;
 }
 
 /**
