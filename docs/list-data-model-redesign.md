@@ -206,7 +206,16 @@ itemKindDefault, modules[], sources?[] }`. Presets ("Movie Watchlist")
 - `GET /v1/lists/:id` — unchanged shape; response now includes `modules`,
   `itemKindDefault`, and attached `sources[]`.
 - `PATCH /v1/lists/:id` — can update `modules`, `item_kind_default`, plus
-  the existing presentation fields.
+  the existing presentation fields. Destructive module changes require an
+  `acknowledgedWarnings: string[]` field echoing the warning codes returned
+  by the config-preview endpoint below; without it, the server returns
+  `409 Conflict` with the warning list. See §6.
+- `POST /v1/lists/:id/config-preview` — body:
+  `{ modules?: string[], itemKindDefault?: string }` → returns
+  `{ warnings: ConfigWarning[] }` where each warning is
+  `{ code: string, message: string, affectedCount?: number }`. The client
+  uses this to render a confirmation sheet before applying. Always-empty
+  for empty lists (no non-archived items). See §6.
 
 ### Duplicate
 
@@ -264,7 +273,135 @@ Unchanged. New event types: `module_enabled`, `module_disabled`,
 `source_added`, `source_removed`, `source_synced`, `list_duplicated`
 (payload includes the source list ID).
 
-## 6. UX implications worth flagging
+## 6. Mutating list config after creation
+
+A list's `modules` and `item_kind_default` aren't frozen at create time — a
+user can switch a `[ranking]` shopping list into a `[voting]` poll, add a
+`leaderboard` to a watchlist, or turn off `todo` and treat a list as a pure
+notes board. Two principles govern how those mutations work:
+
+**Principle 1 — empty lists are free to reshape.** If a list has no
+non-archived items, any config change is silent. The
+`/v1/lists/:id/config-preview` endpoint returns an empty warning array; the
+client skips the confirmation sheet.
+
+**Principle 2 — modules are display toggles over preserved data.** Disabling
+a module never deletes rows. It hides the corresponding UI surface, gates
+the related endpoints, and leaves the underlying rows untouched. Re-enabling
+the module brings every prior datum back exactly as it was. This is the
+contract that makes "experiment with the list shape" safe, and the contract
+that makes the engineering side mechanical.
+
+### Module change taxonomy
+
+For a non-empty list, here's what each delta does and whether the user is
+warned. Warnings have stable codes so clients can render localized copy and
+echo them back on the PATCH:
+
+| change                   | impact on data                                                    | warning code                 |
+| ------------------------ | ----------------------------------------------------------------- | ---------------------------- |
+| add `todo`               | new "Done" section appears; items default to incomplete           | none                         |
+| remove `todo`            | done section hidden; `items.completed*` columns preserved         | `todo.hide_completed`        |
+| add `voting`             | upvote affordance appears                                         | none                         |
+| remove `voting`          | upvote affordance hidden; `item_upvotes` rows preserved           | `voting.hide_upvotes`        |
+| add `ranking`            | items gain manual `position`; default to unordered                | none                         |
+| remove `ranking`         | manual-order section hidden; `items.position` preserved           | `ranking.hide_order`         |
+| add `leaderboard`        | score submission appears                                          | none                         |
+| remove `leaderboard`     | scores hidden; `item_scores` rows preserved                       | `leaderboard.hide_scores`    |
+| add `sources`            | source attachment becomes possible                                | none                         |
+| remove `sources`         | sources stop syncing; `list_sources` rows preserved; items stay   | `sources.deactivate_sources` |
+| change `itemKindDefault` | affects future items only; existing items keep their content_type | none (informational hint OK) |
+
+Two rules read off this table: **adding any module is always silent** (the
+new affordance turns on, no data is at risk); **removing a module that has
+associated data emits exactly one warning code** carrying the affected-row
+count. The warning is a confirmation prompt, not a permission gate — the
+user can always proceed; nothing is lost if they do.
+
+### Engineering abstraction: module manifests
+
+To keep this from sprawling, every module is defined by a single
+server-side manifest:
+
+```ts
+type ModuleManifest = {
+  name: ModuleName;
+  // Inspect the list state and report any warnings that would fire
+  // if this module were removed. Called by /config-preview and by PATCH
+  // when the module is being removed without acknowledgement.
+  inspectRemoval: (listId: string, tx: DbConn) => Promise<ConfigWarning[]>;
+  // Optional hooks — most modules don't need these because data is
+  // preserved automatically. `sources` uses onDisable to stop scheduled
+  // syncs (when those land); nothing else implements them today.
+  onEnable?: (listId: string, tx: DbConn) => Promise<void>;
+  onDisable?: (listId: string, tx: DbConn) => Promise<void>;
+};
+```
+
+The list-config code path is then a small generic loop:
+
+```ts
+// /config-preview and PATCH both call this
+async function previewModuleChange(listId, currentModules, nextModules, tx) {
+  const removed = currentModules.filter((m) => !nextModules.includes(m));
+  const warnings: ConfigWarning[] = [];
+  for (const moduleName of removed) {
+    const manifest = MODULE_REGISTRY[moduleName];
+    warnings.push(...(await manifest.inspectRemoval(listId, tx)));
+  }
+  return warnings;
+}
+```
+
+Adding a future module (`scheduling`, `comments`, `attachments`) means
+registering one manifest. No changes to PATCH, to the preview endpoint, to
+the client confirmation flow, or to activity logging. The abstraction is
+the registry; everything else is generic.
+
+### Content schema evolution (separate from modules)
+
+Module toggles never touch `items.content`. The other axis of config drift
+is the **shape** of `content` for a given `content_type` — e.g., we want
+to add a `runtimeMinutes` field to `movie` items. The rule there is
+forward-compatible: every `content` schema is a zod object with optional
+fields and sensible defaults; readers never assume newer fields exist on
+older rows. Adding a field is a code-only change. Removing a field is
+allowed but the underlying jsonb is left intact (next-time-read just
+ignores it). If a future content_type evolves enough to need a hard
+migration, the path is a dedicated one-shot Drizzle migration that
+rewrites `items.content` in place — but the v1 module/content_type set
+shouldn't need that.
+
+### Content-type conversion on existing items
+
+Out of scope for v1. A user converting an `[item_kind_default=movie]` list
+into a `[voting]` poll keeps the existing items as `content_type=movie`;
+the list's poll affordances just operate on whatever items are present.
+"Bulk-convert every item in this list to a different content_type" is a
+sharper-edged operation that, if it ever ships, gets its own dedicated
+endpoint with its own warning surface — not a side effect of changing
+`item_kind_default`.
+
+### Why not store derived flags on items
+
+A tempting shortcut would be a `list.featuresHidden: { todo: true }`
+flag, or per-item booleans that mirror the parent list's modules. Both
+are anti-patterns: they let display state drift from the source of truth
+(`lists.modules`), and they require write traffic on every toggle. The
+single source of truth is the array on the list; the UI computes
+visibility from it. The data rows underneath (`items.completed*`,
+`item_upvotes`, `item_scores`, `items.position`) are oblivious to the
+toggle state.
+
+### Activity events for config changes
+
+`module_enabled` / `module_disabled` events (already in the plan) get a
+`payload.affectedCount` field when the disable surfaces hidden data, so
+the activity feed can render "@josh turned off completion (3 done items
+hidden)." Re-enabling restores both data and the activity-feed
+attribution; the disable+enable pair forms a clean round-trip.
+
+## 7. UX implications worth flagging
 
 - **Duplicate affordance.** The list detail screen gets a "Duplicate"
   action. The duplicate flow lets the user rename, re-emoji, and toggle
@@ -279,36 +416,37 @@ Unchanged. New event types: `module_enabled`, `module_disabled`,
   from Spotify" affordance and a manual refresh button — generic across
   any list with the `sources` module on, not just album shelves.
 
-## 7. Open questions
+## 8. Open questions
 
-7.1. **Who can duplicate a list?** Three options: owner only / owner +
+8.1. **Who can duplicate a list?** Three options: owner only / owner +
 members / anyone with an accepted invite. Recommendation: any member.
 The duplicate is fully independent, so there's no privacy leak beyond
 what the duplicating user already saw — Discord-style "I can fork a
 server I'm in."
 
-7.2. **Can you change modules after create?** Yes — `PATCH /v1/lists/:id`
-accepts a new `modules` array. Disabling a module is non-destructive:
-data isn't deleted, just hidden (e.g., disabling `leaderboard` keeps
-`item_scores` rows but hides the surface). Re-enabling brings the data
-back. This makes "duplicate, then switch from `[ranking]` to
-`[voting]`" a clean operation.
-
-7.3. **Should completion state copy on duplicate?** Default no. Reason:
+8.2. **Should completion state copy on duplicate?** Default no. Reason:
 the common case (album-shelf → poll, watchlist → recommend-to-friend) is
 a fresh start. `preserveCompletion: true` is the opt-in for "duplicate
 this and let me keep going from where I left off."
 
-7.4. **Mixed `content_type` in one list.** Schema allows it
+8.3. **Mixed `content_type` in one list.** Schema allows it
 (`item_kind_default` is only a default). v1 product can restrict to
 homogeneous; lifting it later when use cases appear (a Trip list with
 restaurants + flights + hotels) costs nothing.
 
-7.5. **Sync cadence for `sources` module.** Manual refresh only (today's
+8.4. **Sync cadence for `sources` module.** Manual refresh only (today's
 album-shelf behavior, generalized). Scheduled pull and webhook-driven
 sync are future work; the table has the columns ready.
 
-## 8. Sequencing
+8.5. **"Show hidden module data" as an admin escape hatch.** Per §6, data
+from a disabled module is preserved but invisible. Should there be a
+debug surface (or a "restore" action) that lets the user see _what_ would
+come back if they re-enabled the module, without committing to it?
+Cheapest answer: the confirmation sheet for _enabling_ a module shows the
+preserved-data summary, mirroring the disable warning. No separate
+viewer needed.
+
+## 9. Sequencing
 
 Five PRs, each independently shippable. Only PR-A has a migration.
 
@@ -326,6 +464,9 @@ Five PRs, each independently shippable. Only PR-A has a migration.
 4. **PR-D: duplicate endpoint + UI.** The album-shelf-to-poll flow lands
    here. Server-side endpoint + the duplicate sheet in the mobile/web
    client.
-5. **PR-E: modules in create/edit flow.** Module toggles in the list
-   settings sheet; preset bundles re-expressed as client-side templates;
-   legacy `type`-driven UI branches removed.
+5. **PR-E: modules in create/edit flow + config-preview.** Module toggles
+   in the list settings sheet; preset bundles re-expressed as client-side
+   templates; legacy `type`-driven UI branches removed; the
+   `/config-preview` endpoint and the warning-acknowledgement protocol
+   from §6 land here, since they only have a user-visible surface once
+   the toggles are in the UI.
