@@ -4,6 +4,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -13,6 +14,13 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
+// `list_type` and `activity_event_type` enums survive in Postgres for now —
+// the migration drops the NOT NULL on `lists.type` and `items.type` and
+// migrates `activity_events.event_type` to text. Code reads/writes only the
+// new columns (`lists.modules`, `lists.item_kind`, `items.kind`,
+// `items.content`, `items.position`); the legacy columns are dead weight
+// scheduled for a follow-up cleanup PR. Keeping the enum types around avoids
+// `DROP TYPE` ceremony in this migration.
 export const listTypeEnum = pgEnum("list_type", [
   "movie",
   "tv",
@@ -27,39 +35,6 @@ export const memberRoleEnum = pgEnum("member_role", ["owner", "member"]);
 
 export const authProviderEnum = pgEnum("auth_provider", ["apple", "google"]);
 
-export const activityEventTypeEnum = pgEnum("activity_event_type", [
-  "list_created",
-  "list_archived",
-  "member_joined",
-  "member_left",
-  "member_removed",
-  "item_added",
-  "item_updated",
-  // Legacy: pre-soft-delete code emitted `item_deleted` for hard deletes. Kept
-  // in the enum so historical rows still type-check; new code emits
-  // `item_archived` instead (see DELETE /v1/lists/:id and /v1/items/:id).
-  "item_deleted",
-  "item_archived",
-  "item_upvoted",
-  "item_unupvoted",
-  "item_completed",
-  "item_uncompleted",
-  "item_promoted",
-  "item_demoted",
-  "invite_created",
-  "invite_revoked",
-  "album_shelf_refreshed",
-  "album_shelf_source_changed",
-  "album_promoted",
-  "album_demoted",
-]);
-
-// Email is the canonical user identity. One user row per real person; their
-// linked (provider, sub) pairs live in `user_identities`. Sign-in via any
-// linked provider — or by email-match on first contact — resolves to the same
-// user, so signing in with Google for the first time on an email already
-// registered via Apple attaches a new identity to the existing account
-// instead of forking it.
 export const users = pgTable(
   "users",
   {
@@ -70,9 +45,6 @@ export const users = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => ({
-    // Case-insensitive uniqueness on email, partial so NULL emails are allowed.
-    // Providers don't normalise case; storing raw email but matching lowercased
-    // keeps the merge-on-email invariant intact.
     emailLowerIdx: uniqueIndex("users_email_lower_idx")
       .on(sql`lower(${t.email})`)
       .where(sql`email IS NOT NULL`),
@@ -99,28 +71,33 @@ export const lists = pgTable(
   "lists",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    type: listTypeEnum("type").notNull(),
+    // Legacy column — preserved nullable post-migration. Read paths ignore
+    // it; the column is removed in a follow-up cleanup PR once we're
+    // confident nothing reads from it.
+    type: listTypeEnum("type"),
     name: text("name").notNull(),
     emoji: text("emoji").notNull(),
     color: text("color").notNull(),
     description: text("description"),
-    // Optional user-uploaded cover photo. Stored as a `data:image/...;base64,…`
-    // URL so we don't need S3 infra for v1 — client resizes/compresses to
-    // ~1024px before uploading. Render as the list thumbnail when present;
-    // fall back to `emoji` when null.
     coverPhotoUrl: text("cover_photo_url"),
     ownerId: uuid("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    // Legacy column — same story as `type`.
     metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    /**
+     * Behaviors enabled on this list. Plain text array; the app interprets
+     * the names (see `@workshop/shared/modules`). NULL on legacy rows during
+     * the migration window; backfilled from `lists.type` in 0014.
+     */
+    modules: text("modules").array().notNull().default(sql`'{}'::text[]`),
+    /**
+     * Constrains the kind of items the list accepts. NULL = unconstrained
+     * (Blank List). Backfilled from `lists.type` in 0014.
+     */
+    itemKind: text("item_kind"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
-    // Soft-delete marker. NULL = active list. Non-NULL = archived; the row is
-    // filtered out of every read path so archived lists become invisible to
-    // clients. Distinct from `list_members.archived_at`, which is per-(list,
-    // viewer) presentation state (the "stash from my home feed" toggle). An
-    // unarchive surface isn't shipped yet — set via DELETE /v1/lists/:id by
-    // the owner only.
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => ({
@@ -140,16 +117,6 @@ export const listMembers = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     role: memberRoleEnum("role").notNull(),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().default(sql`now()`),
-    // Per-(list, viewer) presentation state. Nullable because the natural
-    // unset value is "never pinned / never archived / never muted"; we treat
-    // NULL as the absence of the flag rather than encoding a sentinel
-    // timestamp. Each collaborator has their own per-list opinion — Alex's
-    // pin doesn't surface on Sarah's home.
-    //
-    // Per-list `lastReadAt` lives in `user_activity_reads` (composite-keyed
-    // on (user_id, list_id)). That table predates these columns and the
-    // `POST /v1/activity/read` endpoint already populates it; the unread
-    // count on `GET /v1/lists` reads from there.
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     mutedAt: timestamp("muted_at", { withTimezone: true }),
@@ -191,11 +158,27 @@ export const items = pgTable(
     listId: uuid("list_id")
       .notNull()
       .references(() => lists.id, { onDelete: "cascade" }),
-    type: listTypeEnum("type").notNull(),
+    // Legacy denormalized list type. Preserved nullable through this
+    // migration window; reads use `kind` instead.
+    type: listTypeEnum("type"),
     title: text("title").notNull(),
     url: text("url"),
     note: text("note"),
+    // Legacy metadata blob — same story.
     metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    /**
+     * Content shape for this item. Validated per-kind by zod schemas in
+     * `@workshop/shared/itemKinds`. NULL on legacy rows during the migration
+     * window; backfilled from `items.metadata` in 0014.
+     */
+    kind: text("kind"),
+    content: jsonb("content").notNull().default(sql`'{}'::jsonb`),
+    /**
+     * Manual ordering when the parent list has the `ranking` module enabled.
+     * `NULL` = unordered (renders in the recency-sorted section). Backfilled
+     * from `items.metadata->>'position'` in 0014.
+     */
+    position: integer("position"),
     addedBy: uuid("added_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -204,11 +187,6 @@ export const items = pgTable(
     completedBy: uuid("completed_by").references(() => users.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
-    // Soft-delete marker. NULL = active item. Non-NULL = archived; filtered
-    // out of every item read so archived items become invisible to clients.
-    // For album_shelf rows the partial unique index on
-    // (list_id, spotifyAlbumId) still applies to archived rows, so a refresh
-    // doesn't resurface an album the user explicitly archived.
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (t) => ({
@@ -218,16 +196,13 @@ export const items = pgTable(
       t.completed,
       t.createdAt,
     ),
-    // Partial unique idx for album_shelf items: dedupe by (list_id, spotifyAlbumId)
-    // so concurrent refreshes can `INSERT ... ON CONFLICT DO NOTHING` without
-    // a per-shelf lock. The predicate is `metadata ? 'spotifyAlbumId'` rather
-    // than `type = 'album_shelf'` to keep the migration enum-free — drizzle's
-    // migrator wraps all pending migrations in one transaction and Postgres
-    // forbids using a freshly-added enum value in the same tx. Items of other
-    // list types don't carry spotifyAlbumId so they're naturally excluded.
-    listSpotifyAlbumIdx: uniqueIndex("items_list_spotify_album_idx")
-      .on(t.listId, sql`(${t.metadata}->>'spotifyAlbumId')`)
-      .where(sql`metadata ? 'spotifyAlbumId'`),
+    listPositionIdx: index("items_list_position_idx").on(t.listId, t.position),
+    // Per-kind dedup partial unique index. Currently only spotify_album dedups
+    // on `content->>'spotifyAlbumId'`. Generalized from the legacy
+    // `items_list_spotify_album_idx`.
+    listKindDedupSpotifyIdx: uniqueIndex("items_list_spotify_album_content_idx")
+      .on(t.listId, sql`(${t.content}->>'spotifyAlbumId')`)
+      .where(sql`kind = 'spotify_album' AND content ? 'spotifyAlbumId'`),
   }),
 );
 
@@ -258,7 +233,12 @@ export const activityEvents = pgTable(
     actorId: uuid("actor_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
-    eventType: activityEventTypeEnum("event_type").notNull(),
+    /**
+     * Plain text after the 0014 migration — adding a new event type is code
+     * only. The `@workshop/shared` `ActivityEventType` union is the source of
+     * truth for what's valid.
+     */
+    eventType: text("event_type").notNull(),
     itemId: uuid("item_id").references(() => items.id, { onDelete: "cascade" }),
     payload: jsonb("payload").notNull().default(sql`'{}'::jsonb`),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
@@ -300,12 +280,65 @@ export const metadataCache = pgTable(
 );
 
 /**
- * One row per (game item, user, calendar day). Re-pasting the same day's
- * score updates the existing row (UPSERT on the composite PK), so users
- * never accumulate duplicate plays for the same day. `date` is a YYYY-MM-DD
- * text column whose value is the **submitter's local calendar day** at the
- * time of paste — matching how each game itself decides which day a play
- * belongs to.
+ * External feeds attached to a list. Generalizes the legacy
+ * `lists.metadata.spotifyPlaylistUrl` field — sources are first-class rows
+ * keyed by (list_id, kind, config). Adding a new source kind is one entry
+ * in `@workshop/shared/sourceKinds` plus a server-side sync implementation.
+ */
+export const listSources = pgTable(
+  "list_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listId: uuid("list_id")
+      .notNull()
+      .references(() => lists.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    config: jsonb("config").notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    lastSyncedBy: uuid("last_synced_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    listIdx: index("list_sources_list_idx").on(t.listId),
+  }),
+);
+
+/**
+ * Generalizes the legacy `game_scores` table. One row per (item, user,
+ * period_key); `period_key` is opaque ("YYYY-MM-DD" for daily games,
+ * "YYYY-WNN" for weekly, "all-time" for one-off). `score_value` is the
+ * parsed numeric when available so the leaderboard can sort; `score_raw`
+ * preserves the original input (emojis, line breaks, etc.).
+ */
+export const itemScores = pgTable(
+  "item_scores",
+  {
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    periodKey: text("period_key").notNull(),
+    scoreValue: numeric("score_value"),
+    scoreRaw: text("score_raw").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.itemId, t.userId, t.periodKey] }),
+    itemPeriodIdx: index("item_scores_item_period_idx").on(t.itemId, t.periodKey),
+    userPeriodIdx: index("item_scores_user_period_idx").on(t.userId, t.periodKey),
+  }),
+);
+
+/**
+ * Legacy daily-game scores table. Superseded by `item_scores` post-redesign;
+ * still in the DB so the data isn't lost. The 0014 migration backfills every
+ * row into `item_scores` with `period_key = date` and `score_raw = score`.
+ * New code writes to `item_scores` exclusively. Scheduled for a follow-up
+ * cleanup PR that drops this table once we're confident the backfill is
+ * complete.
  */
 export const gameScores = pgTable(
   "game_scores",
@@ -351,4 +384,6 @@ export type DbActivityEvent = typeof activityEvents.$inferSelect;
 export type DbUserActivityRead = typeof userActivityReads.$inferSelect;
 export type DbMetadataCache = typeof metadataCache.$inferSelect;
 export type DbRateLimit = typeof rateLimits.$inferSelect;
+export type DbListSource = typeof listSources.$inferSelect;
+export type DbItemScore = typeof itemScores.$inferSelect;
 export type DbGameScore = typeof gameScores.$inferSelect;

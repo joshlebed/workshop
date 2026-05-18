@@ -9,17 +9,17 @@ import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
 import { albumShelfRoutes } from "./routes/v1/album-shelf.js";
 import { authRoutes } from "./routes/v1/auth.js";
-import { itemScoreRoutes, listGameScoresRoutes } from "./routes/v1/game-scores.js";
 import { inviteRoutes, publicInviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
 import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
 import { listRoutes } from "./routes/v1/lists.js";
 import { memberRoutes } from "./routes/v1/members.js";
+import { itemScoreRoutes, listScoresRoutes } from "./routes/v1/scores.js";
 import { searchRoutes } from "./routes/v1/search.js";
+import { sourcePreviewRoutes } from "./routes/v1/sources.js";
 import { userRoutes } from "./routes/v1/users.js";
 
 const clientIp: RateLimitKeyFn = (c) => {
-  // API Gateway HTTP API + Hono node-server both populate x-forwarded-for.
   const xff = c.req.header("x-forwarded-for");
   if (xff) {
     const first = xff.split(",")[0]?.trim();
@@ -49,12 +49,6 @@ export function buildApp() {
 
   app.onError((e, c) => {
     logger.error("unhandled error", { error: e, path: c.req.path });
-    // Surface error name + message in the response so a 500 in the iOS UI is
-    // actionable without CloudWatch access. We're the only audience for this
-    // API; not worth hiding the underlying error class. DrizzleQueryError's
-    // own `.message` is just the failed query + bind params; the actual
-    // postgres error (e.g. "invalid input value for enum list_type") lives on
-    // `.cause`, so unwrap it to keep the toast useful.
     const root = unwrapRootError(e);
     const message =
       root instanceof Error
@@ -68,8 +62,6 @@ export function buildApp() {
   app.get("/", (c) => c.json({ service: "workshop-api" }));
   app.route("/health", healthRoutes);
 
-  // /v1/auth/* gets a per-IP rate limit — cheap abuse surface, applied before
-  // the JWKS fetch and DB upsert.
   app.use(
     "/v1/auth/*",
     rateLimit({
@@ -84,16 +76,16 @@ export function buildApp() {
   app.route("/v1/users", userRoutes);
   app.route("/v1/lists", listRoutes);
   app.route("/v1/lists", memberRoutes);
-  app.route("/v1/lists", listGameScoresRoutes);
+  app.route("/v1/lists", listScoresRoutes);
   app.route("/v1/items", itemRoutes);
   app.route("/v1/items", itemScoreRoutes);
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/activity", activityRoutes);
+  app.route("/v1/sources", sourcePreviewRoutes);
+  // Legacy alias kept so older mobile builds can still preview Spotify
+  // playlists during the create-list flow.
   app.route("/v1/album-shelf", albumShelfRoutes);
-  // Invite routes split across two URL roots (`/v1/lists/:id/invites/...`
-  // and `/v1/invites/:token/accept`). Mount under `/v1` so both shapes
-  // resolve from a single Hono sub-router.
   app.route("/v1", publicInviteRoutes);
   app.route("/v1", inviteRoutes);
 
@@ -102,9 +94,6 @@ export function buildApp() {
 
 function unwrapRootError(e: unknown): unknown {
   if (!(e instanceof Error)) return e;
-  // DrizzleQueryError wraps a postgres-js error on `.cause`. Walk the chain
-  // (capped) so a deeper cause still surfaces over the wrapper's
-  // "Failed query: ..." message.
   let cur: unknown = e;
   for (let i = 0; i < 5; i++) {
     if (cur instanceof DrizzleQueryError && cur.cause) {

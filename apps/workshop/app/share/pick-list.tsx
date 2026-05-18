@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { ListSummary, ListType } from "@workshop/shared";
+import type { ItemKind, ListSummary } from "@workshop/shared";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
@@ -10,20 +10,25 @@ import { errorMessage } from "../../src/lib/api";
 import { queryKeys } from "../../src/lib/queryKeys";
 import { Button, EmptyState, type ListColorKey, Text, tokens } from "../../src/ui/index";
 
-const TYPE_LABEL: Record<ListType, string> = {
+const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
   tv: "TV",
   book: "Books",
-  date_idea: "Date ideas",
-  trip: "Trips",
-  album_shelf: "Album shelf",
-  game: "Games",
+  link: "Links",
+  spotify_album: "Album shelf",
+  plain: "List",
 };
 
-// Lists that pair naturally with a shared URL (free-form items take a URL +
-// link preview). Search-flow lists (movie/tv/book) ignore prefillUrl in
-// add.tsx, so we visually de-emphasise them when a URL is being shared.
-const URL_FRIENDLY: ReadonlySet<ListType> = new Set<ListType>(["date_idea", "trip", "game"]);
+function summaryLabel(list: ListSummary): string {
+  if (list.itemKind && KIND_LABEL[list.itemKind]) return KIND_LABEL[list.itemKind]!;
+  return "List";
+}
+
+// Lists that pair naturally with a shared URL — anything that accepts the
+// `link` content shape (date ideas, trips, daily games).
+function isUrlFriendly(list: ListSummary): boolean {
+  return list.itemKind === "link" || list.itemKind === null;
+}
 
 function shortHost(url: string | undefined): string | null {
   if (!url) return null;
@@ -184,12 +189,12 @@ function ListRow({
     list.itemCount === 0 ? "Empty" : `${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
   const subtitle =
     list.memberCount > 1
-      ? `${TYPE_LABEL[list.type]} · ${list.memberCount} members`
-      : `${TYPE_LABEL[list.type]} · ${itemsLabel}`;
+      ? `${summaryLabel(list)} · ${list.memberCount} members`
+      : `${summaryLabel(list)} · ${itemsLabel}`;
   // When the user is mid-share with a URL attached, lists that don't take
   // free-form items (movie/tv/book go through search) are dimmed so the eye
   // skips them. The row is still tappable — the add screen will handle it.
-  const dim = hasSharedUrl && !URL_FRIENDLY.has(list.type);
+  const dim = hasSharedUrl && !isUrlFriendly(list);
 
   return (
     <Pressable

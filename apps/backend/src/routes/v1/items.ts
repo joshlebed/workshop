@@ -1,18 +1,25 @@
-import type { Item, ItemMetadata, ListItemsResponse, ListType } from "@workshop/shared";
+import type { Item, ItemContent, ItemKind, ListItemsResponse, ModuleName } from "@workshop/shared";
+import {
+  assertItemFitsList,
+  ITEM_KIND_NAMES,
+  ItemKindMismatchError,
+  isItemKind,
+  UnknownItemKindError,
+  validateContent,
+} from "@workshop/shared/itemKinds";
+import { hasModule } from "@workshop/shared/modules";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { type ZodType, z } from "zod";
+import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { type DbItem, items, lists } from "../../db/schema.js";
+import { items, lists } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { recordEvent } from "../../lib/events.js";
+import { requireModule, stripModuleGatedItemFields } from "../../lib/moduleGate.js";
+import { appendPosition, moveItemPosition } from "../../lib/positions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
-import { executeRows } from "../../lib/sql.js";
-import {
-  albumShelfItemMetadataSchema,
-  albumShelfItemPatchSchema,
-} from "../../lib/validators/album-shelf.js";
+import { type DbClient, executeRows } from "../../lib/sql.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireItemMember } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
@@ -39,287 +46,203 @@ const noteSchema = z
   .transform((s) => s.trim())
   .pipe(z.string().max(1000, "note too long"));
 
-// Loose at parse time — the parent list's `type` is only known after a DB
-// lookup, so per-type tightening (spec §9.4) happens in `validateMetadata`
-// before persistence.
-const metadataSchema = z.record(z.string(), z.unknown());
+const contentSchema = z.record(z.string(), z.unknown());
+
+const kindSchema = z.enum(ITEM_KIND_NAMES);
 
 export const createItemSchema = z.object({
+  kind: kindSchema.optional(),
   title: titleSchema,
   url: urlSchema.optional(),
   note: noteSchema.optional(),
-  metadata: metadataSchema.optional(),
+  content: contentSchema.optional(),
 });
 
-export const updateItemSchema = z
+const updateItemSchema = z
   .object({
+    kind: kindSchema.optional(),
     title: titleSchema.optional(),
     url: z.union([urlSchema, z.null()]).optional(),
     note: z.union([noteSchema, z.null()]).optional(),
-    metadata: metadataSchema.optional(),
+    content: contentSchema.optional(),
   })
   .refine((v) => Object.keys(v).length > 0, "at least one field required");
 
-// --- Per-type metadata validators (Phase 2a-1, spec §9.4) ---
-//
-// Every field is optional so manual entries (no provider match) and
-// provider-enriched entries share the same JSONB shape. `.strict()` rejects
-// stray fields so a stale client can't smuggle arbitrary keys past the
-// validator. `position` is allowed on every type so any list can be ordered
-// (the album-shelf pattern, generalised).
-
-const positionField = z.union([z.number(), z.null()]).optional();
-
-const movieTvMetadataSchema = z
-  .object({
-    source: z.union([z.literal("tmdb"), z.literal("manual")]).optional(),
-    sourceId: z.string().max(64).optional(),
-    posterUrl: z.string().max(2048).optional(),
-    year: z.number().int().min(1800).max(2200).optional(),
-    runtimeMinutes: z.number().int().min(0).max(10000).optional(),
-    overview: z.string().max(4000).optional(),
-    position: positionField,
-  })
-  .strict();
-
-const bookMetadataSchema = z
-  .object({
-    source: z.union([z.literal("google_books"), z.literal("manual")]).optional(),
-    sourceId: z.string().max(64).optional(),
-    coverUrl: z.string().max(2048).optional(),
-    authors: z.array(z.string().max(200)).max(20).optional(),
-    year: z.number().int().min(0).max(2200).optional(),
-    pageCount: z.number().int().min(0).max(100000).optional(),
-    description: z.string().max(4000).optional(),
-    position: positionField,
-  })
-  .strict();
-
-// `date_idea` and `trip` stay loose-but-shaped: link-preview lands in 2a-2 so
-// the spec §9.4 fields are sketched here and tightened in that chunk.
-const placeMetadataSchema = z
-  .object({
-    source: z.union([z.literal("link_preview"), z.literal("manual")]).optional(),
-    sourceId: z.string().max(128).optional(),
-    image: z.string().max(2048).optional(),
-    siteName: z.string().max(200).optional(),
-    title: z.string().max(500).optional(),
-    description: z.string().max(2000).optional(),
-    lat: z.number().min(-90).max(90).optional(),
-    lng: z.number().min(-180).max(180).optional(),
-    position: positionField,
-  })
-  .strict();
-
-// Game items: a URL + display name + an optional thumbnail scraped from the
-// page's OG card. Per-day scores live in their own table (`game_scores`)
-// rather than in `metadata` so re-pasting upserts cleanly.
-const gameMetadataSchema = z
-  .object({
-    thumbnailUrl: z.string().max(2048).optional(),
-    siteName: z.string().max(200).optional(),
-    position: positionField,
-  })
-  .strict();
-
-const metadataSchemasByType: Record<ListType, ZodType<ItemMetadata>> = {
-  movie: movieTvMetadataSchema as ZodType<ItemMetadata>,
-  tv: movieTvMetadataSchema as ZodType<ItemMetadata>,
-  book: bookMetadataSchema as ZodType<ItemMetadata>,
-  date_idea: placeMetadataSchema as ZodType<ItemMetadata>,
-  trip: placeMetadataSchema as ZodType<ItemMetadata>,
-  album_shelf: albumShelfItemMetadataSchema as ZodType<ItemMetadata>,
-  game: gameMetadataSchema as ZodType<ItemMetadata>,
-};
-
-/**
- * Whitelist of metadata fields a member can mutate on an existing item via
- * `PATCH /v1/items/:id`. For `album_shelf` rows only `position` is mutable;
- * everything else is derived from Spotify and re-set by the refresh path.
- * For other list types we accept the type's full metadata schema so callers
- * can either patch position alone (the common case for drag-to-reorder) or
- * replace enriched fields. The patch is merged into the existing metadata
- * blob so a `{ position }` patch doesn't wipe `posterUrl` / `coverUrl` /
- * etc. set by an earlier provider lookup.
- */
-function validatePatchMetadataForType(
-  type: ListType,
-  metadata: unknown,
-): { success: true; data: ItemMetadata } | { success: false; issues: z.ZodIssue[] } {
-  if (type === "album_shelf") {
-    const r = albumShelfItemPatchSchema.safeParse(metadata);
-    if (!r.success) return { success: false, issues: r.error.issues };
-    return { success: true, data: r.data as ItemMetadata };
-  }
-  return validateMetadataForType(type, metadata);
-}
-
-/**
- * Per-list-type validation for `items.metadata`. Returns the parsed metadata
- * on success or a Zod error to forward through the v1 envelope.
- */
-export function validateMetadataForType(
-  type: ListType,
-  metadata: unknown,
-): { success: true; data: ItemMetadata } | { success: false; issues: z.ZodIssue[] } {
-  const schema = metadataSchemasByType[type];
-  const r = schema.safeParse(metadata);
-  if (!r.success) return { success: false, issues: r.error.issues };
-  return { success: true, data: r.data };
-}
+const moveItemSchema = z.object({
+  beforeItemId: z.union([z.string().uuid(), z.null()]).optional(),
+  afterItemId: z.union([z.string().uuid(), z.null()]).optional(),
+});
 
 // --- Shape helpers ---
 
-function toItemShape(i: DbItem): Item {
-  return {
-    id: i.id,
-    listId: i.listId,
-    type: i.type,
-    title: i.title,
-    url: i.url,
-    note: i.note,
-    metadata: (i.metadata ?? {}) as ItemMetadata,
-    addedBy: i.addedBy,
-    completed: i.completed,
-    completedAt: i.completedAt ? i.completedAt.toISOString() : null,
-    completedBy: i.completedBy,
-    createdAt: i.createdAt.toISOString(),
-    updatedAt: i.updatedAt.toISOString(),
-  };
-}
-
-/**
- * Re-selects an item by id, skipping archived rows. Returns null if the row
- * no longer exists (concurrent archive) or has been archived since the last
- * read — same surface as a hard delete from the client's POV.
- */
-async function fetchItemShape(itemId: string): Promise<Item | null> {
-  const db = getDb();
-  const [row] = await db
-    .select()
-    .from(items)
-    .where(and(eq(items.id, itemId), isNull(items.archivedAt)))
-    .limit(1);
-  if (!row) return null;
-  return toItemShape(row);
-}
-
-interface SplitItemsRow {
+interface ItemRow {
   id: string;
   list_id: string;
-  type: string;
+  kind: string;
   title: string;
   url: string | null;
   note: string | null;
-  metadata: Record<string, unknown> | null;
+  content: Record<string, unknown> | null;
+  position: number | null;
   added_by: string;
   completed: boolean;
   completed_at: Date | string | null;
   completed_by: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  upvote_count: number;
+  viewer_upvoted: boolean;
 }
 
-function rowToItem(r: SplitItemsRow): Item {
+function rowToItem(r: ItemRow): Item {
   return {
     id: r.id,
     listId: r.list_id,
-    type: r.type as ListType,
+    kind: (isItemKind(r.kind) ? r.kind : "plain") as ItemKind,
     title: r.title,
     url: r.url,
     note: r.note,
-    metadata: (r.metadata ?? {}) as ItemMetadata,
+    content: (r.content ?? {}) as ItemContent,
+    position: r.position,
     addedBy: r.added_by,
     completed: Boolean(r.completed),
     completedAt: toIsoOrNull(r.completed_at),
     completedBy: r.completed_by,
+    upvoteCount: Number(r.upvote_count ?? 0),
+    viewerUpvoted: Boolean(r.viewer_upvoted),
     createdAt: toIsoString(r.created_at),
     updatedAt: toIsoString(r.updated_at),
   };
 }
 
+function applyModuleFilters(item: Item, modules: readonly string[]): Item {
+  return stripModuleGatedItemFields(item, modules) as Item;
+}
+
 /**
- * Fetches every item on a list and splits into the three sections the unified
- * list-detail UI renders (spec §7.2). One SQL query — section assignment
- * happens in JS after sorting.
- *
- * - `ordered`:    completed=false AND `metadata.position` numeric, sorted by position ASC.
- * - `unordered`:  completed=false AND `metadata.position` null/missing, sorted by
- *                 `metadata.detectedAt` (album_shelf) then created_at DESC.
- * - `completed`:  completed=true regardless of position, sorted by completed_at DESC.
+ * Fetch one item by id with upvote aggregates joined and module-gated fields
+ * stripped per the parent list's `modules`.
  */
-export async function fetchItemsForList(listId: string): Promise<ListItemsResponse> {
-  const db = getDb();
-  const rows = await executeRows<SplitItemsRow>(
+async function fetchItemShape(
+  itemId: string,
+  viewerId: string,
+  db: DbClient = getDb(),
+): Promise<Item | null> {
+  const rows = await executeRows<ItemRow & { list_modules: string[] | null }>(
     db,
     sql`
       SELECT
-        i.id,
-        i.list_id,
-        i.type::text AS type,
-        i.title,
-        i.url,
-        i.note,
-        i.metadata,
-        i.added_by,
-        i.completed,
-        i.completed_at,
-        i.completed_by,
-        i.created_at,
-        i.updated_at
+        i.id, i.list_id, COALESCE(i.kind, 'plain') AS kind, i.title, i.url, i.note,
+        i.content, i.position, i.added_by, i.completed, i.completed_at, i.completed_by,
+        i.created_at, i.updated_at,
+        COALESCE((SELECT COUNT(*)::int FROM item_upvotes u WHERE u.item_id = i.id), 0) AS upvote_count,
+        COALESCE(EXISTS(SELECT 1 FROM item_upvotes u WHERE u.item_id = i.id AND u.user_id = ${viewerId}), false) AS viewer_upvoted,
+        l.modules AS list_modules
+      FROM items i
+      JOIN lists l ON l.id = i.list_id
+      WHERE i.id = ${itemId} AND i.archived_at IS NULL
+      LIMIT 1
+    `,
+  );
+  const r = rows[0];
+  if (!r) return null;
+  const item = rowToItem(r);
+  return applyModuleFilters(item, r.list_modules ?? []);
+}
+
+/**
+ * Fetch every non-archived item on a list, joined with upvote aggregates and
+ * the parent list's modules so we can split into the three sections AND
+ * strip module-gated fields in one pass. Sections:
+ *
+ * - `ordered`:   position IS NOT NULL, sorted by position ASC. Suppressed
+ *                when `ranking` is off (items collapse into `unordered`).
+ * - `unordered`: position IS NULL (or ranking off), sorted by created_at DESC.
+ * - `completed`: completed=true, sorted by completed_at DESC. Suppressed
+ *                when `todo` is off (items keep their ordered/unordered slot).
+ */
+export async function fetchItemsForList(
+  listId: string,
+  viewerId: string,
+  db: DbClient = getDb(),
+): Promise<ListItemsResponse & { modules: ModuleName[] }> {
+  const [listRow] = await db
+    .select({ modules: lists.modules })
+    .from(lists)
+    .where(eq(lists.id, listId))
+    .limit(1);
+  const modules = (listRow?.modules ?? []) as ModuleName[];
+
+  const rows = await executeRows<ItemRow>(
+    db,
+    sql`
+      SELECT
+        i.id, i.list_id, COALESCE(i.kind, 'plain') AS kind, i.title, i.url, i.note,
+        i.content, i.position, i.added_by, i.completed, i.completed_at, i.completed_by,
+        i.created_at, i.updated_at,
+        COALESCE((SELECT COUNT(*)::int FROM item_upvotes u WHERE u.item_id = i.id), 0) AS upvote_count,
+        COALESCE(EXISTS(SELECT 1 FROM item_upvotes u WHERE u.item_id = i.id AND u.user_id = ${viewerId}), false) AS viewer_upvoted
       FROM items i
       WHERE i.list_id = ${listId} AND i.archived_at IS NULL
       ORDER BY
-        i.completed ASC,
-        (i.metadata->>'position') IS NULL,
-        (i.metadata->>'position')::numeric ASC NULLS LAST,
-        COALESCE(i.metadata->>'detectedAt', i.created_at::text) DESC,
+        (i.position IS NULL),
+        i.position ASC NULLS LAST,
+        COALESCE(i.content->>'detectedAt', i.created_at::text) DESC,
         i.completed_at DESC NULLS LAST
     `,
   );
 
+  const rankingOn = hasModule(modules, "ranking");
+  const todoOn = hasModule(modules, "todo");
   const ordered: Item[] = [];
   const unordered: Item[] = [];
   const completed: Item[] = [];
   for (const r of rows) {
-    const item = rowToItem(r);
-    if (item.completed) {
+    const item = applyModuleFilters(rowToItem(r), modules);
+    const isCompleted = todoOn && Boolean(r.completed);
+    if (isCompleted) {
       completed.push(item);
       continue;
     }
-    const meta = (r.metadata ?? {}) as Record<string, unknown>;
-    if (typeof meta.position === "number") {
+    if (rankingOn && typeof r.position === "number") {
       ordered.push(item);
     } else {
       unordered.push(item);
     }
   }
-  // Completed group is sorted by completed_at DESC — the SQL above sorts
-  // in a single pass that's correct for ordered / unordered; resort the
-  // completed bucket here so completed_at DESC wins regardless of position.
   completed.sort((a, b) => {
     const ta = a.completedAt ? Date.parse(a.completedAt) : 0;
     const tb = b.completedAt ? Date.parse(b.completedAt) : 0;
     return tb - ta;
   });
-  return { ordered, unordered, completed };
+  return { ordered, unordered, completed, modules };
 }
 
-/** Thrown by `createItem` when per-type metadata validation fails. */
-export class ItemMetadataError extends Error {
-  readonly issues: z.ZodIssue[];
-  constructor(issues: z.ZodIssue[]) {
-    super("invalid metadata for list type");
-    this.name = "ItemMetadataError";
+/** Thrown by `createItem` when content validation fails. */
+export class ItemContentError extends Error {
+  readonly issues: unknown;
+  constructor(issues: unknown) {
+    super("invalid content for item kind");
+    this.name = "ItemContentError";
     this.issues = issues;
   }
 }
 
+export class ItemKindMismatchRouteError extends Error {
+  readonly listItemKind: string;
+  readonly itemKind: string;
+  constructor(err: ItemKindMismatchError) {
+    super(err.message);
+    this.name = "ItemKindMismatchRouteError";
+    this.listItemKind = err.listItemKind;
+    this.itemKind = err.itemKind;
+  }
+}
+
 /**
- * Inserts an item. Looks up the parent list's `type` first so the
- * denormalized `items.type` matches `lists.type` per schema §7.6, and so
- * per-type metadata validation (spec §9.4) runs against the right shape.
- * New items default to the unordered section (`metadata.position` null).
+ * Insert one item. Validates the content against the kind's zod schema,
+ * asserts the kind fits the parent list's `item_kind`, and assigns a
+ * default `position` when the parent has the `ranking` module enabled.
  */
 export async function createItem(
   listId: string,
@@ -327,49 +250,65 @@ export async function createItem(
   data: z.infer<typeof createItemSchema>,
 ): Promise<Item> {
   const db = getDb();
-  const created = await db.transaction(async (tx) => {
+  const inserted = await db.transaction(async (tx) => {
     const [parent] = await tx
-      .select({ type: lists.type })
+      .select({
+        modules: lists.modules,
+        itemKind: lists.itemKind,
+      })
       .from(lists)
       .where(eq(lists.id, listId))
       .limit(1);
     if (!parent) throw new Error("list missing during item insert");
 
-    let metadata: ItemMetadata = {};
-    if (data.metadata !== undefined) {
-      const v = validateMetadataForType(parent.type, data.metadata);
-      if (!v.success) throw new ItemMetadataError(v.issues);
-      metadata = v.data;
+    const kind: ItemKind = data.kind
+      ? data.kind
+      : ((parent.itemKind && isItemKind(parent.itemKind) ? parent.itemKind : "plain") as ItemKind);
+
+    try {
+      assertItemFitsList({ itemKind: parent.itemKind as ItemKind | null }, { kind });
+    } catch (e) {
+      if (e instanceof ItemKindMismatchError) throw new ItemKindMismatchRouteError(e);
+      throw e;
     }
 
-    // Game items auto-enter the ordered section so users can reorder them
-    // immediately — there's no concept of an "unranked" daily-puzzle game.
-    // Use the current max position + 1024 as the seed; midpoint reorders
-    // (`midpointForOrderedReorder` in the mobile client) carve out gaps
-    // between positions without having to rewrite siblings.
-    if (
-      parent.type === "game" &&
-      typeof (metadata as Record<string, unknown>).position !== "number"
-    ) {
-      const [maxRow] = await tx
-        .select({
-          max: sql<number>`COALESCE(MAX((metadata->>'position')::numeric), 0)::float8`,
-        })
-        .from(items)
-        .where(eq(items.listId, listId));
-      const next = Number(maxRow?.max ?? 0) + 1024;
-      metadata = { ...metadata, position: next };
+    let content: ItemContent = {};
+    if (data.content !== undefined) {
+      try {
+        content = validateContent(kind, data.content);
+      } catch (e) {
+        if (e instanceof UnknownItemKindError) throw new ItemContentError([{ message: e.message }]);
+        const zerr = e as { issues?: unknown };
+        if (zerr.issues) throw new ItemContentError(zerr.issues);
+        throw e;
+      }
+    } else {
+      try {
+        content = validateContent(kind, {});
+      } catch {
+        // Empty content fine for kinds with required fields when the caller
+        // explicitly omits content (e.g. plain).
+        content = {};
+      }
+    }
+
+    const modules = (parent.modules ?? []) as ModuleName[];
+    let position: number | null = null;
+    if (hasModule(modules, "ranking") && hasModule(modules, "leaderboard")) {
+      // Daily-game pattern: items default to ordered so users can rank them.
+      position = await appendPosition(listId, tx);
     }
 
     const [row] = await tx
       .insert(items)
       .values({
         listId,
-        type: parent.type,
+        kind,
         title: data.title,
         url: data.url ?? null,
         note: data.note ?? null,
-        metadata,
+        content,
+        position,
         addedBy: userId,
       })
       .returning();
@@ -381,19 +320,22 @@ export async function createItem(
       actorId: userId,
       type: "item_added",
       itemId: row.id,
-      payload: { title: row.title, type: row.type },
+      payload: { title: row.title, kind },
     });
     return row;
   });
 
-  return toItemShape(created);
+  const item = await fetchItemShape(inserted.id, userId);
+  if (!item) throw new Error("item disappeared after insert");
+  return item;
 }
 
 // --- Item-id-scoped handlers (mounted at /v1/items) ---
 
 itemRoutes.get("/:id", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
-  const item = await fetchItemShape(itemId);
+  const userId = c.get("userId");
+  const item = await fetchItemShape(itemId, userId);
   if (!item) return err(c, "NOT_FOUND", "item not found");
   return ok(c, { item });
 });
@@ -406,100 +348,71 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
   const userId = c.get("userId");
   const db = getDb();
 
-  const patch: Partial<DbItem> = { updatedAt: new Date() };
+  const [existing] = await db
+    .select({
+      kind: items.kind,
+      content: items.content,
+      listId: items.listId,
+    })
+    .from(items)
+    .where(eq(items.id, itemId))
+    .limit(1);
+  if (!existing) return err(c, "NOT_FOUND", "item not found");
+
+  const [parent] = await db
+    .select({ itemKind: lists.itemKind, modules: lists.modules })
+    .from(lists)
+    .where(eq(lists.id, existing.listId))
+    .limit(1);
+
+  const nextKind: ItemKind = (parsed.data.kind ??
+    (isItemKind(existing.kind ?? "") ? (existing.kind as ItemKind) : "plain")) as ItemKind;
+
+  if (parsed.data.kind && parent) {
+    try {
+      assertItemFitsList({ itemKind: parent.itemKind as ItemKind | null }, { kind: nextKind });
+    } catch (e) {
+      if (e instanceof ItemKindMismatchError) {
+        return err(c, "VALIDATION", "kind_mismatch", {
+          code: "kind_mismatch",
+          listItemKind: e.listItemKind,
+          itemKind: e.itemKind,
+        });
+      }
+      throw e;
+    }
+  }
+
+  const patch: Record<string, unknown> = { updatedAt: new Date() };
   if (parsed.data.title !== undefined) patch.title = parsed.data.title;
   if (parsed.data.url !== undefined) patch.url = parsed.data.url;
   if (parsed.data.note !== undefined) patch.note = parsed.data.note;
-
-  // The metadata patch is always merged into the existing blob (any list
-  // type) so a `{ position }` mutation from drag-to-reorder doesn't wipe
-  // provider-set fields like posterUrl / coverUrl / detectedAt.
-  let prevType: ListType | null = null;
-  let prevMetadata: ItemMetadata | null = null;
-  if (parsed.data.metadata !== undefined) {
-    const [existing] = await db
-      .select({ type: items.type, metadata: items.metadata })
-      .from(items)
-      .where(eq(items.id, itemId))
-      .limit(1);
-    if (!existing) return err(c, "NOT_FOUND", "item not found");
-    prevType = existing.type;
-    prevMetadata = (existing.metadata ?? {}) as ItemMetadata;
-
-    const v = validatePatchMetadataForType(prevType, parsed.data.metadata);
-    if (!v.success) {
-      return err(c, "VALIDATION", "invalid metadata for list type", v.issues);
+  if (parsed.data.kind !== undefined) patch.kind = parsed.data.kind;
+  if (parsed.data.content !== undefined) {
+    try {
+      patch.content = validateContent(nextKind, parsed.data.content);
+    } catch (e) {
+      const zerr = e as { issues?: unknown; message?: string };
+      return err(c, "VALIDATION", "invalid content for item kind", zerr.issues ?? zerr.message);
     }
-
-    patch.metadata = { ...prevMetadata, ...v.data };
   }
 
   const [updated] = await db.update(items).set(patch).where(eq(items.id, itemId)).returning();
   if (!updated) return err(c, "NOT_FOUND", "item not found");
 
-  // Choose the activity event for this patch. Cross-section position
-  // changes (null ↔ number) fire promote/demote on every list type so the
-  // feed stays meaningful when ranking spreads beyond album shelves; pure
-  // within-section reorders (number → number) stay silent to keep noise
-  // low. Non-position metadata edits emit `item_updated`.
-  const eventToRecord = pickPatchEvent({
-    prevMetadata,
-    nextMetadata: patch.metadata as ItemMetadata | undefined,
-    metadataPatched: parsed.data.metadata !== undefined,
-    title: updated.title,
+  await recordEvent({
+    listId: updated.listId,
+    actorId: userId,
+    type: "item_updated",
+    itemId: updated.id,
+    payload: { title: updated.title },
   });
-  if (eventToRecord) {
-    await recordEvent({
-      listId: updated.listId,
-      actorId: userId,
-      type: eventToRecord.type,
-      itemId: updated.id,
-      payload: eventToRecord.payload,
-    });
-  }
 
-  const item = await fetchItemShape(itemId);
+  const item = await fetchItemShape(itemId, userId);
   if (!item) return err(c, "NOT_FOUND", "item not found");
   return ok(c, { item });
 });
 
-interface PickPatchEventArgs {
-  prevMetadata: ItemMetadata | null;
-  nextMetadata: ItemMetadata | undefined;
-  metadataPatched: boolean;
-  title: string;
-}
-
-function pickPatchEvent(a: PickPatchEventArgs): {
-  type: "item_updated" | "item_promoted" | "item_demoted";
-  payload: Record<string, unknown>;
-} | null {
-  if (!a.metadataPatched) {
-    return { type: "item_updated", payload: { title: a.title } };
-  }
-  const prevPos = (a.prevMetadata as Record<string, unknown> | null)?.position;
-  const nextPos = (a.nextMetadata as Record<string, unknown> | undefined)?.position;
-  const wasOrdered = typeof prevPos === "number";
-  const nowOrdered = typeof nextPos === "number";
-  if (!wasOrdered && nowOrdered) {
-    return { type: "item_promoted", payload: { title: a.title, position: nextPos } };
-  }
-  if (wasOrdered && !nowOrdered) {
-    return { type: "item_demoted", payload: { title: a.title } };
-  }
-  // Within-section reorder, or a non-position metadata edit — emit a
-  // generic update so the feed isn't noisy with every drag micro-move,
-  // but a real edit still surfaces.
-  if (wasOrdered && nowOrdered) return null;
-  return { type: "item_updated", payload: { title: a.title } };
-}
-
-// Archive (soft delete) the item. Sets `items.archived_at` so it disappears
-// from `GET /v1/lists/:id/items`, `GET /v1/items/:id`, activity-feed item
-// scopes, and the item-member middleware. Upvotes + score rows stay so a
-// future unarchive surface can restore the item intact. The partial unique
-// index on (list_id, spotifyAlbumId) includes archived rows, so an
-// album-shelf refresh won't resurface an album the user explicitly archived.
 itemRoutes.delete("/:id", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
   const userId = c.get("userId");
@@ -512,10 +425,6 @@ itemRoutes.delete("/:id", requireItemMember, async (c) => {
     .returning({ id: items.id, title: items.title });
   if (!archived) return err(c, "NOT_FOUND", "item not found");
 
-  // `itemId` deliberately omitted (null in DB) so the activity feed's
-  // `archived_at IS NULL` filter on joined `items` doesn't hide the very
-  // event that records the archive. The payload still carries `title` for
-  // the renderer; matches the legacy `item_deleted` shape.
   await recordEvent({
     listId,
     actorId: userId,
@@ -524,6 +433,17 @@ itemRoutes.delete("/:id", requireItemMember, async (c) => {
   });
   return ok(c, { ok: true });
 });
+
+// --- Completion (todo module) ---
+
+async function getParentModules(db: DbClient, listId: string): Promise<ModuleName[]> {
+  const [row] = await db
+    .select({ modules: lists.modules })
+    .from(lists)
+    .where(eq(lists.id, listId))
+    .limit(1);
+  return (row?.modules ?? []) as ModuleName[];
+}
 
 itemRoutes.post(
   "/:id/complete",
@@ -539,6 +459,8 @@ itemRoutes.post(
     const userId = c.get("userId");
     const listId = c.get("itemListId");
     const db = getDb();
+    const gate = requireModule(c, await getParentModules(db, listId), "todo");
+    if (gate) return gate;
 
     const [updated] = await db
       .update(items)
@@ -560,7 +482,7 @@ itemRoutes.post(
       payload: { title: updated.title },
     });
 
-    const item = await fetchItemShape(itemId);
+    const item = await fetchItemShape(itemId, userId);
     if (!item) return err(c, "NOT_FOUND", "item not found");
     return ok(c, { item });
   },
@@ -580,6 +502,8 @@ itemRoutes.post(
     const userId = c.get("userId");
     const listId = c.get("itemListId");
     const db = getDb();
+    const gate = requireModule(c, await getParentModules(db, listId), "todo");
+    if (gate) return gate;
 
     const [updated] = await db
       .update(items)
@@ -601,7 +525,148 @@ itemRoutes.post(
       payload: { title: updated.title },
     });
 
-    const item = await fetchItemShape(itemId);
+    const item = await fetchItemShape(itemId, userId);
+    if (!item) return err(c, "NOT_FOUND", "item not found");
+    return ok(c, { item });
+  },
+);
+
+// --- Upvotes (voting module) ---
+
+itemRoutes.post(
+  "/:id/upvote",
+  requireItemMember,
+  rateLimit({
+    family: "v1.items.upvote",
+    limit: 120,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const itemId = c.req.param("id");
+    const userId = c.get("userId");
+    const listId = c.get("itemListId");
+    const db = getDb();
+    const gate = requireModule(c, await getParentModules(db, listId), "voting");
+    if (gate) return gate;
+
+    await db.execute(sql`
+      INSERT INTO item_upvotes (item_id, user_id)
+      VALUES (${itemId}::uuid, ${userId}::uuid)
+      ON CONFLICT DO NOTHING
+    `);
+    const [titleRow] = await db
+      .select({ title: items.title })
+      .from(items)
+      .where(eq(items.id, itemId))
+      .limit(1);
+    await recordEvent({
+      listId,
+      actorId: userId,
+      type: "item_upvoted",
+      itemId,
+      payload: { title: titleRow?.title ?? "" },
+    });
+    const item = await fetchItemShape(itemId, userId);
+    if (!item) return err(c, "NOT_FOUND", "item not found");
+    return ok(c, { item });
+  },
+);
+
+itemRoutes.delete(
+  "/:id/upvote",
+  requireItemMember,
+  rateLimit({
+    family: "v1.items.upvote",
+    limit: 120,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const itemId = c.req.param("id");
+    const userId = c.get("userId");
+    const listId = c.get("itemListId");
+    const db = getDb();
+    const gate = requireModule(c, await getParentModules(db, listId), "voting");
+    if (gate) return gate;
+
+    await db.execute(sql`
+      DELETE FROM item_upvotes WHERE item_id = ${itemId}::uuid AND user_id = ${userId}::uuid
+    `);
+    const [titleRow] = await db
+      .select({ title: items.title })
+      .from(items)
+      .where(eq(items.id, itemId))
+      .limit(1);
+    await recordEvent({
+      listId,
+      actorId: userId,
+      type: "item_unupvoted",
+      itemId,
+      payload: { title: titleRow?.title ?? "" },
+    });
+    const item = await fetchItemShape(itemId, userId);
+    if (!item) return err(c, "NOT_FOUND", "item not found");
+    return ok(c, { item });
+  },
+);
+
+// --- Move (ranking module) ---
+
+itemRoutes.post(
+  "/:id/move",
+  requireItemMember,
+  rateLimit({
+    family: "v1.items.move",
+    limit: 240,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const itemId = c.req.param("id");
+    const userId = c.get("userId");
+    const listId = c.get("itemListId");
+    const db = getDb();
+    const gate = requireModule(c, await getParentModules(db, listId), "ranking");
+    if (gate) return gate;
+
+    const parsed = await parseJsonBody(c, moveItemSchema);
+    if (!parsed.ok) return parsed.response;
+
+    const wasOrdered = (
+      await db.select({ position: items.position }).from(items).where(eq(items.id, itemId)).limit(1)
+    )[0]?.position;
+
+    const result = await moveItemPosition({
+      listId,
+      itemId,
+      beforeItemId: parsed.data.beforeItemId ?? null,
+      afterItemId: parsed.data.afterItemId ?? null,
+      db,
+    });
+
+    const wasOrderedFlag = typeof wasOrdered === "number";
+    const isOrderedFlag = result.position !== null;
+    let eventType: "item_promoted" | "item_demoted" | null = null;
+    if (!wasOrderedFlag && isOrderedFlag) eventType = "item_promoted";
+    else if (wasOrderedFlag && !isOrderedFlag) eventType = "item_demoted";
+
+    if (eventType) {
+      const [row] = await db
+        .select({ title: items.title })
+        .from(items)
+        .where(eq(items.id, itemId))
+        .limit(1);
+      await recordEvent({
+        listId,
+        actorId: userId,
+        type: eventType,
+        itemId,
+        payload: { title: row?.title ?? "" },
+      });
+    }
+
+    const item = await fetchItemShape(itemId, userId);
     if (!item) return err(c, "NOT_FOUND", "item not found");
     return ok(c, { item });
   },

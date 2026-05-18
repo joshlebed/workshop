@@ -1,5 +1,8 @@
 import type {
+  ConfigPreviewRequest,
+  ConfigPreviewResponse,
   CreateListRequest,
+  DuplicateListRequest,
   ListDetailResponse,
   ListListResponse,
   ListResponse,
@@ -27,23 +30,35 @@ export function updateList(
   return apiRequest<ListResponse>({ method: "PATCH", path: `/v1/lists/${id}`, body, token });
 }
 
-/**
- * Archives (soft-deletes) the list. Owner-only. The server sets
- * `lists.archived_at` and the row immediately disappears from every read
- * path — list-detail returns 404, the home feed omits it, items become
- * unreachable. The underlying rows (items, members, invites, activity
- * events) stay in place so a future unarchive surface can restore them.
- *
- * Distinct from the per-(list, viewer) `archiveList` toggle in this file,
- * which only hides a list from the requester's own home feed.
- */
 export function archiveListEntirely(id: string, token: string | null): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/lists/${id}`, token });
 }
 
-// Per-(list, viewer) view-state toggles. All four return `{ ok: true }` and
-// expect the caller to invalidate the lists query so the resulting
-// `unreadCount` / `pinnedAt` / `archivedAt` / `mutedAt` show up.
+export function previewListConfig(
+  id: string,
+  body: ConfigPreviewRequest,
+  token: string | null,
+): Promise<ConfigPreviewResponse> {
+  return apiRequest<ConfigPreviewResponse>({
+    method: "POST",
+    path: `/v1/lists/${id}/config-preview`,
+    body,
+    token,
+  });
+}
+
+export function duplicateList(
+  id: string,
+  body: DuplicateListRequest,
+  token: string | null,
+): Promise<ListResponse> {
+  return apiRequest<ListResponse>({
+    method: "POST",
+    path: `/v1/lists/${id}/duplicate`,
+    body,
+    token,
+  });
+}
 
 export function markListRead(id: string, token: string | null): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>({ method: "POST", path: `/v1/lists/${id}/read`, token });

@@ -1,28 +1,40 @@
 // v2 skeleton. Endpoint-specific request/response shapes are added in the
-// phase that introduces the endpoint (see docs/redesign-plan.md).
+// phase that introduces the endpoint.
 //
 // `SHARED_TYPES_VERSION` lives in `./constants.ts` so the mobile bundle can
 // import it at runtime via `@workshop/shared/constants` without dragging the
 // type barrel through Metro. Bump it on any breaking edit to a request/
 // response type below.
 
-export type AuthProvider = "apple" | "google";
+import type { ItemContent, ItemKind } from "./itemKinds.js";
+import type { ConfigWarning, ModuleName } from "./modules.js";
+import type { SourceKind } from "./sourceKinds.js";
+import type { ListColor } from "./templates.js";
 
-export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip" | "album_shelf" | "game";
+export type { ItemContent, ItemKind } from "./itemKinds.js";
+export type { ConfigWarning, ModuleName } from "./modules.js";
+export type { SourceKind } from "./sourceKinds.js";
+export type { ListColor } from "./templates.js";
+
+export type AuthProvider = "apple" | "google";
 
 export type MemberRole = "owner" | "member";
 
+// Activity event types are a plain string at the API boundary so adding a new
+// type is code-only — no Postgres `ALTER TYPE` ceremony. The legacy event
+// types (`album_shelf_refreshed`, `album_shelf_source_changed`,
+// `album_promoted`, `album_demoted`, `item_deleted`) are migrated in place
+// to their post-redesign equivalents; older rows stay readable on the same
+// renderer because the rename is one-shot.
 export type ActivityEventType =
   | "list_created"
   | "list_archived"
+  | "list_duplicated"
   | "member_joined"
   | "member_left"
   | "member_removed"
   | "item_added"
   | "item_updated"
-  // Legacy: emitted by pre-soft-delete builds for hard deletes. New code
-  // emits `item_archived` instead. Kept here so older feed rows still type.
-  | "item_deleted"
   | "item_archived"
   | "item_upvoted"
   | "item_unupvoted"
@@ -32,6 +44,14 @@ export type ActivityEventType =
   | "item_demoted"
   | "invite_created"
   | "invite_revoked"
+  | "module_enabled"
+  | "module_disabled"
+  | "source_added"
+  | "source_removed"
+  | "source_updated"
+  | "source_synced"
+  // Legacy values still present on historical rows.
+  | "item_deleted"
   | "album_shelf_refreshed"
   | "album_shelf_source_changed"
   | "album_promoted"
@@ -64,16 +84,11 @@ export interface ApiErrorResponse {
   details?: unknown;
 }
 
-// --- Auth (Phase 0b) ---
+// --- Auth ---
 
 export interface AppleAuthRequest {
   identityToken: string;
   nonce?: string;
-  /**
-   * Apple returns email/name only on the *first* sign-in. Web SDKs surface
-   * them on the JS callback; iOS surfaces them on `ASAuthorizationAppleIDCredential`.
-   * The client forwards both so the backend can persist them on initial upsert.
-   */
   email?: string;
   fullName?: string;
 }
@@ -92,59 +107,40 @@ export interface UpdateMeRequest {
   displayName: string;
 }
 
-// --- Lists (Phase 1a-1) ---
-
-/**
- * Palette keys for list color tokens. The backend treats these as opaque
- * strings; the client maps each key to a hex value via `tokens.list[key]`.
- * See `apps/workshop/src/ui/theme.ts` and `docs/redesign-plan.md` §9.
- */
-export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand" | "slate";
-
-/**
- * Free-form per-list-type JSONB blob. For `album_shelf`, the shape is
- * `AlbumShelfListMetadata` (see below); other list types currently store `{}`.
- */
-export type ListMetadata = Record<string, unknown>;
+// --- Lists ---
 
 export interface List {
   id: string;
-  type: ListType;
   name: string;
   emoji: string;
   color: ListColor;
   description: string | null;
-  /**
-   * Optional user-uploaded cover photo as a `data:image/...;base64,…` URL.
-   * When present, the client renders this in place of the emoji on list
-   * thumbnails.
-   */
   coverPhotoUrl: string | null;
   ownerId: string;
-  metadata: ListMetadata;
+  /**
+   * Constrains the kind of items the list accepts. `null` = unconstrained
+   * (the Blank List escape hatch); any item kind is allowed.
+   */
+  itemKind: ItemKind | null;
+  modules: ModuleName[];
   createdAt: string;
   updatedAt: string;
 }
 
-/**
- * Shape returned by `GET /v1/lists` — the home-screen card. Includes the
- * requesting user's role on the list plus aggregate counts so the client can
- * render a list card without an extra round-trip.
- */
+export interface ListSource {
+  id: string;
+  listId: string;
+  kind: SourceKind;
+  config: Record<string, unknown>;
+  lastSyncedAt: string | null;
+  lastSyncedBy: string | null;
+  createdAt: string;
+}
+
 export interface ListSummary extends List {
   role: MemberRole;
   itemCount: number;
   memberCount: number;
-  /**
-   * Server-side per-(list, viewer) presentation state. Each viewer has their
-   * own opinion on a list — Alex's pin doesn't show up on Sarah's home, and
-   * Sarah muting "Reading List" doesn't quiet anyone else's badges.
-   *
-   * `unreadCount` is the number of events on this list authored by someone
-   * other than the viewer since the viewer's `lastReadAt`. The server
-   * suppresses muted lists to 0 so a muted list never contributes to the
-   * global unread total either.
-   */
   unreadCount: number;
   pinnedAt: string | null;
   archivedAt: string | null;
@@ -158,12 +154,6 @@ export interface ListMemberSummary {
   joinedAt: string;
 }
 
-/**
- * `GET /v1/lists/:id` returns one of these per still-pending invite (not
- * yet accepted, not revoked, not expired). Email invites are explicitly
- * deferred — `email` is always `null` in v1; the field is kept on the
- * shape so the schema doesn't churn if email invites land later.
- */
 export interface PendingInvite {
   id: string;
   email: string | null;
@@ -173,51 +163,48 @@ export interface PendingInvite {
 }
 
 export interface CreateListRequest {
-  type: ListType;
   name: string;
   emoji: string;
   color: ListColor;
   description?: string;
-  /** Optional `data:image/...;base64,…` URL — render as list thumbnail. */
   coverPhotoUrl?: string;
+  itemKind: ItemKind | null;
+  modules: ModuleName[];
   /**
-   * Required iff `type === "album_shelf"`. Public Spotify playlist URL
-   * (`open.spotify.com/playlist/<id>` or `spotify:playlist:<id>`).
+   * Optional sources to attach at create time. Each source's config is
+   * validated against its kind manifest; on commit, the source is created
+   * and an initial sync runs synchronously.
    */
-  spotifyPlaylistUrl?: string;
+  sources?: Array<{ kind: SourceKind; config: Record<string, unknown> }>;
 }
 
 export interface UpdateListRequest {
   name?: string;
   emoji?: string;
   color?: ListColor;
-  /** Pass `null` to clear; omit to leave unchanged. */
   description?: string | null;
-  /** Pass `null` to clear; omit to leave unchanged. */
   coverPhotoUrl?: string | null;
+  itemKind?: ItemKind | null;
+  modules?: ModuleName[];
   /**
-   * Mutable per-list-type blob. For `album_shelf`, only
-   * `spotifyPlaylistUrl` is client-settable; the backend re-parses the id,
-   * persists, and triggers a refresh.
+   * Required when removing a module that has associated data — echo back the
+   * warning codes returned by `POST /v1/lists/:id/config-preview`. Without
+   * it the server returns 409 with the warning list.
    */
-  metadata?: ListMetadata;
+  acknowledgedWarnings?: string[];
 }
 
 export interface ListListResponse {
   lists: ListSummary[];
 }
 
-/**
- * Body for `POST /v1/lists/:id/items/bulk`. Each entry produces a regular
- * item — the same shape `createItem` produces for one-at-a-time adds.
- * Limited server-side to 50 per request so a runaway paste can't melt the
- * DB; clients chunk if the user pasted more.
- */
 export interface BulkCreateItemsRequest {
   items: Array<{
     title: string;
     url?: string;
     note?: string;
+    kind?: ItemKind;
+    content?: ItemContent;
   }>;
 }
 
@@ -234,60 +221,62 @@ export interface ListDetailResponse {
   list: List;
   members: ListMemberSummary[];
   pendingInvites: PendingInvite[];
+  sources: ListSource[];
 }
 
-// --- Items (Phase 1a-2) ---
-
-/**
- * `metadata` is per-list-type free-form JSONB in v1; Phase 2 adds per-type
- * Zod validators (poster URL for movies, OG image for date ideas, etc.) at
- * the API boundary. Keep it loose here so the type doesn't churn when the
- * validators land.
- */
-export type ItemMetadata = Record<string, unknown>;
+// --- Items ---
 
 export interface Item {
   id: string;
   listId: string;
-  type: ListType;
+  kind: ItemKind;
   title: string;
   url: string | null;
   note: string | null;
-  metadata: ItemMetadata;
+  content: ItemContent;
+  position: number | null;
   addedBy: string;
+  /**
+   * `completed*` fields are gated by the `todo` module on the parent list —
+   * the backend omits them from list/item reads when `todo` is off. They're
+   * preserved in the DB so re-enabling the module restores the prior state.
+   */
   completed: boolean;
   completedAt: string | null;
   completedBy: string | null;
+  upvoteCount: number;
+  viewerUpvoted: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateItemRequest {
+  kind: ItemKind;
   title: string;
   url?: string;
   note?: string;
-  metadata?: ItemMetadata;
+  content?: ItemContent;
 }
 
 export interface UpdateItemRequest {
+  kind?: ItemKind;
   title?: string;
-  /** Pass `null` to clear; omit to leave unchanged. */
   url?: string | null;
-  /** Pass `null` to clear; omit to leave unchanged. */
   note?: string | null;
-  metadata?: ItemMetadata;
+  content?: ItemContent;
 }
 
 /**
- * Server-side three-way split for `GET /v1/lists/:id/items`. Every list type
- * returns this same shape so the client can render the unified ordered /
- * unordered / completed sections (spec §7.2).
- *
- * - `ordered`: not completed, `metadata.position` non-null, sorted by position ASC.
- * - `unordered`: not completed, `metadata.position` null, sorted by createdAt
- *   DESC (album_shelf items use `metadata.detectedAt` as a fallback).
- * - `completed`: completed=true, sorted by completedAt DESC.
+ * `POST /v1/items/:id/move` — server computes the new `position` per the
+ * sparse-integer allocator (§3.4 of the redesign). Both null → demote to
+ * unordered (`position = NULL`). Only one of beforeItemId/afterItemId is
+ * required; both → insert between.
  */
+export interface MoveItemRequest {
+  beforeItemId?: string | null;
+  afterItemId?: string | null;
+}
+
 export interface ListItemsResponse {
   ordered: Item[];
   unordered: Item[];
@@ -298,24 +287,76 @@ export interface ItemResponse {
   item: Item;
 }
 
-// --- Invites + members (Phase 3a-1) ---
-//
-// v1 ships share-link invites only — `email` is always `null` on the
-// returned shape. Tokens are 32-byte URL-safe base64 with a 7-day
-// `expiresAt`; the owner can revoke at any time. `accept` requires an
-// authenticated user and is idempotent (re-accepting a still-valid
-// token while already a member is a no-op).
+// --- List sources ---
+
+export interface ListSourcesResponse {
+  sources: ListSource[];
+}
+
+export interface CreateListSourceRequest {
+  kind: SourceKind;
+  config: Record<string, unknown>;
+}
+
+export interface ListSourceResponse {
+  source: ListSource;
+  addedCount?: number;
+}
+
+export interface SyncSourceResponse extends ListItemsResponse {
+  source: ListSource;
+  addedCount: number;
+}
+
+export interface SourcePreviewRequest {
+  kind: SourceKind;
+  config: Record<string, unknown>;
+}
+
+export interface SpotifyPlaylistPreview {
+  kind: "spotify_playlist";
+  playlistId: string;
+  name: string;
+  ownerName: string | null;
+  trackCount: number;
+}
+
+export type SourcePreview = SpotifyPlaylistPreview;
+
+export interface SourcePreviewResponse {
+  preview: SourcePreview;
+}
+
+// --- Config preview / module changes ---
+
+export interface ConfigPreviewRequest {
+  modules?: ModuleName[];
+  itemKind?: ItemKind | null;
+}
+
+export interface ConfigPreviewResponse {
+  warnings: ConfigWarning[];
+}
+
+// --- Duplicate ---
+
+export interface DuplicateListRequest {
+  name?: string;
+  emoji?: string;
+  color?: ListColor;
+  description?: string;
+  modules?: ModuleName[];
+  itemKind?: ItemKind | null;
+  preserveCompletion?: boolean;
+  copySources?: boolean;
+}
+
+// --- Invites + members ---
 
 export interface Invite {
   id: string;
   listId: string;
   email: string | null;
-  /**
-   * Token is only returned to the inviter on `POST /v1/lists/:id/invites`
-   * so they can build the share URL. Subsequent reads (`pendingInvites`
-   * on `GET /v1/lists/:id`) omit it — exposing it on every list-detail
-   * fetch would leak the token to non-owners.
-   */
   token?: string;
   invitedBy: string;
   createdAt: string;
@@ -324,11 +365,6 @@ export interface Invite {
   revokedAt: string | null;
 }
 
-/**
- * Body of `POST /v1/lists/:id/invites`. `email` is reserved for a future
- * email-invite flow; v1 ignores it (always treats the request as
- * share-link-only) so the field doesn't churn when email invites land.
- */
 export interface CreateInviteRequest {
   email?: string | null;
 }
@@ -337,32 +373,19 @@ export interface InviteResponse {
   invite: Invite;
 }
 
-/**
- * `POST /v1/invites/:token/accept` returns the joined list and the
- * member row that was created (or already existed). Idempotent on
- * re-accept while already a member.
- */
 export interface AcceptInviteResponse {
   list: List;
   member: ListMemberSummary;
 }
 
-/**
- * `DELETE /v1/lists/:id/members/:userId` shape — owner-removes-anyone or
- * non-owner-self-leaves. Returned `{ ok: true }` on success.
- */
 export interface MemberRemoveResponse {
   ok: true;
 }
 
-// --- Search + enrichment (Phase 2a-1) ---
-//
-// Backend proxies TMDB / Google Books behind SSM-sourced API keys and
-// normalizes responses into the shapes below. See spec §9.
+// --- Search + enrichment ---
 
 export type MediaSearchType = "movie" | "tv";
 
-/** Normalized TMDB row. `id` is the TMDB id stringified. */
 export interface MediaResult {
   id: string;
   title: string;
@@ -372,7 +395,6 @@ export interface MediaResult {
   overview: string | null;
 }
 
-/** Normalized Google Books volume. `id` is the Google Books volume id. */
 export interface BookResult {
   id: string;
   title: string;
@@ -391,52 +413,8 @@ export interface BookSearchResponse {
   results: BookResult[];
 }
 
-// --- Per-type item metadata (Phase 2a-1, spec §9.4) ---
-//
-// Validated at the API boundary on POST/PATCH /v1/items based on the parent
-// list's `type`. Every field is optional so manual entries (no provider
-// match) and provider-enriched entries share the same JSONB shape.
+// --- Link preview ---
 
-export interface MovieMetadata {
-  source?: "tmdb" | "manual";
-  sourceId?: string;
-  posterUrl?: string;
-  year?: number;
-  runtimeMinutes?: number;
-  overview?: string;
-}
-
-export type TvMetadata = MovieMetadata;
-
-export interface BookMetadata {
-  source?: "google_books" | "manual";
-  sourceId?: string;
-  coverUrl?: string;
-  authors?: string[];
-  year?: number;
-  pageCount?: number;
-  description?: string;
-}
-
-export interface PlaceMetadata {
-  source?: "link_preview" | "manual";
-  sourceId?: string;
-  image?: string;
-  siteName?: string;
-  title?: string;
-  description?: string;
-  lat?: number;
-  lng?: number;
-}
-
-// --- Link preview (Phase 2a-2) ---
-
-/**
- * Normalized OG / Twitter card scrape from `GET /v1/link-preview?url=`.
- * `image` is resolved to an absolute URL relative to `finalUrl` so the
- * client can render it directly. `siteName` falls back to the host of
- * `finalUrl` when the page omits `og:site_name`.
- */
 export interface LinkPreview {
   url: string;
   finalUrl: string;
@@ -452,43 +430,24 @@ export interface LinkPreviewResponse {
   preview: LinkPreview;
 }
 
-// --- Activity feed (Phase 3a-2) ---
-//
-// Cross-list chronological feed of events on lists the requester is a
-// member of (spec §4.7). Events are recorded synchronously by mutating
-// handlers via `recordEvent` (`apps/backend/src/lib/events.ts`); the
-// `activity_event_type` enum lives in `db/schema.ts` and is the
-// canonical set.
+// --- Activity feed ---
 
 export interface ActivityEvent {
   id: string;
   listId: string;
   actorId: string;
-  /** Joined from `users.display_name`; null when the actor has none yet. */
   actorDisplayName: string | null;
   type: ActivityEventType;
-  /** Set on item-scoped events; null on list/member/invite events. */
   itemId: string | null;
-  /** Event-specific details (e.g. item title at the time of the event). */
   payload: Record<string, unknown>;
   createdAt: string;
 }
 
-/**
- * Opaque cursor for `GET /v1/activity?cursor=...`. Encodes `(createdAt, id)`
- * so events recorded inside the same transaction don't get duplicated or
- * skipped at the page boundary. Clients should treat the value as opaque.
- */
 export interface ActivityFeedResponse {
   events: ActivityEvent[];
   nextCursor: string | null;
 }
 
-/**
- * `POST /v1/activity/read`. Omit `listIds` to mark every list the user is
- * a member of as read. Pass a subset to mark only those (the backend
- * silently skips lists the user isn't a member of).
- */
 export interface MarkActivityReadRequest {
   listIds?: string[];
 }
@@ -497,123 +456,49 @@ export interface MarkActivityReadResponse {
   ok: true;
 }
 
-// --- Album Shelf (post-redesign feature, see docs/album-shelf.md) ---
+// --- Scores (leaderboard module, replaces game_scores) ---
 
-/**
- * Stored on `lists.metadata` for `type === "album_shelf"` rows. Other types
- * leave `metadata` empty.
- */
-export interface AlbumShelfListMetadata {
-  spotifyPlaylistUrl: string;
-  spotifyPlaylistId: string;
-  /** Updated each time a member runs a refresh. Null until the first refresh. */
-  lastRefreshedAt: string | null;
-  lastRefreshedBy: string | null;
-}
-
-/**
- * Stored on `items.metadata` for `type === "album_shelf"` rows. `position`
- * decides which section the row renders in: `null` → unordered (sorted by
- * `detectedAt` ASC), non-null → ordered (sorted by `position` ASC).
- */
-export interface AlbumShelfItemMetadata {
-  source: "spotify";
-  spotifyAlbumId: string;
-  spotifyAlbumUrl: string;
-  title: string;
-  artist: string;
-  year?: number;
-  coverUrl?: string;
-  trackCount: number;
-  position: number | null;
-  detectedAt: string;
-}
-
-export interface AlbumShelfRefreshResponse extends ListItemsResponse {
-  refreshedAt: string;
-  refreshedBy: string;
-  /** Number of new detected (unordered) items added in this refresh (may be 0). */
-  addedCount: number;
-}
-
-/**
- * `POST /v1/album-shelf/preview` request body. The user pastes a URL on the
- * create-list flow's source-playlist step; the server parses + hits Spotify
- * to confirm the playlist is public before the user moves on.
- */
-export interface AlbumShelfPreviewRequest {
-  url: string;
-}
-
-export interface AlbumShelfPreviewResponse {
-  playlistId: string;
-  name: string;
-  ownerName: string | null;
-  trackCount: number;
-}
-
-// --- Games (daily-score lists) ---
-
-/**
- * Stored on `items.metadata` for `type === "game"` rows. `thumbnailUrl` is
- * fetched from the URL's OG/Twitter card on add (via `/v1/link-preview`).
- * `position` decides ordering inside the list (drag-to-reorder).
- */
-export interface GameItemMetadata {
-  thumbnailUrl?: string;
-  siteName?: string;
-  position?: number | null;
-}
-
-/**
- * One member's pasted score for a game on a single calendar day. The day
- * bucket uses the user's local calendar (YYYY-MM-DD) — that's how each game
- * itself decides which day a play belongs to (Wordle, Globle, Satle, etc.).
- */
-export interface GameScore {
+export interface ItemScore {
   itemId: string;
   userId: string;
-  /** YYYY-MM-DD in the submitter's locale. */
-  date: string;
-  /** Raw pasted score string (preserves emojis, line breaks, etc.). */
-  score: string;
+  /** YYYY-MM-DD calendar day, week key, or "all-time" — kind-agnostic bucket. */
+  periodKey: string;
+  scoreValue: number | null;
+  scoreRaw: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface UpsertGameScoreRequest {
-  date: string;
-  score: string;
+export interface UpsertItemScoreRequest {
+  periodKey: string;
+  scoreRaw: string;
 }
 
-export interface GameScoreResponse {
-  score: GameScore;
+export interface ItemScoreResponse {
+  score: ItemScore;
 }
 
-/**
- * Per-game leaderboard for a single date — every list member appears,
- * even when they haven't pasted a score yet (`score: null`).
- */
-export interface GameLeaderboardEntry {
+export interface LeaderboardEntry {
   userId: string;
   displayName: string | null;
-  score: string | null;
+  scoreRaw: string | null;
+  scoreValue: number | null;
   updatedAt: string | null;
 }
 
-export interface GameLeaderboardResponse {
+export interface LeaderboardResponse {
   itemId: string;
-  date: string;
-  entries: GameLeaderboardEntry[];
+  periodKey: string;
+  entries: LeaderboardEntry[];
 }
 
-/**
- * Aggregated scores for every game on a list for one date — lets the
- * list-detail screen show "you / friends played" indicators per row in a
- * single round-trip.
- */
-export interface ListGameScoresResponse {
-  date: string;
-  /** Map from itemId → leaderboard entries. Items with no scores omitted. */
-  scoresByItem: Record<string, GameLeaderboardEntry[]>;
+export interface ListScoresResponse {
+  periodKey: string;
+  scoresByItem: Record<string, LeaderboardEntry[]>;
+}
+
+// --- Upvotes ---
+
+export interface ItemUpvoteResponse {
+  item: Item;
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GameLeaderboardEntry } from "@workshop/shared";
+import type { LeaderboardEntry } from "@workshop/shared";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -13,8 +13,8 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView, KeyboardStickyView } from "react-native-keyboard-controller";
-import { deleteItemScore, fetchItemScores, upsertItemScore } from "../../../../src/api/gameScores";
 import { archiveItem, fetchItem, updateItem } from "../../../../src/api/items";
+import { deleteItemScore, fetchItemScores, upsertItemScore } from "../../../../src/api/scores";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { errorMessage } from "../../../../src/lib/api";
 import { confirm } from "../../../../src/lib/confirm";
@@ -84,10 +84,10 @@ export default function GameDetail() {
     enabled: !!token && !!itemId,
   });
 
-  const myEntry: GameLeaderboardEntry | undefined = scoresQuery.data?.entries.find(
+  const myEntry: LeaderboardEntry | undefined = scoresQuery.data?.entries.find(
     (e) => e.userId === user?.id,
   );
-  const otherEntries: GameLeaderboardEntry[] = useMemo(
+  const otherEntries: LeaderboardEntry[] = useMemo(
     () => (scoresQuery.data?.entries ?? []).filter((e) => e.userId !== user?.id),
     [scoresQuery.data, user?.id],
   );
@@ -107,7 +107,7 @@ export default function GameDetail() {
   const upsertMutation = useMutation({
     mutationFn: (score: string) => {
       if (!itemId) throw new Error("missing item id");
-      return upsertItemScore(itemId, { date: today, score }, token);
+      return upsertItemScore(itemId, { periodKey: today, scoreRaw: score }, token);
     },
     onSuccess: async () => {
       haptics.medium();
@@ -224,12 +224,12 @@ export default function GameDetail() {
   }
 
   const item = itemQuery.data.item;
-  const meta = item.metadata as { thumbnailUrl?: string; siteName?: string };
+  const meta = item.content as { thumbnailUrl?: string; siteName?: string };
   const thumb = typeof meta.thumbnailUrl === "string" ? meta.thumbnailUrl : null;
   const isToday = date === today;
   const totalEntries = scoresQuery.data?.entries.length ?? 0;
   const playedCount = (scoresQuery.data?.entries ?? []).filter(
-    (e) => e.score != null && e.score.length > 0,
+    (e) => e.scoreRaw != null && e.scoreRaw.length > 0,
   ).length;
   const host = (() => {
     if (!item.url) return null;
@@ -283,7 +283,7 @@ export default function GameDetail() {
   const trimmedUrlDraft = urlDraft.trim();
   const editDirty = trimmedTitleDraft !== item.title || trimmedUrlDraft !== (item.url ?? "");
   const canSaveEdit = trimmedTitleDraft.length >= 1 && trimmedTitleDraft.length <= 500 && editDirty;
-  const myScore = myEntry?.score?.length ? myEntry.score : null;
+  const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
   const showPasteSlot = isToday && !myScore;
 
   return (
@@ -430,19 +430,19 @@ export default function GameDetail() {
                 userName={user?.displayName ?? null}
               />
             ) : myScore && myEntry ? (
-              <LeaderboardEntry entry={myEntry} isMe />
+              <LeaderboardEntryRow entry={myEntry} isMe />
             ) : myEntry ? (
               <UnplayedRow entry={myEntry} isMe />
             ) : null}
 
             {/* Other members. Played first, then the unplayed quiet rows. */}
             {otherEntries
-              .filter((e) => e.score != null && e.score.length > 0)
+              .filter((e) => e.scoreRaw != null && e.scoreRaw.length > 0)
               .map((entry) => (
-                <LeaderboardEntry key={entry.userId} entry={entry} isMe={false} />
+                <LeaderboardEntryRow key={entry.userId} entry={entry} isMe={false} />
               ))}
             {otherEntries
-              .filter((e) => e.score == null || e.score.length === 0)
+              .filter((e) => e.scoreRaw == null || e.scoreRaw.length === 0)
               .map((entry) => (
                 <UnplayedRow key={entry.userId} entry={entry} isMe={false} />
               ))}
@@ -476,7 +476,7 @@ export default function GameDetail() {
               setEditOpen(true);
             }}
           />
-          {myEntry?.score ? (
+          {myEntry?.scoreRaw ? (
             <Button
               testID="game-detail-clear-score"
               label="Clear my score for today"
@@ -565,12 +565,12 @@ function dayChipLabel(key: string, today: string): string {
   return dt.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
 }
 
-interface LeaderboardEntryProps {
-  entry: GameLeaderboardEntry;
+interface LeaderboardEntryRowProps {
+  entry: LeaderboardEntry;
   isMe: boolean;
 }
 
-function LeaderboardEntry({ entry, isMe }: LeaderboardEntryProps) {
+function LeaderboardEntryRow({ entry, isMe }: LeaderboardEntryRowProps) {
   const name = entry.displayName ?? "Someone";
   return (
     <View style={[styles.entry, isMe && styles.entryMe]} testID={`leaderboard-row-${entry.userId}`}>
@@ -596,14 +596,14 @@ function LeaderboardEntry({ entry, isMe }: LeaderboardEntryProps) {
       </View>
       <View style={styles.scoreFrame}>
         <Text style={styles.scoreText} testID={`leaderboard-score-${entry.userId}`}>
-          {entry.score}
+          {entry.scoreRaw}
         </Text>
       </View>
     </View>
   );
 }
 
-function UnplayedRow({ entry, isMe }: { entry: GameLeaderboardEntry; isMe: boolean }) {
+function UnplayedRow({ entry, isMe }: { entry: LeaderboardEntry; isMe: boolean }) {
   const name = entry.displayName ?? "Someone";
   return (
     <View style={styles.unplayedRow} testID={`leaderboard-row-${entry.userId}`}>

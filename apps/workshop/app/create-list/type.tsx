@@ -1,68 +1,8 @@
-import type { ListType } from "@workshop/shared";
+import { LIST_TEMPLATES } from "@workshop/shared/templates";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { goBack } from "../../src/lib/goBack";
 import { IconButton, type ListColorKey, Screen, Text, tokens } from "../../src/ui/index";
-
-interface TypeOption {
-  type: ListType;
-  emoji: string;
-  label: string;
-  description: string;
-  color: ListColorKey;
-}
-
-const OPTIONS: TypeOption[] = [
-  {
-    type: "movie",
-    emoji: "🎬",
-    label: "Movies",
-    description: "Films to watch, solo or with someone.",
-    color: "sunset",
-  },
-  {
-    type: "tv",
-    emoji: "📺",
-    label: "TV shows",
-    description: "Series to start, finish, or rewatch.",
-    color: "ocean",
-  },
-  {
-    type: "book",
-    emoji: "📚",
-    label: "Books",
-    description: "A reading list, shared or otherwise.",
-    color: "forest",
-  },
-  {
-    type: "date_idea",
-    emoji: "💡",
-    label: "Date ideas",
-    description: "Plans for time spent together.",
-    color: "rose",
-  },
-  {
-    type: "trip",
-    emoji: "✈️",
-    label: "Trips",
-    description: "Places to go, things to do there.",
-    color: "grape",
-  },
-  {
-    type: "album_shelf",
-    emoji: "📀",
-    label: "Album shelf",
-    description: "Curate albums from a public Spotify playlist.",
-    color: "slate",
-  },
-  {
-    type: "game",
-    emoji: "🎮",
-    label: "Games",
-    description: "Daily game scores. Paste from Wordle, Globle, Satle.",
-    color: "ocean",
-  },
-];
 
 export default function CreateListType() {
   const router = useRouter();
@@ -87,22 +27,25 @@ export default function CreateListType() {
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.intro}>
           <Text variant="title" style={styles.lead}>
-            Pick a type of list
+            Pick a template
+          </Text>
+          <Text variant="caption" tone="muted">
+            Templates are starting points — you can change modules later.
           </Text>
         </View>
         <View style={styles.options}>
-          {OPTIONS.map((opt) => {
-            const accent = tokens.list[opt.color];
+          {LIST_TEMPLATES.map((tpl) => {
+            const accent = tokens.list[tpl.defaults.color as ListColorKey];
             return (
               <Pressable
-                key={opt.type}
-                testID={`create-list-type-${opt.type}`}
+                key={tpl.id}
+                testID={`create-list-template-${tpl.id}`}
                 accessibilityRole="button"
-                accessibilityLabel={opt.label}
+                accessibilityLabel={tpl.displayName}
                 onPress={() =>
                   router.push({
                     pathname: "/create-list/customize",
-                    params: { type: opt.type },
+                    params: { template: tpl.id },
                   })
                 }
                 style={({
@@ -126,14 +69,17 @@ export default function CreateListType() {
                     { backgroundColor: `${accent}26`, borderColor: `${accent}3D` },
                   ]}
                 >
-                  <Text style={styles.optionEmoji}>{opt.emoji}</Text>
+                  <Text style={styles.optionEmoji}>{tpl.defaults.emoji}</Text>
                 </View>
                 <View style={styles.optionText}>
                   <Text variant="label" style={styles.optionLabel}>
-                    {opt.label}
+                    {tpl.displayName}
                   </Text>
                   <Text variant="caption" tone="muted" numberOfLines={2}>
-                    {opt.description}
+                    {tpl.description}
+                  </Text>
+                  <Text variant="caption" tone="muted" style={styles.optionModules}>
+                    {tpl.defaults.modules.join(" · ")}
                   </Text>
                 </View>
               </Pressable>
@@ -155,7 +101,6 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
-  step: { letterSpacing: 0.3, fontVariant: ["tabular-nums"] },
   stepDots: { flexDirection: "row", gap: 6, alignItems: "center" },
   stepDot: {
     width: 18,
@@ -201,4 +146,5 @@ const styles = StyleSheet.create({
   optionEmoji: { fontSize: 26, lineHeight: 30 },
   optionText: { flex: 1, gap: 2, minWidth: 0 },
   optionLabel: { fontSize: tokens.font.size.md },
+  optionModules: { letterSpacing: 0.5, textTransform: "uppercase", marginTop: 2 },
 });

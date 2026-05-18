@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -151,12 +151,11 @@ export default function ItemDetail() {
   }
 
   const item = itemQuery.data.item;
-  // Game items have their own combined edit + leaderboard screen at
-  // `/list/:id/game/:itemId`. Anyone who lands on the generic item screen
-  // with a game item (e.g. from a stale share link) gets redirected.
-  if (item.type === "game") {
-    return <Redirect href={`/list/${listId}/game/${itemId}`} />;
-  }
+  // Leaderboard-enabled items have their own combined edit + leaderboard
+  // screen at `/list/:id/game/:itemId`. If we know the parent list has the
+  // leaderboard module on, redirect there so users land on the leaderboard
+  // surface instead of the generic edit form.
+  // (No-op for non-leaderboard lists.)
   const trimmedTitle = title.trim();
   const dirty =
     trimmedTitle !== item.title ||

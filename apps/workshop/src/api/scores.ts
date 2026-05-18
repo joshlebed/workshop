@@ -1,18 +1,18 @@
 import type {
-  GameLeaderboardResponse,
-  GameScoreResponse,
-  ListGameScoresResponse,
-  UpsertGameScoreRequest,
+  ItemScoreResponse,
+  LeaderboardResponse,
+  ListScoresResponse,
+  UpsertItemScoreRequest,
 } from "@workshop/shared";
 import { apiRequest } from "../lib/api";
 
 export function fetchItemScores(
   itemId: string,
-  date: string,
+  periodKey: string,
   token: string | null,
-): Promise<GameLeaderboardResponse> {
-  const params = new URLSearchParams({ date });
-  return apiRequest<GameLeaderboardResponse>({
+): Promise<LeaderboardResponse> {
+  const params = new URLSearchParams({ periodKey });
+  return apiRequest<LeaderboardResponse>({
     method: "GET",
     path: `/v1/items/${itemId}/scores?${params.toString()}`,
     token,
@@ -21,10 +21,10 @@ export function fetchItemScores(
 
 export function upsertItemScore(
   itemId: string,
-  body: UpsertGameScoreRequest,
+  body: UpsertItemScoreRequest,
   token: string | null,
-): Promise<GameScoreResponse> {
-  return apiRequest<GameScoreResponse>({
+): Promise<ItemScoreResponse> {
+  return apiRequest<ItemScoreResponse>({
     method: "PUT",
     path: `/v1/items/${itemId}/scores`,
     body,
@@ -34,10 +34,10 @@ export function upsertItemScore(
 
 export function deleteItemScore(
   itemId: string,
-  date: string,
+  periodKey: string,
   token: string | null,
 ): Promise<{ ok: true }> {
-  const params = new URLSearchParams({ date });
+  const params = new URLSearchParams({ periodKey });
   return apiRequest<{ ok: true }>({
     method: "DELETE",
     path: `/v1/items/${itemId}/scores?${params.toString()}`,
@@ -45,15 +45,15 @@ export function deleteItemScore(
   });
 }
 
-export function fetchListGameScores(
+export function fetchListScores(
   listId: string,
-  date: string,
+  periodKey: string,
   token: string | null,
-): Promise<ListGameScoresResponse> {
-  const params = new URLSearchParams({ date });
-  return apiRequest<ListGameScoresResponse>({
+): Promise<ListScoresResponse> {
+  const params = new URLSearchParams({ periodKey });
+  return apiRequest<ListScoresResponse>({
     method: "GET",
-    path: `/v1/lists/${listId}/game-scores?${params.toString()}`,
+    path: `/v1/lists/${listId}/scores?${params.toString()}`,
     token,
   });
 }

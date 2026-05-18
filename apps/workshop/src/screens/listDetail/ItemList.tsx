@@ -38,7 +38,7 @@ export function ItemList({
   ordered,
   unordered,
   completed,
-  listType,
+  listItemKind,
   isAlbumShelf,
   showOrderedHint,
   newItemIds,
@@ -104,7 +104,7 @@ export function ItemList({
       <ScrollViewContainer contentContainerStyle={styles.listContent} testID="list-detail-list">
         {ordered.length > 0 ? (
           <>
-            <SectionHeader kind="ordered" count={ordered.length} listType={listType} />
+            <SectionHeader kind="ordered" count={ordered.length} listItemKind={listItemKind} />
             <NestedReorderableList
               data={ordered}
               keyExtractor={keyExtractor}
@@ -122,7 +122,7 @@ export function ItemList({
 
         {unordered.length > 0 ? (
           <>
-            <SectionHeader kind="unordered" count={unordered.length} listType={listType} />
+            <SectionHeader kind="unordered" count={unordered.length} listItemKind={listItemKind} />
             {unordered.map((item) => (
               <ItemRow
                 key={item.id}
@@ -145,7 +145,7 @@ export function ItemList({
             <SectionHeader
               kind="completed"
               count={completed.length}
-              listType={listType}
+              listItemKind={listItemKind}
               collapsible={
                 showCompletedToggle
                   ? {
@@ -167,7 +167,7 @@ export function ItemList({
                 onMenu={() => onRowMenu(item, "completed")}
                 onPressBody={() => onRowPressBody(item, "completed")}
                 onTapCompleted={
-                  item.type !== "album_shelf" ? () => onUncompleteItem(item) : undefined
+                  item.kind !== "spotify_album" ? () => onUncompleteItem(item) : undefined
                 }
                 onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
               />

@@ -3,9 +3,10 @@ import type {
   BookResult,
   BookSearchResponse,
   CreateItemRequest,
+  ItemContent,
+  ItemKind,
   LinkPreview,
   LinkPreviewResponse,
-  ListType,
   MediaResult,
   MediaSearchResponse,
   MediaSearchType,
@@ -35,7 +36,11 @@ import {
   useToast,
 } from "../../../src/ui/index";
 
-const SEARCH_TYPES: readonly ListType[] = ["movie", "tv", "book"];
+const SEARCH_KINDS: readonly ItemKind[] = ["movie", "tv", "book"];
+
+function isLeaderboardList(modules: readonly string[]): boolean {
+  return modules.includes("leaderboard");
+}
 
 export default function AddItem() {
   const params = useLocalSearchParams<{ id: string; prefillUrl?: string }>();
@@ -56,8 +61,11 @@ export default function AddItem() {
     queryFn: () => fetchListDetail(id ?? "", token),
     enabled: !!token && !!id,
   });
-  const listType = listQuery.data?.list.type;
-  const isSearchType = !!listType && SEARCH_TYPES.includes(listType);
+  const list = listQuery.data?.list;
+  const itemKind = list?.itemKind ?? null;
+  const isSearchKind = !!itemKind && (SEARCH_KINDS as readonly string[]).includes(itemKind);
+  const isGameList = !!list && isLeaderboardList(list.modules);
+  const isSpotifyShelf = itemKind === "spotify_album";
 
   // Free-form fields (date_idea / trip). When the screen is reached via the
   // share flow (`?prefillUrl=…`), seed the URL field so the user just picks
@@ -74,7 +82,7 @@ export default function AddItem() {
   // via `signal` when the key changes.
   const debouncedUrl = useDebouncedQuery(url, 300);
   const normalizedUrl = normalizeHttpUrl(debouncedUrl);
-  const previewEnabled = !!token && !!listType && !isSearchType && normalizedUrl !== null;
+  const previewEnabled = !!token && !!itemKind && !isSearchKind && normalizedUrl !== null;
   const previewQuery = useQuery<LinkPreviewResponse, Error>({
     queryKey: ["link-preview", normalizedUrl ?? ""],
     queryFn: ({ signal }) => fetchLinkPreview(normalizedUrl as string, token, signal),
@@ -87,13 +95,13 @@ export default function AddItem() {
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedQuery(query, 300);
   const trimmedDebounced = debouncedQuery.trim();
-  const searchEnabled = !!token && !!listType && isSearchType && trimmedDebounced.length >= 2;
+  const searchEnabled = !!token && !!itemKind && isSearchKind && trimmedDebounced.length >= 2;
 
   const searchQuery = useQuery<MediaSearchResponse | BookSearchResponse, Error>({
-    queryKey: ["search", listType ?? "", trimmedDebounced],
+    queryKey: ["search", itemKind ?? "", trimmedDebounced],
     queryFn: ({ signal }) => {
-      if (listType === "book") return searchBooks(trimmedDebounced, token, signal);
-      return searchMedia(listType as MediaSearchType, trimmedDebounced, token, signal);
+      if (itemKind === "book") return searchBooks(trimmedDebounced, token, signal);
+      return searchMedia(itemKind as MediaSearchType, trimmedDebounced, token, signal);
     },
     enabled: searchEnabled,
     staleTime: 30_000,
@@ -150,16 +158,18 @@ export default function AddItem() {
 
   const onAddMedia = (r: MediaResult) => {
     const body: CreateItemRequest = {
+      kind: (itemKind ?? "movie") as ItemKind,
       title: r.title,
-      metadata: buildMediaMetadata(r),
+      content: buildMediaContent(r),
     };
     addMutation.mutate({ resultId: r.id, body });
   };
 
   const onAddBook = (r: BookResult) => {
     const body: CreateItemRequest = {
+      kind: "book",
       title: r.title,
-      metadata: buildBookMetadata(r),
+      content: buildBookContent(r),
     };
     addMutation.mutate({ resultId: r.id, body });
   };
@@ -167,34 +177,22 @@ export default function AddItem() {
   const submitFreeForm = () => {
     const trimmedUrl = url.trim();
     const trimmedNote = note.trim();
-    // Only attach metadata when the preview matches the URL the user is
-    // actually submitting — the debounced fetch could be stale or have failed.
     const preview =
       previewQuery.data?.preview && normalizedUrl !== null && trimmedUrl === debouncedUrl.trim()
         ? previewQuery.data.preview
         : null;
-    const metadata = preview
-      ? listType === "game"
-        ? buildGameMetadata(preview)
-        : buildLinkPreviewMetadata(preview)
-      : undefined;
-    // Force a scheme on bare hostnames at save time so `Linking.openURL` /
-    // `window.open` don't treat them as relative paths on web later. Prefer
-    // the already-validated debounced `normalizedUrl` when the preview
-    // matched (it's already gone through `new URL(...)` once); otherwise
-    // run the input through `normalizeExternalUrl`, which is idempotent —
-    // it only prefixes `https://` when the input doesn't already start
-    // with a scheme, so submitting `https://maptap.gg` before the
-    // debounce fires no longer produces `https://https://maptap.gg`.
+    const content = preview ? buildLinkContent(preview, isGameList) : undefined;
     const persistedUrl =
       trimmedUrl.length === 0
         ? undefined
         : (normalizedUrl ?? normalizeExternalUrl(trimmedUrl) ?? trimmedUrl);
+    const resolvedKind: ItemKind = itemKind ?? (persistedUrl ? "link" : "plain");
     const body: CreateItemRequest = {
+      kind: resolvedKind,
       title: trimmedTitle,
       ...(persistedUrl ? { url: persistedUrl } : {}),
       ...(trimmedNote.length > 0 ? { note: trimmedNote } : {}),
-      ...(metadata ? { metadata } : {}),
+      ...(content ? { content } : {}),
     };
     addMutation.mutate({ resultId: "free-form", body });
   };
@@ -206,7 +204,7 @@ export default function AddItem() {
           <Text style={styles.headerGlyph}>✕</Text>
         </IconButton>
         <Text variant="heading">Add item</Text>
-        {listType && !isSearchType && listType !== "album_shelf" && id ? (
+        {itemKind && !isSearchKind && !isSpotifyShelf && id ? (
           <Button
             label="Paste many"
             variant="ghost"
@@ -219,9 +217,9 @@ export default function AddItem() {
         )}
       </View>
 
-      {isSearchType ? (
+      {isSearchKind ? (
         <SearchFlow
-          listType={listType as "movie" | "tv" | "book"}
+          itemKind={itemKind as "movie" | "tv" | "book"}
           query={query}
           onChangeQuery={setQuery}
           searchQuery={searchQuery}
@@ -232,7 +230,7 @@ export default function AddItem() {
         />
       ) : (
         <FreeFormFlow
-          listType={listType ?? "date_idea"}
+          isGame={isGameList}
           title={title}
           onChangeTitle={setTitle}
           url={url}
@@ -252,45 +250,38 @@ export default function AddItem() {
   );
 }
 
-function buildMediaMetadata(r: MediaResult): CreateItemRequest["metadata"] {
-  const meta: Record<string, unknown> = { source: "tmdb", sourceId: r.id };
-  if (r.posterUrl) meta.posterUrl = r.posterUrl;
-  if (typeof r.year === "number") meta.year = r.year;
-  if (typeof r.runtimeMinutes === "number") meta.runtimeMinutes = r.runtimeMinutes;
-  if (r.overview) meta.overview = r.overview;
-  return meta;
+function buildMediaContent(r: MediaResult): ItemContent {
+  const c: Record<string, unknown> = { source: "tmdb", sourceId: r.id };
+  if (r.posterUrl) c.posterUrl = r.posterUrl;
+  if (typeof r.year === "number") c.year = r.year;
+  if (typeof r.runtimeMinutes === "number") c.runtimeMinutes = r.runtimeMinutes;
+  if (r.overview) c.overview = r.overview;
+  return c;
 }
 
-function buildBookMetadata(r: BookResult): CreateItemRequest["metadata"] {
-  const meta: Record<string, unknown> = { source: "google_books", sourceId: r.id };
-  if (r.coverUrl) meta.coverUrl = r.coverUrl;
-  if (r.authors.length > 0) meta.authors = r.authors;
-  if (typeof r.year === "number") meta.year = r.year;
-  if (typeof r.pageCount === "number") meta.pageCount = r.pageCount;
-  if (r.description) meta.description = r.description;
-  return meta;
+function buildBookContent(r: BookResult): ItemContent {
+  const c: Record<string, unknown> = { source: "google_books", sourceId: r.id };
+  if (r.coverUrl) c.coverUrl = r.coverUrl;
+  if (r.authors.length > 0) c.authors = r.authors;
+  if (typeof r.year === "number") c.year = r.year;
+  if (typeof r.pageCount === "number") c.pageCount = r.pageCount;
+  if (r.description) c.description = r.description;
+  return c;
 }
 
-// Only the keys that `placeMetadataSchema` (apps/backend/src/routes/v1/items.ts)
-// accepts; passing anything else with a `.strict()` validator would 400.
-function buildLinkPreviewMetadata(p: LinkPreview): CreateItemRequest["metadata"] {
-  const meta: Record<string, unknown> = { source: "link_preview", sourceId: p.finalUrl };
-  if (p.image) meta.image = p.image;
-  if (p.siteName) meta.siteName = p.siteName;
-  if (p.title) meta.title = p.title;
-  if (p.description) meta.description = p.description;
-  return meta;
-}
-
-// Game items use a tighter metadata schema (`gameMetadataSchema` in
-// apps/backend/src/routes/v1/items.ts). `.strict()` would 400 on any extra
-// field, so map the OG card down to just the keys that schema permits.
-function buildGameMetadata(p: LinkPreview): CreateItemRequest["metadata"] {
-  const meta: Record<string, unknown> = {};
-  const thumbnail = p.image ?? p.favicon;
-  if (thumbnail) meta.thumbnailUrl = thumbnail;
-  if (p.siteName) meta.siteName = p.siteName;
-  return meta;
+function buildLinkContent(p: LinkPreview, isGame: boolean): ItemContent {
+  const c: Record<string, unknown> = { source: "link_preview", sourceId: p.finalUrl };
+  if (isGame) {
+    const thumbnail = p.image ?? p.favicon;
+    if (thumbnail) c.thumbnailUrl = thumbnail;
+    if (p.siteName) c.siteName = p.siteName;
+    return c;
+  }
+  if (p.image) c.image = p.image;
+  if (p.siteName) c.siteName = p.siteName;
+  if (p.title) c.title = p.title;
+  if (p.description) c.description = p.description;
+  return c;
 }
 
 // Returns a normalised http(s) URL (trimmed, single-pass through `URL`) or
@@ -309,7 +300,7 @@ function normalizeHttpUrl(input: string): string | null {
 }
 
 interface SearchFlowProps {
-  listType: "movie" | "tv" | "book";
+  itemKind: "movie" | "tv" | "book";
   query: string;
   onChangeQuery: (v: string) => void;
   searchQuery: ReturnType<typeof useQuery<MediaSearchResponse | BookSearchResponse, Error>>;
@@ -320,7 +311,7 @@ interface SearchFlowProps {
 }
 
 function SearchFlow({
-  listType,
+  itemKind,
   query,
   onChangeQuery,
   searchQuery,
@@ -330,7 +321,7 @@ function SearchFlow({
   onAddBook,
 }: SearchFlowProps) {
   const placeholder =
-    listType === "book" ? "Search books" : listType === "tv" ? "Search TV shows" : "Search movies";
+    itemKind === "book" ? "Search books" : itemKind === "tv" ? "Search TV shows" : "Search movies";
 
   const data = searchQuery.data;
   const showPrompt = trimmedDebounced.length < 2;
@@ -377,7 +368,7 @@ function SearchFlow({
         </Text>
       ) : null}
 
-      {data && listType === "book" && "results" in data
+      {data && itemKind === "book" && "results" in data
         ? (data as BookSearchResponse).results.map((r) => (
             <SearchResultRow
               key={r.id}
@@ -393,7 +384,7 @@ function SearchFlow({
           ))
         : null}
 
-      {data && listType !== "book" && "results" in data
+      {data && itemKind !== "book" && "results" in data
         ? (data as MediaSearchResponse).results.map((r) => (
             <SearchResultRow
               key={r.id}
@@ -419,7 +410,7 @@ function SearchFlow({
 }
 
 interface FreeFormFlowProps {
-  listType: ListType;
+  isGame: boolean;
   title: string;
   onChangeTitle: (v: string) => void;
   url: string;
@@ -437,7 +428,7 @@ interface FreeFormFlowProps {
 }
 
 function FreeFormFlow({
-  listType,
+  isGame,
   title,
   onChangeTitle,
   url,
@@ -452,7 +443,6 @@ function FreeFormFlow({
   previewFailed,
   previewActive,
 }: FreeFormFlowProps) {
-  const isGame = listType === "game";
   const titlePlaceholder = isGame ? "Game name (e.g. Globle)" : "What is it?";
   const urlLabel = isGame ? "URL" : "URL (optional)";
   const urlPlaceholder = isGame ? "https://globle-game.com" : "https://";

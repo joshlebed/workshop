@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ListColor } from "@workshop/shared";
+import { LIST_TEMPLATES, type ListTemplate } from "@workshop/shared/templates";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
-import { previewSpotifyPlaylist } from "../../src/api/albumShelf";
 import { createList } from "../../src/api/lists";
+import { previewSource } from "../../src/api/sources";
 import { useAuth } from "../../src/hooks/useAuth";
 import { albumShelfErrorMessage } from "../../src/lib/albumShelfErrors";
 import { goBack } from "../../src/lib/goBack";
@@ -16,12 +17,18 @@ function pickString(v: string | string[] | undefined): string {
   return Array.isArray(v) ? (v[0] ?? "") : (v ?? "");
 }
 
+function lookupTemplate(id: string): ListTemplate {
+  return (
+    LIST_TEMPLATES.find((t) => t.id === id) ?? LIST_TEMPLATES.find((t) => t.id === "album_shelf")!
+  );
+}
+
 const PREVIEW_DEBOUNCE_MS = 500;
 
 export default function CreateListPlaylist() {
   const router = useRouter();
   const params = useLocalSearchParams<{
-    type?: string;
+    template?: string;
     name?: string;
     emoji?: string;
     color?: string;
@@ -31,17 +38,14 @@ export default function CreateListPlaylist() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
+  const template = lookupTemplate(pickString(params.template));
   const name = pickString(params.name);
   const emoji = pickString(params.emoji);
-  const color = pickString(params.color) as ListColor;
+  const color = (pickString(params.color) || template.defaults.color) as ListColor;
   const description = pickString(params.description);
 
   const [url, setUrl] = useState("");
   const trimmedUrl = url.trim();
-  // Debounce the trimmed URL so we don't fire a backend preview on every
-  // keystroke. Spec §4.1 calls for blur-validation, but on web a debounced-
-  // typing trigger is the closest approximation that also works on iOS where
-  // there's no real "blur" event before the user taps Continue.
   const [debouncedUrl, setDebouncedUrl] = useState("");
   useEffect(() => {
     const t = setTimeout(() => setDebouncedUrl(trimmedUrl), PREVIEW_DEBOUNCE_MS);
@@ -50,10 +54,16 @@ export default function CreateListPlaylist() {
 
   const previewQuery = useQuery({
     queryKey: queryKeys.albumShelf.preview(debouncedUrl),
-    queryFn: () => previewSpotifyPlaylist(debouncedUrl, token),
+    queryFn: () =>
+      previewSource(
+        {
+          kind: "spotify_playlist",
+          config: { spotifyPlaylistUrl: debouncedUrl },
+        },
+        token,
+      ),
     enabled: !!token && debouncedUrl.length > 0,
     retry: false,
-    // Cache previews so backing out + re-entering doesn't re-hit Spotify.
     staleTime: 60_000,
   });
 
@@ -64,23 +74,30 @@ export default function CreateListPlaylist() {
         "creation",
       )
     : null;
-  const preview = previewQuery.isSuccess ? previewQuery.data : null;
+  const preview =
+    previewQuery.isSuccess && previewQuery.data.preview.kind === "spotify_playlist"
+      ? previewQuery.data.preview
+      : null;
   const previewing = previewQuery.isFetching && !previewQuery.isSuccess;
 
-  // Continue requires a successful preview. Per spec §4.1: "On success:
-  // Continue enables. On 404 / private / malformed: Continue stays disabled."
   const canSubmit = !!preview && trimmedUrl === debouncedUrl;
 
   const mutation = useMutation({
     mutationFn: () =>
       createList(
         {
-          type: "album_shelf",
           name,
           emoji,
           color,
+          itemKind: template.defaults.itemKind,
+          modules: template.defaults.modules,
           ...(description.length > 0 ? { description } : {}),
-          spotifyPlaylistUrl: trimmedUrl,
+          sources: [
+            {
+              kind: "spotify_playlist",
+              config: { spotifyPlaylistUrl: trimmedUrl },
+            },
+          ],
         },
         token,
       ),
@@ -127,7 +144,8 @@ export default function CreateListPlaylist() {
             Point us at a playlist
           </Text>
           <Text tone="secondary" style={styles.tagline}>
-            Paste a public Spotify playlist URL. Your shelf will pull every album it references.
+            {template.requiresSource?.promptCopy ??
+              "Paste a public Spotify playlist URL. Your shelf will pull every album it references."}
           </Text>
         </View>
 
@@ -186,9 +204,6 @@ export default function CreateListPlaylist() {
         ) : null}
       </KeyboardAwareScrollView>
 
-      {/* See customize.tsx — `KeyboardStickyView` is the right primitive for
-          a CTA pinned above the keyboard; it tracks the real keyboard frame
-          including the iOS suggestions strip. */}
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
         <View style={styles.footer}>
           <Button
@@ -216,7 +231,6 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
-  step: { letterSpacing: 0.3 },
   stepDots: { flexDirection: "row", gap: 6, alignItems: "center" },
   stepDot: {
     width: 18,

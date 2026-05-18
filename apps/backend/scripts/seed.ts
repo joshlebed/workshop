@@ -3,27 +3,23 @@
  * items, members, upvotes, and activity events so an agent or human running
  * `pnpm dev` (or the Niteshift sandbox setup script) lands on a non-empty UI.
  *
- * Tied to the web app's auto-dev-sign-in user (`joshlebed@gmail.com`, see
- * `apps/workshop/src/hooks/useAuth.tsx`) so anyone who hits the preview with
- * `EXPO_PUBLIC_DEV_AUTH=1` immediately sees this content. On a Niteshift Neon
- * branch forked from prod the user row already exists with the real apple
- * identity; this seed only fires against truly-local (docker) databases so it
- * never has a chance to clobber prod-shaped data.
- *
+ * Tied to the web app's auto-dev-sign-in user (`joshlebed@gmail.com`).
  * Idempotent: if the seed user already owns lists, exits without touching the
- * database. Refusing to mutate in non-local stages is a hard guard — never run
- * this against prod.
+ * database.
  *
  * Re-seed locally with:
  *   docker exec workshop-pg psql -U postgres -d workshop \
  *     -c "DELETE FROM users WHERE email IN ('joshlebed@gmail.com','friend@workshop.local');"
  *   pnpm --filter @workshop/backend run db:seed
  */
+
+import type { ItemKind } from "@workshop/shared/itemKinds";
+import type { ModuleName } from "@workshop/shared/modules";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
 import {
   activityEvents,
-  gameScores,
+  itemScores,
   items,
   itemUpvotes,
   listMembers,
@@ -64,7 +60,6 @@ async function main() {
 
   const db = getDb();
 
-  // Idempotency check: if the preview user already owns lists, bail.
   const [existing] = await db
     .select({ id: users.id })
     .from(users)
@@ -87,46 +82,41 @@ async function main() {
 
   const preview = await ensureSeedUser(PREVIEW_EMAIL, PREVIEW_DISPLAY_NAME);
   const friend = await ensureSeedUser(FRIEND_EMAIL, FRIEND_DISPLAY_NAME);
-
   const previewId = preview.id;
   const friendId = friend.id;
-
-  // ---------------------------------------------------------------------------
-  // Lists & items
-  // ---------------------------------------------------------------------------
-  // Use bare TMDB / OG image hosts so thumbnails render in the web preview
-  // without any provider-API roundtrip. Positions are spaced by 1024 so
-  // mid-point reorders (the client pattern) work without re-numbering.
-  // ---------------------------------------------------------------------------
 
   type SeedItem = {
     title: string;
     url?: string;
     note?: string;
-    metadata?: Record<string, unknown>;
+    content?: Record<string, unknown>;
+    position?: number;
     completed?: boolean;
   };
 
   const fixtures: Array<{
-    type: "movie" | "tv" | "book" | "date_idea" | "trip" | "game";
     name: string;
     emoji: string;
     color: "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand" | "slate";
     description?: string;
     sharedWithFriend?: boolean;
+    itemKind: ItemKind;
+    modules: ModuleName[];
     items: SeedItem[];
   }> = [
     {
-      type: "movie",
       name: "Movie Night",
       emoji: "🎬",
       color: "sunset",
       description: "Saturday picks before they leave the theatre.",
       sharedWithFriend: true,
+      itemKind: "movie",
+      modules: ["voting", "todo", "ranking"],
       items: [
         {
           title: "Dune: Part Two",
-          metadata: {
+          position: 1024,
+          content: {
             source: "tmdb",
             sourceId: "693134",
             posterUrl: "https://image.tmdb.org/t/p/w500/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",
@@ -134,25 +124,24 @@ async function main() {
             runtimeMinutes: 166,
             overview:
               "Paul Atreides unites with the Fremen to seek revenge against the conspirators.",
-            position: 1024,
           },
         },
         {
           title: "Past Lives",
-          metadata: {
+          position: 2048,
+          content: {
             source: "tmdb",
             sourceId: "666277",
             posterUrl: "https://image.tmdb.org/t/p/w500/k3waqVXSnvCZWfJYNtdamTgTtTA.jpg",
             year: 2023,
             runtimeMinutes: 106,
             overview: "Two deeply connected childhood friends reunite for one fateful week.",
-            position: 2048,
           },
         },
         {
           title: "The Iron Claw",
           completed: true,
-          metadata: {
+          content: {
             source: "tmdb",
             sourceId: "768362",
             posterUrl: "https://image.tmdb.org/t/p/w500/6OnoMgGFuZ921eV8v8yEyXoag19.jpg",
@@ -163,27 +152,26 @@ async function main() {
       ],
     },
     {
-      type: "tv",
       name: "TV Queue",
       emoji: "📺",
       color: "ocean",
+      itemKind: "tv",
+      modules: ["voting", "todo", "ranking"],
       items: [
         {
           title: "Severance",
-          metadata: {
+          position: 1024,
+          content: {
             source: "tmdb",
             sourceId: "95396",
             posterUrl: "https://image.tmdb.org/t/p/w500/lFf6LLrQjYldcZItzOkGmMMigP7.jpg",
             year: 2022,
-            overview:
-              "Mark leads a team of office workers whose memories have been surgically divided.",
-            position: 1024,
           },
         },
         {
           title: "The Bear",
           completed: true,
-          metadata: {
+          content: {
             source: "tmdb",
             sourceId: "136315",
             posterUrl: "https://image.tmdb.org/t/p/w500/zPyHHRxKxiE4n2dz1lAjbqdkVNz.jpg",
@@ -193,15 +181,17 @@ async function main() {
       ],
     },
     {
-      type: "book",
       name: "Reading List",
       emoji: "📚",
       color: "forest",
       description: "On the nightstand.",
+      itemKind: "book",
+      modules: ["voting", "todo", "ranking"],
       items: [
         {
           title: "The Three-Body Problem",
-          metadata: {
+          position: 1024,
+          content: {
             source: "google_books",
             sourceId: "p9-yzwEACAAJ",
             coverUrl:
@@ -209,12 +199,12 @@ async function main() {
             authors: ["Liu Cixin"],
             year: 2014,
             pageCount: 416,
-            position: 1024,
           },
         },
         {
           title: "Project Hail Mary",
-          metadata: {
+          position: 2048,
+          content: {
             source: "google_books",
             sourceId: "lwTAEACAAJ",
             coverUrl:
@@ -222,12 +212,11 @@ async function main() {
             authors: ["Andy Weir"],
             year: 2021,
             pageCount: 496,
-            position: 2048,
           },
         },
         {
           title: "Tomorrow, and Tomorrow, and Tomorrow",
-          metadata: {
+          content: {
             authors: ["Gabrielle Zevin"],
             year: 2022,
           },
@@ -235,98 +224,97 @@ async function main() {
       ],
     },
     {
-      type: "date_idea",
       name: "Date Ideas",
       emoji: "💜",
       color: "rose",
       sharedWithFriend: true,
+      itemKind: "link",
+      modules: ["voting", "todo", "ranking"],
       items: [
         {
           title: "Sunset hike at Twin Peaks",
           url: "https://sftravel.com/explore/twin-peaks",
           note: "Pack a jacket — wind picks up after 7pm.",
-          metadata: {
-            siteName: "sftravel.com",
-            position: 1024,
-          },
+          position: 1024,
+          content: { siteName: "sftravel.com" },
         },
         {
           title: "Tea at Smith",
           url: "https://www.smithtea.com/",
-          metadata: {
-            siteName: "Smith Teamaker",
-            position: 2048,
-          },
+          position: 2048,
+          content: { siteName: "Smith Teamaker" },
         },
       ],
     },
     {
-      type: "trip",
       name: "Trip Bucket List",
       emoji: "✈️",
-      color: "slate",
+      color: "sand",
+      itemKind: "link",
+      modules: ["voting", "todo", "ranking"],
       items: [
-        {
-          title: "Tokyo cherry blossoms",
-          note: "Late March / early April",
-          metadata: { position: 1024 },
-        },
-        {
-          title: "Lisbon weekend",
-          note: "Stay in Alfama.",
-          metadata: { position: 2048 },
-        },
+        { title: "Tokyo cherry blossoms", note: "Late March / early April", position: 1024 },
+        { title: "Lisbon weekend", note: "Stay in Alfama.", position: 2048 },
       ],
     },
     {
-      type: "game",
       name: "Ski gang games",
       emoji: "🎮",
-      color: "ocean",
+      color: "slate",
       sharedWithFriend: true,
+      itemKind: "link",
+      modules: ["voting", "leaderboard", "ranking"],
       items: [
         {
           title: "maptap",
           url: "https://maptap.gg/",
-          metadata: {
-            siteName: "maptap.gg",
-            position: 512,
-          },
+          position: 512,
+          content: { siteName: "maptap.gg" },
         },
         {
           title: "Globle",
           url: "https://globle-game.com/",
-          metadata: {
+          position: 2048,
+          content: {
             siteName: "Globle",
             thumbnailUrl: "https://globle-game.com/globle-preview.png",
-            position: 2048,
           },
         },
         {
           title: "Satle",
           url: "https://satle.ca/",
-          metadata: {
-            siteName: "satle.ca",
-            position: 3072,
-          },
+          position: 3072,
+          content: { siteName: "satle.ca" },
         },
         {
           title: "travle",
           url: "https://travle.earth",
-          metadata: {
+          position: 4096,
+          content: {
             siteName: "travle.earth",
             thumbnailUrl: "https://travle.earth/images/previews/countries_preview.png",
-            position: 4096,
           },
         },
         {
           title: "Daily Tens",
           url: "https://dailytens.com/",
-          metadata: {
-            siteName: "dailytens.com",
-            position: 5120,
-          },
+          position: 5120,
+          content: { siteName: "dailytens.com" },
         },
+      ],
+    },
+    {
+      name: "Quick Poll",
+      emoji: "🗳️",
+      color: "grape",
+      description: "Best post-dinner activity for Saturday?",
+      sharedWithFriend: true,
+      itemKind: "plain",
+      modules: ["voting"],
+      items: [
+        { title: "Movie night" },
+        { title: "Game night" },
+        { title: "Walk to the dessert place" },
       ],
     },
   ];
@@ -338,13 +326,13 @@ async function main() {
     const [list] = await db
       .insert(lists)
       .values({
-        type: fixture.type,
         name: fixture.name,
         emoji: fixture.emoji,
         color: fixture.color,
         description: fixture.description ?? null,
         ownerId: previewId,
-        metadata: {},
+        itemKind: fixture.itemKind,
+        modules: fixture.modules,
       })
       .returning();
     if (!list) throw new Error(`[seed] failed to insert list ${fixture.name}`);
@@ -373,7 +361,11 @@ async function main() {
       listId: list.id,
       actorId: previewId,
       eventType: "list_created",
-      payload: { name: list.name, type: list.type },
+      payload: {
+        name: list.name,
+        itemKind: fixture.itemKind,
+        modules: fixture.modules,
+      },
     });
 
     for (const seedItem of fixture.items) {
@@ -381,11 +373,12 @@ async function main() {
         .insert(items)
         .values({
           listId: list.id,
-          type: fixture.type,
+          kind: fixture.itemKind,
           title: seedItem.title,
           url: seedItem.url ?? null,
           note: seedItem.note ?? null,
-          metadata: seedItem.metadata ?? {},
+          content: seedItem.content ?? {},
+          position: seedItem.position ?? null,
           addedBy: previewId,
           completed: seedItem.completed ?? false,
           completedAt: seedItem.completed ? new Date() : null,
@@ -399,7 +392,7 @@ async function main() {
         actorId: previewId,
         eventType: "item_added",
         itemId: item.id,
-        payload: { title: item.title, type: item.type },
+        payload: { title: item.title, kind: fixture.itemKind },
       });
 
       if (seedItem.completed) {
@@ -412,7 +405,6 @@ async function main() {
         });
       }
 
-      // Friend upvotes one item per shared list to exercise the upvote UI.
       if (fixture.sharedWithFriend && fixture.items.indexOf(seedItem) === 0) {
         await db.insert(itemUpvotes).values({
           itemId: item.id,
@@ -427,9 +419,7 @@ async function main() {
         });
       }
 
-      // A couple of recent scores per known game so the game-detail view has
-      // something to render. Skip games we don't have plausible share text for.
-      if (fixture.type === "game") {
+      if (fixture.modules.includes("leaderboard")) {
         const sharedScores: Record<string, { today: string; yesterday: string }> = {
           Globle: {
             today: "🌎 May 15, 2026 🔥 1 | Avg. Guesses: 4\n🟨🟧🟥🟩\nhttps://globle-game.com",
@@ -443,10 +433,28 @@ async function main() {
         };
         const scores = sharedScores[seedItem.title];
         if (scores) {
-          await db.insert(gameScores).values([
-            { itemId: item.id, userId: previewId, date: today, score: scores.today },
-            { itemId: item.id, userId: previewId, date: yesterday, score: scores.yesterday },
-            { itemId: item.id, userId: friendId, date: today, score: scores.today },
+          await db.insert(itemScores).values([
+            {
+              itemId: item.id,
+              userId: previewId,
+              periodKey: today,
+              scoreRaw: scores.today,
+              scoreValue: null,
+            },
+            {
+              itemId: item.id,
+              userId: previewId,
+              periodKey: yesterday,
+              scoreRaw: scores.yesterday,
+              scoreValue: null,
+            },
+            {
+              itemId: item.id,
+              userId: friendId,
+              periodKey: today,
+              scoreRaw: scores.today,
+              scoreValue: null,
+            },
           ]);
         }
       }

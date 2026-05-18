@@ -8,7 +8,7 @@
 // timestamp), other types fall back to title + note + an optional poster /
 // cover from `metadata.posterUrl` or `metadata.coverUrl` / `image`.
 
-import type { AlbumShelfItemMetadata, Item, ListType } from "@workshop/shared";
+import type { Item, ItemKind } from "@workshop/shared";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -292,13 +292,13 @@ interface ItemView {
 }
 
 function describeItem(item: Item): ItemView {
-  const meta = item.metadata as Record<string, unknown>;
-  switch (item.type) {
-    case "album_shelf": {
-      const m = meta as Partial<AlbumShelfItemMetadata>;
-      const subline = m.year ? `${m.artist ?? ""} · ${m.year}` : (m.artist ?? "");
+  const c = item.content as Record<string, unknown>;
+  switch (item.kind) {
+    case "spotify_album": {
+      const subline =
+        typeof c.year === "number" ? `${c.artist ?? ""} · ${c.year}` : ((c.artist as string) ?? "");
       return {
-        ...(typeof m.coverUrl === "string" ? { imageUrl: m.coverUrl } : {}),
+        ...(typeof c.coverUrl === "string" ? { imageUrl: c.coverUrl } : {}),
         placeholderGlyph: "📀",
         subline,
         bodyRole: "link",
@@ -307,22 +307,22 @@ function describeItem(item: Item): ItemView {
     }
     case "movie":
     case "tv": {
-      const poster = typeof meta.posterUrl === "string" ? meta.posterUrl : undefined;
-      const year = typeof meta.year === "number" ? String(meta.year) : null;
-      const overview = typeof meta.overview === "string" ? meta.overview : null;
+      const poster = typeof c.posterUrl === "string" ? c.posterUrl : undefined;
+      const year = typeof c.year === "number" ? String(c.year) : null;
+      const overview = typeof c.overview === "string" ? c.overview : null;
       const subline = [year, overview].filter(Boolean).join(" · ");
       return {
         ...(poster ? { imageUrl: poster } : {}),
-        placeholderGlyph: item.type === "tv" ? "📺" : "🎬",
+        placeholderGlyph: item.kind === "tv" ? "📺" : "🎬",
         subline,
         bodyRole: "button",
         bodyLabel: `Open ${item.title}`,
       };
     }
     case "book": {
-      const cover = typeof meta.coverUrl === "string" ? meta.coverUrl : undefined;
-      const authors = Array.isArray(meta.authors) ? (meta.authors as string[]).join(", ") : "";
-      const year = typeof meta.year === "number" ? String(meta.year) : null;
+      const cover = typeof c.coverUrl === "string" ? c.coverUrl : undefined;
+      const authors = Array.isArray(c.authors) ? (c.authors as string[]).join(", ") : "";
+      const year = typeof c.year === "number" ? String(c.year) : null;
       const subline = [authors, year].filter(Boolean).join(" · ");
       return {
         ...(cover ? { imageUrl: cover } : {}),
@@ -332,32 +332,34 @@ function describeItem(item: Item): ItemView {
         bodyLabel: `Open ${item.title}`,
       };
     }
-    case "date_idea":
-    case "trip": {
-      const image = typeof meta.image === "string" ? meta.image : undefined;
-      const siteName = typeof meta.siteName === "string" ? meta.siteName : "";
+    case "link": {
+      // `link` covers date ideas, trips, games, and any generic URL-bearing
+      // item. Pick the image from whichever field is set (image, thumbnailUrl).
+      const image =
+        typeof c.image === "string"
+          ? c.image
+          : typeof c.thumbnailUrl === "string"
+            ? c.thumbnailUrl
+            : undefined;
+      const siteName = typeof c.siteName === "string" ? c.siteName : "";
       const note = item.note ?? "";
       const subline = [siteName, note].filter(Boolean).join(" · ");
       return {
         ...(image ? { imageUrl: image } : {}),
-        placeholderGlyph: item.type === "trip" ? "✈️" : "📍",
+        placeholderGlyph: "🔗",
         subline,
         bodyRole: "button",
         bodyLabel: `Open ${item.title}`,
       };
     }
-    case "game": {
-      // The body of a game row opens the leaderboard / paste-score screen,
-      // not the URL — the URL has its own dedicated thumbnail tap target so
-      // users can launch the game without losing the row's context.
-      const thumb = typeof meta.thumbnailUrl === "string" ? meta.thumbnailUrl : undefined;
-      const siteName = typeof meta.siteName === "string" ? meta.siteName : "";
+    case "plain":
+    default: {
+      const note = item.note ?? "";
       return {
-        ...(thumb ? { imageUrl: thumb } : {}),
-        placeholderGlyph: "🎮",
-        subline: siteName,
+        placeholderGlyph: "📝",
+        subline: note,
         bodyRole: "button",
-        bodyLabel: `Open ${item.title} leaderboard`,
+        bodyLabel: `Open ${item.title}`,
       };
     }
   }
@@ -371,9 +373,9 @@ function describeProvenance(
   if (section === "completed" && item.completedAt) {
     return `completed ${formatRelative(item.completedAt)}`;
   }
-  if (item.type === "album_shelf" && section === "unordered") {
-    const meta = item.metadata as Partial<AlbumShelfItemMetadata>;
-    const detectedAt = typeof meta.detectedAt === "string" ? meta.detectedAt : null;
+  if (item.kind === "spotify_album" && section === "unordered") {
+    const c = item.content as { detectedAt?: string };
+    const detectedAt = typeof c.detectedAt === "string" ? c.detectedAt : null;
     return detectedAt ? `detected ${formatRelative(detectedAt)}` : "detected";
   }
   // Only surface attribution when another collaborator added the row; a list
@@ -387,39 +389,38 @@ function describeProvenance(
 interface SectionHeaderProps {
   kind: "ordered" | "unordered" | "completed";
   count: number;
-  /** Drives the type-specific copy on the unordered + completed labels. */
-  listType: ListType;
+  /** Drives the kind-specific copy on the unordered + completed labels. */
+  listItemKind: ItemKind | null;
   /** When provided, the header becomes a Pressable that toggles section collapse. */
   collapsible?: { collapsed: boolean; onToggle: () => void };
 }
 
-const UNORDERED_LABEL_BY_TYPE: Record<ListType, string> = {
+const UNORDERED_LABEL_BY_KIND: Record<ItemKind, string> = {
   movie: "Watchlist",
   tv: "Watchlist",
   book: "Reading",
-  date_idea: "Ideas",
-  trip: "Wishlist",
-  album_shelf: "Detected",
-  game: "Backlog",
+  link: "Ideas",
+  spotify_album: "Detected",
+  plain: "Up next",
 };
 
-const COMPLETED_LABEL_BY_TYPE: Record<ListType, string> = {
+const COMPLETED_LABEL_BY_KIND: Record<ItemKind, string> = {
   movie: "Watched",
   tv: "Watched",
   book: "Read",
-  date_idea: "Tried",
-  trip: "Been",
-  album_shelf: "Done",
-  game: "Played",
+  link: "Tried",
+  spotify_album: "Done",
+  plain: "Done",
 };
 
-export function SectionHeader({ kind, count, listType, collapsible }: SectionHeaderProps) {
+export function SectionHeader({ kind, count, listItemKind, collapsible }: SectionHeaderProps) {
+  const itemKind = listItemKind ?? "plain";
   const label =
     kind === "ordered"
       ? "Ranked"
       : kind === "completed"
-        ? COMPLETED_LABEL_BY_TYPE[listType]
-        : UNORDERED_LABEL_BY_TYPE[listType];
+        ? COMPLETED_LABEL_BY_KIND[itemKind]
+        : UNORDERED_LABEL_BY_KIND[itemKind];
 
   const body = (
     <View style={styles.sectionHeader}>

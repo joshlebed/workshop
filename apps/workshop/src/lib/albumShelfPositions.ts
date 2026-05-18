@@ -1,49 +1,36 @@
-import type { Item, ItemMetadata, ListItemsResponse } from "@workshop/shared";
+import type { Item, ListItemsResponse } from "@workshop/shared";
 
 /**
- * Ordered rows are sorted by `metadata.position` (a float; see
- * docs/album-shelf.md §3.3.1 for the original album-shelf spec — the same
- * scheme is reused for every list type since the 2026-05 ordering refactor).
- * To insert at index `index` we pick a midpoint between the neighbours;
- * promoting to top or bottom carries off one end (half of the existing
- * first / last + 1). Empty list → 1 so we always start with positive
- * numbers.
+ * Pure client-side optimistic-update helpers for drag-to-reorder.
  *
- * Pure function — kept here for unit tests.
+ * The server now owns position allocation via `POST /v1/items/:id/move`
+ * (sparse integers, eager rebalance — see §3.4 of the redesign doc). These
+ * helpers exist only for client-side optimistic updates while the move
+ * request is in flight; they compute a plausible interim position so the UI
+ * doesn't snap. The next `fetchItems` invalidation replaces them with the
+ * server-authored truth.
  */
+
+export function positionOf(item: Item): number | null {
+  return item.position ?? null;
+}
+
 export function midpointAt(orderedItems: Item[], index: number): number {
-  const positions = orderedItems
-    .map((it) => positionOf(it))
-    .filter((p): p is number => typeof p === "number");
-  if (positions.length === 0) return 1;
+  const positions = orderedItems.map(positionOf).filter((p): p is number => typeof p === "number");
+  if (positions.length === 0) return 1024;
   if (index <= 0) {
-    const first = positions[0] ?? 1;
-    return first / 2;
+    const first = positions[0] ?? 1024;
+    return Math.floor(first / 2);
   }
   if (index >= positions.length) {
     const last = positions[positions.length - 1] ?? 0;
-    return last + 1;
+    return last + 1024;
   }
   const before = positions[index - 1] ?? 0;
-  const after = positions[index] ?? before + 2;
-  return (before + after) / 2;
+  const after = positions[index] ?? before + 2048;
+  return Math.floor((before + after) / 2);
 }
 
-export function positionOf(item: Item): number | null {
-  const meta = item.metadata as { position?: number | null };
-  return typeof meta.position === "number" ? meta.position : null;
-}
-
-/**
- * Within-section reorder: given the current ordered array and a drag from
- * `fromIndex` to `toIndex` (post-removal-splice convention used by both
- * dnd-kit and react-native-reorderable-list), return the new `position`
- * value for the dragged item, or `null` if no mutation is needed.
- *
- * Cross-section moves (promote / demote) are handled separately via the
- * kebab menu so this helper never has to reason about which section the
- * row belongs to.
- */
 export function midpointForOrderedReorder(
   orderedItems: Item[],
   fromIndex: number,
@@ -65,31 +52,17 @@ export function midpointForOrderedReorder(
   const next = midpointBetween(before, after);
 
   const current = positionOf(moved);
-  if (current !== null && Math.abs(current - next) < 1e-9) return null;
+  if (current !== null && current === next) return null;
   return next;
 }
 
-/**
- * Midpoint between two ordered-row positions:
- * - both null → 1   (empty ordered list)
- * - before null → after / 2  (insert at top)
- * - after null  → before + 1  (insert at bottom)
- * - both        → (before + after) / 2
- */
 export function midpointBetween(before: number | null, after: number | null): number {
-  if (before === null && after === null) return 1;
-  if (before === null && after !== null) return after / 2;
-  if (after === null && before !== null) return before + 1;
-  return ((before as number) + (after as number)) / 2;
+  if (before === null && after === null) return 1024;
+  if (before === null && after !== null) return Math.floor(after / 2);
+  if (after === null && before !== null) return before + 1024;
+  return Math.floor(((before as number) + (after as number)) / 2);
 }
 
-/**
- * Optimistic-update helper. Given the current ordered/unordered/completed
- * response and a patch that sets a row's position to `nextPosition` (number
- * → ordered, null → unordered), return the next response with the row
- * moved into the right section and re-sorted. Completed items are not
- * affected by position drag — they live in their own bucket.
- */
 export function applyPositionPatch(
   data: ListItemsResponse,
   itemId: string,
@@ -102,10 +75,7 @@ export function applyPositionPatch(
   const otherUnordered = data.unordered.filter((i) => i.id !== itemId);
   const patched: Item = {
     ...target,
-    metadata: {
-      ...(target.metadata as ItemMetadata),
-      position: nextPosition,
-    } as ItemMetadata,
+    position: nextPosition,
   };
   if (typeof nextPosition === "number") {
     const ordered = [...otherOrdered, patched].sort(
@@ -118,4 +88,43 @@ export function applyPositionPatch(
     unordered: [...otherUnordered, patched],
     completed: data.completed,
   };
+}
+
+/**
+ * Apply an optimistic neighbor-based move — given a drag from `fromIndex`
+ * (in the source ordered/unordered/completed array) to a destination
+ * relative to siblings `beforeItemId` / `afterItemId`. Used by client code
+ * that talks to `POST /v1/items/:id/move`.
+ */
+export function applyOptimisticMove(
+  data: ListItemsResponse,
+  itemId: string,
+  beforeItemId: string | null,
+  afterItemId: string | null,
+): ListItemsResponse {
+  if (!beforeItemId && !afterItemId) {
+    return applyPositionPatch(data, itemId, null);
+  }
+  const all = [...data.ordered, ...data.unordered];
+  const findPos = (id: string | null) => {
+    if (!id) return null;
+    const item = all.find((i) => i.id === id);
+    return item ? positionOf(item) : null;
+  };
+  const before = findPos(beforeItemId);
+  const after = findPos(afterItemId);
+  let lower: number | null = null;
+  let upper: number | null = null;
+  if (before !== null && after !== null) {
+    lower = Math.min(before, after);
+    upper = Math.max(before, after);
+  } else if (before !== null) {
+    lower = before;
+    upper = null;
+  } else if (after !== null) {
+    upper = after;
+    lower = null;
+  }
+  const next = midpointBetween(lower, upper);
+  return applyPositionPatch(data, itemId, next);
 }

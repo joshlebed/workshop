@@ -1,19 +1,28 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
-  AlbumShelfListMetadata,
+  ConfigWarning,
   Invite,
   ListColor,
   ListMemberSummary,
+  ListSource,
+  ModuleName,
   PendingInvite,
 } from "@workshop/shared";
+import { MODULE_NAMES } from "@workshop/shared/modules";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Image, Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { refreshAlbumShelf } from "../../../src/api/albumShelf";
 import { createInvite, revokeInvite } from "../../../src/api/invites";
-import { archiveListEntirely, fetchListDetail, updateList } from "../../../src/api/lists";
+import {
+  archiveListEntirely,
+  duplicateList,
+  fetchListDetail,
+  previewListConfig,
+  updateList,
+} from "../../../src/api/lists";
 import { removeMember } from "../../../src/api/members";
+import { syncSource } from "../../../src/api/sources";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { albumShelfErrorMessage } from "../../../src/lib/albumShelfErrors";
 import { errorMessage } from "../../../src/lib/api";
@@ -42,7 +51,30 @@ const COLOR_KEYS: readonly ListColorKey[] = [
   "slate",
 ];
 
-const EMOJI_CHOICES = ["🎬", "📺", "📚", "💡", "✈️", "🍿", "🎮", "🎵", "🍔", "🌅", "🏔️", "🎨"];
+const EMOJI_CHOICES = ["🎬", "📺", "📚", "💜", "✈️", "🍿", "🎮", "🎵", "🍔", "🌅", "🏔️", "🎨"];
+
+const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> = {
+  todo: {
+    label: "To-do",
+    description: "Items can be marked complete; a “Done” section appears.",
+  },
+  voting: {
+    label: "Voting",
+    description: "Members can upvote items.",
+  },
+  ranking: {
+    label: "Ranking",
+    description: "Drag items into a manual order.",
+  },
+  leaderboard: {
+    label: "Leaderboard",
+    description: "Members submit scores per period — great for daily games.",
+  },
+  sources: {
+    label: "Sources",
+    description: "Attach external feeds (Spotify playlists, future kinds).",
+  },
+};
 
 interface FreshInvite extends Invite {
   token: string;
@@ -65,31 +97,25 @@ export default function ListSettings() {
   const list = listQuery.data?.list;
   const members = listQuery.data?.members ?? [];
   const pendingInvites = listQuery.data?.pendingInvites ?? [];
+  const sources: ListSource[] = listQuery.data?.sources ?? [];
   const isOwner = !!list && !!user && list.ownerId === user.id;
 
-  // Tokens are only returned on the POST response — keep the most-recent
-  // freshly-generated invite in component state so the owner can copy/share
-  // its URL. Pending invites loaded from `GET /v1/lists/:id` never include
-  // the token (security per 3a-1), so refresh-and-recover is "revoke and
-  // regenerate".
   const [freshInvite, setFreshInvite] = useState<FreshInvite | null>(null);
 
-  // Details form (owner-only). Initialized lazily once the list loads.
   const [name, setName] = useState<string | null>(null);
   const [emoji, setEmoji] = useState<string | null>(null);
   const [color, setColor] = useState<ListColor | null>(null);
   const [description, setDescription] = useState<string | null>(null);
-  // null = no cover; string = cover data URL. `coverPhotoLoaded` lets us
-  // distinguish "not hydrated yet" from "user cleared the photo".
   const [coverPhotoUrl, setCoverPhotoUrl] = useState<string | null>(null);
   const [coverPhotoLoaded, setCoverPhotoLoaded] = useState(false);
+  const [selectedModules, setSelectedModules] = useState<ModuleName[] | null>(null);
 
-  // Hydrate form state once on first list load.
   if (list && name === null && emoji === null && color === null && description === null) {
     setName(list.name);
     setEmoji(list.emoji);
     setColor(list.color);
     setDescription(list.description ?? "");
+    setSelectedModules(list.modules);
   }
   if (list && !coverPhotoLoaded) {
     setCoverPhotoUrl(list.coverPhotoUrl ?? null);
@@ -112,6 +138,14 @@ export default function ListSettings() {
     );
   }, [list, name, emoji, color, description, coverPhotoUrl]);
 
+  const modulesDirty = useMemo(() => {
+    if (!list || !selectedModules) return false;
+    if (selectedModules.length !== list.modules.length) return true;
+    const a = [...selectedModules].sort().join(",");
+    const b = [...list.modules].sort().join(",");
+    return a !== b;
+  }, [list, selectedModules]);
+
   const updateMutation = useMutation({
     mutationFn: () => {
       if (!id || name === null || emoji === null || color === null || description === null) {
@@ -126,8 +160,6 @@ export default function ListSettings() {
           emoji,
           color,
           description: desc.length > 0 ? desc : null,
-          // Only include `coverPhotoUrl` in the patch if it actually changed
-          // — sending a 1MB data URL on every save would be wasteful.
           ...(coverPhotoUrl !== currentCover ? { coverPhotoUrl } : {}),
         },
         token,
@@ -149,123 +181,98 @@ export default function ListSettings() {
     },
   });
 
-  const generateInviteMutation = useMutation({
+  // --- Module changes ---
+  const [previewWarnings, setPreviewWarnings] = useState<ConfigWarning[] | null>(null);
+
+  const previewMutation = useMutation({
     mutationFn: () => {
-      if (!id) throw new Error("missing list id");
-      return createInvite(id, {}, token);
+      if (!id || !selectedModules) throw new Error("missing");
+      return previewListConfig(id, { modules: selectedModules }, token);
     },
-    onSuccess: async (res) => {
-      // The POST response is the only place the token is returned.
-      const fresh = res.invite;
-      if (!fresh.token) {
-        showToast({
-          message: "Invite created but token missing — revoke and retry.",
-          tone: "danger",
-        });
-        return;
-      }
-      setFreshInvite({ ...fresh, token: fresh.token });
-      if (id) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
-      }
-      const url = buildInviteShareUrl(fresh.token);
-      const ok = await copyToClipboard(url);
-      showToast({
-        message: ok ? "Share link copied to clipboard" : "Share link generated",
-        tone: ok ? "success" : "default",
-      });
+    onSuccess: (res) => {
+      setPreviewWarnings(res.warnings);
     },
     onError: (e) => {
-      showToast({
-        message: errorMessage(e, "Couldn't generate invite"),
-        tone: "danger",
-      });
+      showToast({ message: errorMessage(e, "Couldn't preview changes"), tone: "danger" });
     },
   });
 
-  const revokeMutation = useMutation({
-    mutationFn: (inviteId: string) => {
-      if (!id) throw new Error("missing list id");
-      return revokeInvite(id, inviteId, token);
-    },
-    onSuccess: async (_res, inviteId) => {
-      // Drop the cached fresh invite if its id matches the revoked one.
-      setFreshInvite((prev) => (prev && prev.id === inviteId ? null : prev));
-      if (id) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
-      }
-      showToast({ message: "Share link revoked", tone: "default" });
-    },
-    onError: (e) => {
-      showToast({
-        message: errorMessage(e, "Couldn't revoke invite"),
-        tone: "danger",
-      });
-    },
-  });
-
-  const removeMemberMutation = useMutation({
-    mutationFn: (userId: string) => {
-      if (!id) throw new Error("missing list id");
-      return removeMember(id, userId, token);
-    },
-    onSuccess: async (_res, removedUserId) => {
-      const isSelfLeave = !!user && removedUserId === user.id;
-      if (id) {
-        await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
-      }
-      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      if (isSelfLeave) {
-        // Self-leave navigates back to the home list — they no longer have
-        // access to the list detail screen.
-        router.replace("/");
-      } else {
-        showToast({ message: "Member removed", tone: "default" });
-      }
-    },
-    onError: (e) => {
-      showToast({
-        message: errorMessage(e, "Couldn't remove member"),
-        tone: "danger",
-      });
-    },
-  });
-
-  // --- Album Shelf source playlist (any member can change URL) ---
-
-  const albumShelfMeta =
-    list?.type === "album_shelf" ? (list.metadata as Partial<AlbumShelfListMetadata>) : null;
-  const [shelfUrl, setShelfUrl] = useState<string | null>(null);
-  if (albumShelfMeta && shelfUrl === null) {
-    setShelfUrl(albumShelfMeta.spotifyPlaylistUrl ?? "");
-  }
-
-  const updateSourceMutation = useMutation({
-    mutationFn: () => {
-      if (!id) throw new Error("missing list id");
-      return updateList(id, { metadata: { spotifyPlaylistUrl: (shelfUrl ?? "").trim() } }, token);
+  const modulesMutation = useMutation({
+    mutationFn: ({ acknowledgedWarnings }: { acknowledgedWarnings?: string[] }) => {
+      if (!id || !selectedModules) throw new Error("missing");
+      return updateList(
+        id,
+        {
+          modules: selectedModules,
+          ...(acknowledgedWarnings ? { acknowledgedWarnings } : {}),
+        },
+        token,
+      );
     },
     onSuccess: async () => {
       if (!id) return;
+      setPreviewWarnings(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
       ]);
-      showToast({ message: "Source updated and refreshed.", tone: "success" });
+      showToast({ message: "Modules updated", tone: "success" });
     },
     onError: (e) => {
-      showToast({
-        message: albumShelfErrorMessage(e, "Couldn't update source."),
-        tone: "danger",
-      });
+      showToast({ message: errorMessage(e, "Couldn't update modules"), tone: "danger" });
     },
   });
 
-  const refreshShelfMutation = useMutation({
+  const toggleModule = (mod: ModuleName) => {
+    if (!selectedModules) return;
+    setSelectedModules(
+      selectedModules.includes(mod)
+        ? selectedModules.filter((m) => m !== mod)
+        : [...selectedModules, mod],
+    );
+    setPreviewWarnings(null);
+  };
+
+  const onSaveModules = async () => {
+    if (!selectedModules) return;
+    // First preview — if there are no warnings (or user already acknowledged),
+    // commit directly.
+    const result = await previewListConfig(id ?? "", { modules: selectedModules }, token);
+    if (result.warnings.length === 0) {
+      modulesMutation.mutate({});
+    } else {
+      setPreviewWarnings(result.warnings);
+    }
+  };
+
+  const onConfirmModules = () => {
+    if (!previewWarnings) return;
+    modulesMutation.mutate({
+      acknowledgedWarnings: previewWarnings.map((w) => w.code),
+    });
+  };
+
+  // --- Duplicate ---
+  const duplicateMutation = useMutation({
     mutationFn: () => {
       if (!id) throw new Error("missing list id");
-      return refreshAlbumShelf(id, token);
+      return duplicateList(id, {}, token);
+    },
+    onSuccess: async (res) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+      router.replace(`/list/${res.list.id}`);
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't duplicate"), tone: "danger" });
+    },
+  });
+
+  // --- Source sync ---
+  const syncMutation = useMutation({
+    mutationFn: (sourceId: string) => {
+      if (!id) throw new Error("missing list id");
+      return syncSource(id, sourceId, token);
     },
     onSuccess: async (res) => {
       if (!id) return;
@@ -276,23 +283,76 @@ export default function ListSettings() {
       showToast({
         message:
           res.addedCount === 0
-            ? "No new albums detected."
-            : `Detected ${res.addedCount} new album${res.addedCount === 1 ? "" : "s"}.`,
+            ? "No new items detected."
+            : `Detected ${res.addedCount} new item${res.addedCount === 1 ? "" : "s"}.`,
         tone: res.addedCount === 0 ? "default" : "success",
       });
     },
     onError: (e) => {
-      showToast({
-        message: albumShelfErrorMessage(e, "Couldn't refresh."),
-        tone: "danger",
-      });
+      showToast({ message: albumShelfErrorMessage(e, "Couldn't refresh."), tone: "danger" });
     },
   });
 
-  // Archives the list (soft-delete via DELETE /v1/lists/:id). Owner-only.
-  // The list disappears from every read path on the next query — home feed,
-  // detail, items, activity — but the DB rows stay so a future unarchive
-  // surface can restore them.
+  const generateInviteMutation = useMutation({
+    mutationFn: () => {
+      if (!id) throw new Error("missing list id");
+      return createInvite(id, {}, token);
+    },
+    onSuccess: async (res) => {
+      const fresh = res.invite;
+      if (!fresh.token) {
+        showToast({
+          message: "Invite created but token missing — revoke and retry.",
+          tone: "danger",
+        });
+        return;
+      }
+      setFreshInvite({ ...fresh, token: fresh.token });
+      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
+      const url = buildInviteShareUrl(fresh.token);
+      const ok = await copyToClipboard(url);
+      showToast({
+        message: ok ? "Share link copied to clipboard" : "Share link generated",
+        tone: ok ? "success" : "default",
+      });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't generate invite"), tone: "danger" });
+    },
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: (inviteId: string) => {
+      if (!id) throw new Error("missing list id");
+      return revokeInvite(id, inviteId, token);
+    },
+    onSuccess: async (_res, inviteId) => {
+      setFreshInvite((prev) => (prev && prev.id === inviteId ? null : prev));
+      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
+      showToast({ message: "Share link revoked", tone: "default" });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't revoke invite"), tone: "danger" });
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (userId: string) => {
+      if (!id) throw new Error("missing list id");
+      return removeMember(id, userId, token);
+    },
+    onSuccess: async (_res, removedUserId) => {
+      const isSelfLeave = !!user && removedUserId === user.id;
+      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+      if (isSelfLeave) router.replace("/");
+      else showToast({ message: "Member removed", tone: "default" });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't remove member"), tone: "danger" });
+    },
+  });
+
   const archiveListMutation = useMutation({
     mutationFn: () => {
       if (!id) throw new Error("missing list id");
@@ -303,10 +363,7 @@ export default function ListSettings() {
       router.replace("/");
     },
     onError: (e) => {
-      showToast({
-        message: errorMessage(e, "Couldn't archive list"),
-        tone: "danger",
-      });
+      showToast({ message: errorMessage(e, "Couldn't archive list"), tone: "danger" });
     },
   });
 
@@ -464,6 +521,75 @@ export default function ListSettings() {
           </Card>
         ) : null}
 
+        {/* --- Modules (owner-only) --- */}
+        {isOwner && selectedModules ? (
+          <Card style={styles.card} elevated>
+            <Text variant="label" tone="secondary">
+              Modules
+            </Text>
+            <Text tone="secondary">
+              What this list does. Disabling a module hides the feature but preserves the data —
+              turn it back on to bring everything back.
+            </Text>
+            <View style={styles.moduleList}>
+              {MODULE_NAMES.map((mod) => {
+                const isOn = selectedModules.includes(mod);
+                const labels = MODULE_LABELS[mod];
+                return (
+                  <Pressable
+                    key={mod}
+                    onPress={() => toggleModule(mod)}
+                    testID={`settings-module-${mod}`}
+                    style={({ pressed }) => [
+                      styles.moduleRow,
+                      isOn && styles.moduleRowOn,
+                      pressed && styles.moduleRowPressed,
+                    ]}
+                  >
+                    <View style={styles.moduleText}>
+                      <Text variant="label">{labels.label}</Text>
+                      <Text variant="caption" tone="muted">
+                        {labels.description}
+                      </Text>
+                    </View>
+                    <View style={[styles.toggle, isOn ? styles.toggleOn : styles.toggleOff]}>
+                      <View style={[styles.toggleKnob, isOn ? styles.toggleKnobOn : null]} />
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {previewWarnings && previewWarnings.length > 0 ? (
+              <View style={styles.warningBox}>
+                <Text variant="label" tone="danger">
+                  Heads up
+                </Text>
+                {previewWarnings.map((w) => (
+                  <Text key={w.code} tone="secondary">
+                    • {w.message}
+                  </Text>
+                ))}
+                <Button
+                  testID="settings-modules-confirm"
+                  label="Apply anyway"
+                  variant="danger"
+                  size="md"
+                  loading={modulesMutation.isPending}
+                  onPress={onConfirmModules}
+                />
+              </View>
+            ) : null}
+            <Button
+              testID="settings-modules-save"
+              label="Save modules"
+              size="md"
+              disabled={!modulesDirty || modulesMutation.isPending || previewMutation.isPending}
+              loading={modulesMutation.isPending || previewMutation.isPending}
+              onPress={onSaveModules}
+            />
+          </Card>
+        ) : null}
+
         {/* --- Members --- */}
         <Card style={styles.card} elevated>
           <Text variant="label" tone="secondary">
@@ -483,83 +609,70 @@ export default function ListSettings() {
           </View>
         </Card>
 
-        {/* --- Album Shelf source playlist (any member) --- */}
-        {list?.type === "album_shelf" && albumShelfMeta ? (
+        {/* --- Sources --- */}
+        {sources.length > 0 ? (
           <Card style={styles.card} elevated>
             <Text variant="label" tone="secondary">
-              Source playlist
+              Sources
             </Text>
-            {albumShelfMeta.spotifyPlaylistUrl ? (
-              <Pressable
-                accessibilityRole="link"
-                onPress={() => {
-                  if (albumShelfMeta.spotifyPlaylistUrl) {
-                    Linking.openURL(albumShelfMeta.spotifyPlaylistUrl).catch(() => {});
-                  }
-                }}
-                testID="settings-source-open"
-              >
-                <Text style={styles.urlText} numberOfLines={1}>
-                  {albumShelfMeta.spotifyPlaylistUrl}
+            {sources.map((src) => (
+              <View key={src.id} style={styles.field}>
+                <Text variant="label">{src.kind.replace(/_/g, " ")}</Text>
+                {src.kind === "spotify_playlist" &&
+                typeof src.config.spotifyPlaylistUrl === "string" ? (
+                  <Pressable
+                    accessibilityRole="link"
+                    onPress={() => {
+                      const url = src.config.spotifyPlaylistUrl;
+                      if (typeof url === "string") {
+                        Linking.openURL(url).catch(() => {});
+                      }
+                    }}
+                    testID={`settings-source-${src.id}-open`}
+                  >
+                    <Text style={styles.urlText} numberOfLines={1}>
+                      {String(src.config.spotifyPlaylistUrl)}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Text variant="caption" tone="muted">
+                  {src.lastSyncedAt
+                    ? `Last synced ${formatRelative(src.lastSyncedAt)}`
+                    : "Not yet synced."}
                 </Text>
-              </Pressable>
-            ) : null}
-            <Text variant="caption" tone="muted">
-              {albumShelfMeta.lastRefreshedAt
-                ? `Last refreshed ${formatRelative(albumShelfMeta.lastRefreshedAt)}${
-                    albumShelfMeta.lastRefreshedBy
-                      ? (
-                          () => {
-                            const name = members.find(
-                              (m) => m.userId === albumShelfMeta.lastRefreshedBy,
-                            )?.displayName;
-                            return name ? ` by @${name}` : "";
-                          }
-                        )()
-                      : ""
-                  }`
-                : "Not yet refreshed."}
-            </Text>
-            <View style={styles.field}>
-              <Text variant="caption" tone="muted">
-                Change source URL
-              </Text>
-              <TextInput
-                testID="settings-source-url"
-                value={shelfUrl ?? ""}
-                onChangeText={setShelfUrl}
-                placeholder="https://open.spotify.com/playlist/…"
-                placeholderTextColor={tokens.text.muted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType="url"
-                maxLength={2048}
-                style={styles.input}
-              />
-              <Button
-                testID="settings-source-save"
-                label="Save and refresh"
-                size="md"
-                disabled={
-                  updateSourceMutation.isPending ||
-                  refreshShelfMutation.isPending ||
-                  (shelfUrl ?? "").trim() === (albumShelfMeta.spotifyPlaylistUrl ?? "")
-                }
-                loading={updateSourceMutation.isPending}
-                onPress={() => updateSourceMutation.mutate()}
-              />
-            </View>
-            <Button
-              testID="settings-refresh-now"
-              label="Refresh now"
-              variant="secondary"
-              size="md"
-              loading={refreshShelfMutation.isPending}
-              disabled={refreshShelfMutation.isPending || updateSourceMutation.isPending}
-              onPress={() => refreshShelfMutation.mutate()}
-            />
+                <Button
+                  testID={`settings-source-${src.id}-sync`}
+                  label="Refresh now"
+                  variant="secondary"
+                  size="md"
+                  loading={syncMutation.isPending}
+                  disabled={syncMutation.isPending}
+                  onPress={() => syncMutation.mutate(src.id)}
+                />
+              </View>
+            ))}
           </Card>
         ) : null}
+
+        {/* --- Duplicate --- */}
+        <Card style={styles.card} elevated>
+          <Text variant="label" tone="secondary">
+            Duplicate
+          </Text>
+          <Text tone="secondary">
+            Make a copy of this list. Items come along, but votes, completion, and sources start
+            fresh.
+          </Text>
+          <Button
+            testID="settings-duplicate-list"
+            label="Duplicate list"
+            variant="secondary"
+            size="md"
+            loading={duplicateMutation.isPending}
+            disabled={duplicateMutation.isPending}
+            onPress={() => duplicateMutation.mutate()}
+          />
+        </Card>
 
         {/* --- Share link (owner-only) --- */}
         {isOwner ? (
@@ -626,7 +739,6 @@ export default function ListSettings() {
           </Card>
         ) : null}
 
-        {/* --- Delete list (owner-only; archives under the hood) --- */}
         {isOwner ? (
           <Card style={styles.card} elevated>
             <Button
@@ -674,9 +786,6 @@ interface MemberRowProps {
 }
 
 function MemberRow({ member, isCurrentUser, isOwner, disabled, onPress }: MemberRowProps) {
-  // Owner can remove anyone except themselves; non-owners can self-leave but
-  // the list-level "Leave list" button below the members list is the canonical
-  // path — keep this row read-only for non-owners to avoid a duplicate gesture.
   const canActOn = isOwner && !isCurrentUser && member.role !== "owner";
   return (
     <View style={styles.memberRow} testID={`settings-member-${member.userId}`}>
@@ -832,5 +941,42 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  moduleList: { gap: tokens.space.sm },
+  moduleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.bg.surface,
+  },
+  moduleRowOn: { backgroundColor: tokens.accent.muted },
+  moduleRowPressed: { opacity: 0.7 },
+  moduleText: { flex: 1, gap: 2 },
+  toggle: {
+    width: 40,
+    height: 24,
+    borderRadius: 12,
+    padding: 2,
+    justifyContent: "center",
+  },
+  toggleOn: { backgroundColor: tokens.accent.default },
+  toggleOff: { backgroundColor: tokens.border.subtle },
+  toggleKnob: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+  },
+  toggleKnobOn: { transform: [{ translateX: 16 }] },
+  warningBox: {
+    gap: tokens.space.sm,
+    padding: tokens.space.md,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
   },
 });

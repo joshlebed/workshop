@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
-  AlbumShelfListMetadata,
-  AlbumShelfRefreshResponse,
   Item,
-  ItemMetadata,
   List,
   ListItemsResponse,
   ListMemberSummary,
+  ListSource,
 } from "@workshop/shared";
+import { hasModule } from "@workshop/shared/modules";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -20,16 +19,20 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { refreshAlbumShelf } from "../api/albumShelf";
-import { archiveItem, completeItem, fetchItems, uncompleteItem, updateItem } from "../api/items";
+import {
+  archiveItem,
+  completeItem,
+  fetchItems,
+  moveItem,
+  removeUpvote,
+  uncompleteItem,
+  upvoteItem,
+} from "../api/items";
+import { syncSource } from "../api/sources";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
-import {
-  applyPositionPatch,
-  midpointAt,
-  midpointForOrderedReorder,
-} from "../lib/albumShelfPositions";
+import { applyOptimisticMove } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { confirm } from "../lib/confirm";
 import { goBack } from "../lib/goBack";
@@ -46,35 +49,23 @@ import type { Section } from "./listDetail/types";
 interface Props {
   list: List;
   members: ListMemberSummary[];
+  sources: ListSource[];
   token: string | null;
 }
 
 /**
- * Unified list-detail screen for every list type. The album-shelf pattern
- * (ordered + unordered + completed sections, drag-to-reorder, kebab menu)
- * generalises to all list types since the 2026-05 ordering refactor —
- * there is no separate standard / album-shelf screen any more.
+ * Unified list-detail screen. The shape of the screen falls out of `list.modules`:
  *
- * Type-specific behaviour:
- *   - album_shelf: refresh button (instead of FAB), body-press opens
- *     Spotify, "Detected" section label, NEW pill on freshly-detected
- *     rows, no Edit menu action (fields are server-derived from Spotify).
- *   - other types: FAB to add an item, body-press opens the item-detail
- *     screen, type-aware section labels (Watchlist / Reading / Ideas /
- *     Wishlist / Backlog), kebab includes Edit.
+ * - `ranking` on → Ordered + Unordered sections, drag-to-reorder.
+ * - `todo` on    → Done section appears below.
+ * - `voting` on  → upvote pill on every item.
+ * - `sources` on → header refresh button and source provenance badges.
  *
- * Drag-to-reorder is scoped to the ordered section only and delegated to
- * a platform-specific list:
- *   - native: `ItemList.tsx` (react-native-reorderable-list)
- *   - web:    `ItemList.web.tsx` (@dnd-kit/sortable)
- * Both libraries report drag end as `{fromIndex, toIndex}` inside the
- * ordered array; this screen translates that into a `{position}` PATCH.
- * Cross-section transitions (promote / demote / mark complete) all flow
- * through the kebab menu — keeping section headers out of any sortable
- * container is what fixed the layout glitch where a section header could
- * end up rendered below its rows after a cross-section drag.
+ * `list.itemKind === "spotify_album"` keeps the legacy album-shelf
+ * affordance — body-press opens Spotify, no Edit menu action (fields are
+ * server-derived from the source sync).
  */
-export function ListDetail({ list, members, token }: Props) {
+export function ListDetail({ list, members, sources, token }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -82,9 +73,16 @@ export function ListDetail({ list, members, token }: Props) {
   const selfId = user?.id ?? null;
   const filterInputRef = useRef<TextInput>(null);
   const [filter, setFilter] = useState("");
-  const isAlbumShelf = list.type === "album_shelf";
   const itemsKey = queryKeys.items.byList(list.id);
   const livePoll = useLivePollingInterval();
+
+  const itemKind = list.itemKind;
+  const isSpotifyShelf = itemKind === "spotify_album";
+  const hasSources = sources.length > 0 && hasModule(list.modules, "sources");
+  const isGameKind = list.modules.includes("leaderboard");
+  const rankingOn = hasModule(list.modules, "ranking");
+  const todoOn = hasModule(list.modules, "todo");
+  const votingOn = hasModule(list.modules, "voting");
 
   const itemsQuery = useQuery({
     queryKey: itemsKey,
@@ -93,13 +91,16 @@ export function ListDetail({ list, members, token }: Props) {
     refetchInterval: livePoll,
   });
 
-  // After a successful refresh we mark item ids that are newly arrived so
-  // unordered rows can render the "new" pill briefly. Album-shelf only.
   const [newItemIds, setNewItemIds] = useState<Set<string>>(() => new Set());
   const beforeRefreshIdsRef = useRef<Set<string> | null>(null);
 
-  const refreshMutation = useMutation<AlbumShelfRefreshResponse, Error, void>({
-    mutationFn: () => refreshAlbumShelf(list.id, token),
+  const primarySource = sources[0] ?? null;
+
+  const refreshMutation = useMutation({
+    mutationFn: async () => {
+      if (!primarySource) throw new Error("no source attached");
+      return syncSource(list.id, primarySource.id, token);
+    },
     onMutate: () => {
       const cur = queryClient.getQueryData<ListItemsResponse>(itemsKey);
       const prevIds = new Set<string>();
@@ -128,8 +129,8 @@ export function ListDetail({ list, members, token }: Props) {
       showToast({
         message:
           added === 0
-            ? "No new albums detected."
-            : `Detected ${added} new album${added === 1 ? "" : "s"}.`,
+            ? "No new items detected."
+            : `Detected ${added} new item${added === 1 ? "" : "s"}.`,
         tone: added === 0 ? "default" : "success",
       });
     },
@@ -147,25 +148,21 @@ export function ListDetail({ list, members, token }: Props) {
     return () => clearTimeout(t);
   }, [newItemIds]);
 
-  const positionMutation = useMutation<
+  const moveMutation = useMutation<
     Item,
     Error,
-    { item: Item; nextPosition: number | null },
+    { item: Item; beforeItemId: string | null; afterItemId: string | null },
     { previous?: ListItemsResponse }
   >({
-    mutationFn: async ({ item, nextPosition }) => {
-      const res = await updateItem(
-        item.id,
-        { metadata: { position: nextPosition } as unknown as ItemMetadata },
-        token,
-      );
+    mutationFn: async ({ item, beforeItemId, afterItemId }) => {
+      const res = await moveItem(item.id, { beforeItemId, afterItemId }, token);
       return res.item;
     },
-    onMutate: async ({ item, nextPosition }) => {
+    onMutate: async ({ item, beforeItemId, afterItemId }) => {
       await queryClient.cancelQueries({ queryKey: itemsKey });
       const previous = queryClient.getQueryData<ListItemsResponse>(itemsKey);
       if (previous) {
-        const next = applyPositionPatch(previous, item.id, nextPosition);
+        const next = applyOptimisticMove(previous, item.id, beforeItemId, afterItemId);
         queryClient.setQueryData<ListItemsResponse>(itemsKey, next);
       }
       return previous ? { previous } : {};
@@ -199,9 +196,22 @@ export function ListDetail({ list, members, token }: Props) {
     },
   });
 
-  // Archives the item (soft-delete via DELETE /v1/items/:id). The row stays
-  // in the DB with `archived_at` set; every read path filters it out so the
-  // UI behaves as if it were gone, but the data is recoverable later.
+  const upvoteMutation = useMutation<Item, Error, { item: Item; nextUpvoted: boolean }>({
+    mutationFn: async ({ item, nextUpvoted }) => {
+      const res = nextUpvoted
+        ? await upvoteItem(item.id, token)
+        : await removeUpvote(item.id, token);
+      return res.item;
+    },
+    onSuccess: () => {
+      haptics.light();
+      queryClient.invalidateQueries({ queryKey: itemsKey });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't update upvote."), tone: "danger" });
+    },
+  });
+
   const archiveMutation = useMutation<{ ok: true }, Error, { itemId: string }>({
     mutationFn: ({ itemId }) => archiveItem(itemId, token),
     onSuccess: () => {
@@ -226,12 +236,13 @@ export function ListDetail({ list, members, token }: Props) {
     const needle = filter.trim().toLowerCase();
     if (!needle) return { ordered: orderedRaw, unordered: unorderedRaw, completed: completedRaw };
     const matches = (it: Item) => {
-      const meta = it.metadata as { artist?: string; authors?: string[] };
+      const c = it.content as { artist?: string; authors?: string[]; siteName?: string };
       const haystack = [
         it.title,
         it.note ?? "",
-        meta.artist ?? "",
-        Array.isArray(meta.authors) ? meta.authors.join(" ") : "",
+        c.artist ?? "",
+        c.siteName ?? "",
+        Array.isArray(c.authors) ? c.authors.join(" ") : "",
       ]
         .join(" ")
         .toLowerCase();
@@ -256,14 +267,14 @@ export function ListDetail({ list, members, token }: Props) {
     (list.color as ListColorKey) in tokens.list
       ? tokens.list[list.color as ListColorKey]
       : tokens.accent.default;
-  const meta = list.metadata as Partial<AlbumShelfListMetadata>;
-  const lastRefreshedAt = meta.lastRefreshedAt;
-  const lastRefreshedByName = meta.lastRefreshedBy
-    ? (memberNameById.get(meta.lastRefreshedBy) ?? null)
+  const lastRefreshedAt = primarySource?.lastSyncedAt ?? null;
+  const lastRefreshedByName = primarySource?.lastSyncedBy
+    ? (memberNameById.get(primarySource.lastSyncedBy) ?? null)
     : null;
   const refreshing = refreshMutation.isPending;
 
   const showOrderedHint =
+    rankingOn &&
     filtered.ordered.length === 0 &&
     (filtered.unordered.length > 0 || filtered.completed.length > 0) &&
     filter.trim().length === 0;
@@ -275,18 +286,26 @@ export function ListDetail({ list, members, token }: Props) {
   const onReorderOrdered = (event: ReorderEvent) => {
     const item = filtered.ordered[event.fromIndex];
     if (!item) return;
-    const nextPosition = midpointForOrderedReorder(
-      filtered.ordered,
-      event.fromIndex,
-      event.toIndex,
-    );
-    if (nextPosition === null) return;
-    positionMutation.mutate({ item, nextPosition });
+    const ordered = filtered.ordered;
+    const beforeItem = event.toIndex > 0 ? ordered[event.toIndex - 1] : null;
+    const afterItem = event.toIndex < ordered.length - 1 ? ordered[event.toIndex + 1] : null;
+    moveMutation.mutate({
+      item,
+      beforeItemId: beforeItem?.id ?? null,
+      afterItemId: afterItem?.id ?? null,
+    });
   };
 
   const onPromoteToOrdered = ({ item, toIndex }: { item: Item; toIndex: number }) => {
-    const clamped = Math.max(0, Math.min(toIndex, filtered.ordered.length));
-    positionMutation.mutate({ item, nextPosition: midpointAt(filtered.ordered, clamped) });
+    const ordered = filtered.ordered;
+    const clamped = Math.max(0, Math.min(toIndex, ordered.length));
+    const beforeItem = clamped > 0 ? ordered[clamped - 1] : null;
+    const afterItem = clamped < ordered.length ? ordered[clamped] : null;
+    moveMutation.mutate({
+      item,
+      beforeItemId: beforeItem?.id ?? null,
+      afterItemId: afterItem?.id ?? null,
+    });
   };
 
   const [menuItem, setMenuItem] = useState<Item | null>(null);
@@ -308,62 +327,64 @@ export function ListDetail({ list, members, token }: Props) {
     setMenuItem(item);
     setMenuActions({
       section,
-      isAlbumShelf,
-      ...(section !== "ordered"
+      isAlbumShelf: isSpotifyShelf,
+      ...(section !== "ordered" && rankingOn
         ? {
             onPromote: () =>
-              positionMutation.mutate({
+              moveMutation.mutate({
                 item,
-                nextPosition: midpointAt(filtered.ordered, filtered.ordered.length),
+                beforeItemId: filtered.ordered[filtered.ordered.length - 1]?.id ?? null,
+                afterItemId: null,
               }),
             onPromoteToTop: () =>
-              positionMutation.mutate({
+              moveMutation.mutate({
                 item,
-                nextPosition: midpointAt(filtered.ordered, 0),
+                beforeItemId: null,
+                afterItemId: filtered.ordered[0]?.id ?? null,
               }),
           }
         : {}),
-      ...(section === "ordered"
+      ...(section === "ordered" && rankingOn
         ? {
-            onDemote: () => positionMutation.mutate({ item, nextPosition: null }),
+            onDemote: () => moveMutation.mutate({ item, beforeItemId: null, afterItemId: null }),
           }
         : {}),
-      ...(section !== "completed"
+      ...(section !== "completed" && todoOn
         ? {
             onComplete: () => completeMutation.mutate({ item, nextCompleted: true }),
           }
         : {}),
-      ...(section === "completed"
+      ...(section === "completed" && todoOn
         ? {
             onUncomplete: () => completeMutation.mutate({ item, nextCompleted: false }),
           }
         : {}),
-      ...(!isAlbumShelf
+      ...(!isSpotifyShelf
         ? {
             onEdit: () =>
               router.push(
-                item.type === "game"
+                isGameKind
                   ? `/list/${list.id}/game/${item.id}`
                   : `/list/${list.id}/item/${item.id}`,
               ),
+          }
+        : {}),
+      ...(votingOn
+        ? {
+            onUpvote: () => upvoteMutation.mutate({ item, nextUpvoted: !item.viewerUpvoted }),
           }
         : {}),
       onDelete: confirmDelete,
     });
   };
 
-  // Across every list type the thumbnail is the "action" affordance — it
-  // launches the external URL / Spotify album / game URL. The row body opens
-  // the item-detail screen, except for album shelves which have no editable
-  // detail (fields are server-derived from Spotify, so body-tap also opens
-  // the album in Spotify).
   const onRowPressBody = (item: Item) => {
-    if (isAlbumShelf) {
-      const m = item.metadata as { spotifyAlbumUrl?: string };
-      openExternalUrl(m.spotifyAlbumUrl);
+    if (isSpotifyShelf) {
+      const c = item.content as { spotifyAlbumUrl?: string };
+      openExternalUrl(c.spotifyAlbumUrl);
       return;
     }
-    if (item.type === "game") {
+    if (isGameKind) {
       router.push(`/list/${list.id}/game/${item.id}`);
       return;
     }
@@ -371,9 +392,9 @@ export function ListDetail({ list, members, token }: Props) {
   };
 
   const resolveRowPressCover = (item: Item): (() => void) | null => {
-    if (isAlbumShelf) {
-      const m = item.metadata as { spotifyAlbumUrl?: string };
-      const url = normalizeExternalUrl(m.spotifyAlbumUrl);
+    if (isSpotifyShelf) {
+      const c = item.content as { spotifyAlbumUrl?: string };
+      const url = normalizeExternalUrl(c.spotifyAlbumUrl);
       return url ? () => openExternalUrl(url) : null;
     }
     const url = normalizeExternalUrl(item.url);
@@ -382,18 +403,18 @@ export function ListDetail({ list, members, token }: Props) {
 
   const headerSubline = useMemo(() => {
     const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
-    if (isAlbumShelf) {
-      if (refreshing) return "Refreshing from Spotify…";
-      if (!lastRefreshedAt) return `${memberPart} · tap ↻ to pull from Spotify`;
+    if (hasSources) {
+      if (refreshing) return "Refreshing source…";
+      if (!lastRefreshedAt) return `${memberPart} · tap ↻ to pull from source`;
       const rel = formatRelative(lastRefreshedAt);
       const actor = lastRefreshedByName ? ` by @${lastRefreshedByName}` : "";
-      return `${memberPart} · refreshed ${rel}${actor}`;
+      return `${memberPart} · synced ${rel}${actor}`;
     }
     const total = orderedRaw.length + unorderedRaw.length + completedRaw.length;
     if (total === 0) return memberPart;
     return `${memberPart} · ${total} ${total === 1 ? "item" : "items"}`;
   }, [
-    isAlbumShelf,
+    hasSources,
     refreshing,
     members.length,
     lastRefreshedAt,
@@ -412,8 +433,6 @@ export function ListDetail({ list, members, token }: Props) {
     totalRows === 0 &&
     totalRowsUnfiltered > 0;
 
-  // Web-only keyboard shortcuts. `/` focuses search; `Esc` clears + blurs;
-  // `N` (when no input focused) jumps to add. Ignored on native.
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const handler = (e: KeyboardEvent) => {
@@ -430,14 +449,14 @@ export function ListDetail({ list, members, token }: Props) {
       if (e.key === "/" || (e.metaKey && e.key === "k") || (e.ctrlKey && e.key === "k")) {
         e.preventDefault();
         filterInputRef.current?.focus?.();
-      } else if (e.key === "n" && !e.metaKey && !e.ctrlKey && !isAlbumShelf) {
+      } else if (e.key === "n" && !e.metaKey && !e.ctrlKey && !isSpotifyShelf) {
         e.preventDefault();
         router.push(`/list/${list.id}/add`);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [router, list.id, isAlbumShelf]);
+  }, [router, list.id, isSpotifyShelf]);
 
   return (
     <KeyboardAvoidingView
@@ -457,10 +476,10 @@ export function ListDetail({ list, members, token }: Props) {
             <Text style={styles.navGlyph}>‹</Text>
           </Pressable>
           <View style={styles.navActions}>
-            {isAlbumShelf ? (
+            {hasSources ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Refresh from Spotify"
+                accessibilityLabel="Sync source"
                 onPress={() => refreshMutation.mutate()}
                 disabled={refreshing}
                 testID="list-detail-refresh"
@@ -519,6 +538,9 @@ export function ListDetail({ list, members, token }: Props) {
                 {headerSubline}
               </Text>
             </View>
+            <Text variant="caption" tone="muted" style={styles.modulesLine}>
+              {list.modules.join(" · ")}
+            </Text>
           </View>
         </View>
 
@@ -532,7 +554,7 @@ export function ListDetail({ list, members, token }: Props) {
               testID="list-detail-filter"
               value={filter}
               onChangeText={setFilter}
-              placeholder={isAlbumShelf ? "Search this shelf" : "Search this list"}
+              placeholder={isSpotifyShelf ? "Search this shelf" : "Search this list"}
               placeholderTextColor={tokens.text.muted}
               style={styles.filterInput}
               accessibilityLabel="Search items in this list"
@@ -572,7 +594,7 @@ export function ListDetail({ list, members, token }: Props) {
             <EmptyState
               title="Couldn't load list"
               description={
-                isAlbumShelf
+                isSpotifyShelf
                   ? albumShelfErrorMessage(itemsQuery.error, "Unknown error")
                   : errorMessage(itemsQuery.error)
               }
@@ -603,16 +625,10 @@ export function ListDetail({ list, members, token }: Props) {
           </View>
         ) : isEmptyAfterFetch ? (
           <View style={styles.center}>
-            {isAlbumShelf ? (
+            {hasSources ? (
               <EmptyState
-                title={
-                  lastRefreshedAt ? "No albums detected." : "Pulling albums from your playlist…"
-                }
-                description={
-                  lastRefreshedAt
-                    ? "Check that your playlist has tracks with album info, or change the source URL in settings."
-                    : undefined
-                }
+                title={lastRefreshedAt ? "No items detected." : "Pulling from source…"}
+                description={lastRefreshedAt ? "Check the source URL in settings." : undefined}
                 action={
                   lastRefreshedAt ? (
                     <Button
@@ -644,8 +660,9 @@ export function ListDetail({ list, members, token }: Props) {
               ordered={filtered.ordered}
               unordered={filtered.unordered}
               completed={filtered.completed}
-              listType={list.type}
-              isAlbumShelf={isAlbumShelf}
+              listItemKind={itemKind}
+              isAlbumShelf={isSpotifyShelf}
+              modules={list.modules}
               showOrderedHint={showOrderedHint}
               newItemIds={newItemIds}
               memberNameById={memberNameById}
@@ -656,6 +673,7 @@ export function ListDetail({ list, members, token }: Props) {
               onPromoteToOrdered={onPromoteToOrdered}
               onRowMenu={onRowMenu}
               onRowPressBody={onRowPressBody}
+              onUpvote={(item) => upvoteMutation.mutate({ item, nextUpvoted: !item.viewerUpvoted })}
               onUncompleteItem={(item) => completeMutation.mutate({ item, nextCompleted: false })}
               resolveRowPressCover={resolveRowPressCover}
               refreshing={itemsQuery.isRefetching}
@@ -666,7 +684,7 @@ export function ListDetail({ list, members, token }: Props) {
           </View>
         )}
 
-        {!isAlbumShelf ? (
+        {!isSpotifyShelf ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add item"
@@ -689,15 +707,10 @@ export function ListDetail({ list, members, token }: Props) {
 function memberInitial(name: string | null): string {
   const trimmed = name?.trim();
   if (!trimmed) return "·";
-  // Single letter only — at chip size 26px, two letters overlap into a
-  // single illegible blob when 3+ members stack. The first letter alone
-  // reads cleanly and the surrounding chip's accent tint disambiguates.
   return (trimmed[0] ?? "·").toUpperCase();
 }
 
 function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent: string }) {
-  // Cap at 3 shown — beyond that the visual budget is wasted and the count in
-  // the adjacent subline carries the rest.
   const shown = members.slice(0, 3);
   return (
     <View style={memberStackStyles.row} accessibilityLabel={`${members.length} members`}>
@@ -788,6 +801,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   subline: { letterSpacing: 0.1 },
+  modulesLine: { textTransform: "uppercase", letterSpacing: 0.5 },
   toolbar: {
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,

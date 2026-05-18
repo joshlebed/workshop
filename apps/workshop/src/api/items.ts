@@ -3,16 +3,13 @@ import type {
   BulkCreateItemsResponse,
   CreateItemRequest,
   ItemResponse,
+  ItemUpvoteResponse,
   ListItemsResponse,
+  MoveItemRequest,
   UpdateItemRequest,
 } from "@workshop/shared";
 import { apiRequest } from "../lib/api";
 
-/**
- * Fetches the unified ordered / unordered / completed split for any list
- * type. Album shelves and other list types share the same shape since the
- * 2026-05 ordering refactor — see `apps/backend/src/routes/v1/items.ts#fetchItemsForList`.
- */
 export function fetchItems(listId: string, token: string | null): Promise<ListItemsResponse> {
   return apiRequest<ListItemsResponse>({
     method: "GET",
@@ -38,12 +35,6 @@ export function createItem(
   });
 }
 
-/**
- * Bulk variant — server caps at 50 entries per call. Caller chunks if more
- * are pasted. Each entry has the same shape as `CreateItemRequest`, minus
- * the per-list-type metadata blob (bulk path is meant for raw-title pastes;
- * enrichment via TMDB / Google Books happens as a follow-up).
- */
 export function createItemsBulk(
   listId: string,
   body: BulkCreateItemsRequest,
@@ -70,15 +61,6 @@ export function updateItem(
   });
 }
 
-/**
- * Archives (soft-deletes) the item. The server sets `items.archived_at` and
- * the row immediately drops out of every read — the items split, item
- * detail, and item-scoped activity-feed events. Upvotes and game scores
- * stay in the DB so a future unarchive surface can restore the item
- * intact. For album_shelf items the partial unique index on
- * (list_id, spotifyAlbumId) still includes archived rows, so a refresh
- * won't resurface an album the user explicitly archived.
- */
 export function archiveItem(itemId: string, token: string | null): Promise<{ ok: true }> {
   return apiRequest<{ ok: true }>({ method: "DELETE", path: `/v1/items/${itemId}`, token });
 }
@@ -95,6 +77,41 @@ export function uncompleteItem(itemId: string, token: string | null): Promise<It
   return apiRequest<ItemResponse>({
     method: "POST",
     path: `/v1/items/${itemId}/uncomplete`,
+    token,
+  });
+}
+
+export function upvoteItem(itemId: string, token: string | null): Promise<ItemUpvoteResponse> {
+  return apiRequest<ItemUpvoteResponse>({
+    method: "POST",
+    path: `/v1/items/${itemId}/upvote`,
+    token,
+  });
+}
+
+export function removeUpvote(itemId: string, token: string | null): Promise<ItemUpvoteResponse> {
+  return apiRequest<ItemUpvoteResponse>({
+    method: "DELETE",
+    path: `/v1/items/${itemId}/upvote`,
+    token,
+  });
+}
+
+/**
+ * Move an item to a new position via the sparse-integer allocator. The
+ * server computes the new `position` from `beforeItemId` / `afterItemId`
+ * and rebalances the list's ordered section on collision. Both ids null →
+ * demote to unordered.
+ */
+export function moveItem(
+  itemId: string,
+  body: MoveItemRequest,
+  token: string | null,
+): Promise<ItemResponse> {
+  return apiRequest<ItemResponse>({
+    method: "POST",
+    path: `/v1/items/${itemId}/move`,
+    body,
     token,
   });
 }

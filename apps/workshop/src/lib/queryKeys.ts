@@ -28,9 +28,14 @@ export const queryKeys = {
     preview: (url: string) => ["albumShelf", "preview", url] as const,
   },
   gameScores: {
-    /** Per-game leaderboard for one date. */
-    forItem: (itemId: string, date: string) => ["gameScores", "forItem", itemId, date] as const,
-    /** Aggregated scores for every game on a list for one date. */
-    forList: (listId: string, date: string) => ["gameScores", "forList", listId, date] as const,
+    /** Per-item leaderboard for one period. */
+    forItem: (itemId: string, periodKey: string) =>
+      ["scores", "forItem", itemId, periodKey] as const,
+    /** Aggregated scores for every item on a list for one period. */
+    forList: (listId: string, periodKey: string) =>
+      ["scores", "forList", listId, periodKey] as const,
+  },
+  sources: {
+    forList: (listId: string) => ["sources", "forList", listId] as const,
   },
 } as const;
