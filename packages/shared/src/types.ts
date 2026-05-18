@@ -39,7 +39,6 @@ export type ActivityEventType =
 
 export interface User {
   id: string;
-  authProvider: AuthProvider;
   email: string | null;
   displayName: string | null;
   createdAt: string;

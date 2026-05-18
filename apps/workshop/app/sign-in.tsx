@@ -46,7 +46,7 @@ export default function SignIn() {
     try {
       setBusy("dev");
       setError(null);
-      await signInDev({ email: "dev@workshop.local", displayName: null });
+      await signInDev({ email: "joshlebed@gmail.com", displayName: "Josh" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign in failed");
     } finally {

@@ -138,7 +138,7 @@ pnpm --filter @workshop/backend run db:migrate
 
 # ---------------------------------------------------------------------------
 # 7) Seed dev data (idempotent — exits without changes if seed user has lists).
-#    Populates the preview user (`preview@workshop.local`, the same identity the
+#    Populates the preview user (`joshlebed@gmail.com`, the same identity the
 #    web app's auto-dev-sign-in uses) with a mix of movie/tv/book/date/trip/game
 #    lists so the agent or human lands on a non-empty UI on first load. Set
 #    SEED_DEV_DATA=0 to skip (e.g. when reproducing an empty-state bug).

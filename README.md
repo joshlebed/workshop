@@ -26,7 +26,7 @@ Open Expo Go on your iPhone, scan the QR code from the second terminal. Sign in 
 the 6-digit code prints in the backend terminal (local mode doesn't send real email).
 
 The first run of `./scripts/dev.sh` seeds the local DB with sample lists owned by
-`preview@workshop.local` (the same user the web app auto-signs in as when
+`joshlebed@gmail.com` (the same user the web app auto-signs in as when
 `EXPO_PUBLIC_DEV_AUTH=1`), so the UI opens lived-in. The seed is idempotent and bails when
 the user already has lists; set `SEED_DEV_DATA=0` to skip, or run
 `pnpm --filter @workshop/backend run db:seed` manually.
