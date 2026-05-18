@@ -54,11 +54,13 @@ function AuthGate() {
   // generated in CI.
   const segments: string[] = useSegments();
   const router = useRouter();
-  // After sign-in we ask once whether a pending invite token is stashed and
-  // bounce the user to the accept-invite handler. The ref keeps the check
-  // from re-firing every time `segments` updates while the user is already
-  // signed-in.
-  const inviteCheckedRef = useRef(false);
+  // Latched once we've resolved the post-sign-in destination (invite vs.
+  // home). Prevents the async stash lookup from racing a synchronous
+  // home-bounce: without this, two effects fire on the same status flip,
+  // segments change before `await getItem(...)` resumes, the cleanup
+  // `cancelled = true` fires, and the invite redirect is dropped — the
+  // user lands on home with the token still sitting in localStorage.
+  const postSignInResolvedRef = useRef(false);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -67,6 +69,10 @@ function AuthGate() {
     const onOnboarding = first === "onboarding";
     const onAcceptInvite = onOnboarding && segments[1] === "accept-invite";
     const onInvite = first === "invite";
+
+    if (status !== "signed-in") {
+      postSignInResolvedRef.current = false;
+    }
 
     if (status === "signed-out") {
       // Let `/invite/:token` and `/onboarding/accept-invite` mount briefly so
@@ -80,39 +86,23 @@ function AuthGate() {
       router.replace("/onboarding/display-name");
       return;
     }
-    if (status === "signed-in" && (onSignIn || (onOnboarding && !onAcceptInvite))) {
-      router.replace("/");
-    }
-    // Signed-in users on `/list/...`, `/create-list/...`, or
-    // `/onboarding/accept-invite` are left alone — those flows live under
-    // the same root stack and don't trigger redirects.
-  }, [status, segments, router]);
+    // status === "signed-in". Signed-in users on `/list/...`,
+    // `/create-list/...`, or `/onboarding/accept-invite` are left alone.
+    const needsPostSignInBounce = onSignIn || (onOnboarding && !onAcceptInvite);
+    if (!needsPostSignInBounce || postSignInResolvedRef.current) return;
+    postSignInResolvedRef.current = true;
 
-  // Post-sign-in invite redirect: when status flips to signed-in, consult the
-  // stashed invite token (set by the accept-invite screen before the user
-  // bounced through sign-in) and forward there if present. Run once per
-  // sign-in transition to avoid loops.
-  useEffect(() => {
-    if (status !== "signed-in") {
-      inviteCheckedRef.current = false;
-      return;
-    }
-    if (inviteCheckedRef.current) return;
-    inviteCheckedRef.current = true;
-    let cancelled = false;
+    // Consult the invite stash before bouncing to home so a user who arrived
+    // via an invite link lands on the list they were invited to. The
+    // accept-invite screen owns the eventual `removeItem` call.
     (async () => {
       const stashed = await getItem(PENDING_INVITE_TOKEN_KEY).catch(() => null);
-      if (cancelled || !stashed) return;
-      const first = segments[0];
-      const onAcceptInvite = first === "onboarding" && segments[1] === "accept-invite";
-      if (onAcceptInvite) return;
-      // The accept-invite screen owns the eventual `removeItem` call so we
-      // only need to redirect here.
-      router.replace(`/onboarding/accept-invite?token=${encodeURIComponent(stashed)}`);
+      if (stashed) {
+        router.replace(`/onboarding/accept-invite?token=${encodeURIComponent(stashed)}`);
+      } else {
+        router.replace("/");
+      }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [status, segments, router]);
 
   if (status === "loading") {
