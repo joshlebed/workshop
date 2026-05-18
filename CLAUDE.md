@@ -31,7 +31,10 @@ small products — first feature is **watchlist** (movie tracker). New features 
 - **Terraform** for infra. HCP Terraform state, org `josh-personal-org`, workspace
   `workshop-prod`, Local execution. Auto-applied by CI on merge to `main`.
 - **GitHub Actions** CI/CD, OIDC to AWS. Secrets: `TF_API_TOKEN`, `AWS_ROLE_ARN`,
-  `AWS_ROLE_ARN_TF_APPLY`, `NITESHIFT_EXTERNAL_ID`, `EXPO_TOKEN`, `EXPO_PUBLIC_API_URL`.
+  `AWS_ROLE_ARN_TF_APPLY`, `NITESHIFT_EXTERNAL_ID`, `EXPO_TOKEN`, `EXPO_PUBLIC_API_URL`,
+  `ASC_API_KEY_CONTENT`/`ASC_API_KEY_ID`/`ASC_API_ISSUER_ID` (provision via
+  `pnpm setup:asc-key`, see manual-setup.md §5), `DISCORD_NOTIFY_WEBHOOK_URL` (testflight
+  failure pings to `#workshop-admin`).
 - **EAS Update** for JS-only OTA (~60s after merge). TestFlight builds trigger on native
   change via `@expo/fingerprint`; `testflight.yml` runs `eas build --auto-submit` and
   **awaits the build** so CI red/green matches EAS outcome. Last-built fingerprint stored
@@ -241,11 +244,15 @@ Almost always the deploy pipeline, not per-platform code. Check in order:
 2. **Does the installed TestFlight build's runtime version match the OTA's?** Runtime version
    is `app.json` `version` at build time. A `0.1.0` TestFlight build never applies a `0.2.0` OTA.
 3. **Has the latest TestFlight build landed?** `testflight.yml` awaits the EAS build. Red run =
-   no matching binary exists yet. If runs have been red across multiple commits and the failing
-   step is `Build + auto-submit (await success)` with `Distribution Certificate is not validated
-for non-interactive builds` / `Credentials are not set up. Run this command again in
-interactive mode`, the cause is almost always a new bundle id (e.g. a share / widget / push
-   extension target) that EAS has no credentials for yet — see Recovery below.
+   no matching binary exists yet. Two common failure shapes:
+   - Fails at the `Write ASC API key` step → the `ASC_API_KEY_*` GitHub Actions secrets are
+     unset or stale. One-time fix via the website in `docs/manual-setup.md` §5.
+   - Fails at `Build + auto-submit (await success)` with `Distribution Certificate is not
+validated for non-interactive builds` → the ASC API key the secrets point to was revoked
+     or doesn't have App Manager+. Rotate the key (same §5 flow) and re-fire. Before the ASC
+     API key was wired into the workflow, any new bundle id (share / widget / push extension
+     target) would also surface this error because EAS fell through to interactive Apple auth;
+     that's no longer a risk as long as the secrets are populated.
 
 ### Runtime-version policy: `appVersion` (not `fingerprint`)
 
@@ -293,22 +300,22 @@ read -s "ASP?Paste app-specific password: " && echo "" && \
 
 App-specific password: <https://appleid.apple.com> → Sign-In and Security. macOS only.
 
-New bundle id (e.g. share extension, widget, push extension) added but every TestFlight build
-since is red: EAS doesn't have credentials for the new target and can't generate them
-non-interactively. One-time fix from a laptop with an active Apple session:
+ASC API key secret missing or revoked (build red at `Write ASC API key` or `Distribution
+Certificate is not validated for non-interactive builds`):
 
 ```bash
-cd apps/workshop && npx eas-cli@latest credentials --platform ios
-# → production → App Store Connect: Manage your API Key
-#   → Set up an App Store Connect API Key for your project
-#   → reuse the existing `[Expo] EAS Submit` key (it has ADMIN role, which is sufficient)
-#     OR create a new one at https://appstoreconnect.apple.com/access/api (App Manager+)
+pnpm setup:asc-key
 ```
 
-Then force a fresh build: `gh workflow run testflight.yml --ref main --field force=true`.
-With the ASC API key registered EAS auto-generates the cert + provisioning profile for the
-new target on the next build, and every future capability/target change in CI just works.
-Full one-time setup is in `docs/manual-setup.md` §5.
+Interactive script — generates the key in the browser, encodes the `.p8`, pushes the three
+GH secrets (`ASC_API_KEY_CONTENT`, `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`) via `gh secret set`,
+and re-fires `testflight.yml --field force=true`. With the secrets in place eas-cli auto-
+generates the cert + provisioning profile for any new bundle id (share/widget/push extension)
+on the next build with zero human-in-loop. Idempotent — run again to rotate.
+
+A red `testflight.yml` run also pings `#workshop-admin` on Discord via the `notify` job
+(uses `DISCORD_NOTIFY_WEBHOOK_URL` secret; missing webhook degrades to a CI warning). The
+ping includes a `pnpm setup:asc-key` hint so the recovery path is one command away.
 
 ### GitHub Actions concurrency
 
