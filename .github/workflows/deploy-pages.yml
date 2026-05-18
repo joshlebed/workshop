@@ -66,12 +66,21 @@ jobs:
       - name: Build web bundle
         run: pnpm --filter workshop-app exec expo export --platform web
 
+      # `cloudflare/wrangler-action` runs `pnpm exec wrangler` and, on miss,
+      # falls back to `pnpm add wrangler@<pinned>` — which fails in this
+      # repo with `ERR_PNPM_ADDING_TO_ROOT` because wrangler isn't a
+      # workspace dep and pnpm refuses to install into the workspace root
+      # without `-w`. Every Deploy Pages run since the workflow landed has
+      # been red for this reason. Mirror `scripts/deploy-pages.sh` instead.
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3.14.1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/workshop/dist --project-name=workshop --branch=main --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx -y wrangler@latest pages deploy apps/workshop/dist \
+            --project-name=workshop \
+            --branch=main \
+            --commit-dirty=true
 
       - name: Verify production OG endpoint serves PNG
         run: |
