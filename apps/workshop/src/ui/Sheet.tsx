@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, Modal as RNModal, StyleSheet, View, type ViewStyle } from "react-native";
 import Animated, {
   Easing,
@@ -12,6 +12,12 @@ import { tokens } from "./theme";
 export interface SheetProps {
   visible: boolean;
   onRequestClose: () => void;
+  /**
+   * Fires after the exit animation completes and the underlying RNModal has
+   * unmounted. Use this to chain a follow-up Sheet — stacking two RNModals
+   * on iOS while one is still dismissing leaves the screen non-interactable.
+   */
+  onClosed?: () => void;
   children: React.ReactNode;
   contentStyle?: ViewStyle;
   testID?: string;
@@ -26,9 +32,23 @@ const SHEET_OFFSCREEN_PX = 600;
  * state delays unmount until the exit animation completes; otherwise RNModal
  * would tear the view down immediately on `visible={false}`.
  */
-export function Sheet({ visible, onRequestClose, children, contentStyle, testID }: SheetProps) {
+export function Sheet({
+  visible,
+  onRequestClose,
+  onClosed,
+  children,
+  contentStyle,
+  testID,
+}: SheetProps) {
   const [rendered, setRendered] = useState(visible);
   const progress = useSharedValue(visible ? 1 : 0);
+  const onClosedRef = useRef(onClosed);
+  onClosedRef.current = onClosed;
+
+  const handleExitComplete = useCallback(() => {
+    setRendered(false);
+    onClosedRef.current?.();
+  }, []);
 
   useEffect(() => {
     if (visible) {
@@ -43,10 +63,10 @@ export function Sheet({ visible, onRequestClose, children, contentStyle, testID 
       0,
       { duration: EXIT_DURATION_MS, easing: Easing.in(Easing.cubic) },
       (finished) => {
-        if (finished) runOnJS(setRendered)(false);
+        if (finished) runOnJS(handleExitComplete)();
       },
     );
-  }, [visible, progress]);
+  }, [visible, progress, handleExitComplete]);
 
   const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
   const sheetStyle = useAnimatedStyle(() => ({

@@ -64,6 +64,7 @@ export default function GameDetail() {
   const [urlDraft, setUrlDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [openEditOnMenuClose, setOpenEditOnMenuClose] = useState(false);
 
   const itemQuery = useQuery({
     queryKey: queryKeys.items.detail(itemId ?? ""),
@@ -455,6 +456,12 @@ export default function GameDetail() {
       <Sheet
         visible={menuOpen}
         onRequestClose={() => setMenuOpen(false)}
+        onClosed={() => {
+          if (openEditOnMenuClose) {
+            setOpenEditOnMenuClose(false);
+            setEditOpen(true);
+          }
+        }}
         testID="game-detail-menu-sheet"
       >
         <View style={styles.sheetHeader}>
@@ -472,8 +479,8 @@ export default function GameDetail() {
             testID="game-detail-edit-open"
             label="Edit details"
             onPress={() => {
+              setOpenEditOnMenuClose(true);
               setMenuOpen(false);
-              setEditOpen(true);
             }}
           />
           {myEntry?.scoreRaw ? (
