@@ -527,7 +527,6 @@ export default function ListSettings() {
             <Text variant="label" tone="secondary">
               Modules
             </Text>
-            <Text tone="secondary">Turn features on or off. Your data stays either way.</Text>
             <View style={styles.moduleList}>
               {MODULE_NAMES.map((mod) => {
                 const isOn = selectedModules.includes(mod);
