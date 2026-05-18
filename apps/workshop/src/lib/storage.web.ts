@@ -10,13 +10,26 @@ function ls(): Storage | null {
 }
 
 export async function getItem(key: string): Promise<string | null> {
-  return ls()?.getItem(key) ?? null;
+  try {
+    return ls()?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function setItem(key: string, value: string): Promise<void> {
-  ls()?.setItem(key, value);
+  try {
+    ls()?.setItem(key, value);
+  } catch {
+    // Restricted WebViews (iOS Messages preview, Safari private mode) throw
+    // on write. Drop silently — callers treat persistence as best-effort.
+  }
 }
 
 export async function removeItem(key: string): Promise<void> {
-  ls()?.removeItem(key);
+  try {
+    ls()?.removeItem(key);
+  } catch {
+    // See setItem above.
+  }
 }
