@@ -83,7 +83,7 @@ In SES sandbox mode, you can only send mail to _verified_ addresses. So for solo
       pnpm setup:asc-key
       ```
 
-      It opens <https://appstoreconnect.apple.com/access/api> (Keys → + → App Manager → Generate
+      It opens <https://appstoreconnect.apple.com/access/integrations/api> (Keys → + → App Manager → Generate
       → download the `.p8`), auto-detects the downloaded `AuthKey_<KEYID>.p8` in `~/Downloads`,
       pre-fills the Key ID from the filename, prompts for the Issuer ID (UUID at top of the
       page), pushes the three secrets via `gh secret set`, and offers to re-fire
@@ -210,7 +210,7 @@ pnpm setup:asc-key
 ```
 
 Walks the same flow as the one-time setup in §5 — opens
-<https://appstoreconnect.apple.com/access/api>, prompts for the new `.p8` / Key ID / Issuer
+<https://appstoreconnect.apple.com/access/integrations/api>, prompts for the new `.p8` / Key ID / Issuer
 ID, overwrites the three GH Actions secrets, and offers to re-fire the TestFlight workflow.
 Revoke the old key in App Store Connect once the new build is green.
 

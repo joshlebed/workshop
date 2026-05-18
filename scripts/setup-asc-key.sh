@@ -15,7 +15,7 @@
 set -euo pipefail
 
 REPO=${REPO:-joshlebed/workshop}
-ASC_API_URL="https://appstoreconnect.apple.com/access/api"
+ASC_API_URL="https://appstoreconnect.apple.com/access/integrations/api"
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 dim()   { printf '\033[2m%s\033[0m\n' "$*"; }
@@ -37,8 +37,10 @@ fi
 
 bold "Step 1 — Generate an App Store Connect API key"
 echo
-echo "  • Open:        $ASC_API_URL"
-echo "  • Keys tab → + → Name: 'Workshop CI' · Access: 'App Manager' → Generate"
+echo "  • Open:    $ASC_API_URL"
+echo "             (if Apple has reorganized again, navigate manually:"
+echo "              Users and Access → Integrations tab → App Store Connect API → Team Keys)"
+echo "  • Team Keys → + → Name: 'Workshop CI' · Access: 'App Manager' → Generate"
 echo "  • Download the .p8 (Apple won't show it again)"
 echo "  • Note the Key ID (10 chars, in the row) and Issuer ID (UUID at top)"
 echo
