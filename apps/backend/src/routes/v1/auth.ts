@@ -51,7 +51,7 @@ interface UpsertInput {
 // `upsertUser` would silently create a second user row with the same email,
 // stranding the original account's data (lists, items, history) behind the
 // old provider — exactly what happened to joshlebed@gmail.com on 2026-05-18.
-export class EmailProviderConflictError extends Error {
+class EmailProviderConflictError extends Error {
   constructor(
     public readonly existingProvider: AuthProvider,
     public readonly attemptedProvider: AuthProvider,
