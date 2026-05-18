@@ -54,19 +54,44 @@ export const activityEventTypeEnum = pgEnum("activity_event_type", [
   "album_demoted",
 ]);
 
+// Email is the canonical user identity. One user row per real person; their
+// linked (provider, sub) pairs live in `user_identities`. Sign-in via any
+// linked provider — or by email-match on first contact — resolves to the same
+// user, so signing in with Google for the first time on an email already
+// registered via Apple attaches a new identity to the existing account
+// instead of forking it.
 export const users = pgTable(
   "users",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    authProvider: authProviderEnum("auth_provider").notNull(),
-    providerSub: text("provider_sub").notNull(),
     email: text("email"),
     displayName: text("display_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => ({
-    providerSubIdx: uniqueIndex("users_provider_sub_idx").on(t.authProvider, t.providerSub),
+    // Case-insensitive uniqueness on email, partial so NULL emails are allowed.
+    // Providers don't normalise case; storing raw email but matching lowercased
+    // keeps the merge-on-email invariant intact.
+    emailLowerIdx: uniqueIndex("users_email_lower_idx")
+      .on(sql`lower(${t.email})`)
+      .where(sql`email IS NOT NULL`),
+  }),
+);
+
+export const userIdentities = pgTable(
+  "user_identities",
+  {
+    provider: authProviderEnum("provider").notNull(),
+    providerSub: text("provider_sub").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.provider, t.providerSub] }),
+    userIdx: index("user_identities_user_idx").on(t.userId),
   }),
 );
 
@@ -316,6 +341,7 @@ export const rateLimits = pgTable(
 );
 
 export type DbUser = typeof users.$inferSelect;
+export type DbUserIdentity = typeof userIdentities.$inferSelect;
 export type DbList = typeof lists.$inferSelect;
 export type DbListMember = typeof listMembers.$inferSelect;
 export type DbListInvite = typeof listInvites.$inferSelect;

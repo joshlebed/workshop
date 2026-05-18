@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiRequest<AuthResponse>({
         method: "POST",
         path: "/v1/auth/dev",
-        body: { email: "preview@workshop.local", displayName: "Preview User" },
+        body: { email: "joshlebed@gmail.com", displayName: "Josh" },
       });
       await applyAuth(res);
       return true;

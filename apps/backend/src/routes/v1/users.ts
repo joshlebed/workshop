@@ -1,4 +1,3 @@
-import type { AuthProvider } from "@workshop/shared";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -26,7 +25,6 @@ const patchMeSchema = z.object({
 function toUserShape(u: DbUser) {
   return {
     id: u.id,
-    authProvider: u.authProvider as AuthProvider,
     email: u.email,
     displayName: u.displayName,
     createdAt: u.createdAt.toISOString(),

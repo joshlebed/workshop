@@ -437,12 +437,17 @@ Point at a scrubbed staging branch if that's not OK.
 ### Dev data seed
 
 `apps/backend/scripts/seed.ts` populates Postgres with a lived-in set of lists owned by
-`preview@workshop.local` (the web app's auto-dev-sign-in identity). Second user
+`joshlebed@gmail.com` (the web app's auto-dev-sign-in identity). Second user
 `friend@workshop.local` is added on a few shared lists with one upvote each, plus recent
 `game_scores` rows. Both `dev.sh` and `niteshift-setup.sh` run
 `pnpm --filter @workshop/backend run db:seed`. Idempotent, hard-guarded against non-local
-stages. `SEED_DEV_DATA=0` to skip. To re-seed: delete preview users
-(`DELETE FROM users WHERE email LIKE '%@workshop.local';`) and re-run.
+stages. `SEED_DEV_DATA=0` to skip. To re-seed: `DELETE FROM users WHERE email IN
+('joshlebed@gmail.com','friend@workshop.local');` and re-run.
+
+On a Niteshift Neon branch forked from prod the seed is skipped by default — the real
+`joshlebed@gmail.com` row already exists with the apple identity, and the dev sign-in
+route attaches a synthetic `(apple, dev:joshlebed@gmail.com)` identity to that same user
+on first hit. So the agent/preview see your real data; the sign-in just bypasses Apple.
 
 When adding a new list type or item-metadata field, extend `seed.ts`.
 

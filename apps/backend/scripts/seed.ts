@@ -3,9 +3,12 @@
  * items, members, upvotes, and activity events so an agent or human running
  * `pnpm dev` (or the Niteshift sandbox setup script) lands on a non-empty UI.
  *
- * Tied to the web app's auto-dev-sign-in user (`preview@workshop.local`, see
+ * Tied to the web app's auto-dev-sign-in user (`joshlebed@gmail.com`, see
  * `apps/workshop/src/hooks/useAuth.tsx`) so anyone who hits the preview with
- * `EXPO_PUBLIC_DEV_AUTH=1` immediately sees this content.
+ * `EXPO_PUBLIC_DEV_AUTH=1` immediately sees this content. On a Niteshift Neon
+ * branch forked from prod the user row already exists with the real apple
+ * identity; this seed only fires against truly-local (docker) databases so it
+ * never has a chance to clobber prod-shaped data.
  *
  * Idempotent: if the seed user already owns lists, exits without touching the
  * database. Refusing to mutate in non-local stages is a hard guard — never run
@@ -13,10 +16,10 @@
  *
  * Re-seed locally with:
  *   docker exec workshop-pg psql -U postgres -d workshop \
- *     -c "DELETE FROM users WHERE email LIKE '%@workshop.local';"
+ *     -c "DELETE FROM users WHERE email IN ('joshlebed@gmail.com','friend@workshop.local');"
  *   pnpm --filter @workshop/backend run db:seed
  */
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
 import {
   activityEvents,
@@ -25,12 +28,32 @@ import {
   itemUpvotes,
   listMembers,
   lists,
+  userIdentities,
   users,
 } from "../src/db/schema.js";
 import { getConfig } from "../src/lib/config.js";
 
-const PREVIEW_EMAIL = "preview@workshop.local";
+const PREVIEW_EMAIL = "joshlebed@gmail.com";
+const PREVIEW_DISPLAY_NAME = "Josh";
 const FRIEND_EMAIL = "friend@workshop.local";
+const FRIEND_DISPLAY_NAME = "Alex";
+
+async function ensureSeedUser(email: string, displayName: string) {
+  const db = getDb();
+  const [existing] = await db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.email}) = lower(${email})`)
+    .limit(1);
+  if (existing) return existing;
+  const [created] = await db.insert(users).values({ email, displayName }).returning();
+  if (!created) throw new Error(`[seed] failed to create user ${email}`);
+  await db
+    .insert(userIdentities)
+    .values({ provider: "apple", providerSub: `dev:${email}`, userId: created.id })
+    .onConflictDoNothing();
+  return created;
+}
 
 async function main() {
   const cfg = getConfig();
@@ -45,7 +68,7 @@ async function main() {
   const [existing] = await db
     .select({ id: users.id })
     .from(users)
-    .where(eq(users.email, PREVIEW_EMAIL))
+    .where(sql`lower(${users.email}) = lower(${PREVIEW_EMAIL})`)
     .limit(1);
 
   if (existing) {
@@ -62,35 +85,8 @@ async function main() {
 
   console.log("[seed] inserting dev fixtures");
 
-  const [preview] = await db
-    .insert(users)
-    .values({
-      authProvider: "google",
-      providerSub: `dev:${PREVIEW_EMAIL}`,
-      email: PREVIEW_EMAIL,
-      displayName: "Preview User",
-    })
-    .onConflictDoUpdate({
-      target: [users.authProvider, users.providerSub],
-      set: { email: PREVIEW_EMAIL, displayName: "Preview User" },
-    })
-    .returning();
-
-  const [friend] = await db
-    .insert(users)
-    .values({
-      authProvider: "google",
-      providerSub: `dev:${FRIEND_EMAIL}`,
-      email: FRIEND_EMAIL,
-      displayName: "Alex",
-    })
-    .onConflictDoUpdate({
-      target: [users.authProvider, users.providerSub],
-      set: { email: FRIEND_EMAIL, displayName: "Alex" },
-    })
-    .returning();
-
-  if (!preview || !friend) throw new Error("[seed] failed to upsert seed users");
+  const preview = await ensureSeedUser(PREVIEW_EMAIL, PREVIEW_DISPLAY_NAME);
+  const friend = await ensureSeedUser(FRIEND_EMAIL, FRIEND_DISPLAY_NAME);
 
   const previewId = preview.id;
   const friendId = friend.id;
