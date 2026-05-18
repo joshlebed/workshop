@@ -2,6 +2,18 @@ import { createHash } from "node:crypto";
 import type { LinkPreview, LinkPreviewResponse } from "@workshop/shared";
 import { Hono } from "hono";
 import { z } from "zod";
+import {
+  buildProxyUrl,
+  googleFaviconUrl,
+  probeImage,
+} from "../../lib/link-preview/image-validation.js";
+import {
+  discoverOembedEndpoint,
+  fetchOembed,
+  fetchOembedDiscovered,
+  type OembedResult,
+} from "../../lib/link-preview/oembed.js";
+import { runSiteHandler, type SiteHandlerResult } from "../../lib/link-preview/site-handlers.js";
 import { logger } from "../../lib/logger.js";
 import { CacheTtl, lookupCacheEntry, upsertCacheEntry } from "../../lib/metadata-cache.js";
 import { err, ok } from "../../lib/response.js";
@@ -23,11 +35,36 @@ const querySchema = z.object({
     .pipe(z.string().min(1, "url required").max(2048, "url too long")),
 });
 
-const FETCH_TIMEOUT_MS = 3000;
+const FETCH_TIMEOUT_MS = 5000;
 const MAX_REDIRECTS = 3;
-const MAX_BODY_BYTES = 1_000_000; // 1 MB
-const USER_AGENT = "WorkshopLinkPreview/1.0 (+https://workshop.pages.dev)";
-const CACHE_SOURCE = "link_preview";
+// 3 MB cap. YouTube's `/watch` HTML weighs ~1.5–2 MB once you include the
+// inlined player config; 1 MB was clipping it before the OG tags landed.
+// Modern social-card pages can be heavy — Reddit, Medium, news sites all
+// run 1–2 MB. Lambda has the memory for it and parsing is bounded by the
+// `<head>` regex anyway.
+const MAX_BODY_BYTES = 3_000_000;
+
+// User-Agent + headers shaped like Facebook's link-preview bot. Most sites
+// keep an allowlist for `facebookexternalhit` because they want their
+// previews to look right on Facebook / iMessage / Slack / Discord — all of
+// which key their fetching on this exact string. The +URL is intentional so
+// site owners who block us can find docs.
+//
+// See https://developers.facebook.com/docs/sharing/webmasters/web-crawlers/
+// and https://deviceandbrowserinfo.com/learning_zone/articles/facebookexternalhit
+const USER_AGENT =
+  "facebookexternalhit/1.1 (+https://workshop.pages.dev/bot; +https://www.facebook.com/externalhit_uatext.php)";
+const ACCEPT_LANGUAGE = "en-US,en;q=0.9";
+
+// `_v3` because the response shape changed (added imageProxy + source).
+// Old `link_preview` rows expire over their 7-day TTL.
+const CACHE_SOURCE = "link_preview_v3";
+
+const MIN_IMAGE_DIMENSION = 200;
+const MIN_FAVICON_DIMENSION = 64;
+// Substrings that almost always mark a tracking pixel / spacer / placeholder.
+const LOW_QUALITY_URL_RE =
+  /\b(?:1x1|2x2|pixel|spacer|blank|transparent|beacon|tracker|tracking)\b/i;
 
 /**
  * Stable cache key: sha1 of the normalized URL. Storing the full URL as
@@ -46,6 +83,10 @@ interface FetchedPage {
 
 interface DepsForTesting {
   fetchPage?: (url: URL) => Promise<FetchedPage>;
+  fetchOembedFn?: (url: URL) => Promise<OembedResult | null>;
+  fetchOembedDiscoveredFn?: (endpoint: string, url: URL) => Promise<OembedResult | null>;
+  runSiteHandlerFn?: (url: URL) => Promise<SiteHandlerResult | null>;
+  probeImageFn?: (url: string) => Promise<{ ok: boolean }>;
   lookupCache?: <T>(source: string, sourceId: string) => Promise<{ data: T } | null>;
   upsertCache?: (source: string, sourceId: string, data: unknown, ttl: number) => Promise<void>;
 }
@@ -90,7 +131,8 @@ async function fetchPage(url: URL): Promise<FetchedPage> {
         method: "GET",
         redirect: "manual",
         headers: {
-          Accept: "text/html,application/xhtml+xml",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": ACCEPT_LANGUAGE,
           "User-Agent": USER_AGENT,
         },
         signal: controller.signal,
@@ -114,7 +156,6 @@ async function fetchPage(url: URL): Promise<FetchedPage> {
       const body = await readCappedBody(res);
       return { finalUrl: current, contentType, body };
     }
-    // Loop exits via return / throw; this is unreachable but satisfies the type.
     throw new Error("redirect loop exited unexpectedly");
   } finally {
     clearTimeout(timer);
@@ -227,38 +268,20 @@ function decodeEntities(s: string): string {
   });
 }
 
-function buildPreview(originalUrl: URL, page: FetchedPage): LinkPreview {
-  const meta = parseOgMeta(page.body);
-  const image = pickImage(collectImageCandidates(page.body), page.finalUrl);
-  const favicon = pickFavicon(collectFaviconCandidates(page.body), page.finalUrl);
-  return {
-    url: originalUrl.href,
-    finalUrl: page.finalUrl.href,
-    title: meta.title,
-    description: meta.description,
-    image,
-    favicon,
-    siteName: meta.siteName ?? page.finalUrl.hostname,
-    fetchedAt: new Date().toISOString(),
-  };
-}
-
-// Anything smaller than this in either dimension is too small to use as a
-// game tile — clients fall back to a placeholder glyph instead.
-const MIN_IMAGE_DIMENSION = 200;
-// Smaller bar for favicons since 180×180 apple-touch-icons are common and
-// still look fine on a 64pt tile. Standard 16/32 px `.ico` files don't clear it.
-const MIN_FAVICON_DIMENSION = 64;
-// Substrings that almost always mark a tracking pixel, spacer, or placeholder.
-// Word-boundary matches keep `300x250-banner.jpg` (a real banner) from tripping.
-const LOW_QUALITY_URL_RE =
-  /\b(?:1x1|2x2|pixel|spacer|blank|transparent|beacon|tracker|tracking)\b/i;
-
 interface ImageCandidate {
   url: string;
   width: number | null;
   height: number | null;
+  /** Higher = preferred. oEmbed/site-handler beat generic OG. */
+  rank: number;
 }
+
+const RANK_SITE_HANDLER = 100;
+const RANK_OEMBED = 90;
+const RANK_OG = 80;
+const RANK_TWITTER = 70;
+const RANK_JSON_LD = 60;
+const RANK_LEGACY = 40;
 
 /**
  * Walks the parsed head + body for every image URL the page advertises. Order
@@ -280,15 +303,22 @@ function collectImageCandidates(html: string): ImageCandidate[] {
     metas.get("og:image:secure_url") ?? metas.get("og:image:url") ?? metas.get("og:image"),
     ogW,
     ogH,
+    RANK_OG,
   );
 
-  pushCandidate(out, metas.get("twitter:image") ?? metas.get("twitter:image:src"), null, null);
+  pushCandidate(
+    out,
+    metas.get("twitter:image") ?? metas.get("twitter:image:src"),
+    null,
+    null,
+    RANK_TWITTER,
+  );
 
-  for (const c of collectJsonLdImages(html)) out.push(c);
+  for (const c of collectJsonLdImages(html)) out.push({ ...c, rank: RANK_JSON_LD });
 
-  pushCandidate(out, metas.get("msapplication-tileimage"), null, null);
-  pushCandidate(out, parseItempropImage(head), null, null);
-  pushCandidate(out, parseImageSrcLink(head), null, null);
+  pushCandidate(out, metas.get("msapplication-tileimage"), null, null, RANK_LEGACY);
+  pushCandidate(out, parseItempropImage(head), null, null, RANK_LEGACY);
+  pushCandidate(out, parseImageSrcLink(head), null, null, RANK_LEGACY);
 
   return out;
 }
@@ -298,9 +328,10 @@ function pushCandidate(
   url: string | null | undefined,
   width: number | null,
   height: number | null,
+  rank: number,
 ): void {
   if (!url) return;
-  out.push({ url: decodeEntities(url), width, height });
+  out.push({ url: decodeEntities(url), width, height, rank });
 }
 
 function extractHead(html: string): string {
@@ -343,8 +374,10 @@ function parseImageSrcLink(head: string): string | null {
  * of either. We recurse to a small depth so a hostile or pathological doc
  * can't blow the stack.
  */
-function collectJsonLdImages(html: string): ImageCandidate[] {
-  const out: ImageCandidate[] = [];
+function collectJsonLdImages(
+  html: string,
+): Array<{ url: string; width: number | null; height: number | null }> {
+  const out: Array<{ url: string; width: number | null; height: number | null }> = [];
   const re = /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
   for (const m of html.matchAll(re)) {
     const raw = m[1]?.trim();
@@ -360,7 +393,11 @@ function collectJsonLdImages(html: string): ImageCandidate[] {
   return out;
 }
 
-function walkJsonLdImages(node: unknown, out: ImageCandidate[], depth: number): void {
+function walkJsonLdImages(
+  node: unknown,
+  out: Array<{ url: string; width: number | null; height: number | null }>,
+  depth: number,
+): void {
   if (depth > 6 || node == null) return;
   if (Array.isArray(node)) {
     for (const item of node) walkJsonLdImages(item, out, depth + 1);
@@ -398,16 +435,11 @@ function coerceNumber(v: unknown): number | null {
   return null;
 }
 
-function pickImage(candidates: ImageCandidate[], base: URL): string | null {
-  for (const c of candidates) {
-    if (isLowQualityImage(c)) continue;
-    const abs = toAbsoluteUrl(c.url, base);
-    if (abs) return abs;
-  }
-  return null;
-}
-
-function isLowQualityImage(c: ImageCandidate): boolean {
+function isLowQualityImage(c: {
+  url: string;
+  width: number | null;
+  height: number | null;
+}): boolean {
   const url = c.url.trim();
   if (!url) return true;
   // Base64 placeholders are almost always trackers; allow inline SVG, which
@@ -417,6 +449,50 @@ function isLowQualityImage(c: ImageCandidate): boolean {
   if (c.width !== null && c.width < MIN_IMAGE_DIMENSION) return true;
   if (c.height !== null && c.height < MIN_IMAGE_DIMENSION) return true;
   return false;
+}
+
+function toAbsoluteUrl(raw: string, base: URL): string | null {
+  try {
+    return new URL(raw, base).href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Walks candidates in rank-then-order priority, normalizes them to absolute
+ * URLs, drops the obvious junk, then probes the rest with a HEAD/Range
+ * request. Returns the first that comes back as a real reachable image.
+ *
+ * Candidates whose dimensions were declared in markup and meet the minimum
+ * skip the probe — the markup is already trustworthy enough and probing
+ * adds 100–500ms per check.
+ */
+async function pickValidatedImage(
+  candidates: ImageCandidate[],
+  base: URL,
+  probe: (url: string) => Promise<{ ok: boolean }>,
+): Promise<string | null> {
+  const ranked = [...candidates].sort((a, b) => b.rank - a.rank);
+  const tried = new Set<string>();
+  for (const c of ranked) {
+    if (isLowQualityImage(c)) continue;
+    const abs = toAbsoluteUrl(c.url, base);
+    if (!abs) continue;
+    if (tried.has(abs)) continue;
+    tried.add(abs);
+
+    const dimsKnown =
+      c.width !== null &&
+      c.height !== null &&
+      c.width >= MIN_IMAGE_DIMENSION &&
+      c.height >= MIN_IMAGE_DIMENSION;
+    if (dimsKnown) return abs;
+
+    const probed = await probe(abs).catch(() => ({ ok: false }));
+    if (probed.ok) return abs;
+  }
+  return null;
 }
 
 interface FaviconCandidate {
@@ -462,9 +538,11 @@ function parseLargestSize(raw: string | null | undefined): number | null {
 /**
  * Quality bar for favicons: apple-touch-icons are 180×180 by convention so
  * we accept them without a size attr; any other rel must declare a `sizes`
- * attribute ≥ MIN_FAVICON_DIMENSION (or be an SVG, which scales). We never
- * synthesize `/favicon.ico` — the game tile's 🎮 placeholder beats a 16px
- * postage-stamp icon.
+ * attribute ≥ MIN_FAVICON_DIMENSION (or be an SVG, which scales).
+ *
+ * Falls back to Google's s2 favicon service when nothing on the page clears
+ * the bar — that endpoint always returns a 128px raster (the generic globe
+ * for unknown hosts) and is the same fallback iMessage and Slack use.
  */
 function pickFavicon(candidates: FaviconCandidate[], base: URL): string | null {
   let best: { c: FaviconCandidate; rank: number; size: number } | null = null;
@@ -478,15 +556,122 @@ function pickFavicon(candidates: FaviconCandidate[], base: URL): string | null {
       best = { c, rank, size: effective };
     }
   }
-  return best ? toAbsoluteUrl(best.c.url, base) : null;
+  if (best) return toAbsoluteUrl(best.c.url, base);
+  return googleFaviconUrl(base.hostname);
 }
 
-function toAbsoluteUrl(raw: string, base: URL): string | null {
-  try {
-    return new URL(raw, base).href;
-  } catch {
-    return null;
+/**
+ * The core orchestrator. Calls site-handlers + oEmbed in parallel with the
+ * HTML fetch, then merges signals to build the final LinkPreview.
+ *
+ * Order of preference for `image`:
+ *   1. site-handler (FxTwitter / GitHub repo / Amazon ASIN)
+ *   2. registry oEmbed (YouTube, Vimeo, Spotify, etc.)
+ *   3. discovered oEmbed (WordPress, etc.)
+ *   4. og:image (and family)
+ *   5. twitter:image
+ *   6. JSON-LD image / msapp / itemprop / image_src
+ *
+ * Every candidate either has dimensions ≥ MIN_IMAGE_DIMENSION declared in
+ * markup, or is probed (HEAD/Range) to confirm it's a real image. The first
+ * to pass becomes `image`; `imageProxy` is the wsrv.nl-wrapped variant the
+ * client uses for rendering.
+ */
+async function buildPreview(
+  originalUrl: URL,
+  page: FetchedPage,
+  oembedRegistry: OembedResult | null,
+  siteResult: SiteHandlerResult | null,
+  probe: (url: string) => Promise<{ ok: boolean }>,
+  fetchOembedDiscoveredFn: (endpoint: string, url: URL) => Promise<OembedResult | null>,
+): Promise<LinkPreview> {
+  const meta = parseOgMeta(page.body);
+  const candidates: ImageCandidate[] = [];
+
+  let oembedDiscovered: OembedResult | null = null;
+  if (!oembedRegistry) {
+    const endpoint = discoverOembedEndpoint(page.body);
+    if (endpoint) {
+      const abs = toAbsoluteUrl(endpoint, page.finalUrl);
+      if (abs) {
+        oembedDiscovered = await fetchOembedDiscoveredFn(abs, page.finalUrl).catch(() => null);
+      }
+    }
   }
+  const oembed = oembedRegistry ?? oembedDiscovered;
+
+  if (siteResult?.image) {
+    candidates.push({
+      url: siteResult.image,
+      width: null,
+      height: null,
+      rank: RANK_SITE_HANDLER,
+    });
+  }
+  if (oembed?.thumbnailUrl) {
+    candidates.push({
+      url: oembed.thumbnailUrl,
+      width: oembed.thumbnailWidth,
+      height: oembed.thumbnailHeight,
+      rank: RANK_OEMBED,
+    });
+  }
+  for (const c of collectImageCandidates(page.body)) candidates.push(c);
+
+  const image = await pickValidatedImage(candidates, page.finalUrl, probe);
+  const favicon = pickFavicon(collectFaviconCandidates(page.body), page.finalUrl);
+
+  const source: LinkPreview["source"] = siteResult?.image
+    ? "site"
+    : oembed?.thumbnailUrl
+      ? "oembed"
+      : "html";
+
+  return {
+    url: originalUrl.href,
+    finalUrl: page.finalUrl.href,
+    title: siteResult?.title ?? meta.title ?? oembed?.title ?? null,
+    description: siteResult?.description ?? meta.description ?? null,
+    image,
+    imageProxy: buildProxyUrl(image),
+    favicon,
+    siteName:
+      meta.siteName ?? oembed?.providerName ?? siteResult?.handler ?? page.finalUrl.hostname,
+    source,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Site-handler-only build path. Used when the HTML fetch fails but we still
+ * got a useful answer from a site-specific handler (e.g. FxTwitter for an
+ * x.com URL that returned 401 to our bot).
+ */
+/**
+ * Build a preview from just the side-channel signals (site-handler + oEmbed)
+ * — used when the HTML fetch fails (page exceeded the body cap, returned 4xx
+ * to our bot, network error, etc.). At least one of the two must have an
+ * image or a title; if both are empty the caller falls through to 500.
+ */
+function buildPreviewFromHints(
+  originalUrl: URL,
+  siteResult: SiteHandlerResult | null,
+  oembedResult: OembedResult | null,
+): LinkPreview {
+  const image = siteResult?.image ?? oembedResult?.thumbnailUrl ?? null;
+  const title = siteResult?.title ?? oembedResult?.title ?? null;
+  return {
+    url: originalUrl.href,
+    finalUrl: originalUrl.href,
+    title,
+    description: siteResult?.description ?? null,
+    image,
+    imageProxy: buildProxyUrl(image),
+    favicon: googleFaviconUrl(originalUrl.hostname),
+    siteName: oembedResult?.providerName ?? originalUrl.hostname,
+    source: siteResult?.image ? "site" : "oembed",
+    fetchedAt: new Date().toISOString(),
+  };
 }
 
 linkPreviewRoutes.get(
@@ -516,20 +701,55 @@ linkPreviewRoutes.get(
       return ok(c, response);
     }
 
-    let page: FetchedPage;
-    try {
-      page = await (testDeps.fetchPage ?? fetchPage)(parsedUrl);
-    } catch (error) {
-      if (error instanceof SsrfBlockedError) {
-        // SSRF blocks at fetch time (e.g. redirect to a private IP) are
-        // user-actionable — surface as 400 like the up-front validation.
-        return err(c, "VALIDATION", error.message);
+    // Run the page fetch, site-handler, and registry oEmbed in parallel.
+    // Site-handler + oEmbed are stateless lookups and the dominant latency
+    // is the page fetch (~1–3s), so doing them concurrently is free.
+    const pagePromise = (testDeps.fetchPage ?? fetchPage)(parsedUrl).catch(
+      (e: unknown) => e as Error,
+    );
+    const sitePromise = (testDeps.runSiteHandlerFn ?? runSiteHandler)(parsedUrl).catch(() => null);
+    const oembedPromise = (testDeps.fetchOembedFn ?? fetchOembed)(parsedUrl).catch(() => null);
+
+    const [pageOrError, siteResult, oembedResult] = await Promise.all([
+      pagePromise,
+      sitePromise,
+      oembedPromise,
+    ]);
+
+    if (pageOrError instanceof Error) {
+      if (pageOrError instanceof SsrfBlockedError) {
+        return err(c, "VALIDATION", pageOrError.message);
       }
-      logger.warn("link-preview fetch failed", { error, url: parsedUrl.href });
+      // Last resort: if either the site handler or registry oEmbed got us
+      // *something*, use that. Most YouTube/Twitter URLs end up here when
+      // the HTML body exceeds the cap — oEmbed already has what we need.
+      if (
+        siteResult?.image ||
+        siteResult?.title ||
+        oembedResult?.thumbnailUrl ||
+        oembedResult?.title
+      ) {
+        const preview = buildPreviewFromHints(parsedUrl, siteResult, oembedResult);
+        upsert(CACHE_SOURCE, cacheKey, preview, CacheTtl.linkPreview).catch((error) => {
+          logger.warn("metadata cache write failed", { error, source: CACHE_SOURCE });
+        });
+        const response: LinkPreviewResponse = { preview };
+        return ok(c, response);
+      }
+      logger.warn("link-preview fetch failed", { error: pageOrError, url: parsedUrl.href });
       return err(c, "INTERNAL", "could not fetch preview");
     }
 
-    const preview = buildPreview(parsedUrl, page);
+    const probe = testDeps.probeImageFn ?? probeImage;
+    const fetchOembedDiscoveredFn = testDeps.fetchOembedDiscoveredFn ?? fetchOembedDiscovered;
+    const preview = await buildPreview(
+      parsedUrl,
+      pageOrError,
+      oembedResult,
+      siteResult,
+      probe,
+      fetchOembedDiscoveredFn,
+    );
 
     upsert(CACHE_SOURCE, cacheKey, preview, CacheTtl.linkPreview).catch((error) => {
       logger.warn("metadata cache write failed", { error, source: CACHE_SOURCE });
@@ -544,8 +764,9 @@ export const __internal = {
   parseOgMeta,
   cacheKeyFor,
   buildPreview,
+  buildPreviewFromHints,
   collectImageCandidates,
-  pickImage,
+  pickValidatedImage,
   isLowQualityImage,
   collectFaviconCandidates,
   pickFavicon,

@@ -334,13 +334,17 @@ function describeItem(item: Item): ItemView {
     }
     case "link": {
       // `link` covers date ideas, trips, games, and any generic URL-bearing
-      // item. Pick the image from whichever field is set (image, thumbnailUrl).
+      // item. Prefer `imageProxy` (wsrv.nl-wrapped) for rendering so we get
+      // resize + format negotiation and survive the upstream hotlink-blocking
+      // case. Fall back to `image`, then the legacy `thumbnailUrl` shape.
       const image =
-        typeof c.image === "string"
-          ? c.image
-          : typeof c.thumbnailUrl === "string"
-            ? c.thumbnailUrl
-            : undefined;
+        typeof c.imageProxy === "string"
+          ? c.imageProxy
+          : typeof c.image === "string"
+            ? c.image
+            : typeof c.thumbnailUrl === "string"
+              ? c.thumbnailUrl
+              : undefined;
       const siteName = typeof c.siteName === "string" ? c.siteName : "";
       const note = item.note ?? "";
       const subline = [siteName, note].filter(Boolean).join(" · ");

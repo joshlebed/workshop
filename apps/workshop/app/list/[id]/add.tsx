@@ -272,12 +272,16 @@ function buildBookContent(r: BookResult): ItemContent {
 function buildLinkContent(p: LinkPreview, isGame: boolean): ItemContent {
   const c: Record<string, unknown> = { source: "link_preview", sourceId: p.finalUrl };
   if (isGame) {
-    const thumbnail = p.image ?? p.favicon;
+    // Game tiles render via `thumbnailUrl`; prefer the proxied variant so the
+    // tile is reachable even if the upstream CDN goes dark. Fall back to the
+    // upstream image, then to the (Google-s2-backed) favicon.
+    const thumbnail = p.imageProxy ?? p.image ?? p.favicon;
     if (thumbnail) c.thumbnailUrl = thumbnail;
     if (p.siteName) c.siteName = p.siteName;
     return c;
   }
   if (p.image) c.image = p.image;
+  if (p.imageProxy) c.imageProxy = p.imageProxy;
   if (p.siteName) c.siteName = p.siteName;
   if (p.title) c.title = p.title;
   if (p.description) c.description = p.description;
@@ -559,11 +563,15 @@ function LinkPreviewSection({ preview, loading, failed, active }: LinkPreviewSec
   }
   if (!preview) return null;
   const heading = preview.title ?? preview.siteName ?? preview.finalUrl;
+  // Prefer the proxied URL — smaller, format-negotiated, and survives the
+  // upstream hotlink-blocking-our-bot case. Fall back to upstream if for
+  // some reason the proxy URL wasn't synthesized (e.g. data: image).
+  const renderedImage = preview.imageProxy ?? preview.image;
   return (
     <View testID="link-preview-card" style={styles.previewCard}>
-      {preview.image ? (
+      {renderedImage ? (
         <Image
-          source={{ uri: preview.image }}
+          source={{ uri: renderedImage }}
           style={styles.previewImage}
           accessibilityIgnoresInvertColors
         />

@@ -43,6 +43,13 @@ const linkContent = z
     source: z.enum(["link_preview", "manual"]).optional(),
     sourceId: optionalString(128),
     image: optionalString(2048),
+    /**
+     * CDN-proxied + resized variant of `image` (wsrv.nl wrapper). The
+     * extractor stores both: `image` is the canonical upstream URL so we
+     * can re-proxy or re-fetch later; `imageProxy` is what the client
+     * actually renders so we never break when upstream hotlink-blocks.
+     */
+    imageProxy: optionalString(2048),
     siteName: optionalString(200),
     title: optionalString(500),
     description: optionalString(2000),

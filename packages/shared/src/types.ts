@@ -420,9 +420,18 @@ export interface LinkPreview {
   finalUrl: string;
   title: string | null;
   description: string | null;
+  /** Upstream image URL — verified reachable + content-type=image when present. */
   image: string | null;
+  /**
+   * CDN-proxied + resized variant of `image`. Clients prefer this for
+   * rendering (smaller, always reachable, survives the upstream hotlink
+   * blocking or going dark). `null` when there is no `image` to proxy.
+   */
+  imageProxy: string | null;
   favicon: string | null;
   siteName: string | null;
+  /** Where the preview came from: oembed | site-handler | html. */
+  source: "oembed" | "site" | "html";
   fetchedAt: string;
 }
 
