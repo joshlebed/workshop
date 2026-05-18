@@ -241,7 +241,11 @@ Almost always the deploy pipeline, not per-platform code. Check in order:
 2. **Does the installed TestFlight build's runtime version match the OTA's?** Runtime version
    is `app.json` `version` at build time. A `0.1.0` TestFlight build never applies a `0.2.0` OTA.
 3. **Has the latest TestFlight build landed?** `testflight.yml` awaits the EAS build. Red run =
-   no matching binary exists yet.
+   no matching binary exists yet. If runs have been red across multiple commits and the failing
+   step is `Build + auto-submit (await success)` with `Distribution Certificate is not validated
+for non-interactive builds` / `Credentials are not set up. Run this command again in
+interactive mode`, the cause is almost always a new bundle id (e.g. a share / widget / push
+   extension target) that EAS has no credentials for yet — see Recovery below.
 
 ### Runtime-version policy: `appVersion` (not `fingerprint`)
 
@@ -289,8 +293,22 @@ read -s "ASP?Paste app-specific password: " && echo "" && \
 
 App-specific password: <https://appleid.apple.com> → Sign-In and Security. macOS only.
 
-ASC API key setup for build (separate from submit key) is required for non-interactive CI
-credential operations — see `docs/manual-setup.md` §5.
+New bundle id (e.g. share extension, widget, push extension) added but every TestFlight build
+since is red: EAS doesn't have credentials for the new target and can't generate them
+non-interactively. One-time fix from a laptop with an active Apple session:
+
+```bash
+cd apps/workshop && npx eas-cli@latest credentials --platform ios
+# → production → App Store Connect: Manage your API Key
+#   → Set up an App Store Connect API Key for your project
+#   → reuse the existing `[Expo] EAS Submit` key (it has ADMIN role, which is sufficient)
+#     OR create a new one at https://appstoreconnect.apple.com/access/api (App Manager+)
+```
+
+Then force a fresh build: `gh workflow run testflight.yml --ref main --field force=true`.
+With the ASC API key registered EAS auto-generates the cert + provisioning profile for the
+new target on the next build, and every future capability/target change in CI just works.
+Full one-time setup is in `docs/manual-setup.md` §5.
 
 ### GitHub Actions concurrency
 
