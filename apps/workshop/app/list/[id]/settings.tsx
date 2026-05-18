@@ -56,23 +56,23 @@ const EMOJI_CHOICES = ["🎬", "📺", "📚", "💜", "✈️", "🍿", "🎮",
 const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> = {
   todo: {
     label: "To-do",
-    description: "Items can be marked complete; a “Done” section appears.",
+    description: "Mark items as done.",
   },
   voting: {
     label: "Voting",
-    description: "Members can upvote items.",
+    description: "Upvote items.",
   },
   ranking: {
     label: "Ranking",
-    description: "Drag items into a manual order.",
+    description: "Sort items by hand.",
   },
   leaderboard: {
     label: "Leaderboard",
-    description: "Members submit scores per period — great for daily games.",
+    description: "Post scores for daily games.",
   },
   sources: {
     label: "Sources",
-    description: "Attach external feeds (Spotify playlists, future kinds).",
+    description: "Sync from external feeds.",
   },
 };
 
@@ -527,10 +527,6 @@ export default function ListSettings() {
             <Text variant="label" tone="secondary">
               Modules
             </Text>
-            <Text tone="secondary">
-              What this list does. Disabling a module hides the feature but preserves the data —
-              turn it back on to bring everything back.
-            </Text>
             <View style={styles.moduleList}>
               {MODULE_NAMES.map((mod) => {
                 const isOn = selectedModules.includes(mod);
@@ -581,7 +577,7 @@ export default function ListSettings() {
             ) : null}
             <Button
               testID="settings-modules-save"
-              label="Save modules"
+              label="Save"
               size="md"
               disabled={!modulesDirty || modulesMutation.isPending || previewMutation.isPending}
               loading={modulesMutation.isPending || previewMutation.isPending}
