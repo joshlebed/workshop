@@ -148,9 +148,7 @@ describe("duplicateListSchema — modules + itemKind overrides", () => {
   });
 
   it("rejects an unknown module in the override", () => {
-    expect(duplicateListSchema.safeParse({ modules: ["voting", "scheduling"] }).success).toBe(
-      false,
-    );
+    expect(duplicateListSchema.safeParse({ modules: ["voting", "made_up"] }).success).toBe(false);
   });
 
   it("accepts itemKind=null in the override (loosen to unconstrained)", () => {

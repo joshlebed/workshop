@@ -114,6 +114,22 @@ const MODULE_MANIFESTS: Record<ModuleName, ModuleManifest> = {
       ];
     },
   },
+  // The next three modules are reserved per §3.10. They register as no-data
+  // gates today — disabling them is silent because the feature surfaces
+  // haven't shipped yet. When the feature PR adds schema rows, the
+  // inspectRemoval hook tightens to count them.
+  scheduling: {
+    name: "scheduling",
+    inspectRemoval: async () => [],
+  },
+  comments: {
+    name: "comments",
+    inspectRemoval: async () => [],
+  },
+  attachments: {
+    name: "attachments",
+    inspectRemoval: async () => [],
+  },
 };
 
 export async function inspectModuleChange(args: {

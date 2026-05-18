@@ -8,7 +8,7 @@ import type {
   ModuleName,
   PendingInvite,
 } from "@workshop/shared";
-import { MODULE_NAMES } from "@workshop/shared/modules";
+import { formatConfigWarning, MODULE_NAMES } from "@workshop/shared/modules";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { Image, Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
@@ -73,6 +73,18 @@ const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> 
   sources: {
     label: "Sources",
     description: "Sync from external feeds.",
+  },
+  scheduling: {
+    label: "Scheduling",
+    description: "Dates, reminders, and timelines (coming soon).",
+  },
+  comments: {
+    label: "Comments",
+    description: "Thread discussions per item (coming soon).",
+  },
+  attachments: {
+    label: "Attachments",
+    description: "Files attached to items (coming soon).",
   },
 };
 
@@ -557,14 +569,17 @@ export default function ListSettings() {
             </View>
             {previewWarnings && previewWarnings.length > 0 ? (
               <View style={styles.warningBox}>
-                <Text variant="label" tone="danger">
-                  Heads up
-                </Text>
-                {previewWarnings.map((w) => (
-                  <Text key={w.code} tone="secondary">
-                    • {w.message}
-                  </Text>
-                ))}
+                {previewWarnings.map((w) => {
+                  const copy = formatConfigWarning(w);
+                  return (
+                    <View key={w.code} style={styles.warningEntry}>
+                      <Text variant="label" tone="danger">
+                        {copy.headline}
+                      </Text>
+                      <Text tone="secondary">{copy.detail}</Text>
+                    </View>
+                  );
+                })}
                 <Button
                   testID="settings-modules-confirm"
                   label="Apply anyway"
@@ -974,5 +989,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
     borderWidth: 1,
     borderColor: tokens.border.subtle,
+  },
+  warningEntry: {
+    gap: tokens.space.xs,
   },
 });

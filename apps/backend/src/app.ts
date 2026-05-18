@@ -7,7 +7,6 @@ import { err } from "./lib/response.js";
 import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
 import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
-import { albumShelfRoutes } from "./routes/v1/album-shelf.js";
 import { authRoutes } from "./routes/v1/auth.js";
 import { inviteRoutes, publicInviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
@@ -18,6 +17,7 @@ import { itemScoreRoutes, listScoresRoutes } from "./routes/v1/scores.js";
 import { searchRoutes } from "./routes/v1/search.js";
 import { sourcePreviewRoutes } from "./routes/v1/sources.js";
 import { userRoutes } from "./routes/v1/users.js";
+import { webhookRoutes } from "./routes/v1/webhooks.js";
 
 const clientIp: RateLimitKeyFn = (c) => {
   const xff = c.req.header("x-forwarded-for");
@@ -83,9 +83,9 @@ export function buildApp() {
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/activity", activityRoutes);
   app.route("/v1/sources", sourcePreviewRoutes);
-  // Legacy alias kept so older mobile builds can still preview Spotify
-  // playlists during the create-list flow.
-  app.route("/v1/album-shelf", albumShelfRoutes);
+  // Inbound webhooks for push-driven sources. No auth — signature
+  // verification on a per-source shared secret is the auth (§3.6).
+  app.route("/v1", webhookRoutes);
   app.route("/v1", publicInviteRoutes);
   app.route("/v1", inviteRoutes);
 

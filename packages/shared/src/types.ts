@@ -23,9 +23,10 @@ export type MemberRole = "owner" | "member";
 // Activity event types are a plain string at the API boundary so adding a new
 // type is code-only — no Postgres `ALTER TYPE` ceremony. The legacy event
 // types (`album_shelf_refreshed`, `album_shelf_source_changed`,
-// `album_promoted`, `album_demoted`, `item_deleted`) are migrated in place
-// to their post-redesign equivalents; older rows stay readable on the same
-// renderer because the rename is one-shot.
+// `album_promoted`, `album_demoted`, `item_deleted`) were migrated in place
+// to their post-redesign equivalents in 0014; verify with
+// `SELECT DISTINCT event_type FROM activity_events;` on prod before relying
+// on the trimmed union.
 export type ActivityEventType =
   | "list_created"
   | "list_archived"
@@ -49,13 +50,7 @@ export type ActivityEventType =
   | "source_added"
   | "source_removed"
   | "source_updated"
-  | "source_synced"
-  // Legacy values still present on historical rows.
-  | "item_deleted"
-  | "album_shelf_refreshed"
-  | "album_shelf_source_changed"
-  | "album_promoted"
-  | "album_demoted";
+  | "source_synced";
 
 export interface User {
   id: string;
