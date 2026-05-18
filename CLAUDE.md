@@ -146,6 +146,12 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `style={({ pressed }) => [...]}` re-resolves on every render and clobbers transform
   animations on the same component. Wrap a plain `<Pressable>` inside `<Animated.View>` and
   keep press-state styling on the inner `Pressable`. `UpvotePill` is the reference.
+- **Don't stack `<Sheet>`s with `setA(false); setB(true)`.** Each Sheet wraps an RN `Modal`
+  that stays mounted for ~220ms while its exit animation runs. Flipping the second sheet open
+  during that window briefly stacks two `Modal`s — on iOS the new one registers as visible
+  but never actually presents, leaving the screen non-interactable until you navigate away.
+  Chain through Sheet's `onClosed` prop instead. See `apps/workshop/app/list/[id]/game/[itemId].tsx`
+  for the pattern.
 - **`react-native-worklets` babel plugin is auto-wired by `babel-preset-expo`.** Don't add
   `react-native-worklets/plugin` to `babel.config.js` manually — it'll run twice.
 - **For animated text, use `AnimatedText` from `src/ui/Text.tsx`.** Raw `<Animated.Text>`
