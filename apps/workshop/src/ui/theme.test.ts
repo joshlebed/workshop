@@ -32,7 +32,7 @@ describe("theme tokens", () => {
           "muted": "#F5A52422",
         },
         "bg": {
-          "canvas": "#0F2547",
+          "canvas": "#081325",
           "elevated": "#1F1F25",
           "surface": "#16161A",
         },
