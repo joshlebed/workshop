@@ -28,6 +28,7 @@ import {
   Avatar,
   Button,
   EmptyState,
+  Screen,
   Sheet,
   Text,
   tokens,
@@ -198,29 +199,29 @@ export default function GameDetail() {
 
   if (!itemId || !listId) {
     return (
-      <View style={styles.center}>
+      <Screen style={styles.center}>
         <EmptyState title="Missing ids" />
-      </View>
+      </Screen>
     );
   }
 
   if (itemQuery.isPending) {
     return (
-      <View style={styles.center}>
+      <Screen style={styles.center}>
         <ActivityIndicator color={tokens.accent.default} />
-      </View>
+      </Screen>
     );
   }
 
   if (itemQuery.isError || !itemQuery.data) {
     return (
-      <View style={styles.center}>
+      <Screen style={styles.center}>
         <EmptyState
           title="Couldn't load game"
           description={errorMessage(itemQuery.error)}
           action={<Button label="Retry" variant="secondary" onPress={() => itemQuery.refetch()} />}
         />
-      </View>
+      </Screen>
     );
   }
 
@@ -292,164 +293,166 @@ export default function GameDetail() {
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.headerNav}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => goBack(`/list/${listId}`)}
-          testID="game-detail-back"
-          hitSlop={10}
-          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-        >
-          <Text style={styles.navGlyph}>‹</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Game options"
-          onPress={() => setMenuOpen(true)}
-          testID="game-detail-menu"
-          hitSlop={10}
-          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-        >
-          <Text style={styles.navGlyph}>⋯</Text>
-        </Pressable>
-      </View>
-
-      <ScrollView
-        contentContainerStyle={styles.body}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-      >
-        <Pressable
-          accessibilityRole={item.url ? "link" : undefined}
-          accessibilityLabel={item.url ? `Open ${item.title}` : item.title}
-          accessibilityHint={item.url ? "Opens the game in your browser" : undefined}
-          onPress={item.url ? onOpenGame : undefined}
-          disabled={!item.url}
-          testID="game-detail-title-link"
-          style={({ pressed }) => [
-            styles.titleBlock,
-            item.url && pressed && styles.titleBlockPressed,
-          ]}
-        >
-          {thumb ? (
-            <Image
-              source={{ uri: thumb }}
-              style={styles.titleBadge}
-              accessibilityIgnoresInvertColors
-            />
-          ) : (
-            <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
-              <Text style={styles.titleBadgeGlyph}>🎮</Text>
-            </View>
-          )}
-          <View style={styles.titleText}>
-            <Text variant="title" numberOfLines={2} style={styles.titleName}>
-              {item.title}
-            </Text>
-            {host ? (
-              <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.hostText}>
-                {host}
-              </Text>
-            ) : null}
-          </View>
-          {item.url ? (
-            <View style={styles.titleOpenAffordance}>
-              <Text style={styles.titleOpenGlyph}>↗</Text>
-            </View>
-          ) : null}
-        </Pressable>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.dayRail}
-        >
-          {dayRail.map((d) => {
-            const selected = d.key === date;
-            return (
-              <Pressable
-                key={d.key}
-                accessibilityRole="button"
-                accessibilityLabel={`Show ${d.label}`}
-                accessibilityState={{ selected }}
-                onPress={() => onDate(d.key)}
-                testID={`game-detail-day-${d.key}`}
-                style={({ pressed }) => [
-                  styles.dayChip,
-                  selected && styles.dayChipSelected,
-                  pressed && styles.dayChipPressed,
-                ]}
-              >
-                <Text
-                  variant="label"
-                  style={[styles.dayChipText, selected && styles.dayChipTextSelected]}
-                >
-                  {d.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-
-        <View style={styles.dayHeader}>
-          <Text variant="heading" style={styles.dayTitle}>
-            {formatGameDateLabel(date, today)}
-          </Text>
-          {scoresQuery.isPending ? null : totalEntries === 0 ? (
-            <Text variant="caption" tone="muted">
-              No members on this list.
-            </Text>
-          ) : (
-            <Text variant="caption" tone="muted">
-              {playedCount === 0
-                ? "Nobody has played yet."
-                : `${playedCount} of ${totalEntries} played`}
-            </Text>
-          )}
+      <Screen>
+        <View style={styles.headerNav}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => goBack(`/list/${listId}`)}
+            testID="game-detail-back"
+            hitSlop={10}
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+          >
+            <Text style={styles.navGlyph}>‹</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Game options"
+            onPress={() => setMenuOpen(true)}
+            testID="game-detail-menu"
+            hitSlop={10}
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+          >
+            <Text style={styles.navGlyph}>⋯</Text>
+          </Pressable>
         </View>
 
-        {scoresQuery.isPending ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+        <ScrollView
+          contentContainerStyle={styles.body}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+        >
+          <Pressable
+            accessibilityRole={item.url ? "link" : undefined}
+            accessibilityLabel={item.url ? `Open ${item.title}` : item.title}
+            accessibilityHint={item.url ? "Opens the game in your browser" : undefined}
+            onPress={item.url ? onOpenGame : undefined}
+            disabled={!item.url}
+            testID="game-detail-title-link"
+            style={({ pressed }) => [
+              styles.titleBlock,
+              item.url && pressed && styles.titleBlockPressed,
+            ]}
+          >
+            {thumb ? (
+              <Image
+                source={{ uri: thumb }}
+                style={styles.titleBadge}
+                accessibilityIgnoresInvertColors
+              />
+            ) : (
+              <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
+                <Text style={styles.titleBadgeGlyph}>🎮</Text>
+              </View>
+            )}
+            <View style={styles.titleText}>
+              <Text variant="title" numberOfLines={2} style={styles.titleName}>
+                {item.title}
+              </Text>
+              {host ? (
+                <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.hostText}>
+                  {host}
+                </Text>
+              ) : null}
+            </View>
+            {item.url ? (
+              <View style={styles.titleOpenAffordance}>
+                <Text style={styles.titleOpenGlyph}>↗</Text>
+              </View>
+            ) : null}
+          </Pressable>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.dayRail}
+          >
+            {dayRail.map((d) => {
+              const selected = d.key === date;
+              return (
+                <Pressable
+                  key={d.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show ${d.label}`}
+                  accessibilityState={{ selected }}
+                  onPress={() => onDate(d.key)}
+                  testID={`game-detail-day-${d.key}`}
+                  style={({ pressed }) => [
+                    styles.dayChip,
+                    selected && styles.dayChipSelected,
+                    pressed && styles.dayChipPressed,
+                  ]}
+                >
+                  <Text
+                    variant="label"
+                    style={[styles.dayChipText, selected && styles.dayChipTextSelected]}
+                  >
+                    {d.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.dayHeader}>
+            <Text variant="heading" style={styles.dayTitle}>
+              {formatGameDateLabel(date, today)}
+            </Text>
+            {scoresQuery.isPending ? null : totalEntries === 0 ? (
+              <Text variant="caption" tone="muted">
+                No members on this list.
+              </Text>
+            ) : (
+              <Text variant="caption" tone="muted">
+                {playedCount === 0
+                  ? "Nobody has played yet."
+                  : `${playedCount} of ${totalEntries} played`}
+              </Text>
+            )}
           </View>
-        ) : scoresQuery.isError ? (
-          <Text tone="danger" style={styles.helper}>
-            Couldn't load scores.
-          </Text>
-        ) : (
-          <View style={styles.leaderboard}>
-            {/* My slot is always at the top: either my filled entry, the
+
+          {scoresQuery.isPending ? (
+            <View style={styles.center}>
+              <ActivityIndicator color={tokens.accent.default} />
+            </View>
+          ) : scoresQuery.isError ? (
+            <Text tone="danger" style={styles.helper}>
+              Couldn't load scores.
+            </Text>
+          ) : (
+            <View style={styles.leaderboard}>
+              {/* My slot is always at the top: either my filled entry, the
                 paste affordance for today, or a quiet "Hasn't played" line
                 on past days. */}
-            {showPasteSlot ? (
-              <PasteSlot
-                draft={draft}
-                onChangeDraft={setDraft}
-                onSubmit={onSubmit}
-                pending={upsertMutation.isPending}
-                userName={user?.displayName ?? null}
-              />
-            ) : myScore && myEntry ? (
-              <LeaderboardEntryRow entry={myEntry} isMe />
-            ) : myEntry ? (
-              <UnplayedRow entry={myEntry} isMe />
-            ) : null}
+              {showPasteSlot ? (
+                <PasteSlot
+                  draft={draft}
+                  onChangeDraft={setDraft}
+                  onSubmit={onSubmit}
+                  pending={upsertMutation.isPending}
+                  userName={user?.displayName ?? null}
+                />
+              ) : myScore && myEntry ? (
+                <LeaderboardEntryRow entry={myEntry} isMe />
+              ) : myEntry ? (
+                <UnplayedRow entry={myEntry} isMe />
+              ) : null}
 
-            {/* Other members. Played first, then the unplayed quiet rows. */}
-            {otherEntries
-              .filter((e) => e.scoreRaw != null && e.scoreRaw.length > 0)
-              .map((entry) => (
-                <LeaderboardEntryRow key={entry.userId} entry={entry} isMe={false} />
-              ))}
-            {otherEntries
-              .filter((e) => e.scoreRaw == null || e.scoreRaw.length === 0)
-              .map((entry) => (
-                <UnplayedRow key={entry.userId} entry={entry} isMe={false} />
-              ))}
-          </View>
-        )}
-      </ScrollView>
+              {/* Other members. Played first, then the unplayed quiet rows. */}
+              {otherEntries
+                .filter((e) => e.scoreRaw != null && e.scoreRaw.length > 0)
+                .map((entry) => (
+                  <LeaderboardEntryRow key={entry.userId} entry={entry} isMe={false} />
+                ))}
+              {otherEntries
+                .filter((e) => e.scoreRaw == null || e.scoreRaw.length === 0)
+                .map((entry) => (
+                  <UnplayedRow key={entry.userId} entry={entry} isMe={false} />
+                ))}
+            </View>
+          )}
+        </ScrollView>
+      </Screen>
 
       {/* Menu sheet — Open game / Edit / Delete. Off-stage by default so the
           play-and-watch surface stays calm. */}

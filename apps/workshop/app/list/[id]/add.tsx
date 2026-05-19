@@ -30,6 +30,7 @@ import {
   Button,
   Card,
   IconButton,
+  Screen,
   SearchResultRow,
   Text,
   tokens,
@@ -142,9 +143,9 @@ export default function AddItem() {
 
   if (!id) {
     return (
-      <View style={styles.root}>
+      <Screen style={styles.root}>
         <Text>Missing list id.</Text>
-      </View>
+      </Screen>
     );
   }
 
@@ -152,11 +153,11 @@ export default function AddItem() {
   // before we know the list's type.
   if (listQuery.isPending) {
     return (
-      <View style={styles.root}>
+      <Screen style={styles.root}>
         <View style={styles.center}>
           <ActivityIndicator color={tokens.accent.default} />
         </View>
-      </View>
+      </Screen>
     );
   }
 
@@ -202,7 +203,7 @@ export default function AddItem() {
   };
 
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <IconButton accessibilityLabel="Cancel" onPress={() => goBack(id ? `/list/${id}` : "/")}>
           <Text style={styles.headerGlyph}>✕</Text>
@@ -250,7 +251,7 @@ export default function AddItem() {
           previewActive={previewEnabled}
         />
       )}
-    </View>
+    </Screen>
   );
 }
 

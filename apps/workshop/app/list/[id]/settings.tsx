@@ -36,6 +36,7 @@ import {
   Card,
   IconButton,
   type ListColorKey,
+  Screen,
   Text,
   tokens,
   useToast,
@@ -381,14 +382,14 @@ export default function ListSettings() {
 
   if (!id) {
     return (
-      <View style={styles.center}>
+      <Screen style={styles.center}>
         <Text>Missing list id</Text>
-      </View>
+      </Screen>
     );
   }
 
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerSpacer} />
         <Text variant="heading">List settings</Text>
@@ -784,7 +785,7 @@ export default function ListSettings() {
           </Card>
         )}
       </KeyboardAwareScrollView>
-    </View>
+    </Screen>
   );
 }
 
