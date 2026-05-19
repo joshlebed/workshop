@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { KeyboardAvoidingView, KeyboardStickyView } from "react-native-keyboard-controller";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { archiveItem, fetchItem, updateItem } from "../../../../src/api/items";
 import { deleteItemScore, fetchItemScores, upsertItemScore } from "../../../../src/api/scores";
 import { useAuth } from "../../../../src/hooks/useAuth";
@@ -506,8 +506,8 @@ export default function GameDetail() {
         </View>
       </Sheet>
 
-      {/* Edit sheet — title + URL form. Wrapped in KeyboardStickyView so the
-          Save button rides the keyboard rather than getting clipped. */}
+      {/* Edit sheet — title + URL form. Sheet handles keyboard avoidance so
+          touches inside the form stay out of the backdrop dismissal target. */}
       <Sheet
         visible={editOpen}
         onRequestClose={() => setEditOpen(false)}
@@ -516,48 +516,47 @@ export default function GameDetail() {
         <View style={styles.sheetHeader}>
           <Text variant="heading">Edit game</Text>
         </View>
-        <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-          <View style={styles.editForm}>
-            <View style={styles.field}>
-              <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-                Title
-              </Text>
-              <TextInput
-                testID="game-detail-title-input"
-                value={titleDraft}
-                onChangeText={setTitleDraft}
-                placeholder="Game name"
-                placeholderTextColor={tokens.text.muted}
-                maxLength={500}
-                style={styles.editInput}
-              />
-            </View>
-            <View style={styles.field}>
-              <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-                URL
-              </Text>
-              <TextInput
-                testID="game-detail-url-input"
-                value={urlDraft}
-                onChangeText={setUrlDraft}
-                placeholder="https://"
-                placeholderTextColor={tokens.text.muted}
-                autoCapitalize="none"
-                autoCorrect={false}
-                maxLength={2048}
-                style={styles.editInput}
-              />
-            </View>
-            <Button
-              testID="game-detail-save"
-              label="Save changes"
-              size="lg"
-              disabled={!canSaveEdit || saveMutation.isPending}
-              loading={saveMutation.isPending}
-              onPress={() => saveMutation.mutate()}
+        <View style={styles.editForm}>
+          <View style={styles.field}>
+            <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+              Title
+            </Text>
+            <TextInput
+              testID="game-detail-title-input"
+              value={titleDraft}
+              onChangeText={setTitleDraft}
+              placeholder="Game name"
+              placeholderTextColor={tokens.text.muted}
+              maxLength={500}
+              style={styles.editInput}
             />
           </View>
-        </KeyboardStickyView>
+          <View style={styles.field}>
+            <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+              URL
+            </Text>
+            <TextInput
+              testID="game-detail-url-input"
+              value={urlDraft}
+              onChangeText={setUrlDraft}
+              placeholder="https://"
+              placeholderTextColor={tokens.text.muted}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              maxLength={2048}
+              style={styles.editInput}
+            />
+          </View>
+          <Button
+            testID="game-detail-save"
+            label="Save changes"
+            size="lg"
+            disabled={!canSaveEdit || saveMutation.isPending}
+            loading={saveMutation.isPending}
+            onPress={() => saveMutation.mutate()}
+          />
+        </View>
       </Sheet>
     </KeyboardAvoidingView>
   );

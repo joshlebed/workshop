@@ -1,3 +1,4 @@
+import type { LinkPreview } from "@workshop/shared";
 import { Hono } from "hono";
 import { beforeAll, describe, expect, it } from "vitest";
 import { requireModule, stripModuleGatedItemFields } from "../../lib/moduleGate.js";
@@ -117,6 +118,76 @@ describe("updateItemSchema", () => {
   it("accepts a kind change", () => {
     const r = updateItemSchema.safeParse({ kind: "book" });
     expect(r.success).toBe(true);
+  });
+});
+
+describe("link-preview content refresh helpers", () => {
+  const preview: LinkPreview = {
+    url: "https://example.com/game",
+    finalUrl: "https://example.com/game",
+    title: "New game",
+    description: "A better preview",
+    image: "https://cdn.example/new.png",
+    imageProxy: "https://wsrv.nl/?url=cdn.example/new.png",
+    favicon: "https://icons.example/favicon.png",
+    siteName: "Example",
+    source: "html",
+    fetchedAt: "2026-05-19T00:00:00.000Z",
+  };
+
+  it("replaces stale preview fields and preserves unrelated content", () => {
+    expect(
+      __test.mergeLinkPreviewContent(
+        {
+          source: "link_preview",
+          sourceId: "https://old.example",
+          image: "https://old.example/old.png",
+          imageProxy: "https://old.example/proxy.png",
+          thumbnailUrl: "https://old.example/thumb.png",
+          siteName: "Old site",
+          title: "Old title",
+          description: "Old description",
+          lat: 40.7,
+          lng: -74,
+        },
+        preview,
+      ),
+    ).toEqual({
+      source: "link_preview",
+      sourceId: "https://example.com/game",
+      image: "https://cdn.example/new.png",
+      imageProxy: "https://wsrv.nl/?url=cdn.example/new.png",
+      thumbnailUrl: "https://wsrv.nl/?url=cdn.example/new.png",
+      siteName: "Example",
+      title: "New game",
+      description: "A better preview",
+      lat: 40.7,
+      lng: -74,
+    });
+  });
+
+  it("uses favicon as the thumbnail fallback when no preview image exists", () => {
+    const content = __test.linkPreviewToContent({
+      ...preview,
+      image: null,
+      imageProxy: null,
+    });
+
+    expect(content.thumbnailUrl).toBe("https://icons.example/favicon.png");
+    expect(content.image).toBeUndefined();
+    expect(content.imageProxy).toBeUndefined();
+  });
+
+  it("clears preview-owned fields when a URL is cleared or preview refresh fails", () => {
+    expect(
+      __test.clearLinkPreviewContent({
+        source: "link_preview",
+        sourceId: "https://old.example",
+        thumbnailUrl: "https://old.example/thumb.png",
+        siteName: "Old site",
+        lat: 40.7,
+      }),
+    ).toEqual({ lat: 40.7 });
   });
 });
 

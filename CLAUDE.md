@@ -152,6 +152,11 @@ small products — first feature is **watchlist** (movie tracker). New features 
   but never actually presents, leaving the screen non-interactable until you navigate away.
   Chain through Sheet's `onClosed` prop instead. See `apps/workshop/app/list/[id]/game/[itemId].tsx`
   for the pattern.
+- **Sheet keyboard handling is centralized in `src/ui/Sheet.tsx`.** Keep the backdrop close
+  target as a sibling behind the sheet content, not a parent wrapping it; iOS can otherwise
+  treat taps inside a keyboard-moved form as backdrop taps and dismiss the modal. Don't wrap a
+  whole sheet form in `KeyboardStickyView`; reserve sticky keyboard footers for full-screen
+  forms that separate scroll content from the footer.
 - **`react-native-worklets` babel plugin is auto-wired by `babel-preset-expo`.** Don't add
   `react-native-worklets/plugin` to `babel.config.js` manually — it'll run twice.
 - **For animated text, use `AnimatedText` from `src/ui/Text.tsx`.** Raw `<Animated.Text>`
