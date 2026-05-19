@@ -1,6 +1,20 @@
 import type { Item, ListItemsResponse, ListSummary } from "@workshop/shared";
 
-export type DetectedSharedScoreKind = "maptap";
+export type DetectedSharedScoreKind =
+  | "maptap"
+  | "dailytens"
+  | "globle"
+  | "satle"
+  | "travle"
+  | "wordle"
+  | "connections"
+  | "strands"
+  | "worldle"
+  | "tradle"
+  | "framed"
+  | "heardle"
+  | "nyt-mini"
+  | "spelling-bee";
 
 export interface DetectedSharedScore {
   kind: DetectedSharedScoreKind;
@@ -14,17 +28,142 @@ export interface ShareScoreTarget {
   item: Item;
 }
 
-const MAPTAP_RE = /\bmap\s*tap\b|\bmaptap\b/i;
+interface GamePattern {
+  kind: DetectedSharedScoreKind;
+  gameLabel: string;
+  // Any one of these matching the shared text identifies the game.
+  textPatterns: RegExp[];
+  // Any one of these matching an item's searchable text (title/url/siteName/
+  // sourceId) marks that item as the leaderboard target for this kind.
+  itemPatterns: RegExp[];
+}
+
+// Order matters: more specific games come first so e.g. "Worldle" doesn't
+// fall through to a looser Wordle match.
+const GAME_PATTERNS: GamePattern[] = [
+  {
+    kind: "maptap",
+    gameLabel: "MapTap",
+    textPatterns: [/\bmaptap\.gg\b/i, /\bmap\s*tap\b/i],
+    itemPatterns: [/\bmap\s*tap\b/i, /maptap\.gg/i],
+  },
+  {
+    kind: "dailytens",
+    gameLabel: "Daily Tens",
+    textPatterns: [/\bdaily\s*tens\b\s*#?\d+/i, /\bdailytens\.com\b/i],
+    itemPatterns: [/\bdaily\s*tens\b/i, /dailytens\.com/i],
+  },
+  {
+    kind: "satle",
+    gameLabel: "Satle",
+    textPatterns: [/\bsatle\s*#\s*\d+/i, /\bsatle\.ca\b/i],
+    itemPatterns: [/\bsatle\b/i, /satle\.ca/i],
+  },
+  {
+    kind: "travle",
+    gameLabel: "travle",
+    textPatterns: [/#travle\s+#?\d+/i, /\btravle\.earth\b/i],
+    itemPatterns: [/\btravle\b/i, /travle\.earth/i],
+  },
+  {
+    kind: "globle",
+    gameLabel: "Globle",
+    textPatterns: [/#globle\b/i, /\bgloble-game\.com\b/i],
+    itemPatterns: [/\bgloble\b/i, /globle-game\.com/i],
+  },
+  {
+    kind: "worldle",
+    gameLabel: "Worldle",
+    textPatterns: [/#?\bWorldle\b\s*#?\d+/i, /\bworldle\.teuteuf\.fr\b/i],
+    itemPatterns: [/\bworldle\b/i, /worldle\.teuteuf\.fr/i],
+  },
+  {
+    kind: "tradle",
+    gameLabel: "Tradle",
+    textPatterns: [/#?\bTradle\b\s*#?\d+/i, /\boec\.world\/.+\/tradle\b/i],
+    itemPatterns: [/\btradle\b/i, /oec\.world.*tradle/i],
+  },
+  {
+    kind: "framed",
+    gameLabel: "Framed",
+    textPatterns: [/\bFramed\s*#\d+/i, /\bframed\.wtf\b/i],
+    itemPatterns: [/\bframed\b/i, /framed\.wtf/i],
+  },
+  {
+    kind: "heardle",
+    gameLabel: "Heardle",
+    textPatterns: [/#Heardle\b\s*#?\d+/i, /\bheardle\.app\b/i, /\bheardle\.glitch\.me\b/i],
+    itemPatterns: [/\bheardle\b/i],
+  },
+  {
+    kind: "connections",
+    gameLabel: "Connections",
+    textPatterns: [
+      // The official NYT share starts with "Connections\nPuzzle #<n>".
+      /\bConnections\b[\s\S]{0,40}Puzzle\s*#?\d+/i,
+      /nytimes\.com\/games\/connections/i,
+    ],
+    itemPatterns: [/\bconnections\b/i, /nytimes\.com\/games\/connections/i],
+  },
+  {
+    kind: "strands",
+    gameLabel: "Strands",
+    textPatterns: [
+      /\bStrands\s*#\d+/i,
+      // Share blocks always start with "Strands #N\n"Today's theme""
+      /\bStrands\b[\s\S]{0,40}Today.?s theme/i,
+      /nytimes\.com\/games\/strands/i,
+    ],
+    itemPatterns: [/\bstrands\b/i, /nytimes\.com\/games\/strands/i],
+  },
+  {
+    kind: "nyt-mini",
+    gameLabel: "NYT Mini",
+    textPatterns: [
+      /nytimes\.com\/(?:badges|crosswords\/game)\/mini/i,
+      /\bThe Mini\b[\s\S]{0,40}\d+:\d{2}/i,
+    ],
+    itemPatterns: [/\bmini\s*crossword\b/i, /\bnyt\s*mini\b/i, /\bthe mini\b/i],
+  },
+  {
+    kind: "spelling-bee",
+    gameLabel: "Spelling Bee",
+    textPatterns: [
+      /\bSpelling Bee\b/i,
+      /nytimes\.com\/puzzles\/spelling-bee/i,
+      // The NYT Spelling Bee share is "I just hit <rank> on Spelling Bee."
+      /\bhit\s+\w+\s+on\s+Spelling Bee\b/i,
+    ],
+    itemPatterns: [/\bspelling\s*bee\b/i, /nytimes\.com\/puzzles\/spelling-bee/i],
+  },
+  {
+    kind: "wordle",
+    gameLabel: "Wordle",
+    // Keep this near the bottom — "Wordle" is short and could appear as a
+    // substring elsewhere; require the number-of-guesses suffix to be safe.
+    textPatterns: [/\bWordle\b\s+[\d,]+\s+[\dX]\/6/i, /nytimes\.com\/games\/wordle/i],
+    itemPatterns: [/\bwordle\b/i, /nytimes\.com\/games\/wordle/i],
+  },
+];
 
 export function detectSharedScore(raw: string | null | undefined): DetectedSharedScore | null {
   const scoreRaw = raw?.trim() ?? "";
-  if (!scoreRaw || !MAPTAP_RE.test(scoreRaw)) return null;
+  if (!scoreRaw) return null;
+  const pattern = matchTextPattern(scoreRaw);
+  if (!pattern) return null;
   return {
-    kind: "maptap",
-    gameLabel: "MapTap",
+    kind: pattern.kind,
+    gameLabel: pattern.gameLabel,
     scoreRaw,
     source: "regex",
   };
+}
+
+function matchTextPattern(text: string): GamePattern | null {
+  for (const pattern of GAME_PATTERNS) {
+    if (pattern.textPatterns.some((re) => re.test(text))) return pattern;
+  }
+  return null;
 }
 
 export function flattenListItems(data: ListItemsResponse | null | undefined): Item[] {
@@ -38,13 +177,15 @@ export function pickSuggestedScoreTarget(
   itemsByListId: Readonly<Record<string, readonly Item[]>>,
 ): ShareScoreTarget | null {
   if (!detection) return null;
+  const pattern = GAME_PATTERNS.find((p) => p.kind === detection.kind);
+  if (!pattern) return null;
 
   let best: { target: ShareScoreTarget; updatedAtMs: number } | null = null;
   for (const list of lists) {
     if (!list.modules.includes("leaderboard")) continue;
     const items = itemsByListId[list.id] ?? [];
     for (const item of items) {
-      if (!itemMatchesDetection(item, detection)) continue;
+      if (!itemMatchesPattern(item, pattern)) continue;
       const updatedAtMs = timestamp(item.updatedAt) || timestamp(list.updatedAt);
       if (!best || updatedAtMs > best.updatedAtMs) {
         best = { target: { list, item }, updatedAtMs };
@@ -55,11 +196,10 @@ export function pickSuggestedScoreTarget(
   return best?.target ?? null;
 }
 
-function itemMatchesDetection(item: Item, detection: DetectedSharedScore): boolean {
-  switch (detection.kind) {
-    case "maptap":
-      return searchableItemText(item).some((value) => MAPTAP_RE.test(value));
-  }
+function itemMatchesPattern(item: Item, pattern: GamePattern): boolean {
+  return searchableItemText(item).some((value) =>
+    pattern.itemPatterns.some((re) => re.test(value)),
+  );
 }
 
 function searchableItemText(item: Item): string[] {
