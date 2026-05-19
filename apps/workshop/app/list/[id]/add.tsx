@@ -43,11 +43,15 @@ function isLeaderboardList(modules: readonly string[]): boolean {
 }
 
 export default function AddItem() {
-  const params = useLocalSearchParams<{ id: string; prefillUrl?: string }>();
+  const params = useLocalSearchParams<{ id: string; prefillUrl?: string; prefillText?: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const prefillUrlParam = Array.isArray(params.prefillUrl)
     ? params.prefillUrl[0]
     : params.prefillUrl;
+  const prefillTextParam = Array.isArray(params.prefillText)
+    ? params.prefillText[0]
+    : params.prefillText;
+  const prefillText = prefillTextParam?.trim() ?? "";
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -71,9 +75,9 @@ export default function AddItem() {
   // share flow (`?prefillUrl=…`), seed the URL field so the user just picks
   // a title + saves; the link-preview debounce auto-fires off the seeded URL.
   // The seed only applies to free-form lists — search-flow lists ignore it.
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(() => titleFromSharedText(prefillText));
   const [url, setUrl] = useState(prefillUrlParam ?? "");
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(() => noteFromSharedText(prefillText));
   const trimmedTitle = title.trim();
   const canSubmitFreeForm = trimmedTitle.length >= 1 && trimmedTitle.length <= 500;
 
@@ -286,6 +290,21 @@ function buildLinkContent(p: LinkPreview, isGame: boolean): ItemContent {
   if (p.title) c.title = p.title;
   if (p.description) c.description = p.description;
   return c;
+}
+
+function titleFromSharedText(text: string): string {
+  if (!text) return "";
+  const firstLine = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return (firstLine ?? text).slice(0, 500);
+}
+
+function noteFromSharedText(text: string): string {
+  if (!text) return "";
+  const singleLine = !/[\r\n]/.test(text) && text.length <= 500;
+  return singleLine ? "" : text.slice(0, 1000);
 }
 
 // Returns a normalised http(s) URL (trimmed, single-pass through `URL`) or

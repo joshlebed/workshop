@@ -8,7 +8,7 @@ import { PullToRefresh } from "../../src/components/PullToRefresh";
 import { useAuth } from "../../src/hooks/useAuth";
 import { errorMessage } from "../../src/lib/api";
 import { queryKeys } from "../../src/lib/queryKeys";
-import { Button, EmptyState, type ListColorKey, Text, tokens } from "../../src/ui/index";
+import { Button, EmptyState, type ListColorKey, Screen, Text, tokens } from "../../src/ui/index";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -30,7 +30,7 @@ function isUrlFriendly(list: ListSummary): boolean {
   return list.itemKind === "link" || list.itemKind === null;
 }
 
-function shortHost(url: string | undefined): string | null {
+function shortHost(url: string | null | undefined): string | null {
   if (!url) return null;
   try {
     const u = new URL(url);
@@ -41,8 +41,11 @@ function shortHost(url: string | undefined): string | null {
 }
 
 export default function PickList() {
-  const params = useLocalSearchParams<{ url?: string }>();
-  const sharedUrl = Array.isArray(params.url) ? params.url[0] : params.url;
+  const params = useLocalSearchParams<{ url?: string; text?: string }>();
+  const sharedUrl = firstParam(params.url);
+  const sharedText =
+    firstParam(params.text) ?? (sharedUrl && !isLikelyUrl(sharedUrl) ? sharedUrl : null);
+  const normalizedSharedUrl = sharedUrl && isLikelyUrl(sharedUrl) ? sharedUrl : null;
   const router = useRouter();
   const { token } = useAuth();
 
@@ -62,9 +65,11 @@ export default function PickList() {
   }, [listsQuery.data]);
 
   const onPick = (list: ListSummary) => {
-    const target = sharedUrl
-      ? (`/list/${list.id}/add?prefillUrl=${encodeURIComponent(sharedUrl)}` as const)
-      : (`/list/${list.id}/add` as const);
+    const search = new URLSearchParams();
+    if (normalizedSharedUrl) search.set("prefillUrl", normalizedSharedUrl);
+    if (!normalizedSharedUrl && sharedText) search.set("prefillText", sharedText);
+    const qs = search.toString();
+    const target = qs ? (`/list/${list.id}/add?${qs}` as const) : (`/list/${list.id}/add` as const);
     router.replace(target);
   };
 
@@ -80,10 +85,10 @@ export default function PickList() {
     }
   };
 
-  const host = shortHost(sharedUrl);
+  const host = shortHost(normalizedSharedUrl);
 
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
@@ -99,11 +104,11 @@ export default function PickList() {
           <Text variant="title" style={styles.title}>
             Add to a list
           </Text>
-          {sharedUrl ? (
+          {normalizedSharedUrl || sharedText ? (
             <View style={styles.urlPill} testID="share-pick-url">
               <View style={styles.urlGlobe} />
               <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.urlText}>
-                Saving from {host ?? sharedUrl}
+                {normalizedSharedUrl ? `Saving from ${host ?? normalizedSharedUrl}` : "Shared text"}
               </Text>
             </View>
           ) : null}
@@ -130,7 +135,7 @@ export default function PickList() {
             <EmptyState
               title="No lists yet"
               description={
-                sharedUrl
+                normalizedSharedUrl || sharedText
                   ? "Create your first list to save this."
                   : "Create your first list to start collecting."
               }
@@ -149,7 +154,11 @@ export default function PickList() {
               contentContainerStyle={styles.listContent}
               ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
               renderItem={({ item }) => (
-                <ListRow list={item} hasSharedUrl={!!sharedUrl} onPress={() => onPick(item)} />
+                <ListRow
+                  list={item}
+                  hasSharedUrl={!!normalizedSharedUrl}
+                  onPress={() => onPick(item)}
+                />
               )}
               ListFooterComponent={
                 <Pressable
@@ -171,8 +180,23 @@ export default function PickList() {
           </PullToRefresh>
         )}
       </View>
-    </View>
+    </Screen>
   );
+}
+
+function firstParam(value: string | string[] | undefined): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function isLikelyUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function ListRow({
