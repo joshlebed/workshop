@@ -559,17 +559,35 @@ This is where the iOS Safari URL-bar/home-indicator tint (`<meta name="theme-col
 
 ## Share-link Open Graph previews
 
-Share URLs (`https://workshop-a2v.pages.dev/invite/<token>`) get per-list previews via two
-Cloudflare Pages Functions at the repo root (`functions/invite/[token].ts` and
-`functions/og/invite/[token].ts`):
+Every URL on the production domain renders an Open Graph + Twitter Card preview so iMessage,
+Slack, Facebook, etc. show a thumbnail instead of a dead link. Three variants, layered:
+
+1. **Default** — `apps/workshop/public/index.html` ships a static set of OG tags pointing at
+   `/og/default.png`. Applied to every URL with no more specific override (home, sign-in,
+   activity, settings, …). The PNG is generated on demand by `functions/og/[name].ts`.
+2. **Locked list** — `functions/list/_middleware.ts` intercepts every `/list/...` URL, strips
+   the defaults from the SPA `index.html`, and emits a "Sign in to view this list" variant
+   pointing at `/og/locked-list.png`. Anyone with the URL still has to authenticate to see
+   the list, so the card stays content-free on purpose — no name, emoji, or item count.
+3. **Public invite** — `functions/invite/[token].ts` calls `GET /v1/invites/:token/preview`
+   and emits a list-specific card with the real name, emoji, owner, item count, and color
+   gradient. Image is per-token, rendered by `functions/og/invite/[token].ts`.
 
 ```
-GET /invite/:token       → fetch /v1/invites/:token/preview → HTMLRewriter injects OG tags into SPA index.html
-GET /og/invite/:token.png → workers-og renders 1200×630 PNG using Satori + resvg-wasm
+GET /invite/:token        → preview API → HTMLRewriter swaps defaults for per-list tags
+GET /og/invite/:token.png → workers-og  → 1200×630 per-list PNG
+GET /list/:id/...         → /list/_middleware.ts → swaps defaults for locked-list variant
+GET /og/:name.png         → workers-og  → 1200×630 static PNG (default, locked-list)
 ```
 
-Two non-obvious things:
+Three non-obvious things:
 
+- **One tag per property.** Each route-specific Pages Function strips the default OG tags
+  from `index.html` via HTMLRewriter before appending its own. Facebook's spec says "first
+  tag wins" for duplicate `og:image` etc., Twitter is inconsistent, and Apple LinkPresentation
+  is closed-source — single-tag-per-property is the only safe state. If you add a new tag to
+  `buildMetaTagsRaw`, mirror its selector into `OG_META_SELECTORS` in the same PR or the
+  override pipeline silently leaves duplicates.
 - **OG image must be raster (PNG/JPEG).** Apple LinkPresentation and Facebook silently drop
   SVG `og:image` despite claiming to accept it. Rasterizer is `workers-og` (Satori-based).
 - **Pages Functions must NOT import from workspace packages.** Cloudflare Pages's bundler runs
@@ -594,7 +612,9 @@ node scripts/check-og.mjs "https://workshop-a2v.pages.dev/invite/$TOKEN"
 ```
 
 `scripts/check-og.mjs` curls with a FB/Apple-LP-shaped UA, asserts OG tags, fetches the image
-and verifies PNG content-type + dimensions match. Exits non-zero on mismatch.
+and verifies PNG content-type + dimensions match. Exits non-zero on mismatch. The expected
+variant is inferred from the URL path: `/invite/...` expects list-specific, `/list/...`
+expects the "Sign in to view this list" copy, anything else expects the brand default.
 
 Apple LinkPresentation has no debug API. Closest signal is `check-og.mjs` passing with an
 Apple-shaped UA + a visual eyeball in `agent-browser`.
