@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, Modal as RNModal, StyleSheet, View, type ViewStyle } from "react-native";
+import {
+  Platform,
+  Pressable,
+  Modal as RNModal,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, {
   Easing,
   runOnJS,
@@ -81,37 +89,46 @@ export function Sheet({
       animationType="none"
       testID={testID}
     >
-      <Animated.View style={[styles.backdrop, backdropStyle]}>
+      <View style={styles.modalRoot}>
+        <Animated.View pointerEvents="none" style={[styles.backdrop, backdropStyle]} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close sheet"
           style={styles.backdropPress}
           onPress={onRequestClose}
+        />
+        <KeyboardAvoidingView
+          pointerEvents="box-none"
+          style={styles.sheetHost}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Animated.View style={sheetStyle}>
-            <Pressable
-              accessibilityRole="none"
-              onPress={(e) => e.stopPropagation()}
-              style={[styles.sheet, contentStyle]}
-            >
+          <Animated.View pointerEvents="box-none" style={sheetStyle}>
+            <View style={[styles.sheet, contentStyle]}>
               <View style={styles.handle} />
               {children}
-            </Pressable>
+            </View>
           </Animated.View>
-        </Pressable>
-      </Animated.View>
+        </KeyboardAvoidingView>
+      </View>
     </RNModal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  modalRoot: {
     flex: 1,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.6)",
   },
   backdropPress: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  sheetHost: {
     flex: 1,
     justifyContent: "flex-end",
+    zIndex: 1,
   },
   sheet: {
     backgroundColor: tokens.bg.surface,

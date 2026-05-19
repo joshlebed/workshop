@@ -674,6 +674,66 @@ function buildPreviewFromHints(
   };
 }
 
+export async function resolveLinkPreview(parsedUrl: URL): Promise<LinkPreview> {
+  const cacheKey = cacheKeyFor(parsedUrl);
+
+  const cached = await lookup<LinkPreview>(CACHE_SOURCE, cacheKey);
+  if (cached) return cached.data;
+
+  // Run the page fetch, site-handler, and registry oEmbed in parallel.
+  // Site-handler + oEmbed are stateless lookups and the dominant latency
+  // is the page fetch (~1–3s), so doing them concurrently is free.
+  const pagePromise = (testDeps.fetchPage ?? fetchPage)(parsedUrl).catch(
+    (e: unknown) => e as Error,
+  );
+  const sitePromise = (testDeps.runSiteHandlerFn ?? runSiteHandler)(parsedUrl).catch(() => null);
+  const oembedPromise = (testDeps.fetchOembedFn ?? fetchOembed)(parsedUrl).catch(() => null);
+
+  const [pageOrError, siteResult, oembedResult] = await Promise.all([
+    pagePromise,
+    sitePromise,
+    oembedPromise,
+  ]);
+
+  if (pageOrError instanceof Error) {
+    if (pageOrError instanceof SsrfBlockedError) throw pageOrError;
+    // Last resort: if either the site handler or registry oEmbed got us
+    // *something*, use that. Most YouTube/Twitter URLs end up here when
+    // the HTML body exceeds the cap — oEmbed already has what we need.
+    if (
+      siteResult?.image ||
+      siteResult?.title ||
+      oembedResult?.thumbnailUrl ||
+      oembedResult?.title
+    ) {
+      const preview = buildPreviewFromHints(parsedUrl, siteResult, oembedResult);
+      upsert(CACHE_SOURCE, cacheKey, preview, CacheTtl.linkPreview).catch((error) => {
+        logger.warn("metadata cache write failed", { error, source: CACHE_SOURCE });
+      });
+      return preview;
+    }
+    logger.warn("link-preview fetch failed", { error: pageOrError, url: parsedUrl.href });
+    throw pageOrError;
+  }
+
+  const probe = testDeps.probeImageFn ?? probeImage;
+  const fetchOembedDiscoveredFn = testDeps.fetchOembedDiscoveredFn ?? fetchOembedDiscovered;
+  const preview = await buildPreview(
+    parsedUrl,
+    pageOrError,
+    oembedResult,
+    siteResult,
+    probe,
+    fetchOembedDiscoveredFn,
+  );
+
+  upsert(CACHE_SOURCE, cacheKey, preview, CacheTtl.linkPreview).catch((error) => {
+    logger.warn("metadata cache write failed", { error, source: CACHE_SOURCE });
+  });
+
+  return preview;
+}
+
 linkPreviewRoutes.get(
   "/",
   rateLimit({ family: "v1.link-preview", limit: 30, windowSec: 60, key: userKey }),
@@ -693,67 +753,13 @@ linkPreviewRoutes.get(
       throw error;
     }
 
-    const cacheKey = cacheKeyFor(parsedUrl);
-
-    const cached = await lookup<LinkPreview>(CACHE_SOURCE, cacheKey);
-    if (cached) {
-      const response: LinkPreviewResponse = { preview: cached.data };
-      return ok(c, response);
-    }
-
-    // Run the page fetch, site-handler, and registry oEmbed in parallel.
-    // Site-handler + oEmbed are stateless lookups and the dominant latency
-    // is the page fetch (~1–3s), so doing them concurrently is free.
-    const pagePromise = (testDeps.fetchPage ?? fetchPage)(parsedUrl).catch(
-      (e: unknown) => e as Error,
-    );
-    const sitePromise = (testDeps.runSiteHandlerFn ?? runSiteHandler)(parsedUrl).catch(() => null);
-    const oembedPromise = (testDeps.fetchOembedFn ?? fetchOembed)(parsedUrl).catch(() => null);
-
-    const [pageOrError, siteResult, oembedResult] = await Promise.all([
-      pagePromise,
-      sitePromise,
-      oembedPromise,
-    ]);
-
-    if (pageOrError instanceof Error) {
-      if (pageOrError instanceof SsrfBlockedError) {
-        return err(c, "VALIDATION", pageOrError.message);
-      }
-      // Last resort: if either the site handler or registry oEmbed got us
-      // *something*, use that. Most YouTube/Twitter URLs end up here when
-      // the HTML body exceeds the cap — oEmbed already has what we need.
-      if (
-        siteResult?.image ||
-        siteResult?.title ||
-        oembedResult?.thumbnailUrl ||
-        oembedResult?.title
-      ) {
-        const preview = buildPreviewFromHints(parsedUrl, siteResult, oembedResult);
-        upsert(CACHE_SOURCE, cacheKey, preview, CacheTtl.linkPreview).catch((error) => {
-          logger.warn("metadata cache write failed", { error, source: CACHE_SOURCE });
-        });
-        const response: LinkPreviewResponse = { preview };
-        return ok(c, response);
-      }
-      logger.warn("link-preview fetch failed", { error: pageOrError, url: parsedUrl.href });
+    let preview: LinkPreview;
+    try {
+      preview = await resolveLinkPreview(parsedUrl);
+    } catch (error) {
+      if (error instanceof SsrfBlockedError) return err(c, "VALIDATION", error.message);
       return err(c, "INTERNAL", "could not fetch preview");
     }
-
-    const probe = testDeps.probeImageFn ?? probeImage;
-    const fetchOembedDiscoveredFn = testDeps.fetchOembedDiscoveredFn ?? fetchOembedDiscovered;
-    const preview = await buildPreview(
-      parsedUrl,
-      pageOrError,
-      oembedResult,
-      siteResult,
-      probe,
-      fetchOembedDiscoveredFn,
-    );
-
-    upsert(CACHE_SOURCE, cacheKey, preview, CacheTtl.linkPreview).catch((error) => {
-      logger.warn("metadata cache write failed", { error, source: CACHE_SOURCE });
-    });
 
     const response: LinkPreviewResponse = { preview };
     return ok(c, response);

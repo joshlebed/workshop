@@ -1,4 +1,11 @@
-import type { Item, ItemContent, ItemKind, ListItemsResponse, ModuleName } from "@workshop/shared";
+import type {
+  Item,
+  ItemContent,
+  ItemKind,
+  LinkPreview,
+  ListItemsResponse,
+  ModuleName,
+} from "@workshop/shared";
 import {
   assertItemFitsList,
   ITEM_KIND_NAMES,
@@ -15,14 +22,17 @@ import { getDb } from "../../db/client.js";
 import { items, lists } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { recordEvent } from "../../lib/events.js";
+import { logger } from "../../lib/logger.js";
 import { requireModule, stripModuleGatedItemFields } from "../../lib/moduleGate.js";
 import { appendPosition, moveItemPosition } from "../../lib/positions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { type DbClient, executeRows } from "../../lib/sql.js";
+import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireItemMember } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
+import { resolveLinkPreview } from "./link-preview.js";
 
 export const itemRoutes = new Hono();
 
@@ -73,7 +83,13 @@ const moveItemSchema = z.object({
   afterItemId: z.union([z.string().uuid(), z.null()]).optional(),
 });
 
-export const __test = { updateItemSchema, moveItemSchema };
+export const __test = {
+  updateItemSchema,
+  moveItemSchema,
+  clearLinkPreviewContent,
+  linkPreviewToContent,
+  mergeLinkPreviewContent,
+};
 
 // --- Shape helpers ---
 
@@ -119,6 +135,48 @@ function rowToItem(r: ItemRow): Item {
 
 function applyModuleFilters(item: Item, modules: readonly string[]): Item {
   return stripModuleGatedItemFields(item, modules) as Item;
+}
+
+const LINK_PREVIEW_CONTENT_KEYS = [
+  "source",
+  "sourceId",
+  "image",
+  "imageProxy",
+  "thumbnailUrl",
+  "siteName",
+  "title",
+  "description",
+] as const;
+
+function clearLinkPreviewContent(content: ItemContent | null | undefined): ItemContent {
+  const next: Record<string, unknown> = { ...(content ?? {}) };
+  for (const key of LINK_PREVIEW_CONTENT_KEYS) delete next[key];
+  return next;
+}
+
+function linkPreviewToContent(preview: LinkPreview): ItemContent {
+  const content: Record<string, unknown> = {
+    source: "link_preview",
+    sourceId: preview.finalUrl,
+  };
+  if (preview.image) content.image = preview.image;
+  if (preview.imageProxy) content.imageProxy = preview.imageProxy;
+  const thumbnail = preview.imageProxy ?? preview.image ?? preview.favicon;
+  if (thumbnail) content.thumbnailUrl = thumbnail;
+  if (preview.siteName) content.siteName = preview.siteName;
+  if (preview.title) content.title = preview.title;
+  if (preview.description) content.description = preview.description;
+  return content;
+}
+
+function mergeLinkPreviewContent(
+  content: ItemContent | null | undefined,
+  preview: LinkPreview,
+): ItemContent {
+  return {
+    ...clearLinkPreviewContent(content),
+    ...linkPreviewToContent(preview),
+  };
 }
 
 /**
@@ -353,6 +411,7 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
   const [existing] = await db
     .select({
       kind: items.kind,
+      url: items.url,
       content: items.content,
       listId: items.listId,
     })
@@ -396,6 +455,26 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
     } catch (e) {
       const zerr = e as { issues?: unknown; message?: string };
       return err(c, "VALIDATION", "invalid content for item kind", zerr.issues ?? zerr.message);
+    }
+  }
+
+  const nextUrl = parsed.data.url ?? null;
+  const urlChanged = parsed.data.url !== undefined && nextUrl !== existing.url;
+  if (urlChanged && nextKind === "link") {
+    const baseContent = (patch.content ?? existing.content ?? {}) as ItemContent;
+    const clearedContent = clearLinkPreviewContent(baseContent);
+
+    if (nextUrl === null) {
+      patch.content = clearedContent;
+    } else {
+      try {
+        const parsedUrl = parseAndValidateUrl(nextUrl);
+        const preview = await resolveLinkPreview(parsedUrl);
+        patch.content = mergeLinkPreviewContent(baseContent, preview);
+      } catch (error) {
+        logger.warn("item link-preview refresh failed", { error, itemId, url: nextUrl });
+        patch.content = clearedContent;
+      }
     }
   }
 
