@@ -56,6 +56,34 @@ export const TYPE_LABELS: Record<ListType, string> = {
 export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
 
+export const DEFAULT_OG_TITLE = "Workshop.dev";
+export const DEFAULT_OG_DESCRIPTION = "Shared lists for the things you love.";
+export const DEFAULT_OG_EMOJI = "📋";
+
+export const LOCKED_LIST_OG_TITLE = "Workshop.dev";
+export const LOCKED_LIST_OG_SUBTITLE = "Sign in to view this list";
+export const LOCKED_LIST_OG_DESCRIPTION = "Sign in to Workshop.dev to view this shared list.";
+export const LOCKED_LIST_OG_EMOJI = "🔒";
+
+export const OG_META_SELECTORS = [
+  'meta[property="og:type"]',
+  'meta[property="og:site_name"]',
+  'meta[property="og:url"]',
+  'meta[property="og:title"]',
+  'meta[property="og:description"]',
+  'meta[property="og:image"]',
+  'meta[property="og:image:secure_url"]',
+  'meta[property="og:image:type"]',
+  'meta[property="og:image:width"]',
+  'meta[property="og:image:height"]',
+  'meta[property="og:image:alt"]',
+  'meta[name="twitter:card"]',
+  'meta[name="twitter:title"]',
+  'meta[name="twitter:description"]',
+  'meta[name="twitter:image"]',
+  'meta[name="description"]',
+] as const;
+
 export function escapeXml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -92,16 +120,18 @@ export function buildThumbnailSubtitle(preview: InvitePreview): string {
   return truncate(`${typeLabel} · ${items}${owner}`, 60);
 }
 
-export function buildMetaTags(
-  preview: InvitePreview,
-  opts: { inviteUrl: string; imageUrl: string },
-): string {
-  const title = buildOgTitle(preview);
-  const description = buildOgDescription(preview);
-  const safeTitle = escapeXml(title);
-  const safeDesc = escapeXml(description);
-  const safeUrl = escapeXml(opts.inviteUrl);
-  const safeImage = escapeXml(opts.imageUrl);
+export interface OgMetaValues {
+  title: string;
+  description: string;
+  url: string;
+  image: string;
+}
+
+export function buildMetaTagsRaw(values: OgMetaValues): string {
+  const safeTitle = escapeXml(values.title);
+  const safeDesc = escapeXml(values.description);
+  const safeUrl = escapeXml(values.url);
+  const safeImage = escapeXml(values.image);
 
   return [
     `<meta property="og:type" content="website" />`,
@@ -123,13 +153,70 @@ export function buildMetaTags(
   ].join("\n    ");
 }
 
-export function buildOgImageHtml(preview: InvitePreview | null): string {
-  const [start, end] = preview ? COLOR_GRADIENTS[preview.color] : FALLBACK_GRADIENT;
-  const emoji = preview ? escapeXml(preview.emoji) : "📋";
-  const title = preview ? escapeXml(truncate(preview.name, 28)) : "Workshop.dev";
-  const subtitle = preview
-    ? escapeXml(buildThumbnailSubtitle(preview))
-    : "Shared lists for the things you love";
+export function buildMetaTags(
+  preview: InvitePreview,
+  opts: { inviteUrl: string; imageUrl: string },
+): string {
+  return buildMetaTagsRaw({
+    title: buildOgTitle(preview),
+    description: buildOgDescription(preview),
+    url: opts.inviteUrl,
+    image: opts.imageUrl,
+  });
+}
+
+export function buildDefaultMetaTags(opts: { origin: string }): string {
+  return buildMetaTagsRaw({
+    title: DEFAULT_OG_TITLE,
+    description: DEFAULT_OG_DESCRIPTION,
+    url: opts.origin,
+    image: `${opts.origin}/og/default.png`,
+  });
+}
+
+export function buildLockedListMetaTags(opts: { url: string; origin: string }): string {
+  return buildMetaTagsRaw({
+    title: `${LOCKED_LIST_OG_TITLE} — ${LOCKED_LIST_OG_SUBTITLE}`,
+    description: LOCKED_LIST_OG_DESCRIPTION,
+    url: opts.url,
+    image: `${opts.origin}/og/locked-list.png`,
+  });
+}
+
+export interface StaticImageVariant {
+  emoji: string;
+  title: string;
+  subtitle: string;
+  gradient: readonly [string, string];
+}
+
+export const STATIC_IMAGE_VARIANTS = {
+  default: {
+    emoji: DEFAULT_OG_EMOJI,
+    title: DEFAULT_OG_TITLE,
+    subtitle: DEFAULT_OG_DESCRIPTION,
+    gradient: COLOR_GRADIENTS.ocean,
+  },
+  "locked-list": {
+    emoji: LOCKED_LIST_OG_EMOJI,
+    title: LOCKED_LIST_OG_TITLE,
+    subtitle: LOCKED_LIST_OG_SUBTITLE,
+    gradient: COLOR_GRADIENTS.grape,
+  },
+} as const satisfies Record<string, StaticImageVariant>;
+
+export type StaticImageVariantName = keyof typeof STATIC_IMAGE_VARIANTS;
+
+function renderImageHtml(opts: {
+  gradient: readonly [string, string];
+  emoji: string;
+  title: string;
+  subtitle: string;
+}): string {
+  const [start, end] = opts.gradient;
+  const emoji = escapeXml(opts.emoji);
+  const title = escapeXml(truncate(opts.title, 28));
+  const subtitle = escapeXml(opts.subtitle);
 
   return `
 <div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: linear-gradient(135deg, ${start} 0%, ${end} 100%); color: white; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box; position: relative;">
@@ -145,6 +232,26 @@ export function buildOgImageHtml(preview: InvitePreview | null): string {
     <span>Workshop.dev</span>
   </div>
 </div>`.trim();
+}
+
+export function buildOgImageHtml(preview: InvitePreview | null): string {
+  if (!preview) {
+    return renderImageHtml(STATIC_IMAGE_VARIANTS.default);
+  }
+  return renderImageHtml({
+    gradient: COLOR_GRADIENTS[preview.color] ?? FALLBACK_GRADIENT,
+    emoji: preview.emoji,
+    title: preview.name,
+    subtitle: buildThumbnailSubtitle(preview),
+  });
+}
+
+export function buildStaticImageHtml(name: string): string {
+  const variant =
+    name in STATIC_IMAGE_VARIANTS
+      ? STATIC_IMAGE_VARIANTS[name as StaticImageVariantName]
+      : STATIC_IMAGE_VARIANTS.default;
+  return renderImageHtml(variant);
 }
 
 export interface PagesEnv {

@@ -123,15 +123,44 @@ if (meta.get("twitter:card") && meta.get("twitter:card") !== "summary_large_imag
   fail("wrong-twitter-card", meta.get("twitter:card"));
 }
 
-// Heuristic: a Workshop preview thumbnail should be list-specific. If
-// og:title is the literal site name, that's the fallback path firing
-// (function couldn't reach the preview API) — surface it explicitly.
+// Pick the expected variant from the URL path:
+//   - `/invite/...`     → list-specific (preview API returned data)
+//   - `/list/...`       → "Sign in to view this list" (functions/list/_middleware.ts)
+//   - everything else   → "Workshop.dev" default (apps/workshop/public/index.html)
+//
+// A site-name fallback on an invite URL means the preview API was
+// unreachable and the function silently degraded — that's the case
+// `fallback-title` was originally written to catch. Default and locked
+// URLs legitimately produce the brand title, so don't fail on those.
 const ogTitle = meta.get("og:title") ?? "";
-if (ogTitle === "Workshop.dev" || ogTitle === "") {
-  fail(
-    "fallback-title",
-    `og:title is "${ogTitle}" — the Pages function couldn't fetch invite metadata`,
-  );
+const pathname = (() => {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return "";
+  }
+})();
+const variant = pathname.startsWith("/invite/")
+  ? "invite"
+  : pathname.startsWith("/list/")
+    ? "locked-list"
+    : "default";
+if (variant === "invite") {
+  if (ogTitle === "Workshop.dev" || ogTitle === "") {
+    fail(
+      "fallback-title",
+      `og:title is "${ogTitle}" — the Pages function couldn't fetch invite metadata`,
+    );
+  }
+} else if (variant === "locked-list") {
+  if (!ogTitle.includes("Sign in")) {
+    fail(
+      "locked-list-title",
+      `og:title is "${ogTitle}" — expected the locked-list variant (functions/list/_middleware.ts didn't fire?)`,
+    );
+  }
+} else if (ogTitle === "") {
+  fail("empty-title", "og:title is empty");
 }
 
 // 2) Fetch og:image, validate PNG bytes + dimensions

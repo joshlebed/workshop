@@ -15,6 +15,32 @@
     <title>%WEB_TITLE%</title>
 
     <!--
+      Default Open Graph + Twitter Card tags. Every URL on the domain
+      that doesn't have a route-specific Pages Function override (e.g.
+      `/invite/:token`, `/list/:id/...`) renders these for iMessage,
+      Slack, Twitter, etc. Kept in sync with `buildMetaTagsRaw` in
+      `packages/shared/src/og.ts` — if you change the surface there, mirror
+      the tag set here. The og:image points at the dynamic edge renderer
+      so we can refresh the artwork without touching this file.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Workshop.dev" />
+    <meta property="og:url" content="https://workshop-a2v.pages.dev" />
+    <meta property="og:title" content="Workshop.dev" />
+    <meta property="og:description" content="Shared lists for the things you love." />
+    <meta property="og:image" content="https://workshop-a2v.pages.dev/og/default.png" />
+    <meta property="og:image:secure_url" content="https://workshop-a2v.pages.dev/og/default.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Workshop.dev" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Workshop.dev" />
+    <meta name="twitter:description" content="Shared lists for the things you love." />
+    <meta name="twitter:image" content="https://workshop-a2v.pages.dev/og/default.png" />
+    <meta name="description" content="Shared lists for the things you love." />
+
+    <!--
       iOS Safari 15+ tints the URL bar / bottom toolbar with theme-color,
       and Android Chrome tints the address bar the same way. Declare both
       light + dark media variants because Safari historically only honored

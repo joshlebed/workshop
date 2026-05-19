@@ -12,7 +12,13 @@
  * pipeline — the share link must keep working even without a thumbnail.
  */
 
-import { buildMetaTags, escapeXml, fetchInvitePreview, type PagesEnv } from "../_lib/og.js";
+import {
+  buildMetaTags,
+  escapeXml,
+  fetchInvitePreview,
+  OG_META_SELECTORS,
+  type PagesEnv,
+} from "../_lib/og.js";
 
 interface PagesContext {
   request: Request;
@@ -50,8 +56,20 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
 
   // HTMLRewriter streams the response and only mutates the bits we
   // touch, so the SPA's existing head (favicon, viewport, expo-router
-  // bootstrap, etc.) is preserved verbatim.
-  return new HTMLRewriter()
+  // bootstrap, etc.) is preserved verbatim. We strip the default OG
+  // tags inherited from `index.html` first so the recipient's crawler
+  // sees exactly one tag per property (Facebook's spec says first wins;
+  // Twitter is inconsistent; Apple Link Presentation is closed-source —
+  // single-tag is the only safe state).
+  const rewriter = new HTMLRewriter();
+  for (const selector of OG_META_SELECTORS) {
+    rewriter.on(selector, {
+      element(el) {
+        el.remove();
+      },
+    });
+  }
+  rewriter
     .on("title", {
       element(el) {
         el.setInnerContent(escapeXml(`${preview.emoji} ${preview.name} · Workshop.dev`));
@@ -61,6 +79,6 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
       element(el) {
         el.append(meta, { html: true });
       },
-    })
-    .transform(assetResponse);
+    });
+  return rewriter.transform(assetResponse);
 };

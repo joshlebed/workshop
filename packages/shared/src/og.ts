@@ -63,6 +63,51 @@ export const TYPE_LABELS: Record<ListType, string> = {
 export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
 
+/**
+ * Copy for the default thumbnail, used everywhere a more specific
+ * preview isn't available (home, sign-in, settings, deep links to
+ * surfaces the recipient must authenticate to view).
+ */
+export const DEFAULT_OG_TITLE = "Workshop.dev";
+export const DEFAULT_OG_DESCRIPTION = "Shared lists for the things you love.";
+export const DEFAULT_OG_EMOJI = "📋";
+
+/**
+ * Variant shown when an unauthenticated recipient opens a direct list
+ * URL. Anyone with the URL still has to sign in to see the list itself,
+ * so we keep the copy neutral and prompt the next step rather than
+ * leaking the list's name or contents to the link preview crawler.
+ */
+export const LOCKED_LIST_OG_TITLE = "Workshop.dev";
+export const LOCKED_LIST_OG_SUBTITLE = "Sign in to view this list";
+export const LOCKED_LIST_OG_DESCRIPTION = "Sign in to Workshop.dev to view this shared list.";
+export const LOCKED_LIST_OG_EMOJI = "🔒";
+
+/**
+ * Names of the meta tags injected by `buildMetaTagsRaw` / `buildMetaTags`,
+ * exported so a Pages Function can build matching `meta[...]` selectors
+ * for HTMLRewriter to strip in-place before re-emitting per-route
+ * overrides. Keep this list in sync with the `buildMetaTagsRaw` output.
+ */
+export const OG_META_SELECTORS = [
+  'meta[property="og:type"]',
+  'meta[property="og:site_name"]',
+  'meta[property="og:url"]',
+  'meta[property="og:title"]',
+  'meta[property="og:description"]',
+  'meta[property="og:image"]',
+  'meta[property="og:image:secure_url"]',
+  'meta[property="og:image:type"]',
+  'meta[property="og:image:width"]',
+  'meta[property="og:image:height"]',
+  'meta[property="og:image:alt"]',
+  'meta[name="twitter:card"]',
+  'meta[name="twitter:title"]',
+  'meta[name="twitter:description"]',
+  'meta[name="twitter:image"]',
+  'meta[name="description"]',
+] as const;
+
 export function escapeXml(input: string): string {
   return input
     .replace(/&/g, "&amp;")
@@ -119,16 +164,24 @@ export function buildThumbnailSubtitle(preview: InvitePreview): string {
  * doesn't need to fetch-to-sniff), dimensions, and an alt. Apple Link
  * Presentation respects the same tags as Facebook in practice.
  */
-export function buildMetaTags(
-  preview: InvitePreview,
-  opts: { inviteUrl: string; imageUrl: string },
-): string {
-  const title = buildOgTitle(preview);
-  const description = buildOgDescription(preview);
-  const safeTitle = escapeXml(title);
-  const safeDesc = escapeXml(description);
-  const safeUrl = escapeXml(opts.inviteUrl);
-  const safeImage = escapeXml(opts.imageUrl);
+export interface OgMetaValues {
+  title: string;
+  description: string;
+  url: string;
+  image: string;
+}
+
+/**
+ * Low-level meta-tag builder. All higher-level variants — invite preview,
+ * default fallback, locked list — pipe through this so the tag set stays
+ * identical (Apple Link Presentation and Facebook both need the full
+ * belt-and-suspenders surface to render reliably).
+ */
+export function buildMetaTagsRaw(values: OgMetaValues): string {
+  const safeTitle = escapeXml(values.title);
+  const safeDesc = escapeXml(values.description);
+  const safeUrl = escapeXml(values.url);
+  const safeImage = escapeXml(values.image);
 
   return [
     `<meta property="og:type" content="website" />`,
@@ -150,6 +203,47 @@ export function buildMetaTags(
   ].join("\n    ");
 }
 
+export function buildMetaTags(
+  preview: InvitePreview,
+  opts: { inviteUrl: string; imageUrl: string },
+): string {
+  return buildMetaTagsRaw({
+    title: buildOgTitle(preview),
+    description: buildOgDescription(preview),
+    url: opts.inviteUrl,
+    image: opts.imageUrl,
+  });
+}
+
+/**
+ * Default OG tag set for every URL on the domain that doesn't have a
+ * more specific override. Rendered statically into `index.html` so the
+ * home page, sign-in flow, and any future routes show good link previews
+ * out of the box.
+ */
+export function buildDefaultMetaTags(opts: { origin: string }): string {
+  return buildMetaTagsRaw({
+    title: DEFAULT_OG_TITLE,
+    description: DEFAULT_OG_DESCRIPTION,
+    url: opts.origin,
+    image: `${opts.origin}/og/default.png`,
+  });
+}
+
+/**
+ * Locked-list variant for `/list/:id/...` URLs the recipient must
+ * authenticate to view. Doesn't leak the list's name or contents — the
+ * preview just prompts the next step.
+ */
+export function buildLockedListMetaTags(opts: { url: string; origin: string }): string {
+  return buildMetaTagsRaw({
+    title: `${LOCKED_LIST_OG_TITLE} — ${LOCKED_LIST_OG_SUBTITLE}`,
+    description: LOCKED_LIST_OG_DESCRIPTION,
+    url: opts.url,
+    image: `${opts.origin}/og/locked-list.png`,
+  });
+}
+
 /**
  * HTML passed to `workers-og` (Satori) for the actual thumbnail. Uses
  * inline `style="…"` rather than `tw="…"` so we don't pay for the
@@ -157,13 +251,46 @@ export function buildMetaTags(
  * emoji medallion on the left, title + subtitle on the right, wordmark
  * pinned to the bottom-left.
  */
-export function buildOgImageHtml(preview: InvitePreview | null): string {
-  const [start, end] = preview ? COLOR_GRADIENTS[preview.color] : FALLBACK_GRADIENT;
-  const emoji = preview ? escapeXml(preview.emoji) : "📋";
-  const title = preview ? escapeXml(truncate(preview.name, 28)) : "Workshop.dev";
-  const subtitle = preview
-    ? escapeXml(buildThumbnailSubtitle(preview))
-    : "Shared lists for the things you love";
+export interface StaticImageVariant {
+  emoji: string;
+  title: string;
+  subtitle: string;
+  gradient: readonly [string, string];
+}
+
+/**
+ * The two non-preview thumbnails the Pages Function exposes under
+ * `/og/<name>.png`. `default` is the brand fallback for every URL on
+ * the domain; `locked-list` is rendered for `/list/:id/...` URLs the
+ * recipient still needs to authenticate to view.
+ */
+export const STATIC_IMAGE_VARIANTS = {
+  default: {
+    emoji: DEFAULT_OG_EMOJI,
+    title: DEFAULT_OG_TITLE,
+    subtitle: DEFAULT_OG_DESCRIPTION,
+    gradient: COLOR_GRADIENTS.ocean,
+  },
+  "locked-list": {
+    emoji: LOCKED_LIST_OG_EMOJI,
+    title: LOCKED_LIST_OG_TITLE,
+    subtitle: LOCKED_LIST_OG_SUBTITLE,
+    gradient: COLOR_GRADIENTS.grape,
+  },
+} as const satisfies Record<string, StaticImageVariant>;
+
+export type StaticImageVariantName = keyof typeof STATIC_IMAGE_VARIANTS;
+
+function renderImageHtml(opts: {
+  gradient: readonly [string, string];
+  emoji: string;
+  title: string;
+  subtitle: string;
+}): string {
+  const [start, end] = opts.gradient;
+  const emoji = escapeXml(opts.emoji);
+  const title = escapeXml(truncate(opts.title, 28));
+  const subtitle = escapeXml(opts.subtitle);
 
   return `
 <div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: linear-gradient(135deg, ${start} 0%, ${end} 100%); color: white; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box; position: relative;">
@@ -179,4 +306,24 @@ export function buildOgImageHtml(preview: InvitePreview | null): string {
     <span>Workshop.dev</span>
   </div>
 </div>`.trim();
+}
+
+export function buildOgImageHtml(preview: InvitePreview | null): string {
+  if (!preview) {
+    return renderImageHtml(STATIC_IMAGE_VARIANTS.default);
+  }
+  return renderImageHtml({
+    gradient: COLOR_GRADIENTS[preview.color] ?? FALLBACK_GRADIENT,
+    emoji: preview.emoji,
+    title: preview.name,
+    subtitle: buildThumbnailSubtitle(preview),
+  });
+}
+
+export function buildStaticImageHtml(name: string): string {
+  const variant =
+    name in STATIC_IMAGE_VARIANTS
+      ? STATIC_IMAGE_VARIANTS[name as StaticImageVariantName]
+      : STATIC_IMAGE_VARIANTS.default;
+  return renderImageHtml(variant);
 }
