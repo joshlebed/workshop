@@ -30,9 +30,9 @@ function useApplyOtaUpdatesOnArrival() {
 // iOS Share Extension hand-off. When the user taps Share → "Workshop" in
 // another app, expo-share-intent's native code stashes the payload in App
 // Group UserDefaults and opens `workshop:///dataUrl=workshopShareKey`; the
-// hook reads it back and surfaces a `shareIntent`. We forward to
-// `/share?url=…` which the existing `app/share/index.tsx` redirect maps to
-// `/share/pick-list`. The sentinel URL is swallowed by
+// hook reads it back and surfaces a `shareIntent`. We forward to `/share`
+// with either `url` or `text` so the share landing screen can choose between
+// list saves and leaderboard score saves. The sentinel URL is swallowed by
 // `app/+native-intent.tsx`; without that, expo-router would render its
 // "Unmatched Route" screen before this hook fires.
 // Signed-out users currently lose the payload — AuthGate bounces them to
@@ -42,9 +42,14 @@ function useShareIntentRedirect(status: AuthStatus) {
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
   useEffect(() => {
     if (status !== "signed-in" || !hasShareIntent) return;
-    const payload = shareIntent?.webUrl ?? shareIntent?.text;
-    if (!payload) return;
-    router.replace(`/share?url=${encodeURIComponent(payload)}`);
+    const webUrl = shareIntent?.webUrl?.trim();
+    const text = shareIntent?.text?.trim();
+    const params = new URLSearchParams();
+    if (webUrl) params.set("url", webUrl);
+    if (text) params.set("text", text);
+    const query = params.toString();
+    if (!query) return;
+    router.replace(`/share?${query}`);
     resetShareIntent();
   }, [status, hasShareIntent, shareIntent, router, resetShareIntent]);
 }
@@ -149,6 +154,7 @@ function AuthGate() {
         <Stack.Screen name="invite/[token]" />
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="share/pick-leaderboard" options={{ animation: "slide_from_right" }} />
       </Stack>
     </SafeAreaView>
   );

@@ -93,6 +93,10 @@ small products — first feature is **watchlist** (movie tracker). New features 
 - **Don't override `ios.infoPlist.CFBundleURLTypes` without re-listing the app scheme.** Once
   declared, Expo stops auto-adding the `scheme:` value. Mirror the root `scheme` ("workshop")
   into `CFBundleURLSchemes` manually. `npx expo config --type public` catches it before EAS does.
+- **Share extension payloads can include both URL and text.** Preserve both when handling
+  `useShareIntent()` in `_layout.tsx`; score shares often need `shareIntent.text` even when
+  `shareIntent.webUrl` is also present. `/share` owns the top-level choice, `/share/pick-list`
+  handles normal item adds, and `/share/pick-leaderboard` handles score posting.
 - **CORS `allowMethods` is a whitelist in three places** — update all three:
   1. Hono's `cors()` in `apps/backend/src/app.ts`.
   2. API Gateway HTTP API's `cors_configuration.allow_methods` in `infra/apigateway.tf` —
