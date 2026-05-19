@@ -4,26 +4,40 @@ Companion to `docs/list-data-model-redesign.md` (the design spec). This doc trac
 shipped, what's tech debt, and what's still on the spec but not yet built.** Read top-down to
 get the state in one pass; jump to a section heading to find the open work in your area.
 
-**Last updated:** 2026-05-18. Big bang ship via [#199](https://github.com/joshlebed/workshop/pull/199).
-Week-one follow-up landed in [#211](https://github.com/joshlebed/workshop/pull/211): backend
-route tests restored on the new shape, PR-F (Letterboxd source kind, proving the
-source/item-kind decoupling), `dedupField` lifted into the item-kind manifest, source dispatch
-generalized into a registry-driven table, and migration 0015 dropping the legacy columns. This
-PR (tiers 2–3) ships on top of #211: legacy aliases removed, `ActivityEventType` union trimmed,
-and tier-3 scaffolding (per-source secrets envelope, webhook inbound route, scheduled-sync
-worker, rebalance overflow trigger, three reserved modules).
+**Last updated:** 2026-05-18. Shipping history:
 
-**Quick links:** the design spec is at [`docs/list-data-model-redesign.md`](./list-data-model-redesign.md).
+- [#199](https://github.com/joshlebed/workshop/pull/199) — the core big-bang. Schema
+  redesign (modules + item_kind + content + position), `list_sources` + `item_scores`
+  tables, shared registries, every backend route on the new shape, the template picker, the
+  module-toggle settings sheet.
+- [#211](https://github.com/joshlebed/workshop/pull/211) — week-one follow-up. Backend
+  route tests restored on the new shape; PR-F (Letterboxd source kind: scrape + TMDB
+  enrichment + `letterboxd_watchlist` template); `dedupField` lifted into the item-kind
+  manifest; source dispatch generalized via `lib/sources/registry.ts`; migration 0015
+  dropping the legacy `lists.type` / `lists.metadata` / `items.type` / `items.metadata`
+  columns + `game_scores` + `list_type` enum.
+- [#213](https://github.com/joshlebed/workshop/pull/213) — cleanup + tier-3 scaffolding.
+  `ActivityEventType` union trimmed; `/v1/album-shelf/preview` and `POST /v1/lists/:id/refresh`
+  legacy aliases removed; `formatConfigWarning` pretty copy in the settings sheet;
+  per-source secrets envelope (`secrets jsonb` + AES-256-GCM); webhook inbound route
+  scaffolding (`webhook_slug` + signature verifier registry); scheduled-sync worker
+  (`sync_schedule` + `runScheduledSyncTick`); rebalance overflow trigger; three reserved
+  modules (`scheduling` / `comments` / `attachments`) with manifests + gate copy + "coming
+  soon" labels; lib unit tests for `positions` / `moduleGate` / `moduleManifests` /
+  `permissions` / `modules`.
+
+**Quick links:** the design spec is at [`docs/list-data-model-redesign.md`](./list-data-model-redesign.md);
+the punch list for the next contributor is §5 below.
 
 ## Status one-liner
 
-The core redesign is **live in prod**: lists carry `modules` and `item_kind`, items carry
-`kind` / `content` / `position`, sources are first-class (Spotify + Letterboxd), leaderboards
-generalize, and the template picker replaces the type picker. This PR retires the last legacy
-mobile-API aliases and lands scaffolding for the deferred spec items (encrypted per-source
-secrets, webhook + cron worker hooks, three reserved modules). What's left is **product-pull
-work** — webhook + cron handlers for the first push-bearing source, UI for the reserved
-modules.
+The core redesign is **done.** Lists carry `modules` and `item_kind`, items carry
+`kind` / `content` / `position`, sources are first-class with two consumers (Spotify +
+Letterboxd) proving the registry pattern, leaderboards generalize via `item_scores`, the
+template picker replaces the type picker, all legacy mobile-API aliases are gone, and the
+deferred spec items have scaffolding waiting for a real consumer. What's left is
+**product-pull work**: cron / webhook handlers for the first push-bearing source, UI for the
+three reserved modules, and a handful of small polish items (see §5).
 
 ---
 
@@ -104,47 +118,18 @@ modules.
 These are explicit tradeoffs the big-bang made. None of them block product; all can be retired
 in small follow-up PRs.
 
-### 2.1 Old columns kept as nullable dead weight
+### 2.1 ~~Old columns kept as nullable dead weight~~ — RETIRED in #211
 
-The migration was conservative: it added new columns but did **not** drop the old ones. Today's
-DB still carries:
+Migration 0015 (#211) dropped `lists.type`, `lists.metadata`, `items.type`, `items.metadata`,
+the `game_scores` table, and the `list_type` enum. Schema mirrors the live DB; no more
+vestigial columns.
 
-- `lists.type` (nullable `list_type` enum — no new writes)
-- `lists.metadata` (jsonb, default `{}` — no new writes)
-- `items.type` (nullable `list_type` enum — no new writes)
-- `items.metadata` (jsonb, default `{}` — no new writes)
-- `game_scores` table (mirrored into `item_scores`; no new writes)
-- `list_type` enum (referenced only by the dead `type` columns)
+### 2.2 ~~Backend route tests deleted, not rewritten~~ — RETIRED in #211
 
-**Why kept:** rollback-safe — if a bug surfaces after merge, the code can be reverted without
-needing a second migration. The cost is one round of vestigial columns in `\d lists` /
-`\d items`.
-
-**Cleanup PR shape:**
-
-1. Verify no `grep -r '"type"\|"metadata"\|gameScores' apps/backend/src apps/workshop/src`
-   matches that aren't comments or test fixtures.
-2. Migration 0015: `ALTER TABLE lists DROP COLUMN type, DROP COLUMN metadata;`
-   `ALTER TABLE items DROP COLUMN type, DROP COLUMN metadata;` `DROP TABLE game_scores;`
-   `DROP TYPE list_type;`
-3. Strip the corresponding fields from `db/schema.ts`.
-4. Soak window — wait until prod has been on the new shape for ~a week before merging.
-
-### 2.2 Backend route tests deleted, not rewritten
-
-`apps/backend/src/routes/v1/items.test.ts`, `lists.test.ts`, `album-shelf.test.ts` were deleted
-in #199 — they tested the old enum-based shape and rewriting them properly was scope creep on
-an already-large PR. The surviving 218 tests cover `lib/`, middleware, helpers, and other
-routes that didn't change shape.
-
-**Cleanup PR shape:** write fresh `items.test.ts`, `lists.test.ts`, `sources.test.ts`,
-`scores.test.ts`, `duplicate.test.ts` against the new shapes. Focus on:
-
-- Module gates (409 contract for each gated endpoint)
-- Permissions helper (owner-only vs member rows in the §5.2 matrix)
-- `config-preview` warning generation per module
-- The position allocator (collision → rebalance → retry)
-- Duplicate's `preserveCompletion` / `copySources` toggles
+#211 restored `items.test.ts`, `lists.test.ts`, `sources.test.ts`, `scores.test.ts`,
+`duplicate.test.ts` on the new shape. #213 added lib unit tests for `positions`,
+`moduleGate`, `moduleManifests`, `permissions`, and the new `modules.ts` helpers — covering
+the DB-touching paths that the route tests don't exercise. 590 backend tests pass.
 
 ### 2.3 ~~Activity-event union still carries legacy values~~ — RETIRED in this PR
 
@@ -171,27 +156,12 @@ The route handler in `lists.ts` is gone. The mobile client moved to
 These are open items from `docs/list-data-model-redesign.md` that are **deliberately not in
 #199** — the spec called them out as future work or we scoped them out to ship.
 
-### 3.1 PR-F: Letterboxd source kind (spec §3.3, §10)
+### 3.1 ~~PR-F: Letterboxd source kind~~ — SHIPPED in #211
 
-The whole point of PR-F was to prove the `sourceKinds` registry isn't accidentally
-Spotify-shaped: a Letterboxd public list produces `items.kind = 'movie'` (not a new
-`letterboxd_film` kind), exercising the "source kind ≠ item kind" decoupling. None of this
-shipped.
-
-**What's needed:**
-
-1. Add `letterboxd_list` entry to `packages/shared/src/sourceKinds.ts` with config schema
-   `{ letterboxdUrl, letterboxdUsername, letterboxdListSlug }` and `producesItemKind: 'movie'`.
-2. Write `apps/backend/src/lib/sources/letterboxdList.ts` — `previewLetterboxdList` +
-   `syncLetterboxdListSource`. Spec §3.3 calls out the dedup story (Letterboxd URL or enriched
-   TMDB ID).
-3. Wire it through `POST /v1/sources/preview` and `POST /v1/lists/:id/sources` in `lists.ts`
-   (today both have an `if (kind === 'spotify_playlist')` branch — generalize).
-4. Add the `letterboxd_watchlist` template to `LIST_TEMPLATES` (it's already designed in
-   spec §7).
-5. Per-kind dedup index: spec §9.3 floats lifting the dedup field into the item-kind manifest
-   so each kind can declare its key. If Letterboxd needs a second dedup index, do this when it
-   lands instead of hand-coding a second partial unique index.
+`letterboxd_list` source kind manifest + `lib/sources/letterboxdList.ts` (scrape + TMDB
+enrichment) + `letterboxd_watchlist` template + the `dispatchFor(kind)` registry that
+generalized the Spotify-only branches in `lists.ts` / `sources.ts`. Headline test:
+`SOURCE_KINDS.letterboxd_list.producesItemKind === 'movie'` (not `letterboxd_film`).
 
 ### 3.2 ~~Module-removal warning UI on the client~~ — POLISHED in this PR
 
@@ -242,12 +212,14 @@ point) is deferred until the first source row opts in.
 (-10⁹). The check is a single indexed MIN probe and amortizes across many moves before firing.
 Tested via `shouldRebalanceForOverflow` in `positions.test.ts`.
 
-### 3.9 Per-item-kind dedup field declared in the registry (spec §9.3)
+### 3.9 ~~Per-item-kind dedup field declared in the registry~~ — PARTIALLY DONE in #211
 
-Today `lib/sources/spotifyPlaylist.ts` hand-codes `spotifyAlbumId` as the dedup field in its
-INSERT. Spec §9.3 floats lifting this into the item-kind manifest as `dedupField?: string` so
-the partial unique indexes can be generated from the registry. Not wired today; do this when
-the second dedupping kind lands (Letterboxd, probably).
+`ITEM_KIND_DEDUP_FIELD` in `@workshop/shared/itemKinds` now declares the dedup field per kind
+(`spotify_album → spotifyAlbumId`, `movie → tmdbId`). The partial unique indexes in
+`schema.ts` are still hand-written — both reference the same field name as the manifest, but
+they're not generated _from_ it. Lifting that last bit (a `schema.ts` factory that consumes
+`ITEM_KIND_DEDUP_FIELD` and produces one `uniqueIndex` per entry) is mechanical and worth
+~30 lines; do it when the third dedupping kind shows up.
 
 ### 3.10 ~~Module set extensions~~ — RESERVED SLOTS ADDED in this PR
 
@@ -281,9 +253,9 @@ that was duplicated and modified, and there's no analytics axis on the template 
 the list. Spec §9.2 suggests deriving a best-match template from `(item_kind, modules)` at
 render time if this turns out to be useful.
 
-### 4.3 Legacy event-type values still in the TS union
+### 4.3 ~~Legacy event-type values still in the TS union~~ — RETIRED in #213
 
-See §2.3. Pragmatic safety net; trivially removable later.
+The union now lists only current values. Removed from §2.3 above.
 
 ### 4.4 `applyOptimisticMove` is purely client-side
 
@@ -300,83 +272,96 @@ Probably invisible; mentioned for completeness.
 into "Links". Same trade-off as 4.1 — recoverable by reading the template ID if/when we
 start round-tripping it.
 
-### 4.6 No PR-F (Letterboxd)
+### 4.6 ~~No PR-F (Letterboxd)~~ — RETIRED, shipped in #211
 
-See §3.1. The cleanest validation that the source abstraction isn't accidentally Spotify-
-shaped is to ship a second kind. We didn't, so the abstraction is **tested by single use**.
-Worth landing soon.
+The source abstraction has two consumers (`spotify_playlist`, `letterboxd_list`) and the
+registry pattern survived contact with the second. See §3.1.
 
-### 4.7 Backend route tests gone
+### 4.7 ~~Backend route tests gone~~ — RETIRED, restored in #211 + #213
 
-See §2.2. Cost is real but bounded — the migration smoke test + browser verification + lib
-unit tests carried the burden in #199.
+See §2.2.
 
 ---
 
-## 5. One-week scope for the next engineer
+## 5. What's left
 
-If you have ~5 working days to spend on this, here's the recommended slice. The ordering
-front-loads the foundation (tests before features) so the riskier feature work (PR-F) lands
-on top of a safety net.
+The post-#199 plan landed across #199 (core), #211 (route tests, Letterboxd, drop legacy
+columns), and #213 (cleanup + tier-3 scaffolding). Everything below is what's still open;
+items are grouped by **what triggers the work** (product PR vs. ops PR vs. one-off polish)
+rather than by spec section.
 
-### Days 1–2 — Backend route tests for the new shape (§2.2)
+### 5.1 Wire up the deferred scaffolding when a consumer needs it
 
-Restore the test coverage that was deleted in #199. Five files, each in the pattern of the
-surviving `activity.test.ts` / `members.test.ts`:
+#213 added scaffolding for three spec items but didn't ship a consumer for any of them. Each
+is **dead code** until the first feature pulls it in. **Don't activate them speculatively** —
+the goal of landing them now was so the first consumer doesn't also have to do the plumbing.
 
-- `items.test.ts` — create / move / upvote / complete / archive, plus per-kind content
-  validation, plus the module-gate 409 contract (≥3 assertions per gated endpoint).
-- `lists.test.ts` — create with modules, PATCH with `acknowledgedWarnings`, config-preview,
-  item_kind tightening guard, duplicate.
-- `sources.test.ts` — CRUD + sync + preview (mock Spotify client per the existing pattern).
-- `scores.test.ts` — upsert / delete / list, `period_key` shape.
-- `duplicate.test.ts` — `preserveCompletion` × `copySources` matrix.
+| open item                                     | how to "finish" it                                                                                                                                                                                                                                           | trigger                                                                      |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| Scheduled-sync cron handler (§3.7)            | New Lambda handler that calls `runScheduledSyncTick()` from `lib/sources/scheduler.ts`. EventBridge rule in `infra/` firing every 5min. Settings UI to toggle a schedule on a `list_sources` row.                                                            | A user asks "can my Spotify shelf auto-refresh hourly?"                      |
+| Webhook verifier + first push kind (§3.5–3.6) | Register an entry in `WEBHOOK_VERIFIERS` (`lib/sources/webhookSignature.ts`). Generate a `webhook_slug` at source-create time. Seal the shared secret via `sealSecrets` into `list_sources.secrets`. Hand the user the inbound URL.                          | A push-driven source kind shows up — RSS via WebSub, Trakt history, etc.     |
+| OAuth-bearing source kind (§3.5)              | Persist refresh tokens via `sealSecrets` into `list_sources.secrets`. The first real reader is the kind's sync impl — it `openSecrets(source.secrets)` to get the refresh token.                                                                             | The first source kind needs per-user auth (e.g. private Letterboxd / Trakt). |
+| Generalized dedup-index codegen (§3.9)        | `ITEM_KIND_DEDUP_FIELD` already declares the field per kind; the partial unique indexes in `schema.ts` are still hand-written. Replace with a factory that iterates the manifest. ~30 lines + a follow-up Drizzle migration when an additional kind opts in. | A third dedupping kind lands (e.g. `recipe`, `restaurant`).                  |
 
-Sizing: ~300 lines each. Mostly mechanical.
+None of these have hard deadlines. The data model has the columns; the dispatch table is
+ready; the helpers exist with tests. Each one is "wire a new consumer through plumbing that's
+already covered."
 
-### Days 3–4 — PR-F: Letterboxd source kind (§3.1, §3.9)
+### 5.2 Feature surfaces for the three reserved modules (§3.10)
 
-The headline extensibility proof. Touches:
+`scheduling` / `comments` / `attachments` are in `MODULE_NAMES` with no-data manifests and
+"coming soon" labels in settings. Each one is its own product PR shape:
 
-- `packages/shared/src/sourceKinds.ts` — `letterboxd_list` manifest with
-  `producesItemKind: 'movie'`.
-- `apps/backend/src/lib/sources/letterboxdList.ts` — `previewLetterboxdList` +
-  `syncLetterboxdListSource`. TMDB enrichment to fill `movie` content (poster, year,
-  runtime).
-- `lists.ts` — generalize the hard-coded `if (kind === 'spotify_playlist')` branches into a
-  dispatch table over `SOURCE_KINDS`.
-- `packages/shared/src/templates.ts` — add `letterboxd_watchlist` (already designed in
-  §7).
-- Per-kind dedup story: lift `dedupField` into the item-kind manifest (§3.9). Pull this
-  follow-up in here naturally since you're touching the dedup index path.
-- Tests follow Day 1–2's pattern.
+- **`scheduling`** — per-item due date / reminder timeline. Needs a `due_at` column on
+  `items` (or a sibling table for richer recurrences), a date-picker UI, push notifications
+  on the iOS app. The `inspectRemoval` manifest in `moduleManifests.ts` tightens to count
+  scheduled items.
+- **`comments`** — threaded discussion per item. New `item_comments` table (probably
+  `(id, item_id, author_id, parent_comment_id, body, created_at, edited_at, archived_at)`),
+  thread UI on the item-detail screen, activity events. `inspectRemoval` counts the threads.
+- **`attachments`** — files attached to items. Needs S3 (we don't have buckets yet — would
+  be a Terraform addition), a presigned-URL upload flow, MIME-type validation, thumbnail
+  generation for images. The biggest of the three.
 
-The **headline assertion** to write: a Letterboxd source produces `items.kind = 'movie'` —
-not `letterboxd_film` — proving the source-kind / item-kind decoupling is real.
+Order them by perceived value to the actual product (it's a personal monorepo — pick the one
+you'd use most). Each is independent.
 
-### Day 5 — Cleanup + buffer
+### 5.3 Small polish
 
-- Drop-old-columns migration (`lists.type`, `lists.metadata`, `items.type`,
-  `items.metadata`, `game_scores`, `list_type` enum). Small and well-defined, see §2.1.
-- iOS smoke against TestFlight, since #199 was web-only.
-- Buffer for whichever Day 1–4 task slipped.
+These have no scaffolding waiting; they're standalone polish PRs against the shipped UX.
 
-### Why this order
+- **Re-enable mini-banner on list detail.** Spec §6 mentions "re-enabling restores data and
+  the activity-feed attribution"; today's UX only surfaces the _removal_ warning (the
+  `formatConfigWarning` sheet). Inline "3 completed items restored" toast or pill on the
+  list-detail screen when a module is re-enabled would close that loop.
+- **i18n for warning copy.** `formatConfigWarning` is English-only. The redirect to a
+  translation layer is one chunk if it ever ships; until the app has a non-English
+  audience, defer.
+- **Section-label richness for `link` items (§4.1, §4.5).** A daily-game list (`link` +
+  `leaderboard`) shows generic "Up next" / "Tried" instead of the legacy "Backlog" /
+  "Played" copy. Same for the home-screen subline ("Links" for trips/dates/games). The
+  recovery is to round-trip the template id from create-list through to render time — spec
+  §9.2 sketches the deriving-from-`(item_kind, modules)` alternative if persistence is
+  unwelcome.
+- **iOS TestFlight smoke for #213.** #213 was developed web-only by an agent that can't run
+  TestFlight. Risky surfaces to eyeball on the next build: activity-feed renderer (the
+  union shrank), settings sheet (three new "coming soon" toggles + new warning UX),
+  album-shelf list (the legacy `/refresh` button is gone — verify the new sync button
+  works).
 
-- **Tests before features.** Letterboxd will touch dispatch, dedup, and source plumbing;
-  building those changes on top of a route-test gap is asking to break things invisibly.
-- **PR-F before any polish.** It's the highest-information PR — if the source abstraction
-  is subtly wrong, it'll surface here, which is much better than discovering it after six
-  more source kinds have crystallized around the wrong shape.
-- **Cleanup last** so it benefits from a few extra days of prod soak on the additive
-  migration.
+### 5.4 Explicitly out of scope per the spec
 
-### What to defer past the week
+These were called out as out-of-v1 in the design doc and remain so unless product asks:
 
-The remaining items in §3 are product-pull work — land them when a feature pulls them in,
-not on a calendar:
+- **§3.3 / §6.4 Bulk-convert items in a list** — change every `kind=link` item to `kind=movie`
+  in one operation. Would be its own endpoint + warning surface if it ever ships.
+- **§3.4 / §6.5 Item-kind conversion on individual items** — users edit items individually
+  or duplicate-and-strip. No bulk operation.
 
-- §3.2 Module-removal warning UI polish (per-code copy + localization).
-- §3.5–3.7 Future-source plumbing (per-source secrets, webhooks, scheduled sync).
-- §3.8 Rebalance overflow trigger (no urgency until somebody moves to top 10⁹ times).
-- §3.10 New modules (`scheduling`, `comments`, `attachments`).
+### 5.5 Nothing else
+
+If you found yourself here looking for "what's left in the redesign," the honest answer is:
+**nothing structural.** The core redesign is live; the second source kind proved out the
+abstraction; the deferred items have scaffolding waiting for a consumer. Pick from §5.1
+(plumbing-to-product) or §5.2 (new modules) based on what the app needs next. If neither, the
+redesign is done.
