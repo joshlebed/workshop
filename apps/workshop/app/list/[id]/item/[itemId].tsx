@@ -21,6 +21,7 @@ import {
   Card,
   EmptyState,
   IconButton,
+  Screen,
   Text,
   tokens,
   useToast,
@@ -124,29 +125,29 @@ export default function ItemDetail() {
 
   if (!itemId || !listId) {
     return (
-      <View style={styles.center}>
+      <Screen style={styles.center}>
         <EmptyState title="Missing item id" />
-      </View>
+      </Screen>
     );
   }
 
   if (itemQuery.isPending) {
     return (
-      <View style={styles.center}>
+      <Screen style={styles.center}>
         <ActivityIndicator color={tokens.accent.default} />
-      </View>
+      </Screen>
     );
   }
 
   if (itemQuery.isError || !itemQuery.data) {
     return (
-      <View style={styles.center}>
+      <Screen style={styles.center}>
         <EmptyState
           title="Couldn't load item"
           description={itemQuery.error instanceof Error ? itemQuery.error.message : undefined}
           action={<Button label="Retry" variant="secondary" onPress={() => itemQuery.refetch()} />}
         />
-      </View>
+      </Screen>
     );
   }
 
@@ -164,7 +165,7 @@ export default function ItemDetail() {
   const canSave = trimmedTitle.length >= 1 && trimmedTitle.length <= 500 && dirty;
 
   return (
-    <View style={styles.root}>
+    <Screen style={styles.root}>
       <View style={styles.header}>
         <IconButton accessibilityLabel="Back" onPress={() => goBack(`/list/${listId}`)}>
           <Text style={styles.headerGlyph}>‹</Text>
@@ -275,7 +276,7 @@ export default function ItemDetail() {
           onPress={() => archiveMutation.mutate()}
         />
       </KeyboardAwareScrollView>
-    </View>
+    </Screen>
   );
 }
 
