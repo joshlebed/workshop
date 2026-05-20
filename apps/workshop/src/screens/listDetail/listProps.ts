@@ -25,6 +25,15 @@ export interface ItemListProps {
   memberNameById: Map<string, string>;
   showProvenance: boolean;
   selfId: string | null;
+  /**
+   * Leaderboard lists: today's player count keyed by itemId. Presence (along
+   * with `totalPlayers`) swaps the per-row "Added by …" provenance line for
+   * "X of Y played" so the social signal lives on the item, not who first
+   * pasted the URL.
+   */
+  playedByItem?: Map<string, number>;
+  /** Group size for the "X of Y played" label. Pair with `playedByItem`. */
+  totalPlayers?: number;
   accent: string;
   onReorderOrdered: (event: ReorderEvent) => void;
   onPromoteToOrdered: (event: { item: Item; toIndex: number }) => void;

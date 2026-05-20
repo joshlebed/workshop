@@ -34,6 +34,12 @@ interface ItemRowProps {
   /** Library reports `true` while the row is being dragged. */
   isDragging: boolean;
   addedByName: string | null;
+  /**
+   * Pre-built provenance line that wins over the default "Added by …" /
+   * "completed …" logic. Leaderboard lists use this to swap attribution for
+   * "X of Y played".
+   */
+  provenanceOverride?: string;
   /** List accent hex used to tint cover placeholder + position chip glyph. */
   accent: string;
   /**
@@ -79,6 +85,7 @@ export function ItemRow({
   isNew,
   isDragging,
   addedByName,
+  provenanceOverride,
   accent,
   onTapCompleted,
   onMenu,
@@ -98,7 +105,7 @@ export function ItemRow({
   const coverStyle = useAnimatedStyle(() => ({ opacity: 1 - completedProgress.value * 0.5 }));
 
   const view = describeItem(item);
-  const provenance = describeProvenance(item, section, addedByName);
+  const provenance = provenanceOverride ?? describeProvenance(item, section, addedByName);
 
   const leading =
     section === "ordered" ? (

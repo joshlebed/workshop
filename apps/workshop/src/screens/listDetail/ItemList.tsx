@@ -45,6 +45,8 @@ export function ItemList({
   memberNameById,
   showProvenance,
   selfId,
+  playedByItem,
+  totalPlayers,
   accent,
   onReorderOrdered,
   onRowMenu,
@@ -83,6 +85,19 @@ export function ItemList({
     [showProvenance, selfId, memberNameById],
   );
 
+  // Leaderboard lists: replace the per-row "Added by …" line with the
+  // social signal that actually matters on a daily-games shelf — how many
+  // of the group played today. `undefined` lets the row fall back to the
+  // default provenance.
+  const resolveProvenanceOverride = useCallback(
+    (item: Item): string | undefined => {
+      if (!playedByItem || totalPlayers == null) return undefined;
+      const played = playedByItem.get(item.id) ?? 0;
+      return `${played} of ${totalPlayers} played today`;
+    },
+    [playedByItem, totalPlayers],
+  );
+
   const handleOrderedReorder = useCallback(
     ({ from, to }: ReorderableListReorderEvent) => {
       onReorderOrdered({ fromIndex: from, toIndex: to });
@@ -96,13 +111,21 @@ export function ItemList({
         item={item}
         rank={index + 1}
         addedByName={resolveAddedByName(item)}
+        provenanceOverride={resolveProvenanceOverride(item)}
         accent={accent}
         onMenu={() => onRowMenu(item, "ordered")}
         onPressBody={() => onRowPressBody(item, "ordered")}
         onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
       />
     ),
-    [resolveAddedByName, accent, onRowMenu, onRowPressBody, resolveRowPressCover],
+    [
+      resolveAddedByName,
+      resolveProvenanceOverride,
+      accent,
+      onRowMenu,
+      onRowPressBody,
+      resolveRowPressCover,
+    ],
   );
 
   return (
@@ -145,6 +168,7 @@ export function ItemList({
                 isNew={newItemIds.has(item.id)}
                 isDragging={false}
                 addedByName={resolveAddedByName(item)}
+                provenanceOverride={resolveProvenanceOverride(item)}
                 accent={accent}
                 onMenu={() => onRowMenu(item, "unordered")}
                 onPressBody={() => onRowPressBody(item, "unordered")}
@@ -179,6 +203,7 @@ export function ItemList({
                 isNew={false}
                 isDragging={false}
                 addedByName={resolveAddedByName(item)}
+                provenanceOverride={resolveProvenanceOverride(item)}
                 accent={accent}
                 onMenu={() => onRowMenu(item, "completed")}
                 onPressBody={() => onRowPressBody(item, "completed")}
@@ -203,6 +228,7 @@ interface DraggableOrderedRowProps {
   item: Item;
   rank: number;
   addedByName: string | null;
+  provenanceOverride?: string;
   accent: string;
   onMenu: () => void;
   onPressBody: () => void;
@@ -213,6 +239,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
   item,
   rank,
   addedByName,
+  provenanceOverride,
   accent,
   onMenu,
   onPressBody,
@@ -242,6 +269,7 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
       isNew={false}
       isDragging={isActive}
       addedByName={addedByName}
+      provenanceOverride={provenanceOverride}
       accent={accent}
       onMenu={onMenu}
       onPressBody={onPressBody}
