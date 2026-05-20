@@ -55,6 +55,8 @@ export function ItemList({
   memberNameById,
   showProvenance,
   selfId,
+  playedByItem,
+  totalPlayers,
   accent,
   onReorderOrdered,
   onPromoteToOrdered,
@@ -85,6 +87,14 @@ export function ItemList({
     if (!showProvenance) return null;
     if (selfId && item.addedBy === selfId) return null;
     return memberNameById.get(item.addedBy) ?? null;
+  };
+  // Leaderboard lists swap the "Added by …" line for "X of Y played today",
+  // the actual social signal on a daily-games shelf. Returns `undefined` to
+  // leave the default provenance untouched.
+  const resolveProvenanceOverride = (item: Item): string | undefined => {
+    if (!playedByItem || totalPlayers == null) return undefined;
+    const played = playedByItem.get(item.id) ?? 0;
+    return `${played} of ${totalPlayers} played today`;
   };
   // Two sensors, never one with mixed activation:
   //   - MouseSensor with `distance: 4`  → desktop stays snappy (no delay).
@@ -177,6 +187,7 @@ export function ItemList({
                 item={item}
                 rank={index + 1}
                 addedByName={resolveAddedByName(item)}
+                provenanceOverride={resolveProvenanceOverride(item)}
                 accent={accent}
                 onMenu={() => onRowMenu(item, "ordered")}
                 onPressBody={() => onRowPressBody(item, "ordered")}
@@ -205,6 +216,7 @@ export function ItemList({
                   item={item}
                   isNew={newItemIds.has(item.id)}
                   addedByName={resolveAddedByName(item)}
+                  provenanceOverride={resolveProvenanceOverride(item)}
                   accent={accent}
                   onMenu={() => onRowMenu(item, "unordered")}
                   onPressBody={() => onRowPressBody(item, "unordered")}
@@ -239,6 +251,7 @@ export function ItemList({
                   isNew={false}
                   isDragging={false}
                   addedByName={resolveAddedByName(item)}
+                  provenanceOverride={resolveProvenanceOverride(item)}
                   accent={accent}
                   onMenu={() => onRowMenu(item, "completed")}
                   onPressBody={() => onRowPressBody(item, "completed")}
@@ -260,6 +273,7 @@ interface SortableOrderedRowProps {
   item: Item;
   rank: number;
   addedByName: string | null;
+  provenanceOverride?: string;
   accent: string;
   onMenu: () => void;
   onPressBody: () => void;
@@ -270,6 +284,7 @@ function SortableOrderedRow({
   item,
   rank,
   addedByName,
+  provenanceOverride,
   accent,
   onMenu,
   onPressBody,
@@ -316,6 +331,7 @@ function SortableOrderedRow({
         isNew={false}
         isDragging={isDragging}
         addedByName={addedByName}
+        provenanceOverride={provenanceOverride}
         accent={accent}
         onMenu={onMenu}
         onPressBody={onPressBody}
@@ -336,6 +352,7 @@ interface UnorderedRowProps {
   item: Item;
   isNew: boolean;
   addedByName: string | null;
+  provenanceOverride?: string;
   accent: string;
   onMenu: () => void;
   onPressBody: () => void;
@@ -357,6 +374,7 @@ function UnorderedRow({ draggable, ...props }: UnorderedRowProps & { draggable: 
       isNew={props.isNew}
       isDragging={false}
       addedByName={props.addedByName}
+      provenanceOverride={props.provenanceOverride}
       accent={props.accent}
       onMenu={props.onMenu}
       onPressBody={props.onPressBody}
@@ -369,6 +387,7 @@ function DraggableUnorderedRow({
   item,
   isNew,
   addedByName,
+  provenanceOverride,
   accent,
   onMenu,
   onPressBody,
@@ -407,6 +426,7 @@ function DraggableUnorderedRow({
         isNew={isNew}
         isDragging={isDragging}
         addedByName={addedByName}
+        provenanceOverride={provenanceOverride}
         accent={accent}
         onMenu={onMenu}
         onPressBody={onPressBody}

@@ -28,6 +28,7 @@ import {
   uncompleteItem,
   upvoteItem,
 } from "../api/items";
+import { fetchListScores } from "../api/scores";
 import { syncSource } from "../api/sources";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
@@ -35,6 +36,7 @@ import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
 import { applyOptimisticMove } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { confirm } from "../lib/confirm";
+import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/goBack";
 import { haptics } from "../lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
@@ -90,6 +92,28 @@ export function ListDetail({ list, members, sources, token }: Props) {
     enabled: !!token,
     refetchInterval: livePoll,
   });
+
+  // Leaderboard lists: pull today's scores so each row can show "X of Y
+  // played today" in place of the per-row "Added by …" attribution — the
+  // social signal users actually care about on a daily-games shelf.
+  const todayKey = localDateKey();
+  const listScoresQuery = useQuery({
+    queryKey: queryKeys.gameScores.forList(list.id, todayKey),
+    queryFn: () => fetchListScores(list.id, todayKey, token),
+    enabled: !!token && isGameKind,
+    refetchInterval: livePoll,
+  });
+  const playedByItem = useMemo(() => {
+    const map = new Map<string, number>();
+    const byItem = listScoresQuery.data?.scoresByItem;
+    if (!byItem) return map;
+    for (const itemId of Object.keys(byItem)) {
+      const entries = byItem[itemId] ?? [];
+      const played = entries.filter((e) => e.scoreRaw != null && e.scoreRaw.length > 0).length;
+      map.set(itemId, played);
+    }
+    return map;
+  }, [listScoresQuery.data]);
 
   const [newItemIds, setNewItemIds] = useState<Set<string>>(() => new Set());
   const beforeRefreshIdsRef = useRef<Set<string> | null>(null);
@@ -668,6 +692,8 @@ export function ListDetail({ list, members, sources, token }: Props) {
               memberNameById={memberNameById}
               showProvenance={members.length > 1}
               selfId={selfId}
+              playedByItem={isGameKind ? playedByItem : undefined}
+              totalPlayers={isGameKind ? members.length : undefined}
               accent={accent}
               onReorderOrdered={onReorderOrdered}
               onPromoteToOrdered={onPromoteToOrdered}
