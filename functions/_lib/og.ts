@@ -18,14 +18,15 @@
 
 export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand" | "slate";
 
-export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip" | "album_shelf" | "game";
+export type InvitePreviewItemKind = "movie" | "tv" | "book" | "link" | "spotify_album" | "plain";
 
 export interface InvitePreview {
   name: string;
   emoji: string;
   color: ListColor;
   description: string | null;
-  type: ListType;
+  itemKind: InvitePreviewItemKind | null;
+  modules: readonly string[];
   itemCount: number;
   memberCount: number;
   ownerName: string | null;
@@ -43,15 +44,26 @@ export const COLOR_GRADIENTS: Record<ListColor, readonly [string, string]> = {
 
 export const FALLBACK_GRADIENT = COLOR_GRADIENTS.slate;
 
-export const TYPE_LABELS: Record<ListType, string> = {
+const KIND_FULL_LABEL: Partial<Record<InvitePreviewItemKind, string>> = {
   movie: "Movie list",
   tv: "TV list",
   book: "Reading list",
-  date_idea: "Date ideas",
-  trip: "Travel plans",
-  album_shelf: "Album shelf",
-  game: "Game leaderboard",
+  spotify_album: "Album shelf",
 };
+
+export function buildSummaryLabel(opts: {
+  itemKind: InvitePreviewItemKind | null;
+  modules: readonly string[];
+}): string {
+  if (opts.modules.includes("leaderboard")) return "Leaderboard";
+  if (opts.itemKind && KIND_FULL_LABEL[opts.itemKind]) {
+    return KIND_FULL_LABEL[opts.itemKind] ?? "List";
+  }
+  if (opts.modules.includes("voting")) return "Poll";
+  if (opts.modules.includes("todo")) return "Checklist";
+  if (opts.itemKind === "link") return "Links";
+  return "List";
+}
 
 export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
@@ -107,14 +119,14 @@ export function buildOgDescription(preview: InvitePreview): string {
   if (preview.description && preview.description.trim().length > 0) {
     return truncate(preview.description.trim(), 200);
   }
-  const typeLabel = TYPE_LABELS[preview.type];
+  const typeLabel = buildSummaryLabel({ itemKind: preview.itemKind, modules: preview.modules });
   const owner = preview.ownerName ? ` by ${preview.ownerName}` : "";
   const items = preview.itemCount === 1 ? "1 item" : `${preview.itemCount} items`;
   return `${typeLabel}${owner} · ${items}. Join on Workshop.dev.`;
 }
 
 export function buildThumbnailSubtitle(preview: InvitePreview): string {
-  const typeLabel = TYPE_LABELS[preview.type];
+  const typeLabel = buildSummaryLabel({ itemKind: preview.itemKind, modules: preview.modules });
   const owner = preview.ownerName ? ` · ${preview.ownerName}` : "";
   const items = preview.itemCount === 1 ? "1 item" : `${preview.itemCount} items`;
   return truncate(`${typeLabel} · ${items}${owner}`, 60);

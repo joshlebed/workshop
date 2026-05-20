@@ -8,6 +8,7 @@ import {
   buildOgImageHtml,
   buildOgTitle,
   buildStaticImageHtml,
+  buildSummaryLabel,
   buildThumbnailSubtitle,
   COLOR_GRADIENTS,
   DEFAULT_OG_DESCRIPTION,
@@ -26,7 +27,8 @@ const samplePreview: InvitePreview = {
   emoji: "🎮",
   color: "ocean",
   description: null,
-  type: "game",
+  itemKind: "link",
+  modules: ["leaderboard"],
   itemCount: 5,
   memberCount: 2,
   ownerName: "Preview User",
@@ -82,28 +84,88 @@ describe("buildOgDescription", () => {
 
   it("falls back to a type/owner/count summary when description is blank", () => {
     expect(buildOgDescription(samplePreview)).toBe(
-      "Game leaderboard by Preview User · 5 items. Join on Workshop.dev.",
+      "Leaderboard by Preview User · 5 items. Join on Workshop.dev.",
     );
   });
 
   it("pluralises items correctly", () => {
     expect(buildOgDescription({ ...samplePreview, itemCount: 1 })).toBe(
-      "Game leaderboard by Preview User · 1 item. Join on Workshop.dev.",
+      "Leaderboard by Preview User · 1 item. Join on Workshop.dev.",
     );
   });
 
   it("omits the owner clause when ownerName is null", () => {
     expect(buildOgDescription({ ...samplePreview, ownerName: null })).toBe(
-      "Game leaderboard · 5 items. Join on Workshop.dev.",
+      "Leaderboard · 5 items. Join on Workshop.dev.",
     );
+  });
+
+  it("never renders 'undefined' for any combination of itemKind + modules", () => {
+    // This is the regression test for the live bug we saw: the OG card on
+    // `/invite/tlWcI2...` rendered "undefined · 6 items · Josh Lebedinsky"
+    // because the API returns `itemKind` + `modules` but the previous
+    // helper read a removed `type` field.
+    const variants: Array<{ itemKind: InvitePreview["itemKind"]; modules: string[] }> = [
+      { itemKind: null, modules: [] },
+      { itemKind: "movie", modules: [] },
+      { itemKind: "tv", modules: [] },
+      { itemKind: "book", modules: [] },
+      { itemKind: "link", modules: [] },
+      { itemKind: "link", modules: ["leaderboard"] },
+      { itemKind: "link", modules: ["voting", "leaderboard", "ranking"] },
+      { itemKind: "plain", modules: ["todo"] },
+      { itemKind: "spotify_album", modules: [] },
+    ];
+    for (const v of variants) {
+      const out = buildOgDescription({ ...samplePreview, description: null, ...v });
+      expect(out, `variant ${JSON.stringify(v)}`).not.toContain("undefined");
+    }
   });
 });
 
 describe("buildThumbnailSubtitle", () => {
   it("renders type + count + owner inside 60 chars", () => {
     const out = buildThumbnailSubtitle(samplePreview);
-    expect(out).toBe("Game leaderboard · 5 items · Preview User");
+    expect(out).toBe("Leaderboard · 5 items · Preview User");
     expect(Array.from(out).length).toBeLessThanOrEqual(60);
+  });
+
+  it("never renders 'undefined' for any combination of itemKind + modules", () => {
+    const variants: Array<{ itemKind: InvitePreview["itemKind"]; modules: string[] }> = [
+      { itemKind: null, modules: [] },
+      { itemKind: "movie", modules: [] },
+      { itemKind: "link", modules: ["leaderboard"] },
+      { itemKind: "plain", modules: ["todo"] },
+    ];
+    for (const v of variants) {
+      const out = buildThumbnailSubtitle({ ...samplePreview, ...v });
+      expect(out, `variant ${JSON.stringify(v)}`).not.toContain("undefined");
+    }
+  });
+});
+
+describe("buildSummaryLabel", () => {
+  it("prefers the leaderboard module over a generic link itemKind (covers the game-list case)", () => {
+    expect(
+      buildSummaryLabel({ itemKind: "link", modules: ["voting", "leaderboard", "ranking"] }),
+    ).toBe("Leaderboard");
+  });
+
+  it("returns the full kind label for movie/tv/book/spotify_album", () => {
+    expect(buildSummaryLabel({ itemKind: "movie", modules: [] })).toBe("Movie list");
+    expect(buildSummaryLabel({ itemKind: "tv", modules: [] })).toBe("TV list");
+    expect(buildSummaryLabel({ itemKind: "book", modules: [] })).toBe("Reading list");
+    expect(buildSummaryLabel({ itemKind: "spotify_album", modules: [] })).toBe("Album shelf");
+  });
+
+  it("falls back to module-derived labels when itemKind is generic", () => {
+    expect(buildSummaryLabel({ itemKind: "link", modules: ["voting"] })).toBe("Poll");
+    expect(buildSummaryLabel({ itemKind: null, modules: ["todo"] })).toBe("Checklist");
+  });
+
+  it("returns the bare 'List' fallback rather than ever rendering undefined", () => {
+    expect(buildSummaryLabel({ itemKind: null, modules: [] })).toBe("List");
+    expect(buildSummaryLabel({ itemKind: "plain", modules: [] })).toBe("List");
   });
 });
 

@@ -12,7 +12,12 @@
 
 export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand" | "slate";
 
-export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip" | "album_shelf" | "game";
+/**
+ * Subset of `ItemKind` from `@workshop/shared/itemKinds` that can show up
+ * on a list — kept inline so this module stays workspace-import-free for
+ * the edge bundler (see header). Keep in sync with `ITEM_KIND_NAMES`.
+ */
+export type InvitePreviewItemKind = "movie" | "tv" | "book" | "link" | "spotify_album" | "plain";
 
 /**
  * Safe metadata subset returned by `GET /v1/invites/:token/preview` for
@@ -20,13 +25,18 @@ export type ListType = "movie" | "tv" | "book" | "date_idea" | "trip" | "album_s
  * has the full list surface via `/accept`, so the fields here intentionally
  * mirror what they'd see after joining: title, branding, type, and rough
  * shape. We deliberately omit member identities and item contents.
+ *
+ * The label rendered into the OG card (`Movies`, `TV`, `Leaderboard`, …)
+ * is derived from `itemKind` + `modules` in `buildSummaryLabel` —
+ * the same derivation the home screen uses.
  */
 export interface InvitePreview {
   name: string;
   emoji: string;
   color: ListColor;
   description: string | null;
-  type: ListType;
+  itemKind: InvitePreviewItemKind | null;
+  modules: readonly string[];
   itemCount: number;
   memberCount: number;
   ownerName: string | null;
@@ -50,15 +60,43 @@ export const COLOR_GRADIENTS: Record<ListColor, readonly [string, string]> = {
 
 export const FALLBACK_GRADIENT = COLOR_GRADIENTS.slate;
 
-export const TYPE_LABELS: Record<ListType, string> = {
+/**
+ * Long-form labels for the OG card. We deliberately diverge from the
+ * home-screen `KIND_LABEL` ("Movies"/"TV"/"Books") here — an OG preview
+ * needs more context because the recipient hasn't seen the list yet, and
+ * "Movie list" / "Reading list" reads as a complete sentence head in
+ * `Movie list by Alice · 12 items`.
+ */
+const KIND_FULL_LABEL: Partial<Record<InvitePreviewItemKind, string>> = {
   movie: "Movie list",
   tv: "TV list",
   book: "Reading list",
-  date_idea: "Date ideas",
-  trip: "Travel plans",
-  album_shelf: "Album shelf",
-  game: "Game leaderboard",
+  spotify_album: "Album shelf",
 };
+
+/**
+ * Pick a category label from `itemKind` + `modules`. Returns a non-empty
+ * string so the OG subtitle never renders `undefined`.
+ *
+ * Priority order is deliberately different from the home screen: the
+ * `link` itemKind is shared by many distinct list shapes (daily games,
+ * date ideas, trips), so the module label is more descriptive than the
+ * generic "Links". Anywhere the kind is unambiguous (movie, tv, book,
+ * spotify_album) the kind label wins.
+ */
+export function buildSummaryLabel(opts: {
+  itemKind: InvitePreviewItemKind | null;
+  modules: readonly string[];
+}): string {
+  if (opts.modules.includes("leaderboard")) return "Leaderboard";
+  if (opts.itemKind && KIND_FULL_LABEL[opts.itemKind]) {
+    return KIND_FULL_LABEL[opts.itemKind] ?? "List";
+  }
+  if (opts.modules.includes("voting")) return "Poll";
+  if (opts.modules.includes("todo")) return "Checklist";
+  if (opts.itemKind === "link") return "Links";
+  return "List";
+}
 
 export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
@@ -136,7 +174,7 @@ export function buildOgDescription(preview: InvitePreview): string {
   if (preview.description && preview.description.trim().length > 0) {
     return truncate(preview.description.trim(), 200);
   }
-  const typeLabel = TYPE_LABELS[preview.type];
+  const typeLabel = buildSummaryLabel({ itemKind: preview.itemKind, modules: preview.modules });
   const owner = preview.ownerName ? ` by ${preview.ownerName}` : "";
   const items = preview.itemCount === 1 ? "1 item" : `${preview.itemCount} items`;
   return `${typeLabel}${owner} · ${items}. Join on Workshop.dev.`;
@@ -148,7 +186,7 @@ export function buildOgDescription(preview: InvitePreview): string {
  * want it wrapping to three lines.
  */
 export function buildThumbnailSubtitle(preview: InvitePreview): string {
-  const typeLabel = TYPE_LABELS[preview.type];
+  const typeLabel = buildSummaryLabel({ itemKind: preview.itemKind, modules: preview.modules });
   const owner = preview.ownerName ? ` · ${preview.ownerName}` : "";
   const items = preview.itemCount === 1 ? "1 item" : `${preview.itemCount} items`;
   return truncate(`${typeLabel} · ${items}${owner}`, 60);
