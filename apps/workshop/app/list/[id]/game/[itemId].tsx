@@ -438,17 +438,16 @@ export default function GameDetail() {
                 <UnplayedRow entry={myEntry} isMe />
               ) : null}
 
-              {/* Other members. Played first, then the unplayed quiet rows. */}
-              {otherEntries
-                .filter((e) => e.scoreRaw != null && e.scoreRaw.length > 0)
-                .map((entry) => (
+              {/* Server sorts: players with a numeric score first (ranked by
+                  item.scoreDirection), then unplayed by display name. Trust
+                  that order — don't re-sort or re-split client-side. */}
+              {otherEntries.map((entry) =>
+                entry.scoreRaw != null && entry.scoreRaw.length > 0 ? (
                   <LeaderboardEntryRow key={entry.userId} entry={entry} isMe={false} />
-                ))}
-              {otherEntries
-                .filter((e) => e.scoreRaw == null || e.scoreRaw.length === 0)
-                .map((entry) => (
+                ) : (
                   <UnplayedRow key={entry.userId} entry={entry} isMe={false} />
-                ))}
+                ),
+              )}
             </View>
           )}
         </ScrollView>
@@ -584,6 +583,7 @@ function LeaderboardEntryRow({ entry, isMe }: LeaderboardEntryRowProps) {
   return (
     <View style={[styles.entry, isMe && styles.entryMe]} testID={`leaderboard-row-${entry.userId}`}>
       <View style={styles.entryHeader}>
+        {entry.rank != null ? <RankBadge rank={entry.rank} /> : null}
         <Avatar name={entry.displayName} size="md" />
         <View style={styles.entryNameWrap}>
           <View style={styles.entryNameRow}>
@@ -608,6 +608,18 @@ function LeaderboardEntryRow({ entry, isMe }: LeaderboardEntryRowProps) {
           {entry.scoreRaw}
         </Text>
       </View>
+    </View>
+  );
+}
+
+function RankBadge({ rank }: { rank: number }) {
+  const top3 = rank <= 3;
+  return (
+    <View
+      style={[styles.rankBadge, top3 && styles.rankBadgeTop3]}
+      testID={`leaderboard-rank-${rank}`}
+    >
+      <Text style={[styles.rankBadgeText, top3 && styles.rankBadgeTextTop3]}>{rank}</Text>
     </View>
   );
 }
@@ -816,6 +828,30 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.subtle,
+  },
+  rankBadge: {
+    minWidth: 28,
+    height: 28,
+    paddingHorizontal: 6,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: tokens.bg.canvas,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.border.subtle,
+  },
+  rankBadgeTop3: {
+    backgroundColor: tokens.accent.default,
+    borderColor: tokens.accent.default,
+  },
+  rankBadgeText: {
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.bold,
+    color: tokens.text.secondary,
+    fontVariant: ["tabular-nums"],
+  },
+  rankBadgeTextTop3: {
+    color: tokens.bg.canvas,
   },
   scoreText: {
     color: tokens.text.primary,

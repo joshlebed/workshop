@@ -123,25 +123,142 @@ describe("upsertScoreSchema", () => {
 describe("tryParseScoreValue (helper)", () => {
   const { tryParseScoreValue } = __test;
 
-  it("parses a leading integer", () => {
-    expect(tryParseScoreValue("42")).toBe(42);
+  describe("with no pattern (legacy fallback)", () => {
+    it("parses a leading integer", () => {
+      expect(tryParseScoreValue("42")).toBe(42);
+    });
+
+    it("parses a decimal", () => {
+      expect(tryParseScoreValue("3.14")).toBe(3.14);
+    });
+
+    it("parses a negative", () => {
+      expect(tryParseScoreValue("-7")).toBe(-7);
+    });
+
+    it("extracts the first number from a Wordle-style block", () => {
+      expect(tryParseScoreValue("Wordle 1,127 3/6")).toBe(1);
+    });
+
+    it("returns null when no number is present", () => {
+      expect(tryParseScoreValue("⬜⬜🟩🟩🟩")).toBeNull();
+      expect(tryParseScoreValue("abc")).toBeNull();
+    });
   });
 
-  it("parses a decimal", () => {
-    expect(tryParseScoreValue("3.14")).toBe(3.14);
+  describe("with a per-item pattern (post-backfill)", () => {
+    it("extracts MapTap's final score from a real share", () => {
+      const raw = "www.maptap.gg May 18\n96🔥 95🏅 99🎯 96🔥 93👑\nFinal score: 956";
+      expect(tryParseScoreValue(raw, "Final score:\\s*(\\d+)")).toBe(956);
+    });
+
+    it("extracts Satle's guesses (X/6) — not the puzzle number", () => {
+      const raw = "🛰Satle #449 5/6\n🟥🟥🟥🟥🟩⬜\nhttps://satle.ca";
+      expect(tryParseScoreValue(raw, "Satle\\s*#\\d+\\s+(\\d+)/6")).toBe(5);
+    });
+
+    it("extracts travle's extra-guess count from +N", () => {
+      const raw = "#travle #1252 +1\n🟧✅✅✅\nhttps://travle.earth";
+      expect(tryParseScoreValue(raw, "#travle\\s+#?\\d+\\s+\\+(\\d+)")).toBe(1);
+    });
+
+    it("extracts Globle's = N daily count even with URL + hashtag trailing", () => {
+      const raw = "🌎 May 19, 2026 🌍\n⬜⬜🟧🟥🟩 = 5\n\nhttps://globle-game.com\n#globle";
+      expect(tryParseScoreValue(raw, "=\\s*(\\d+)")).toBe(5);
+    });
+
+    it("returns null when the configured pattern doesn't match — does NOT fall back to legacy", () => {
+      // Once a per-item regex is configured we trust it. Falling back to the
+      // first number would resurface the "pulled the puzzle number out of the
+      // share" bug we're fixing.
+      expect(tryParseScoreValue("abc 42 def", "Final score:\\s*(\\d+)")).toBeNull();
+    });
+
+    it("is case-insensitive (backend always applies the `i` flag)", () => {
+      expect(tryParseScoreValue("FINAL SCORE: 70", "Final score:\\s*(\\d+)")).toBe(70);
+    });
+
+    it("returns null when the pattern itself is invalid (no crash)", () => {
+      // unclosed group; new RegExp() throws — we swallow and fall back. With
+      // no other digits in the input this means null.
+      expect(tryParseScoreValue("no digits here", "(\\d+")).toBeNull();
+    });
+
+    it("falls back to legacy first-number when the stored regex throws", () => {
+      // Bad pattern + free-form input → legacy fallback finds the first num.
+      expect(tryParseScoreValue("Wordle 1,127 3/6", "(\\d+")).toBe(1);
+    });
+  });
+});
+
+describe("assignRanks (helper)", () => {
+  const { assignRanks } = __test;
+
+  it("ranks descending (higher is better) — MapTap-style", () => {
+    const ranked = assignRanks(
+      [
+        { userId: "a", scoreValue: 980 },
+        { userId: "b", scoreValue: 950 },
+        { userId: "c", scoreValue: 932 },
+      ],
+      "desc",
+    );
+    expect(ranked.map((r) => [r.userId, r.rank])).toEqual([
+      ["a", 1],
+      ["b", 2],
+      ["c", 3],
+    ]);
   });
 
-  it("parses a negative", () => {
-    expect(tryParseScoreValue("-7")).toBe(-7);
+  it("ranks ascending (lower is better) — Wordle / Satle-style", () => {
+    const ranked = assignRanks(
+      [
+        { userId: "a", scoreValue: 6 },
+        { userId: "b", scoreValue: 3 },
+        { userId: "c", scoreValue: 5 },
+      ],
+      "asc",
+    );
+    const ranksById = Object.fromEntries(ranked.map((r) => [r.userId, r.rank]));
+    expect(ranksById).toEqual({ a: 3, b: 1, c: 2 });
   });
 
-  it("extracts the first number from a Wordle-style block", () => {
-    expect(tryParseScoreValue("Wordle 1,127 3/6")).toBe(1);
+  it("uses standard competition ranking for ties (1, 2, 2, 4)", () => {
+    const ranked = assignRanks(
+      [
+        { userId: "a", scoreValue: 100 },
+        { userId: "b", scoreValue: 90 },
+        { userId: "c", scoreValue: 90 },
+        { userId: "d", scoreValue: 50 },
+      ],
+      "desc",
+    );
+    const ranksById = Object.fromEntries(ranked.map((r) => [r.userId, r.rank]));
+    expect(ranksById).toEqual({ a: 1, b: 2, c: 2, d: 4 });
   });
 
-  it("returns null when no number is present", () => {
-    expect(tryParseScoreValue("⬜⬜🟩🟩🟩")).toBeNull();
-    expect(tryParseScoreValue("abc")).toBeNull();
+  it("leaves unplayed entries with rank: null", () => {
+    const ranked = assignRanks(
+      [
+        { userId: "a", scoreValue: 100 },
+        { userId: "b", scoreValue: null },
+        { userId: "c", scoreValue: 50 },
+      ],
+      "desc",
+    );
+    const ranksById = Object.fromEntries(ranked.map((r) => [r.userId, r.rank]));
+    expect(ranksById).toEqual({ a: 1, b: null, c: 2 });
+  });
+
+  it("preserves the caller's order (so the SQL ORDER BY isn't disturbed)", () => {
+    const ranked = assignRanks(
+      [
+        { userId: "a", scoreValue: 100 },
+        { userId: "b", scoreValue: 200 },
+      ],
+      "desc",
+    );
+    expect(ranked.map((r) => r.userId)).toEqual(["a", "b"]);
   });
 });
 

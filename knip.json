@@ -12,7 +12,7 @@
         "src/lib/sources/scheduler.ts",
         "src/lib/sources/webhookSignature.ts",
         "src/lib/sources/secrets.ts",
-        "scripts/*.ts"
+        "scripts/*.{ts,mjs}"
       ]
     },
     "apps/workshop": {
