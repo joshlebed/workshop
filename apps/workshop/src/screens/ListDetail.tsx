@@ -75,6 +75,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const selfId = user?.id ?? null;
   const filterInputRef = useRef<TextInput>(null);
   const [filter, setFilter] = useState("");
+  const [manualRefreshing, setManualRefreshing] = useState(false);
   const itemsKey = queryKeys.items.byList(list.id);
   const livePoll = useLivePollingInterval();
 
@@ -702,9 +703,14 @@ export function ListDetail({ list, members, sources, token }: Props) {
               onUpvote={(item) => upvoteMutation.mutate({ item, nextUpvoted: !item.viewerUpvoted })}
               onUncompleteItem={(item) => completeMutation.mutate({ item, nextCompleted: false })}
               resolveRowPressCover={resolveRowPressCover}
-              refreshing={itemsQuery.isRefetching}
-              onRefresh={() => {
-                itemsQuery.refetch();
+              refreshing={manualRefreshing}
+              onRefresh={async () => {
+                setManualRefreshing(true);
+                try {
+                  await itemsQuery.refetch();
+                } finally {
+                  setManualRefreshing(false);
+                }
               }}
             />
           </View>
