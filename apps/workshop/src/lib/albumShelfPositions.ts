@@ -40,20 +40,44 @@ export function midpointForOrderedReorder(
   if (fromIndex < 0 || fromIndex >= orderedItems.length) return null;
   if (toIndex < 0 || toIndex >= orderedItems.length) return null;
 
+  const neighbors = neighborsForOrderedReorder(orderedItems, fromIndex, toIndex);
+  if (!neighbors) return null;
+  const before = neighbors.before ? positionOf(neighbors.before) : null;
+  const after = neighbors.after ? positionOf(neighbors.after) : null;
+  const next = midpointBetween(before, after);
+
+  const moved = orderedItems[fromIndex];
+  const current = moved ? positionOf(moved) : null;
+  if (current !== null && current === next) return null;
+  return next;
+}
+
+/**
+ * Final neighbors of the dragged row after a drag-to-reorder within a single
+ * ordered section. Both dnd-kit (`@dnd-kit/sortable`) on web and
+ * `react-native-reorderable-list` on native emit `toIndex` as the post-move
+ * destination — i.e. the index the dragged row occupies after the implicit
+ * `arrayMove(from, to)`. Reading neighbors directly off the source array
+ * is off-by-one in one direction depending on whether the user dragged up or
+ * down, which is the bug this helper exists to avoid.
+ *
+ * Returns `null` for out-of-range / no-op inputs so callers can short-circuit.
+ */
+export function neighborsForOrderedReorder(
+  orderedItems: Item[],
+  fromIndex: number,
+  toIndex: number,
+): { before: Item | null; after: Item | null } | null {
+  if (fromIndex < 0 || fromIndex >= orderedItems.length) return null;
+  if (toIndex < 0 || toIndex >= orderedItems.length) return null;
+  if (fromIndex === toIndex) return null;
   const post = orderedItems.slice();
   const [moved] = post.splice(fromIndex, 1);
   if (!moved) return null;
   post.splice(toIndex, 0, moved);
-
-  const beforeItem = toIndex > 0 ? post[toIndex - 1] : null;
-  const afterItem = toIndex < post.length - 1 ? post[toIndex + 1] : null;
-  const before = beforeItem ? positionOf(beforeItem) : null;
-  const after = afterItem ? positionOf(afterItem) : null;
-  const next = midpointBetween(before, after);
-
-  const current = positionOf(moved);
-  if (current !== null && current === next) return null;
-  return next;
+  const before = toIndex > 0 ? (post[toIndex - 1] ?? null) : null;
+  const after = toIndex < post.length - 1 ? (post[toIndex + 1] ?? null) : null;
+  return { before, after };
 }
 
 export function midpointBetween(before: number | null, after: number | null): number {
