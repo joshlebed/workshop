@@ -467,85 +467,75 @@ function FreeFormFlow({
   previewFailed,
   previewActive,
 }: FreeFormFlowProps) {
-  const titlePlaceholder = isGame ? "Game name (e.g. Globle)" : "What is it?";
-  const urlLabel = isGame ? "URL" : "URL (optional)";
-  const urlPlaceholder = isGame ? "https://globle-game.com" : "https://";
-  const notePlaceholder = isGame ? "Anything to remember?" : "Anything to remember?";
+  const titlePlaceholder = isGame ? "Game name" : "What's the idea?";
+  const urlPlaceholder = isGame ? "https://globle-game.com" : "Add a link";
+  const notePlaceholder = "Anything to remember?";
   const showNote = !isGame;
   return (
     <KeyboardAwareScrollView
-      contentContainerStyle={styles.body}
+      contentContainerStyle={styles.formBody}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       bottomOffset={tokens.space.lg}
     >
-      <Card style={styles.card} elevated>
-        <View style={styles.field}>
-          <Text variant="label" tone="secondary">
-            Title
-          </Text>
-          <TextInput
-            testID="add-item-title"
-            value={title}
-            onChangeText={onChangeTitle}
-            placeholder={titlePlaceholder}
-            placeholderTextColor={tokens.text.muted}
-            autoFocus
-            maxLength={500}
-            style={styles.input}
-          />
-        </View>
+      <TextInput
+        testID="add-item-title"
+        value={title}
+        onChangeText={onChangeTitle}
+        placeholder={titlePlaceholder}
+        placeholderTextColor={tokens.text.muted}
+        autoFocus
+        maxLength={500}
+        style={styles.titleInput}
+        multiline
+        scrollEnabled={false}
+        returnKeyType="next"
+      />
 
-        <View style={styles.field}>
-          <Text variant="label" tone="secondary">
-            {urlLabel}
-          </Text>
-          <TextInput
-            testID="add-item-url"
-            value={url}
-            onChangeText={onChangeUrl}
-            placeholder={urlPlaceholder}
-            placeholderTextColor={tokens.text.muted}
-            autoCapitalize="none"
-            autoCorrect={false}
-            maxLength={2048}
-            style={styles.input}
-          />
-          <LinkPreviewSection
-            preview={preview}
-            loading={previewLoading}
-            failed={previewFailed}
-            active={previewActive}
-          />
-        </View>
+      <View style={styles.formRow}>
+        <TextInput
+          testID="add-item-url"
+          value={url}
+          onChangeText={onChangeUrl}
+          placeholder={urlPlaceholder}
+          placeholderTextColor={tokens.text.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={2048}
+          style={styles.urlInput}
+        />
+      </View>
+      <LinkPreviewSection
+        preview={preview}
+        loading={previewLoading}
+        failed={previewFailed}
+        active={previewActive}
+      />
 
-        {showNote ? (
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Note (optional)
-            </Text>
-            <TextInput
-              testID="add-item-note"
-              value={note}
-              onChangeText={onChangeNote}
-              placeholder={notePlaceholder}
-              placeholderTextColor={tokens.text.muted}
-              multiline
-              maxLength={1000}
-              style={[styles.input, styles.inputMultiline]}
-            />
-          </View>
-        ) : null}
+      {showNote ? (
+        <TextInput
+          testID="add-item-note"
+          value={note}
+          onChangeText={onChangeNote}
+          placeholder={notePlaceholder}
+          placeholderTextColor={tokens.text.muted}
+          multiline
+          maxLength={1000}
+          style={styles.noteInput}
+          scrollEnabled={false}
+        />
+      ) : null}
 
+      <View style={styles.submitRow}>
         <Button
           testID="add-item-submit"
-          label={isGame ? "Add game" : "Add"}
+          label={isGame ? "Add game" : "Add to list"}
           size="lg"
           disabled={!canSubmit || loading}
           loading={loading}
           onPress={onSubmit}
         />
-      </Card>
+      </View>
     </KeyboardAwareScrollView>
   );
 }
@@ -632,8 +622,52 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   searchCard: { paddingVertical: tokens.space.sm },
-  card: { gap: tokens.space.lg },
-  field: { gap: tokens.space.sm },
+  formBody: {
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.xxl,
+    gap: tokens.space.lg,
+  },
+  // Title doubles as a heading once typed; placeholder copy is kind-aware
+  // so the empty state never feels generic.
+  titleInput: {
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.xxl,
+    fontWeight: tokens.font.weight.semibold,
+    letterSpacing: -0.4,
+    lineHeight: 36,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    margin: 0,
+    minHeight: 36,
+  },
+  formRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.border.subtle,
+    paddingTop: tokens.space.md,
+  },
+  urlInput: {
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.sm,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    margin: 0,
+  },
+  noteInput: {
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.md,
+    lineHeight: 22,
+    paddingTop: tokens.space.md,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+    margin: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.border.subtle,
+    minHeight: 44,
+    textAlignVertical: "top",
+  },
+  submitRow: { paddingTop: tokens.space.md },
+  // Used only by SearchFlow's query field (movie/tv/book lists).
   input: {
     borderWidth: 1,
     borderColor: tokens.border.default,
@@ -644,7 +678,6 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.md,
     backgroundColor: tokens.bg.canvas,
   },
-  inputMultiline: { minHeight: 80, textAlignVertical: "top" },
   helper: { textAlign: "center", paddingVertical: tokens.space.lg },
   center: { alignItems: "center", justifyContent: "center", paddingVertical: tokens.space.xl },
   previewCard: {
