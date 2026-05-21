@@ -33,7 +33,7 @@ import { syncSource } from "../api/sources";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
-import { applyOptimisticMove } from "../lib/albumShelfPositions";
+import { applyOptimisticMove, neighborsForOrderedReorder } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { confirm } from "../lib/confirm";
 import { localDateKey } from "../lib/gameDate";
@@ -309,15 +309,15 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const totalRowsUnfiltered = orderedRaw.length + unorderedRaw.length + completedRaw.length;
 
   const onReorderOrdered = (event: ReorderEvent) => {
-    const item = filtered.ordered[event.fromIndex];
-    if (!item) return;
     const ordered = filtered.ordered;
-    const beforeItem = event.toIndex > 0 ? ordered[event.toIndex - 1] : null;
-    const afterItem = event.toIndex < ordered.length - 1 ? ordered[event.toIndex + 1] : null;
+    const item = ordered[event.fromIndex];
+    if (!item) return;
+    const neighbors = neighborsForOrderedReorder(ordered, event.fromIndex, event.toIndex);
+    if (!neighbors) return;
     moveMutation.mutate({
       item,
-      beforeItemId: beforeItem?.id ?? null,
-      afterItemId: afterItem?.id ?? null,
+      beforeItemId: neighbors.before?.id ?? null,
+      afterItemId: neighbors.after?.id ?? null,
     });
   };
 
