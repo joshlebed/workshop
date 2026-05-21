@@ -426,18 +426,24 @@ export function ListDetail({ list, members, sources, token }: Props) {
     return url ? () => openExternalUrl(url) : null;
   };
 
+  // Subline next to the member-avatar stack. The avatars already encode the
+  // member count, so the text only carries the parts the avatars can't —
+  // item count and source-sync status. The avatar-less case (solo lists)
+  // keeps the explicit "1 member" fallback so the row isn't empty.
   const headerSubline = useMemo(() => {
-    const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
+    const total = orderedRaw.length + unorderedRaw.length + completedRaw.length;
+    const itemPart = total === 0 ? null : `${total} ${total === 1 ? "item" : "items"}`;
     if (hasSources) {
       if (refreshing) return "Refreshing source…";
-      if (!lastRefreshedAt) return `${memberPart} · tap ↻ to pull from source`;
+      if (!lastRefreshedAt) return itemPart ?? "Tap ↻ to pull from source";
       const rel = formatRelative(lastRefreshedAt);
-      const actor = lastRefreshedByName ? ` by @${lastRefreshedByName}` : "";
-      return `${memberPart} · synced ${rel}${actor}`;
+      const actor = lastRefreshedByName ? ` by ${lastRefreshedByName}` : "";
+      const syncPart = `synced ${rel}${actor}`;
+      return itemPart ? `${itemPart} · ${syncPart}` : syncPart;
     }
-    const total = orderedRaw.length + unorderedRaw.length + completedRaw.length;
-    if (total === 0) return memberPart;
-    return `${memberPart} · ${total} ${total === 1 ? "item" : "items"}`;
+    if (itemPart) return itemPart;
+    if (members.length === 0) return "Just you";
+    return members.length === 1 ? "1 member" : `${members.length} members`;
   }, [
     hasSources,
     refreshing,
@@ -542,7 +548,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
             <View
               style={[
                 styles.titleBadge,
-                { backgroundColor: `${accent}1F`, borderColor: `${accent}33` },
+                { backgroundColor: `${accent}33`, borderColor: `${accent}55` },
               ]}
             >
               <Text style={styles.titleEmoji}>{list.emoji}</Text>
@@ -563,9 +569,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
                 {headerSubline}
               </Text>
             </View>
-            <Text variant="caption" tone="muted" style={styles.modulesLine}>
-              {list.modules.join(" · ")}
-            </Text>
           </View>
         </View>
 
@@ -812,18 +815,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
     paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.md,
-    paddingBottom: tokens.space.sm,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.xs,
   },
+  // Badge prominence is intentional — the list's hue identifies it from the
+  // home screen down through every detail view. The 20% accent fill matches
+  // DESIGN.md; the slightly stronger inner ring gives the tile a defined
+  // edge on the near-black canvas instead of vanishing into it.
   titleBadge: {
-    width: 52,
-    height: 52,
+    width: 60,
+    height: 60,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  titleEmoji: { fontSize: 26, lineHeight: 30 },
+  titleEmoji: { fontSize: 30, lineHeight: 34 },
   titleText: { flex: 1, minWidth: 0, gap: 4 },
   titleName: { letterSpacing: -0.6, fontSize: 28, lineHeight: 32 },
   sublineRow: {
@@ -833,7 +840,6 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   subline: { letterSpacing: 0.1 },
-  modulesLine: { textTransform: "uppercase", letterSpacing: 0.5 },
   toolbar: {
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,
@@ -845,12 +851,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.md,
     paddingVertical: 2,
     borderRadius: tokens.radius.md,
-    backgroundColor: "transparent",
-    borderWidth: 1,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.subtle,
   },
   filterPillActive: {
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
     borderColor: tokens.border.default,
   },
   filterGlyph: {
@@ -873,16 +879,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.sm,
   },
   filterKbd: {
-    fontSize: 11,
+    fontSize: 12,
     fontVariant: ["tabular-nums"],
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-    lineHeight: 14,
-    marginLeft: tokens.space.xs,
+    color: tokens.text.muted,
+    paddingHorizontal: tokens.space.xs,
+    lineHeight: 16,
   },
   center: {
     flex: 1,
