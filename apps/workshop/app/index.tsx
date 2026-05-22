@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActivityEvent, ItemKind, ListSummary, ModuleName } from "@workshop/shared";
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
+  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -28,6 +30,7 @@ import { errorMessage } from "../src/lib/api";
 import { confirm } from "../src/lib/confirm";
 import { queryKeys } from "../src/lib/queryKeys";
 import {
+  Avatar,
   Button,
   EmptyState,
   type ListColorKey,
@@ -82,6 +85,27 @@ function relativeShort(iso: string, now = Date.now()): string {
   const w = Math.floor(d / 7);
   if (w < 5) return `${w}w`;
   return `${Math.floor(d / 30)}mo`;
+}
+
+// Visual "shared" cue for the home row. Returns a list of accent-alpha
+// hex suffixes — one dot per other member, capped at three. Each dot is
+// progressively more transparent so the eye picks up "more people"
+// without having to literally count past three. The accessibility label
+// always carries the real count.
+function sharedDotAlphas(memberCount: number): string[] {
+  const others = Math.max(0, memberCount - 1);
+  if (others <= 0) return [];
+  if (others === 1) return ["AA", "55"];
+  if (others === 2) return ["BB", "77", "44"];
+  return ["CC", "88", "44"];
+}
+
+// "Apr 2026". Falls back to year-only for ancient invalid dates so we never
+// surface "since Jan 1970" if the server hands back a zero timestamp.
+function formatMemberSince(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() < 2024) return "early access";
+  return d.toLocaleString(undefined, { month: "short", year: "numeric" });
 }
 
 function initialsFor(name: string | null | undefined): string {
@@ -240,6 +264,9 @@ export default function Home() {
       } else if (mod && e.key === "/") {
         e.preventDefault();
         onActivity();
+      } else if (mod && e.key === ",") {
+        e.preventDefault();
+        setProfileOpen(true);
       }
     };
     window.addEventListener("keydown", handler);
@@ -490,12 +517,12 @@ export default function Home() {
         testID="profile-sheet"
       >
         <View style={styles.profileSheetHeader}>
-          <View style={[styles.headerCircle, styles.profileCircle, styles.profileSheetAvatar]}>
-            <Text style={styles.profileInitials} tone="secondary">
-              {initials}
-            </Text>
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
+          <Avatar
+            name={user?.displayName ?? user?.email ?? null}
+            size="lg"
+            testID="profile-sheet-avatar"
+          />
+          <View style={styles.profileSheetIdentity}>
             <Text variant="heading" numberOfLines={1}>
               {user?.displayName?.trim() || "You"}
             </Text>
@@ -504,12 +531,17 @@ export default function Home() {
                 {user.email}
               </Text>
             ) : null}
+            {user?.createdAt ? (
+              <Text variant="caption" tone="muted" numberOfLines={1}>
+                On Workshop since {formatMemberSince(user.createdAt)}
+              </Text>
+            ) : null}
           </View>
         </View>
         <View style={styles.profileSheetActions}>
           {archivedLists.length > 0 ? (
             <Button
-              label={`Archived lists  (${archivedLists.length})`}
+              label={`Archived lists (${archivedLists.length})`}
               variant="secondary"
               onPress={() => {
                 setProfileOpen(false);
@@ -518,8 +550,27 @@ export default function Home() {
               testID="open-archived"
             />
           ) : null}
-          <Button label="Sign out" variant="secondary" onPress={onSignOut} testID="sign-out" />
+          <Button
+            label="Send feedback"
+            variant="secondary"
+            onPress={() => {
+              const subject = encodeURIComponent("Workshop feedback");
+              const version = Constants.expoConfig?.version ?? "0.0.0";
+              const body = encodeURIComponent(
+                `\n\n—\nWorkshop v${version} · ${Platform.OS}${user?.id ? ` · ${user.id.slice(0, 8)}` : ""}`,
+              );
+              Linking.openURL(`mailto:joshlebed@gmail.com?subject=${subject}&body=${body}`).catch(
+                () => {},
+              );
+            }}
+            testID="send-feedback"
+          />
         </View>
+        <View style={styles.profileSheetDivider} />
+        <Button label="Sign out" variant="ghost" onPress={onSignOut} testID="sign-out" />
+        <Text variant="caption" tone="muted" style={styles.profileSheetVersion}>
+          Workshop · v{Constants.expoConfig?.version ?? "0.0.0"}
+        </Text>
       </Sheet>
 
       <Sheet
@@ -722,13 +773,18 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: { fontSize: tokens.font.size.md, letterSpacing: -0.2, flexShrink: 1 },
-  rowMembersInline: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.muted,
-    fontVariant: ["tabular-nums"],
-    letterSpacing: 0.2,
+  rowSharedDots: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: 14,
+  },
+  rowSharedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  rowSharedDotOverlap: {
+    marginLeft: -2,
   },
   rowPinGlyph: {
     color: tokens.accent.default,
@@ -793,9 +849,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
+    marginBottom: tokens.space.lg,
   },
-  profileSheetAvatar: { width: 48, height: 48, borderRadius: 24 },
+  profileSheetIdentity: { flex: 1, minWidth: 0, gap: 2 },
   profileSheetActions: { gap: tokens.space.sm },
+  profileSheetDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: tokens.border.subtle,
+    marginTop: tokens.space.lg,
+    marginBottom: tokens.space.sm,
+  },
+  profileSheetVersion: {
+    textAlign: "center",
+    marginTop: tokens.space.lg,
+    letterSpacing: 0.4,
+  },
   rowMenuHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -979,13 +1047,24 @@ function ListRow({
               muted
             </Text>
           ) : null}
-          {shared ? (
-            <Text
-              style={styles.rowMembersInline}
-              accessibilityLabel={`${list.memberCount} members`}
+          {shared && !subtitleEmphasis ? (
+            <View
+              style={styles.rowSharedDots}
+              accessibilityLabel={`Shared with ${otherMembers} ${otherMembers === 1 ? "other" : "others"}`}
+              importantForAccessibility="yes"
             >
-              +{otherMembers}
-            </Text>
+              {sharedDotAlphas(list.memberCount).map((alpha, i) => (
+                <View
+                  // biome-ignore lint/suspicious/noArrayIndexKey: alphas array is stable per memberCount value
+                  key={i}
+                  style={[
+                    styles.rowSharedDot,
+                    i > 0 ? styles.rowSharedDotOverlap : null,
+                    { backgroundColor: `${accent}${alpha}` },
+                  ]}
+                />
+              ))}
+            </View>
           ) : null}
         </View>
         <Text

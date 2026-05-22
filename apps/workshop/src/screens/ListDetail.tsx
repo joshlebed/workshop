@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Item,
+  ItemKind,
   List,
   ListItemsResponse,
   ListMemberSummary,
@@ -654,7 +655,9 @@ export function ListDetail({ list, members, sources, token }: Props) {
         ) : itemsQuery.isError ? (
           <View style={styles.center}>
             <EmptyState
-              title="Couldn't load list"
+              motion
+              illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
+              title="Couldn't load this list"
               description={
                 isSpotifyShelf
                   ? sourceErrorMessage(itemsQuery.error, "Unknown error")
@@ -662,7 +665,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
               }
               action={
                 <Button
-                  label="Retry"
+                  label="Try again"
                   variant="secondary"
                   onPress={() => itemsQuery.refetch()}
                   testID="list-detail-retry"
@@ -689,8 +692,16 @@ export function ListDetail({ list, members, sources, token }: Props) {
           <View style={styles.center}>
             {hasSources ? (
               <EmptyState
-                title={lastRefreshedAt ? "No items detected." : "Pulling from source…"}
-                description={lastRefreshedAt ? "Check the source URL in settings." : undefined}
+                motion
+                illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
+                title={lastRefreshedAt ? "No items detected" : "Pulling from source…"}
+                description={
+                  lastRefreshedAt
+                    ? lastRefreshedByName
+                      ? `Last refreshed by ${lastRefreshedByName}. Check the source URL in settings.`
+                      : "Check the source URL in settings."
+                    : "This usually takes a few seconds."
+                }
                 action={
                   lastRefreshedAt ? (
                     <Button
@@ -704,14 +715,45 @@ export function ListDetail({ list, members, sources, token }: Props) {
               />
             ) : (
               <EmptyState
-                title="Nothing on the list"
-                description="Add the first thing you want to remember."
+                motion
+                illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
+                title={kindEmptyCopy(itemKind).title}
+                description={kindEmptyCopy(itemKind).description}
+                accessibilityLabel={`${kindEmptyCopy(itemKind).title}. ${kindEmptyCopy(itemKind).description}`}
                 action={
                   <Button
-                    label="Add an item"
+                    label={kindEmptyCopy(itemKind).action}
                     onPress={() => router.push(`/list/${list.id}/add`)}
                     testID="list-detail-empty-add"
                   />
+                }
+                hint={
+                  <View style={styles.emptyHintGroup}>
+                    {members.length > 1 ? (
+                      <Text
+                        variant="caption"
+                        tone="muted"
+                        style={styles.emptySharedLine}
+                        testID="list-detail-empty-shared-line"
+                      >
+                        Shared with {members.length - 1} {members.length === 2 ? "other" : "others"}
+                        {". "}Anything you add shows up for them too.
+                      </Text>
+                    ) : null}
+                    {Platform.OS === "web" ? (
+                      <View style={styles.emptyKbdRow} accessibilityElementsHidden>
+                        <Text variant="caption" tone="muted">
+                          press
+                        </Text>
+                        <Text style={styles.emptyKbd} tone="secondary">
+                          n
+                        </Text>
+                        <Text variant="caption" tone="muted">
+                          to add
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
                 }
               />
             )}
@@ -753,7 +795,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
           </View>
         )}
 
-        {!isSpotifyShelf ? (
+        {!isSpotifyShelf && !(isEmptyAfterFetch && !hasSources) ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Add item"
@@ -777,6 +819,83 @@ function memberInitial(name: string | null): string {
   const trimmed = name?.trim();
   if (!trimmed) return "·";
   return (trimmed[0] ?? "·").toUpperCase();
+}
+
+// Per-list-color halo behind the list's emoji. Carries the list's identity
+// (its hue, its emoji) into the zero-items canvas so the empty state belongs
+// to *this* list, not to "lists in general." A single soft tinted disc; no
+// border, no glow, no gradient — DESIGN.md "calm by default" + per-list
+// color used only to identify the list.
+function ListEmptyHalo({ accent, emoji }: { accent: string; emoji: string }) {
+  return (
+    <View
+      style={[emptyHaloStyles.disc, { backgroundColor: `${accent}1F` }]}
+      accessibilityElementsHidden
+      importantForAccessibility="no"
+    >
+      <Text style={emptyHaloStyles.emoji}>{emoji}</Text>
+    </View>
+  );
+}
+
+const emptyHaloStyles = StyleSheet.create({
+  disc: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emoji: { fontSize: 48, lineHeight: 56 },
+});
+
+// Kind-aware copy for the zero-items empty state. The header has already
+// told the user which list this is; the empty surface should echo that by
+// naming the thing they haven't added yet. Falls back to the generic
+// "things you want to remember" line for `plain` / unknown.
+function kindEmptyCopy(kind: ItemKind | null): {
+  title: string;
+  description: string;
+  action: string;
+} {
+  switch (kind) {
+    case "movie":
+      return {
+        title: "No movies yet",
+        description: "Add the first one you want to watch.",
+        action: "Add a movie",
+      };
+    case "tv":
+      return {
+        title: "No shows yet",
+        description: "Add the first one you want to watch.",
+        action: "Add a show",
+      };
+    case "book":
+      return {
+        title: "Nothing on the shelf yet",
+        description: "Add the first book you want to read.",
+        action: "Add a book",
+      };
+    case "link":
+      return {
+        title: "Nothing saved yet",
+        description: "Add the first link you want to come back to.",
+        action: "Add a link",
+      };
+    case "spotify_album":
+      return {
+        title: "Nothing on the shelf yet",
+        description: "Pulls from a Spotify playlist when one is connected.",
+        action: "Add an album",
+      };
+    default:
+      return {
+        title: "Nothing here yet",
+        description: "Add the first thing you want to remember.",
+        action: "Add an item",
+      };
+  }
 }
 
 function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent: string }) {
@@ -920,6 +1039,32 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
     lineHeight: 14,
     marginLeft: tokens.space.xs,
+  },
+  emptyHintGroup: {
+    alignItems: "center",
+    gap: tokens.space.sm,
+  },
+  emptySharedLine: {
+    textAlign: "center",
+    maxWidth: 320,
+    lineHeight: 16,
+  },
+  emptyKbdRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+  },
+  emptyKbd: {
+    fontSize: 12,
+    fontWeight: tokens.font.weight.semibold,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+    backgroundColor: tokens.bg.surface,
+    lineHeight: 16,
+    fontVariant: ["tabular-nums"],
   },
   center: {
     flex: 1,

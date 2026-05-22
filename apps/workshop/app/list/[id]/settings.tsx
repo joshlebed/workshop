@@ -10,8 +10,8 @@ import type {
 } from "@workshop/shared";
 import { formatConfigWarning, MODULE_NAMES } from "@workshop/shared/modules";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo, useState } from "react";
-import { Image, Linking, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { useEffect, useMemo, useState } from "react";
+import { Image, Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { createInvite, revokeInvite } from "../../../src/api/invites";
 import {
@@ -33,7 +33,6 @@ import { buildInviteShareUrl, copyToClipboard } from "../../../src/lib/share";
 import { sourceErrorMessage } from "../../../src/lib/sourceErrors";
 import {
   Button,
-  Card,
   IconButton,
   type ListColorKey,
   Screen,
@@ -190,6 +189,8 @@ export default function ListSettings() {
       showToast({
         message: errorMessage(e, "Couldn't save list"),
         tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => updateMutation.mutate(),
       });
     },
   });
@@ -232,8 +233,13 @@ export default function ListSettings() {
       ]);
       showToast({ message: "Modules updated", tone: "success" });
     },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't update modules"), tone: "danger" });
+    onError: (e, vars) => {
+      showToast({
+        message: errorMessage(e, "Couldn't update modules"),
+        tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => modulesMutation.mutate(vars),
+      });
     },
   });
 
@@ -277,7 +283,12 @@ export default function ListSettings() {
       router.replace(`/list/${res.list.id}`);
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't duplicate"), tone: "danger" });
+      showToast({
+        message: errorMessage(e, "Couldn't duplicate"),
+        tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => duplicateMutation.mutate(),
+      });
     },
   });
 
@@ -301,8 +312,13 @@ export default function ListSettings() {
         tone: res.addedCount === 0 ? "default" : "success",
       });
     },
-    onError: (e) => {
-      showToast({ message: sourceErrorMessage(e, "Couldn't refresh."), tone: "danger" });
+    onError: (e, sourceId) => {
+      showToast({
+        message: sourceErrorMessage(e, "Couldn't refresh."),
+        tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => syncMutation.mutate(sourceId),
+      });
     },
   });
 
@@ -330,7 +346,12 @@ export default function ListSettings() {
       });
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't generate invite"), tone: "danger" });
+      showToast({
+        message: errorMessage(e, "Couldn't generate invite"),
+        tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => generateInviteMutation.mutate(),
+      });
     },
   });
 
@@ -344,8 +365,13 @@ export default function ListSettings() {
       if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
       showToast({ message: "Share link revoked", tone: "default" });
     },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't revoke invite"), tone: "danger" });
+    onError: (e, inviteId) => {
+      showToast({
+        message: errorMessage(e, "Couldn't revoke invite"),
+        tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => revokeMutation.mutate(inviteId),
+      });
     },
   });
 
@@ -361,8 +387,13 @@ export default function ListSettings() {
       if (isSelfLeave) router.replace("/");
       else showToast({ message: "Member removed", tone: "default" });
     },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't remove member"), tone: "danger" });
+    onError: (e, userId) => {
+      showToast({
+        message: errorMessage(e, "Couldn't remove member"),
+        tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => removeMemberMutation.mutate(userId),
+      });
     },
   });
 
@@ -380,6 +411,53 @@ export default function ListSettings() {
     },
   });
 
+  const discardDetails = () => {
+    if (!list) return;
+    setName(list.name);
+    setEmoji(list.emoji);
+    setColor(list.color);
+    setDescription(list.description ?? "");
+    setCoverPhotoUrl(list.coverPhotoUrl ?? null);
+  };
+
+  const discardModules = () => {
+    if (!list) return;
+    setSelectedModules(list.modules);
+    setPreviewWarnings(null);
+  };
+
+  // Esc closes settings on web. Cmd/Ctrl+Enter saves the first dirty
+  // section so power users can edit + save without reaching for the
+  // mouse. Native users get the back gesture / system dismiss instead.
+  // Skip Esc when an input is focused so the same key still clears
+  // intent inside textfields without bouncing them out of the screen.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mutation objects are stable; including them would tear down/recreate the listener on every render.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        const inInput = tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable;
+        if (inInput) return;
+        e.preventDefault();
+        goBack(`/list/${id ?? ""}`);
+        return;
+      }
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+        if (detailsDirty && !updateMutation.isPending) {
+          e.preventDefault();
+          updateMutation.mutate();
+        } else if (modulesDirty && !modulesMutation.isPending && !previewMutation.isPending) {
+          e.preventDefault();
+          onSaveModules();
+        }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [id, detailsDirty, modulesDirty]);
+
   if (!id) {
     return (
       <Screen style={styles.center}>
@@ -388,11 +466,34 @@ export default function ListSettings() {
     );
   }
 
+  const headerAccent: string = list
+    ? (list.color as ListColorKey) in tokens.list
+      ? tokens.list[list.color as ListColorKey]
+      : tokens.accent.default
+    : tokens.accent.default;
+
   return (
     <Screen style={styles.root}>
       <View style={styles.header}>
-        <View style={styles.headerSpacer} />
-        <Text variant="heading">List settings</Text>
+        <View style={styles.headerIdentity}>
+          {list ? (
+            <View
+              style={[styles.headerEmoji, { backgroundColor: `${headerAccent}1F` }]}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            >
+              <Text style={styles.headerEmojiGlyph}>{emoji ?? list.emoji}</Text>
+            </View>
+          ) : null}
+          <View style={styles.headerText}>
+            <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
+              Settings
+            </Text>
+            <Text variant="heading" numberOfLines={1}>
+              {list?.name ?? "List settings"}
+            </Text>
+          </View>
+        </View>
         <IconButton
           accessibilityLabel="Close settings"
           onPress={() => goBack(`/list/${id}`)}
@@ -410,8 +511,8 @@ export default function ListSettings() {
       >
         {/* --- Details --- */}
         {isOwner ? (
-          <Card style={styles.card} elevated>
-            <Text variant="label" tone="secondary">
+          <View style={styles.section}>
+            <Text variant="caption" tone="muted" style={styles.sectionLabel}>
               Details
             </Text>
             <View style={styles.field}>
@@ -523,21 +624,34 @@ export default function ListSettings() {
                 style={[styles.input, styles.inputMultiline]}
               />
             </View>
-            <Button
-              testID="settings-save"
-              label="Save changes"
-              size="md"
-              disabled={!detailsDirty || updateMutation.isPending}
-              loading={updateMutation.isPending}
-              onPress={() => updateMutation.mutate()}
-            />
-          </Card>
+            <View style={styles.actionRow}>
+              <Button
+                testID="settings-save"
+                label="Save changes"
+                size="md"
+                disabled={!detailsDirty || updateMutation.isPending}
+                loading={updateMutation.isPending}
+                onPress={() => updateMutation.mutate()}
+                style={styles.actionPrimary}
+              />
+              {detailsDirty ? (
+                <Button
+                  testID="settings-discard"
+                  label="Discard"
+                  variant="ghost"
+                  size="md"
+                  disabled={updateMutation.isPending}
+                  onPress={discardDetails}
+                />
+              ) : null}
+            </View>
+          </View>
         ) : null}
 
         {/* --- Modules (owner-only) --- */}
         {isOwner && selectedModules ? (
-          <Card style={styles.card} elevated>
-            <Text variant="label" tone="secondary">
+          <View style={styles.section}>
+            <Text variant="caption" tone="muted" style={styles.sectionLabel}>
               Modules
             </Text>
             <View style={styles.moduleList}>
@@ -591,20 +705,33 @@ export default function ListSettings() {
                 />
               </View>
             ) : null}
-            <Button
-              testID="settings-modules-save"
-              label="Save"
-              size="md"
-              disabled={!modulesDirty || modulesMutation.isPending || previewMutation.isPending}
-              loading={modulesMutation.isPending || previewMutation.isPending}
-              onPress={onSaveModules}
-            />
-          </Card>
+            <View style={styles.actionRow}>
+              <Button
+                testID="settings-modules-save"
+                label="Save"
+                size="md"
+                disabled={!modulesDirty || modulesMutation.isPending || previewMutation.isPending}
+                loading={modulesMutation.isPending || previewMutation.isPending}
+                onPress={onSaveModules}
+                style={styles.actionPrimary}
+              />
+              {modulesDirty ? (
+                <Button
+                  testID="settings-modules-discard"
+                  label="Discard"
+                  variant="ghost"
+                  size="md"
+                  disabled={modulesMutation.isPending || previewMutation.isPending}
+                  onPress={discardModules}
+                />
+              ) : null}
+            </View>
+          </View>
         ) : null}
 
         {/* --- Members --- */}
-        <Card style={styles.card} elevated>
-          <Text variant="label" tone="secondary">
+        <View style={styles.section}>
+          <Text variant="caption" tone="muted" style={styles.sectionLabel}>
             Members
           </Text>
           <View style={styles.memberList}>
@@ -619,12 +746,12 @@ export default function ListSettings() {
               />
             ))}
           </View>
-        </Card>
+        </View>
 
         {/* --- Sources --- */}
         {sources.length > 0 ? (
-          <Card style={styles.card} elevated>
-            <Text variant="label" tone="secondary">
+          <View style={styles.section}>
+            <Text variant="caption" tone="muted" style={styles.sectionLabel}>
               Sources
             </Text>
             {sources.map((src) => {
@@ -669,12 +796,12 @@ export default function ListSettings() {
                 </View>
               );
             })}
-          </Card>
+          </View>
         ) : null}
 
         {/* --- Duplicate --- */}
-        <Card style={styles.card} elevated>
-          <Text variant="label" tone="secondary">
+        <View style={styles.section}>
+          <Text variant="caption" tone="muted" style={styles.sectionLabel}>
             Duplicate
           </Text>
           <Text tone="secondary">
@@ -690,12 +817,12 @@ export default function ListSettings() {
             disabled={duplicateMutation.isPending}
             onPress={() => duplicateMutation.mutate()}
           />
-        </Card>
+        </View>
 
         {/* --- Share link (owner-only) --- */}
         {isOwner ? (
-          <Card style={styles.card} elevated>
-            <Text variant="label" tone="secondary">
+          <View style={styles.section}>
+            <Text variant="caption" tone="muted" style={styles.sectionLabel}>
               Share link
             </Text>
             <Text tone="secondary">
@@ -754,42 +881,48 @@ export default function ListSettings() {
                 ))}
               </View>
             ) : null}
-          </Card>
+          </View>
         ) : null}
 
-        {isOwner ? (
-          <Card style={styles.card} elevated>
-            <Button
-              testID="settings-delete-list"
-              label="Delete list"
-              variant="danger"
-              size="md"
-              loading={archiveListMutation.isPending}
-              disabled={archiveListMutation.isPending}
-              onPress={() => archiveListMutation.mutate()}
-            />
-          </Card>
-        ) : (
-          <Card style={styles.card} elevated>
-            <Text variant="label" tone="secondary">
-              Leave list
-            </Text>
-            <Text tone="secondary">
-              Your upvotes will be removed but items you added will stay on the list.
-            </Text>
-            <Button
-              testID="settings-leave-list"
-              label="Leave list"
-              variant="danger"
-              size="md"
-              loading={removeMemberMutation.isPending}
-              disabled={!user || removeMemberMutation.isPending}
-              onPress={() => {
-                if (user) removeMemberMutation.mutate(user.id);
-              }}
-            />
-          </Card>
-        )}
+        <View style={[styles.section, styles.sectionDanger]}>
+          <Text variant="caption" tone="muted" style={styles.sectionLabel}>
+            Danger zone
+          </Text>
+          {isOwner ? (
+            <>
+              <Text tone="secondary">
+                Deleting archives the list and removes it from everyone&apos;s home. Items stay
+                recoverable but no one can see them.
+              </Text>
+              <Button
+                testID="settings-delete-list"
+                label="Delete list"
+                variant="danger"
+                size="md"
+                loading={archiveListMutation.isPending}
+                disabled={archiveListMutation.isPending}
+                onPress={() => archiveListMutation.mutate()}
+              />
+            </>
+          ) : (
+            <>
+              <Text tone="secondary">
+                Your upvotes will be removed. Items you added stay on the list.
+              </Text>
+              <Button
+                testID="settings-leave-list"
+                label="Leave list"
+                variant="danger"
+                size="md"
+                loading={removeMemberMutation.isPending}
+                disabled={!user || removeMemberMutation.isPending}
+                onPress={() => {
+                  if (user) removeMemberMutation.mutate(user.id);
+                }}
+              />
+            </>
+          )}
+        </View>
       </KeyboardAwareScrollView>
     </Screen>
   );
@@ -805,12 +938,16 @@ interface MemberRowProps {
 
 function MemberRow({ member, isCurrentUser, isOwner, disabled, onPress }: MemberRowProps) {
   const canActOn = isOwner && !isCurrentUser && member.role !== "owner";
+  const initial = (member.displayName?.trim()[0] ?? "·").toUpperCase();
   return (
     <View style={styles.memberRow} testID={`settings-member-${member.userId}`}>
+      <View style={styles.memberAvatar}>
+        <Text style={styles.memberAvatarText}>{initial}</Text>
+      </View>
       <View style={styles.memberInfo}>
         <Text variant="body" numberOfLines={1}>
           {member.displayName ?? "(no name)"}
-          {isCurrentUser ? " (you)" : ""}
+          {isCurrentUser ? " · you" : ""}
         </Text>
         <Text variant="caption" tone="muted">
           {member.role === "owner" ? "Owner" : "Member"}
@@ -869,19 +1006,58 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.xxl,
-    paddingBottom: tokens.space.md,
+    paddingBottom: tokens.space.lg,
   },
-  headerSpacer: { width: 40 },
+  headerIdentity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    flex: 1,
+    minWidth: 0,
+  },
+  headerEmoji: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerEmojiGlyph: { fontSize: 22, lineHeight: 26 },
+  headerText: { flex: 1, minWidth: 0, gap: 1 },
+  headerEyebrow: {
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   closeGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
   body: {
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
-    gap: tokens.space.lg,
   },
-  card: { gap: tokens.space.md },
+  section: {
+    gap: tokens.space.md,
+    paddingTop: tokens.space.xl,
+    paddingBottom: tokens.space.xl,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.border.subtle,
+  },
+  sectionDanger: {
+    marginTop: tokens.space.md,
+  },
+  sectionLabel: {
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   field: { gap: tokens.space.sm },
+  actionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    marginTop: tokens.space.xs,
+  },
+  actionPrimary: { flexShrink: 0 },
   input: {
     borderWidth: 1,
     borderColor: tokens.border.default,
@@ -933,6 +1109,22 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingVertical: tokens.space.sm,
     gap: tokens.space.md,
+  },
+  memberAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  memberAvatarText: {
+    color: tokens.text.primary,
+    fontSize: 13,
+    fontWeight: tokens.font.weight.semibold,
+    letterSpacing: 0.2,
   },
   memberInfo: { flex: 1, gap: 2 },
   inviteList: { gap: tokens.space.sm },
@@ -986,7 +1178,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#fff",
+    backgroundColor: tokens.text.primary,
   },
   toggleKnobOn: { transform: [{ translateX: 16 }] },
   warningBox: {
