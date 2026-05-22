@@ -17,7 +17,8 @@ import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
-import { getItem } from "../src/lib/storage";
+import { getItem, removeItem } from "../src/lib/storage";
+import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
 import { ThemeProvider, ToastProvider, tokens } from "../src/ui/index";
 
 function useApplyOtaUpdatesOnArrival() {
@@ -82,10 +83,17 @@ function AuthGate() {
       postSignInResolvedRef.current = false;
     }
 
+    // `/list/:id` (no trailing subroute) is the public-landing entry point;
+    // signed-out visitors should see the landing page itself, not get
+    // bounced to /sign-in. Subroutes like `/list/:id/settings` remain
+    // member-only and fall through to the normal gate.
+    const onListLanding = first === "list" && segments.length === 2;
+
     if (status === "signed-out") {
-      // Let `/invite/:token` and `/onboarding/accept-invite` mount briefly so
-      // they can stash the token before AuthGate forwards to /sign-in.
-      if (!onSignIn && !onInvite && !onAcceptInvite) {
+      // Let `/invite/:token`, `/onboarding/accept-invite`, and the public
+      // list landing mount briefly so they can stash a return target
+      // before AuthGate forwards to /sign-in.
+      if (!onSignIn && !onInvite && !onAcceptInvite && !onListLanding) {
         router.replace("/sign-in");
       }
       return;
@@ -102,14 +110,26 @@ function AuthGate() {
 
     // Consult the invite stash before bouncing to home so a user who arrived
     // via an invite link lands on the list they were invited to. The
-    // accept-invite screen owns the eventual `removeItem` call.
+    // accept-invite screen owns the eventual `removeItem` call. If no invite
+    // stash, also check the return-path stash (set by `ListPublicLanding`
+    // when an unauthed visitor signs in from the per-list landing page) so
+    // they land back on `/list/:id` instead of home.
     (async () => {
       const stashed = await getItem(PENDING_INVITE_TOKEN_KEY).catch(() => null);
       if (stashed) {
         router.replace(`/onboarding/accept-invite?token=${encodeURIComponent(stashed)}`);
-      } else {
-        router.replace("/");
+        return;
       }
+      const returnPath = await getItem(PENDING_RETURN_PATH_KEY).catch(() => null);
+      if (returnPath?.startsWith("/list/")) {
+        await removeItem(PENDING_RETURN_PATH_KEY).catch(() => {});
+        // expo-router's typed routes don't narrow a runtime string to the
+        // template-literal `/list/${string}` form. We've already verified
+        // the prefix, so the cast is safe.
+        router.replace(returnPath as `/list/${string}`);
+        return;
+      }
+      router.replace("/");
     })();
   }, [status, segments, router]);
 

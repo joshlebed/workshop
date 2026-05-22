@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { signSession } from "../../lib/session.js";
-import { __test, listRoutes } from "./lists.js";
+import { __test, listRoutes, publicListRoutes } from "./lists.js";
 
 beforeAll(() => {
   process.env.STAGE = "local";
@@ -449,5 +449,25 @@ describe("itemKind tightening (PATCH shape)", () => {
   it("accepts a no-op itemKind in the patch (idempotent)", () => {
     const r = updateListSchema.safeParse({ itemKind: "movie" });
     expect(r.success).toBe(true);
+  });
+});
+
+describe("publicListRoutes (no auth)", () => {
+  it("GET /lists/:id/preview does not require a bearer token", async () => {
+    // A malformed id bails at the uuid guard before any DB access, so this
+    // exercises that the route sits outside requireAuth without needing a
+    // live DB. A 401 would mean we accidentally mounted it under auth.
+    const res = await publicListRoutes.request("/lists/not-a-uuid/preview");
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("GET /lists/:id/preview accepts an invalid bearer (downgrades to anonymous)", async () => {
+    const res = await publicListRoutes.request("/lists/not-a-uuid/preview", {
+      headers: { Authorization: "Bearer not-a-real-token" },
+    });
+    // Still hits the uuid guard and returns 404 — but proves the inline
+    // bearer check doesn't reject the request.
+    expect(res.status).toBe(404);
   });
 });

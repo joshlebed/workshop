@@ -12,7 +12,7 @@ import { authRoutes } from "./routes/v1/auth.js";
 import { inviteRoutes, publicInviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
 import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
-import { listRoutes } from "./routes/v1/lists.js";
+import { listRoutes, publicListRoutes } from "./routes/v1/lists.js";
 import { memberRoutes } from "./routes/v1/members.js";
 import { itemScoreRoutes, listScoresRoutes } from "./routes/v1/scores.js";
 import { searchRoutes } from "./routes/v1/search.js";
@@ -84,6 +84,7 @@ export function buildApp() {
 
   app.route("/v1/auth", authRoutes);
   app.route("/v1/users", userRoutes);
+  app.route("/v1", publicListRoutes);
   app.route("/v1/lists", listRoutes);
   app.route("/v1/lists", memberRoutes);
   app.route("/v1/lists", listScoresRoutes);

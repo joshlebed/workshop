@@ -217,6 +217,32 @@ export interface ListDetailResponse {
   sources: ListSource[];
 }
 
+/**
+ * Safe metadata subset exposed at `GET /v1/lists/:id/preview` for users who
+ * land on a list share URL without being a member yet. Mirrors the invite
+ * preview shape (name/emoji/color/owner/counts) and deliberately omits any
+ * member identities or item content — those are member-only. `viewer.isMember`
+ * lets the client pick which landing-page CTA to render.
+ */
+export interface ListPreview {
+  id: string;
+  name: string;
+  emoji: string;
+  color: ListColor;
+  description: string | null;
+  ownerName: string | null;
+  itemCount: number;
+  memberCount: number;
+}
+
+export interface ListPreviewResponse {
+  preview: ListPreview;
+  viewer: {
+    authenticated: boolean;
+    isMember: boolean;
+  };
+}
+
 // --- Items ---
 
 export interface Item {
