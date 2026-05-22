@@ -76,7 +76,8 @@ Per-symptom recovery (TestFlight, EAS, CORS preflights, etc.) lives in
 - `variables.tf` / `locals.tf` / `outputs.tf` — inputs / derived / outputs
 - `ssm.tf` — SSM SecureString params
 - `lambda.tf` — Lambda function + role + log group (code replaced by CI)
-- `apigateway.tf` — HTTP API Gateway, catch-all → Lambda (CORS allowMethods lives here)
+- `apigateway.tf` — HTTP API Gateway, catch-all → Lambda. No edge CORS — Hono in
+  the Lambda handles preflights so origin matching can be dynamic.
 - `iam_github_oidc.tf` — OIDC roles for GitHub Actions
 - `niteshift.tf` — IAM role for Niteshift sandbox access
 - `budgets.tf` — $5/month cost alert

@@ -29,6 +29,26 @@ const clientIp: RateLimitKeyFn = (c) => {
   return c.req.header("x-real-ip") ?? "unknown";
 };
 
+// CORS allowlist. Native clients send no Origin and are unaffected; this only
+// constrains browsers. Cloudflare Pages branch previews and localhost dev are
+// allowed. The Niteshift sandbox web app proxies through `/api` same-origin
+// (see apps/workshop/src/config.ts), so its preview host isn't listed here.
+const STATIC_ALLOWED_ORIGINS = new Set<string>([
+  "https://workshop-a2v.pages.dev",
+  "http://localhost:8081",
+  "http://localhost:8787",
+  "http://127.0.0.1:8081",
+]);
+
+const ALLOWED_ORIGIN_PATTERNS: readonly RegExp[] = [
+  /^https:\/\/[a-z0-9-]+\.workshop-a2v\.pages\.dev$/,
+];
+
+export function isAllowedOrigin(origin: string): boolean {
+  if (STATIC_ALLOWED_ORIGINS.has(origin)) return true;
+  return ALLOWED_ORIGIN_PATTERNS.some((p) => p.test(origin));
+}
+
 export function buildApp() {
   const app = new Hono();
 
@@ -39,7 +59,7 @@ export function buildApp() {
   app.use(
     "*",
     cors({
-      origin: (origin) => origin ?? "*",
+      origin: (origin) => (origin && isAllowedOrigin(origin) ? origin : null),
       allowHeaders: [
         "Content-Type",
         "Authorization",

@@ -71,14 +71,18 @@ The home bell badge is `sum(list.unreadCount across non-muted lists)` from
 derivation — it has no per-list granularity, and a single `/activity` visit clears
 everything.
 
-## CORS `allowMethods` is a whitelist in three places — update all three
+## CORS lives in Hono — and the allowed-origin list is a whitelist
 
-1. Hono's `cors()` in `src/app.ts`.
-2. API Gateway HTTP API's `cors_configuration.allow_methods` in
-   `infra/apigateway.tf` — API Gateway answers OPTIONS preflights at the edge before
-   Lambda sees them; a missing verb here silently breaks the preflight regardless of
-   Hono.
-3. `apiRequest`'s `method` union in `apps/workshop/src/lib/api.ts`.
+Single source of truth: `cors()` in `src/app.ts`. API Gateway intentionally has **no**
+`cors_configuration` block so OPTIONS preflights fall through to Lambda and Hono
+answers them — that's the only place dynamic origin matching (Cloudflare Pages branch
+previews) can happen.
+
+When adding a new HTTP verb, also update `apiRequest`'s `method` union in
+`apps/workshop/src/lib/api.ts`. When allowing a new web origin, add it to
+`STATIC_ALLOWED_ORIGINS` (or `ALLOWED_ORIGIN_PATTERNS` for wildcards) in `src/app.ts`.
+**Never** widen to `*` with `credentials: true` — that reflects every origin and
+defeats CORS as a defense against cross-site reads.
 
 Verify:
 

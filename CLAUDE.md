@@ -97,12 +97,13 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `useShareIntent()` in `_layout.tsx`; score shares often need `shareIntent.text` even when
   `shareIntent.webUrl` is also present. `/share` owns the top-level choice, `/share/pick-list`
   handles normal item adds, and `/share/pick-leaderboard` handles score posting.
-- **CORS `allowMethods` is a whitelist in three places** — update all three:
-  1. Hono's `cors()` in `apps/backend/src/app.ts`.
-  2. API Gateway HTTP API's `cors_configuration.allow_methods` in `infra/apigateway.tf` —
-     API Gateway answers OPTIONS preflights at the edge before Lambda sees them, so a missing
-     verb here silently breaks the preflight regardless of Hono.
-  3. `apiRequest`'s `method` union in `apps/workshop/src/lib/api.ts`.
+- **CORS is owned by Hono — two places to update.** API Gateway has **no**
+  `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
+  dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:
+  update `cors()` in `apps/backend/src/app.ts` **and** the `apiRequest` `method` union
+  in `apps/workshop/src/lib/api.ts`. When allowing a new web origin: extend
+  `STATIC_ALLOWED_ORIGINS` / `ALLOWED_ORIGIN_PATTERNS` in `apps/backend/src/app.ts`.
+  Never widen to `*` with `credentials: true`.
 
   Verify: `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`.
 
@@ -459,7 +460,7 @@ pnpm dev:mobile   # iOS/Expo Go — separate terminal (QR/keybinds)
 `pnpm dev` runs `scripts/dev.sh`: starts `workshop-pg` postgres, seeds `apps/backend/.env`
 on first run (generates `SESSION_SECRET`), applies migrations, runs dev seed, then
 `concurrently` runs backend + `expo start --web` with `[backend]`/`[web]` prefixes. Ctrl-C
-stops both. `app.json` points `apiUrl` at `http://localhost:8787`; backend CORS is `origin: "*"`.
+stops both. `app.json` points `apiUrl` at `http://localhost:8787`; backend CORS allowlist already includes `http://localhost:8081`.
 
 ### Database in the Niteshift sandbox
 
