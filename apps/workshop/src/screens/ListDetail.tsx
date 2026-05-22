@@ -32,7 +32,6 @@ import { fetchListScores } from "../api/scores";
 import { syncSource } from "../api/sources";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
-import { albumShelfErrorMessage } from "../lib/albumShelfErrors";
 import { applyOptimisticMove, neighborsForOrderedReorder } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { confirm } from "../lib/confirm";
@@ -42,6 +41,7 @@ import { haptics } from "../lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
+import { sourceErrorMessage } from "../lib/sourceErrors";
 import { Button, EmptyState, type ListColorKey, Screen, Text, tokens, useToast } from "../ui/index";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
@@ -161,7 +161,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
     },
     onError: (e) => {
       showToast({
-        message: albumShelfErrorMessage(e, "Couldn't refresh — try again?"),
+        message: sourceErrorMessage(e, "Couldn't refresh — try again?"),
         tone: "danger",
       });
     },
@@ -620,7 +620,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
               title="Couldn't load list"
               description={
                 isSpotifyShelf
-                  ? albumShelfErrorMessage(itemsQuery.error, "Unknown error")
+                  ? sourceErrorMessage(itemsQuery.error, "Unknown error")
                   : errorMessage(itemsQuery.error)
               }
               action={

@@ -135,6 +135,64 @@ describe("parseLetterboxdListHtml", () => {
   it("returns an empty array on a page with no film blocks", () => {
     expect(parseLetterboxdListHtml("<html><body>Empty</body></html>")).toEqual([]);
   });
+
+  // ---- Modern (LazyPoster) shape ----
+  //
+  // Letterboxd's React rebuild emits LazyPoster react-component divs with
+  // `data-item-slug` + `data-item-name` (the latter carries `Title (YYYY)`).
+  // Both shapes co-exist across pages as of 2026-05; the parser handles
+  // either.
+  it("extracts a film from the modern LazyPoster shape", () => {
+    const html = `
+      <li>
+        <div class="react-component"
+             data-component-class="LazyPoster"
+             data-item-name="Dune: Part Two (2024)"
+             data-item-slug="dune-part-two"
+             data-item-link="/film/dune-part-two/">
+        </div>
+      </li>
+    `;
+    const films = parseLetterboxdListHtml(html);
+    expect(films).toHaveLength(1);
+    expect(films[0]).toMatchObject({
+      slug: "dune-part-two",
+      title: "Dune: Part Two",
+      year: 2024,
+      letterboxdUrl: "https://letterboxd.com/film/dune-part-two/",
+    });
+  });
+
+  it("handles a modern entry whose name has no year", () => {
+    const html = `
+      <div class="react-component" data-component-class="LazyPoster"
+        data-item-name="Ray Gunn" data-item-slug="ray-gunn" data-item-link="/film/ray-gunn/"></div>
+    `;
+    const films = parseLetterboxdListHtml(html);
+    expect(films[0]?.title).toBe("Ray Gunn");
+    expect(films[0]?.year).toBeNull();
+  });
+
+  it("falls back to data-item-link when data-item-slug is missing", () => {
+    const html = `
+      <div class="react-component" data-component-class="LazyPoster"
+        data-item-name="Arrival (2016)" data-item-link="/film/arrival/"></div>
+    `;
+    const films = parseLetterboxdListHtml(html);
+    expect(films[0]?.slug).toBe("arrival");
+  });
+
+  it("dedupes a film that appears in both modern and legacy shapes on one page", () => {
+    const html = `
+      <div class="react-component" data-component-class="LazyPoster"
+        data-item-name="Dune (2021)" data-item-slug="dune" data-item-link="/film/dune/"></div>
+      <li class="poster-container">
+        <div data-film-slug="dune" data-film-name="Dune" data-film-release-year="2021"></div>
+      </li>
+    `;
+    const films = parseLetterboxdListHtml(html);
+    expect(films).toHaveLength(1);
+  });
 });
 
 // --- previewLetterboxdList (route helper) ---

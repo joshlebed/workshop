@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ListColor } from "@workshop/shared";
+import type { ListColor, SourcePreview } from "@workshop/shared";
+import type { SourceKind } from "@workshop/shared/sourceKinds";
 import { LIST_TEMPLATES, type ListTemplate } from "@workshop/shared/templates";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -8,9 +9,9 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboa
 import { createList } from "../../src/api/lists";
 import { previewSource } from "../../src/api/sources";
 import { useAuth } from "../../src/hooks/useAuth";
-import { albumShelfErrorMessage } from "../../src/lib/albumShelfErrors";
 import { goBack } from "../../src/lib/goBack";
 import { queryKeys } from "../../src/lib/queryKeys";
+import { sourceErrorMessage } from "../../src/lib/sourceErrors";
 import { Button, Card, IconButton, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
 function pickString(v: string | string[] | undefined): string {
@@ -21,6 +22,56 @@ function lookupTemplate(id: string): ListTemplate {
   return (
     LIST_TEMPLATES.find((t) => t.id === id) ?? LIST_TEMPLATES.find((t) => t.id === "album_shelf")!
   );
+}
+
+// Per-source-kind copy + payload shape. New source kinds add an entry here;
+// the screen body is otherwise kind-agnostic.
+interface SourceCopy {
+  lead: string;
+  defaultPrompt: string;
+  fieldLabel: string;
+  placeholder: string;
+  hint: string;
+  submitLabel: string;
+  checkingLabel: string;
+  errorFallback: string;
+  createErrorFallback: string;
+}
+
+const SOURCE_COPY: Record<SourceKind, SourceCopy> = {
+  spotify_playlist: {
+    lead: "Point us at a playlist",
+    defaultPrompt:
+      "Paste a public Spotify playlist URL. Your shelf will pull every album it references.",
+    fieldLabel: "Playlist URL",
+    placeholder: "https://open.spotify.com/playlist/…",
+    hint: "No Spotify sign-in needed. Private playlists won't work.",
+    submitLabel: "Create shelf",
+    checkingLabel: "Checking playlist…",
+    errorFallback: "Couldn't read that playlist. Try again?",
+    createErrorFallback: "Couldn't create the album shelf",
+  },
+  letterboxd_list: {
+    lead: "Point us at a list",
+    defaultPrompt:
+      "Paste a public Letterboxd list URL. Workshop will mirror it as a watchlist, enriched via TMDB.",
+    fieldLabel: "Letterboxd URL",
+    placeholder: "https://letterboxd.com/<user>/list/<slug>/",
+    hint: "No Letterboxd sign-in needed. Private lists won't work.",
+    submitLabel: "Create watchlist",
+    checkingLabel: "Checking list…",
+    errorFallback: "Couldn't read that list. Try again?",
+    createErrorFallback: "Couldn't create the watchlist",
+  },
+};
+
+function buildConfig(kind: SourceKind, rawUrl: string): Record<string, unknown> {
+  switch (kind) {
+    case "spotify_playlist":
+      return { spotifyPlaylistUrl: rawUrl };
+    case "letterboxd_list":
+      return { letterboxdUrl: rawUrl };
+  }
 }
 
 const PREVIEW_DEBOUNCE_MS = 500;
@@ -39,6 +90,12 @@ export default function CreateListPlaylist() {
   const { showToast } = useToast();
 
   const template = lookupTemplate(pickString(params.template));
+  // The customize step only routes us here if the template declares a source.
+  // Fall through to spotify_playlist if a stale link arrives without one so
+  // we never crash; the create call below would just no-op.
+  const sourceKind: SourceKind = template.requiresSource?.kind ?? "spotify_playlist";
+  const copy = SOURCE_COPY[sourceKind];
+
   const name = pickString(params.name);
   const emoji = pickString(params.emoji);
   const color = (pickString(params.color) || template.defaults.color) as ListColor;
@@ -53,12 +110,12 @@ export default function CreateListPlaylist() {
   }, [trimmedUrl]);
 
   const previewQuery = useQuery({
-    queryKey: queryKeys.albumShelf.preview(debouncedUrl),
+    queryKey: queryKeys.sourcePreview.forKind(sourceKind, debouncedUrl),
     queryFn: () =>
       previewSource(
         {
-          kind: "spotify_playlist",
-          config: { spotifyPlaylistUrl: debouncedUrl },
+          kind: sourceKind,
+          config: buildConfig(sourceKind, debouncedUrl),
         },
         token,
       ),
@@ -68,14 +125,10 @@ export default function CreateListPlaylist() {
   });
 
   const previewError = previewQuery.isError
-    ? albumShelfErrorMessage(
-        previewQuery.error,
-        "Couldn't read that playlist. Try again?",
-        "creation",
-      )
+    ? sourceErrorMessage(previewQuery.error, copy.errorFallback, "creation")
     : null;
-  const preview =
-    previewQuery.isSuccess && previewQuery.data.preview.kind === "spotify_playlist"
+  const preview: SourcePreview | null =
+    previewQuery.isSuccess && previewQuery.data.preview.kind === sourceKind
       ? previewQuery.data.preview
       : null;
   const previewing = previewQuery.isFetching && !previewQuery.isSuccess;
@@ -94,8 +147,8 @@ export default function CreateListPlaylist() {
           ...(description.length > 0 ? { description } : {}),
           sources: [
             {
-              kind: "spotify_playlist",
-              config: { spotifyPlaylistUrl: trimmedUrl },
+              kind: sourceKind,
+              config: buildConfig(sourceKind, trimmedUrl),
             },
           ],
         },
@@ -108,7 +161,7 @@ export default function CreateListPlaylist() {
     },
     onError: (e) => {
       showToast({
-        message: albumShelfErrorMessage(e, "Couldn't create the album shelf", "creation"),
+        message: sourceErrorMessage(e, copy.createErrorFallback, "creation"),
         tone: "danger",
       });
     },
@@ -120,7 +173,7 @@ export default function CreateListPlaylist() {
         <IconButton
           accessibilityLabel="Back"
           onPress={() => goBack("/create-list/type")}
-          testID="album-shelf-playlist-back"
+          testID="source-playlist-back"
         >
           <Text style={styles.backGlyph}>‹</Text>
         </IconButton>
@@ -141,23 +194,22 @@ export default function CreateListPlaylist() {
       >
         <View style={styles.intro}>
           <Text variant="title" style={styles.lead}>
-            Point us at a playlist
+            {copy.lead}
           </Text>
           <Text tone="secondary" style={styles.tagline}>
-            {template.requiresSource?.promptCopy ??
-              "Paste a public Spotify playlist URL. Your shelf will pull every album it references."}
+            {template.requiresSource?.promptCopy ?? copy.defaultPrompt}
           </Text>
         </View>
 
         <View style={styles.field}>
           <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-            Playlist URL
+            {copy.fieldLabel}
           </Text>
           <TextInput
-            testID="album-shelf-playlist-url"
+            testID="source-playlist-url"
             value={url}
             onChangeText={setUrl}
-            placeholder="https://open.spotify.com/playlist/…"
+            placeholder={copy.placeholder}
             placeholderTextColor={tokens.text.muted}
             autoCapitalize="none"
             autoCorrect={false}
@@ -170,36 +222,26 @@ export default function CreateListPlaylist() {
             <View style={styles.previewStatus}>
               <ActivityIndicator color={tokens.text.muted} size="small" />
               <Text variant="caption" tone="muted">
-                Checking playlist…
+                {copy.checkingLabel}
               </Text>
             </View>
           ) : null}
           {!previewing && previewError ? (
-            <Text variant="caption" tone="danger" testID="album-shelf-playlist-error">
+            <Text variant="caption" tone="danger" testID="source-playlist-error">
               {previewError}
             </Text>
           ) : null}
           <Text variant="caption" tone="muted" style={styles.hint}>
-            No Spotify sign-in needed. Private playlists won't work.
+            {copy.hint}
           </Text>
         </View>
 
         {preview ? (
-          <Card style={styles.previewCard} elevated testID="album-shelf-playlist-preview">
+          <Card style={styles.previewCard} elevated testID="source-playlist-preview">
             <Text variant="caption" tone="muted" style={styles.previewKind}>
               Preview
             </Text>
-            <Text variant="heading" numberOfLines={1}>
-              {preview.name}
-            </Text>
-            {preview.ownerName ? (
-              <Text tone="secondary" numberOfLines={1}>
-                by {preview.ownerName}
-              </Text>
-            ) : null}
-            <Text variant="caption" tone="muted">
-              {preview.trackCount} {preview.trackCount === 1 ? "track" : "tracks"}
-            </Text>
+            <SourcePreviewBody preview={preview} />
           </Card>
         ) : null}
       </KeyboardAwareScrollView>
@@ -207,8 +249,8 @@ export default function CreateListPlaylist() {
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
         <View style={styles.footer}>
           <Button
-            testID="album-shelf-playlist-submit"
-            label="Create shelf"
+            testID="source-playlist-submit"
+            label={copy.submitLabel}
             size="lg"
             disabled={!canSubmit || mutation.isPending}
             loading={mutation.isPending}
@@ -217,6 +259,40 @@ export default function CreateListPlaylist() {
         </View>
       </KeyboardStickyView>
     </Screen>
+  );
+}
+
+function SourcePreviewBody({ preview }: { preview: SourcePreview }) {
+  if (preview.kind === "spotify_playlist") {
+    return (
+      <>
+        <Text variant="heading" numberOfLines={1}>
+          {preview.name}
+        </Text>
+        {preview.ownerName ? (
+          <Text tone="secondary" numberOfLines={1}>
+            by {preview.ownerName}
+          </Text>
+        ) : null}
+        <Text variant="caption" tone="muted">
+          {preview.trackCount} {preview.trackCount === 1 ? "track" : "tracks"}
+        </Text>
+      </>
+    );
+  }
+  // letterboxd_list
+  return (
+    <>
+      <Text variant="heading" numberOfLines={1}>
+        {preview.slug === "watchlist" ? `${preview.username}'s watchlist` : preview.slug}
+      </Text>
+      <Text tone="secondary" numberOfLines={1}>
+        by {preview.username}
+      </Text>
+      <Text variant="caption" tone="muted">
+        {preview.filmCount} {preview.filmCount === 1 ? "film" : "films"}
+      </Text>
+    </>
   );
 }
 
