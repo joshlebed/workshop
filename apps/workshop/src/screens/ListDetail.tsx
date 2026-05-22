@@ -41,6 +41,8 @@ import { haptics } from "../lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
+import { buildTodaysScoresSummary } from "../lib/scoresSummary";
+import { copyToClipboard } from "../lib/share";
 import { sourceErrorMessage } from "../lib/sourceErrors";
 import { Button, EmptyState, type ListColorKey, Screen, Text, tokens, useToast } from "../ui/index";
 import { ItemList } from "./listDetail/ItemList";
@@ -333,6 +335,29 @@ export function ListDetail({ list, members, sources, token }: Props) {
     });
   };
 
+  const onCopyTodaysScores = async () => {
+    const summary = buildTodaysScoresSummary({
+      listName: list.name,
+      items: [...orderedRaw, ...unorderedRaw, ...completedRaw],
+      scoresByItem: listScoresQuery.data?.scoresByItem ?? {},
+      selfId,
+      dateKey: todayKey,
+    });
+    if (!summary) {
+      showToast({
+        message: "No scores from you today yet — post one to share a recap.",
+        tone: "default",
+      });
+      return;
+    }
+    const ok = await copyToClipboard(summary);
+    if (ok) haptics.light();
+    showToast({
+      message: ok ? "Today's scores copied to clipboard" : "Couldn't copy — try again?",
+      tone: ok ? "success" : "danger",
+    });
+  };
+
   const [menuItem, setMenuItem] = useState<Item | null>(null);
   const [menuActions, setMenuActions] = useState<ItemRowMenuActions | null>(null);
   const closeMenu = () => {
@@ -516,6 +541,18 @@ export function ListDetail({ list, members, sources, token }: Props) {
                 ) : (
                   <Text style={styles.navGlyph}>↻</Text>
                 )}
+              </Pressable>
+            ) : null}
+            {isGameKind ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Copy today's scores to clipboard"
+                onPress={onCopyTodaysScores}
+                testID="list-detail-copy-scores"
+                hitSlop={10}
+                style={styles.navButton}
+              >
+                <Text style={styles.navGlyph}>⎘</Text>
               </Pressable>
             ) : null}
             <Pressable
