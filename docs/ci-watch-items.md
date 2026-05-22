@@ -46,7 +46,7 @@ The failing step is `Enqueue build + auto-submit` in the `enqueue` job (not
 
 If TestFlight fails for any other reason (signing, capabilities, EAS submit
 queue, App Store Connect 5xx), it's unrelated. Those are documented in
-`docs/recovery-runbook.md` and `CLAUDE.md` § "iOS deploy pipeline".
+`docs/recovery-runbook.md` and `docs/ios-deploy-pipeline.md`.
 
 Two signals confirming it's this change specifically:
 

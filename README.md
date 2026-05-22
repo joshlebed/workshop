@@ -1,72 +1,74 @@
 # workshop
 
-Josh's personal monorepo for apps, scripts, and experiments. The first product is an iOS app
-called **Workshop.dev** (`apps/workshop`), an umbrella that currently hosts a movie **watchlist**
-and will grow to include more small apps over time.
+Josh's personal monorepo for apps, scripts, and experiments. The first product is an
+iOS + web app called **Workshop.dev** (`apps/workshop`) — an umbrella for small
+products (currently lists, scores, leaderboards).
 
-- **Mobile**: Expo (React Native, TypeScript) — `apps/workshop`
+- **Mobile + web**: Expo (React Native, TypeScript) — `apps/workshop`
 - **Backend**: Hono on AWS Lambda + PostgreSQL on Neon — `apps/backend`
 - **Shared types**: `packages/shared`
+- **Cloudflare Pages Functions**: OG previews, AASA — `functions/`
 - **Infra**: Terraform on AWS, state in HCP Terraform — `infra/`
-- **CI/CD**: GitHub Actions — merge to `main` deploys the API and ships a JS OTA update to
-  phones via EAS Update.
+- **CI/CD**: GitHub Actions — merge to `main` deploys the API and ships a JS OTA via
+  EAS Update.
 
-## Quickstart (local dev)
+## Quickstart
 
 ```bash
 pnpm install
-./scripts/dev.sh                  # postgres (docker) + backend (leave running)
-                                  # also seeds a dev user with sample lists
+pnpm dev    # postgres (docker) + backend (:8787) + web (:8081)
+```
 
-# In a second terminal:
+Open <http://localhost:8081>. Web is the primary dev surface — fast iteration,
+agent-browser can drive the real UI. The web app auto-signs in as a seeded dev user
+(`joshlebed@gmail.com`) with sample lists already populated, so it opens lived-in.
+
+For iOS in Expo Go (separate terminal — Expo's interactive UI doesn't render cleanly
+next to streaming backend logs):
+
+```bash
 EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start
 ```
 
-Open Expo Go on your iPhone, scan the QR code from the second terminal. Sign in with any email —
-the 6-digit code prints in the backend terminal (local mode doesn't send real email).
-
-The first run of `./scripts/dev.sh` seeds the local DB with sample lists owned by
-`joshlebed@gmail.com` (the same user the web app auto-signs in as when
-`EXPO_PUBLIC_DEV_AUTH=1`), so the UI opens lived-in. The seed is idempotent and bails when
-the user already has lists; set `SEED_DEV_DATA=0` to skip, or run
-`pnpm --filter @workshop/backend run db:seed` manually.
-
-> Two terminals because Expo's interactive QR/keybind UI doesn't render cleanly next to streaming
-> backend logs.
+Scan the QR with Expo Go on a real phone, or press `i` for the iOS simulator.
 
 ## Commands
 
 ```bash
-pnpm run typecheck        # all packages
-pnpm run lint             # biome (auto-fixes on: pnpm run lint:fix)
-pnpm run test             # vitest
+pnpm run typecheck     # all packages
+pnpm run lint          # biome (auto-fix on: pnpm run lint:fix)
+pnpm run test          # vitest
+pnpm run knip          # unused-code detection (non-blocking)
 
 ./scripts/dev.sh                                          # local dev stack
 AWS_PROFILE=workshop-prod ./scripts/logs.sh               # tail prod Lambda logs
 AWS_PROFILE=workshop-prod ./scripts/db-connect.sh         # psql into prod Neon
-AWS_PROFILE=workshop-prod ./scripts/deploy.sh             # manual Lambda upload (CI does this automatically)
 ```
+
+## Deploying
+
+- **Daily**: merge to `main`. EAS Update ships JS-only changes to phones in ~60s;
+  Lambda + Pages deploy automatically.
+- **TestFlight**: triggered automatically when the iOS fingerprint changes. Force
+  manually with `gh workflow run testflight.yml --ref main --field force=true`.
 
 ## First-time setup
 
-See [`docs/manual-setup.md`](./docs/manual-setup.md) for the ordered checklist of external
-accounts (AWS, HCP Terraform, Expo, Apple Dev) and one-time configuration.
+See [`docs/manual-setup.md`](./docs/manual-setup.md) for the ordered checklist of
+external accounts (AWS, HCP Terraform, Expo, Apple Dev) and one-time configuration.
 
-If there's a `docs/plans/HANDOFF.md`, setup isn't finished — read that first.
-
-## Deploying to your phone
-
-- **Development (daily)**: Expo Go scans a QR code — no build needed. EAS Update ships JS-only
-  changes in ~60s after merge to `main`.
-- **TestFlight (share with friends)**: run `pnpm --filter workshop-app run eas:build:ios` from
-  your laptop (needs Apple 2FA). Then `pnpm --filter workshop-app run eas:submit:ios` pushes the
-  build to App Store Connect TestFlight. From there, promote to "External Testers" and generate a
-  public link.
+If `docs/plans/HANDOFF.md` exists, setup isn't finished — read that first.
 
 ## Decisions
 
-See [`docs/decisions.md`](./docs/decisions.md) for architectural choices (why Lambda over EC2,
-why Neon over RDS, how this prototype is set up to stay on free tiers).
+See [`docs/decisions.md`](./docs/decisions.md) for architectural choices (why Lambda
+over EC2, why Neon over RDS, how this prototype stays on free tiers).
+
+## For coding agents
+
+Start at [`CLAUDE.md`](./CLAUDE.md). It points at the area-specific guides
+(`apps/workshop/CLAUDE.md`, `apps/backend/CLAUDE.md`, `infra/CLAUDE.md`,
+`functions/CLAUDE.md`) and the reference docs in `docs/`.
 
 ## Contributing
 
