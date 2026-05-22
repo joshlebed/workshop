@@ -35,7 +35,7 @@ import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
 import { buildTodaysScoresSummary } from "../lib/scoresSummary";
-import { copyToClipboard } from "../lib/share";
+import { buildListShareUrl, copyToClipboard } from "../lib/share";
 import { sourceErrorMessage } from "../lib/sourceErrors";
 import { Button, EmptyState, type ListColorKey, Screen, Text, tokens, useToast } from "../ui/index";
 import { ItemList } from "./listDetail/ItemList";
@@ -313,6 +313,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const onCopyTodaysScores = async () => {
     const summary = buildTodaysScoresSummary({
       listName: list.name,
+      listUrl: buildListShareUrl(list.id),
       items: [...orderedRaw, ...unorderedRaw, ...completedRaw],
       scoresByItem: listScoresQuery.data?.scoresByItem ?? {},
       selfId,

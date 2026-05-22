@@ -5,6 +5,7 @@ import type {
   DuplicateListRequest,
   ListDetailResponse,
   ListListResponse,
+  ListPreviewResponse,
   ListResponse,
   UpdateListRequest,
 } from "@workshop/shared";
@@ -16,6 +17,20 @@ export function fetchLists(token: string | null): Promise<ListListResponse> {
 
 export function fetchListDetail(id: string, token: string | null): Promise<ListDetailResponse> {
   return apiRequest<ListDetailResponse>({ method: "GET", path: `/v1/lists/${id}`, token });
+}
+
+/**
+ * Public per-list preview — safe to fetch without a bearer token. Returns
+ * the list's name/emoji/owner/counts plus `viewer.isMember`, so the public
+ * landing page can pick the right CTA for unauthed visitors, authed
+ * non-members, or authed members who arrived here by accident.
+ */
+export function fetchListPreview(id: string, token: string | null): Promise<ListPreviewResponse> {
+  return apiRequest<ListPreviewResponse>({
+    method: "GET",
+    path: `/v1/lists/${id}/preview`,
+    token,
+  });
 }
 
 export function createList(body: CreateListRequest, token: string | null): Promise<ListResponse> {

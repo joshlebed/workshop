@@ -3,6 +3,7 @@ import type {
   List,
   ListColor,
   ListMemberSummary,
+  ListPreview,
   ListSource,
   ListSummary,
   MemberRole,
@@ -30,6 +31,7 @@ import { inspectModuleChange } from "../../lib/moduleManifests.js";
 import { requireCapability } from "../../lib/permissions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { verifySession } from "../../lib/session.js";
 import { dispatchFor } from "../../lib/sources/registry.js";
 import { executeRows } from "../../lib/sql.js";
 import { requireAuth } from "../../middleware/auth.js";
@@ -46,7 +48,18 @@ import {
 
 export const listRoutes = new Hono();
 
+/**
+ * Public, unauthenticated subset of the list surface — currently just
+ * `GET /lists/:id/preview`, the landing-page metadata for someone who
+ * clicked a per-list share URL without being a member yet. Mounted
+ * separately so it sits outside `requireAuth`; same pattern as
+ * `publicInviteRoutes` in `./invites.ts`.
+ */
+export const publicListRoutes = new Hono();
+
 listRoutes.use("*", requireAuth);
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const listColors = ["sunset", "ocean", "forest", "grape", "rose", "sand", "slate"] as const;
 
@@ -164,6 +177,93 @@ function toListShape(l: DbList): List {
     updatedAt: l.updatedAt.toISOString(),
   };
 }
+
+// --- GET /v1/lists/:id/preview (public; landing for non-members) ---
+
+/**
+ * Safe metadata exposed at the per-list share URL (`/list/:id`). Returned
+ * to anyone, signed in or not, regardless of membership — enables the web
+ * landing page to show "what is this list?" before/instead of letting them
+ * in. Mirrors `/v1/invites/:token/preview`: name/emoji/owner/counts only;
+ * no member identities, no items.
+ *
+ * `viewer.authenticated` reflects whether a valid bearer was supplied;
+ * `viewer.isMember` lets the client pick the right CTA (sign in vs. ask
+ * to join vs. open the list) without an extra round trip. We do the auth
+ * check inline rather than via `requireAuth` so an absent/invalid token
+ * downgrades to anonymous instead of 401-ing.
+ *
+ * Archived lists are not previewable — the partial-index discipline that
+ * filters them out of every other read path applies here too. 404 then,
+ * same as a missing or malformed id.
+ */
+publicListRoutes.get("/lists/:id/preview", async (c) => {
+  const listId = c.req.param("id");
+  if (!UUID_RE.test(listId)) {
+    return err(c, "NOT_FOUND", "list not found");
+  }
+
+  const db = getDb();
+  const [list] = await db
+    .select()
+    .from(lists)
+    .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
+    .limit(1);
+  if (!list) {
+    return err(c, "NOT_FOUND", "list not found");
+  }
+
+  const [owner] = await db
+    .select({ displayName: users.displayName })
+    .from(users)
+    .where(eq(users.id, list.ownerId))
+    .limit(1);
+
+  const countRows = await executeRows<{ item_count: number; member_count: number }>(
+    db,
+    sql`
+      SELECT
+        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = ${list.id} AND i.archived_at IS NULL) AS item_count,
+        (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = ${list.id}) AS member_count
+    `,
+  );
+  const counts = countRows[0] ?? { item_count: 0, member_count: 0 };
+
+  let viewerUserId: string | null = null;
+  const header = c.req.header("Authorization");
+  if (header?.startsWith("Bearer ")) {
+    const token = header.slice("Bearer ".length).trim();
+    if (token.length > 0) {
+      viewerUserId = verifySession(token)?.userId ?? null;
+    }
+  }
+
+  let isMember = false;
+  if (viewerUserId) {
+    const [m] = await db
+      .select({ userId: listMembers.userId })
+      .from(listMembers)
+      .where(and(eq(listMembers.listId, list.id), eq(listMembers.userId, viewerUserId)))
+      .limit(1);
+    isMember = !!m;
+  }
+
+  const preview: ListPreview = {
+    id: list.id,
+    name: list.name,
+    emoji: list.emoji,
+    color: list.color as ListColor,
+    description: list.description,
+    ownerName: owner?.displayName ?? null,
+    itemCount: Number(counts.item_count),
+    memberCount: Number(counts.member_count),
+  };
+
+  return ok(c, {
+    preview,
+    viewer: { authenticated: viewerUserId !== null, isMember },
+  });
+});
 
 function toSourceShape(s: DbListSource): ListSource {
   return {

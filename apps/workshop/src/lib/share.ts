@@ -23,6 +23,16 @@ export function buildInviteShareUrl(token: string): string {
 }
 
 /**
+ * Stable per-list URL. Members open it into the list; non-members get the
+ * public landing page (`ListPublicLanding`). iOS Universal Links already
+ * routes `/list/:id` into the app, so this works in both iMessage previews
+ * and a regular browser.
+ */
+export function buildListShareUrl(listId: string): string {
+  return `${readShareBase()}/list/${encodeURIComponent(listId)}`;
+}
+
+/**
  * Best-effort clipboard copy. Returns whether the write actually succeeded so
  * callers can show "Copied" vs. "Copy manually".
  */
