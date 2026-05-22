@@ -1,7 +1,7 @@
 /**
  * Seed dev data — populates the local Postgres with a "lived-in" set of lists,
- * items, members, upvotes, and activity events so an agent or human running
- * `pnpm dev` (or the Niteshift sandbox setup script) lands on a non-empty UI.
+ * items, members, and activity events so an agent or human running `pnpm dev`
+ * (or the Niteshift sandbox setup script) lands on a non-empty UI.
  *
  * Tied to the web app's auto-dev-sign-in user (`joshlebed@gmail.com`).
  * Idempotent: if the seed user already owns lists, exits without touching the
@@ -21,7 +21,6 @@ import {
   activityEvents,
   itemScores,
   items,
-  itemUpvotes,
   listMembers,
   lists,
   userIdentities,
@@ -111,7 +110,7 @@ async function main() {
       description: "Saturday picks before they leave the theatre.",
       sharedWithFriend: true,
       itemKind: "movie",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       items: [
         {
           title: "Dune: Part Two",
@@ -156,7 +155,7 @@ async function main() {
       emoji: "📺",
       color: "ocean",
       itemKind: "tv",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       items: [
         {
           title: "Severance",
@@ -186,7 +185,7 @@ async function main() {
       color: "forest",
       description: "On the nightstand.",
       itemKind: "book",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       items: [
         {
           title: "The Three-Body Problem",
@@ -229,7 +228,7 @@ async function main() {
       color: "rose",
       sharedWithFriend: true,
       itemKind: "link",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       items: [
         {
           title: "Sunset hike at Twin Peaks",
@@ -251,7 +250,7 @@ async function main() {
       emoji: "✈️",
       color: "sand",
       itemKind: "link",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       items: [
         { title: "Tokyo cherry blossoms", note: "Late March / early April", position: 1024 },
         { title: "Lisbon weekend", note: "Stay in Alfama.", position: 2048 },
@@ -263,7 +262,7 @@ async function main() {
       color: "slate",
       sharedWithFriend: true,
       itemKind: "link",
-      modules: ["voting", "leaderboard", "ranking"],
+      modules: ["leaderboard", "ranking"],
       items: [
         {
           title: "maptap",
@@ -301,20 +300,6 @@ async function main() {
           position: 5120,
           content: { siteName: "dailytens.com" },
         },
-      ],
-    },
-    {
-      name: "Quick Poll",
-      emoji: "🗳️",
-      color: "grape",
-      description: "Best post-dinner activity for Saturday?",
-      sharedWithFriend: true,
-      itemKind: "plain",
-      modules: ["voting"],
-      items: [
-        { title: "Movie night" },
-        { title: "Game night" },
-        { title: "Walk to the dessert place" },
       ],
     },
   ];
@@ -400,20 +385,6 @@ async function main() {
           listId: list.id,
           actorId: previewId,
           eventType: "item_completed",
-          itemId: item.id,
-          payload: { title: item.title },
-        });
-      }
-
-      if (fixture.sharedWithFriend && fixture.items.indexOf(seedItem) === 0) {
-        await db.insert(itemUpvotes).values({
-          itemId: item.id,
-          userId: friendId,
-        });
-        await db.insert(activityEvents).values({
-          listId: list.id,
-          actorId: friendId,
-          eventType: "item_upvoted",
           itemId: item.id,
           payload: { title: item.title },
         });

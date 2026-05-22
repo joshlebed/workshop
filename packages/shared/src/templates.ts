@@ -33,10 +33,10 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
   {
     id: "movie_watchlist",
     displayName: "Movie Watchlist",
-    description: "Films to catch — vote, complete, drag to rank.",
+    description: "Films to catch — complete, drag to rank.",
     defaults: {
       itemKind: "movie",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       emoji: "🎬",
       color: "sunset",
     },
@@ -47,7 +47,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     description: "Shows to start, in your order.",
     defaults: {
       itemKind: "tv",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       emoji: "📺",
       color: "ocean",
     },
@@ -58,7 +58,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     description: "Books to read, by hand-rank or whim.",
     defaults: {
       itemKind: "book",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       emoji: "📚",
       color: "forest",
     },
@@ -69,7 +69,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     description: "Places, links, shared favorites.",
     defaults: {
       itemKind: "link",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       emoji: "💜",
       color: "rose",
     },
@@ -80,7 +80,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     description: "Stops on an upcoming trip.",
     defaults: {
       itemKind: "link",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
       emoji: "✈️",
       color: "sand",
     },
@@ -88,10 +88,10 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
   {
     id: "album_shelf",
     displayName: "Album Shelf",
-    description: "Mirrors a public Spotify playlist into a vote-and-rank shelf.",
+    description: "Mirrors a public Spotify playlist into a rankable shelf.",
     defaults: {
       itemKind: "spotify_album",
-      modules: ["voting", "ranking", "sources"],
+      modules: ["ranking", "sources"],
       emoji: "💿",
       color: "grape",
     },
@@ -106,7 +106,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     description: "Daily puzzles with shared leaderboards.",
     defaults: {
       itemKind: "link",
-      modules: ["voting", "leaderboard", "ranking"],
+      modules: ["leaderboard", "ranking"],
       emoji: "🎮",
       color: "slate",
     },
@@ -117,24 +117,13 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     description: "Mirrors a public Letterboxd list — films land enriched via TMDB.",
     defaults: {
       itemKind: "movie",
-      modules: ["voting", "todo", "ranking", "sources"],
+      modules: ["todo", "ranking", "sources"],
       emoji: "🎞️",
       color: "ocean",
     },
     requiresSource: {
       kind: "letterboxd_list",
       promptCopy: "Paste a public Letterboxd list URL — Workshop will mirror it as a watchlist.",
-    },
-  },
-  {
-    id: "voting_poll",
-    displayName: "Voting Poll",
-    description: "A quick poll — add options, vote, see the winner.",
-    defaults: {
-      itemKind: "plain",
-      modules: ["voting"],
-      emoji: "🗳️",
-      color: "grape",
     },
   },
   {

@@ -52,7 +52,6 @@ const KIND_LABEL: Partial<Record<ItemKind, string>> = {
 function summaryLabel(list: { itemKind: ItemKind | null; modules: ModuleName[] }): string {
   if (list.itemKind && KIND_LABEL[list.itemKind]) return KIND_LABEL[list.itemKind]!;
   if (list.modules.includes("leaderboard")) return "Leaderboard";
-  if (list.modules.includes("voting")) return "Poll";
   if (list.modules.includes("todo")) return "Checklist";
   return "List";
 }
@@ -62,8 +61,6 @@ const EVENT_VERB: Partial<Record<ActivityEvent["type"], string>> = {
   item_updated: "edited",
   item_archived: "archived an item",
   list_archived: "archived the list",
-  item_upvoted: "upvoted",
-  item_unupvoted: "unupvoted",
   item_completed: "checked off",
   item_uncompleted: "uncrossed",
   item_promoted: "pinned",

@@ -9,10 +9,9 @@ import {
 } from "./modules.js";
 
 describe("module-name helpers", () => {
-  it("MODULE_NAMES contains the core five plus the reserved three (§3.10)", () => {
+  it("MODULE_NAMES contains the core four plus the reserved three (§3.10)", () => {
     expect([...MODULE_NAMES]).toEqual([
       "todo",
-      "voting",
       "ranking",
       "leaderboard",
       "sources",
@@ -33,16 +32,16 @@ describe("module-name helpers", () => {
   });
 
   it("normalizeModules dedups and preserves canonical order", () => {
-    expect(normalizeModules(["voting", "voting", "todo"])).toEqual(["todo", "voting"]);
+    expect(normalizeModules(["ranking", "ranking", "todo"])).toEqual(["todo", "ranking"]);
   });
 
   it("normalizeModules drops unknown names", () => {
-    expect(normalizeModules(["voting", "made_up"])).toEqual(["voting"]);
+    expect(normalizeModules(["todo", "made_up"])).toEqual(["todo"]);
   });
 
   it("hasModule", () => {
-    expect(hasModule(["voting"], "voting")).toBe(true);
-    expect(hasModule(["voting"], "todo")).toBe(false);
+    expect(hasModule(["todo"], "todo")).toBe(true);
+    expect(hasModule(["todo"], "ranking")).toBe(false);
   });
 });
 
@@ -62,16 +61,6 @@ describe("formatConfigWarning — per-code client copy", () => {
     });
     expect(many.headline).toBe("Hide 5 completed items?");
     expect(many.detail).toMatch(/re-enable To-Do/);
-  });
-
-  it("voting: surfaces the safety net", () => {
-    const out = formatConfigWarning({
-      code: MODULE_REMOVAL_WARNINGS.voting,
-      message: "server msg",
-      affectedCount: 3,
-    });
-    expect(out.headline).toBe("Hide 3 upvotes?");
-    expect(out.detail).toMatch(/preserved/);
   });
 
   it("ranking", () => {
@@ -113,9 +102,9 @@ describe("formatConfigWarning — per-code client copy", () => {
 
   it("treats a missing affectedCount as zero", () => {
     const out = formatConfigWarning({
-      code: MODULE_REMOVAL_WARNINGS.voting,
+      code: MODULE_REMOVAL_WARNINGS.todo,
       message: "x",
     });
-    expect(out.headline).toBe("Hide 0 upvotes?");
+    expect(out.headline).toBe("Hide 0 completed items?");
   });
 });

@@ -40,7 +40,6 @@ export interface ItemListProps {
   onRowMenu: (item: Item, section: Section) => void;
   onRowPressBody: (item: Item, section: Section) => void;
   onUncompleteItem: (item: Item) => void;
-  onUpvote?: (item: Item) => void;
   resolveRowPressCover?: (item: Item, section: Section) => (() => void) | null;
   refreshing: boolean;
   onRefresh: () => void;

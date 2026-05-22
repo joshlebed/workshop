@@ -34,8 +34,8 @@ describe("inspectModuleChange — module removal warnings (§6)", () => {
     const db = fakeDb([0]);
     const warnings = await inspectModuleChange({
       listId: LIST_ID,
-      currentModules: ["todo", "voting"],
-      nextModules: ["todo", "voting", "ranking"],
+      currentModules: ["todo", "ranking"],
+      nextModules: ["todo", "ranking", "sources"],
       db,
     });
     expect(warnings).toEqual([]);

@@ -3,7 +3,6 @@ import type {
   BulkCreateItemsResponse,
   CreateItemRequest,
   ItemResponse,
-  ItemUpvoteResponse,
   ListItemsResponse,
   MoveItemRequest,
   UpdateItemRequest,
@@ -77,22 +76,6 @@ export function uncompleteItem(itemId: string, token: string | null): Promise<It
   return apiRequest<ItemResponse>({
     method: "POST",
     path: `/v1/items/${itemId}/uncomplete`,
-    token,
-  });
-}
-
-export function upvoteItem(itemId: string, token: string | null): Promise<ItemUpvoteResponse> {
-  return apiRequest<ItemUpvoteResponse>({
-    method: "POST",
-    path: `/v1/items/${itemId}/upvote`,
-    token,
-  });
-}
-
-export function removeUpvote(itemId: string, token: string | null): Promise<ItemUpvoteResponse> {
-  return apiRequest<ItemUpvoteResponse>({
-    method: "DELETE",
-    path: `/v1/items/${itemId}/upvote`,
     token,
   });
 }

@@ -9,7 +9,7 @@ import {
   type ModuleName,
 } from "@workshop/shared/modules";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { itemScores, items, itemUpvotes, listSources } from "../db/schema.js";
+import { itemScores, items, listSources } from "../db/schema.js";
 import type { DbClient } from "./sql.js";
 
 interface ModuleManifest {
@@ -39,25 +39,6 @@ const MODULE_MANIFESTS: Record<ModuleName, ModuleManifest> = {
         {
           code: MODULE_REMOVAL_WARNINGS.todo,
           message: `${count} completed item${count === 1 ? "" : "s"} will be hidden.`,
-          affectedCount: count,
-        },
-      ];
-    },
-  },
-  voting: {
-    name: "voting",
-    inspectRemoval: async (listId, db) => {
-      const [row] = await db
-        .select({ count: sql<number>`COUNT(*)::int` })
-        .from(itemUpvotes)
-        .innerJoin(items, eq(items.id, itemUpvotes.itemId))
-        .where(and(eq(items.listId, listId), isNull(items.archivedAt)));
-      const count = Number(row?.count ?? 0);
-      if (count === 0) return [];
-      return [
-        {
-          code: MODULE_REMOVAL_WARNINGS.voting,
-          message: `${count} upvote${count === 1 ? "" : "s"} will be hidden.`,
           affectedCount: count,
         },
       ];

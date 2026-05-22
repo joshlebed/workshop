@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -20,9 +20,8 @@ import { requireListMember } from "../../middleware/authorize.js";
  *   own row, except the owner (spec §2.5: "Owner cannot leave, can
  *   delete.").
  *
- * Per spec §2.5, removing a member drops their `item_upvotes` rows
- * scoped to the items in this list, but items they added remain with
- * `added_by` attribution preserved. We do both inside a single tx.
+ * Items the leaver added remain on the list with their `added_by`
+ * attribution preserved.
  */
 export const memberRoutes = new Hono();
 
@@ -55,12 +54,6 @@ memberRoutes.delete("/:id/members/:userId", requireListMember, async (c) => {
     if (target.role === "owner") {
       return { kind: "owner_block" as const };
     }
-
-    await tx.execute(sql`
-      DELETE FROM item_upvotes
-      WHERE user_id = ${targetUserId}
-        AND item_id IN (SELECT id FROM items WHERE list_id = ${listId})
-    `);
 
     await tx
       .delete(listMembers)

@@ -17,10 +17,10 @@ function gateApp(modules: readonly ModuleName[], gateOn: ModuleName) {
 }
 
 describe("requireModule — 409 contract per §5.1", () => {
-  // Only the core five today have data-bearing gates; the three reserved
+  // Only the core four today have data-bearing gates; the three reserved
   // modules (scheduling/comments/attachments) also gate via this helper
   // but have no associated data yet.
-  const allModules: readonly ModuleName[] = ["todo", "voting", "ranking", "leaderboard", "sources"];
+  const allModules: readonly ModuleName[] = ["todo", "ranking", "leaderboard", "sources"];
 
   for (const m of allModules) {
     it(`returns 409 with code "${m}.disabled" when ${m} is off`, async () => {
@@ -47,7 +47,7 @@ describe("requireModule — 409 contract per §5.1", () => {
   }
 
   it("treats unrelated modules as not enabling the gate", async () => {
-    const app = gateApp(["ranking", "sources"], "voting");
+    const app = gateApp(["ranking", "sources"], "todo");
     const res = await app.request("/probe", { method: "POST" });
     expect(res.status).toBe(409);
   });
@@ -57,8 +57,6 @@ describe("stripModuleGatedItemFields", () => {
   const fullItem = {
     id: "1",
     title: "x",
-    upvoteCount: 3,
-    viewerUpvoted: true,
     completed: false,
     completedAt: null,
     completedBy: null,
@@ -66,29 +64,22 @@ describe("stripModuleGatedItemFields", () => {
   };
 
   it("returns every field when all relevant modules are on", () => {
-    const out = stripModuleGatedItemFields(fullItem, ["voting", "todo", "ranking"]);
+    const out = stripModuleGatedItemFields(fullItem, ["todo", "ranking"]);
     expect(out).toEqual(fullItem);
   });
 
-  it("drops upvote fields when voting is off", () => {
-    const out = stripModuleGatedItemFields(fullItem, ["todo", "ranking"]);
-    expect(out).not.toHaveProperty("upvoteCount");
-    expect(out).not.toHaveProperty("viewerUpvoted");
-    expect(out).toMatchObject({ completed: false, position: 1024 });
-  });
-
   it("drops completed* fields when todo is off", () => {
-    const out = stripModuleGatedItemFields(fullItem, ["voting", "ranking"]);
+    const out = stripModuleGatedItemFields(fullItem, ["ranking"]);
     expect(out).not.toHaveProperty("completed");
     expect(out).not.toHaveProperty("completedAt");
     expect(out).not.toHaveProperty("completedBy");
-    expect(out).toMatchObject({ upvoteCount: 3, position: 1024 });
+    expect(out).toMatchObject({ position: 1024 });
   });
 
   it("drops position when ranking is off", () => {
-    const out = stripModuleGatedItemFields(fullItem, ["voting", "todo"]);
+    const out = stripModuleGatedItemFields(fullItem, ["todo"]);
     expect(out).not.toHaveProperty("position");
-    expect(out).toMatchObject({ upvoteCount: 3, completed: false });
+    expect(out).toMatchObject({ completed: false });
   });
 
   it("doesn't mutate the input", () => {

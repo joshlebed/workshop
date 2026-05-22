@@ -37,8 +37,6 @@ export type ActivityEventType =
   | "item_added"
   | "item_updated"
   | "item_archived"
-  | "item_upvoted"
-  | "item_unupvoted"
   | "item_completed"
   | "item_uncompleted"
   | "item_promoted"
@@ -239,8 +237,6 @@ export interface Item {
   completed: boolean;
   completedAt: string | null;
   completedBy: string | null;
-  upvoteCount: number;
-  viewerUpvoted: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -514,10 +510,4 @@ export interface LeaderboardResponse {
 export interface ListScoresResponse {
   periodKey: string;
   scoresByItem: Record<string, LeaderboardEntry[]>;
-}
-
-// --- Upvotes ---
-
-export interface ItemUpvoteResponse {
-  item: Item;
 }

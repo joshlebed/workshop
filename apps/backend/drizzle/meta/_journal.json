@@ -127,6 +127,13 @@
       "when": 1779315376465,
       "tag": "0017_items_score_regex",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1779474575889,
+      "tag": "0018_drop_voting",
+      "breakpoints": true
     }
   ]
 }

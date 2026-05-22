@@ -407,10 +407,6 @@ function verbGlyphFor(type: ActivityEvent["type"]): string {
     case "item_updated":
     case "source_updated":
       return "·";
-    case "item_upvoted":
-      return "↑";
-    case "item_unupvoted":
-      return "↓";
     case "item_completed":
       return "✓";
     case "item_uncompleted":
@@ -451,10 +447,6 @@ function describeEvent(event: ActivityEvent): string {
       return `archived this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
     case "list_duplicated":
       return `duplicated this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
-    case "item_upvoted":
-      return `upvoted${payloadString(payload, "title", (t) => ` "${t}"`)}`;
-    case "item_unupvoted":
-      return `removed an upvote${payloadString(payload, "title", (t) => ` from "${t}"`)}`;
     case "item_completed":
       return `checked off${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_uncompleted":

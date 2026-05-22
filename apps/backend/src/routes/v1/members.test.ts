@@ -10,9 +10,8 @@ beforeAll(() => {
 
 // These suites exercise the route layer directly and only validate
 // behavior that doesn't reach the DB — auth gating and UUID parsing.
-// The actual remove + self-leave + cascade-upvotes path is covered by
-// the dev server / Playwright in 3b-1. Same convention as
-// `lists.test.ts`.
+// The actual remove + self-leave path is covered by the dev server /
+// Playwright in 3b-1. Same convention as `lists.test.ts`.
 
 describe("memberRoutes auth gating", () => {
   const listId = "00000000-0000-0000-0000-000000000001";

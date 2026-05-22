@@ -2,14 +2,13 @@
 // active. Each module is a pure string identifier; the DB stores names and
 // the app interprets them.
 
-// `todo` / `voting` / `ranking` / `leaderboard` / `sources` shipped with
-// #199 as the core compositional set. `scheduling` / `comments` /
-// `attachments` are reserved slots from §3.10 of the redesign — manifests
-// exist so a list can opt in and the UI can hide unused affordances by
-// default, but the rich features live in their respective follow-up PRs.
+// `todo` / `ranking` / `leaderboard` / `sources` shipped with #199 as the
+// core compositional set. `scheduling` / `comments` / `attachments` are
+// reserved slots from §3.10 of the redesign — manifests exist so a list
+// can opt in and the UI can hide unused affordances by default, but the
+// rich features live in their respective follow-up PRs.
 export const MODULE_NAMES = [
   "todo",
-  "voting",
   "ranking",
   "leaderboard",
   "sources",
@@ -41,7 +40,6 @@ export function hasModule(modules: readonly string[], name: ModuleName): boolean
 // the codes back in `acknowledgedWarnings` on `PATCH /v1/lists/:id`.
 export const MODULE_REMOVAL_WARNINGS = {
   todo: "todo.hide_completed",
-  voting: "voting.hide_upvotes",
   ranking: "ranking.hide_order",
   leaderboard: "leaderboard.hide_scores",
   sources: "sources.deactivate_sources",
@@ -88,11 +86,6 @@ export function formatConfigWarning(warning: ConfigWarning): PrettyWarningCopy {
       return {
         headline: `Hide ${count} completed ${plural(count, "item", "items")}?`,
         detail: "They stay in the database — re-enable To-Do anytime to bring them back.",
-      };
-    case MODULE_REMOVAL_WARNINGS.voting:
-      return {
-        headline: `Hide ${count} ${plural(count, "upvote", "upvotes")}?`,
-        detail: "Upvotes are preserved on items — re-enable Voting to bring the pills back.",
       };
     case MODULE_REMOVAL_WARNINGS.ranking:
       return {

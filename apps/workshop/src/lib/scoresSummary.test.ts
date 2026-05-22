@@ -16,8 +16,6 @@ function item(id: string, title: string): Item {
     completed: false,
     completedAt: null,
     completedBy: null,
-    upvoteCount: 0,
-    viewerUpvoted: false,
     createdAt: "2026-05-22T00:00:00Z",
     updatedAt: "2026-05-22T00:00:00Z",
   };

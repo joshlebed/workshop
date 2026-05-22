@@ -34,7 +34,7 @@ describe("createListSchema", () => {
       name: "Movie Watchlist",
       emoji: "🎬",
       color: "sunset",
-      modules: ["voting", "todo", "ranking"],
+      modules: ["todo", "ranking"],
     };
   }
 
@@ -83,7 +83,7 @@ describe("createListSchema", () => {
   });
 
   it("rejects an unknown module", () => {
-    expect(createListSchema.safeParse({ ...base(), modules: ["voting", "made_up"] }).success).toBe(
+    expect(createListSchema.safeParse({ ...base(), modules: ["todo", "made_up"] }).success).toBe(
       false,
     );
   });
@@ -95,17 +95,17 @@ describe("createListSchema", () => {
   it("normalizes (dedupes + canonical-orders) the modules array", () => {
     const r = createListSchema.safeParse({
       ...base(),
-      modules: ["ranking", "voting", "ranking", "todo"],
+      modules: ["ranking", "sources", "ranking", "todo"],
     });
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.modules).toEqual(["todo", "voting", "ranking"]);
+    if (r.success) expect(r.data.modules).toEqual(["todo", "ranking", "sources"]);
   });
 
   it("accepts an attached source on create (album-shelf flow)", () => {
     const r = createListSchema.safeParse({
       ...base(),
       itemKind: "spotify_album",
-      modules: ["voting", "ranking", "sources"],
+      modules: ["ranking", "sources"],
       sources: [
         {
           kind: "spotify_playlist",
@@ -148,7 +148,7 @@ describe("updateListSchema", () => {
   });
 
   it("accepts a modules-only patch", () => {
-    expect(updateListSchema.safeParse({ modules: ["voting"] }).success).toBe(true);
+    expect(updateListSchema.safeParse({ modules: ["todo"] }).success).toBe(true);
   });
 
   it("accepts setting itemKind to null (loosen to unconstrained)", () => {
@@ -169,20 +169,20 @@ describe("updateListSchema", () => {
   it("accepts an acknowledgedWarnings echo", () => {
     const r = updateListSchema.safeParse({
       modules: ["ranking"],
-      acknowledgedWarnings: ["voting.hide_upvotes", "todo.hide_completed"],
+      acknowledgedWarnings: ["todo.hide_completed"],
     });
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(r.data.acknowledgedWarnings).toEqual(["voting.hide_upvotes", "todo.hide_completed"]);
+      expect(r.data.acknowledgedWarnings).toEqual(["todo.hide_completed"]);
     }
   });
 
   it("normalizes a modules patch through normalizeModules", () => {
     const r = updateListSchema.safeParse({
-      modules: ["sources", "voting", "voting"],
+      modules: ["sources", "todo", "todo"],
     });
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.modules).toEqual(["voting", "sources"]);
+    if (r.success) expect(r.data.modules).toEqual(["todo", "sources"]);
   });
 
   it("rejects an unknown color in a patch", () => {
@@ -198,7 +198,7 @@ describe("configPreviewSchema", () => {
   });
 
   it("accepts a modules-only preview", () => {
-    expect(configPreviewSchema.safeParse({ modules: ["voting"] }).success).toBe(true);
+    expect(configPreviewSchema.safeParse({ modules: ["todo"] }).success).toBe(true);
   });
 
   it("accepts a tightening itemKind preview", () => {
@@ -241,10 +241,10 @@ describe("duplicateListSchema", () => {
     }
   });
 
-  it("accepts the album-shelf -> voting-poll rename + module override", () => {
+  it("accepts a rename + module override", () => {
     const r = duplicateListSchema.safeParse({
       name: "Best album for movie night?",
-      modules: ["voting"],
+      modules: ["todo"],
       preserveCompletion: false,
     });
     expect(r.success).toBe(true);

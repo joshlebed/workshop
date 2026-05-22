@@ -58,10 +58,6 @@ const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> 
     label: "To-do",
     description: "Mark items as done.",
   },
-  voting: {
-    label: "Voting",
-    description: "Upvote items.",
-  },
   ranking: {
     label: "Ranking",
     description: "Sort items by hand.",
@@ -805,8 +801,7 @@ export default function ListSettings() {
             Duplicate
           </Text>
           <Text tone="secondary">
-            Make a copy of this list. Items come along, but votes, completion, and sources start
-            fresh.
+            Make a copy of this list. Items come along, but completion and sources start fresh.
           </Text>
           <Button
             testID="settings-duplicate-list"
@@ -906,9 +901,7 @@ export default function ListSettings() {
             </>
           ) : (
             <>
-              <Text tone="secondary">
-                Your upvotes will be removed. Items you added stay on the list.
-              </Text>
+              <Text tone="secondary">Items you added stay on the list.</Text>
               <Button
                 testID="settings-leave-list"
                 label="Leave list"
