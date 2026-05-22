@@ -23,12 +23,14 @@ Re-check when adding a new native module.
 Declare iOS capabilities (App Groups, Push, Associated Domains, etc.) in `app.json`
 (`ios.entitlements` / `ios.associatedDomains`) or via an Expo config plugin **before**
 enabling in the Apple Developer Portal. EAS's capability sync reverts portal-only changes
-on the next build. Currently declared: Sign In with Apple (via
-`expo-apple-authentication`); App Groups `group.dev.josh.workshop` (via `ios.entitlements`
+on the next build. Currently declared:
 
-- `expo-share-intent` plugin — both are needed since the share extension also requires
-  the entitlement); Associated Domains `applinks:workshop-a2v.pages.dev` for Universal
-  Links (`/invite/*`, `/list/*` open in the app for installed users).
+- **Sign In with Apple** — via `expo-apple-authentication`.
+- **App Groups `group.dev.josh.workshop`** — declared in both `ios.entitlements` and the
+  `expo-share-intent` plugin config; both are needed because the share extension also
+  requires the entitlement.
+- **Associated Domains `applinks:workshop-a2v.pages.dev`** — Universal Links route
+  `/invite/*` and `/list/*` into the app for installed users.
 
 ## Universal Links: AASA path allowlist lives in two places
 
