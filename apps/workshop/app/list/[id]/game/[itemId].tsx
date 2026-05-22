@@ -416,9 +416,21 @@ export default function GameDetail() {
               <ActivityIndicator color={tokens.accent.default} />
             </View>
           ) : scoresQuery.isError ? (
-            <Text tone="danger" style={styles.helper}>
-              Couldn't load scores.
-            </Text>
+            <View style={styles.scoresErrorBlock}>
+              <Text tone="danger" style={styles.helper}>
+                Couldn't load scores.
+              </Text>
+              <View style={styles.scoresErrorAction}>
+                <Button
+                  label="Try again"
+                  variant="secondary"
+                  size="md"
+                  onPress={() => scoresQuery.refetch()}
+                  loading={scoresQuery.isFetching}
+                  testID="game-detail-scores-retry"
+                />
+              </View>
+            </View>
           ) : (
             <View style={styles.leaderboard}>
               {/* My slot is always at the top: either my filled entry, the
@@ -520,7 +532,7 @@ export default function GameDetail() {
         </View>
         <View style={styles.editForm}>
           <View style={styles.field}>
-            <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+            <Text variant="caption" tone="muted" style={styles.fieldLabel}>
               Title
             </Text>
             <TextInput
@@ -534,7 +546,7 @@ export default function GameDetail() {
             />
           </View>
           <View style={styles.field}>
-            <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+            <Text variant="caption" tone="muted" style={styles.fieldLabel}>
               URL
             </Text>
             <TextInput
@@ -613,13 +625,30 @@ function LeaderboardEntryRow({ entry, isMe }: LeaderboardEntryRowProps) {
 }
 
 function RankBadge({ rank }: { rank: number }) {
-  const top3 = rank <= 3;
+  // Tiered: rank-1 takes the brand attention (filled amber). Rank 2/3 get
+  // a softer treatment so the "top three" cohort reads as a group without
+  // the leaderboard shouting amber at every glance — Workshop is calm by
+  // default, the gold medal earns its loudness.
+  const isFirst = rank === 1;
+  const isTopThree = rank <= 3;
   return (
     <View
-      style={[styles.rankBadge, top3 && styles.rankBadgeTop3]}
+      style={[
+        styles.rankBadge,
+        isTopThree && !isFirst ? styles.rankBadgeTop3Quiet : null,
+        isFirst ? styles.rankBadgeTop1 : null,
+      ]}
       testID={`leaderboard-rank-${rank}`}
     >
-      <Text style={[styles.rankBadgeText, top3 && styles.rankBadgeTextTop3]}>{rank}</Text>
+      <Text
+        style={[
+          styles.rankBadgeText,
+          isTopThree && !isFirst ? styles.rankBadgeTextTop3Quiet : null,
+          isFirst ? styles.rankBadgeTextTop1 : null,
+        ]}
+      >
+        {rank}
+      </Text>
     </View>
   );
 }
@@ -640,7 +669,7 @@ function UnplayedRow({ entry, isMe }: { entry: LeaderboardEntry; isMe: boolean }
         ) : null}
       </View>
       <Text variant="caption" tone="muted">
-        Hasn't played
+        {isMe ? "You haven't played yet" : "Hasn't played yet"}
       </Text>
     </View>
   );
@@ -656,6 +685,25 @@ interface PasteSlotProps {
 
 function PasteSlot({ draft, onChangeDraft, onSubmit, pending, userName }: PasteSlotProps) {
   const empty = draft.trim().length === 0;
+  // On web, Cmd/Ctrl+Enter submits — a multiline paste form should never
+  // require reaching for the mouse to post. Plain Enter inserts a newline
+  // because users routinely paste multi-line results.
+  const webProps =
+    Platform.OS === "web"
+      ? ({
+          onKeyDown: (e: {
+            key: string;
+            metaKey?: boolean;
+            ctrlKey?: boolean;
+            preventDefault: () => void;
+          }) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !empty && !pending) {
+              e.preventDefault();
+              onSubmit();
+            }
+          },
+        } as Record<string, unknown>)
+      : {};
   return (
     <View style={[styles.entry, styles.entryMe, styles.pasteSlot]} testID="game-detail-paste-slot">
       <View style={styles.entryHeader}>
@@ -683,8 +731,14 @@ function PasteSlot({ draft, onChangeDraft, onSubmit, pending, userName }: PasteS
         multiline
         maxLength={2000}
         style={styles.pasteInput}
+        {...webProps}
       />
       <View style={styles.pasteActions}>
+        {Platform.OS === "web" && !empty ? (
+          <Text variant="caption" tone="muted" style={styles.pasteHint}>
+            ⌘↩ to post
+          </Text>
+        ) : null}
         <Button
           label="Post score"
           size="md"
@@ -782,6 +836,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: tokens.space.xl,
   },
+  scoresErrorBlock: {
+    gap: tokens.space.sm,
+    paddingBottom: tokens.space.md,
+  },
+  scoresErrorAction: {
+    alignItems: "center",
+  },
   leaderboard: {
     paddingHorizontal: tokens.space.xl,
     gap: tokens.space.md,
@@ -796,8 +857,10 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
   },
   entryMe: {
-    borderColor: tokens.accent.default,
-    backgroundColor: `${tokens.accent.default}0F`,
+    // Per DESIGN.md "color used to identify a list" — me-row gets a quiet
+    // accent tint as its sole signal of "this is you." The "you" pill
+    // doubles as a textual label so the highlight isn't color-only.
+    backgroundColor: `${tokens.accent.default}14`,
   },
   pasteSlot: {},
   entryHeader: {
@@ -840,9 +903,13 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.subtle,
   },
-  rankBadgeTop3: {
+  rankBadgeTop1: {
     backgroundColor: tokens.accent.default,
     borderColor: tokens.accent.default,
+  },
+  rankBadgeTop3Quiet: {
+    borderColor: tokens.accent.default,
+    backgroundColor: tokens.accent.muted,
   },
   rankBadgeText: {
     fontSize: tokens.font.size.sm,
@@ -850,8 +917,11 @@ const styles = StyleSheet.create({
     color: tokens.text.secondary,
     fontVariant: ["tabular-nums"],
   },
-  rankBadgeTextTop3: {
-    color: tokens.bg.canvas,
+  rankBadgeTextTop1: {
+    color: tokens.text.onAccent,
+  },
+  rankBadgeTextTop3Quiet: {
+    color: tokens.accent.default,
   },
   scoreText: {
     color: tokens.text.primary,
@@ -892,7 +962,10 @@ const styles = StyleSheet.create({
   pasteActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    alignItems: "center",
+    gap: tokens.space.md,
   },
+  pasteHint: { letterSpacing: 0.3 },
   sheetHeader: {
     gap: 4,
   },
@@ -920,7 +993,10 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   field: { gap: tokens.space.xs },
-  fieldLabel: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
+  fieldLabel: {
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   editInput: {
     borderWidth: 1,
     borderColor: tokens.border.default,
