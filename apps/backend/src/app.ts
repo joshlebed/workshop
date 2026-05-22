@@ -5,6 +5,7 @@ import { logger as honoLogger } from "hono/logger";
 import { logger } from "./lib/logger.js";
 import { err } from "./lib/response.js";
 import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
+import { requestLog } from "./middleware/request-log.js";
 import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
 import { authRoutes } from "./routes/v1/auth.js";
@@ -31,11 +32,20 @@ const clientIp: RateLimitKeyFn = (c) => {
 export function buildApp() {
   const app = new Hono();
 
+  // First so it wraps every other middleware and captures status + userId
+  // after downstream handlers (and the global onError handler) run.
+  app.use("*", requestLog);
+
   app.use(
     "*",
     cors({
       origin: (origin) => origin ?? "*",
-      allowHeaders: ["Content-Type", "Authorization"],
+      allowHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Workshop-Platform",
+        "X-Workshop-App-Version",
+      ],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       credentials: true,
       maxAge: 600,

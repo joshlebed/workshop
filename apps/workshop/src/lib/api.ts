@@ -1,6 +1,11 @@
 import type { ApiErrorResponse } from "@workshop/shared";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { API_URL } from "../config";
 import { ApiError } from "./apiError";
+
+const PLATFORM = Platform.OS;
+const APP_VERSION = Constants.expoConfig?.version ?? "unknown";
 
 export { ApiError, apiErrorCode, errorMessage } from "./apiError";
 
@@ -19,7 +24,11 @@ function isApiError(value: unknown): value is ApiErrorResponse {
 }
 
 export async function apiRequest<T>({ method, path, body, token, signal }: ApiRequest): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "X-Workshop-Platform": PLATFORM,
+    "X-Workshop-App-Version": APP_VERSION,
+  };
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const init: RequestInit = { method, headers };
