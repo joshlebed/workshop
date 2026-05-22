@@ -31,9 +31,43 @@ const upsertScoreSchema = z.object({
   scoreRaw: scoreRawSchema,
 });
 
-export const __test = { periodKeySchema, scoreRawSchema, upsertScoreSchema, tryParseScoreValue };
+export const __test = {
+  periodKeySchema,
+  scoreRawSchema,
+  upsertScoreSchema,
+  tryParseScoreValue,
+  assignRanks,
+};
 
-function tryParseScoreValue(raw: string): number | null {
+/**
+ * Pulls a numeric score out of pasted share text.
+ *
+ * - When `pattern` is provided (the per-item `score_regex`), we use it
+ *   case-insensitively. If the pattern has a capture group, we read group 1;
+ *   otherwise we read the full match. This is the path most game items take
+ *   once the backfill is in.
+ * - Without a pattern, we fall back to "first number anywhere in the text"
+ *   for legacy items + items the backfill didn't recognize. That's wrong for
+ *   most share formats (it grabs the date, the puzzle number, etc.), but
+ *   matches existing behavior and never crashes.
+ * - Returns null on invalid regex or no match.
+ */
+function tryParseScoreValue(raw: string, pattern: string | null = null): number | null {
+  if (pattern && pattern.length > 0) {
+    try {
+      const re = new RegExp(pattern, "i");
+      const match = raw.match(re);
+      if (match) {
+        const captured = match[1] ?? match[0];
+        const n = Number(captured);
+        if (Number.isFinite(n)) return n;
+      }
+      return null;
+    } catch {
+      // Bad regex stored on the item — fall through to default behavior so we
+      // don't 500. The backfill validates patterns before writing them.
+    }
+  }
   const match = raw.match(/-?\d+(\.\d+)?/);
   if (!match) return null;
   const n = Number(match[0]);
@@ -60,18 +94,83 @@ function toScoreShape(row: {
   };
 }
 
+/**
+ * Assigns "standard competition" ranks (1, 2, 2, 4) to entries that have a
+ * numeric score. Direction controls comparison: 'desc' = bigger is better,
+ * 'asc' = smaller is better. Entries without a numeric score get `rank: null`.
+ * Pure helper — no DB access — exported for unit testing.
+ */
+function assignRanks<T extends { scoreValue: number | null }>(
+  entries: readonly T[],
+  direction: "asc" | "desc",
+): (T & { rank: number | null })[] {
+  const played: { entry: T; idx: number }[] = [];
+  const unplayed: { entry: T; idx: number }[] = [];
+  entries.forEach((entry, idx) => {
+    if (typeof entry.scoreValue === "number" && Number.isFinite(entry.scoreValue)) {
+      played.push({ entry, idx });
+    } else {
+      unplayed.push({ entry, idx });
+    }
+  });
+  played.sort((a, b) => {
+    const av = a.entry.scoreValue as number;
+    const bv = b.entry.scoreValue as number;
+    return direction === "desc" ? bv - av : av - bv;
+  });
+  const ranked: { idx: number; out: T & { rank: number | null } }[] = [];
+  let lastValue: number | null = null;
+  let lastRank = 0;
+  played.forEach(({ entry, idx }, i) => {
+    const v = entry.scoreValue as number;
+    const rank = lastValue !== null && v === lastValue ? lastRank : i + 1;
+    lastValue = v;
+    lastRank = rank;
+    ranked.push({ idx, out: { ...entry, rank } });
+  });
+  unplayed.forEach(({ entry, idx }) => {
+    ranked.push({ idx, out: { ...entry, rank: null } });
+  });
+  // Restore caller order so we don't disturb the SQL ORDER BY (played first
+  // by score, then unplayed by display name).
+  ranked.sort((a, b) => a.idx - b.idx);
+  return ranked.map((r) => r.out);
+}
+
+function normalizeDirection(value: string | null | undefined): "asc" | "desc" {
+  return value === "asc" ? "asc" : "desc";
+}
+
 export const itemScoreRoutes = new Hono();
 itemScoreRoutes.use("*", requireAuth);
 
-async function getParentModulesForItem(itemId: string): Promise<string[]> {
+interface ItemScoreContext {
+  listId: string;
+  modules: string[];
+  scoreRegex: string | null;
+  scoreDirection: "asc" | "desc";
+}
+
+async function getItemScoreContext(itemId: string): Promise<ItemScoreContext | null> {
   const db = getDb();
   const [row] = await db
-    .select({ modules: lists.modules })
+    .select({
+      listId: items.listId,
+      modules: lists.modules,
+      scoreRegex: items.scoreRegex,
+      scoreDirection: items.scoreDirection,
+    })
     .from(items)
     .innerJoin(lists, eq(lists.id, items.listId))
-    .where(eq(items.id, itemId))
+    .where(and(eq(items.id, itemId), isNull(items.archivedAt)))
     .limit(1);
-  return (row?.modules ?? []) as string[];
+  if (!row) return null;
+  return {
+    listId: row.listId,
+    modules: (row.modules ?? []) as string[],
+    scoreRegex: row.scoreRegex,
+    scoreDirection: normalizeDirection(row.scoreDirection),
+  };
 }
 
 itemScoreRoutes.put(
@@ -86,7 +185,8 @@ itemScoreRoutes.put(
   async (c) => {
     const itemId = c.req.param("id");
     const userId = c.get("userId");
-    const gate = requireModule(c, await getParentModulesForItem(itemId), "leaderboard");
+    const ctx = await getItemScoreContext(itemId);
+    const gate = requireModule(c, ctx?.modules ?? [], "leaderboard");
     if (gate) return gate;
 
     const parsed = await parseJsonBody(c, upsertScoreSchema);
@@ -94,7 +194,7 @@ itemScoreRoutes.put(
 
     const db = getDb();
     const now = new Date();
-    const value = tryParseScoreValue(parsed.data.scoreRaw);
+    const value = tryParseScoreValue(parsed.data.scoreRaw, ctx?.scoreRegex ?? null);
     const [row] = await db
       .insert(itemScores)
       .values({
@@ -122,7 +222,8 @@ itemScoreRoutes.put(
 itemScoreRoutes.delete("/:id/scores", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
   const userId = c.get("userId");
-  const gate = requireModule(c, await getParentModulesForItem(itemId), "leaderboard");
+  const ctx = await getItemScoreContext(itemId);
+  const gate = requireModule(c, ctx?.modules ?? [], "leaderboard");
   if (gate) return gate;
 
   const periodKey = c.req.query("periodKey") ?? c.req.query("date");
@@ -144,21 +245,19 @@ itemScoreRoutes.delete("/:id/scores", requireItemMember, async (c) => {
 
 itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
-  const gate = requireModule(c, await getParentModulesForItem(itemId), "leaderboard");
+  const ctx = await getItemScoreContext(itemId);
+  const gate = requireModule(c, ctx?.modules ?? [], "leaderboard");
   if (gate) return gate;
 
   const periodKey = c.req.query("periodKey") ?? c.req.query("date");
   const parsed = periodKeySchema.safeParse(periodKey ?? "");
   if (!parsed.success) return err(c, "VALIDATION", "periodKey query param required");
+  if (!ctx) return err(c, "NOT_FOUND", "item not found");
 
   const db = getDb();
-  const [parent] = await db
-    .select({ listId: items.listId })
-    .from(items)
-    .where(and(eq(items.id, itemId), isNull(items.archivedAt)))
-    .limit(1);
-  if (!parent) return err(c, "NOT_FOUND", "item not found");
-
+  // Sort: players who posted a score come first, ranked by score_value in
+  // the item's direction; players who haven't played come last, by name.
+  const direction = ctx.scoreDirection;
   const rows = await executeRows<{
     user_id: string;
     display_name: string | null;
@@ -180,18 +279,26 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
         ON s.item_id = ${itemId}
         AND s.user_id = m.user_id
         AND s.period_key = ${parsed.data}
-      WHERE m.list_id = ${parent.listId}
-      ORDER BY (s.updated_at IS NULL), s.updated_at DESC, COALESCE(u.display_name, '')
+      WHERE m.list_id = ${ctx.listId}
+      ORDER BY
+        (s.score_value IS NULL),
+        ${direction === "desc" ? sql`s.score_value DESC` : sql`s.score_value ASC`},
+        (s.updated_at IS NULL),
+        s.updated_at DESC,
+        COALESCE(u.display_name, '')
     `,
   );
 
-  const entries: LeaderboardEntry[] = rows.map((r) => ({
+  const baseEntries = rows.map((r) => ({
     userId: r.user_id,
     displayName: r.display_name,
     scoreRaw: r.score_raw,
     scoreValue: r.score_value === null ? null : Number(r.score_value),
     updatedAt: toIsoOrNull(r.updated_at),
   }));
+  const entries: LeaderboardEntry[] = ctx.scoreRegex
+    ? assignRanks(baseEntries, direction)
+    : baseEntries.map((e) => ({ ...e, rank: null }));
 
   const response: LeaderboardResponse = {
     itemId,
@@ -228,23 +335,42 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
       scoreValue: itemScores.scoreValue,
       updatedAt: itemScores.updatedAt,
       displayName: users.displayName,
+      scoreRegex: items.scoreRegex,
+      scoreDirection: items.scoreDirection,
     })
     .from(itemScores)
     .innerJoin(items, and(eq(items.id, itemScores.itemId), isNull(items.archivedAt)))
     .leftJoin(users, eq(users.id, itemScores.userId))
     .where(and(eq(items.listId, listId), eq(itemScores.periodKey, parsed.data)));
 
-  const scoresByItem: Record<string, LeaderboardEntry[]> = {};
+  // Group rows by item so we can rank each game's entries with that item's
+  // direction. Items without a regex (no reliable score parse) get rank: null.
+  const byItem = new Map<
+    string,
+    { direction: "asc" | "desc"; regex: string | null; entries: LeaderboardEntry[] }
+  >();
   for (const r of rows) {
-    const list = scoresByItem[r.itemId] ?? [];
-    list.push({
+    const existing = byItem.get(r.itemId) ?? {
+      direction: normalizeDirection(r.scoreDirection),
+      regex: r.scoreRegex,
+      entries: [] as LeaderboardEntry[],
+    };
+    existing.entries.push({
       userId: r.userId,
       displayName: r.displayName,
       scoreRaw: r.scoreRaw,
       scoreValue: r.scoreValue === null ? null : Number(r.scoreValue),
       updatedAt: toIsoString(r.updatedAt),
+      rank: null,
     });
-    scoresByItem[r.itemId] = list;
+    byItem.set(r.itemId, existing);
+  }
+
+  const scoresByItem: Record<string, LeaderboardEntry[]> = {};
+  for (const [itemId, group] of byItem) {
+    scoresByItem[itemId] = group.regex
+      ? assignRanks(group.entries, group.direction)
+      : group.entries;
   }
 
   const response: ListScoresResponse = {

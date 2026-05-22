@@ -120,6 +120,13 @@
       "when": 1779145483897,
       "tag": "0016_source_secrets_webhooks_schedule",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1779315376465,
+      "tag": "0017_items_score_regex",
+      "breakpoints": true
     }
   ]
 }

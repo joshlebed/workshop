@@ -495,6 +495,14 @@ export interface LeaderboardEntry {
   scoreRaw: string | null;
   scoreValue: number | null;
   updatedAt: string | null;
+  /**
+   * Server-computed ranking among players who posted a score for this period
+   * (1 = best). Null for unplayed slots. Uses standard ("1224") rank with
+   * ties getting the same rank; direction is per-item (`items.scoreDirection`,
+   * 'desc' = higher is better, 'asc' = lower is better). Null when the
+   * item has no `score_regex` configured (no reliable score parse).
+   */
+  rank: number | null;
 }
 
 export interface LeaderboardResponse {

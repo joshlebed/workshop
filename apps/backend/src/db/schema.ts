@@ -160,6 +160,19 @@ export const items = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    /**
+     * Leaderboard score parsing — for items in lists with the `leaderboard`
+     * module. `scoreRegex` is a JS regex pattern with a single capture group
+     * around the numeric score; the backend applies it (case-insensitive) to
+     * `item_scores.score_raw` to compute `score_value`. `scoreDirection`
+     * controls leaderboard sort: 'desc' = higher is better (default),
+     * 'asc' = lower is better (Wordle / Satle / etc.). Both are NULL on
+     * non-game items. Currently DB-only — no client-facing surface to edit
+     * them; backfilled by `apps/backend/scripts/backfill-score-regex.ts`
+     * based on item URL / title.
+     */
+    scoreRegex: text("score_regex"),
+    scoreDirection: text("score_direction"),
   },
   (t) => ({
     listIdx: index("items_list_idx").on(t.listId),
