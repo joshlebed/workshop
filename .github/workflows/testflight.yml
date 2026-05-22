@@ -57,6 +57,15 @@ on:
         default: "false"
         type: choice
         options: ["true", "false"]
+  # Monthly canary build. Personal-project cadence is ~5 native builds/month;
+  # on a quiet month it's zero. A canary forces a real EAS build (~1 build
+  # minute) so credential rot — cert expiry, ASC key role downgrade, EAS
+  # signing-bot infra drift — surfaces as a triaged GH issue *before* a real
+  # feature deploy needs the pipeline working. 1st of the month, 14:00 UTC
+  # (an hour after the Monday infra-drift sweep). The notify job opens an
+  # `infra-drift` GH issue on canary failure in addition to the Discord ping.
+  schedule:
+    - cron: "0 14 1 * *"
 
 # Concurrency is split per-job:
 #   - fingerprint: cheap to redo. cancel-in-progress=true so a rapid-fire
@@ -72,6 +81,7 @@ on:
 
 permissions:
   contents: write # push fingerprint tag after successful build
+  issues: write # open infra-drift issue on canary failure
 
 # Pin eas-cli to a known-good version so EAS releases don't silently change
 # the JSON schema of `eas build --json` (which the build job parses) or the
@@ -95,6 +105,7 @@ jobs:
     outputs:
       hash: ${{ steps.fp.outputs.hash }}
       build_needed: ${{ steps.decide.outputs.build_needed }}
+      is_canary: ${{ steps.decide.outputs.is_canary }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -121,9 +132,23 @@ jobs:
         env:
           FP_HASH: ${{ steps.fp.outputs.hash }}
           FORCE: ${{ inputs.force }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           TAG="ios-fp-$FP_HASH"
-          if [ "$FORCE" = "true" ]; then
+          # Scheduled runs are the monthly canary — always build to exercise
+          # the full credential path.
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            echo "Scheduled canary — forcing build"
+            echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            echo "is_canary=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟢 Canary build"
+              echo ""
+              echo "**Reason**: monthly scheduled canary exercising the credential / EAS / TestFlight path."
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$FORCE" = "true" ]; then
             echo "Force build requested"
             echo "build_needed=true" >> "$GITHUB_OUTPUT"
             {
@@ -173,6 +198,9 @@ jobs:
     # auto-submit. 60 min gives slack for slow EAS queues / submit
     # contention without burning runner time on a wedged build.
     timeout-minutes: 60
+    outputs:
+      failure_reason: ${{ steps.diagnose.outputs.reason }}
+      failure_fix: ${{ steps.diagnose.outputs.fix }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -236,24 +264,80 @@ jobs:
           EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
           EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          BUILD_LOG: ${{ runner.temp }}/eas-build.log
         run: |
           set -euo pipefail
+          # Tee the full eas-cli output so the diagnose step can pattern-
+          # match known failure modes for the Discord ping. The log is
+          # wiped at job teardown along with the .p8 (no secrets in it,
+          # but staying tidy).
           BUILD_JSON=$(npx "eas-cli@$CLI_VERSION" build \
             --platform ios \
             --profile production \
             --non-interactive \
             --auto-submit \
-            --json)
+            --json 2> >(tee -a "$BUILD_LOG" >&2))
           # `eas build --json` returns an array; the [0]th element is this build.
           BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id')
           BUILD_STATUS=$(echo "$BUILD_JSON" | jq -r '.[0].status')
           if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
             echo "Failed to extract build ID from eas build output:"
-            echo "$BUILD_JSON"
+            echo "$BUILD_JSON" | tee -a "$BUILD_LOG"
             exit 1
           fi
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
           echo "build_status=$BUILD_STATUS" >> "$GITHUB_OUTPUT"
+
+      # Pattern-match the eas-cli stderr against known failure modes so
+      # the Discord ping can name the specific recovery instead of dumping
+      # the generic "check CLAUDE.md → iOS deploy pipeline" hint. Each
+      # branch sets `reason` (one-line summary) and `fix` (concrete next
+      # action). Catch-all leaves them empty; notify falls back to the
+      # generic hint.
+      - name: Diagnose failure
+        id: diagnose
+        if: failure() && steps.build.conclusion == 'failure'
+        env:
+          BUILD_LOG: ${{ runner.temp }}/eas-build.log
+        run: |
+          set -euo pipefail
+          if [ ! -s "$BUILD_LOG" ]; then
+            echo "reason=unknown (no eas-cli output captured)" >> "$GITHUB_OUTPUT"
+            echo "fix=Check the EAS build log linked in the summary." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LOG=$(cat "$BUILD_LOG")
+          # The order matters: more specific patterns first, broadest last.
+          if echo "$LOG" | grep -q "doesn't include the .* capability\|doesn't include the .* entitlement"; then
+            REASON="Provisioning profile missing a capability declared in app.json"
+            FIX="Delete the PP via \`eas credentials --platform ios\` (production → Build Credentials → Provisioning Profile → Delete one), then re-fire \`testflight.yml --field force=true\`. See CLAUDE.md → \"Provisioning profile out of sync after a capability toggle\"."
+          elif echo "$LOG" | grep -q "Distribution Certificate is not validated for non-interactive builds"; then
+            REASON="Distribution Certificate in EAS can't be validated non-interactively"
+            FIX="Stale or pre-API-key cert. Run \`eas credentials --platform ios\` locally, delete + revoke the cert, then \"Build Credentials → All\" to regenerate. NOT a \`pnpm setup:asc-key\` issue. See CLAUDE.md → \"Distribution Certificate out of sync\"."
+          elif echo "$LOG" | grep -q "ASC_API_KEY_CONTENT secret is not set"; then
+            REASON="ASC_API_KEY_CONTENT secret is missing"
+            FIX="Run \`pnpm setup:asc-key\` locally (interactive, ~3 min). See CLAUDE.md → \"ASC API key secret missing or revoked\"."
+          elif echo "$LOG" | grep -q "Configure expo-updates.*runtime version\|fingerprint.*mismatch"; then
+            REASON="Runtime-version / fingerprint mismatch between pre-submit and prebuild"
+            FIX="Should not happen under \`appVersion\` policy. If you switched policies recently, switch back. See CLAUDE.md → \"Runtime-version policy\"."
+          elif echo "$LOG" | grep -q "EAS_BUILD_TIMEOUT\|timed out waiting for build"; then
+            REASON="EAS queue / build timed out"
+            FIX="EAS infra issue, not ours. Wait, then re-fire. Check status.expo.dev."
+          else
+            REASON="unrecognised eas-cli failure"
+            FIX="Tail of eas-cli output is in the GH job log. Recovery patterns in CLAUDE.md → iOS deploy pipeline."
+          fi
+          # Pass through to notify job. Multi-line strings need delimiters.
+          {
+            echo "reason<<EOF"
+            echo "$REASON"
+            echo "EOF"
+            echo "fix<<EOF"
+            echo "$FIX"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "::error::$REASON"
+          echo "::error::$FIX"
 
       - name: Summarize build outcome
         if: always() && steps.build.outputs.build_id != ''
@@ -325,6 +409,9 @@ jobs:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           FP_RESULT: ${{ needs.fingerprint.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          FAILURE_REASON: ${{ needs.build.outputs.failure_reason }}
+          FAILURE_FIX: ${{ needs.build.outputs.failure_fix }}
+          IS_CANARY: ${{ needs.fingerprint.outputs.is_canary }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -336,13 +423,31 @@ jobs:
           SHORT_SHA="${COMMIT_SHA:0:7}"
           FAILED_JOB="build"
           if [ "$FP_RESULT" = "failure" ]; then FAILED_JOB="fingerprint"; fi
+          CANARY_PREFIX=""
+          if [ "$IS_CANARY" = "true" ]; then
+            CANARY_PREFIX="🐤 **Monthly canary** — "
+          fi
+
+          # Prefer the parsed diagnosis from the build job when present.
+          # It's only set when the build step itself failed (not on fingerprint
+          # failures, queue timeouts before eas-cli ran, etc.) — fall through
+          # to a static hint otherwise so the ping always carries SOMETHING
+          # actionable.
+          if [ -n "$FAILURE_REASON" ]; then
+            DESC="**Reason:** ${FAILURE_REASON}\n\n**Fix:** ${FAILURE_FIX}"
+          elif [ "$FAILED_JOB" = "fingerprint" ]; then
+            DESC="The fingerprint job failed before any EAS work happened — usually a flaky pnpm install or @expo/fingerprint hang. Re-run the workflow; if it fails twice in a row, check Expo registry status."
+          else
+            DESC="Check the run for \`::error::\` annotations.\n\n• If \`Write ASC API key\` failed → secret is missing or stale. Run \`pnpm setup:asc-key\` locally (interactive, ~3 min) to rotate.\n• If \`Build + auto-submit\` failed → check the EAS build log. Recovery patterns in \`CLAUDE.md\` → iOS deploy pipeline."
+          fi
+
           PAYLOAD=$(jq -n \
-            --arg content "🔴 **TestFlight \`${FAILED_JOB}\` job failed** — a human is needed" \
+            --arg content "${CANARY_PREFIX}🔴 **TestFlight \`${FAILED_JOB}\` job failed** — a human is needed" \
             --arg title "Action required" \
             --arg url "$RUN_URL" \
             --arg sha "$SHORT_SHA" \
             --arg msg "$FIRST_LINE" \
-            --arg desc "Check the run for \`::error::\` annotations.\n\n• If \`Write ASC API key\` failed → secret is missing or stale. Run \`pnpm setup:asc-key\` locally (interactive, ~3 min) to rotate.\n• If \`Build + auto-submit\` failed → check the EAS build log. Recovery patterns in \`CLAUDE.md\` → iOS deploy pipeline." \
+            --arg desc "$DESC" \
             '{
               content: $content,
               embeds: [{
@@ -358,3 +463,56 @@ jobs:
             }')
           curl -fsS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK"
           echo "Posted failure notification to Discord."
+
+      # Canary failures get a tracked GH issue too — Discord pings scroll
+      # away, an open issue stays visible until someone closes it. Reuses
+      # the `infra-drift` label so the terraform-drift and testflight-drift
+      # signals show up in the same triage view. Dedup by label: update
+      # the existing open issue rather than spamming new ones.
+      - name: Open or update canary-failure issue
+        if: needs.fingerprint.outputs.is_canary == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          FAILURE_REASON: ${{ needs.build.outputs.failure_reason }}
+          FAILURE_FIX: ${{ needs.build.outputs.failure_fix }}
+        with:
+          script: |
+            const reason = process.env.FAILURE_REASON || 'unknown (see workflow log)';
+            const fix = process.env.FAILURE_FIX || 'Check CLAUDE.md → iOS deploy pipeline.';
+            const today = new Date().toISOString().slice(0, 10);
+            const title = `TestFlight canary failed (${today})`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `The monthly TestFlight canary build failed before any feature work needed the pipeline.`,
+              `Fix this now so the next real deploy isn't blocked.`,
+              ``,
+              `**Reason:** ${reason}`,
+              ``,
+              `**Fix:** ${fix}`,
+              ``,
+              `**Workflow run:** ${runUrl}`,
+            ].join('\n');
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'infra-drift',
+              state: 'open',
+            });
+            const canary = existing.find(i => i.title.startsWith('TestFlight canary failed'));
+            if (canary) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: canary.number,
+                title,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['infra-drift'],
+              });
+            }

@@ -1,0 +1,143 @@
+name: iOS capabilities guard
+
+# Warn early when a PR changes iOS capabilities in `apps/workshop/app.json`
+# (associatedDomains, entitlements, CFBundleURLTypes, infoPlist, usesAppleSignIn,
+# and the `expo-share-intent` / `expo-apple-authentication` plugin config). The
+# next TestFlight build after merge will fail at the eas-cli credentials step
+# because the cached provisioning profile doesn't carry the new capability —
+# this guard nudges the operator to delete the PP via
+# `eas credentials --platform ios` before / right after merge, so the first
+# build on `main` doesn't burn an EAS minute on a known-broken signing setup.
+#
+# Heads-up sticky comment, not a required check — capability changes are
+# almost always intentional, and we want to ship them, not block them.
+#
+# Why not auto-delete the PP from CI? eas-cli's credential commands are
+# interactive and authenticate via the operator's Apple-ID session, not
+# the workflow ASC API key. Even with the key, automating PP deletion
+# would race with concurrent builds and there's no rollback. The human
+# loop is ~30s and only needed on capability toggles.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "apps/workshop/app.json"
+      - ".github/workflows/ios-capabilities-guard.yml"
+
+permissions:
+  contents: read
+  pull-requests: write # sticky comment
+
+concurrency:
+  group: ios-cap-guard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    name: Diff iOS capabilities
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft != true
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0 # need merge-base for the diff
+
+      - name: Compare iOS capability fields vs base branch
+        id: diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # Fields that, when changed, require the provisioning profile to
+          # be regenerated. Each lives in `apps/workshop/app.json`. We
+          # extract them via jq and diff the canonicalised JSON.
+          FIELDS='[
+            .expo.ios.associatedDomains // null,
+            .expo.ios.entitlements // null,
+            .expo.ios.usesAppleSignIn // null,
+            .expo.ios.infoPlist.CFBundleURLTypes // null,
+            .expo.ios.bundleIdentifier // null,
+            (.expo.plugins // []) | map(select(
+              type == "array" and (
+                .[0] == "expo-share-intent" or
+                .[0] == "expo-apple-authentication" or
+                .[0] == "expo-notifications"
+              )
+            ))
+          ]'
+          git show "origin/${BASE_REF}:apps/workshop/app.json" \
+            | jq -S "$FIELDS" > /tmp/base.json
+          jq -S "$FIELDS" apps/workshop/app.json > /tmp/head.json
+
+          if diff -q /tmp/base.json /tmp/head.json > /dev/null; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No iOS capability changes."
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          # Show the human-readable diff in the workflow summary too.
+          {
+            echo "## iOS capabilities changed in this PR"
+            echo ""
+            echo "The next TestFlight build after merge will need a fresh provisioning profile."
+            echo ""
+            echo "<details><summary>Diff (base → head)</summary>"
+            echo ""
+            echo '```diff'
+            diff -u /tmp/base.json /tmp/head.json || true
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post / update sticky PR comment
+        if: steps.diff.outputs.changed == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const marker = '<!-- ios-cap-guard-comment -->';
+            const body = `${marker}
+            ### iOS capabilities changed — provisioning profile regen needed after merge
+
+            This PR touches iOS capability fields in \`apps/workshop/app.json\`.
+            The provisioning profile currently in EAS doesn't carry the new
+            capability, so the first \`TestFlight (native iOS build)\` run on
+            \`main\` after merge will fail at the eas-cli credentials step.
+
+            **Before or right after merging**, run locally:
+
+            \`\`\`bash
+            cd apps/workshop && npx eas-cli@latest credentials --platform ios
+            # production → Build Credentials → Provisioning Profile → Delete one
+            \`\`\`
+
+            Then \`gh workflow run testflight.yml --ref main --field force=true\`
+            (or wait for the post-merge run to fail and dispatch it manually).
+            EAS regenerates the PP against current capabilities on the next
+            build via the ASC API key.
+
+            See \`CLAUDE.md\` → "Provisioning profile out of sync after a
+            capability toggle".`;
+            const { data: comments } = await github.rest.issues.listComments({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            }
