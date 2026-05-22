@@ -30,6 +30,7 @@ function entry(userId: string, scoreRaw: string | null): LeaderboardEntry {
     scoreRaw,
     scoreValue: null,
     updatedAt: "2026-05-22T12:00:00Z",
+    rank: null,
   };
 }
 
