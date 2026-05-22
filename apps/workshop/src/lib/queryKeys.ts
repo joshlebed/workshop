@@ -24,8 +24,14 @@ export const queryKeys = {
     feed: ["activity", "feed"] as const,
     feedInfinite: ["activity", "feedInfinite"] as const,
   },
-  albumShelf: {
-    preview: (url: string) => ["albumShelf", "preview", url] as const,
+  sourcePreview: {
+    /**
+     * Per-source-kind preview cache keyed by the user's input string. Used
+     * by the create-list flow before the source is persisted; the entry is
+     * keyed on `kind` because two source kinds may share an identical URL
+     * shape only by coincidence.
+     */
+    forKind: (kind: string, input: string) => ["sourcePreview", kind, input] as const,
   },
   gameScores: {
     /** Per-item leaderboard for one period. */

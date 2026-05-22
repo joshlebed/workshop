@@ -104,11 +104,22 @@ export function parseLetterboxdListUrl(input: string): {
 
 // --- Scrape ---
 //
-// Letterboxd doesn't publish a public API, but every list page emits a
-// per-film poster block whose `data-film-slug` + `data-film-name` + the
-// detail link to `/film/<slug>/` are stable. We parse those via a small
-// regex pass; we deliberately don't pull in a full HTML parser since the
-// extraction is narrow.
+// Letterboxd doesn't publish a public API, so we scrape each list page for
+// the per-film poster blocks. Two HTML shapes are in the wild as of
+// 2026-05:
+//
+//   • Modern (React rebuild, ~2025+): each film is a `<div
+//     class="react-component" data-component-class="LazyPoster" ...>`
+//     carrying `data-item-slug`, `data-item-name` (title with `(YYYY)`
+//     suffix), and `data-item-link="/film/<slug>/"`. No standalone year
+//     attribute — we strip the year from the parens.
+//   • Legacy (server-rendered list page, still served on a few endpoints):
+//     `<li class="poster-container">` containing `data-film-slug`,
+//     `data-film-name`, and `data-film-release-year`.
+//
+// We run the modern matcher first and fall through to the legacy one so a
+// single deploy works against either format. When Letterboxd unifies the
+// templates we can drop the legacy branch.
 
 export interface ScrapedFilm {
   slug: string;
@@ -120,34 +131,74 @@ export interface ScrapedFilm {
   letterboxdUrl: string;
 }
 
-const LETTERBOXD_FILM_BLOCK_RE =
-  /<li[^>]*class="[^"]*poster-container[^"]*"[^>]*>([\s\S]*?)<\/li>/g;
-const LETTERBOXD_FILM_SLUG_RE = /data-film-slug="([^"]+)"/;
-const LETTERBOXD_FILM_NAME_RE = /data-film-name="([^"]+)"/;
-const LETTERBOXD_FILM_YEAR_RE = /data-film-release-year="(\d{4})"/;
+// Modern (LazyPoster) — `data-item-slug`/`data-item-name`/`data-item-link`
+// emitted by the React-rebuild list pages. The leading `<div` lookahead
+// matches both the watchlist (no enclosing `<li>`) and standard lists
+// (wrapped in `<li>`); we only care about the attribute set.
+const LB_MODERN_BLOCK_RE = /<div\b[^>]*\bdata-component-class="LazyPoster"[^>]*>/g;
+const LB_MODERN_SLUG_RE = /\bdata-item-slug="([^"]+)"/;
+const LB_MODERN_NAME_RE = /\bdata-item-name="([^"]+)"/;
+const LB_MODERN_LINK_RE = /\bdata-item-link="\/film\/([^"/]+)\/?"/;
+
+// Legacy server-rendered list page.
+const LB_LEGACY_BLOCK_RE = /<li[^>]*class="[^"]*poster-container[^"]*"[^>]*>([\s\S]*?)<\/li>/g;
+const LB_LEGACY_SLUG_RE = /data-film-slug="([^"]+)"/;
+const LB_LEGACY_NAME_RE = /data-film-name="([^"]+)"/;
+const LB_LEGACY_YEAR_RE = /data-film-release-year="(\d{4})"/;
 // `frame-title` is the in-page anchor — release year is sometimes inside the
 // link text instead of the data attribute (older list pages).
-const LETTERBOXD_FILM_FRAME_YEAR_RE = /\((\d{4})\)/;
+const LB_LEGACY_FRAME_YEAR_RE = /\((\d{4})\)/;
+
+// `data-item-name` carries either "Title" or "Title (YYYY)". Split the two
+// so the title we ship to TMDB matches the catalog name, not the parenthesized
+// display string.
+function splitTitleAndYear(displayName: string): { title: string; year: number | null } {
+  const m = displayName.match(/^(.*?)\s*\((\d{4})\)\s*$/);
+  if (m && m[1] && m[2]) return { title: m[1].trim(), year: Number(m[2]) };
+  return { title: displayName.trim(), year: null };
+}
 
 export function parseLetterboxdListHtml(html: string): ScrapedFilm[] {
   const out: ScrapedFilm[] = [];
   const seen = new Set<string>();
-  // Use a fresh local RegExp so `lastIndex` doesn't leak across calls and so
-  // `continue` paths don't desync. The module-level constant is the pattern;
-  // the local copy owns the iteration state.
-  const blockRe = new RegExp(LETTERBOXD_FILM_BLOCK_RE.source, LETTERBOXD_FILM_BLOCK_RE.flags);
-  let match = blockRe.exec(html);
-  while (match !== null) {
-    const block = match[1] ?? "";
-    const next = blockRe.exec(html);
-    const slug = block.match(LETTERBOXD_FILM_SLUG_RE)?.[1];
+
+  // Modern pass first. The block regex is sticky on `<div ...>` only, so we
+  // grab a generous window after each match for attribute extraction.
+  const modernRe = new RegExp(LB_MODERN_BLOCK_RE.source, LB_MODERN_BLOCK_RE.flags);
+  let modernMatch = modernRe.exec(html);
+  while (modernMatch !== null) {
+    // Read attributes from the opening div tag itself (everything up to `>`).
+    const tag = modernMatch[0];
+    const slug = tag.match(LB_MODERN_SLUG_RE)?.[1] ?? tag.match(LB_MODERN_LINK_RE)?.[1] ?? null;
+    if (slug && !seen.has(slug)) {
+      const displayName = tag.match(LB_MODERN_NAME_RE)?.[1] ?? null;
+      const parsed = displayName ? splitTitleAndYear(displayName) : { title: null, year: null };
+      seen.add(slug);
+      out.push({
+        slug,
+        title: parsed.title,
+        year: parsed.year,
+        letterboxdUrl: `https://letterboxd.com/film/${slug}/`,
+      });
+    }
+    modernMatch = modernRe.exec(html);
+  }
+
+  // Legacy pass. Skip slugs we already picked up in the modern pass so a
+  // page that emits both shapes (transition states) doesn't double-count.
+  const legacyRe = new RegExp(LB_LEGACY_BLOCK_RE.source, LB_LEGACY_BLOCK_RE.flags);
+  let legacyMatch = legacyRe.exec(html);
+  while (legacyMatch !== null) {
+    const block = legacyMatch[1] ?? "";
+    const next = legacyRe.exec(html);
+    const slug = block.match(LB_LEGACY_SLUG_RE)?.[1];
     if (!slug || seen.has(slug)) {
-      match = next;
+      legacyMatch = next;
       continue;
     }
-    const title = block.match(LETTERBOXD_FILM_NAME_RE)?.[1] ?? null;
-    const yearAttr = block.match(LETTERBOXD_FILM_YEAR_RE)?.[1];
-    const yearFrame = block.match(LETTERBOXD_FILM_FRAME_YEAR_RE)?.[1];
+    const title = block.match(LB_LEGACY_NAME_RE)?.[1] ?? null;
+    const yearAttr = block.match(LB_LEGACY_YEAR_RE)?.[1];
+    const yearFrame = block.match(LB_LEGACY_FRAME_YEAR_RE)?.[1];
     const year =
       yearAttr && /^\d{4}$/.test(yearAttr)
         ? Number(yearAttr)
@@ -161,7 +212,7 @@ export function parseLetterboxdListHtml(html: string): ScrapedFilm[] {
       year,
       letterboxdUrl: `https://letterboxd.com/film/${slug}/`,
     });
-    match = next;
+    legacyMatch = next;
   }
   return out;
 }

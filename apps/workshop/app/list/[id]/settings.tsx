@@ -24,13 +24,13 @@ import {
 import { removeMember } from "../../../src/api/members";
 import { syncSource } from "../../../src/api/sources";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { albumShelfErrorMessage } from "../../../src/lib/albumShelfErrors";
 import { errorMessage } from "../../../src/lib/api";
 import { pickCoverPhoto } from "../../../src/lib/coverPhoto";
 import { goBack } from "../../../src/lib/goBack";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import { formatRelative } from "../../../src/lib/relativeTime";
 import { buildInviteShareUrl, copyToClipboard } from "../../../src/lib/share";
+import { sourceErrorMessage } from "../../../src/lib/sourceErrors";
 import {
   Button,
   Card,
@@ -302,7 +302,7 @@ export default function ListSettings() {
       });
     },
     onError: (e) => {
-      showToast({ message: albumShelfErrorMessage(e, "Couldn't refresh."), tone: "danger" });
+      showToast({ message: sourceErrorMessage(e, "Couldn't refresh."), tone: "danger" });
     },
   });
 
@@ -627,42 +627,48 @@ export default function ListSettings() {
             <Text variant="label" tone="secondary">
               Sources
             </Text>
-            {sources.map((src) => (
-              <View key={src.id} style={styles.field}>
-                <Text variant="label">{src.kind.replace(/_/g, " ")}</Text>
-                {src.kind === "spotify_playlist" &&
-                typeof src.config.spotifyPlaylistUrl === "string" ? (
-                  <Pressable
-                    accessibilityRole="link"
-                    onPress={() => {
-                      const url = src.config.spotifyPlaylistUrl;
-                      if (typeof url === "string") {
-                        Linking.openURL(url).catch(() => {});
-                      }
-                    }}
-                    testID={`settings-source-${src.id}-open`}
-                  >
-                    <Text style={styles.urlText} numberOfLines={1}>
-                      {String(src.config.spotifyPlaylistUrl)}
-                    </Text>
-                  </Pressable>
-                ) : null}
-                <Text variant="caption" tone="muted">
-                  {src.lastSyncedAt
-                    ? `Last synced ${formatRelative(src.lastSyncedAt)}`
-                    : "Not yet synced."}
-                </Text>
-                <Button
-                  testID={`settings-source-${src.id}-sync`}
-                  label="Refresh now"
-                  variant="secondary"
-                  size="md"
-                  loading={syncMutation.isPending}
-                  disabled={syncMutation.isPending}
-                  onPress={() => syncMutation.mutate(src.id)}
-                />
-              </View>
-            ))}
+            {sources.map((src) => {
+              // Each source kind stashes its primary URL on a kind-specific
+              // config field. Extending this means one more case here.
+              const sourceUrl: string | null =
+                src.kind === "spotify_playlist" && typeof src.config.spotifyPlaylistUrl === "string"
+                  ? src.config.spotifyPlaylistUrl
+                  : src.kind === "letterboxd_list" && typeof src.config.letterboxdUrl === "string"
+                    ? src.config.letterboxdUrl
+                    : null;
+              return (
+                <View key={src.id} style={styles.field}>
+                  <Text variant="label">{src.kind.replace(/_/g, " ")}</Text>
+                  {sourceUrl ? (
+                    <Pressable
+                      accessibilityRole="link"
+                      onPress={() => {
+                        Linking.openURL(sourceUrl).catch(() => {});
+                      }}
+                      testID={`settings-source-${src.id}-open`}
+                    >
+                      <Text style={styles.urlText} numberOfLines={1}>
+                        {sourceUrl}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  <Text variant="caption" tone="muted">
+                    {src.lastSyncedAt
+                      ? `Last synced ${formatRelative(src.lastSyncedAt)}`
+                      : "Not yet synced."}
+                  </Text>
+                  <Button
+                    testID={`settings-source-${src.id}-sync`}
+                    label="Refresh now"
+                    variant="secondary"
+                    size="md"
+                    loading={syncMutation.isPending}
+                    disabled={syncMutation.isPending}
+                    onPress={() => syncMutation.mutate(src.id)}
+                  />
+                </View>
+              );
+            })}
           </Card>
         ) : null}
 

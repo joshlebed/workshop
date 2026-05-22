@@ -316,7 +316,14 @@ export interface SpotifyPlaylistPreview {
   trackCount: number;
 }
 
-export type SourcePreview = SpotifyPlaylistPreview;
+export interface LetterboxdListPreview {
+  kind: "letterboxd_list";
+  username: string;
+  slug: string;
+  filmCount: number;
+}
+
+export type SourcePreview = SpotifyPlaylistPreview | LetterboxdListPreview;
 
 export interface SourcePreviewResponse {
   preview: SourcePreview;
