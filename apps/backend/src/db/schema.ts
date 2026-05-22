@@ -196,23 +196,6 @@ export const items = pgTable(
   }),
 );
 
-export const itemUpvotes = pgTable(
-  "item_upvotes",
-  {
-    itemId: uuid("item_id")
-      .notNull()
-      .references(() => items.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.itemId, t.userId] }),
-    userIdx: index("item_upvotes_user_idx").on(t.userId),
-  }),
-);
-
 export const activityEvents = pgTable(
   "activity_events",
   {
@@ -355,7 +338,6 @@ export type DbList = typeof lists.$inferSelect;
 export type DbListMember = typeof listMembers.$inferSelect;
 export type DbListInvite = typeof listInvites.$inferSelect;
 export type DbItem = typeof items.$inferSelect;
-export type DbItemUpvote = typeof itemUpvotes.$inferSelect;
 export type DbActivityEvent = typeof activityEvents.$inferSelect;
 export type DbUserActivityRead = typeof userActivityReads.$inferSelect;
 export type DbMetadataCache = typeof metadataCache.$inferSelect;

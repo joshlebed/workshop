@@ -375,7 +375,7 @@ describe("score endpoints — leaderboard module gate", () => {
   });
 
   it("returns 409 when leaderboard is off (per-item GET)", async () => {
-    const r = await runGate(["voting", "ranking"]);
+    const r = await runGate(["sources", "ranking"]);
     expect(r.status).toBe(409);
     const b = r.body as { details: { code: string } };
     expect(b.details.code).toBe("leaderboard.disabled");
@@ -394,7 +394,7 @@ describe("score endpoints — leaderboard module gate", () => {
   });
 
   it("passes through when leaderboard is on alongside other modules", async () => {
-    const r = await runGate(["voting", "leaderboard", "ranking"]);
+    const r = await runGate(["sources", "leaderboard", "ranking"]);
     expect(r.status).toBe(200);
   });
 });

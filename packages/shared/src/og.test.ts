@@ -112,7 +112,7 @@ describe("buildOgDescription", () => {
       { itemKind: "book", modules: [] },
       { itemKind: "link", modules: [] },
       { itemKind: "link", modules: ["leaderboard"] },
-      { itemKind: "link", modules: ["voting", "leaderboard", "ranking"] },
+      { itemKind: "link", modules: ["leaderboard", "ranking"] },
       { itemKind: "plain", modules: ["todo"] },
       { itemKind: "spotify_album", modules: [] },
     ];
@@ -146,9 +146,9 @@ describe("buildThumbnailSubtitle", () => {
 
 describe("buildSummaryLabel", () => {
   it("prefers the leaderboard module over a generic link itemKind (covers the game-list case)", () => {
-    expect(
-      buildSummaryLabel({ itemKind: "link", modules: ["voting", "leaderboard", "ranking"] }),
-    ).toBe("Leaderboard");
+    expect(buildSummaryLabel({ itemKind: "link", modules: ["leaderboard", "ranking"] })).toBe(
+      "Leaderboard",
+    );
   });
 
   it("returns the full kind label for movie/tv/book/spotify_album", () => {
@@ -159,7 +159,6 @@ describe("buildSummaryLabel", () => {
   });
 
   it("falls back to module-derived labels when itemKind is generic", () => {
-    expect(buildSummaryLabel({ itemKind: "link", modules: ["voting"] })).toBe("Poll");
     expect(buildSummaryLabel({ itemKind: null, modules: ["todo"] })).toBe("Checklist");
   });
 

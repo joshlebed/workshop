@@ -96,7 +96,7 @@ describe("duplicateListSchema — preserveCompletion x copySources matrix", () =
 describe("duplicateListSchema — metadata overrides", () => {
   const { duplicateListSchema } = __test;
 
-  it("accepts a name override (album-shelf → voting-poll rename)", () => {
+  it("accepts a name override", () => {
     const r = duplicateListSchema.safeParse({ name: "Best album for movie night?" });
     expect(r.success).toBe(true);
     if (r.success) expect(r.data.name).toBe("Best album for movie night?");
@@ -134,21 +134,21 @@ describe("duplicateListSchema — modules + itemKind overrides", () => {
   const { duplicateListSchema } = __test;
 
   it("accepts a modules override", () => {
-    const r = duplicateListSchema.safeParse({ modules: ["voting"] });
+    const r = duplicateListSchema.safeParse({ modules: ["todo"] });
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.modules).toEqual(["voting"]);
+    if (r.success) expect(r.data.modules).toEqual(["todo"]);
   });
 
   it("normalizes the modules override", () => {
     const r = duplicateListSchema.safeParse({
-      modules: ["sources", "voting", "voting", "todo"],
+      modules: ["sources", "ranking", "ranking", "todo"],
     });
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.modules).toEqual(["todo", "voting", "sources"]);
+    if (r.success) expect(r.data.modules).toEqual(["todo", "ranking", "sources"]);
   });
 
   it("rejects an unknown module in the override", () => {
-    expect(duplicateListSchema.safeParse({ modules: ["voting", "made_up"] }).success).toBe(false);
+    expect(duplicateListSchema.safeParse({ modules: ["todo", "made_up"] }).success).toBe(false);
   });
 
   it("accepts itemKind=null in the override (loosen to unconstrained)", () => {
@@ -171,20 +171,19 @@ describe("duplicateListSchema — modules + itemKind overrides", () => {
 describe("duplicateListSchema — combined overrides", () => {
   const { duplicateListSchema } = __test;
 
-  it("accepts the canonical album-shelf → poll body", () => {
-    // From spec §2: album shelf -> "Best album for movie night?" poll.
+  it("accepts a full metadata + modules override duplicate body", () => {
     const r = duplicateListSchema.safeParse({
       name: "Best album for movie night?",
       emoji: "🗳️",
       color: "grape",
-      modules: ["voting"],
+      modules: ["todo"],
       itemKind: null,
       preserveCompletion: false,
       copySources: false,
     });
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(r.data.modules).toEqual(["voting"]);
+      expect(r.data.modules).toEqual(["todo"]);
       expect(r.data.itemKind).toBeNull();
       expect(r.data.preserveCompletion).toBe(false);
       expect(r.data.copySources).toBe(false);

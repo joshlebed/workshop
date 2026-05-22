@@ -19,8 +19,7 @@ import { requireAuth } from "../../middleware/auth.js";
  *   requester's `list_members` rows (spec §4.7). Cursor pagination on
  *   `(created_at DESC, id DESC)`; encoding both columns avoids
  *   duplicate / skipped rows when several events land in the same
- *   transaction (e.g. `item_added` + auto-upvote handler retrofits in
- *   the same tx burst).
+ *   transaction.
  *
  * `POST /v1/activity/read` — body `{ listIds? }`; upserts
  *   `user_activity_reads(user_id, list_id, last_read_at = now())`. Omit

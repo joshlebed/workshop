@@ -20,15 +20,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import {
-  archiveItem,
-  completeItem,
-  fetchItems,
-  moveItem,
-  removeUpvote,
-  uncompleteItem,
-  upvoteItem,
-} from "../api/items";
+import { archiveItem, completeItem, fetchItems, moveItem, uncompleteItem } from "../api/items";
 import { fetchListScores } from "../api/scores";
 import { syncSource } from "../api/sources";
 import { useAuth } from "../hooks/useAuth";
@@ -63,7 +55,6 @@ interface Props {
  *
  * - `ranking` on → Ordered + Unordered sections, drag-to-reorder.
  * - `todo` on    → Done section appears below.
- * - `voting` on  → upvote pill on every item.
  * - `sources` on → header refresh button and source provenance badges.
  *
  * `list.itemKind === "spotify_album"` keeps the legacy album-shelf
@@ -88,7 +79,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const isGameKind = list.modules.includes("leaderboard");
   const rankingOn = hasModule(list.modules, "ranking");
   const todoOn = hasModule(list.modules, "todo");
-  const votingOn = hasModule(list.modules, "voting");
 
   const itemsQuery = useQuery({
     queryKey: itemsKey,
@@ -221,22 +211,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't update item."), tone: "danger" });
-    },
-  });
-
-  const upvoteMutation = useMutation<Item, Error, { item: Item; nextUpvoted: boolean }>({
-    mutationFn: async ({ item, nextUpvoted }) => {
-      const res = nextUpvoted
-        ? await upvoteItem(item.id, token)
-        : await removeUpvote(item.id, token);
-      return res.item;
-    },
-    onSuccess: () => {
-      haptics.light();
-      queryClient.invalidateQueries({ queryKey: itemsKey });
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't update upvote."), tone: "danger" });
     },
   });
 
@@ -418,11 +392,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
                   ? `/list/${list.id}/game/${item.id}`
                   : `/list/${list.id}/item/${item.id}`,
               ),
-          }
-        : {}),
-      ...(votingOn
-        ? {
-            onUpvote: () => upvoteMutation.mutate({ item, nextUpvoted: !item.viewerUpvoted }),
           }
         : {}),
       onDelete: confirmDelete,
@@ -779,7 +748,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
               onPromoteToOrdered={onPromoteToOrdered}
               onRowMenu={onRowMenu}
               onRowPressBody={onRowPressBody}
-              onUpvote={(item) => upvoteMutation.mutate({ item, nextUpvoted: !item.viewerUpvoted })}
               onUncompleteItem={(item) => completeMutation.mutate({ item, nextCompleted: false })}
               resolveRowPressCover={resolveRowPressCover}
               refreshing={manualRefreshing}

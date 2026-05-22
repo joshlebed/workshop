@@ -95,7 +95,7 @@ See `src/ui/ThemeProvider.tsx`.
 `Animated.createAnimatedComponent(Pressable)` looks tempting, but `Pressable`'s
 `style={({ pressed }) => [...]}` re-resolves on every render and clobbers transform
 animations on the same component. Wrap a plain `<Pressable>` inside `<Animated.View>` and
-keep press-state styling on the inner `Pressable`. `UpvotePill` is the reference.
+keep press-state styling on the inner `Pressable`.
 
 ## Don't stack `<Sheet>`s with `setA(false); setB(true)`
 

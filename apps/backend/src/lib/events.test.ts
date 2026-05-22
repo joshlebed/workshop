@@ -79,8 +79,6 @@ describe("recordEvent", () => {
       "item_added",
       "item_updated",
       "item_archived",
-      "item_upvoted",
-      "item_unupvoted",
       "item_completed",
       "item_uncompleted",
       "item_promoted",

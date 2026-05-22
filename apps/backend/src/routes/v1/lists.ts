@@ -777,8 +777,7 @@ listRoutes.post(
 
 listRoutes.get("/:id/items", requireListMember, async (c) => {
   const listId = c.req.param("id");
-  const userId = c.get("userId");
-  const split = await fetchItemsForList(listId, userId);
+  const split = await fetchItemsForList(listId);
   return ok(c, split);
 });
 
@@ -1057,7 +1056,7 @@ listRoutes.post(
       type: "source_synced",
       payload: { kind: source.kind, addedCount: result.addedCount },
     });
-    const split = await fetchItemsForList(listId, userId);
+    const split = await fetchItemsForList(listId);
     const [reread] = await db
       .select()
       .from(listSources)

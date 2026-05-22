@@ -255,16 +255,6 @@ describe("itemRoutes auth gating", () => {
     expect(res.status).toBe(401);
   });
 
-  it("POST /:id/upvote requires a bearer token", async () => {
-    const res = await itemRoutes.request(`/${validUuid}/upvote`, { method: "POST" });
-    expect(res.status).toBe(401);
-  });
-
-  it("DELETE /:id/upvote requires a bearer token", async () => {
-    const res = await itemRoutes.request(`/${validUuid}/upvote`, { method: "DELETE" });
-    expect(res.status).toBe(401);
-  });
-
   it("POST /:id/move requires a bearer token", async () => {
     const res = await itemRoutes.request(`/${validUuid}/move`, {
       method: "POST",
@@ -308,14 +298,6 @@ describe("itemRoutes input validation (bails before DB)", () => {
 
   it("POST /:id/complete 404s when id isn't a uuid", async () => {
     const res = await itemRoutes.request("/not-a-uuid/complete", {
-      method: "POST",
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  it("POST /:id/upvote 404s when id isn't a uuid", async () => {
-    const res = await itemRoutes.request("/not-a-uuid/upvote", {
       method: "POST",
       headers: authHeaders(),
     });
@@ -381,9 +363,9 @@ describe("list-scoped item routes auth + uuid gating", () => {
 // contract: a 409 Response whose JSON body carries a stable `<module>.disabled`
 // code, the module name, and a server-authored message. Driving the route to
 // the handler requires a live DB, so we assert against the helper directly —
-// each gated endpoint (`upvote`, `complete`, `move`, `score`, `sources`)
-// flows through this. The "3+ assertions per gated endpoint" coverage:
-// status, top-level envelope, and the embedded `code`/`module`/`message`.
+// each gated endpoint (`complete`, `move`, `score`, `sources`) flows through
+// this. The "3+ assertions per gated endpoint" coverage: status, top-level
+// envelope, and the embedded `code`/`module`/`message`.
 
 function makeContext(): { ctx: Parameters<typeof requireModule>[0] } {
   const app = new Hono();
@@ -398,7 +380,7 @@ function makeContext(): { ctx: Parameters<typeof requireModule>[0] } {
   return { ctx: captured as Parameters<typeof requireModule>[0] };
 }
 
-async function expect409<M extends "voting" | "todo" | "ranking" | "leaderboard" | "sources">(
+async function expect409<M extends "todo" | "ranking" | "leaderboard" | "sources">(
   module: M,
 ): Promise<void> {
   const app = new Hono();
@@ -425,10 +407,6 @@ describe("module-gate 409 contract (requireModule)", () => {
   // here in case a future test wants a raw Context object.
   void makeContext;
 
-  it("voting: returns 409 with voting.disabled code", async () => {
-    await expect409("voting");
-  });
-
   it("todo: returns 409 with todo.disabled code", async () => {
     await expect409("todo");
   });
@@ -448,7 +426,7 @@ describe("module-gate 409 contract (requireModule)", () => {
   it("returns null (pass-through) when the module is enabled", async () => {
     const app = new Hono();
     app.get("/x", (c) => {
-      const r = requireModule(c, ["voting"], "voting");
+      const r = requireModule(c, ["todo"], "todo");
       return c.json({ blocked: r !== null });
     });
     const res = await app.request("/x");
@@ -459,7 +437,7 @@ describe("module-gate 409 contract (requireModule)", () => {
   it("treats extra unrelated modules as still gated when target isn't present", async () => {
     const app = new Hono();
     app.get("/x", (c) => {
-      const r = requireModule(c, ["ranking", "sources"], "voting");
+      const r = requireModule(c, ["ranking", "sources"], "todo");
       return c.json({ blocked: r !== null });
     });
     const res = await app.request("/x");
@@ -474,48 +452,34 @@ describe("stripModuleGatedItemFields", () => {
   const base = {
     id: "i",
     title: "x",
-    upvoteCount: 3,
-    viewerUpvoted: true,
     completed: true,
     completedAt: "2026-05-01T00:00:00Z",
     completedBy: "u",
     position: 1024,
   };
 
-  it("strips voting fields when voting is off", () => {
-    const r = stripModuleGatedItemFields(base, ["todo", "ranking"]);
-    expect(r.upvoteCount).toBeUndefined();
-    expect(r.viewerUpvoted).toBeUndefined();
-    expect(r.completed).toBe(true);
-    expect(r.position).toBe(1024);
-  });
-
   it("strips todo fields when todo is off", () => {
-    const r = stripModuleGatedItemFields(base, ["voting", "ranking"]);
+    const r = stripModuleGatedItemFields(base, ["ranking"]);
     expect(r.completed).toBeUndefined();
     expect(r.completedAt).toBeUndefined();
     expect(r.completedBy).toBeUndefined();
-    expect(r.upvoteCount).toBe(3);
     expect(r.position).toBe(1024);
   });
 
   it("strips position when ranking is off", () => {
-    const r = stripModuleGatedItemFields(base, ["voting", "todo"]);
+    const r = stripModuleGatedItemFields(base, ["todo"]);
     expect(r.position).toBeUndefined();
     expect(r.completed).toBe(true);
-    expect(r.upvoteCount).toBe(3);
   });
 
   it("keeps everything when every module is on", () => {
-    const r = stripModuleGatedItemFields(base, ["voting", "todo", "ranking"]);
-    expect(r.upvoteCount).toBe(3);
+    const r = stripModuleGatedItemFields(base, ["todo", "ranking"]);
     expect(r.completed).toBe(true);
     expect(r.position).toBe(1024);
   });
 
   it("strips everything when no modules are enabled", () => {
     const r = stripModuleGatedItemFields(base, []);
-    expect(r.upvoteCount).toBeUndefined();
     expect(r.completed).toBeUndefined();
     expect(r.position).toBeUndefined();
   });

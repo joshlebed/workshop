@@ -108,8 +108,6 @@ interface ItemRow {
   completed_by: string | null;
   created_at: Date | string;
   updated_at: Date | string;
-  upvote_count: number;
-  viewer_upvoted: boolean;
 }
 
 function rowToItem(r: ItemRow): Item {
@@ -126,8 +124,6 @@ function rowToItem(r: ItemRow): Item {
     completed: Boolean(r.completed),
     completedAt: toIsoOrNull(r.completed_at),
     completedBy: r.completed_by,
-    upvoteCount: Number(r.upvote_count ?? 0),
-    viewerUpvoted: Boolean(r.viewer_upvoted),
     createdAt: toIsoString(r.created_at),
     updatedAt: toIsoString(r.updated_at),
   };
@@ -180,14 +176,10 @@ function mergeLinkPreviewContent(
 }
 
 /**
- * Fetch one item by id with upvote aggregates joined and module-gated fields
- * stripped per the parent list's `modules`.
+ * Fetch one item by id with module-gated fields stripped per the parent
+ * list's `modules`.
  */
-async function fetchItemShape(
-  itemId: string,
-  viewerId: string,
-  db: DbClient = getDb(),
-): Promise<Item | null> {
+async function fetchItemShape(itemId: string, db: DbClient = getDb()): Promise<Item | null> {
   const rows = await executeRows<ItemRow & { list_modules: string[] | null }>(
     db,
     sql`
@@ -195,8 +187,6 @@ async function fetchItemShape(
         i.id, i.list_id, COALESCE(i.kind, 'plain') AS kind, i.title, i.url, i.note,
         i.content, i.position, i.added_by, i.completed, i.completed_at, i.completed_by,
         i.created_at, i.updated_at,
-        COALESCE((SELECT COUNT(*)::int FROM item_upvotes u WHERE u.item_id = i.id), 0) AS upvote_count,
-        COALESCE(EXISTS(SELECT 1 FROM item_upvotes u WHERE u.item_id = i.id AND u.user_id = ${viewerId}), false) AS viewer_upvoted,
         l.modules AS list_modules
       FROM items i
       JOIN lists l ON l.id = i.list_id
@@ -211,9 +201,9 @@ async function fetchItemShape(
 }
 
 /**
- * Fetch every non-archived item on a list, joined with upvote aggregates and
- * the parent list's modules so we can split into the three sections AND
- * strip module-gated fields in one pass. Sections:
+ * Fetch every non-archived item on a list, joined with the parent list's
+ * modules so we can split into the three sections AND strip module-gated
+ * fields in one pass. Sections:
  *
  * - `ordered`:   position IS NOT NULL, sorted by position ASC. Suppressed
  *                when `ranking` is off (items collapse into `unordered`).
@@ -223,7 +213,6 @@ async function fetchItemShape(
  */
 export async function fetchItemsForList(
   listId: string,
-  viewerId: string,
   db: DbClient = getDb(),
 ): Promise<ListItemsResponse & { modules: ModuleName[] }> {
   const [listRow] = await db
@@ -239,9 +228,7 @@ export async function fetchItemsForList(
       SELECT
         i.id, i.list_id, COALESCE(i.kind, 'plain') AS kind, i.title, i.url, i.note,
         i.content, i.position, i.added_by, i.completed, i.completed_at, i.completed_by,
-        i.created_at, i.updated_at,
-        COALESCE((SELECT COUNT(*)::int FROM item_upvotes u WHERE u.item_id = i.id), 0) AS upvote_count,
-        COALESCE(EXISTS(SELECT 1 FROM item_upvotes u WHERE u.item_id = i.id AND u.user_id = ${viewerId}), false) AS viewer_upvoted
+        i.created_at, i.updated_at
       FROM items i
       WHERE i.list_id = ${listId} AND i.archived_at IS NULL
       ORDER BY
@@ -385,7 +372,7 @@ export async function createItem(
     return row;
   });
 
-  const item = await fetchItemShape(inserted.id, userId);
+  const item = await fetchItemShape(inserted.id);
   if (!item) throw new Error("item disappeared after insert");
   return item;
 }
@@ -394,8 +381,7 @@ export async function createItem(
 
 itemRoutes.get("/:id", requireItemMember, async (c) => {
   const itemId = c.req.param("id");
-  const userId = c.get("userId");
-  const item = await fetchItemShape(itemId, userId);
+  const item = await fetchItemShape(itemId);
   if (!item) return err(c, "NOT_FOUND", "item not found");
   return ok(c, { item });
 });
@@ -489,7 +475,7 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
     payload: { title: updated.title },
   });
 
-  const item = await fetchItemShape(itemId, userId);
+  const item = await fetchItemShape(itemId);
   if (!item) return err(c, "NOT_FOUND", "item not found");
   return ok(c, { item });
 });
@@ -563,7 +549,7 @@ itemRoutes.post(
       payload: { title: updated.title },
     });
 
-    const item = await fetchItemShape(itemId, userId);
+    const item = await fetchItemShape(itemId);
     if (!item) return err(c, "NOT_FOUND", "item not found");
     return ok(c, { item });
   },
@@ -606,87 +592,7 @@ itemRoutes.post(
       payload: { title: updated.title },
     });
 
-    const item = await fetchItemShape(itemId, userId);
-    if (!item) return err(c, "NOT_FOUND", "item not found");
-    return ok(c, { item });
-  },
-);
-
-// --- Upvotes (voting module) ---
-
-itemRoutes.post(
-  "/:id/upvote",
-  requireItemMember,
-  rateLimit({
-    family: "v1.items.upvote",
-    limit: 120,
-    windowSec: 60,
-    key: (c) => c.get("userId") ?? null,
-  }),
-  async (c) => {
-    const itemId = c.req.param("id");
-    const userId = c.get("userId");
-    const listId = c.get("itemListId");
-    const db = getDb();
-    const gate = requireModule(c, await getParentModules(db, listId), "voting");
-    if (gate) return gate;
-
-    await db.execute(sql`
-      INSERT INTO item_upvotes (item_id, user_id)
-      VALUES (${itemId}::uuid, ${userId}::uuid)
-      ON CONFLICT DO NOTHING
-    `);
-    const [titleRow] = await db
-      .select({ title: items.title })
-      .from(items)
-      .where(eq(items.id, itemId))
-      .limit(1);
-    await recordEvent({
-      listId,
-      actorId: userId,
-      type: "item_upvoted",
-      itemId,
-      payload: { title: titleRow?.title ?? "" },
-    });
-    const item = await fetchItemShape(itemId, userId);
-    if (!item) return err(c, "NOT_FOUND", "item not found");
-    return ok(c, { item });
-  },
-);
-
-itemRoutes.delete(
-  "/:id/upvote",
-  requireItemMember,
-  rateLimit({
-    family: "v1.items.upvote",
-    limit: 120,
-    windowSec: 60,
-    key: (c) => c.get("userId") ?? null,
-  }),
-  async (c) => {
-    const itemId = c.req.param("id");
-    const userId = c.get("userId");
-    const listId = c.get("itemListId");
-    const db = getDb();
-    const gate = requireModule(c, await getParentModules(db, listId), "voting");
-    if (gate) return gate;
-
-    await db.execute(sql`
-      DELETE FROM item_upvotes WHERE item_id = ${itemId}::uuid AND user_id = ${userId}::uuid
-    `);
-    const [titleRow] = await db
-      .select({ title: items.title })
-      .from(items)
-      .where(eq(items.id, itemId))
-      .limit(1);
-    await recordEvent({
-      listId,
-      actorId: userId,
-      type: "item_unupvoted",
-      itemId,
-      payload: { title: titleRow?.title ?? "" },
-    });
-    const item = await fetchItemShape(itemId, userId);
+    const item = await fetchItemShape(itemId);
     if (!item) return err(c, "NOT_FOUND", "item not found");
     return ok(c, { item });
   },
@@ -747,7 +653,7 @@ itemRoutes.post(
       });
     }
 
-    const item = await fetchItemShape(itemId, userId);
+    const item = await fetchItemShape(itemId);
     if (!item) return err(c, "NOT_FOUND", "item not found");
     return ok(c, { item });
   },

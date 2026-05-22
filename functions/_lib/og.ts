@@ -59,7 +59,6 @@ export function buildSummaryLabel(opts: {
   if (opts.itemKind && KIND_FULL_LABEL[opts.itemKind]) {
     return KIND_FULL_LABEL[opts.itemKind] ?? "List";
   }
-  if (opts.modules.includes("voting")) return "Poll";
   if (opts.modules.includes("todo")) return "Checklist";
   if (opts.itemKind === "link") return "Links";
   return "List";

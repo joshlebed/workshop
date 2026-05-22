@@ -28,8 +28,6 @@ export interface ItemRowMenuActions {
   onUncomplete?: () => void;
   /** Open the item detail screen for editing. Hidden for album_shelf. */
   onEdit?: () => void;
-  /** Toggle upvote — only shown when the voting module is on. */
-  onUpvote?: () => void;
   /** Archive (soft-delete) the row, with a confirmation prompt. */
   onDelete: () => void;
 }
@@ -93,13 +91,6 @@ export function ItemRowMenu({ item, actions, onClose }: ItemRowMenuProps) {
               label="Mark incomplete"
               onPress={run(actions.onUncomplete)}
               testID="item-row-menu-uncomplete"
-            />
-          ) : null}
-          {actions.onUpvote ? (
-            <MenuItem
-              label={item.viewerUpvoted ? "Remove upvote" : "Upvote"}
-              onPress={run(actions.onUpvote)}
-              testID="item-row-menu-upvote"
             />
           ) : null}
           {actions.onEdit ? (
