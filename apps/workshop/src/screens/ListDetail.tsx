@@ -328,7 +328,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
     const ok = await copyToClipboard(summary);
     if (ok) haptics.light();
     showToast({
-      message: ok ? "Today's scores copied to clipboard" : "Couldn't copy — try again?",
+      message: ok ? "Today's scores copied to clipboard" : "Couldn't copy to clipboard",
       tone: ok ? "success" : "danger",
     });
   };
