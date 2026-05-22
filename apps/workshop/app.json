@@ -2,7 +2,7 @@
   "expo": {
     "name": "Workshop.dev",
     "slug": "workshop",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "orientation": "portrait",
     "scheme": "workshop",
     "userInterfaceStyle": "automatic",
@@ -10,6 +10,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "dev.josh.workshop",
       "icon": "./assets/Workshop.dev.icon",
+      "associatedDomains": ["applinks:workshop-a2v.pages.dev"],
       "entitlements": {
         "com.apple.security.application-groups": ["group.dev.josh.workshop"]
       },

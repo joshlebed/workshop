@@ -84,12 +84,23 @@ small products — first feature is **watchlist** (movie tracker). New features 
   required check to `ci.yml`, add a matching no-op job to `ci-docs.yml`. If you add a new
   `paths-ignore` entry, mirror it as a `paths` entry in `ci-docs.yml`.
 - **iOS capabilities are config-as-code.** Declare iOS capabilities (App Groups, Push, Associated
-  Domains, etc.) in `apps/workshop/app.json` (`ios.entitlements`) or via an Expo config plugin
-  **before** enabling in the Apple Developer Portal. EAS's capability sync reverts portal-only
-  changes on the next build. Currently declared: Sign In with Apple (via
-  `expo-apple-authentication`); App Groups `group.dev.josh.workshop` (via `ios.entitlements`
-  - `expo-share-intent` plugin — both are needed since the share extension also requires the
-    entitlement).
+  Domains, etc.) in `apps/workshop/app.json` (`ios.entitlements` / `ios.associatedDomains`) or
+  via an Expo config plugin **before** enabling in the Apple Developer Portal. EAS's capability
+  sync reverts portal-only changes on the next build. Currently declared: Sign In with Apple
+  (via `expo-apple-authentication`); App Groups `group.dev.josh.workshop` (via
+  `ios.entitlements` + `expo-share-intent` plugin — both are needed since the share extension
+  also requires the entitlement); Associated Domains `applinks:workshop-a2v.pages.dev` for
+  Universal Links (`/invite/*`, `/list/*` open in the app for installed users).
+- **Universal Links: AASA path allowlist lives in two places.** The iOS app advertises which
+  domain to fetch via `ios.associatedDomains` in `apps/workshop/app.json`. The domain itself
+  (workshop-a2v.pages.dev) serves the path allowlist via
+  `functions/.well-known/apple-app-site-association.ts` — a Pages Function, not a static file
+  in `public/`, because Cloudflare serves extension-less files as `application/octet-stream`
+  and iOS sometimes silently rejects them. When you add a new shareable route that should
+  open in the app, add the `/path/*` entry to the AASA function's `components` array;
+  expo-router maps the URL pathname to the matching `app/.../...tsx` route automatically (no
+  manual `Linking.prefixes` config). Apple's CDN-cached copy:
+  `curl https://app-site-association.cdn-apple.com/a/v1/workshop-a2v.pages.dev`.
 - **iOS Google sign-in returns a code result first, then an exchanged id_token via state.**
   Google's iOS OAuth client type only supports the auth-code flow, so
   `expo-auth-session/providers/google.useAuthRequest` auto-exchanges the code for tokens
