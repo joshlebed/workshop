@@ -90,6 +90,14 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `expo-apple-authentication`); App Groups `group.dev.josh.workshop` (via `ios.entitlements`
   - `expo-share-intent` plugin — both are needed since the share extension also requires the
     entitlement).
+- **iOS Google sign-in returns a code result first, then an exchanged id_token via state.**
+  Google's iOS OAuth client type only supports the auth-code flow, so
+  `expo-auth-session/providers/google.useAuthRequest` auto-exchanges the code for tokens
+  inside a `useEffect` after `promptAsync()` resolves. Reading `id_token` straight off
+  `await promptAsync()` is always undefined on iOS — you have to wait for the hook's
+  `response` state to update with `authentication.idToken`. `useGoogleSignIn` already
+  bridges this; don't "simplify" it back to a one-shot read or iOS Google sign-in silently
+  bounces users back to the sign-in screen.
 - **Don't override `ios.infoPlist.CFBundleURLTypes` without re-listing the app scheme.** Once
   declared, Expo stops auto-adding the `scheme:` value. Mirror the root `scheme` ("workshop")
   into `CFBundleURLSchemes` manually. `npx expo config --type public` catches it before EAS does.
