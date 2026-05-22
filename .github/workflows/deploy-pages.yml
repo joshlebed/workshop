@@ -91,12 +91,38 @@ jobs:
             FILE_TYPE="$(file -b /tmp/og.bin 2>/dev/null || true)"
             if [[ "$CT" == image/png* ]] && [[ "$FILE_TYPE" == PNG* ]]; then
               echo "✓ OG endpoint returns PNG ($CT, $FILE_TYPE)"
-              exit 0
+              break
             fi
             echo "retry $i: ct=$CT type=$FILE_TYPE"
             sleep 5
           done
-          echo "✗ OG endpoint did not return a PNG after retries"
+          if [[ "$CT" != image/png* ]] || [[ "$FILE_TYPE" != PNG* ]]; then
+            echo "✗ OG endpoint did not return a PNG after retries"
+            echo "  content-type: $CT"
+            echo "  body type:    $FILE_TYPE"
+            exit 1
+          fi
+
+      # AASA must be served with `Content-Type: application/json` and parse
+      # as valid JSON, or iOS silently rejects Universal Links. CF Pages
+      # routes `functions/.well-known/apple-app-site-association.ts` to
+      # `/.well-known/apple-app-site-association` — verify the dotfile
+      # directory wasn't dropped by the function bundler.
+      - name: Verify production AASA endpoint
+        run: |
+          set -euo pipefail
+          URL="https://workshop-a2v.pages.dev/.well-known/apple-app-site-association"
+          for i in 1 2 3 4 5 6; do
+            CT="$(curl -sS -o /tmp/aasa.json -w '%{content_type}' "$URL" || true)"
+            if [[ "$CT" == application/json* ]] && jq -e '.applinks.details[0].appIDs[0]' /tmp/aasa.json >/dev/null 2>&1; then
+              APP_ID="$(jq -r '.applinks.details[0].appIDs[0]' /tmp/aasa.json)"
+              echo "✓ AASA serves valid JSON for appID $APP_ID"
+              exit 0
+            fi
+            echo "retry $i: ct=$CT body=$(head -c200 /tmp/aasa.json)"
+            sleep 5
+          done
+          echo "✗ AASA endpoint did not serve valid JSON after retries"
           echo "  content-type: $CT"
-          echo "  body type:    $FILE_TYPE"
+          echo "  body:         $(head -c500 /tmp/aasa.json)"
           exit 1
