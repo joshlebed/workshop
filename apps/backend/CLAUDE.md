@@ -1,46 +1,116 @@
-# apps/backend
+# apps/backend — coding agent guide
 
-Hono app that runs both as a Lambda handler (`src/lambda.ts`) and as a local Node server
-(`src/server.ts`). Shared route definitions live in `src/app.ts`.
+Hono app. Runs both as a Lambda handler (`src/lambda.ts`) and a local Node server
+(`src/server.ts`); shared routes in `src/app.ts`.
 
 ## Adding a route
 
-1. Add the handler file under `src/routes/<area>.ts`.
-2. Mount it in `src/app.ts` (`app.route("/area", areaRoutes)`).
-3. If auth is required, put `app.use("*", requireAuth)` at the top of the sub-router (see
-   `watchlist.ts`).
-4. If request/response types are shared with mobile, add them to `packages/shared/src/types.ts`.
-5. Add a vitest test next to the file if the logic is non-trivial.
+1. Handler at `src/routes/<area>.ts`.
+2. Mount in `src/app.ts` (`app.route("/area", areaRoutes)`).
+3. If auth is required, put `app.use("*", requireAuth)` at the top of the sub-router
+   (see `routes/watchlist.ts`).
+4. If request/response types are shared with the client, add them to
+   `packages/shared/src/types.ts`.
+5. Add a vitest beside the file if the logic is non-trivial.
 
 ## Adding a table
 
-1. Edit `src/db/schema.ts`.
-2. `pnpm run db:generate -- --name=describe_change` — always pass `--name`.
-3. Review the generated SQL in `drizzle/`.
-4. Apply locally: `pnpm run db:migrate`.
-5. Commit the SQL file **and** the `drizzle/meta/` snapshot **and** `_journal.json`.
+From this directory:
 
-Migrations run automatically in CI on merge to main (`deploy-backend.yml` → `migrate` job).
+```bash
+pnpm run db:generate -- --name=descriptive_name   # always pass --name
+pnpm run db:migrate                                # apply locally
+```
+
+Commit the SQL file **and** the `drizzle/meta/` snapshot **and** `_journal.json`.
+Migrations run automatically in CI on merge to `main` (`deploy-backend.yml` → `migrate`).
+
+## Postgres pool: `postgres({ max: 1 })`
+
+Correct for Lambda — each container has its own client. Don't raise it.
+
+## Logger: pass full errors, not strings
+
+```ts
+logger.error("failed to x", { error }); // good — keeps the stack
+logger.error("failed to x", { error: error.message }); // bad — loses the stack
+```
+
+Source: `src/lib/logger.ts`.
+
+## `JSON.parse` and `Response.json()` return `unknown`
+
+ts-reset is enabled repo-wide. Validate with zod (see `src/lib/session.ts`) or a type
+guard. Don't blind-cast.
+
+## Lists and items are soft-deleted via `archived_at`
+
+`DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's
+`archived_at`; FKs stay configured for a future unarchive surface. **Every read path must
+filter `archived_at IS NULL`** — `requireListMember` / `requireItemMember` 404 archived
+rows, `GET /v1/lists` filters lists, item reads filter both item and parent list, the
+activity feed joins through both, and the public invite preview/accept check the same.
+When you add a new query touching `lists` or `items`, add the same filter. Action events
+are `list_archived` / `item_archived` (legacy `item_deleted` is kept in the enum for old
+rows). For album-shelf items the partial unique index on `(list_id, spotifyAlbumId)`
+includes archived rows, so a refresh won't resurface an album the user archived.
+
+## Per-(list, viewer) presentation state lives on `list_members`
+
+`pinned_at`, `archived_at`, `muted_at` columns (NULL = not set). `last_read_at` for
+unread-count derivation lives in the older `user_activity_reads` table — don't
+duplicate it. `GET /v1/lists` joins both into `ListSummary`. Endpoints follow
+`POST /v1/lists/:id/{pin,archive,mute,read}` to set + `DELETE` to clear; `read` is
+one-way (no inverse semantic). Don't confuse this per-viewer `archived_at` with the
+global soft-delete `archived_at` on `lists` / `items` above.
+
+## Unread count is server-authored
+
+The home bell badge is `sum(list.unreadCount across non-muted lists)` from
+`ListSummary`. Don't reintroduce a client-side cutoff-against-`getActivityLastViewedAt`
+derivation — it has no per-list granularity, and a single `/activity` visit clears
+everything.
+
+## CORS `allowMethods` is a whitelist in three places — update all three
+
+1. Hono's `cors()` in `src/app.ts`.
+2. API Gateway HTTP API's `cors_configuration.allow_methods` in
+   `infra/apigateway.tf` — API Gateway answers OPTIONS preflights at the edge before
+   Lambda sees them; a missing verb here silently breaks the preflight regardless of
+   Hono.
+3. `apiRequest`'s `method` union in `apps/workshop/src/lib/api.ts`.
+
+Verify:
+
+```bash
+curl -X OPTIONS \
+  -H "Origin: https://workshop-a2v.pages.dev" \
+  -H "Access-Control-Request-Method: PUT" \
+  <api>/v1/whatever -i
+```
 
 ## Config + secrets
 
-`src/lib/config.ts` validates env vars with zod and fails fast if anything is missing. In prod,
-Terraform sets env vars on the Lambda function. In local dev, `scripts/dev.sh` seeds `.env` from
-`.env.example` (generating a random `SESSION_SECRET`).
+`src/lib/config.ts` validates env vars with zod and fails fast if anything is missing. In
+prod, Terraform sets env vars on the Lambda function (`STAGE`, `DATABASE_URL`,
+`SESSION_SECRET`, `APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`,
+`GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`, `LOG_LEVEL`). Locally,
+`scripts/dev.sh` seeds `.env` from `.env.example` and generates a random
+`SESSION_SECRET`.
 
-## Lambda specifics
+## Lambda bundling
 
-- `src/lambda.ts` is the handler — bundled by `scripts/bundle.mjs` (esbuild) into a single file.
+- `src/lambda.ts` is the handler — bundled by `scripts/bundle.mjs` (esbuild) into a
+  single file.
 - AWS SDK v3 is marked `external` (provided by the Lambda runtime) to shrink the zip.
 - `postgres` (the pg driver) is bundled because there's no built-in.
 - Cold start ~300–500ms for a bundled Node.js 20 Hono handler.
 
-## Auth (in flight — see `docs/redesign-plan.md`)
+## Request analytics
 
-The v1 magic-link flow is removed. OAuth (Apple + Google) backend landed in Phase 0b-1:
-`POST /v1/auth/{apple,google}`, `POST /v1/auth/signout`, `GET /v1/auth/me`,
-`PATCH /v1/users/me`. Provider audiences come from env vars (`APPLE_BUNDLE_ID`,
-`APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`) — empty by default;
-0c wires the real values via SSM. The client surface (sign-in screen, display-name
-onboarding, `useAuth`) ships in 0b-2. Don't reintroduce SES — `sesFromAddress` is gone
-from `lib/config.ts` and `@aws-sdk/client-ses` is no longer a dependency.
+Every Lambda request emits one structured JSON line (`kind: "request"`) with
+`request_id`, `method`, `path`, `route`, `status`, `duration_ms`, `user_id`, `platform`,
+`app_version`, `ip`, `origin`, `referer`, `user_agent`. CloudWatch log group
+`/aws/lambda/workshop-prod-api`, 30-day retention. Preset queries via
+`scripts/log-analytics.sh` (e.g. `by-platform`, `top-paths`, `errors`, `slow`,
+`user <user-id>`).

@@ -143,7 +143,7 @@ In repo settings → **Branches** → Branch protection rules → Add rule for `
 ## 10. Rotation playbooks
 
 The values below are scattered across multiple systems by design (each system is the source of
-truth for its slice — see `CLAUDE.md` "Sources of truth"). Rotation means updating _each_
+truth for its slice — see `docs/admin-runbook.md` "Sources of truth"). Rotation means updating _each_
 location. Easy to forget one, so use these checklists.
 
 ### 10.1 Apple/Google OAuth client ID rotation
@@ -216,7 +216,7 @@ Revoke the old key in App Store Connect once the new build is green.
 
 ### 10.4 Database connection string rotation
 
-**Careful** (see `CLAUDE.md` Safe vs careful changes). In-flight requests may briefly fail.
+**Careful** (see `CLAUDE.md` Risk tiers). In-flight requests may briefly fail.
 
 ```bash
 AWS_PROFILE=workshop-prod aws ssm put-parameter \

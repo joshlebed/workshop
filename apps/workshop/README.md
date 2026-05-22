@@ -1,26 +1,39 @@
 # workshop (Expo app)
 
-The iOS + web client for Workshop.dev. The v1 watchlist UI has been removed; v2 (group lists)
-is being rebuilt phase-by-phase per `docs/redesign-plan.md`. The home screen currently shows a
-"v2 in progress" placeholder; auth, lists, and items land in the next chunks.
+The iOS + web client for **Workshop.dev** — an umbrella app for small products
+(currently lists, scores, leaderboards). One component tree, two platforms via
+`react-native-web`.
+
+## Running locally
+
+From the repo root: `pnpm dev` (boots postgres + backend + this app at `:8081`).
+Web is the primary dev surface — open <http://localhost:8081>.
+
+For iOS in Expo Go:
 
 ```bash
-pnpm install                                      # from repo root
 EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start
 ```
 
-Open the Expo Go app on your phone and scan the QR code. Press `i` in the terminal to open the iOS
-simulator.
+Press `i` for the iOS simulator or scan the QR with the Expo Go app on a real phone.
 
 ## Structure
 
-- `app/` — expo-router file-based routes (just the placeholder home for now)
-- `src/config.ts` — API URL resolution (handles localhost, Niteshift preview proxy, env override)
-- `src/ui/` (Phase 0b) — primitives library (`Text`, `Button`, theme tokens) once auth lands
+- `app/` — expo-router file-based routes
+- `src/ui/` — primitives (`Text`, `Button`, `Sheet`, `Screen`, theme tokens)
+- `src/screens/` — screen-level composition
+- `src/lib/` — API client, storage shim, hooks
+- `src/config.ts` — API URL resolution (localhost, Niteshift preview proxy, env override)
+- `public/index.html` — web HTML shell (theme color, viewport, default OG tags)
 
 ## Deploying
 
-- JS-only changes: push to `main`, GitHub Actions runs `eas update` → your phone picks it up next
-  launch.
-- Native changes (new native lib, config): trigger the `testflight` workflow manually, or run
-  `pnpm --filter workshop-app run eas:build:ios` then `eas:submit:ios` locally.
+Merge to `main`:
+
+- **JS-only changes** → GitHub Actions runs `eas update`, phones pick it up next launch
+  (~60s).
+- **Native changes** → bump `app.json` `version` in the same PR, then trigger
+  `testflight.yml` manually (or rely on the auto-trigger when fingerprint changes).
+
+Agent gotchas (Sheets, Reanimated, dnd-kit, OAuth quirks, etc.): see `CLAUDE.md`.
+iOS deploy recovery: `docs/ios-deploy-pipeline.md`.
