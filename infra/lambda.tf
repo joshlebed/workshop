@@ -1,6 +1,6 @@
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${local.prefix}-api"
-  retention_in_days = 14
+  retention_in_days = 30
 }
 
 resource "aws_iam_role" "lambda" {

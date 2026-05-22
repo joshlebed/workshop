@@ -232,6 +232,28 @@ cd infra && AWS_PROFILE=workshop-prod terraform output                    # api_
 curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)/health
 ```
 
+### Request analytics (30-day window)
+
+Every Lambda request emits one structured JSON line with
+`kind: "request"`, `request_id`, `method`, `path`, `route`, `status`,
+`duration_ms`, `user_id`, `platform`, `app_version`, `ip`, `origin`, `referer`,
+`user_agent`. The CloudWatch log group `/aws/lambda/workshop-prod-api` retains
+30 days. `scripts/log-analytics.sh` runs preset CloudWatch Logs Insights
+queries:
+
+```bash
+AWS_PROFILE=workshop-prod ./scripts/log-analytics.sh by-platform --since 7d
+AWS_PROFILE=workshop-prod ./scripts/log-analytics.sh by-user     --since 30d
+AWS_PROFILE=workshop-prod ./scripts/log-analytics.sh top-paths   --since 7d
+AWS_PROFILE=workshop-prod ./scripts/log-analytics.sh errors      --since 24h
+AWS_PROFILE=workshop-prod ./scripts/log-analytics.sh slow        --since 24h
+AWS_PROFILE=workshop-prod ./scripts/log-analytics.sh user <user-id> --since 30d
+```
+
+Or query interactively in the Logs Insights console (region us-east-1, log
+group `/aws/lambda/workshop-prod-api`) with e.g.
+`filter kind = "request" | stats count() by platform`.
+
 The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
 `APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
 `GOOGLE_BOOKS_API_KEY`, `LOG_LEVEL` from env vars set by Terraform.

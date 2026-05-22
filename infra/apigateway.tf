@@ -4,7 +4,7 @@ resource "aws_apigatewayv2_api" "api" {
   cors_configuration {
     allow_origins = ["*"]
     allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_headers = ["Content-Type", "Authorization"]
+    allow_headers = ["Content-Type", "Authorization", "X-Workshop-Platform", "X-Workshop-App-Version"]
     max_age       = 600
   }
 }
@@ -57,7 +57,7 @@ resource "aws_apigatewayv2_stage" "default" {
 
 resource "aws_cloudwatch_log_group" "apigw" {
   name              = "/aws/apigateway/${local.prefix}-api"
-  retention_in_days = 14
+  retention_in_days = 30
 }
 
 resource "aws_lambda_permission" "apigw" {
