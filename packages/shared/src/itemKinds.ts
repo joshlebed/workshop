@@ -49,7 +49,11 @@ const bookContent = z
 const linkContent = z
   .object({
     source: z.enum(["link_preview", "manual"]).optional(),
-    sourceId: optionalString(128),
+    // Natural sourceId for a link item is its final URL (post-redirect).
+    // Google Maps shortlinks (`https://maps.app.goo.gl/...`) expand to long
+    // `https://www.google.com/maps/place/...` URLs; cap matches the `url`
+    // and `image*` fields so the preview-driven add flow doesn't 400.
+    sourceId: optionalString(2048),
     image: optionalString(2048),
     /**
      * CDN-proxied + resized variant of `image` (wsrv.nl wrapper). The

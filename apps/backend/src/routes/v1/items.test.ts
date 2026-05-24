@@ -178,6 +178,21 @@ describe("link-preview content refresh helpers", () => {
     expect(content.imageProxy).toBeUndefined();
   });
 
+  it("produces content that passes linkContent validation for a long resolved URL", () => {
+    // Google Maps shortlinks (`https://maps.app.goo.gl/...`) expand into
+    // `https://www.google.com/maps/place/...` URLs that easily exceed 128
+    // chars. Regression test: the schema must accept this as `sourceId`.
+    const longFinalUrl = `https://www.google.com/maps/place/Royale/@40.7505,-73.9934,17z/data=${"a".repeat(
+      400,
+    )}`;
+    expect(longFinalUrl.length).toBeGreaterThan(128);
+    const content = __test.linkPreviewToContent({
+      ...preview,
+      finalUrl: longFinalUrl,
+    });
+    expect(() => validateContent("link", content)).not.toThrow();
+  });
+
   it("clears preview-owned fields when a URL is cleared or preview refresh fails", () => {
     expect(
       __test.clearLinkPreviewContent({
