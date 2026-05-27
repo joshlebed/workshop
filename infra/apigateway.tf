@@ -1,12 +1,12 @@
 resource "aws_apigatewayv2_api" "api" {
   name          = "${local.prefix}-api"
   protocol_type = "HTTP"
-  cors_configuration {
-    allow_origins = ["*"]
-    allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_headers = ["Content-Type", "Authorization", "X-Workshop-Platform", "X-Workshop-App-Version"]
-    max_age       = 600
-  }
+
+  # CORS is handled by Hono in the Lambda (apps/backend/src/app.ts). API
+  # Gateway's edge CORS only supports static origin lists; the app needs
+  # dynamic per-origin matching for Cloudflare Pages branch previews, so
+  # OPTIONS preflights fall through to the ANY /{proxy+} route and Hono
+  # answers them.
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
