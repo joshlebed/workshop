@@ -31,4 +31,13 @@ describe("session tokens", () => {
     expect(verifySession("nope")).toBeNull();
     expect(verifySession("")).toBeNull();
   });
+
+  it("includes iat on freshly-signed tokens", () => {
+    const before = Math.floor(Date.now() / 1000);
+    const payload = verifySession(signSession("user-123"));
+    const after = Math.floor(Date.now() / 1000);
+    expect(payload?.iat).toBeDefined();
+    expect(payload?.iat).toBeGreaterThanOrEqual(before);
+    expect(payload?.iat).toBeLessThanOrEqual(after);
+  });
 });

@@ -5,6 +5,7 @@ import { getDb } from "../../db/client.js";
 import { type DbUser, users } from "../../db/schema.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { revokeAllSessions } from "../../lib/sessionRevocation.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 export const userRoutes = new Hono();
@@ -44,4 +45,12 @@ userRoutes.patch("/me", async (c) => {
     .returning();
   if (!updated) return err(c, "NOT_FOUND", "user not found");
   return ok(c, { user: toUserShape(updated) });
+});
+
+// Sign out of every device — bumps `sessions_invalidated_at` so every existing
+// session token for this user is rejected on its next request. The user has
+// to sign in again to mint a fresh token.
+userRoutes.delete("/me/sessions", async (c) => {
+  await revokeAllSessions(c.get("userId"));
+  return ok(c, { ok: true });
 });

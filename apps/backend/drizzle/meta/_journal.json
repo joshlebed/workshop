@@ -134,6 +134,13 @@
       "when": 1779474575889,
       "tag": "0018_drop_voting",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1779902810404,
+      "tag": "0019_add_sessions_invalidated_at",
+      "breakpoints": true
     }
   ]
 }

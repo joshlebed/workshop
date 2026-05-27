@@ -2,11 +2,15 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { getConfig } from "./config.js";
 
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
+// `iat` is optional for backwards compatibility with tokens minted before
+// server-side revocation existed. The auth middleware treats a missing `iat`
+// as `0`, so any `DELETE /v1/users/me/sessions` call invalidates them too.
 const sessionPayloadSchema = z.object({
   userId: z.string(),
   exp: z.number(),
+  iat: z.number().optional(),
 });
 
 type SessionPayload = z.infer<typeof sessionPayloadSchema>;
@@ -27,9 +31,11 @@ function b64urlDecode(input: string): Buffer {
 
 export function signSession(userId: string): string {
   const { sessionSecret } = getConfig();
+  const now = Math.floor(Date.now() / 1000);
   const payload: SessionPayload = {
     userId,
-    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
+    exp: now + SESSION_TTL_SECONDS,
+    iat: now,
   };
   const payloadB64 = b64urlEncode(JSON.stringify(payload));
   const sig = createHmac("sha256", sessionSecret).update(payloadB64).digest();
