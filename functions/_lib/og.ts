@@ -271,6 +271,32 @@ export interface PagesEnv {
 }
 
 /**
+ * Coerce a possibly-partial preview payload into a fully-populated
+ * `InvitePreview` so downstream renderers can rely on every field being
+ * present. The PNG endpoint runs at the edge and reads the API over the
+ * network; if production rolls out a newer renderer before the API
+ * (or pins to an older API URL), missing `modules` / `itemKind` would
+ * otherwise throw `undefined.includes(...)` and turn the thumbnail into
+ * a 500.
+ */
+function normalizePreview(raw: unknown): InvitePreview | null {
+  if (!raw || typeof raw !== "object") return null;
+  const p = raw as Partial<InvitePreview> & Record<string, unknown>;
+  if (typeof p.name !== "string" || typeof p.emoji !== "string") return null;
+  return {
+    name: p.name,
+    emoji: p.emoji,
+    color: (p.color as ListColor) ?? "slate",
+    description: typeof p.description === "string" ? p.description : null,
+    itemKind: (p.itemKind as InvitePreviewItemKind | null) ?? null,
+    modules: Array.isArray(p.modules) ? (p.modules as readonly string[]) : [],
+    itemCount: typeof p.itemCount === "number" ? p.itemCount : 0,
+    memberCount: typeof p.memberCount === "number" ? p.memberCount : 0,
+    ownerName: typeof p.ownerName === "string" ? p.ownerName : null,
+  };
+}
+
+/**
  * Fetch the safe preview metadata for an invite token. Returns `null` on
  * any non-2xx or network failure so the caller can gracefully fall back
  * to a static thumbnail — a failed preview should never break the share
@@ -288,8 +314,8 @@ export async function fetchInvitePreview(
       { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
     );
     if (!res.ok) return null;
-    const body = (await res.json()) as { preview?: InvitePreview };
-    return body.preview ?? null;
+    const body = (await res.json()) as { preview?: unknown };
+    return normalizePreview(body.preview);
   } catch {
     return null;
   }
@@ -316,8 +342,8 @@ export async function fetchListPreview(
       { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
     );
     if (!res.ok) return null;
-    const body = (await res.json()) as { preview?: InvitePreview };
-    return body.preview ?? null;
+    const body = (await res.json()) as { preview?: unknown };
+    return normalizePreview(body.preview);
   } catch {
     return null;
   }
