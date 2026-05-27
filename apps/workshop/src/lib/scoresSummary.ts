@@ -83,6 +83,26 @@ const FORMATTERS: Partial<Record<DetectedSharedScoreKind, Formatter>> = {
     if (!grid || !score) return null;
     return `${grid} ${score}`;
   },
+
+  // Shape: `DailyTens #751\n\n     🏆    ❌\n     🏆    🏆\n...`
+  // Drop the `DailyTens #N` header — the `• Daily Tens` bullet already labels
+  // the block — and keep the 5-row 🏆/❌ grid verbatim (leading whitespace
+  // matters: it aligns the two columns).
+  dailytens(raw) {
+    const lines = raw
+      .split(/\r?\n/)
+      .map((l) => l.replace(URL_RE, "").trimEnd())
+      .filter((l) => l.trim().length > 0)
+      .filter((l) => !/^\s*DailyTens\b/i.test(l));
+    return lines.length ? lines.join("\n") : null;
+  },
+
+  // Shape: `I solved the 5/20/2026 New York Times Mini Crossword in 0:16!`
+  // No grid — just pull the `M:SS` solve time off the end.
+  "nyt-mini"(raw) {
+    const time = stripUrlSubstrings(raw).match(/\b\d+:\d{2}\b/)?.[0];
+    return time ?? null;
+  },
 };
 
 // A "grid-only" line carries only emoji / box-drawing / checkmarks plus an
