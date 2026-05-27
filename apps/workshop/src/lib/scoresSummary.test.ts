@@ -96,7 +96,7 @@ describe("summarizeScoreBody", () => {
     );
   });
 
-  it("falls back to a cleaned raw copy for games without a heuristic, preserving alignment", () => {
+  it("formats Daily Tens by dropping the `DailyTens #N` header and keeping the aligned 🏆/❌ grid", () => {
     const raw = [
       "DailyTens #745",
       "",
@@ -110,13 +110,29 @@ describe("summarizeScoreBody", () => {
       summarizeScoreBody(item("a", "Daily Tens", "https://dailytens.com/"), entry("u", raw)),
     ).toBe(
       [
-        "DailyTens #745",
         "      🏆    ❌",
         "      🏆    ❌",
         "      🏆    ❌",
         "      ❌    🏆",
         "      ❌    ❌",
       ].join("\n"),
+    );
+  });
+
+  it("formats NYT Mini as just the `M:SS` solve time", () => {
+    const raw = "I solved the 5/20/2026 New York Times Mini Crossword in 0:16!";
+    expect(
+      summarizeScoreBody(
+        item("a", "NYT Mini", "https://www.nytimes.com/crosswords/game/mini"),
+        entry("u", raw),
+      ),
+    ).toBe("0:16");
+  });
+
+  it("falls back to a cleaned raw copy for games without a heuristic, preserving alignment", () => {
+    const raw = ["Some Game #123", "  ▓▓░░  ", "  ░░▓▓ https://example.com"].join("\n");
+    expect(summarizeScoreBody(item("a", "Some Game"), entry("u", raw))).toBe(
+      ["Some Game #123", "  ▓▓░░", "  ░░▓▓"].join("\n"),
     );
   });
 
