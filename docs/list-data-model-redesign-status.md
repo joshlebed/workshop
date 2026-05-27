@@ -21,10 +21,8 @@ get the state in one pass; jump to a section heading to find the open work in yo
   legacy aliases removed; `formatConfigWarning` pretty copy in the settings sheet;
   per-source secrets envelope (`secrets jsonb` + AES-256-GCM); webhook inbound route
   scaffolding (`webhook_slug` + signature verifier registry); scheduled-sync worker
-  (`sync_schedule` + `runScheduledSyncTick`); rebalance overflow trigger; three reserved
-  modules (`scheduling` / `comments` / `attachments`) with manifests + gate copy + "coming
-  soon" labels; lib unit tests for `positions` / `moduleGate` / `moduleManifests` /
-  `permissions` / `modules`.
+  (`sync_schedule` + `runScheduledSyncTick`); rebalance overflow trigger; lib unit tests for
+  `positions` / `moduleGate` / `moduleManifests` / `permissions` / `modules`.
 
 **Quick links:** the design spec is at [`docs/list-data-model-redesign.md`](./list-data-model-redesign.md);
 the punch list for the next contributor is §5 below.
@@ -36,8 +34,8 @@ The core redesign is **done.** Lists carry `modules` and `item_kind`, items carr
 Letterboxd) proving the registry pattern, leaderboards generalize via `item_scores`, the
 template picker replaces the type picker, all legacy mobile-API aliases are gone, and the
 deferred spec items have scaffolding waiting for a real consumer. What's left is
-**product-pull work**: cron / webhook handlers for the first push-bearing source, UI for the
-three reserved modules, and a handful of small polish items (see §5).
+**product-pull work**: cron / webhook handlers for the first push-bearing source, and a
+handful of small polish items (see §5).
 
 ---
 
@@ -221,12 +219,12 @@ they're not generated _from_ it. Lifting that last bit (a `schema.ts` factory th
 `ITEM_KIND_DEDUP_FIELD` and produces one `uniqueIndex` per entry) is mechanical and worth
 ~30 lines; do it when the third dedupping kind shows up.
 
-### 3.10 ~~Module set extensions~~ — RESERVED SLOTS ADDED in #213
+### 3.10 ~~Module set extensions~~ — REMOVED
 
-`scheduling`, `comments`, `attachments` are now in `MODULE_NAMES` with no-data
-`inspectRemoval` manifests (disabling them is silent until the feature PR adds data), gate
-copy in `moduleGate.ts`, and "coming soon" labels in the settings sheet. The feature surfaces
-themselves (date pickers, comment threads, file attachments) still need their own PRs.
+The redesign anticipated `scheduling` / `comments` / `attachments` as additional modules.
+None of them shipped a feature surface, so the placeholder stubs (manifests, gate copy,
+"coming soon" labels) were removed. If/when any of these ships, add the module identifier
+back to `MODULE_NAMES` alongside the real implementation.
 
 ---
 
@@ -307,26 +305,7 @@ None of these have hard deadlines. The data model has the columns; the dispatch 
 ready; the helpers exist with tests. Each one is "wire a new consumer through plumbing that's
 already covered."
 
-### 5.2 Feature surfaces for the three reserved modules (§3.10)
-
-`scheduling` / `comments` / `attachments` are in `MODULE_NAMES` with no-data manifests and
-"coming soon" labels in settings. Each one is its own product PR shape:
-
-- **`scheduling`** — per-item due date / reminder timeline. Needs a `due_at` column on
-  `items` (or a sibling table for richer recurrences), a date-picker UI, push notifications
-  on the iOS app. The `inspectRemoval` manifest in `moduleManifests.ts` tightens to count
-  scheduled items.
-- **`comments`** — threaded discussion per item. New `item_comments` table (probably
-  `(id, item_id, author_id, parent_comment_id, body, created_at, edited_at, archived_at)`),
-  thread UI on the item-detail screen, activity events. `inspectRemoval` counts the threads.
-- **`attachments`** — files attached to items. Needs S3 (we don't have buckets yet — would
-  be a Terraform addition), a presigned-URL upload flow, MIME-type validation, thumbnail
-  generation for images. The biggest of the three.
-
-Order them by perceived value to the actual product (it's a personal monorepo — pick the one
-you'd use most). Each is independent.
-
-### 5.3 Small polish
+### 5.2 Small polish
 
 These have no scaffolding waiting; they're standalone polish PRs against the shipped UX.
 

@@ -119,16 +119,4 @@ describe("inspectModuleChange — module removal warnings (§6)", () => {
       affectedCount: 2,
     });
   });
-
-  it("emits nothing when removing a reserved module (no data yet)", async () => {
-    // scheduling/comments/attachments register no-data inspectors today.
-    const db = fakeDb([]);
-    const warnings = await inspectModuleChange({
-      listId: LIST_ID,
-      currentModules: ["scheduling", "comments", "attachments"],
-      nextModules: [],
-      db,
-    });
-    expect(warnings).toEqual([]);
-  });
 });
