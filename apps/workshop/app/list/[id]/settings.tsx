@@ -1,19 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   ConfigWarning,
-  Invite,
   ListColor,
   ListMemberSummary,
   ListSource,
   ModuleName,
-  PendingInvite,
+  ShareVisibility,
 } from "@workshop/shared";
 import { formatConfigWarning, MODULE_NAMES } from "@workshop/shared/modules";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Image, Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { createInvite, revokeInvite } from "../../../src/api/invites";
 import {
   archiveListEntirely,
   duplicateList,
@@ -22,6 +20,12 @@ import {
   updateList,
 } from "../../../src/api/lists";
 import { removeMember } from "../../../src/api/members";
+import {
+  resetListShareSlug,
+  SHARE_VISIBILITY_LABELS,
+  transferOwnership,
+  updateListShare,
+} from "../../../src/api/share";
 import { syncSource } from "../../../src/api/sources";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { errorMessage } from "../../../src/lib/api";
@@ -29,7 +33,7 @@ import { pickCoverPhoto } from "../../../src/lib/coverPhoto";
 import { goBack } from "../../../src/lib/goBack";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import { formatRelative } from "../../../src/lib/relativeTime";
-import { buildInviteShareUrl, copyToClipboard } from "../../../src/lib/share";
+import { buildListShareUrl, copyToClipboard } from "../../../src/lib/share";
 import { sourceErrorMessage } from "../../../src/lib/sourceErrors";
 import {
   Button,
@@ -84,10 +88,6 @@ const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> 
   },
 };
 
-interface FreshInvite extends Invite {
-  token: string;
-}
-
 export default function ListSettings() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -104,11 +104,8 @@ export default function ListSettings() {
 
   const list = listQuery.data?.list;
   const members = listQuery.data?.members ?? [];
-  const pendingInvites = listQuery.data?.pendingInvites ?? [];
   const sources: ListSource[] = listQuery.data?.sources ?? [];
   const isOwner = !!list && !!user && list.ownerId === user.id;
-
-  const [freshInvite, setFreshInvite] = useState<FreshInvite | null>(null);
 
   const [name, setName] = useState<string | null>(null);
   const [emoji, setEmoji] = useState<string | null>(null);
@@ -318,55 +315,57 @@ export default function ListSettings() {
     },
   });
 
-  const generateInviteMutation = useMutation({
+  const shareVisibilityMutation = useMutation({
+    mutationFn: (visibility: ShareVisibility) => {
+      if (!id) throw new Error("missing list id");
+      return updateListShare(id, { visibility }, token);
+    },
+    onSuccess: async () => {
+      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't update sharing"), tone: "danger" });
+    },
+  });
+
+  const resetSlugMutation = useMutation({
     mutationFn: () => {
       if (!id) throw new Error("missing list id");
-      return createInvite(id, {}, token);
+      return resetListShareSlug(id, token);
     },
     onSuccess: async (res) => {
-      const fresh = res.invite;
-      if (!fresh.token) {
-        showToast({
-          message: "Invite created but token missing — revoke and retry.",
-          tone: "danger",
-        });
-        return;
-      }
-      setFreshInvite({ ...fresh, token: fresh.token });
       if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
-      const url = buildInviteShareUrl(fresh.token);
-      const ok = await copyToClipboard(url);
+      const url = buildListShareUrl(res.shareSlug);
+      const copied = await copyToClipboard(url);
       showToast({
-        message: ok ? "Share link copied to clipboard" : "Share link generated",
-        tone: ok ? "success" : "default",
+        message: copied ? "New link copied" : "New link generated",
+        tone: copied ? "success" : "default",
       });
     },
     onError: (e) => {
       showToast({
-        message: errorMessage(e, "Couldn't generate invite"),
+        message: errorMessage(e, "Couldn't reset link"),
         tone: "danger",
         actionLabel: "Retry",
-        onAction: () => generateInviteMutation.mutate(),
+        onAction: () => resetSlugMutation.mutate(),
       });
     },
   });
 
-  const revokeMutation = useMutation({
-    mutationFn: (inviteId: string) => {
+  const transferMutation = useMutation({
+    mutationFn: (newOwnerId: string) => {
       if (!id) throw new Error("missing list id");
-      return revokeInvite(id, inviteId, token);
+      return transferOwnership(id, newOwnerId, token);
     },
-    onSuccess: async (_res, inviteId) => {
-      setFreshInvite((prev) => (prev && prev.id === inviteId ? null : prev));
+    onSuccess: async () => {
       if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
-      showToast({ message: "Share link revoked", tone: "default" });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+      showToast({ message: "Ownership transferred", tone: "success" });
     },
-    onError: (e, inviteId) => {
+    onError: (e) => {
       showToast({
-        message: errorMessage(e, "Couldn't revoke invite"),
+        message: errorMessage(e, "Couldn't transfer ownership"),
         tone: "danger",
-        actionLabel: "Retry",
-        onAction: () => revokeMutation.mutate(inviteId),
       });
     },
   });
@@ -737,8 +736,9 @@ export default function ListSettings() {
                 member={m}
                 isCurrentUser={!!user && m.userId === user.id}
                 isOwner={isOwner}
-                disabled={removeMemberMutation.isPending}
-                onPress={() => removeMemberMutation.mutate(m.userId)}
+                disabled={removeMemberMutation.isPending || transferMutation.isPending}
+                onRemove={() => removeMemberMutation.mutate(m.userId)}
+                onMakeOwner={() => transferMutation.mutate(m.userId)}
               />
             ))}
           </View>
@@ -815,67 +815,81 @@ export default function ListSettings() {
         </View>
 
         {/* --- Share link (owner-only) --- */}
-        {isOwner ? (
+        {isOwner && list ? (
           <View style={styles.section}>
             <Text variant="caption" tone="muted" style={styles.sectionLabel}>
               Share link
             </Text>
-            <Text tone="secondary">
-              Anyone with this link can join the list. Links expire after 7 days.
-            </Text>
-            {freshInvite ? (
-              <View style={styles.field}>
-                <Text variant="caption" tone="muted">
-                  New link
+            <View style={styles.field}>
+              <View style={styles.urlBox}>
+                <Text
+                  style={styles.urlText}
+                  numberOfLines={1}
+                  selectable
+                  testID="settings-share-url"
+                >
+                  {buildListShareUrl(list.shareSlug)}
                 </Text>
-                <View style={styles.urlBox}>
-                  <Text
-                    style={styles.urlText}
-                    numberOfLines={1}
-                    selectable
-                    testID="settings-fresh-invite-url"
-                  >
-                    {buildInviteShareUrl(freshInvite.token)}
-                  </Text>
-                </View>
+              </View>
+              <View style={styles.actionRow}>
                 <Button
                   testID="settings-copy-link"
                   label="Copy link"
                   variant="secondary"
                   size="md"
                   onPress={async () => {
-                    const ok = await copyToClipboard(buildInviteShareUrl(freshInvite.token));
+                    const ok = await copyToClipboard(buildListShareUrl(list.shareSlug));
                     showToast({
                       message: ok ? "Copied" : "Couldn't copy — copy the link manually",
                       tone: ok ? "success" : "danger",
                     });
                   }}
                 />
+                <Button
+                  testID="settings-reset-link"
+                  label="Reset link"
+                  variant="ghost"
+                  size="md"
+                  loading={resetSlugMutation.isPending}
+                  disabled={resetSlugMutation.isPending}
+                  onPress={() => resetSlugMutation.mutate()}
+                />
               </View>
-            ) : null}
-            <Button
-              testID="settings-generate-link"
-              label={freshInvite ? "Generate another link" : "Generate share link"}
-              size="md"
-              loading={generateInviteMutation.isPending}
-              disabled={generateInviteMutation.isPending}
-              onPress={() => generateInviteMutation.mutate()}
-            />
-            {pendingInvites.length > 0 ? (
-              <View style={styles.inviteList}>
-                <Text variant="caption" tone="muted">
-                  Active links
-                </Text>
-                {pendingInvites.map((invite) => (
-                  <PendingInviteRow
-                    key={invite.id}
-                    invite={invite}
-                    busy={revokeMutation.isPending}
-                    onRevoke={() => revokeMutation.mutate(invite.id)}
-                  />
-                ))}
-              </View>
-            ) : null}
+              <Text variant="caption" tone="muted">
+                Resetting kills the current link everywhere it's been pasted. Existing members keep
+                access.
+              </Text>
+            </View>
+            <View style={styles.visibilityList}>
+              {(["join", "view", "off"] as const).map((opt) => {
+                const labels = SHARE_VISIBILITY_LABELS[opt];
+                const selected = list.shareVisibility === opt;
+                return (
+                  <Pressable
+                    key={opt}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    onPress={() => shareVisibilityMutation.mutate(opt)}
+                    testID={`settings-visibility-${opt}`}
+                    style={({ pressed }) => [
+                      styles.visibilityRow,
+                      selected && styles.visibilityRowSelected,
+                      pressed && styles.visibilityRowPressed,
+                    ]}
+                  >
+                    <View style={[styles.radio, selected && styles.radioSelected]}>
+                      {selected ? <View style={styles.radioDot} /> : null}
+                    </View>
+                    <View style={styles.visibilityText}>
+                      <Text variant="label">{labels.title}</Text>
+                      <Text variant="caption" tone="muted">
+                        {labels.help}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         ) : null}
 
@@ -926,11 +940,20 @@ interface MemberRowProps {
   isCurrentUser: boolean;
   isOwner: boolean;
   disabled: boolean;
-  onPress: () => void;
+  onRemove: () => void;
+  onMakeOwner: () => void;
 }
 
-function MemberRow({ member, isCurrentUser, isOwner, disabled, onPress }: MemberRowProps) {
-  const canActOn = isOwner && !isCurrentUser && member.role !== "owner";
+function MemberRow({
+  member,
+  isCurrentUser,
+  isOwner,
+  disabled,
+  onRemove,
+  onMakeOwner,
+}: MemberRowProps) {
+  const canRemove = isOwner && !isCurrentUser && member.role !== "owner";
+  const canPromote = isOwner && !isCurrentUser && member.role !== "owner";
   const initial = (member.displayName?.trim()[0] ?? "·").toUpperCase();
   return (
     <View style={styles.memberRow} testID={`settings-member-${member.userId}`}>
@@ -946,46 +969,26 @@ function MemberRow({ member, isCurrentUser, isOwner, disabled, onPress }: Member
           {member.role === "owner" ? "Owner" : "Member"}
         </Text>
       </View>
-      {canActOn ? (
+      {canPromote ? (
+        <Button
+          testID={`settings-make-owner-${member.userId}`}
+          label="Make owner"
+          variant="ghost"
+          size="md"
+          disabled={disabled}
+          onPress={onMakeOwner}
+        />
+      ) : null}
+      {canRemove ? (
         <Button
           testID={`settings-remove-${member.userId}`}
           label="Remove"
           variant="secondary"
           size="md"
           disabled={disabled}
-          onPress={onPress}
+          onPress={onRemove}
         />
       ) : null}
-    </View>
-  );
-}
-
-interface PendingInviteRowProps {
-  invite: PendingInvite;
-  busy: boolean;
-  onRevoke: () => void;
-}
-
-function PendingInviteRow({ invite, busy, onRevoke }: PendingInviteRowProps) {
-  const expires = invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString() : "no expiry";
-  return (
-    <View style={styles.inviteRow} testID={`settings-invite-${invite.id}`}>
-      <View style={styles.memberInfo}>
-        <Text variant="body" numberOfLines={1}>
-          Invite — expires {expires}
-        </Text>
-        <Text variant="caption" tone="muted">
-          Created {new Date(invite.createdAt).toLocaleDateString()}
-        </Text>
-      </View>
-      <Button
-        testID={`settings-revoke-${invite.id}`}
-        label="Revoke"
-        variant="secondary"
-        size="md"
-        disabled={busy}
-        onPress={onRevoke}
-      />
     </View>
   );
 }
@@ -1120,16 +1123,38 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
   memberInfo: { flex: 1, gap: 2 },
-  inviteList: { gap: tokens.space.sm },
-  inviteRow: {
+  visibilityList: { gap: tokens.space.xs, marginTop: tokens.space.sm },
+  visibilityRow: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: tokens.space.sm,
+    alignItems: "flex-start",
     gap: tokens.space.md,
-    borderTopWidth: 1,
-    borderTopColor: tokens.border.subtle,
-    paddingTop: tokens.space.sm,
+    padding: tokens.space.md,
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+  },
+  visibilityRowSelected: {
+    borderColor: tokens.accent.default,
+    backgroundColor: tokens.accent.muted,
+  },
+  visibilityRowPressed: { opacity: 0.7 },
+  visibilityText: { flex: 1, gap: 2 },
+  radio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: tokens.border.default,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  radioSelected: { borderColor: tokens.accent.default },
+  radioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: tokens.accent.default,
   },
   urlBox: {
     borderWidth: 1,

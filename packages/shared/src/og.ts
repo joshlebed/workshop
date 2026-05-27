@@ -19,12 +19,15 @@ export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand
  */
 export type InvitePreviewItemKind = "movie" | "tv" | "book" | "link" | "spotify_album" | "plain";
 
+export type ShareVisibility = "off" | "view" | "join";
+
 /**
- * Safe metadata subset returned by `GET /v1/invites/:token/preview` for
- * unauthenticated link-preview crawlers. Anyone who has the token already
- * has the full list surface via `/accept`, so the fields here intentionally
- * mirror what they'd see after joining: title, branding, type, and rough
- * shape. We deliberately omit member identities and item contents.
+ * Safe metadata subset returned by both `GET /v1/lists/by-slug/:slug/preview`
+ * (new short-URL share surface) and `GET /v1/invites/:token/preview` (legacy
+ * URLs already in iMessage / email). Anyone who has the slug or token already
+ * has the full list surface via the join flow, so the fields here mirror
+ * what they'd see after joining: title, branding, type, and rough shape.
+ * We deliberately omit member identities and item contents.
  *
  * The label rendered into the OG card (`Movies`, `TV`, `Leaderboard`, …)
  * is derived from `itemKind` + `modules` in `buildSummaryLabel` —
@@ -40,6 +43,10 @@ export interface InvitePreview {
   itemCount: number;
   memberCount: number;
   ownerName: string | null;
+  /** Echoes the list's current share visibility. */
+  shareVisibility: ShareVisibility;
+  /** Stable share slug — used by the `/list` middleware to point its OG image URL at the right renderer. */
+  shareSlug: string;
 }
 
 /**
@@ -399,6 +406,14 @@ function normalizePreview(raw: unknown): InvitePreview | null {
     itemCount: typeof p.itemCount === "number" ? p.itemCount : 0,
     memberCount: typeof p.memberCount === "number" ? p.memberCount : 0,
     ownerName: typeof p.ownerName === "string" ? p.ownerName : null,
+    // `shareVisibility` / `shareSlug` were added with the slug share-URL
+    // redesign. Older API responses won't include them — fall back to safe
+    // defaults so the renderer still produces a card.
+    shareVisibility:
+      p.shareVisibility === "off" || p.shareVisibility === "view" || p.shareVisibility === "join"
+        ? p.shareVisibility
+        : "join",
+    shareSlug: typeof p.shareSlug === "string" ? p.shareSlug : "",
   };
 }
 

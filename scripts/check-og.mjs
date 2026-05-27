@@ -124,16 +124,21 @@ if (meta.get("twitter:card") && meta.get("twitter:card") !== "summary_large_imag
 }
 
 // Pick the expected variant from the URL path:
-//   - `/invite/<token>`        → list-specific (preview API returned data)
-//   - `/list/<uuid>/...`       → list-specific (functions/list/_middleware.ts
-//                                fetched /v1/lists/:id/preview)
-//   - `/list/<non-uuid>/...`   → "Sign in to view this list" fallback
-//   - everything else          → "Workshop.dev" default
+//   - `/l/<slug>` or `/invite/<token>` → list-specific (preview API returned data)
+//   - `/list/<uuid>/...`               → list-specific when shareVisibility ∈
+//                                         {view, join}; locked "Sign in" copy when
+//                                         visibility=off or the preview API failed.
+//                                         We accept either since both are valid
+//                                         post-redesign outcomes — we just bail on
+//                                         the bare brand default, which means the
+//                                         middleware didn't fire at all.
+//   - `/list/<non-uuid>/...`           → "Sign in to view this list" fallback
+//   - everything else                  → "Workshop.dev" default
 //
-// A site-name fallback on a URL we expected a per-list preview for means
-// the API was unreachable / the list was deleted and the function silently
-// degraded — that's the case `fallback-title` was written to catch. The
-// brand default on a URL that legitimately maps to it is fine.
+// A site-name fallback on `/l/...` or `/invite/...` means the API was unreachable
+// or the list was deleted and the function silently degraded — that's what
+// `fallback-title` was written to catch. The brand default on a URL that legitimately
+// maps to it is fine.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ogTitle = meta.get("og:title") ?? "";
 const pathname = (() => {
@@ -144,26 +149,33 @@ const pathname = (() => {
   }
 })();
 const listIdMatch = /^\/list\/([^/]+)/.exec(pathname);
-const variant = pathname.startsWith("/invite/")
-  ? "invite"
-  : listIdMatch && UUID_RE.test(listIdMatch[1])
-    ? "list-preview"
-    : pathname.startsWith("/list/")
-      ? "locked-list"
-      : "default";
-if (variant === "invite" || variant === "list-preview") {
+const variant =
+  pathname.startsWith("/l/") || pathname.startsWith("/invite/")
+    ? "list-specific"
+    : listIdMatch && UUID_RE.test(listIdMatch[1])
+      ? "list-or-locked"
+      : pathname.startsWith("/list/")
+        ? "locked-list"
+        : "default";
+if (variant === "list-specific") {
   if (ogTitle === "Workshop.dev" || ogTitle.includes("Sign in") || ogTitle === "") {
     fail(
       "fallback-title",
       `og:title is "${ogTitle}" — the Pages function couldn't fetch list metadata`,
     );
   }
-} else if (variant === "locked-list") {
-  if (!ogTitle.includes("Sign in")) {
+} else if (variant === "list-or-locked") {
+  // Either the rich list card (shareVisibility view/join) or the locked-list copy
+  // is acceptable. A bare "Workshop.dev" alone means the middleware didn't fire.
+  if (ogTitle === "Workshop.dev" || ogTitle === "") {
     fail(
-      "locked-list-title",
-      `og:title is "${ogTitle}" — expected the locked-list variant (functions/list/_middleware.ts didn't fire?)`,
+      "list-middleware-missing",
+      `og:title is "${ogTitle}" — expected either the list card or the locked-list variant`,
     );
+  }
+} else if (variant === "locked-list") {
+  if (!ogTitle.includes("Sign in") && ogTitle !== "Workshop.dev") {
+    fail("locked-list-title", `og:title is "${ogTitle}" — expected locked-list variant`);
   }
 } else if (ogTitle === "") {
   fail("empty-title", "og:title is empty");

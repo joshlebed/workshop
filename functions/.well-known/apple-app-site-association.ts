@@ -36,7 +36,9 @@ const AASA = {
       {
         appIDs: [APP_ID],
         components: [
-          // Public invite share links — primary share URL.
+          // Short share URL — `/l/:slug`, the primary share surface.
+          { "/": "/l/*" },
+          // Legacy public-invite share links — kept working for old URLs.
           { "/": "/invite/*" },
           // Direct list / item / game URLs — open in app for installed users.
           { "/": "/list/*" },

@@ -182,6 +182,8 @@ function makeList(
     ownerId: "user",
     itemKind: "link",
     modules,
+    shareSlug: "testslug",
+    shareVisibility: "join",
     createdAt: "2026-05-01T12:00:00.000Z",
     updatedAt,
     role: "owner",

@@ -322,7 +322,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const onCopyTodaysScores = async () => {
     const summary = buildTodaysScoresSummary({
       listName: list.name,
-      listUrl: buildListShareUrl(list.id),
+      listUrl: buildListShareUrl(list.shareSlug),
       items: [...orderedRaw, ...unorderedRaw, ...completedRaw],
       scoresByItem: listScoresQuery.data?.scoresByItem ?? {},
       selfId,

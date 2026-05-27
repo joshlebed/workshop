@@ -141,6 +141,13 @@
       "when": 1779902810404,
       "tag": "0019_add_sessions_invalidated_at",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1779905372237,
+      "tag": "0020_list_share_slug_and_visibility",
+      "breakpoints": true
     }
   ]
 }

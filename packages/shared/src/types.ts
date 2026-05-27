@@ -20,6 +20,17 @@ export type AuthProvider = "apple" | "google";
 
 export type MemberRole = "owner" | "member";
 
+/**
+ * Per-list share-link visibility. Controls who can do what at `/l/:slug`:
+ *  - `off`  → slug 404s for non-members; existing members still access via
+ *             home / direct UUID URL.
+ *  - `view` → anyone with the link can read the list (no write access).
+ *  - `join` → anyone with the link can join as a member.
+ *
+ * Defaults to `join` (backwards-compatible with the legacy invite flow).
+ */
+export type ShareVisibility = "off" | "view" | "join";
+
 // Activity event types are a plain string at the API boundary so adding a new
 // type is code-only — no Postgres `ALTER TYPE` ceremony. The legacy event
 // types (`album_shelf_refreshed`, `album_shelf_source_changed`,
@@ -34,6 +45,7 @@ export type ActivityEventType =
   | "member_joined"
   | "member_left"
   | "member_removed"
+  | "owner_transferred"
   | "item_added"
   | "item_updated"
   | "item_archived"
@@ -116,6 +128,14 @@ export interface List {
    */
   itemKind: ItemKind | null;
   modules: ModuleName[];
+  /**
+   * 8-char base62 slug used in the share URL (`/l/:shareSlug`). Owner can
+   * rotate it via `POST /v1/lists/:id/share/reset`; the old slug 404s
+   * immediately.
+   */
+  shareSlug: string;
+  /** Who can do what at `/l/:shareSlug`. See `ShareVisibility`. */
+  shareVisibility: ShareVisibility;
   createdAt: string;
   updatedAt: string;
 }
@@ -145,14 +165,6 @@ export interface ListMemberSummary {
   displayName: string | null;
   role: MemberRole;
   joinedAt: string;
-}
-
-export interface PendingInvite {
-  id: string;
-  email: string | null;
-  invitedBy: string;
-  createdAt: string;
-  expiresAt: string | null;
 }
 
 export interface CreateListRequest {
@@ -213,7 +225,6 @@ export interface ListResponse {
 export interface ListDetailResponse {
   list: List;
   members: ListMemberSummary[];
-  pendingInvites: PendingInvite[];
   sources: ListSource[];
 }
 
@@ -230,11 +241,17 @@ export interface ListPreview {
   emoji: string;
   color: ListColor;
   description: string | null;
-  itemKind: ItemKind | null;
-  modules: readonly ModuleName[];
   ownerName: string | null;
   itemCount: number;
   memberCount: number;
+  /** Per-kind label hint for OG / public landing (e.g. "Movie list"). Mirrors `lists.item_kind`. */
+  itemKind: ItemKind | null;
+  /** Module-name list — drives the secondary label ("Leaderboard" / "Checklist"). */
+  modules: ModuleName[];
+  /** Echoes the list's current share visibility. */
+  shareVisibility: ShareVisibility;
+  /** Stable share slug for the list. Owners see it in settings; clients can use it to canonicalize URLs. */
+  shareSlug: string;
 }
 
 export interface ListPreviewResponse {
@@ -377,27 +394,7 @@ export interface DuplicateListRequest {
   copySources?: boolean;
 }
 
-// --- Invites + members ---
-
-export interface Invite {
-  id: string;
-  listId: string;
-  email: string | null;
-  token?: string;
-  invitedBy: string;
-  createdAt: string;
-  expiresAt: string | null;
-  acceptedAt: string | null;
-  revokedAt: string | null;
-}
-
-export interface CreateInviteRequest {
-  email?: string | null;
-}
-
-export interface InviteResponse {
-  invite: Invite;
-}
+// --- Members + sharing ---
 
 export interface AcceptInviteResponse {
   list: List;
@@ -406,6 +403,25 @@ export interface AcceptInviteResponse {
 
 export interface MemberRemoveResponse {
   ok: true;
+}
+
+/**
+ * `PATCH /v1/lists/:id/share` — owner sets the link visibility. Slug isn't
+ * editable here; rotate it via `POST /v1/lists/:id/share/reset`.
+ */
+export interface UpdateShareRequest {
+  visibility: ShareVisibility;
+}
+
+/** Response payload for both share-update and share-reset endpoints. */
+export interface ShareSettingsResponse {
+  shareSlug: string;
+  shareVisibility: ShareVisibility;
+}
+
+/** `POST /v1/lists/:id/members/:userId/promote` — atomically transfers ownership. */
+export interface TransferOwnershipResponse {
+  members: ListMemberSummary[];
 }
 
 // --- Search + enrichment ---

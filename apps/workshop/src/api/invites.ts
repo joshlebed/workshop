@@ -1,36 +1,12 @@
-import type {
-  AcceptInviteResponse,
-  CreateInviteRequest,
-  InviteResponse,
-  MemberRemoveResponse,
-} from "@workshop/shared";
+import type { AcceptInviteResponse } from "@workshop/shared";
 import { apiRequest } from "../lib/api";
 
-export function createInvite(
-  listId: string,
-  body: CreateInviteRequest | undefined,
-  token: string | null,
-): Promise<InviteResponse> {
-  return apiRequest<InviteResponse>({
-    method: "POST",
-    path: `/v1/lists/${listId}/invites`,
-    body: body ?? {},
-    token,
-  });
-}
-
-export function revokeInvite(
-  listId: string,
-  inviteId: string,
-  token: string | null,
-): Promise<MemberRemoveResponse> {
-  return apiRequest<MemberRemoveResponse>({
-    method: "DELETE",
-    path: `/v1/lists/${listId}/invites/${inviteId}`,
-    token,
-  });
-}
-
+/**
+ * Legacy invite-token acceptance. Kept around so URLs already in iMessage /
+ * email threads continue to work — new sharing happens via the per-list
+ * `share_slug` (see `api/share.ts`). The Pages Function for `/invite/:token`
+ * also redirects to the canonical `/l/:slug` URL once the user has joined.
+ */
 export function acceptInvite(
   inviteToken: string,
   token: string | null,
