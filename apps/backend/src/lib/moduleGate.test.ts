@@ -17,9 +17,6 @@ function gateApp(modules: readonly ModuleName[], gateOn: ModuleName) {
 }
 
 describe("requireModule — 409 contract per §5.1", () => {
-  // Only the core four today have data-bearing gates; the three reserved
-  // modules (scheduling/comments/attachments) also gate via this helper
-  // but have no associated data yet.
   const allModules: readonly ModuleName[] = ["todo", "ranking", "leaderboard", "sources"];
 
   for (const m of allModules) {

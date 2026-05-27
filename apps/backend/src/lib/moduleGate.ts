@@ -14,12 +14,6 @@ const MESSAGES: Record<ModuleName, string> = {
     "This list doesn't have a leaderboard. Turn on “Leaderboard” in list settings to submit scores.",
   sources:
     "This list doesn't have external sources enabled. Turn on “Sources” in list settings to attach a source.",
-  scheduling:
-    "This list doesn't have scheduling enabled. Turn on “Scheduling” in list settings to add dates and reminders.",
-  comments:
-    "This list doesn't have comments enabled. Turn on “Comments” in list settings to discuss items.",
-  attachments:
-    "This list doesn't have attachments enabled. Turn on “Attachments” in list settings to add files.",
 };
 
 /**

@@ -2,20 +2,7 @@
 // active. Each module is a pure string identifier; the DB stores names and
 // the app interprets them.
 
-// `todo` / `ranking` / `leaderboard` / `sources` shipped with #199 as the
-// core compositional set. `scheduling` / `comments` / `attachments` are
-// reserved slots from §3.10 of the redesign — manifests exist so a list
-// can opt in and the UI can hide unused affordances by default, but the
-// rich features live in their respective follow-up PRs.
-export const MODULE_NAMES = [
-  "todo",
-  "ranking",
-  "leaderboard",
-  "sources",
-  "scheduling",
-  "comments",
-  "attachments",
-] as const;
+export const MODULE_NAMES = ["todo", "ranking", "leaderboard", "sources"] as const;
 
 export type ModuleName = (typeof MODULE_NAMES)[number];
 
@@ -43,9 +30,6 @@ export const MODULE_REMOVAL_WARNINGS = {
   ranking: "ranking.hide_order",
   leaderboard: "leaderboard.hide_scores",
   sources: "sources.deactivate_sources",
-  scheduling: "scheduling.hide_schedules",
-  comments: "comments.hide_threads",
-  attachments: "attachments.hide_files",
 } as const satisfies Record<ModuleName, string>;
 
 export type ModuleWarningCode = (typeof MODULE_REMOVAL_WARNINGS)[ModuleName];

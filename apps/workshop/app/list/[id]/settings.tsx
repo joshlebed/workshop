@@ -74,18 +74,6 @@ const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> 
     label: "Sources",
     description: "Sync from external feeds.",
   },
-  scheduling: {
-    label: "Scheduling",
-    description: "Dates, reminders, and timelines (coming soon).",
-  },
-  comments: {
-    label: "Comments",
-    description: "Thread discussions per item (coming soon).",
-  },
-  attachments: {
-    label: "Attachments",
-    description: "Files attached to items (coming soon).",
-  },
 };
 
 export default function ListSettings() {
