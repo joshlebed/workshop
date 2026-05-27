@@ -254,6 +254,9 @@ publicListRoutes.get("/lists/:id/preview", async (c) => {
     emoji: list.emoji,
     color: list.color as ListColor,
     description: list.description,
+    itemKind:
+      (list.itemKind && isItemKind(list.itemKind) ? (list.itemKind as ItemKind) : null) ?? null,
+    modules: (list.modules ?? []) as ModuleName[],
     ownerName: owner?.displayName ?? null,
     itemCount: Number(counts.item_count),
     memberCount: Number(counts.member_count),

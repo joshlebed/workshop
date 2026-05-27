@@ -124,14 +124,17 @@ if (meta.get("twitter:card") && meta.get("twitter:card") !== "summary_large_imag
 }
 
 // Pick the expected variant from the URL path:
-//   - `/invite/...`     → list-specific (preview API returned data)
-//   - `/list/...`       → "Sign in to view this list" (functions/list/_middleware.ts)
-//   - everything else   → "Workshop.dev" default (apps/workshop/public/index.html)
+//   - `/invite/<token>`        → list-specific (preview API returned data)
+//   - `/list/<uuid>/...`       → list-specific (functions/list/_middleware.ts
+//                                fetched /v1/lists/:id/preview)
+//   - `/list/<non-uuid>/...`   → "Sign in to view this list" fallback
+//   - everything else          → "Workshop.dev" default
 //
-// A site-name fallback on an invite URL means the preview API was
-// unreachable and the function silently degraded — that's the case
-// `fallback-title` was originally written to catch. Default and locked
-// URLs legitimately produce the brand title, so don't fail on those.
+// A site-name fallback on a URL we expected a per-list preview for means
+// the API was unreachable / the list was deleted and the function silently
+// degraded — that's the case `fallback-title` was written to catch. The
+// brand default on a URL that legitimately maps to it is fine.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ogTitle = meta.get("og:title") ?? "";
 const pathname = (() => {
   try {
@@ -140,16 +143,19 @@ const pathname = (() => {
     return "";
   }
 })();
+const listIdMatch = /^\/list\/([^/]+)/.exec(pathname);
 const variant = pathname.startsWith("/invite/")
   ? "invite"
-  : pathname.startsWith("/list/")
-    ? "locked-list"
-    : "default";
-if (variant === "invite") {
-  if (ogTitle === "Workshop.dev" || ogTitle === "") {
+  : listIdMatch && UUID_RE.test(listIdMatch[1])
+    ? "list-preview"
+    : pathname.startsWith("/list/")
+      ? "locked-list"
+      : "default";
+if (variant === "invite" || variant === "list-preview") {
+  if (ogTitle === "Workshop.dev" || ogTitle.includes("Sign in") || ogTitle === "") {
     fail(
       "fallback-title",
-      `og:title is "${ogTitle}" — the Pages function couldn't fetch invite metadata`,
+      `og:title is "${ogTitle}" — the Pages function couldn't fetch list metadata`,
     );
   }
 } else if (variant === "locked-list") {

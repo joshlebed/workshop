@@ -14,6 +14,7 @@ import {
   DEFAULT_OG_DESCRIPTION,
   DEFAULT_OG_TITLE,
   escapeXml,
+  extractListIdFromPath,
   type InvitePreview,
   LOCKED_LIST_OG_SUBTITLE,
   OG_IMAGE_HEIGHT,
@@ -170,7 +171,7 @@ describe("buildSummaryLabel", () => {
 
 describe("buildMetaTags", () => {
   const tags = buildMetaTags(samplePreview, {
-    inviteUrl: "https://workshop-a2v.pages.dev/invite/abc",
+    pageUrl: "https://workshop-a2v.pages.dev/invite/abc",
     imageUrl: "https://workshop-a2v.pages.dev/og/invite/abc",
   });
 
@@ -205,7 +206,7 @@ describe("buildMetaTags", () => {
   it("escapes XML-unsafe characters in user-provided fields", () => {
     const tagsWithUnsafe = buildMetaTags(
       { ...samplePreview, name: 'Movies <3 "good" ones' },
-      { inviteUrl: "https://x.test/invite/a", imageUrl: "https://x.test/og/invite/a" },
+      { pageUrl: "https://x.test/invite/a", imageUrl: "https://x.test/og/invite/a" },
     );
     expect(tagsWithUnsafe).toContain("&lt;3");
     expect(tagsWithUnsafe).toContain("&quot;good&quot;");
@@ -321,6 +322,30 @@ describe("buildLockedListMetaTags", () => {
     expect(tags).toContain(
       `<meta property="og:url" content="https://workshop-a2v.pages.dev/list/abc/game/xyz" />`,
     );
+  });
+});
+
+describe("extractListIdFromPath", () => {
+  const ID = "0a1b2c3d-4e5f-6789-abcd-ef0123456789";
+
+  it("pulls the UUID out of /list/:id", () => {
+    expect(extractListIdFromPath(`/list/${ID}`)).toBe(ID);
+  });
+
+  it("pulls the UUID out of /list/:id/...", () => {
+    expect(extractListIdFromPath(`/list/${ID}/settings`)).toBe(ID);
+    expect(extractListIdFromPath(`/list/${ID}/game/abc`)).toBe(ID);
+  });
+
+  it("returns null for non-UUID segments so the locked-list fallback fires", () => {
+    expect(extractListIdFromPath("/list/abc")).toBeNull();
+    expect(extractListIdFromPath("/list/abc/game/xyz")).toBeNull();
+    expect(extractListIdFromPath("/list/")).toBeNull();
+    expect(extractListIdFromPath("/list")).toBeNull();
+  });
+
+  it("lowercases the UUID so cache + URL match", () => {
+    expect(extractListIdFromPath(`/list/${ID.toUpperCase()}`)).toBe(ID);
   });
 });
 
