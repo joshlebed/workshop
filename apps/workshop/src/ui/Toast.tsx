@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { copyToClipboard } from "../lib/share";
+import { CopyIcon } from "./CopyIcon";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -113,7 +114,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
           hitSlop={8}
           testID="toast-copy"
         >
-          <Text style={styles.iconGlyph}>⧉</Text>
+          <CopyIcon size={14} color={tokens.text.secondary} />
         </Pressable>
       ) : null}
       <Pressable
