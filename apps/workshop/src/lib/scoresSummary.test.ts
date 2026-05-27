@@ -1,14 +1,14 @@
 import type { Item, LeaderboardEntry } from "@workshop/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildTodaysScoresSummary, summarizeScoreLine } from "./scoresSummary";
+import { buildTodaysScoresSummary, summarizeScoreBody } from "./scoresSummary";
 
-function item(id: string, title: string): Item {
+function item(id: string, title: string, url: string | null = null): Item {
   return {
     id,
     listId: "list-1",
     kind: "plain",
     title,
-    url: null,
+    url,
     note: null,
     content: {} as Item["content"],
     position: null,
@@ -38,52 +38,109 @@ function entry(
 
 const LIST_URL = "https://workshop-a2v.pages.dev/list/list-1";
 
-describe("summarizeScoreLine", () => {
-  it("prefers the server-parsed scoreValue when present", () => {
-    expect(
-      summarizeScoreLine({ scoreValue: 956, scoreRaw: "Final score: 956\nhttps://x.com" }),
-    ).toBe("956");
-  });
-
-  it("falls back to the first meaningful line of raw text when scoreValue is null", () => {
-    expect(summarizeScoreLine({ scoreValue: null, scoreRaw: "Wordle 1,422 4/6\n⬛⬛🟨⬛⬛" })).toBe(
-      "Wordle 1,422 4/6",
+describe("summarizeScoreBody", () => {
+  it("formats maptap by dropping the URL/date header", () => {
+    const raw = "www.maptap.gg May 27\n100🎯 95🏆 94🏅 52😔 77😂\nFinal score: 770";
+    expect(summarizeScoreBody(item("a", "maptap", "https://maptap.gg/"), entry("u", raw))).toBe(
+      "100🎯 95🏆 94🏅 52😔 77😂\nFinal score: 770",
     );
   });
 
-  it("strips URLs before picking a line", () => {
+  it("formats Globle as the grid line ending in `= N`", () => {
+    const raw = [
+      "🌎 May 27, 2026 🌍",
+      "🔥 1 | Avg. Guesses: 8.4",
+      "⬜🟨⬜🟧🟩 = 5",
+      "",
+      "https://globle-game.com",
+      "#globle",
+    ].join("\n");
     expect(
-      summarizeScoreLine({
-        scoreValue: null,
-        scoreRaw: "https://globle-game.com\n#globle\n5 guesses",
-      }),
-    ).toBe("5 guesses");
+      summarizeScoreBody(item("a", "Globle", "https://globle-game.com/game"), entry("u", raw)),
+    ).toBe("⬜🟨⬜🟧🟩 = 5");
   });
 
-  it("skips lines that are pure emoji or whitespace", () => {
-    expect(summarizeScoreLine({ scoreValue: null, scoreRaw: "🟪🟪🟪🟪\n\nDailyTens #742" })).toBe(
-      "DailyTens #742",
+  it("preserves Globle multi-line grids that wrap at high guess counts", () => {
+    const raw = [
+      "🌎 May 18, 2026 🌍",
+      "🔥 2 | Avg. Guesses: 7.12",
+      "⬜⬜🟥🟧🟧🟥🟥🟥",
+      "🟥🟥🟧🟩 = 12",
+      "",
+      "https://globle-game.com",
+      "#globle",
+    ].join("\n");
+    expect(
+      summarizeScoreBody(item("a", "Globle", "https://globle-game.com/game"), entry("u", raw)),
+    ).toBe("⬜⬜🟥🟧🟧🟥🟥🟥\n🟥🟥🟧🟩 = 12");
+  });
+
+  it("formats Satle as `<grid> <fraction>` from the `Satle #N N/6` header", () => {
+    const raw = "🛰Satle #468 6/6\n🟥🟥🟥🟥🟥🟩\nhttps://satle.ca";
+    expect(summarizeScoreBody(item("a", "Satle", "https://satle.ca/"), entry("u", raw))).toBe(
+      "🟥🟥🟥🟥🟥🟩 6/6",
     );
   });
 
-  it("truncates absurdly long lines", () => {
-    const long = "a".repeat(120);
-    const result = summarizeScoreLine({ scoreValue: null, scoreRaw: long });
-    expect(result?.endsWith("…")).toBe(true);
-    expect(result?.length).toBeLessThanOrEqual(60);
+  it("formats travle as `<grid> +N` from the `#travle #N +N` header", () => {
+    const raw = "#travle #1260 +2\n🟧✅🟩🟧🟩✅✅\nhttps://travle.earth";
+    expect(summarizeScoreBody(item("a", "travle", "https://travle.earth"), entry("u", raw))).toBe(
+      "🟧✅🟩🟧🟩✅✅ +2",
+    );
   });
 
-  it("returns null when no usable signal is available", () => {
-    expect(summarizeScoreLine({ scoreValue: null, scoreRaw: null })).toBeNull();
-    expect(summarizeScoreLine({ scoreValue: null, scoreRaw: "   \n\n" })).toBeNull();
-    expect(summarizeScoreLine({ scoreValue: null, scoreRaw: "🟪🟪🟪" })).toBeNull();
+  it("keeps travle's `+0 (Perfect)` parenthetical", () => {
+    const raw = "#travle #1251 +0 (Perfect)\n✅✅✅✅\nhttps://travle.earth";
+    expect(summarizeScoreBody(item("a", "travle", "https://travle.earth"), entry("u", raw))).toBe(
+      "✅✅✅✅ +0 (Perfect)",
+    );
+  });
+
+  it("falls back to a cleaned raw copy for games without a heuristic, preserving alignment", () => {
+    const raw = [
+      "DailyTens #745",
+      "",
+      "      🏆    ❌",
+      "      🏆    ❌",
+      "      🏆    ❌",
+      "      ❌    🏆",
+      "      ❌    ❌ https://dailytens.com/?ref=954072",
+    ].join("\n");
+    expect(
+      summarizeScoreBody(item("a", "Daily Tens", "https://dailytens.com/"), entry("u", raw)),
+    ).toBe(
+      [
+        "DailyTens #745",
+        "      🏆    ❌",
+        "      🏆    ❌",
+        "      🏆    ❌",
+        "      ❌    🏆",
+        "      ❌    ❌",
+      ].join("\n"),
+    );
+  });
+
+  it("falls back to scoreValue when scoreRaw is null", () => {
+    expect(summarizeScoreBody(item("a", "Wordle"), entry("u", null, 4))).toBe("4");
+  });
+
+  it("returns null when there's no usable signal", () => {
+    expect(summarizeScoreBody(item("a", "Wordle"), entry("u", null, null))).toBeNull();
+    expect(summarizeScoreBody(item("a", "Wordle"), entry("u", "   \n\n", null))).toBeNull();
+  });
+
+  it("strips hashtag-only and url-only lines in fallback", () => {
+    const raw = "Some game #999\nactual score 42\nhttps://example.com\n#hashtag";
+    expect(summarizeScoreBody(item("a", "Some Game"), entry("u", raw))).toBe(
+      "Some game #999\nactual score 42",
+    );
   });
 });
 
 describe("buildTodaysScoresSummary", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 4, 22, 12, 0, 0));
+    vi.setSystemTime(new Date(2026, 4, 27, 12, 0, 0));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -92,70 +149,83 @@ describe("buildTodaysScoresSummary", () => {
   it("returns null with no signed-in user", () => {
     expect(
       buildTodaysScoresSummary({
-        listName: "Daily Games",
+        listName: "Geo games",
         listUrl: LIST_URL,
         items: [item("a", "Wordle")],
         scoresByItem: { a: [entry("me", "4/6")] },
         selfId: null,
-        dateKey: "2026-05-22",
+        dateKey: "2026-05-27",
       }),
     ).toBeNull();
   });
 
-  it("returns null when the viewer hasn't posted any scores today", () => {
+  it("returns null when the viewer hasn't posted any scores", () => {
     expect(
       buildTodaysScoresSummary({
-        listName: "Daily Games",
+        listName: "Geo games",
         listUrl: LIST_URL,
-        items: [item("a", "Wordle"), item("b", "Connections")],
-        scoresByItem: {
-          a: [entry("friend", "5/6")],
-          b: [entry("friend", "Solved")],
-        },
+        items: [item("a", "Wordle")],
+        scoresByItem: { a: [entry("friend", "5/6")] },
         selfId: "me",
-        dateKey: "2026-05-22",
+        dateKey: "2026-05-27",
       }),
     ).toBeNull();
   });
 
-  it("emits one tight bullet per item, in item order, with a trailing list URL", () => {
+  it("emits a tight per-game block in item order, prefixed by an absolute short date header", () => {
+    const maptap = item("a", "maptap", "https://maptap.gg/");
+    const globle = item("b", "Globle", "https://globle-game.com/game");
+    const satle = item("c", "Satle", "https://satle.ca/");
+    const travle = item("d", "travle", "https://travle.earth");
+
     const summary = buildTodaysScoresSummary({
-      listName: "Daily Games",
+      listName: "Geo games",
       listUrl: LIST_URL,
-      items: [item("a", "Wordle"), item("b", "Connections"), item("c", "Strands")],
+      items: [maptap, globle, satle, travle],
       scoresByItem: {
-        a: [
-          entry("friend", "5/6"),
-          entry("me", "Wordle 1,422 4/6\n⬛⬛🟨⬛⬛\nhttps://www.nytimes.com/games/wordle"),
+        a: [entry("me", "www.maptap.gg May 27\n100🎯 95🏆 94🏅 52😔 77😂\nFinal score: 770")],
+        b: [
+          entry(
+            "me",
+            "🌎 May 27, 2026 🌍\n🔥 1 | Avg. Guesses: 8.4\n⬜🟨⬜🟧🟩 = 5\n\nhttps://globle-game.com\n#globle",
+          ),
         ],
-        b: [entry("me", null, 7)],
-        c: [entry("friend", "Strands #1\n🔵🔵🔵🟡")],
+        c: [entry("me", "🛰Satle #468 6/6\n🟥🟥🟥🟥🟥🟩\nhttps://satle.ca")],
+        d: [entry("me", "#travle #1260 +2\n🟧✅🟩🟧🟩✅✅\nhttps://travle.earth")],
       },
       selfId: "me",
-      dateKey: "2026-05-22",
+      dateKey: "2026-05-27",
     });
+
     expect(summary).toBe(
       [
-        "Daily Games — Today",
-        "",
-        "• Wordle: Wordle 1,422 4/6",
-        "• Connections: 7",
-        "",
+        "My scores in Geo games — May 27",
+        "• maptap",
+        "100🎯 95🏆 94🏅 52😔 77😂",
+        "Final score: 770",
+        "• Globle",
+        "⬜🟨⬜🟧🟩 = 5",
+        "• Satle",
+        "🟥🟥🟥🟥🟥🟩 6/6",
+        "• travle",
+        "🟧✅🟩🟧🟩✅✅ +2",
         LIST_URL,
       ].join("\n"),
     );
   });
 
-  it("uses the date-key label in the header for older days", () => {
+  it("uses an absolute short date for older days too (no `Yesterday` label)", () => {
     const summary = buildTodaysScoresSummary({
-      listName: "Daily Games",
+      listName: "Geo games",
       listUrl: LIST_URL,
-      items: [item("a", "Wordle")],
-      scoresByItem: { a: [entry("me", null, 4)] },
+      items: [item("a", "Globle", "https://globle-game.com/game")],
+      scoresByItem: {
+        a: [entry("me", "🌎 May 25, 2026 🌍\n⬜🟨🟩 = 3\nhttps://globle-game.com\n#globle")],
+      },
       selfId: "me",
-      dateKey: "2026-05-21",
+      dateKey: "2026-05-25",
     });
-    expect(summary?.startsWith("Daily Games — Yesterday\n\n")).toBe(true);
-    expect(summary?.endsWith(`\n\n${LIST_URL}`)).toBe(true);
+    expect(summary?.startsWith("My scores in Geo games — May 25\n")).toBe(true);
+    expect(summary?.endsWith(`\n${LIST_URL}`)).toBe(true);
   });
 });

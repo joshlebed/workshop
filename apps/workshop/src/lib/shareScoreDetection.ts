@@ -159,6 +159,18 @@ export function detectSharedScore(raw: string | null | undefined): DetectedShare
   };
 }
 
+/**
+ * Infer which game an item represents from its title / URL / metadata. Used
+ * by the clipboard recap to pick a per-game formatter when the saved
+ * `scoreRaw` is hand-typed or otherwise doesn't match any text pattern.
+ */
+export function detectGameKindForItem(item: Item): DetectedSharedScoreKind | null {
+  for (const pattern of GAME_PATTERNS) {
+    if (itemMatchesPattern(item, pattern)) return pattern.kind;
+  }
+  return null;
+}
+
 function matchTextPattern(text: string): GamePattern | null {
   for (const pattern of GAME_PATTERNS) {
     if (pattern.textPatterns.some((re) => re.test(text))) return pattern;
