@@ -26,6 +26,13 @@ export const users = pgTable(
     displayName: text("display_name"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+    /**
+     * Server-side session revocation cutoff. When set, any session token whose
+     * `iat` is earlier than this timestamp is rejected by the auth middleware,
+     * effectively signing the user out of every device. Bumped by the
+     * `DELETE /v1/users/me/sessions` endpoint. NULL = never revoked.
+     */
+    sessionsInvalidatedAt: timestamp("sessions_invalidated_at", { withTimezone: true }),
   },
   (t) => ({
     emailLowerIdx: uniqueIndex("users_email_lower_idx")

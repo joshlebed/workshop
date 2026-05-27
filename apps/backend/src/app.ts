@@ -78,13 +78,19 @@ export function buildApp() {
   );
 
   app.onError((e, c) => {
-    logger.error("unhandled error", { error: e, path: c.req.path });
-    const root = unwrapRootError(e);
-    const message =
-      root instanceof Error
-        ? `${root.name}: ${root.message}`.slice(0, 500)
-        : "internal server error";
-    return err(c, "INTERNAL", message);
+    // Log the full unwrapped chain server-side so debugging stays easy, but
+    // return a generic message to the client — Drizzle/Postgres exception
+    // text leaks schema details (column names, constraint definitions, SQL
+    // fragments) that callers don't need. The request_id is the bridge:
+    // operators grep the log for it to find the real cause.
+    const requestId = c.get("requestId");
+    logger.error("unhandled error", {
+      error: e,
+      root_error: unwrapRootError(e),
+      path: c.req.path,
+      request_id: requestId,
+    });
+    return err(c, "INTERNAL", "internal server error", { requestId });
   });
 
   app.notFound((c) => err(c, "NOT_FOUND", "not found"));

@@ -1,9 +1,16 @@
 import { Hono } from "hono";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { resetConfigForTesting } from "../lib/config.js";
 import { ok } from "../lib/response.js";
 import { signSession } from "../lib/session.js";
 import { requireAuth } from "./auth.js";
+
+vi.mock("../lib/sessionRevocation.js", () => ({
+  isSessionRevoked: vi.fn(async () => false),
+}));
+
+// Imported after vi.mock so the mocked module is used.
+const { isSessionRevoked } = await import("../lib/sessionRevocation.js");
 
 function buildAppForTest() {
   const app = new Hono();
@@ -22,6 +29,8 @@ describe("requireAuth middleware", () => {
 
   afterEach(() => {
     resetConfigForTesting();
+    vi.mocked(isSessionRevoked).mockReset();
+    vi.mocked(isSessionRevoked).mockResolvedValue(false);
   });
 
   it("returns the v1 envelope when the Authorization header is missing", async () => {
@@ -66,5 +75,19 @@ describe("requireAuth middleware", () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ userId: "user-abc" });
+    expect(isSessionRevoked).toHaveBeenCalledWith("user-abc", expect.any(Number));
+  });
+
+  it("rejects a token that the revocation check flags as revoked", async () => {
+    vi.mocked(isSessionRevoked).mockResolvedValueOnce(true);
+    const token = signSession("user-abc");
+    const res = await buildAppForTest().request("/protected", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(401);
+    expect(await res.json()).toMatchObject({
+      code: "UNAUTHORIZED",
+      error: "invalid or expired session",
+    });
   });
 });

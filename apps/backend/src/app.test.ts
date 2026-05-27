@@ -77,3 +77,27 @@ describe("CORS middleware", () => {
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
+
+describe("global onError handler", () => {
+  beforeEach(setEnv);
+
+  it("returns a generic 500 with the request_id and no internal details", async () => {
+    const app = buildApp();
+    app.get("/__boom", () => {
+      throw new Error('relation "secret_table" does not exist at SELECT foo FROM bar');
+    });
+    const res = await app.request("/__boom", { method: "GET" });
+    expect(res.status).toBe(500);
+    const body = (await res.json()) as {
+      code: string;
+      error: string;
+      details?: { requestId?: string };
+    };
+    expect(body.code).toBe("INTERNAL");
+    expect(body.error).toBe("internal server error");
+    expect(body.error).not.toContain("secret_table");
+    expect(body.error).not.toContain("SELECT");
+    expect(body.details?.requestId).toBeTypeOf("string");
+    expect(body.details?.requestId?.length).toBeGreaterThan(0);
+  });
+});
