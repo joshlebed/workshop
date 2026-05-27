@@ -37,7 +37,16 @@ import { formatRelative } from "../lib/relativeTime";
 import { buildTodaysScoresSummary } from "../lib/scoresSummary";
 import { buildListShareUrl, copyToClipboard } from "../lib/share";
 import { sourceErrorMessage } from "../lib/sourceErrors";
-import { Button, EmptyState, type ListColorKey, Screen, Text, tokens, useToast } from "../ui/index";
+import {
+  Button,
+  CopyIcon,
+  EmptyState,
+  type ListColorKey,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "../ui/index";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import type { ReorderEvent } from "./listDetail/listProps";
@@ -523,7 +532,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
                 hitSlop={10}
                 style={styles.navButton}
               >
-                <Text style={styles.navGlyph}>⎘</Text>
+                <CopyIcon size={20} color={tokens.text.primary} />
               </Pressable>
             ) : null}
             <Pressable
