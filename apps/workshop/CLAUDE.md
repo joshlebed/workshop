@@ -30,7 +30,8 @@ on the next build. Currently declared:
   `expo-share-intent` plugin config; both are needed because the share extension also
   requires the entitlement.
 - **Associated Domains `applinks:workshop-a2v.pages.dev`** — Universal Links route
-  `/invite/*` and `/list/*` into the app for installed users.
+  `/l/*` (primary share URL), `/invite/*` (legacy share URLs), and `/list/*`
+  (canonical UUID URLs) into the app for installed users.
 
 ## Universal Links: AASA path allowlist lives in two places
 

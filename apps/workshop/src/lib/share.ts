@@ -13,22 +13,23 @@ function readShareBase(): string {
 }
 
 /**
- * Build the URL the owner copies to share. We prefer the web origin (works in
- * any browser) over the `workshop://` deep-link because share links typically
- * land in SMS / email / chat where the iOS app may not be installed. iOS
- * universal-link routing back into the app lands with Phase 4.
+ * Build the short, copyable share URL for a list. Each list has exactly one
+ * slug (rotatable from settings); this is the URL we put in iMessage / Slack /
+ * email and that the OG pipeline renders thumbnails for. iOS Universal Links
+ * routes `/l/*` into the app for installed users; non-members hit the public
+ * landing (`ListPublicLanding`).
  */
-export function buildInviteShareUrl(token: string): string {
-  return `${readShareBase()}/invite/${encodeURIComponent(token)}`;
+export function buildListShareUrl(shareSlug: string): string {
+  return `${readShareBase()}/l/${encodeURIComponent(shareSlug)}`;
 }
 
 /**
- * Stable per-list URL. Members open it into the list; non-members get the
- * public landing page (`ListPublicLanding`). iOS Universal Links already
- * routes `/list/:id` into the app, so this works in both iMessage previews
- * and a regular browser.
+ * The canonical-by-id URL — what the browser sits on after a member opens a
+ * list from home. Stable for bookmarks. Non-members hitting this still see
+ * the public landing, but the OG card is intentionally generic (no list
+ * details leaked to anyone without the slug).
  */
-export function buildListShareUrl(listId: string): string {
+export function buildListByIdUrl(listId: string): string {
   return `${readShareBase()}/list/${encodeURIComponent(listId)}`;
 }
 

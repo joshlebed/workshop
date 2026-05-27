@@ -1,29 +1,33 @@
 # functions — Cloudflare Pages Functions
 
 Open Graph + Twitter Card preview machinery for every URL on the production domain
-(`workshop-a2v.pages.dev`). Three variants, layered:
+(`workshop-a2v.pages.dev`). Four routes, layered around the `share_slug` / `share_visibility`
+model owned by the backend `lists` table:
 
 1. **Default** — `apps/workshop/public/index.html` ships a static set of OG tags
    pointing at `/og/default.png`. Applied to every URL with no more specific override
-   (home, sign-in, activity, settings, …). PNG generated on demand by
-   `og/[name].ts`.
-2. **Per-list (locked)** — `list/_middleware.ts` intercepts every `/list/...` URL,
-   extracts the list UUID, calls `GET /v1/lists/:id/preview`, and emits the same
-   per-list card the invite-token route uses (real name, emoji, owner, item count,
-   color gradient). The recipient still has to sign in (and be a member or have an
-   invite) to actually open the list — the rich card just makes a shared link look
-   like a real preview. Image per-list, rendered by `og/list/[id].ts`. Falls back to
-   `/og/locked-list.png` ("Sign in to view this list") when the URL doesn't carry a
-   valid UUID or the preview API fails.
-3. **Public invite** — `invite/[token].ts` calls `GET /v1/invites/:token/preview` and
-   emits the same per-list card as (2), keyed off the invite token. Image per-token,
-   rendered by `og/invite/[token].ts`.
+   (home, sign-in, activity, settings, …). PNG generated on demand by `og/[name].ts`.
+2. **Short share URL** — `l/[slug].ts` is the primary share surface. Calls
+   `GET /v1/lists/by-slug/:slug/preview` and emits a list-specific card (name, emoji,
+   owner, item count, color gradient). Image rendered by `og/l/[slug].ts`.
+3. **Canonical list URL** — `list/_middleware.ts` intercepts every `/list/...` URL,
+   calls `GET /v1/lists/:id/preview`, and picks rich-vs-locked based on
+   `shareVisibility`: `view` / `join` → rich list card pointing at the id-keyed
+   `og/list/:id.png` renderer; `off` (or preview failed) → "Sign in to view this list"
+   variant pointing at `/og/locked-list.png`. The two cards stay single-tag-per-property
+   via `OG_META_SELECTORS`.
+4. **Legacy invite** — `invite/[token].ts` is kept around so old share URLs in
+   iMessage / email keep working. Calls `GET /v1/invites/:token/preview` and emits the
+   same list-specific card (via `og/invite/[token].ts`). We don't mint new invite
+   tokens; this is a back-compat surface only.
 
 ```
-GET /invite/:token        → preview API → HTMLRewriter swaps defaults for per-list tags
-GET /og/invite/:token.png → workers-og  → 1200×630 per-list PNG
-GET /list/:id/...         → list/_middleware.ts + preview API → per-list tags
-GET /og/list/:id.png      → workers-og  → 1200×630 per-list PNG
+GET /l/:slug              → preview API → HTMLRewriter swaps defaults for per-list tags
+GET /og/l/:slug.png       → workers-og  → 1200×630 per-list PNG
+GET /list/:id/...         → list/_middleware.ts → rich card when shareVisibility ∈ {view, join}, locked otherwise
+GET /og/list/:id.png      → workers-og  → 1200×630 per-list PNG (id-keyed)
+GET /invite/:token        → legacy preview API → per-list tags (back-compat)
+GET /og/invite/:token.png → legacy PNG renderer (back-compat)
 GET /og/:name.png         → workers-og  → 1200×630 static PNG (default, locked-list)
 ```
 
@@ -63,20 +67,21 @@ rejects them. When you add a new shareable route that should open in the app, ad
 ## Verifying a thumbnail after deploy
 
 Platforms cache aggressively (Facebook ~30 days per URL, iMessage per-conversation
-forever). Verify against a **fresh invite** each time:
+forever). Verify against a **freshly rotated slug** each time — owners reset via
+`POST /v1/lists/:id/share/reset`:
 
 ```bash
-TOKEN=$(curl -sS -H "Authorization: Bearer $JWT" -X POST \
-  https://<api>/v1/lists/<list-id>/invites -d '{}' \
-  -H "Content-Type: application/json" | jq -r .invite.token)
+SLUG=$(curl -sS -H "Authorization: Bearer $JWT" -X POST \
+  https://<api>/v1/lists/<list-id>/share/reset | jq -r .shareSlug)
 
-node scripts/check-og.mjs "https://workshop-a2v.pages.dev/invite/$TOKEN"
+node scripts/check-og.mjs "https://workshop-a2v.pages.dev/l/$SLUG"
 ```
 
 `scripts/check-og.mjs` curls with a FB/Apple-LP-shaped UA, asserts OG tags, fetches the
 image, and verifies PNG content-type + dimensions. Exits non-zero on mismatch. Expected
-variant is inferred from the URL path (`/invite/...` → list-specific, `/list/...` →
-locked-list copy, anything else → brand default).
+variant is inferred from the URL path (`/l/...` and `/invite/...` → list-specific,
+`/list/...` → list-specific when shareVisibility allows, locked copy otherwise, anything
+else → brand default).
 
 Apple LinkPresentation has no debug API. Closest signal is `check-og.mjs` passing with
 an Apple-shaped UA + a visual eyeball in `agent-browser`.

@@ -20,6 +20,8 @@ export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand
 
 export type InvitePreviewItemKind = "movie" | "tv" | "book" | "link" | "spotify_album" | "plain";
 
+export type ShareVisibility = "off" | "view" | "join";
+
 export interface InvitePreview {
   name: string;
   emoji: string;
@@ -30,6 +32,10 @@ export interface InvitePreview {
   itemCount: number;
   memberCount: number;
   ownerName: string | null;
+  /** Echoes the list's current share visibility. Used by the /list middleware to pick rich vs. locked card. */
+  shareVisibility: ShareVisibility;
+  /** Stable share slug — used by the /list middleware to point its OG image URL at the slug-keyed renderer. */
+  shareSlug: string;
 }
 
 export const COLOR_GRADIENTS: Record<ListColor, readonly [string, string]> = {
@@ -293,12 +299,20 @@ function normalizePreview(raw: unknown): InvitePreview | null {
     itemCount: typeof p.itemCount === "number" ? p.itemCount : 0,
     memberCount: typeof p.memberCount === "number" ? p.memberCount : 0,
     ownerName: typeof p.ownerName === "string" ? p.ownerName : null,
+    // `shareVisibility` and `shareSlug` were added with the slug share-URL
+    // redesign. An older API URL won't include them — fall back to safe
+    // defaults so the renderer still produces a card.
+    shareVisibility:
+      p.shareVisibility === "off" || p.shareVisibility === "view" || p.shareVisibility === "join"
+        ? p.shareVisibility
+        : "join",
+    shareSlug: typeof p.shareSlug === "string" ? p.shareSlug : "",
   };
 }
 
 /**
- * Fetch the safe preview metadata for an invite token. Returns `null` on
- * any non-2xx or network failure so the caller can gracefully fall back
+ * Fetch the safe preview metadata for a legacy invite token. Returns `null`
+ * on any non-2xx or network failure so the caller can gracefully fall back
  * to a static thumbnail — a failed preview should never break the share
  * link itself for the recipient.
  */
@@ -339,6 +353,30 @@ export async function fetchListPreview(
   try {
     const res = await fetch(
       `${apiUrl.replace(/\/$/, "")}/v1/lists/${encodeURIComponent(listId)}/preview`,
+      { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as { preview?: unknown };
+    return normalizePreview(body.preview);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch a slug-addressed list preview for the short share URL (`/l/:slug`).
+ * Same null-on-failure contract as the sibling fetchers — a flaky API
+ * never breaks the share link itself.
+ */
+export async function fetchListPreviewBySlug(
+  slug: string,
+  env: PagesEnv,
+): Promise<InvitePreview | null> {
+  const apiUrl = env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) return null;
+  try {
+    const res = await fetch(
+      `${apiUrl.replace(/\/$/, "")}/v1/lists/by-slug/${encodeURIComponent(slug)}/preview`,
       { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
     );
     if (!res.ok) return null;

@@ -21,8 +21,8 @@ const uuidSchema = z.string().uuid();
  * path param, then stashes their `role` on the context for handlers to read.
  *
  * Returns 404 (not 403) when the requester isn't a member — we don't leak
- * the existence of lists they can't see. Owner-only handlers should layer
- * `requireListOwner` on top.
+ * the existence of lists they can't see. Owner-only handlers check the
+ * stashed `listMemberRole` directly and return 403 themselves.
  *
  * Must run after `requireAuth`.
  */
@@ -51,17 +51,6 @@ export const requireListMember: MiddlewareHandler = async (c, next) => {
   }
 
   c.set("listMemberRole", row.role as MemberRole);
-  await next();
-};
-
-/**
- * Asserts the requester is the list's owner. Layered on top of
- * `requireListMember` so `listMemberRole` is already populated.
- */
-export const requireListOwner: MiddlewareHandler = async (c, next) => {
-  if (c.get("listMemberRole") !== "owner") {
-    return err(c, "FORBIDDEN", "owner only");
-  }
   await next();
 };
 

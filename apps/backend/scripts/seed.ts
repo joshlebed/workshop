@@ -27,6 +27,7 @@ import {
   users,
 } from "../src/db/schema.js";
 import { getConfig } from "../src/lib/config.js";
+import { generateShareSlug } from "../src/lib/shareSlug.js";
 
 const PREVIEW_EMAIL = "joshlebed@gmail.com";
 const PREVIEW_DISPLAY_NAME = "Josh";
@@ -318,6 +319,7 @@ async function main() {
         ownerId: previewId,
         itemKind: fixture.itemKind,
         modules: fixture.modules,
+        shareSlug: generateShareSlug(),
       })
       .returning();
     if (!list) throw new Error(`[seed] failed to insert list ${fixture.name}`);

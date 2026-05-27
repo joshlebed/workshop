@@ -7,6 +7,7 @@ import type {
   ListSource,
   ListSummary,
   MemberRole,
+  ShareVisibility,
 } from "@workshop/shared";
 import { ITEM_KIND_NAMES, type ItemKind, isItemKind } from "@workshop/shared/itemKinds";
 import { MODULE_NAMES, type ModuleName, normalizeModules } from "@workshop/shared/modules";
@@ -32,12 +33,12 @@ import { requireCapability } from "../../lib/permissions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { verifySession } from "../../lib/session.js";
+import { generateShareSlug, isValidShareSlug } from "../../lib/shareSlug.js";
 import { dispatchFor } from "../../lib/sources/registry.js";
 import { executeRows } from "../../lib/sql.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
-import { fetchPendingInvitesForList } from "./invites.js";
 import {
   createItem,
   createItemSchema,
@@ -173,9 +174,85 @@ function toListShape(l: DbList): List {
     ownerId: l.ownerId,
     itemKind: (l.itemKind && isItemKind(l.itemKind) ? (l.itemKind as ItemKind) : null) ?? null,
     modules: (l.modules ?? []) as ModuleName[],
+    shareSlug: l.shareSlug,
+    shareVisibility: l.shareVisibility as ShareVisibility,
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
   };
+}
+
+const SHARE_VISIBILITIES = ["off", "view", "join"] as const satisfies readonly ShareVisibility[];
+
+/**
+ * Returns true if `e` is a Postgres unique_violation (SQLSTATE 23505) for the
+ * named constraint. Drizzle wraps the original `postgres.PostgresError` in a
+ * `DrizzleQueryError` so we walk the cause chain.
+ */
+function isUniqueViolation(e: unknown, constraint: string): boolean {
+  let cur: unknown = e;
+  for (let i = 0; i < 5; i++) {
+    if (!cur || typeof cur !== "object") return false;
+    const obj = cur as { code?: unknown; constraint_name?: unknown; cause?: unknown };
+    if (obj.code === "23505" && obj.constraint_name === constraint) return true;
+    cur = obj.cause;
+  }
+  return false;
+}
+
+/**
+ * Build a public preview payload for a list. Used by both the by-id and
+ * by-slug preview endpoints — sharing one shape means the OG image
+ * pipeline, public landing page, and link-preview crawlers all consume
+ * the same data regardless of which URL the user pasted.
+ */
+async function buildListPreview(list: DbList): Promise<ListPreview> {
+  const db = getDb();
+  const [owner] = await db
+    .select({ displayName: users.displayName })
+    .from(users)
+    .where(eq(users.id, list.ownerId))
+    .limit(1);
+
+  const countRows = await executeRows<{ item_count: number; member_count: number }>(
+    db,
+    sql`
+      SELECT
+        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = ${list.id} AND i.archived_at IS NULL) AS item_count,
+        (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = ${list.id}) AS member_count
+    `,
+  );
+  const counts = countRows[0] ?? { item_count: 0, member_count: 0 };
+
+  return {
+    id: list.id,
+    name: list.name,
+    emoji: list.emoji,
+    color: list.color as ListColor,
+    description: list.description,
+    ownerName: owner?.displayName ?? null,
+    itemCount: Number(counts.item_count),
+    memberCount: Number(counts.member_count),
+    itemKind:
+      (list.itemKind && isItemKind(list.itemKind) ? (list.itemKind as ItemKind) : null) ?? null,
+    modules: (list.modules ?? []) as ModuleName[],
+    shareVisibility: list.shareVisibility as ShareVisibility,
+    shareSlug: list.shareSlug,
+  };
+}
+
+/**
+ * Read the optional bearer token from the request without forcing auth.
+ * Used by the public preview endpoints so they can label the viewer as
+ * "authenticated non-member" vs "anonymous" without 401-ing missing tokens.
+ */
+function readOptionalViewerId(c: {
+  req: { header: (n: string) => string | undefined };
+}): string | null {
+  const header = c.req.header("Authorization");
+  if (!header?.startsWith("Bearer ")) return null;
+  const token = header.slice("Bearer ".length).trim();
+  if (token.length === 0) return null;
+  return verifySession(token)?.userId ?? null;
 }
 
 // --- GET /v1/lists/:id/preview (public; landing for non-members) ---
@@ -213,31 +290,7 @@ publicListRoutes.get("/lists/:id/preview", async (c) => {
     return err(c, "NOT_FOUND", "list not found");
   }
 
-  const [owner] = await db
-    .select({ displayName: users.displayName })
-    .from(users)
-    .where(eq(users.id, list.ownerId))
-    .limit(1);
-
-  const countRows = await executeRows<{ item_count: number; member_count: number }>(
-    db,
-    sql`
-      SELECT
-        (SELECT COUNT(*)::int FROM items i WHERE i.list_id = ${list.id} AND i.archived_at IS NULL) AS item_count,
-        (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = ${list.id}) AS member_count
-    `,
-  );
-  const counts = countRows[0] ?? { item_count: 0, member_count: 0 };
-
-  let viewerUserId: string | null = null;
-  const header = c.req.header("Authorization");
-  if (header?.startsWith("Bearer ")) {
-    const token = header.slice("Bearer ".length).trim();
-    if (token.length > 0) {
-      viewerUserId = verifySession(token)?.userId ?? null;
-    }
-  }
-
+  const viewerUserId = readOptionalViewerId(c);
   let isMember = false;
   if (viewerUserId) {
     const [m] = await db
@@ -248,20 +301,97 @@ publicListRoutes.get("/lists/:id/preview", async (c) => {
     isMember = !!m;
   }
 
-  const preview: ListPreview = {
-    id: list.id,
-    name: list.name,
-    emoji: list.emoji,
-    color: list.color as ListColor,
-    description: list.description,
-    itemKind:
-      (list.itemKind && isItemKind(list.itemKind) ? (list.itemKind as ItemKind) : null) ?? null,
-    modules: (list.modules ?? []) as ModuleName[],
-    ownerName: owner?.displayName ?? null,
-    itemCount: Number(counts.item_count),
-    memberCount: Number(counts.member_count),
-  };
+  const preview = await buildListPreview(list);
+  return ok(c, {
+    preview,
+    viewer: { authenticated: viewerUserId !== null, isMember },
+  });
+});
 
+// --- GET /v1/lists/by-slug/:slug/items (public when visibility=view) ---
+
+/**
+ * Returns the same ordered/unordered/completed split as the by-id items
+ * endpoint, but accessible to non-members when the list's `share_visibility`
+ * is `view`. `off` and `join` require membership — `join`'s read access only
+ * starts once the user has clicked through the join CTA.
+ *
+ * No member identities or per-viewer view-state are surfaced here — kept
+ * deliberately to the same shape as `GET /v1/lists/:id/items` so the
+ * read-only landing page can reuse the same item rendering code.
+ */
+publicListRoutes.get("/lists/by-slug/:slug/items", async (c) => {
+  const slug = c.req.param("slug");
+  if (!isValidShareSlug(slug)) return err(c, "NOT_FOUND", "list not found");
+
+  const db = getDb();
+  const [list] = await db
+    .select()
+    .from(lists)
+    .where(and(eq(lists.shareSlug, slug), isNull(lists.archivedAt)))
+    .limit(1);
+  if (!list) return err(c, "NOT_FOUND", "list not found");
+
+  const viewerUserId = readOptionalViewerId(c);
+  let isMember = false;
+  if (viewerUserId) {
+    const [m] = await db
+      .select({ userId: listMembers.userId })
+      .from(listMembers)
+      .where(and(eq(listMembers.listId, list.id), eq(listMembers.userId, viewerUserId)))
+      .limit(1);
+    isMember = !!m;
+  }
+
+  if (!isMember && list.shareVisibility !== "view") {
+    return err(c, "NOT_FOUND", "list not found");
+  }
+
+  const split = await fetchItemsForList(list.id);
+  return ok(c, split);
+});
+
+// --- GET /v1/lists/by-slug/:slug/preview (public; landing for share URLs) ---
+
+/**
+ * Public landing-page preview keyed by the short share slug. Same shape as
+ * the by-id preview above, but the route is the one our Pages Functions
+ * fetch when building OG / Twitter Card metadata for `/l/:slug` URLs.
+ *
+ * `visibility=off` 404s for non-members. Members keep access via the
+ * canonical `/list/:id` URL or the home screen — the short link is just a
+ * shareable surface, not their only entry point. Archived lists also 404.
+ */
+publicListRoutes.get("/lists/by-slug/:slug/preview", async (c) => {
+  const slug = c.req.param("slug");
+  if (!isValidShareSlug(slug)) {
+    return err(c, "NOT_FOUND", "list not found");
+  }
+
+  const db = getDb();
+  const [list] = await db
+    .select()
+    .from(lists)
+    .where(and(eq(lists.shareSlug, slug), isNull(lists.archivedAt)))
+    .limit(1);
+  if (!list) return err(c, "NOT_FOUND", "list not found");
+
+  const viewerUserId = readOptionalViewerId(c);
+  let isMember = false;
+  if (viewerUserId) {
+    const [m] = await db
+      .select({ userId: listMembers.userId })
+      .from(listMembers)
+      .where(and(eq(listMembers.listId, list.id), eq(listMembers.userId, viewerUserId)))
+      .limit(1);
+    isMember = !!m;
+  }
+
+  if (list.shareVisibility === "off" && !isMember) {
+    return err(c, "NOT_FOUND", "list not found");
+  }
+
+  const preview = await buildListPreview(list);
   return ok(c, {
     preview,
     viewer: { authenticated: viewerUserId !== null, isMember },
@@ -299,6 +429,8 @@ listRoutes.get("/", async (c) => {
     owner_id: string;
     item_kind: string | null;
     modules: string[];
+    share_slug: string;
+    share_visibility: string;
     created_at: Date | string;
     updated_at: Date | string;
     my_role: string;
@@ -313,7 +445,7 @@ listRoutes.get("/", async (c) => {
     sql`
       SELECT
         l.id, l.name, l.emoji, l.color, l.description, l.cover_photo_url, l.owner_id,
-        l.item_kind, l.modules, l.created_at, l.updated_at,
+        l.item_kind, l.modules, l.share_slug, l.share_visibility, l.created_at, l.updated_at,
         me.role::text AS my_role, me.pinned_at, me.archived_at, me.muted_at,
         (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
         (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id AND i.archived_at IS NULL) AS item_count,
@@ -345,6 +477,8 @@ listRoutes.get("/", async (c) => {
     ownerId: r.owner_id,
     itemKind: (r.item_kind && isItemKind(r.item_kind) ? r.item_kind : null) as ItemKind | null,
     modules: (r.modules ?? []) as ModuleName[],
+    shareSlug: r.share_slug,
+    shareVisibility: r.share_visibility as ShareVisibility,
     createdAt: toIsoString(r.created_at),
     updatedAt: toIsoString(r.updated_at),
     role: r.my_role as MemberRole,
@@ -377,20 +511,37 @@ listRoutes.post("/", async (c) => {
   }
 
   const created: DbList = await db.transaction(async (tx) => {
-    const [list] = await tx
-      .insert(lists)
-      .values({
-        name: data.name,
-        emoji: data.emoji,
-        color: data.color,
-        description: data.description ?? null,
-        coverPhotoUrl: data.coverPhotoUrl ?? null,
-        ownerId: userId,
-        itemKind: data.itemKind ?? null,
-        modules: data.modules,
-      })
-      .returning();
-    if (!list) throw new Error("list insert returned no row");
+    // Retry the insert on the (rare) unique_violation when our random
+    // 8-char base62 slug collides with an existing row. Postgres aborts
+    // the transaction on a constraint violation, so we generate up-front
+    // and re-roll only on the explicit error code rather than wrapping
+    // the whole insert in a retry loop.
+    let createdList: DbList | undefined;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const [row] = await tx
+          .insert(lists)
+          .values({
+            name: data.name,
+            emoji: data.emoji,
+            color: data.color,
+            description: data.description ?? null,
+            coverPhotoUrl: data.coverPhotoUrl ?? null,
+            ownerId: userId,
+            itemKind: data.itemKind ?? null,
+            modules: data.modules,
+            shareSlug: generateShareSlug(),
+          })
+          .returning();
+        createdList = row;
+        break;
+      } catch (e) {
+        if (isUniqueViolation(e, "lists_share_slug_unique")) continue;
+        throw e;
+      }
+    }
+    const list = createdList;
+    if (!list) throw new Error("list insert: share_slug collision retries exhausted");
 
     await tx.insert(listMembers).values({
       listId: list.id,
@@ -491,17 +642,162 @@ listRoutes.get("/:id", requireListMember, async (c) => {
     joinedAt: m.joinedAt.toISOString(),
   }));
 
-  const role = c.get("listMemberRole");
-  const pendingInvites = role === "owner" ? await fetchPendingInvitesForList(listId) : [];
-
   const sources = await fetchSourcesForList(listId);
 
   return ok(c, {
     list: toListShape(list),
     members,
-    pendingInvites,
     sources,
   });
+});
+
+// --- POST /v1/lists/:id/share/reset (owner-only, rotates share slug) ---
+
+/**
+ * Rotates `lists.share_slug`. Used as the "kill an old link that got leaked"
+ * hammer — the previous slug 404s immediately on every share URL surface
+ * (OG preview, public landing, join). Existing members keep access via the
+ * canonical `/list/:id` URL and the home screen; this only invalidates the
+ * shareable short URL.
+ *
+ * Visibility isn't touched here — pair this with `PATCH /share` to also flip
+ * the link off in one motion. Idempotent under burst-press because each call
+ * produces a fresh slug.
+ */
+listRoutes.post("/:id/share/reset", requireListMember, async (c) => {
+  const listId = c.req.param("id");
+  const role = c.get("listMemberRole");
+  if (role !== "owner") return err(c, "FORBIDDEN", "owner only");
+
+  const db = getDb();
+  let rotated: { share_slug: string; share_visibility: string } | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const [row] = await db
+        .update(lists)
+        .set({ shareSlug: generateShareSlug(), updatedAt: new Date() })
+        .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
+        .returning({ share_slug: lists.shareSlug, share_visibility: lists.shareVisibility });
+      rotated = row ?? null;
+      break;
+    } catch (e) {
+      if (isUniqueViolation(e, "lists_share_slug_unique")) continue;
+      throw e;
+    }
+  }
+  if (!rotated) return err(c, "NOT_FOUND", "list not found");
+  return ok(c, {
+    shareSlug: rotated.share_slug,
+    shareVisibility: rotated.share_visibility as ShareVisibility,
+  });
+});
+
+// --- PATCH /v1/lists/:id/share (owner-only, sets visibility) ---
+
+const updateShareSchema = z.object({
+  visibility: z.enum(SHARE_VISIBILITIES),
+});
+
+listRoutes.patch("/:id/share", requireListMember, async (c) => {
+  const parsed = await parseJsonBody(c, updateShareSchema);
+  if (!parsed.ok) return parsed.response;
+  const listId = c.req.param("id");
+  const role = c.get("listMemberRole");
+  if (role !== "owner") return err(c, "FORBIDDEN", "owner only");
+
+  const db = getDb();
+  const [row] = await db
+    .update(lists)
+    .set({ shareVisibility: parsed.data.visibility, updatedAt: new Date() })
+    .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
+    .returning({ share_slug: lists.shareSlug, share_visibility: lists.shareVisibility });
+  if (!row) return err(c, "NOT_FOUND", "list not found");
+
+  return ok(c, {
+    shareSlug: row.share_slug,
+    shareVisibility: row.share_visibility as ShareVisibility,
+  });
+});
+
+// --- POST /v1/lists/by-slug/:slug/join (auth, anyone with the link joins) ---
+
+/**
+ * Public-link join — the slug equivalent of the legacy
+ * `POST /v1/invites/:token/accept` flow. Authenticated, rate-limited at the
+ * Hono layer, idempotent against existing membership (re-joining is a no-op
+ * that just returns the current member row).
+ *
+ * Blocked when `share_visibility = 'off'` or the list is archived — 404
+ * either way so we don't leak whether the slug exists. `share_visibility =
+ * 'view'` returns 403; the link grants read access but not membership.
+ */
+listRoutes.post("/by-slug/:slug/join", async (c) => {
+  const slug = c.req.param("slug");
+  if (!isValidShareSlug(slug)) return err(c, "NOT_FOUND", "list not found");
+
+  const userId = c.get("userId");
+  const db = getDb();
+
+  const result = await db.transaction(async (tx) => {
+    const [list] = await tx
+      .select()
+      .from(lists)
+      .where(and(eq(lists.shareSlug, slug), isNull(lists.archivedAt)))
+      .limit(1);
+    if (!list) return { kind: "not_found" as const };
+    if (list.shareVisibility === "off") return { kind: "not_found" as const };
+    if (list.shareVisibility === "view") return { kind: "view_only" as const };
+
+    const [existing] = await tx
+      .select()
+      .from(listMembers)
+      .where(and(eq(listMembers.listId, list.id), eq(listMembers.userId, userId)))
+      .limit(1);
+
+    let memberRow = existing;
+    let newlyJoined = false;
+    if (!memberRow) {
+      const [inserted] = await tx
+        .insert(listMembers)
+        .values({ listId: list.id, userId, role: "member" })
+        .returning();
+      if (!inserted) throw new Error("member insert returned no row");
+      memberRow = inserted;
+      newlyJoined = true;
+    }
+
+    if (newlyJoined) {
+      await recordEvent({
+        db: tx,
+        listId: list.id,
+        actorId: userId,
+        type: "member_joined",
+        payload: { via: "share_slug" },
+      });
+    }
+
+    return { kind: "ok" as const, list, member: memberRow };
+  });
+
+  if (result.kind === "not_found") return err(c, "NOT_FOUND", "list not found");
+  if (result.kind === "view_only") {
+    return err(c, "FORBIDDEN", "list_view_only", { code: "list_view_only" }, 403);
+  }
+
+  const [userRow] = await db
+    .select({ displayName: users.displayName })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  const memberSummary: ListMemberSummary = {
+    userId: result.member.userId,
+    displayName: userRow?.displayName ?? null,
+    role: result.member.role as MemberRole,
+    joinedAt: result.member.joinedAt.toISOString(),
+  };
+
+  return ok(c, { list: toListShape(result.list), member: memberSummary });
 });
 
 listRoutes.patch("/:id", requireListMember, async (c) => {
@@ -785,20 +1081,32 @@ listRoutes.post(
         : (source.itemKind as ItemKind | null);
 
     const dup = await db.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(lists)
-        .values({
-          name: parsed.data.name ?? `${source.name} (copy)`,
-          emoji: parsed.data.emoji ?? source.emoji,
-          color: (parsed.data.color ?? source.color) as ListColor,
-          description: parsed.data.description ?? source.description,
-          coverPhotoUrl: source.coverPhotoUrl,
-          ownerId: userId,
-          itemKind: nextItemKind,
-          modules: nextModules,
-        })
-        .returning();
-      if (!created) throw new Error("duplicate insert returned no row");
+      let createdDup: DbList | undefined;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const [row] = await tx
+            .insert(lists)
+            .values({
+              name: parsed.data.name ?? `${source.name} (copy)`,
+              emoji: parsed.data.emoji ?? source.emoji,
+              color: (parsed.data.color ?? source.color) as ListColor,
+              description: parsed.data.description ?? source.description,
+              coverPhotoUrl: source.coverPhotoUrl,
+              ownerId: userId,
+              itemKind: nextItemKind,
+              modules: nextModules,
+              shareSlug: generateShareSlug(),
+            })
+            .returning();
+          createdDup = row;
+          break;
+        } catch (e) {
+          if (isUniqueViolation(e, "lists_share_slug_unique")) continue;
+          throw e;
+        }
+      }
+      const created = createdDup;
+      if (!created) throw new Error("duplicate insert: share_slug collision retries exhausted");
       await tx.insert(listMembers).values({
         listId: created.id,
         userId,

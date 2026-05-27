@@ -33,6 +33,8 @@ const samplePreview: InvitePreview = {
   itemCount: 5,
   memberCount: 2,
   ownerName: "Preview User",
+  shareVisibility: "join",
+  shareSlug: "abc12345",
 };
 
 describe("escapeXml", () => {

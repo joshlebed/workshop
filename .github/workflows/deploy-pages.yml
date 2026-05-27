@@ -83,7 +83,7 @@ jobs:
       - name: Verify production OG endpoint serves PNG
         run: |
           set -euo pipefail
-          URL="https://workshop-a2v.pages.dev/og/invite/_smoke_check_token.png"
+          URL="https://workshop-a2v.pages.dev/og/l/_smoke_check_slug.png"
           # Retry briefly — Pages propagation can take a few seconds after
           # `Deployment complete` returns.
           for i in 1 2 3 4 5 6; do
