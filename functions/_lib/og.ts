@@ -166,12 +166,12 @@ export function buildMetaTagsRaw(values: OgMetaValues): string {
 
 export function buildMetaTags(
   preview: InvitePreview,
-  opts: { inviteUrl: string; imageUrl: string },
+  opts: { pageUrl: string; imageUrl: string },
 ): string {
   return buildMetaTagsRaw({
     title: buildOgTitle(preview),
     description: buildOgDescription(preview),
-    url: opts.inviteUrl,
+    url: opts.pageUrl,
     image: opts.imageUrl,
   });
 }
@@ -293,4 +293,45 @@ export async function fetchInvitePreview(
   } catch {
     return null;
   }
+}
+
+/**
+ * Fetch the safe preview metadata for a list by ID. Mirrors `fetchInvitePreview`
+ * but targets `/v1/lists/:id/preview`, which surfaces the same fields plus
+ * a `viewer` block we ignore here (link crawlers are always anonymous).
+ *
+ * Powers the per-list OG thumbnail under `/list/:id/...` URLs — recipients
+ * still have to sign in to actually open the list, but the preview can
+ * show the list's name, emoji, and shape instead of a generic lock icon.
+ */
+export async function fetchListPreview(
+  listId: string,
+  env: PagesEnv,
+): Promise<InvitePreview | null> {
+  const apiUrl = env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) return null;
+  try {
+    const res = await fetch(
+      `${apiUrl.replace(/\/$/, "")}/v1/lists/${encodeURIComponent(listId)}/preview`,
+      { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as { preview?: InvitePreview };
+    return body.preview ?? null;
+  } catch {
+    return null;
+  }
+}
+
+const LIST_ID_PATH_RE =
+  /^\/list\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/|$)/i;
+
+/**
+ * Pull the list UUID out of a `/list/:id/...` pathname. Returns `null` for
+ * any URL that doesn't start with a UUID segment so the locked-list
+ * middleware can fall back to the generic variant.
+ */
+export function extractListIdFromPath(pathname: string): string | null {
+  const m = LIST_ID_PATH_RE.exec(pathname);
+  return m?.[1] ? m[1].toLowerCase() : null;
 }

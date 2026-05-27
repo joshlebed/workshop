@@ -7,18 +7,23 @@ Open Graph + Twitter Card preview machinery for every URL on the production doma
    pointing at `/og/default.png`. Applied to every URL with no more specific override
    (home, sign-in, activity, settings, …). PNG generated on demand by
    `og/[name].ts`.
-2. **Locked list** — `list/_middleware.ts` intercepts every `/list/...` URL, strips the
-   defaults from the SPA `index.html`, and emits a "Sign in to view this list" variant
-   pointing at `/og/locked-list.png`. Anyone with the URL still has to authenticate, so
-   the card stays content-free on purpose (no name, emoji, item count).
+2. **Per-list (locked)** — `list/_middleware.ts` intercepts every `/list/...` URL,
+   extracts the list UUID, calls `GET /v1/lists/:id/preview`, and emits the same
+   per-list card the invite-token route uses (real name, emoji, owner, item count,
+   color gradient). The recipient still has to sign in (and be a member or have an
+   invite) to actually open the list — the rich card just makes a shared link look
+   like a real preview. Image per-list, rendered by `og/list/[id].ts`. Falls back to
+   `/og/locked-list.png` ("Sign in to view this list") when the URL doesn't carry a
+   valid UUID or the preview API fails.
 3. **Public invite** — `invite/[token].ts` calls `GET /v1/invites/:token/preview` and
-   emits a list-specific card with the real name, emoji, owner, item count, and color
-   gradient. Image per-token, rendered by `og/invite/[token].ts`.
+   emits the same per-list card as (2), keyed off the invite token. Image per-token,
+   rendered by `og/invite/[token].ts`.
 
 ```
 GET /invite/:token        → preview API → HTMLRewriter swaps defaults for per-list tags
 GET /og/invite/:token.png → workers-og  → 1200×630 per-list PNG
-GET /list/:id/...         → list/_middleware.ts → swaps defaults for locked-list variant
+GET /list/:id/...         → list/_middleware.ts + preview API → per-list tags
+GET /og/list/:id.png      → workers-og  → 1200×630 per-list PNG
 GET /og/:name.png         → workers-og  → 1200×630 static PNG (default, locked-list)
 ```
 

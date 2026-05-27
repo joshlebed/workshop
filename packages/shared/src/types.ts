@@ -230,6 +230,8 @@ export interface ListPreview {
   emoji: string;
   color: ListColor;
   description: string | null;
+  itemKind: ItemKind | null;
+  modules: readonly ModuleName[];
   ownerName: string | null;
   itemCount: number;
   memberCount: number;

@@ -52,7 +52,7 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
   // images served from a redirect chain or a different origin than the
   // page itself; co-locating them eliminates that whole failure mode.
   const imageUrl = `${origin}/og/invite/${encodeURIComponent(token)}.png`;
-  const meta = buildMetaTags(preview, { inviteUrl, imageUrl });
+  const meta = buildMetaTags(preview, { pageUrl: inviteUrl, imageUrl });
 
   // HTMLRewriter streams the response and only mutates the bits we
   // touch, so the SPA's existing head (favicon, viewport, expo-router
