@@ -87,14 +87,16 @@ const FORMATTERS: Partial<Record<DetectedSharedScoreKind, Formatter>> = {
   // Shape: `DailyTens #751\n\n     🏆    ❌\n     🏆    🏆\n...`
   // Drop the `DailyTens #N` header — the `• Daily Tens` bullet already labels
   // the block — and keep the 5-row 🏆/❌ grid verbatim (leading whitespace
-  // matters: it aligns the two columns).
+  // matters: it aligns the two columns). Require at least one grid line so a
+  // URL-only share doesn't slip through with just the dailytens.com ref id.
   dailytens(raw) {
     const lines = raw
       .split(/\r?\n/)
       .map((l) => l.replace(URL_RE, "").trimEnd())
       .filter((l) => l.trim().length > 0)
       .filter((l) => !/^\s*DailyTens\b/i.test(l));
-    return lines.length ? lines.join("\n") : null;
+    if (!lines.some((l) => /[🏆❌]/u.test(l))) return null;
+    return lines.join("\n");
   },
 
   // Shape: `I solved the 5/20/2026 New York Times Mini Crossword in 0:16!`
@@ -158,6 +160,11 @@ export function summarizeScoreBody(
     if (formatted && formatted.trim().length > 0) return formatted;
     const fallback = fallbackFormat(raw);
     if (fallback && fallback.trim().length > 0) return fallback;
+    // Raw was non-empty but stripped to nothing — almost always a URL-only
+    // share. `scoreValue` here is whatever number the backend's "first number
+    // anywhere" parser pulled from URL query params (e.g. `?ref=944415`), so
+    // surface nothing rather than a meaningless digit string.
+    return null;
   }
   if (entry.scoreValue !== null && Number.isFinite(entry.scoreValue)) {
     return String(entry.scoreValue);
