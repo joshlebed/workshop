@@ -98,10 +98,11 @@ const FORMATTERS: Partial<Record<DetectedSharedScoreKind, Formatter>> = {
   },
 
   // Shape: `I solved the 5/20/2026 New York Times Mini Crossword in 0:16!`
-  // No grid — just pull the `M:SS` solve time off the end.
+  // No grid — render the `M:SS` solve time as keycap-emoji digits so the
+  // bullet has a visual analogue to the grids the other games emit.
   "nyt-mini"(raw) {
     const time = stripUrlSubstrings(raw).match(/\b\d+:\d{2}\b/)?.[0];
-    return time ?? null;
+    return time ? toKeycapDigits(time) : null;
   },
 };
 
@@ -110,6 +111,12 @@ const FORMATTERS: Partial<Record<DetectedSharedScoreKind, Formatter>> = {
 // formatters to pick the visual grid block out of the raw share.
 function isGridOnlyLine(line: string): boolean {
   return !/[A-Za-z0-9]/.test(line.replace(/=\s*\d+\s*$/, ""));
+}
+
+const KEYCAP_DIGITS = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
+
+function toKeycapDigits(text: string): string {
+  return text.replace(/\d/g, (d) => KEYCAP_DIGITS[Number(d)]!);
 }
 
 /**
