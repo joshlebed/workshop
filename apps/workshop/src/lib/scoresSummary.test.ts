@@ -145,6 +145,28 @@ describe("summarizeScoreBody", () => {
     expect(summarizeScoreBody(item("a", "Wordle"), entry("u", "   \n\n", null))).toBeNull();
   });
 
+  it("returns null for a URL-only Daily Tens share instead of surfacing the URL ref id", () => {
+    // The backend's "first number anywhere" parser pulls 944415 off the
+    // `?ref=` URL param; we shouldn't echo that as the user's score.
+    expect(
+      summarizeScoreBody(
+        item("a", "Daily Tens", "https://dailytens.com/"),
+        entry("u", "https://dailytens.com/?ref=944415", 944415),
+      ),
+    ).toBeNull();
+  });
+
+  it("falls back to the bare `DailyTens #N` header (not scoreValue) when the grid is missing", () => {
+    // Formatter rejects (no 🏆/❌); fallback surfaces the meaningful header
+    // line over the URL-derived scoreValue.
+    expect(
+      summarizeScoreBody(
+        item("a", "Daily Tens", "https://dailytens.com/"),
+        entry("u", "DailyTens #751\nhttps://dailytens.com/?ref=944415", 944415),
+      ),
+    ).toBe("DailyTens #751");
+  });
+
   it("strips hashtag-only and url-only lines in fallback", () => {
     const raw = "Some game #999\nactual score 42\nhttps://example.com\n#hashtag";
     expect(summarizeScoreBody(item("a", "Some Game"), entry("u", raw))).toBe(

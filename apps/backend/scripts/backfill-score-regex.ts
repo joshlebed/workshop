@@ -106,6 +106,18 @@ const GAME_REGEX_CATALOG: GameRegex[] = [
     scoreRegex: "Framed\\s+#(\\d+)",
     scoreDirection: "desc",
   },
+  {
+    key: "dailytens",
+    identifyPatterns: [/\bdaily\s*tens\b/i, /dailytens\.com/i],
+    // "DailyTens #751" → 751. The share is a 🏆/❌ grid with no numeric
+    // score; we capture the puzzle number so score_value is anchored to the
+    // share itself instead of the trailing `dailytens.com/?ref=<6-digit-id>`
+    // URL param (which the "first number anywhere" fallback used to grab).
+    // Everyone shares the same puzzle per day, so this ties all players —
+    // acceptable until we add real trophy-count ranking.
+    scoreRegex: "DailyTens\\s*#(\\d+)",
+    scoreDirection: "desc",
+  },
 ];
 
 function matchGame(item: ItemRow): GameRegex | null {
