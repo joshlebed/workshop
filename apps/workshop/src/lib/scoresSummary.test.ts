@@ -119,14 +119,14 @@ describe("summarizeScoreBody", () => {
     );
   });
 
-  it("formats NYT Mini as just the `M:SS` solve time", () => {
+  it("formats NYT Mini as the `M:SS` solve time rendered as keycap-emoji digits", () => {
     const raw = "I solved the 5/20/2026 New York Times Mini Crossword in 0:16!";
     expect(
       summarizeScoreBody(
         item("a", "NYT Mini", "https://www.nytimes.com/crosswords/game/mini"),
         entry("u", raw),
       ),
-    ).toBe("0:16");
+    ).toBe("0️⃣:1️⃣6️⃣");
   });
 
   it("falls back to a cleaned raw copy for games without a heuristic, preserving alignment", () => {
