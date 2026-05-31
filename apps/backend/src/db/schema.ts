@@ -189,9 +189,11 @@ export const items = pgTable(
      * `item_scores.score_raw` to compute `score_value`. `scoreDirection`
      * controls leaderboard sort: 'desc' = higher is better (default),
      * 'asc' = lower is better (Wordle / Satle / etc.). Both are NULL on
-     * non-game items. Currently DB-only — no client-facing surface to edit
-     * them; backfilled by `apps/backend/scripts/backfill-score-regex.ts`
-     * based on item URL / title.
+     * non-game items. No client-facing surface to edit them: the score upsert
+     * self-heals a NULL regex on first post via the `gameScoreRegex` catalog,
+     * and `apps/backend/scripts/backfill-score-regex.ts` replays the catalog
+     * across existing items + historical scores. Both share the catalog in
+     * `apps/backend/src/lib/gameScoreRegex.ts`.
      */
     scoreRegex: text("score_regex"),
     scoreDirection: text("score_direction"),

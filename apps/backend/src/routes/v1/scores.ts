@@ -10,6 +10,7 @@ import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { itemScores, items, lists, users } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
+import { matchGameScoreRegex } from "../../lib/gameScoreRegex.js";
 import { requireModule } from "../../lib/moduleGate.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -149,6 +150,12 @@ interface ItemScoreContext {
   modules: string[];
   scoreRegex: string | null;
   scoreDirection: "asc" | "desc";
+  // Searchable fields used to self-heal a missing `scoreRegex` on first
+  // score post (see the upsert handler).
+  title: string;
+  url: string | null;
+  siteName: string | null;
+  sourceId: string | null;
 }
 
 async function getItemScoreContext(itemId: string): Promise<ItemScoreContext | null> {
@@ -159,17 +166,25 @@ async function getItemScoreContext(itemId: string): Promise<ItemScoreContext | n
       modules: lists.modules,
       scoreRegex: items.scoreRegex,
       scoreDirection: items.scoreDirection,
+      title: items.title,
+      url: items.url,
+      content: items.content,
     })
     .from(items)
     .innerJoin(lists, eq(lists.id, items.listId))
     .where(and(eq(items.id, itemId), isNull(items.archivedAt)))
     .limit(1);
   if (!row) return null;
+  const content = (row.content ?? {}) as Record<string, unknown>;
   return {
     listId: row.listId,
     modules: (row.modules ?? []) as string[],
     scoreRegex: row.scoreRegex,
     scoreDirection: normalizeDirection(row.scoreDirection),
+    title: row.title,
+    url: row.url,
+    siteName: typeof content.siteName === "string" ? content.siteName : null,
+    sourceId: typeof content.sourceId === "string" ? content.sourceId : null,
   };
 }
 
@@ -194,7 +209,23 @@ itemScoreRoutes.put(
 
     const db = getDb();
     const now = new Date();
-    const value = tryParseScoreValue(parsed.data.scoreRaw, ctx?.scoreRegex ?? null);
+    // Self-heal a missing score_regex: a leaderboard game created after the
+    // one-time backfill has no regex, so the "first number anywhere" fallback
+    // would store junk (e.g. the `dailytens.com/?ref=<id>` referral id) as the
+    // score. Detect the game from the item's fields, persist the regex so the
+    // ranking read path + future posts use it, and parse with it now.
+    let scoreRegex = ctx?.scoreRegex ?? null;
+    if (!scoreRegex && ctx) {
+      const detected = matchGameScoreRegex(ctx);
+      if (detected) {
+        scoreRegex = detected.scoreRegex;
+        await db
+          .update(items)
+          .set({ scoreRegex: detected.scoreRegex, scoreDirection: detected.scoreDirection })
+          .where(eq(items.id, itemId));
+      }
+    }
+    const value = tryParseScoreValue(parsed.data.scoreRaw, scoreRegex);
     const [row] = await db
       .insert(itemScores)
       .values({
