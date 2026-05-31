@@ -71,9 +71,9 @@ describe("detectSharedScore", () => {
       raw: "#Worldle #842 3/6 (100%)\n🟩🟩🟩🟩🟨⬅️\n🟩🟩🟩🟩🟨⬅️\n🟩🟩🟩🟩🟩🎉",
     },
     {
-      name: "Tradle",
+      name: "Tradle (tradle.net domain)",
       kind: "tradle",
-      raw: "#Tradle #784 2/6\n🟩🟩🟩🟩🟩🎉\nhttps://oec.world/en/tradle",
+      raw: "#Tradle #1547 1/6\n🟩🟩🟩🟩🟩\nhttps://tradle.net/",
     },
     {
       name: "Framed",

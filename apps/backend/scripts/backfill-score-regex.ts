@@ -90,8 +90,9 @@ const GAME_REGEX_CATALOG: GameRegex[] = [
   },
   {
     key: "tradle",
-    identifyPatterns: [/\btradle\b/i, /oec\.world.*tradle/i],
-    // "#Tradle #784 2/6" → 2
+    // Tradle now lives at tradle.net; oec.world kept for legacy bookmarks.
+    identifyPatterns: [/\btradle\b/i, /tradle\.net/i, /oec\.world.*tradle/i],
+    // "#Tradle #1547 1/6" → 1 (guess count out of 6; lower is better)
     scoreRegex: "Tradle\\s*#?\\d+\\s+(\\d+)/6",
     scoreDirection: "asc",
   },
