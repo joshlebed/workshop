@@ -43,6 +43,20 @@ Source: `src/lib/logger.ts`.
 ts-reset is enabled repo-wide. Validate with zod (see `src/lib/session.ts`) or a type
 guard. Don't blind-cast.
 
+## Leaderboard `score_regex` self-heals — don't rely on the backfill alone
+
+A leaderboard item's `score_regex` / `score_direction` (used to parse a numeric
+`score_value` out of the pasted share) is set two ways: the one-time
+`scripts/backfill-score-regex.ts` for existing rows, **and** the score upsert
+(`routes/v1/scores.ts`), which detects the game from the item's title/url/siteName/sourceId
+and persists the regex the first time a score is posted. Without the self-heal, an item
+created after the backfill falls back to "first number anywhere in the text" and stores
+junk (e.g. the `dailytens.com/?ref=<id>` referral id) as the score. Both paths share the
+catalog in `src/lib/gameScoreRegex.ts` — add a new game there and both pick it up. The
+client mirrors the same distillation for _display_: the leaderboard row and the clipboard
+recap both render through `summarizeScoreBody` (`apps/workshop/src/lib/scoresSummary.ts`),
+which strips URLs/headers so a URL-only share shows "Played", never the raw link.
+
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's

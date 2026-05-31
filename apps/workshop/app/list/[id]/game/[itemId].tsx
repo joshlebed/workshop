@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { LeaderboardEntry } from "@workshop/shared";
+import type { Item, LeaderboardEntry } from "@workshop/shared";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -24,6 +24,7 @@ import { haptics } from "../../../../src/lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../../../../src/lib/openUrl";
 import { queryKeys } from "../../../../src/lib/queryKeys";
 import { formatRelative } from "../../../../src/lib/relativeTime";
+import { summarizeScoreBody } from "../../../../src/lib/scoresSummary";
 import {
   Avatar,
   Button,
@@ -445,7 +446,7 @@ export default function GameDetail() {
                   userName={user?.displayName ?? null}
                 />
               ) : myScore && myEntry ? (
-                <LeaderboardEntryRow entry={myEntry} isMe />
+                <LeaderboardEntryRow entry={myEntry} item={item} isMe />
               ) : myEntry ? (
                 <UnplayedRow entry={myEntry} isMe />
               ) : null}
@@ -455,7 +456,7 @@ export default function GameDetail() {
                   that order — don't re-sort or re-split client-side. */}
               {otherEntries.map((entry) =>
                 entry.scoreRaw != null && entry.scoreRaw.length > 0 ? (
-                  <LeaderboardEntryRow key={entry.userId} entry={entry} isMe={false} />
+                  <LeaderboardEntryRow key={entry.userId} entry={entry} item={item} isMe={false} />
                 ) : (
                   <UnplayedRow key={entry.userId} entry={entry} isMe={false} />
                 ),
@@ -587,11 +588,17 @@ function dayChipLabel(key: string, today: string): string {
 
 interface LeaderboardEntryRowProps {
   entry: LeaderboardEntry;
+  item: Item;
   isMe: boolean;
 }
 
-function LeaderboardEntryRow({ entry, isMe }: LeaderboardEntryRowProps) {
+function LeaderboardEntryRow({ entry, item, isMe }: LeaderboardEntryRowProps) {
   const name = entry.displayName ?? "Someone";
+  // Distill the raw clipboard share into a clean block (per-game grid, URLs
+  // stripped). A URL-only share — e.g. Daily Tens' `dailytens.com/?ref=<id>`
+  // with no grid — formats to nothing; show "Played" rather than echoing the
+  // referral URL as if it were the score. Mirrors the clipboard recap.
+  const body = summarizeScoreBody(item, entry);
   return (
     <View style={[styles.entry, isMe && styles.entryMe]} testID={`leaderboard-row-${entry.userId}`}>
       <View style={styles.entryHeader}>
@@ -616,8 +623,11 @@ function LeaderboardEntryRow({ entry, isMe }: LeaderboardEntryRowProps) {
         </View>
       </View>
       <View style={styles.scoreFrame}>
-        <Text style={styles.scoreText} testID={`leaderboard-score-${entry.userId}`}>
-          {entry.scoreRaw}
+        <Text
+          style={[styles.scoreText, body ? null : styles.scoreTextMuted]}
+          testID={`leaderboard-score-${entry.userId}`}
+        >
+          {body ?? "Played"}
         </Text>
       </View>
     </View>
@@ -928,6 +938,10 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     fontSize: tokens.font.size.sm,
     lineHeight: tokens.font.size.sm + 6,
+  },
+  scoreTextMuted: {
+    color: tokens.text.muted,
+    fontStyle: "italic",
   },
   unplayedRow: {
     flexDirection: "row",
