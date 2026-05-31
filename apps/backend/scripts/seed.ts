@@ -301,6 +301,12 @@ async function main() {
           position: 5120,
           content: { siteName: "dailytens.com" },
         },
+        {
+          title: "Tradle",
+          url: "https://tradle.net/",
+          position: 6144,
+          content: { siteName: "tradle.net" },
+        },
       ],
     },
   ];
@@ -402,6 +408,10 @@ async function main() {
           travle: {
             today: "#travle #1066 +0 (100%)\n✅✅✅✅✅\nhttps://travle.earth",
             yesterday: "#travle #1065 +1 (83%)\n✅✅🟧✅✅✅\nhttps://travle.earth",
+          },
+          Tradle: {
+            today: "#Tradle #1547 1/6\n🟩🟩🟩🟩🟩\nhttps://tradle.net/",
+            yesterday: "#Tradle #1546 3/6\n🟩🟩🟥⬜⬜\n🟩🟩🟩🟨⬜\n🟩🟩🟩🟩🟩\nhttps://tradle.net/",
           },
         };
         const scores = sharedScores[seedItem.title];

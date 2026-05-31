@@ -80,8 +80,10 @@ const GAME_PATTERNS: GamePattern[] = [
   {
     kind: "tradle",
     gameLabel: "Tradle",
-    textPatterns: [/#?\bTradle\b\s*#?\d+/i, /\boec\.world\/.+\/tradle\b/i],
-    itemPatterns: [/\btradle\b/i, /oec\.world.*tradle/i],
+    // Tradle moved from oec.world/<lang>/tradle to its own tradle.net domain;
+    // keep the legacy oec.world pattern for any old bookmarks already saved.
+    textPatterns: [/#?\bTradle\b\s*#?\d+/i, /\btradle\.net\b/i, /\boec\.world\/.+\/tradle\b/i],
+    itemPatterns: [/\btradle\b/i, /tradle\.net/i, /oec\.world.*tradle/i],
   },
   {
     kind: "framed",

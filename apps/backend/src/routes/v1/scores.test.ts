@@ -162,6 +162,11 @@ describe("tryParseScoreValue (helper)", () => {
       expect(tryParseScoreValue(raw, "#travle\\s+#?\\d+\\s+\\+(\\d+)")).toBe(1);
     });
 
+    it("extracts Tradle's guesses (X/6) — not the puzzle number", () => {
+      const raw = "#Tradle #1547 1/6\n🟩🟩🟩🟩🟩\nhttps://tradle.net/";
+      expect(tryParseScoreValue(raw, "Tradle\\s*#?\\d+\\s+(\\d+)/6")).toBe(1);
+    });
+
     it("extracts Globle's = N daily count even with URL + hashtag trailing", () => {
       const raw = "🌎 May 19, 2026 🌍\n⬜⬜🟧🟥🟩 = 5\n\nhttps://globle-game.com\n#globle";
       expect(tryParseScoreValue(raw, "=\\s*(\\d+)")).toBe(5);
