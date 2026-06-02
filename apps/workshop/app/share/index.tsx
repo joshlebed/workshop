@@ -1,6 +1,8 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ListItemsResponse } from "@workshop/shared";
+import Constants from "expo-constants";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Updates from "expo-updates";
 import { useMemo } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { fetchItems } from "../../src/api/items";
@@ -136,6 +138,7 @@ export default function ShareHome() {
             Add shared item
           </Text>
           <PayloadPill payload={payload} />
+          <ShareDiagnostics payload={payload} />
         </View>
       </View>
 
@@ -219,6 +222,22 @@ function shortHost(url: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+// On-device diagnostics for the share pipeline. Shows the captured payload shape
+// (so you can see whether the result text survived the iOS share sheet or only
+// the URL came through) plus the runtime version and OTA update id (so you can
+// confirm which JS bundle is running). Mirrors what `/v1/telemetry/share-intent`
+// records server-side. Remove once the share-extension payload bug is resolved.
+function ShareDiagnostics({ payload }: { payload: SharedPayload }) {
+  const runtimeVersion = Updates.runtimeVersion ?? Constants.expoConfig?.version ?? "?";
+  const ota = Updates.isEmbeddedLaunch ? "embedded" : (Updates.updateId?.slice(0, 8) ?? "none");
+  const line = `payload · text:${payload.text?.length ?? 0} url:${payload.url?.length ?? 0} · rt:${runtimeVersion} · ota:${ota}`;
+  return (
+    <Text variant="caption" tone="muted" style={styles.diagnostics} testID="share-home-diagnostics">
+      {line}
+    </Text>
+  );
 }
 
 function PayloadPill({ payload }: { payload: SharedPayload }) {
@@ -426,6 +445,11 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.accent.default,
   },
   payloadText: { flexShrink: 1 },
+  diagnostics: {
+    fontFamily: "monospace",
+    fontSize: 11,
+    opacity: 0.7,
+  },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,

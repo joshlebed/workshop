@@ -13,6 +13,7 @@ import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
@@ -38,11 +39,56 @@ function useApplyOtaUpdatesOnArrival() {
 // "Unmatched Route" screen before this hook fires.
 // Signed-out users currently lose the payload — AuthGate bounces them to
 // `/sign-in` first; stashing through auth (cf. inviteStash) is a follow-up.
+type ShareIntentPayload = ReturnType<typeof useShareIntent>["shareIntent"];
+
+// Snapshot the shape of what the native share extension handed us. Reported to
+// the server (`/v1/telemetry/share-intent`) and logged to the JS console so the
+// extension's payload — does the result text survive the share sheet, or do we
+// only get the game's referral URL? — is debuggable without a Mac/device
+// debugger. Previews are capped; the share text is the user's own game result.
+function buildShareIntentTelemetry(
+  shareIntent: ShareIntentPayload,
+  source: string,
+): ShareIntentTelemetry {
+  const text = shareIntent?.text ?? null;
+  const webUrl = shareIntent?.webUrl ?? null;
+  const meta: unknown = shareIntent?.meta;
+  const files: unknown = shareIntent?.files;
+  return {
+    source,
+    type: shareIntent?.type ?? null,
+    hasWebUrl: !!webUrl,
+    webUrlLen: webUrl?.length ?? 0,
+    hasText: !!text,
+    textLen: text?.length ?? 0,
+    textPreview: text ? text.slice(0, 240) : undefined,
+    webUrlPreview: webUrl ? webUrl.slice(0, 240) : undefined,
+    fileCount: Array.isArray(files) ? files.length : 0,
+    metaKeys:
+      meta && typeof meta === "object" ? Object.keys(meta as object).slice(0, 40) : undefined,
+    runtimeVersion: Updates.runtimeVersion ?? null,
+    updateId: Updates.updateId ?? null,
+  };
+}
+
 function useShareIntentRedirect(status: AuthStatus) {
   const router = useRouter();
+  const { token } = useAuth();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
+  // Dedupe telemetry to one report per distinct payload (the effect re-runs on
+  // unrelated renders while the intent is pending).
+  const lastReportedRef = useRef<string | null>(null);
   useEffect(() => {
     if (status !== "signed-in" || !hasShareIntent) return;
+
+    const signature = `${shareIntent?.type ?? ""}|${shareIntent?.webUrl ?? ""}|${shareIntent?.text ?? ""}`;
+    if (lastReportedRef.current !== signature) {
+      lastReportedRef.current = signature;
+      const snapshot = buildShareIntentTelemetry(shareIntent, "layout-redirect");
+      console.log("[share-intent]", JSON.stringify(snapshot));
+      void reportShareIntent(snapshot, token);
+    }
+
     const webUrl = shareIntent?.webUrl?.trim();
     const text = shareIntent?.text?.trim();
     const params = new URLSearchParams();
@@ -52,7 +98,7 @@ function useShareIntentRedirect(status: AuthStatus) {
     if (!query) return;
     router.replace(`/share?${query}`);
     resetShareIntent();
-  }, [status, hasShareIntent, shareIntent, router, resetShareIntent]);
+  }, [status, hasShareIntent, shareIntent, router, resetShareIntent, token]);
 }
 
 function AuthGate() {

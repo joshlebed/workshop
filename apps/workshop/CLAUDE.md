@@ -33,6 +33,20 @@ on the next build. Currently declared:
   `/l/*` (primary share URL), `/invite/*` (legacy share URLs), and `/list/*`
   (canonical UUID URLs) into the app for installed users.
 
+## Share-intent telemetry — debug the native payload from the server
+
+The share extension is native and never exercised by CI or the web build, so when a share
+misbehaves on device the only window is telemetry. `_layout.tsx` snapshots every
+`useShareIntent()` payload shape (type, `hasText`/`textLen`, `hasWebUrl`/`webUrlLen`,
+truncated previews, runtime version, OTA update id), `console.log`s it (`[share-intent]`),
+and POSTs it to `POST /v1/telemetry/share-intent` → one CloudWatch line
+(`client_share_intent`). The score upsert logs a matching `score_upsert_debug` line
+(raw length/preview, `has_url`, `has_grid_emoji`, `url_only`, parsed value). The `/share`
+screen also renders a one-line `ShareDiagnostics` (payload lengths + rt + ota) so the shape
+is visible on the phone. All of this is **JS + backend**, so it ships to an installed build
+over-the-air — no new TestFlight binary needed to start collecting data. Remove the
+scaffolding once the share-extension payload bug is nailed.
+
 ## `expo-share-intent` is patched: text-before-url for dual-conforming shares
 
 A Web Share (`navigator.share({ text, url })` — Daily Tens, etc.) reaches the iOS share
