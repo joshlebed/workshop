@@ -21,7 +21,11 @@ import { errorMessage } from "../../src/lib/api";
 import { localDateKey } from "../../src/lib/gameDate";
 import { haptics } from "../../src/lib/haptics";
 import { queryKeys } from "../../src/lib/queryKeys";
-import { detectSharedScore, flattenListItems } from "../../src/lib/shareScoreDetection";
+import {
+  detectSharedScore,
+  flattenListItems,
+  isResultlessShare,
+} from "../../src/lib/shareScoreDetection";
 import {
   Button,
   EmptyState,
@@ -87,6 +91,17 @@ export default function PickLeaderboard() {
     },
   });
 
+  const postScore = (item: Item, list: ListSummary) => {
+    if (isResultlessShare(scoreDraft)) {
+      showToast({
+        message: "That's just a link — paste your result text to post a score.",
+        tone: "danger",
+      });
+      return;
+    }
+    submitScore.mutate({ item, list });
+  };
+
   const onCancel = () => {
     if (router.canGoBack()) {
       router.back();
@@ -138,7 +153,7 @@ export default function PickLeaderboard() {
           games={games}
           canPost={canPost}
           pendingItemId={pendingItemId}
-          onPost={(item) => submitScore.mutate({ item, list: selectedList })}
+          onPost={(item) => postScore(item, selectedList)}
           onAddGame={() => router.push(`/list/${selectedList.id}/add`)}
         />
       ) : (
