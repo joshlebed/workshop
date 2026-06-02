@@ -33,6 +33,20 @@ on the next build. Currently declared:
   `/l/*` (primary share URL), `/invite/*` (legacy share URLs), and `/list/*`
   (canonical UUID URLs) into the app for installed users.
 
+## `expo-share-intent` is patched: text-before-url for dual-conforming shares
+
+A Web Share (`navigator.share({ text, url })` — Daily Tens, etc.) reaches the iOS share
+extension as a **single item provider conforming to both `public.url` and `public.text`**.
+Upstream `expo-share-intent`'s `ShareExtensionViewController.swift` checks url before text,
+so it captures only the url (a game's `?ref=<id>` referral link) and drops the text (the
+result grid) — which then posts as a scoreless "Played" row. `patches/expo-share-intent.patch`
+(pnpm `patchedDependencies`) adds a guard so a dual-conforming provider routes to `handleText`
+first; single-type shares (pure url page-shares for list adds, pure text) are untouched.
+The patch targets the plugin's swift **template** (`plugin/build/ios/ShareExtensionViewController.swift`),
+which EAS prebuild copies into the extension. If you bump `expo-share-intent`, re-verify the
+patch still applies and the dispatch chain is unchanged, and re-test a real game share on a
+TestFlight build (the extension isn't exercised by CI or web).
+
 ## Universal Links: AASA path allowlist lives in two places
 
 The iOS app advertises which domain to fetch via `ios.associatedDomains` in `app.json`.

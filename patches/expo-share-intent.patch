@@ -1,0 +1,23 @@
+diff --git a/plugin/build/ios/ShareExtensionViewController.swift b/plugin/build/ios/ShareExtensionViewController.swift
+index 9400ec3ba81402c67fc35c9bbb7e6a63fef5ab17..199c4c22b9f2ca07b3a3fd9c9d89588db9c3a78d 100644
+--- a/plugin/build/ios/ShareExtensionViewController.swift
++++ b/plugin/build/ios/ShareExtensionViewController.swift
+@@ -67,6 +67,18 @@ class ShareViewController: UIViewController {
+           await handlePdf(content: content, attachment: attachment, index: index)
+         } else if attachment.hasItemConformingToTypeIdentifier(propertyListType) {
+           await handlePrepocessing(content: content, attachment: attachment, index: index)
++        } else if attachment.hasItemConformingToTypeIdentifier(textContentType)
++          && attachment.hasItemConformingToTypeIdentifier(urlContentType)
++        {
++          // PATCH (workshop): Web Share API payloads (`navigator.share({ text, url })`)
++          // arrive as a single item provider conforming to BOTH public.text and
++          // public.url. Upstream checks url before text, so it captures only the url
++          // (e.g. a game's `?ref=<id>` referral link) and silently drops the text
++          // (the result, e.g. Daily Tens' 🏆/❌ grid) — which then posts as a scoreless
++          // "Played" row. Prefer text when a provider conforms to both so the result
++          // isn't lost. Single-type shares (pure url page-shares, pure text) are
++          // untouched by the added guard and still fall through to the branches below.
++          await handleText(content: content, attachment: attachment, index: index)
+         } else if attachment.hasItemConformingToTypeIdentifier(urlContentType) {
+           await handleUrl(content: content, attachment: attachment, index: index)
+         } else if attachment.hasItemConformingToTypeIdentifier(textContentType) {
