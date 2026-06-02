@@ -84,19 +84,43 @@ const FORMATTERS: Partial<Record<DetectedSharedScoreKind, Formatter>> = {
     return `${grid} ${score}`;
   },
 
-  // Shape: `DailyTens #751\n\n     🏆    ❌\n     🏆    🏆\n...`
-  // Drop the `DailyTens #N` header — the `• Daily Tens` bullet already labels
-  // the block — and keep the 5-row 🏆/❌ grid verbatim (leading whitespace
-  // matters: it aligns the two columns). Require at least one grid line so a
-  // URL-only share doesn't slip through with just the dailytens.com ref id.
+  // Shape: `DailyTens #751\n\n     🏆    ❌\n     🏆    🏆\n...` — a 5-row × 2-col
+  // 🏆/❌ grid. Drop the `DailyTens #N` header (the `• Daily Tens` bullet already
+  // labels the block) and the column-aligning whitespace, then **transpose** the
+  // grid to two rows of five: the left column (top→bottom) becomes the first row,
+  // the right column the second. 6 lines collapse to 2. Require at least one grid
+  // line so a URL-only share doesn't slip through with just the dailytens.com ref.
   dailytens(raw) {
-    const lines = raw
+    const cellRows = raw
       .split(/\r?\n/)
-      .map((l) => l.replace(URL_RE, "").trimEnd())
-      .filter((l) => l.trim().length > 0)
-      .filter((l) => !/^\s*DailyTens\b/i.test(l));
-    if (!lines.some((l) => /[🏆❌]/u.test(l))) return null;
-    return lines.join("\n");
+      .map((l) => [...l.replace(URL_RE, "").matchAll(/[🏆❌]/gu)].map((m) => m[0]))
+      .filter((cells) => cells.length > 0);
+    if (cellRows.length === 0) return null;
+    const width = cellRows[0]!.length;
+    // Only transpose a well-formed rectangular grid; otherwise defer to fallback.
+    if (width === 0 || cellRows.some((r) => r.length !== width)) return null;
+    const rows: string[] = [];
+    for (let c = 0; c < width; c++) {
+      rows.push(cellRows.map((r) => r[c]).join(""));
+    }
+    return rows.join("\n");
+  },
+
+  // Shape: `#Tradle #1548 6/6\n🟩🟩⬜⬜⬜\n🟩🟩🟩⬜⬜\n…\n🟩🟩🟩🟩🟩\nhttps://tradle.net/`
+  // The grid's signal is "how many greens per guess until you nailed it", so
+  // collapse each guess row to its 🟩 count into a single sparkline and suffix the
+  // `N/6` (or `X/6`) fraction from the header — `🟩 2·3·4·4·4·5 6/6`. Six grid
+  // lines collapse to one. Require at least one grid line so a URL-only share
+  // (grid dropped by the iOS share sheet) defers to the fallback.
+  tradle(raw) {
+    const lines = nonEmptyLines(stripUrlSubstrings(raw));
+    const greens = lines
+      .filter((l) => isGridOnlyLine(l) && /[🟩🟨🟧🟥⬜]/u.test(l))
+      .map((l) => (l.match(/🟩/gu) ?? []).length);
+    if (greens.length === 0) return null;
+    const fraction = lines.find((l) => /tradle/i.test(l))?.match(/(?:\d+|X)\/\d+/i)?.[0];
+    const sparkline = `🟩 ${greens.join("·")}`;
+    return fraction ? `${sparkline} ${fraction}` : sparkline;
   },
 
   // Shape: `I solved the 5/20/2026 New York Times Mini Crossword in 0:16!`
@@ -144,8 +168,8 @@ function detectKind(item: Item, scoreRaw: string): DetectedSharedScoreKind | nul
 /**
  * Render `scoreRaw` (and `scoreValue` as a last resort) into the body shown
  * under a `• <title>` bullet in the clipboard recap. Game-specific
- * heuristics handle the four games we explicitly support (maptap, Globle,
- * Satle, travle); everything else falls back to a cleaned copy of the raw
+ * heuristics handle the games we explicitly support (maptap, Globle, Satle,
+ * travle, Daily Tens, Tradle, NYT Mini); everything else falls back to a cleaned copy of the raw
  * text, and finally to the numeric scoreValue if even that yields nothing.
  */
 export function summarizeScoreBody(
