@@ -47,19 +47,24 @@ is visible on the phone. All of this is **JS + backend**, so it ships to an inst
 over-the-air — no new TestFlight binary needed to start collecting data. Remove the
 scaffolding once the share-extension payload bug is nailed.
 
-## `expo-share-intent` is patched: text-before-url for dual-conforming shares
+## `expo-share-intent` is patched: capture `attributedContentText`
 
 A Web Share (`navigator.share({ text, url })` — Daily Tens, etc.) reaches the iOS share
-extension as a **single item provider conforming to both `public.url` and `public.text`**.
-Upstream `expo-share-intent`'s `ShareExtensionViewController.swift` checks url before text,
-so it captures only the url (a game's `?ref=<id>` referral link) and drops the text (the
-result grid) — which then posts as a scoreless "Played" row. `patches/expo-share-intent.patch`
-(pnpm `patchedDependencies`) adds a guard so a dual-conforming provider routes to `handleText`
-first; single-type shares (pure url page-shares for list adds, pure text) are untouched.
-The patch targets the plugin's swift **template** (`plugin/build/ios/ShareExtensionViewController.swift`),
-which EAS prebuild copies into the extension. If you bump `expo-share-intent`, re-verify the
-patch still applies and the dispatch chain is unchanged, and re-test a real game share on a
-TestFlight build (the extension isn't exercised by CI or web).
+extension with the **`text` body (the result grid) in `NSExtensionItem.attributedContentText`**
+and the **`url` as an `attachment`**. Upstream `expo-share-intent` only iterates
+`content.attachments`, so it captured just the url (a game's `?ref=<id>` referral link) and
+**silently dropped the grid** — the JS layer then sees `text === webUrl === <url>` (its
+`parseShareIntent` mirrors `text` from a `weburl` share for retro-compat), which posts a
+scoreless "Played" row. Proven via the `client_share_intent` telemetry: `textLen == webUrlLen
+== 33`, both the bare URL. `patches/expo-share-intent.patch` (pnpm `patchedDependencies`)
+reads `attributedContentText` first: when present it delivers a **text** share (grid + any url
+attachments appended, so the existing JS still extracts a `webUrl`); plain link / media / file
+shares with no content text fall through to the original attachment loop unchanged. The patch
+targets the plugin's swift **template** (`plugin/build/ios/ShareExtensionViewController.swift`),
+which EAS prebuild copies into the extension. The earlier "text-before-url for dual-conforming
+providers" approach was a no-op (the url provider doesn't conform to `public.text`) — don't
+reintroduce it. If you bump `expo-share-intent`, re-verify the patch applies and re-test a real
+game share on a TestFlight build (the extension isn't exercised by CI or web).
 
 ## Universal Links: AASA path allowlist lives in two places
 

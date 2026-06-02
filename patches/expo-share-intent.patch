@@ -1,23 +1,60 @@
 diff --git a/plugin/build/ios/ShareExtensionViewController.swift b/plugin/build/ios/ShareExtensionViewController.swift
-index 9400ec3ba81402c67fc35c9bbb7e6a63fef5ab17..199c4c22b9f2ca07b3a3fd9c9d89588db9c3a78d 100644
+index 9400ec3ba81402c67fc35c9bbb7e6a63fef5ab17..9e7c84384f16cd8b1f86f1775d0b67574fd5e211 100644
 --- a/plugin/build/ios/ShareExtensionViewController.swift
 +++ b/plugin/build/ios/ShareExtensionViewController.swift
-@@ -67,6 +67,18 @@ class ShareViewController: UIViewController {
-           await handlePdf(content: content, attachment: attachment, index: index)
-         } else if attachment.hasItemConformingToTypeIdentifier(propertyListType) {
-           await handlePrepocessing(content: content, attachment: attachment, index: index)
-+        } else if attachment.hasItemConformingToTypeIdentifier(textContentType)
-+          && attachment.hasItemConformingToTypeIdentifier(urlContentType)
-+        {
-+          // PATCH (workshop): Web Share API payloads (`navigator.share({ text, url })`)
-+          // arrive as a single item provider conforming to BOTH public.text and
-+          // public.url. Upstream checks url before text, so it captures only the url
-+          // (e.g. a game's `?ref=<id>` referral link) and silently drops the text
-+          // (the result, e.g. Daily Tens' 🏆/❌ grid) — which then posts as a scoreless
-+          // "Played" row. Prefer text when a provider conforms to both so the result
-+          // isn't lost. Single-type shares (pure url page-shares, pure text) are
-+          // untouched by the added guard and still fall through to the branches below.
-+          await handleText(content: content, attachment: attachment, index: index)
-         } else if attachment.hasItemConformingToTypeIdentifier(urlContentType) {
-           await handleUrl(content: content, attachment: attachment, index: index)
-         } else if attachment.hasItemConformingToTypeIdentifier(textContentType) {
+@@ -46,19 +46,52 @@ class ShareViewController: UIViewController {
+   private func handleViewLoad() {
+     Task {
+       guard let extensionContext = self.extensionContext,
+-        let content = extensionContext.inputItems.first as? NSExtensionItem,
+-        let attachments = content.attachments
++        let content = extensionContext.inputItems.first as? NSExtensionItem
+       else {
+         dismissWithError(message: "No content found")
+         return
+       }
++
++      // PATCH (workshop): Safari's Web Share API maps `navigator.share({ text })`
++      // (e.g. a game's result grid) to the NSExtensionItem's `attributedContentText`,
++      // NOT to an attachment. Upstream only ever iterates `attachments`, so the
++      // grid was silently dropped and only the `url` attachment survived — posting
++      // a scoreless "Played" row. When a content-text body is present, deliver it
++      // as a TEXT share (with any url attachments appended, so the existing JS still
++      // extracts a webUrl from the text). Single-type shares with no content text
++      // (plain link / media / file) fall through to the original attachment loop
++      // unchanged.
++      let bodyText = content.attributedContentText?.string
++      if let bodyText, !bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
++        var parts: [String] = [bodyText]
++        for attachment in content.attachments ?? []
++        where attachment.hasItemConformingToTypeIdentifier(self.urlContentType) {
++          if let url = try? await attachment.loadItem(forTypeIdentifier: self.urlContentType)
++            as? URL
++          {
++            let absolute = url.absoluteString
++            if !bodyText.contains(absolute) { parts.append(absolute) }
++          }
++        }
++        self.sharedText.append(parts.joined(separator: "\n"))
++        let userDefaults = UserDefaults(suiteName: self.hostAppGroupIdentifier)
++        userDefaults?.set(self.sharedText, forKey: self.sharedKey)
++        userDefaults?.synchronize()
++        self.redirectToHostApp(type: .text)
++        return
++      }
++
++      guard let attachments = content.attachments else {
++        dismissWithError(message: "No content found")
++        return
++      }
+       for (index, attachment) in (attachments).enumerated() {
+         if attachment.hasItemConformingToTypeIdentifier(imageContentType) {
+           await handleImages(content: content, attachment: attachment, index: index)
+         } else if attachment.hasItemConformingToTypeIdentifier(videoContentType) {
+           await handleVideos(content: content, attachment: attachment, index: index)
+         } else if attachment.hasItemConformingToTypeIdentifier(vcardContentType) {
+-          await handleVCard(content: content, attachment: attachment, index: index) 
++          await handleVCard(content: content, attachment: attachment, index: index)
+         } else if attachment.hasItemConformingToTypeIdentifier(fileURLType) {
+           await handleFiles(content: content, attachment: attachment, index: index)
+         } else if attachment.hasItemConformingToTypeIdentifier(pkpassContentType) {
