@@ -53,19 +53,25 @@ jobs:
           # Fields that, when changed, require the provisioning profile to
           # be regenerated. Each lives in `apps/workshop/app.json`. We
           # extract them via jq and diff the canonicalised JSON.
+          #
+          # NB: jq's `|` binds looser than `,`, so the plugins element MUST be
+          # fully parenthesised. Without the outer parens, `map(...)` distributes
+          # across every comma-separated element and the first `null` field
+          # (e.g. an absent `usesAppleSignIn`) throws "Cannot iterate over null",
+          # failing the whole job on any app.json change.
           FIELDS='[
             .expo.ios.associatedDomains // null,
             .expo.ios.entitlements // null,
             .expo.ios.usesAppleSignIn // null,
             .expo.ios.infoPlist.CFBundleURLTypes // null,
             .expo.ios.bundleIdentifier // null,
-            (.expo.plugins // []) | map(select(
+            ((.expo.plugins // []) | map(select(
               type == "array" and (
                 .[0] == "expo-share-intent" or
                 .[0] == "expo-apple-authentication" or
                 .[0] == "expo-notifications"
               )
-            ))
+            )))
           ]'
           git show "origin/${BASE_REF}:apps/workshop/app.json" \
             | jq -S "$FIELDS" > /tmp/base.json
