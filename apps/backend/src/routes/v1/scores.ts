@@ -11,6 +11,7 @@ import { getDb } from "../../db/client.js";
 import { itemScores, items, lists, users } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { matchGameScoreRegex } from "../../lib/gameScoreRegex.js";
+import { logger } from "../../lib/logger.js";
 import { requireModule } from "../../lib/moduleGate.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -226,6 +227,33 @@ itemScoreRoutes.put(
       }
     }
     const value = tryParseScoreValue(parsed.data.scoreRaw, scoreRegex);
+
+    // Diagnostic: capture the shape of what actually reached us so a scoreless
+    // "Played" row (the share extension handed the client only a game's referral
+    // URL, dropping the result text) is debuggable from the server. One line per
+    // post; filter `score_upsert_debug` in CloudWatch. `url_only` mirrors the
+    // client's `isResultlessShare` heuristic (strips to nothing after removing
+    // URLs + hashtag-only lines).
+    const rawStripped = parsed.data.scoreRaw
+      .split(/\r?\n/)
+      .map((line) => line.replace(/\bhttps?:\/\/\S+/gi, "").trim())
+      .filter((line) => line.length > 0 && !/^#\S+$/.test(line))
+      .join("\n");
+    logger.info("score_upsert_debug", {
+      kind: "score_debug",
+      event: "score_upsert",
+      user_id: userId,
+      item_id: itemId,
+      period_key: parsed.data.periodKey,
+      raw_len: parsed.data.scoreRaw.length,
+      raw_preview: parsed.data.scoreRaw.slice(0, 200),
+      has_url: /\bhttps?:\/\//i.test(parsed.data.scoreRaw),
+      has_grid_emoji: /[🏆❌🟩🟨🟧🟥⬛⬜🔵🟢🟡]/u.test(parsed.data.scoreRaw),
+      url_only: rawStripped.length === 0,
+      score_regex: scoreRegex,
+      score_value: value,
+    });
+
     const [row] = await db
       .insert(itemScores)
       .values({

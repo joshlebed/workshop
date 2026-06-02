@@ -17,6 +17,7 @@ import { memberRoutes } from "./routes/v1/members.js";
 import { itemScoreRoutes, listScoresRoutes } from "./routes/v1/scores.js";
 import { searchRoutes } from "./routes/v1/search.js";
 import { sourcePreviewRoutes } from "./routes/v1/sources.js";
+import { telemetryRoutes } from "./routes/v1/telemetry.js";
 import { userRoutes } from "./routes/v1/users.js";
 import { webhookRoutes } from "./routes/v1/webhooks.js";
 
@@ -120,6 +121,7 @@ export function buildApp() {
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/activity", activityRoutes);
   app.route("/v1/sources", sourcePreviewRoutes);
+  app.route("/v1/telemetry", telemetryRoutes);
   // Inbound webhooks for push-driven sources. No auth — signature
   // verification on a per-source shared secret is the auth (§3.6).
   app.route("/v1", webhookRoutes);
