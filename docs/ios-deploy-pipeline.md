@@ -51,8 +51,10 @@ usually names the right section already.
 ## Runtime-version policy: `appVersion` (not `fingerprint`)
 
 Runtime version = `app.json` `version`. **You MUST bump `version` in the same PR that
-adds a native module or changes a config plugin.** No CI guard yet. When in doubt,
-bump.
+adds a native module or changes a config plugin.** Enforced by the `Runtime version
+guard` workflow (`.github/workflows/runtime-version-guard.yml`) — it fails a PR with a
+new iOS `@expo/fingerprint` (no prior `ios-fp-<hash>` tag) or changed app.json iOS
+native fields unless `apps/workshop/app.json` `version` is bumped. When in doubt, bump.
 
 Why this matters: if you add `react-native-foo` (native) at `version: 0.1.0` without
 bumping, the new OTA targets `0.1.0`, which the already-installed pre-PR `0.1.0`

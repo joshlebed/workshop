@@ -278,7 +278,10 @@ validated for non-interactive builds` → the ASC API key the secrets point to w
 ### Runtime-version policy: `appVersion` (not `fingerprint`)
 
 Runtime version = `app.json` `version`. **You MUST bump `version` in the same PR that adds a
-native module or changes a config plugin.** No CI guard. When in doubt, bump.
+native module or changes a config plugin.** Enforced by the `Runtime version guard`
+(`.github/workflows/runtime-version-guard.yml`): it fails a PR whose iOS `@expo/fingerprint`
+has no prior `ios-fp-<hash>` tag (native dep / `patches/` change) or whose app.json iOS native
+fields changed, unless `apps/workshop/app.json` `version` is bumped. When in doubt, bump.
 
 Why this matters: if you add `react-native-foo` (native) at `version: 0.1.0` without bumping,
 the new OTA targets `0.1.0`, which the already-installed pre-PR `0.1.0` TestFlight binary
