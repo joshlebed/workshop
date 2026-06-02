@@ -203,8 +203,9 @@ Runtime version policy is `appVersion`. If you add `react-native-foo` (native) a
 already-installed pre-PR `0.1.0` TestFlight binary also claims. The OTA applies, then
 crashes on next launch with `Native module RNFoo cannot be null` — existing users have
 to delete + reinstall. Bumping to `0.2.0` makes the OTA target `0.2.0`, which only
-post-PR builds claim. No CI guard yet. When in doubt, bump. Full deploy-pipeline
-context: `docs/ios-deploy-pipeline.md`.
+post-PR builds claim. The `Runtime version guard` workflow enforces this (fails a PR with a
+new iOS fingerprint or changed app.json native fields and no `version` bump). When in doubt,
+bump. Full deploy-pipeline context: `docs/ios-deploy-pipeline.md`.
 
 ## Niteshift preview proxy strips CORS preflight auth
 
