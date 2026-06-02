@@ -96,7 +96,7 @@ describe("summarizeScoreBody", () => {
     );
   });
 
-  it("formats Daily Tens by dropping the `DailyTens #N` header and keeping the aligned 🏆/❌ grid", () => {
+  it("formats Daily Tens by transposing the 5×2 grid into two rows of five", () => {
     const raw = [
       "DailyTens #745",
       "",
@@ -106,16 +106,41 @@ describe("summarizeScoreBody", () => {
       "      ❌    🏆",
       "      ❌    ❌ https://dailytens.com/?ref=954072",
     ].join("\n");
+    // Left column (top→bottom) → first row; right column → second row.
     expect(
       summarizeScoreBody(item("a", "Daily Tens", "https://dailytens.com/"), entry("u", raw)),
-    ).toBe(
-      [
-        "      🏆    ❌",
-        "      🏆    ❌",
-        "      🏆    ❌",
-        "      ❌    🏆",
-        "      ❌    ❌",
-      ].join("\n"),
+    ).toBe(["🏆🏆🏆❌❌", "❌❌❌🏆❌"].join("\n"));
+  });
+
+  it("formats Tradle as a per-guess green-count sparkline with the `N/6` suffix", () => {
+    const raw = [
+      "#Tradle #1548 6/6",
+      "🟩🟩⬜⬜⬜",
+      "🟩🟩🟩⬜⬜",
+      "🟩🟩🟩🟩🟨",
+      "🟩🟩🟩🟩🟨",
+      "🟩🟩🟩🟩🟨",
+      "🟩🟩🟩🟩🟩",
+      "https://tradle.net/",
+    ].join("\n");
+    expect(summarizeScoreBody(item("a", "Tradle", "https://tradle.net/"), entry("u", raw))).toBe(
+      "🟩 2·3·4·4·4·5 6/6",
+    );
+  });
+
+  it("formats a failed Tradle (`X/6`) sparkline", () => {
+    const raw = [
+      "#Tradle #1549 X/6",
+      "🟩⬜⬜⬜⬜",
+      "🟩🟩⬜⬜⬜",
+      "🟩🟩🟨⬜⬜",
+      "🟩🟩🟩⬜⬜",
+      "🟩🟩🟩🟨⬜",
+      "🟩🟩🟩🟩🟨",
+      "https://tradle.net/",
+    ].join("\n");
+    expect(summarizeScoreBody(item("a", "Tradle", "https://tradle.net/"), entry("u", raw))).toBe(
+      "🟩 1·2·2·3·3·4 X/6",
     );
   });
 
