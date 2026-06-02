@@ -56,6 +56,18 @@ to update with `authentication.idToken`. `useGoogleSignIn` already bridges this;
 "simplify" it back to a one-shot read or iOS Google sign-in silently bounces users back
 to the sign-in screen.
 
+## A game share can reach us as just its referral URL (grid dropped)
+
+Some games (Daily Tens) share via the iOS share sheet with a single item provider
+conforming to **both** `public.url` and `public.text`. `expo-share-intent`'s extension
+checks URL before text, so it captures only the `?ref=<id>` link and drops the 🏆/❌ grid
+— we then post a bare link that renders as a "Played" row with no score. The share
+screens guard against this with `isResultlessShare()` (`src/lib/shareScoreDetection.ts`):
+if the payload strips to nothing (URL-only / hashtag-only), `/share` offers a "Paste"
+affordance instead of one-tap posting, and `/share/pick-leaderboard` blocks the post and
+asks the user to paste their result. This is a band-aid for the symptom; the root-cause
+fix lives in the share extension's url-before-text precedence.
+
 ## Don't override `ios.infoPlist.CFBundleURLTypes` without re-listing the scheme
 
 Once declared, Expo stops auto-adding the `scheme:` value. Mirror the root `scheme`

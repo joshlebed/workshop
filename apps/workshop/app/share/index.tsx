@@ -14,6 +14,7 @@ import { queryKeys } from "../../src/lib/queryKeys";
 import {
   detectSharedScore,
   flattenListItems,
+  isResultlessShare,
   pickSuggestedScoreTarget,
   type ShareScoreTarget,
 } from "../../src/lib/shareScoreDetection";
@@ -29,6 +30,12 @@ export default function ShareHome() {
   const payload = readSharedPayload(params);
   const payloadText = payload.text ?? payload.url ?? "";
   const detection = useMemo(() => detectSharedScore(payloadText), [payloadText]);
+  // A game share whose grid was dropped at the iOS share-sheet boundary arrives
+  // as just the game's referral URL (e.g. `dailytens.com/?ref=<id>`). It still
+  // matches the game's text pattern, so `detection` is non-null, but there's no
+  // result to post — one-tap posting would store a bare link that renders as
+  // "Played". Steer the user to the leaderboard picker, which has a paste field.
+  const resultlessShare = !!detection && isResultlessShare(payloadText);
   const router = useRouter();
   const { token } = useAuth();
   const queryClient = useQueryClient();
@@ -140,6 +147,8 @@ export default function ShareHome() {
             loading={suggestionLoading}
             error={listsQuery.isError ? errorMessage(listsQuery.error) : null}
             pending={submitSuggestion.isPending}
+            resultless={resultlessShare}
+            onPasteInstead={() => router.push(leaderboardTarget)}
             onPost={() => suggestedTarget && submitSuggestion.mutate(suggestedTarget)}
           />
         ) : null}
@@ -231,6 +240,8 @@ function DetectedScoreSuggestion({
   loading,
   error,
   pending,
+  resultless,
+  onPasteInstead,
   onPost,
 }: {
   label: string;
@@ -238,8 +249,35 @@ function DetectedScoreSuggestion({
   loading: boolean;
   error: string | null;
   pending: boolean;
+  resultless: boolean;
+  onPasteInstead: () => void;
   onPost: () => void;
 }) {
+  // The share carried the game's link but not the result text (the grid was
+  // dropped by the iOS share sheet). Don't offer one-tap post — send the user
+  // to the leaderboard picker, which has a field to paste their result into.
+  if (resultless) {
+    return (
+      <View style={styles.suggestionBox} testID="share-home-detection-resultless">
+        <View style={styles.suggestionHeader}>
+          <View style={styles.suggestionText}>
+            <Text variant="label">{label} link detected</Text>
+            <Text variant="caption" tone="muted" numberOfLines={2}>
+              We got the link but not your result. Paste your result to post a score.
+            </Text>
+          </View>
+          <Button
+            label="Paste"
+            size="md"
+            variant="secondary"
+            onPress={onPasteInstead}
+            testID="share-home-paste-instead"
+          />
+        </View>
+      </View>
+    );
+  }
+
   if (error) {
     return (
       <View style={styles.suggestionBox} testID="share-home-detection-error">

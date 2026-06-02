@@ -4,6 +4,7 @@ import {
   type DetectedSharedScoreKind,
   detectSharedScore,
   flattenListItems,
+  isResultlessShare,
   pickSuggestedScoreTarget,
 } from "./shareScoreDetection";
 
@@ -106,6 +107,41 @@ describe("detectSharedScore", () => {
 
   it("does not match a bare 'wordle' word with no score signature", () => {
     expect(detectSharedScore("I love wordle so much")).toBeNull();
+  });
+});
+
+describe("isResultlessShare", () => {
+  it("treats a bare game referral URL as resultless", () => {
+    // The exact prod payload that rendered as "Played": Daily Tens' grid was
+    // dropped at the iOS share sheet, leaving only the referral link.
+    expect(isResultlessShare("https://dailytens.com/?ref=944415")).toBe(true);
+  });
+
+  it("treats empty / whitespace / null as resultless", () => {
+    expect(isResultlessShare("")).toBe(true);
+    expect(isResultlessShare("   \n  ")).toBe(true);
+    expect(isResultlessShare(null)).toBe(true);
+    expect(isResultlessShare(undefined)).toBe(true);
+  });
+
+  it("treats a URL plus only hashtag lines as resultless", () => {
+    expect(isResultlessShare("https://globle-game.com\n#globle")).toBe(true);
+  });
+
+  it("keeps a real grid share (grid + trailing URL) as postable", () => {
+    const raw =
+      "DailyTens #756\n\n     🏆    🏆\n     🏆    🏆\n     🏆    🏆\n     🏆    🏆\n     🏆    🏆 https://dailytens.com/?ref=944415";
+    expect(isResultlessShare(raw)).toBe(false);
+  });
+
+  it("keeps a grid-only share (no URL) as postable", () => {
+    const raw =
+      "DailyTens #756\n     🏆    🏆\n     🏆    🏆\n     🏆    🏆\n     🏆    🏆\n     🏆    🏆";
+    expect(isResultlessShare(raw)).toBe(false);
+  });
+
+  it("keeps a MapTap final-score share as postable", () => {
+    expect(isResultlessShare("www.maptap.gg June 1\n99🎯\nFinal score: 865")).toBe(false);
   });
 });
 

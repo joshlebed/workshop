@@ -148,6 +148,31 @@ const GAME_PATTERNS: GamePattern[] = [
   },
 ];
 
+const URL_SUBSTRING_RE = /\bhttps?:\/\/\S+/gi;
+
+/**
+ * True when a shared payload carries no postable result — i.e. after removing
+ * URLs and pure-hashtag/blank lines, nothing is left. The canonical case is a
+ * game whose iOS share hands our extension only its referral link (e.g.
+ * `https://dailytens.com/?ref=944415`) with the 🏆/❌ grid silently dropped at
+ * the share-sheet boundary (the extension reads the URL representation of the
+ * shared item and never the text). Posting it stores a link with no score and
+ * renders as a bare "Played" row, so the share screens block the post and
+ * prompt the user to paste their result instead. Mirrors the strip rules in
+ * `summarizeScoreBody` so "what we'd refuse to post" matches "what would render
+ * as nothing".
+ */
+export function isResultlessShare(raw: string | null | undefined): boolean {
+  const text = raw?.trim() ?? "";
+  if (!text) return true;
+  const remaining = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(URL_SUBSTRING_RE, "").trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^#\S+$/.test(line));
+  return remaining.length === 0;
+}
+
 export function detectSharedScore(raw: string | null | undefined): DetectedSharedScore | null {
   const scoreRaw = raw?.trim() ?? "";
   if (!scoreRaw) return null;
