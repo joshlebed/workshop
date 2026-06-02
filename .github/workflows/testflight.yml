@@ -376,12 +376,30 @@ jobs:
       - name: Tag successful fingerprint
         if: success()
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FP_HASH: ${{ needs.fingerprint.outputs.hash }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
           TAG="ios-fp-$FP_HASH"
-          git tag "$TAG"
-          git push origin "$TAG"
+          # Create the lightweight tag ref directly against the build's commit
+          # (already on the remote) via the API — do NOT `git push` the tag.
+          # This job's checkout is shallow (fetch-depth 1), so `git push origin
+          # <tag>` re-sends the commit's tree, which includes .github/workflows/*
+          # blobs. The Actions GITHUB_TOKEN can't carry the `workflows`
+          # permission (not grantable via the permissions: block — only a PAT/App
+          # with the Workflows scope has it), so GitHub rejects the push with
+          # "refusing to allow a GitHub App to create or update workflow ...".
+          # Creating a ref to an existing SHA touches no blobs, so the
+          # contents:write permission above is sufficient.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — nothing to do."
+            exit 0
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$TAG" \
+            -f "sha=$HEAD_SHA"
+          echo "Tagged $TAG -> $HEAD_SHA"
 
   # Wake the operator when a TestFlight run fails. Native iOS builds happen
   # ~5×/month on personal-project cadence, so a silent red run is easy to

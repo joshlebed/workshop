@@ -38,8 +38,13 @@ small products — first feature is **watchlist** (movie tracker). New features 
 - **EAS Update** for JS-only OTA (~60s after merge). TestFlight builds trigger on native
   change via `@expo/fingerprint`; `testflight.yml` runs `eas build --auto-submit` and
   **awaits the build** so CI red/green matches EAS outcome. Last-built fingerprint stored
-  as `ios-fp-<hash>` git tag, written only on success. Runtime-version policy is
-  `appVersion` (see iOS deploy pipeline).
+  as `ios-fp-<hash>` git tag, written only on success — created via the GitHub **refs API**
+  (`gh api .../git/refs`), not `git push`. The build job's checkout is shallow, so a
+  `git push origin <tag>` re-sends the commit's tree (incl. `.github/workflows/*` blobs); if
+  a workflow file changed on `main` after the build started, GitHub rejects the push
+  ("refusing to allow a GitHub App to create or update workflow … without `workflows`
+  permission") — the Actions token can't hold that scope. Creating a ref to an existing SHA
+  sends no blobs. Runtime-version policy is `appVersion` (see iOS deploy pipeline).
 - **Tooling**: Biome (lint+format), Vitest, Zod (boundary validation), `@total-typescript/ts-reset`,
   knip, lefthook, actionlint, gitleaks. Dependabot monthly (first Monday), aggressively grouped.
   `.mise.toml` pins node/pnpm/terraform/actionlint/gitleaks — `mise install` gets CI's versions.
