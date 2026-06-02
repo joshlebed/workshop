@@ -52,7 +52,8 @@ jobs:
         run: |
           set -euo pipefail
           CHANGED=$(git diff --name-only "origin/$BASE_REF...HEAD")
-          echo "Changed files:"; echo "$CHANGED" | sed 's/^/  /'
+          echo "Changed files:"
+          echo "$CHANGED"
           # Files that can change the native binary: patches, dependency graph,
           # and the Expo app config. Plain JS/TS under apps/workshop ships via OTA
           # and never needs a bump, so it is intentionally NOT in this set.
