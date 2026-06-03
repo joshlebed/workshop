@@ -14,7 +14,11 @@ export function getDb() {
     ssl: isLocalDb ? false : "require",
     max: 1,
     idle_timeout: 20,
-    connect_timeout: 10,
+    // Per-attempt connect cap. Kept low so `withDbRetry` (db/retry.ts) can fit
+    // a second connect attempt within the 15s Lambda timeout when Neon's
+    // serverless compute is mid-wake after scaling to zero. If you change this,
+    // update `attemptCostMs` in db/retry.ts to match.
+    connect_timeout: 5,
   });
   cached = drizzle(cachedClient, { schema });
   return cached;

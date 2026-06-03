@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
+import { withDbRetry } from "../db/retry.js";
 import { users } from "../db/schema.js";
 
 /**
@@ -14,11 +15,18 @@ import { users } from "../db/schema.js";
  */
 export async function isSessionRevoked(userId: string, iatSeconds: number): Promise<boolean> {
   const db = getDb();
-  const [row] = await db
-    .select({ sessionsInvalidatedAt: users.sessionsInvalidatedAt })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
+  // First DB touch on every authenticated request — wrapping it in the retry
+  // both rides out a Neon cold-start here and warms the pooled connection for
+  // the rest of the request, so the route's own queries don't re-race the wake.
+  const [row] = await withDbRetry(
+    () =>
+      db
+        .select({ sessionsInvalidatedAt: users.sessionsInvalidatedAt })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1),
+    { label: "isSessionRevoked" },
+  );
 
   if (!row) return true;
   if (!row.sessionsInvalidatedAt) return false;
