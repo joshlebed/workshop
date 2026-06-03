@@ -29,6 +29,24 @@ Migrations run automatically in CI on merge to `main` (`deploy-backend.yml` → 
 
 Correct for Lambda — each container has its own client. Don't raise it.
 
+## Neon cold-starts: wrap the first DB touch in `withDbRetry`
+
+Neon's serverless compute scales to zero after ~5min idle. The first request
+back races its wake-up and, if it loses, postgres-js rejects with
+`CONNECT_TIMEOUT` — which surfaced as a burst of 10s-then-500 reads after an
+idle gap (the desktop app showed the logged-in shell but no data). The fix is
+`withDbRetry` (`src/db/retry.ts`): it retries **transient connection-establishment
+errors only** (never constraint/query errors) with bounded exponential backoff +
+jitter, capped well under the 15s Lambda timeout. `connect_timeout` in
+`client.ts` was lowered to 5s so a second attempt fits the budget — keep the two
+in sync (`attemptCostMs`). Because the first successful connect warms the pooled
+connection for the rest of the request, you only need to wrap the **first** DB
+op on a path: authenticated routes are already covered (the `requireAuth`
+session check in `lib/sessionRevocation.ts`); **new unauthenticated DB endpoints
+must wrap their opening query themselves** (see the public list-preview handlers
+in `routes/v1/lists.ts`). It's transparent on success, so wrapping is free on the
+warm path. We do NOT keep Neon warm with a ping — retry is the chosen tradeoff.
+
 ## Logger: pass full errors, not strings
 
 ```ts

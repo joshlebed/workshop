@@ -16,6 +16,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
+import { withDbRetry } from "../../db/retry.js";
 import {
   type DbList,
   type DbListSource,
@@ -281,11 +282,16 @@ publicListRoutes.get("/lists/:id/preview", async (c) => {
   }
 
   const db = getDb();
-  const [list] = await db
-    .select()
-    .from(lists)
-    .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
-    .limit(1);
+  // Public, unauthenticated entry point — no requireAuth session check ran
+  // first, so this is the request's first DB touch. Retry it through a Neon
+  // cold-start (see db/retry.ts) and the warmed connection carries the rest.
+  const [list] = await withDbRetry(() =>
+    db
+      .select()
+      .from(lists)
+      .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
+      .limit(1),
+  );
   if (!list) {
     return err(c, "NOT_FOUND", "list not found");
   }
@@ -325,11 +331,15 @@ publicListRoutes.get("/lists/by-slug/:slug/items", async (c) => {
   if (!isValidShareSlug(slug)) return err(c, "NOT_FOUND", "list not found");
 
   const db = getDb();
-  const [list] = await db
-    .select()
-    .from(lists)
-    .where(and(eq(lists.shareSlug, slug), isNull(lists.archivedAt)))
-    .limit(1);
+  // Public, unauthenticated entry point (first DB touch) — retry through a
+  // Neon cold-start; the warmed connection carries the rest of the handler.
+  const [list] = await withDbRetry(() =>
+    db
+      .select()
+      .from(lists)
+      .where(and(eq(lists.shareSlug, slug), isNull(lists.archivedAt)))
+      .limit(1),
+  );
   if (!list) return err(c, "NOT_FOUND", "list not found");
 
   const viewerUserId = readOptionalViewerId(c);
@@ -369,11 +379,15 @@ publicListRoutes.get("/lists/by-slug/:slug/preview", async (c) => {
   }
 
   const db = getDb();
-  const [list] = await db
-    .select()
-    .from(lists)
-    .where(and(eq(lists.shareSlug, slug), isNull(lists.archivedAt)))
-    .limit(1);
+  // Public, unauthenticated entry point (first DB touch) — retry through a
+  // Neon cold-start; the warmed connection carries the rest of the handler.
+  const [list] = await withDbRetry(() =>
+    db
+      .select()
+      .from(lists)
+      .where(and(eq(lists.shareSlug, slug), isNull(lists.archivedAt)))
+      .limit(1),
+  );
   if (!list) return err(c, "NOT_FOUND", "list not found");
 
   const viewerUserId = readOptionalViewerId(c);
