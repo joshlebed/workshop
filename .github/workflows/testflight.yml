@@ -107,7 +107,7 @@ jobs:
       build_needed: ${{ steps.decide.outputs.build_needed }}
       is_canary: ${{ steps.decide.outputs.is_canary }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0 # need tags for the compare
 
@@ -202,7 +202,7 @@ jobs:
       failure_reason: ${{ steps.diagnose.outputs.reason }}
       failure_fix: ${{ steps.diagnose.outputs.fix }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       # `eas build` runs the actual build remotely on EAS infra, but the
       # _local_ eas-cli still has to read `app.json` via `npx expo config
@@ -489,7 +489,7 @@ jobs:
       # the existing open issue rather than spamming new ones.
       - name: Open or update canary-failure issue
         if: needs.fingerprint.outputs.is_canary == 'true'
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           FAILURE_REASON: ${{ needs.build.outputs.failure_reason }}
           FAILURE_FIX: ${{ needs.build.outputs.failure_fix }}
