@@ -1,26 +1,31 @@
-name: Deploy Pages
+name: Verify Pages Deploy
 
-# Builds the Workshop web app and deploys it (plus the Pages Functions
-# at `functions/`) to Cloudflare Pages via wrangler. Replaces CF Pages's
-# default git-source auto-build so deploy failures surface as a red GH
-# Actions run instead of a silent dashboard-only error.
+# Production web (workshop-a2v.pages.dev) is deployed by Cloudflare Pages'
+# native Git integration — Pages project `workshop`, source.type=github,
+# production_branch=main, deployments_enabled=true. That build runs
+#   pnpm install --frozen-lockfile && pnpm --filter workshop-app exec expo export --platform web
+# (output apps/workshop/dist) and picks up the `functions/` Pages Functions
+# automatically — i.e. it already does everything `wrangler pages deploy`
+# would. CF also posts its build result back to the commit as the
+# "Cloudflare Pages" check (app: cloudflare-workers-and-pages), so a failed
+# build is visible on the PR/commit — not silent.
 #
-# Before this workflow existed, CF Pages's auto-build silently failed on
-# the `@workshop/shared/og` workspace import twice in a row (PRs #168 +
-# #169) — production stayed on the previous SVG version for hours with
-# zero visibility outside the CF dashboard. The fix runs wrangler from
-# CI with the secrets below, so we get the same CI surface as every
-# other deploy in this repo.
+# This workflow therefore does NOT deploy. It waits for CF's deploy of the
+# pushed commit to finish, then verifies the *runtime* behaviour CF's
+# "build succeeded" status can't: that production still serves a raster OG
+# image and a valid AASA document. That's the regression class that bit us
+# before (a build succeeded but served an SVG og:image / dropped the AASA
+# dotfile route, with zero signal until someone noticed in the wild).
 #
-# Setup (one-time):
-#   1. Generate a CF API token at https://dash.cloudflare.com/profile/api-tokens
-#      with the "Cloudflare Pages — Edit" template (Account: workshop,
-#      Zone: All zones). Copy the token.
-#   2. gh secret set CLOUDFLARE_API_TOKEN
-#      gh secret set CLOUDFLARE_ACCOUNT_ID  # account id: dd75c7bdd35289afb8b0a74f3610eba8
-#   3. Disable the CF Pages git integration so it doesn't double-deploy:
-#      dash.cloudflare.com → Pages → workshop → Settings → Builds → Disconnect.
-#      (Skipping this is harmless but causes two deploys per push.)
+# History: this used to run `wrangler pages deploy` from CI as a *second*
+# deployer. It was redundant with the Git integration above and failed on
+# every run with CF API error 7003 — the CLOUDFLARE_* CI secrets no longer
+# resolve to the account that owns the `workshop` project. Dropping the
+# wrangler step removes the redundant deploy and the dead secret dependency
+# (no Cloudflare secrets are needed here anymore); the Git integration keeps
+# shipping prod. For a manual deploy that bypasses the Git integration, use
+# `pnpm deploy:pages[:preview]` (scripts/deploy-pages.sh) with a working
+# CLOUDFLARE_API_TOKEN locally.
 
 on:
   push:
@@ -35,83 +40,92 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-pages
+  group: verify-pages
   cancel-in-progress: false
 
 permissions:
   contents: read
+  checks: read
 
 jobs:
-  deploy:
-    name: Build + deploy to Cloudflare Pages
+  verify:
+    name: Verify production Pages endpoints
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.sha }}
+      REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
-      - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
-        with:
-          version: 10.19.0
-
-      # Wrangler 4 requires Node 22. The rest of the project pins Node 20 in
-      # .nvmrc, but this workflow only runs deploy steps — install + expo
-      # export both tolerate Node 22, and the project's lockfile is portable.
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Build web bundle
-        run: pnpm --filter workshop-app exec expo export --platform web
-
-      # cloudflare/wrangler-action@v3 ran `pnpm add wrangler@3.90.0` inside the
-      # workspace root, which pnpm 10 refuses without `-w`. Invoke wrangler via
-      # npx directly (mirrors `scripts/deploy-pages.sh`) so deploys don't break
-      # on the next pnpm-10 sandbox enforcement.
-      - name: Deploy to Cloudflare Pages
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Wait for Cloudflare Pages' Git-integration build of THIS commit to
+      # finish, so the smoke checks below run against the new deploy rather
+      # than racing CF's build and verifying stale (but still-valid) content.
+      # Surfaces a CF build failure here too, instead of only on CF's own check.
+      - name: Wait for Cloudflare Pages deploy
         run: |
-          npx -y wrangler@latest pages deploy apps/workshop/dist \
-            --project-name=workshop \
-            --branch=main \
-            --commit-dirty=true
+          set -euo pipefail
+          echo "Waiting for the Cloudflare Pages build of ${SHA} ..."
+          status=""; conclusion=""
+          for i in $(seq 1 60); do
+            run="$(gh api "repos/${REPO}/commits/${SHA}/check-runs" \
+              --jq '[.check_runs[] | select(.app.slug=="cloudflare-workers-and-pages")] | sort_by(.completed_at // .started_at) | last' 2>/dev/null || true)"
+            [ -z "$run" ] && run='{}'
+            status="$(echo "$run" | jq -r '.status // "missing"')"
+            conclusion="$(echo "$run" | jq -r '.conclusion // ""')"
+            echo "attempt $i: status=$status conclusion=$conclusion"
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" = "success" ]; then
+                echo "✓ Cloudflare Pages build succeeded"
+                exit 0
+              fi
+              echo "✗ Cloudflare Pages build concluded '$conclusion'"
+              echo "$run" | jq -r '"  details: " + (.details_url // "n/a")'
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "✗ Timed out waiting for the Cloudflare Pages build of ${SHA}"
+          echo "  (last seen status=$status conclusion=$conclusion)"
+          echo "  Is the Pages Git integration still connected? dash.cloudflare.com → Pages → workshop"
+          exit 1
 
       - name: Verify production OG endpoint serves PNG
         run: |
           set -euo pipefail
           URL="https://workshop-a2v.pages.dev/og/l/_smoke_check_slug.png"
-          # Retry briefly — Pages propagation can take a few seconds after
-          # `Deployment complete` returns.
+          # Assert the actual PNG magic bytes (89 50 4E 47 0D 0A 1A 0A), not just
+          # the content-type header — the regression we guard against was an SVG
+          # served with an image content-type. `od`/`head` beat `file` for
+          # portability. Short retry only to ride out CF edge-cache propagation.
+          PNG_SIG="89504e470d0a1a0a"
+          CT=""; SIG=""
           for i in 1 2 3 4 5 6; do
             CT="$(curl -sS -o /tmp/og.bin -w '%{content_type}' "$URL" || true)"
-            FILE_TYPE="$(file -b /tmp/og.bin 2>/dev/null || true)"
-            if [[ "$CT" == image/png* ]] && [[ "$FILE_TYPE" == PNG* ]]; then
-              echo "✓ OG endpoint returns PNG ($CT, $FILE_TYPE)"
+            SIG="$(head -c8 /tmp/og.bin | od -An -tx1 | tr -d ' \n' || true)"
+            if [[ "$CT" == image/png* ]] && [[ "$SIG" == "$PNG_SIG" ]]; then
+              echo "✓ OG endpoint returns a real PNG ($CT)"
               break
             fi
-            echo "retry $i: ct=$CT type=$FILE_TYPE"
+            echo "retry $i: ct=$CT sig=$SIG"
             sleep 5
           done
-          if [[ "$CT" != image/png* ]] || [[ "$FILE_TYPE" != PNG* ]]; then
+          if [[ "$CT" != image/png* ]] || [[ "$SIG" != "$PNG_SIG" ]]; then
             echo "✗ OG endpoint did not return a PNG after retries"
             echo "  content-type: $CT"
-            echo "  body type:    $FILE_TYPE"
+            echo "  first 8 bytes: $SIG (want $PNG_SIG)"
             exit 1
           fi
 
-      # AASA must be served with `Content-Type: application/json` and parse
-      # as valid JSON, or iOS silently rejects Universal Links. CF Pages
-      # routes `functions/.well-known/apple-app-site-association.ts` to
-      # `/.well-known/apple-app-site-association` — verify the dotfile
-      # directory wasn't dropped by the function bundler.
+      # AASA must be served with `Content-Type: application/json` and parse as
+      # valid JSON, or iOS silently rejects Universal Links. CF Pages routes
+      # functions/.well-known/apple-app-site-association.ts to
+      # /.well-known/apple-app-site-association — verify the dotfile directory
+      # wasn't dropped by the function bundler.
       - name: Verify production AASA endpoint
         run: |
           set -euo pipefail
           URL="https://workshop-a2v.pages.dev/.well-known/apple-app-site-association"
+          CT=""
           for i in 1 2 3 4 5 6; do
             CT="$(curl -sS -o /tmp/aasa.json -w '%{content_type}' "$URL" || true)"
             if [[ "$CT" == application/json* ]] && jq -e '.applinks.details[0].appIDs[0]' /tmp/aasa.json >/dev/null 2>&1; then
