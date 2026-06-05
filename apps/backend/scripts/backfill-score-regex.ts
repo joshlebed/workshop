@@ -25,13 +25,25 @@
 import { isNull, sql } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
 import { itemScores, items, lists } from "../src/db/schema.js";
-import { matchGameScoreRegex } from "../src/lib/gameScoreRegex.js";
+import { matchGameScoreRegex, SCORE_COUNT_PREFIX } from "../src/lib/gameScoreRegex.js";
 
 function matchGame(item: ItemRow) {
   return matchGameScoreRegex(item);
 }
 
+// Mirrors `tryParseScoreValue` in routes/v1/scores.ts (kept in sync): capture
+// group 1 as the number, or — for a `count:<pattern>` regex — the count of
+// global matches (Daily Tens scores by 🏆 count). No legacy fallback here; the
+// backfill always passes a known catalog pattern.
 function parseScore(raw: string, pattern: string): number | null {
+  if (pattern.startsWith(SCORE_COUNT_PREFIX)) {
+    try {
+      const re = new RegExp(pattern.slice(SCORE_COUNT_PREFIX.length), "gu");
+      return (raw.match(re) ?? []).length;
+    } catch {
+      return null;
+    }
+  }
   try {
     const re = new RegExp(pattern, "i");
     const m = raw.match(re);

@@ -18,13 +18,26 @@
 
 type ScoreDirection = "asc" | "desc";
 
+/**
+ * Sentinel prefix for a "count" score: a `score_regex` of `count:<pattern>`
+ * means the score is the *number of global matches* of `<pattern>` in the
+ * share, not a captured number. Used by games whose share is a tally of marker
+ * emoji with no numeric score (Daily Tens: score = number of 🏆). Kept here so
+ * the catalog, the upsert parser (`tryParseScoreValue`), and the backfill
+ * (`parseScore`) all agree on the spelling.
+ */
+export const SCORE_COUNT_PREFIX = "count:";
+
 interface GameScoreRegex {
   key: string;
   // Match against any of: item title, item url, content.siteName, content.sourceId.
   identifyPatterns: RegExp[];
-  // JS regex source (no flags — backend applies `i`) with capture group 1
-  // around the numeric score. A string so it can be stored verbatim on
-  // items.score_regex.
+  // How to pull the score out of a pasted share, stored verbatim on
+  // `items.score_regex`. Two forms:
+  //  - a JS regex source (no flags — backend applies `i`) with capture group 1
+  //    around the numeric score; or
+  //  - `${SCORE_COUNT_PREFIX}<pattern>` → the score is the count of global
+  //    matches of `<pattern>` (e.g. Daily Tens counts 🏆).
   scoreRegex: string;
   // 'desc' = bigger is better, 'asc' = lower is better.
   scoreDirection: ScoreDirection;
@@ -100,13 +113,13 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   {
     key: "dailytens",
     identifyPatterns: [/\bdaily\s*tens\b/i, /dailytens\.com/i],
-    // "DailyTens #751" → 751. The share is a 🏆/❌ grid with no numeric
-    // score; we capture the puzzle number so score_value is anchored to the
-    // share itself instead of the trailing `dailytens.com/?ref=<6-digit-id>`
-    // URL param (which the "first number anywhere" fallback used to grab).
-    // Everyone shares the same puzzle per day, so this ties all players —
-    // acceptable until we add real trophy-count ranking.
-    scoreRegex: "DailyTens\\s*#(\\d+)",
+    // The share is a 5×2 grid of 🏆 (correct) / ❌ (wrong) for the day's 10
+    // questions. Score = number of 🏆 (more is better). `count:🏆` counts the
+    // trophies rather than capturing a number — the old "DailyTens #(\\d+)"
+    // grabbed the puzzle number, which is identical for everyone that day and
+    // tied the whole leaderboard. A gridless share (just the `?ref=` URL) has
+    // no 🏆 → counts 0; the client's `isResultlessShare` guard blocks those.
+    scoreRegex: `${SCORE_COUNT_PREFIX}🏆`,
     scoreDirection: "desc",
   },
 ];
