@@ -1,15 +1,19 @@
 # Lists & Leaderboards — architecture exploration
 
-Status: **exploration / options** · Opened: 2026-06-05 · Owner: @joshlebed
+Status: **graduated** · Opened: 2026-06-05 · Owner: @joshlebed
 
-> This is a pre-decision design exploration, not a committed spec. It lays out the option
-> space (with tradeoffs + a recommendation) for two changes the product is pulling toward:
-> **(A)** sub-structure _inside_ a list (tags / filters / saved views), and **(B)** splitting
-> the app into two surfaces — a **Lists** app and a **Daily Leaderboards** app — with
-> different primitives and different sharing/permissions. Read `docs/redesign-spec.md` for
-> the original product vision and `docs/list-data-model-redesign.md` for the current
-> modules+kind model this builds on. When a direction is chosen, it graduates into a real
-> spec + plan in the style of those docs.
+> **Direction chosen (2026-06-05): both halves, full architecture.** This exploration has
+> graduated into a committed spec + plan — see
+> [`docs/lists-and-leaderboards-spec.md`](./lists-and-leaderboards-spec.md) (the _what_) and
+> [`docs/lists-and-leaderboards-plan.md`](./lists-and-leaderboards-plan.md) (the _how_). This
+> doc is preserved as the option space + research rationale that led there.
+>
+> It lays out the option space (with tradeoffs + a recommendation) for two changes the product
+> is pulling toward: **(A)** sub-structure _inside_ a list (tags / filters / saved views), and
+> **(B)** splitting the app into two surfaces — a **Lists** app and a **Daily Leaderboards**
+> app — with different primitives and different sharing/permissions. Read
+> `docs/redesign-spec.md` for the original product vision and
+> `docs/list-data-model-redesign.md` for the current modules+kind model this builds on.
 
 ---
 
