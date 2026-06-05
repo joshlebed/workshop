@@ -75,6 +75,23 @@ client mirrors the same distillation for _display_: the leaderboard row and the 
 recap both render through `summarizeScoreBody` (`apps/workshop/src/lib/scoresSummary.ts`),
 which strips URLs/headers so a URL-only share shows "Played", never the raw link.
 
+## `leaderboard` implies an ordered, reorderable game list (even without `ranking`)
+
+A leaderboard's games are an ordered list the user can drag-reorder in the status-card view
+(`GameLeaderboardCard`). Three spots in `routes/v1/items.ts` enforce this so it doesn't
+depend on the `ranking` module being present:
+
+- **`fetchItemsForList`** buckets a leaderboard's games into `ordered` (not `unordered`),
+  in the SQL's position-ASC order. A null-position game (added before this rule) sorts last
+  and earns a position the first time it's dragged.
+- **`createItem`** assigns a `position` when the list has `leaderboard` (was previously
+  gated on `ranking && leaderboard`), so a new game is immediately reorderable.
+- **`POST /:id/move`** accepts `leaderboard` OR `ranking` (was `ranking`-only). Lists with
+  neither still get the existing `ranking.disabled` 409.
+
+If you add a leaderboard surface that buckets/gates on `ranking`, add `leaderboard` too, or
+leaderboard-only lists (no `ranking` module — e.g. "Geo games") silently lose reorder.
+
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's

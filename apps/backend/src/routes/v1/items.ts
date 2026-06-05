@@ -206,7 +206,9 @@ async function fetchItemShape(itemId: string, db: DbClient = getDb()): Promise<I
  * fields in one pass. Sections:
  *
  * - `ordered`:   position IS NOT NULL, sorted by position ASC. Suppressed
- *                when `ranking` is off (items collapse into `unordered`).
+ *                when `ranking` is off (items collapse into `unordered`) —
+ *                EXCEPT on `leaderboard` lists, whose games are always an
+ *                ordered, reorderable list (the status-card view drags them).
  * - `unordered`: position IS NULL (or ranking off), sorted by created_at DESC.
  * - `completed`: completed=true, sorted by completed_at DESC. Suppressed
  *                when `todo` is off (items keep their ordered/unordered slot).
@@ -240,6 +242,7 @@ export async function fetchItemsForList(
   );
 
   const rankingOn = hasModule(modules, "ranking");
+  const leaderboardOn = hasModule(modules, "leaderboard");
   const todoOn = hasModule(modules, "todo");
   const ordered: Item[] = [];
   const unordered: Item[] = [];
@@ -251,7 +254,12 @@ export async function fetchItemsForList(
       completed.push(item);
       continue;
     }
-    if (rankingOn && typeof r.position === "number") {
+    // A leaderboard's games are an ordered, reorderable list even without the
+    // `ranking` module — bucket them all into `ordered` (in the SQL's
+    // position-ASC order) so the status-card view can drag-reorder them. Any
+    // null-position game (added before this rule) sorts last and earns a
+    // position the first time it's dragged.
+    if (leaderboardOn || (rankingOn && typeof r.position === "number")) {
       ordered.push(item);
     } else {
       unordered.push(item);
@@ -341,8 +349,9 @@ export async function createItem(
 
     const modules = (parent.modules ?? []) as ModuleName[];
     let position: number | null = null;
-    if (hasModule(modules, "ranking") && hasModule(modules, "leaderboard")) {
-      // Daily-game pattern: items default to ordered so users can rank them.
+    if (hasModule(modules, "leaderboard")) {
+      // A leaderboard's games are an ordered list — assign a position on create
+      // so a new game is immediately reorderable in the status-card view.
       position = await appendPosition(listId, tx);
     }
 
@@ -598,7 +607,7 @@ itemRoutes.post(
   },
 );
 
-// --- Move (ranking module) ---
+// --- Move (ranking + leaderboard modules) ---
 
 itemRoutes.post(
   "/:id/move",
@@ -614,8 +623,15 @@ itemRoutes.post(
     const userId = c.get("userId");
     const listId = c.get("itemListId");
     const db = getDb();
-    const gate = requireModule(c, await getParentModules(db, listId), "ranking");
-    if (gate) return gate;
+    // Reorder is allowed on `ranking` lists and on `leaderboard` lists — a
+    // leaderboard's games are an ordered, reorderable list even without the
+    // `ranking` module (the status-card view drags them). Lists with neither
+    // still get the existing `ranking.disabled` 409.
+    const mods = await getParentModules(db, listId);
+    if (!hasModule(mods, "ranking") && !hasModule(mods, "leaderboard")) {
+      const gate = requireModule(c, mods, "ranking");
+      if (gate) return gate;
+    }
 
     const parsed = await parseJsonBody(c, moveItemSchema);
     if (!parsed.ok) return parsed.response;

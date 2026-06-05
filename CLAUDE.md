@@ -102,6 +102,17 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `useShareIntent()` in `_layout.tsx`; score shares often need `shareIntent.text` even when
   `shareIntent.webUrl` is also present. `/share` owns the top-level choice, `/share/pick-list`
   handles normal item adds, and `/share/pick-leaderboard` handles score posting.
+- **Leaderboard lists render games as `GameLeaderboardCard` (the status-card view), and a
+  leaderboard's games are an ordered, reorderable list.** On `isGameKind`, `ItemList` swaps
+  `ItemRow` for a card showing today's full standings (top 5, **sorted by rank client-side**
+  — `GET /v1/lists/:id/scores` assigns ranks but returns join order, unlike the per-item
+  endpoint which sorts in SQL), a turnout tagline, and — when the viewer hasn't played — a
+  Play CTA that opens the game and arms a paste-on-return prompt (`useReturnToPaste`,
+  AppState-driven, web + native). Per-row scores render through `summarizeScoreBody`
+  (byte-identical to the clipboard recap). The card drops into the existing drag wrappers
+  (`SortableGameCard`/`DraggableGameCard` mirror the row variants), so reorder uses the same
+  `moveItem` machinery — which works because **`leaderboard` now implies `ordered` bucketing**
+  even without the `ranking` module (see `apps/backend/CLAUDE.md`).
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:

@@ -17,7 +17,7 @@
 // `TouchSensor` `delay`), so the activation feel is the same on both
 // platforms even though the underlying libraries are different.
 
-import type { Item } from "@workshop/shared";
+import type { Item, LeaderboardEntry, ListMemberSummary } from "@workshop/shared";
 import * as Haptics from "expo-haptics";
 import { memo, type ReactNode, useCallback, useState } from "react";
 import { type ListRenderItemInfo, StyleSheet, View } from "react-native";
@@ -31,8 +31,13 @@ import {
 import { PullToRefresh } from "../../components/PullToRefresh";
 import { tokens } from "../../ui/index";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
+import { GameLeaderboardCard } from "./GameLeaderboardCard";
 import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
+
+// Stable empty refs so leaderboard cards without scores still hit the memo.
+const EMPTY_ENTRIES: LeaderboardEntry[] = [];
+const EMPTY_MEMBERS: ListMemberSummary[] = [];
 
 export function ItemList({
   ordered,
@@ -47,6 +52,12 @@ export function ItemList({
   selfId,
   playedByItem,
   totalPlayers,
+  isGameKind,
+  scoresByItem,
+  members,
+  scoresLoading,
+  onPlayGame,
+  onPasteScore,
   accent,
   onReorderOrdered,
   onRowMenu,
@@ -105,20 +116,66 @@ export function ItemList({
     [onReorderOrdered],
   );
 
-  const renderOrderedItem = useCallback(
-    ({ item, index }: ListRenderItemInfo<Item>) => (
-      <DraggableOrderedRow
+  // Leaderboard lists swap the plain row for a rich standings card. The card
+  // mirrors ItemRow's press/menu/long-press contract so it drops into the same
+  // drag wrappers below. `onLongPressBody` is supplied only by the ordered drag
+  // wrapper (native reorder activation); unordered/completed cards pass none.
+  const renderGameCard = useCallback(
+    (
+      item: Item,
+      section: "ordered" | "unordered" | "completed",
+      isDragging: boolean,
+      onLongPressBody?: () => void,
+    ) => (
+      <GameLeaderboardCard
+        key={item.id}
         item={item}
-        rank={index + 1}
-        addedByName={resolveAddedByName(item)}
-        provenanceOverride={resolveProvenanceOverride(item)}
+        section={section}
+        isDragging={isDragging}
         accent={accent}
-        onMenu={() => onRowMenu(item, "ordered")}
-        onPressBody={() => onRowPressBody(item, "ordered")}
-        onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
+        entries={scoresByItem?.[item.id] ?? EMPTY_ENTRIES}
+        members={members ?? EMPTY_MEMBERS}
+        selfId={selfId}
+        loading={scoresLoading}
+        onPressBody={() => onRowPressBody(item, section)}
+        {...(onLongPressBody ? { onLongPressBody } : {})}
+        onMenu={() => onRowMenu(item, section)}
+        onPlay={() => onPlayGame?.(item)}
+        onPaste={() => onPasteScore?.(item)}
       />
     ),
     [
+      accent,
+      scoresByItem,
+      members,
+      selfId,
+      scoresLoading,
+      onRowPressBody,
+      onRowMenu,
+      onPlayGame,
+      onPasteScore,
+    ],
+  );
+
+  const renderOrderedItem = useCallback(
+    ({ item, index }: ListRenderItemInfo<Item>) =>
+      isGameKind ? (
+        <DraggableGameCard render={renderGameCard} item={item} />
+      ) : (
+        <DraggableOrderedRow
+          item={item}
+          rank={index + 1}
+          addedByName={resolveAddedByName(item)}
+          provenanceOverride={resolveProvenanceOverride(item)}
+          accent={accent}
+          onMenu={() => onRowMenu(item, "ordered")}
+          onPressBody={() => onRowPressBody(item, "ordered")}
+          onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
+        />
+      ),
+    [
+      isGameKind,
+      renderGameCard,
       resolveAddedByName,
       resolveProvenanceOverride,
       accent,
@@ -160,21 +217,25 @@ export function ItemList({
                 listItemKind={listItemKind}
               />
             ) : null}
-            {unordered.map((item) => (
-              <ItemRow
-                key={item.id}
-                item={item}
-                section="unordered"
-                isNew={newItemIds.has(item.id)}
-                isDragging={false}
-                addedByName={resolveAddedByName(item)}
-                provenanceOverride={resolveProvenanceOverride(item)}
-                accent={accent}
-                onMenu={() => onRowMenu(item, "unordered")}
-                onPressBody={() => onRowPressBody(item, "unordered")}
-                onPressCover={resolveRowPressCover?.(item, "unordered") ?? undefined}
-              />
-            ))}
+            {unordered.map((item) =>
+              isGameKind ? (
+                renderGameCard(item, "unordered", false)
+              ) : (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  section="unordered"
+                  isNew={newItemIds.has(item.id)}
+                  isDragging={false}
+                  addedByName={resolveAddedByName(item)}
+                  provenanceOverride={resolveProvenanceOverride(item)}
+                  accent={accent}
+                  onMenu={() => onRowMenu(item, "unordered")}
+                  onPressBody={() => onRowPressBody(item, "unordered")}
+                  onPressCover={resolveRowPressCover?.(item, "unordered") ?? undefined}
+                />
+              ),
+            )}
           </>
         ) : null}
 
@@ -195,24 +256,28 @@ export function ItemList({
                 }
               />
             ) : null}
-            {completedToRender.map((item) => (
-              <ItemRow
-                key={item.id}
-                item={item}
-                section="completed"
-                isNew={false}
-                isDragging={false}
-                addedByName={resolveAddedByName(item)}
-                provenanceOverride={resolveProvenanceOverride(item)}
-                accent={accent}
-                onMenu={() => onRowMenu(item, "completed")}
-                onPressBody={() => onRowPressBody(item, "completed")}
-                onTapCompleted={
-                  item.kind !== "spotify_album" ? () => onUncompleteItem(item) : undefined
-                }
-                onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
-              />
-            ))}
+            {completedToRender.map((item) =>
+              isGameKind ? (
+                renderGameCard(item, "completed", false)
+              ) : (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  section="completed"
+                  isNew={false}
+                  isDragging={false}
+                  addedByName={resolveAddedByName(item)}
+                  provenanceOverride={resolveProvenanceOverride(item)}
+                  accent={accent}
+                  onMenu={() => onRowMenu(item, "completed")}
+                  onPressBody={() => onRowPressBody(item, "completed")}
+                  onTapCompleted={
+                    item.kind !== "spotify_album" ? () => onUncompleteItem(item) : undefined
+                  }
+                  onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
+                />
+              ),
+            )}
           </>
         ) : null}
       </ScrollViewContainer>
@@ -278,6 +343,33 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
       dragHandle={dragHandle}
     />
   );
+});
+
+interface DraggableGameCardProps {
+  item: Item;
+  render: (
+    item: Item,
+    section: "ordered" | "unordered" | "completed",
+    isDragging: boolean,
+    onLongPressBody?: () => void,
+  ) => ReactNode;
+}
+
+// Ordered leaderboard cards: long-press the card body activates reorder, same
+// as DraggableOrderedRow does for plain rows.
+const DraggableGameCard = memo(function DraggableGameCard({
+  item,
+  render,
+}: DraggableGameCardProps) {
+  const drag = useReorderableDrag();
+  const isActive = useIsActive();
+  const onLongPressBody = useCallback(() => {
+    Haptics.selectionAsync().catch(() => {
+      /* haptics unavailable on simulator — non-fatal */
+    });
+    drag();
+  }, [drag]);
+  return <>{render(item, "ordered", isActive, onLongPressBody)}</>;
 });
 
 const styles = StyleSheet.create({
