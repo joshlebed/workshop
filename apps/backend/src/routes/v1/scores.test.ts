@@ -194,6 +194,30 @@ describe("tryParseScoreValue (helper)", () => {
       expect(tryParseScoreValue("Wordle 1,127 3/6", "(\\d+")).toBe(1);
     });
   });
+
+  describe("with a count: pattern (tally games like Daily Tens)", () => {
+    it("scores by the number of 🏆 (more correct is better)", () => {
+      const raw = "DailyTens #760\n🏆 🏆 🏆 🏆 🏆 🏆 🏆 🏆 ❌ ❌";
+      expect(tryParseScoreValue(raw, "count:🏆")).toBe(8);
+    });
+
+    it("counts only 🏆 — ignores the puzzle number and ?ref id in the share", () => {
+      const raw =
+        "https://dailytens.com/?ref=943757\nDailyTens #760\n🏆 🏆 🏆 🏆 🏆 🏆 🏆 🏆 🏆 ❌";
+      expect(tryParseScoreValue(raw, "count:🏆")).toBe(9);
+    });
+
+    it("returns 0 (a valid worst score), not null, when nothing was correct", () => {
+      expect(tryParseScoreValue("DailyTens #761\n❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌", "count:🏆")).toBe(
+        0,
+      );
+    });
+
+    it("falls back to legacy first-number when the count pattern is malformed", () => {
+      // Unclosed group throws → legacy fallback finds the first number.
+      expect(tryParseScoreValue("Wordle 1,127 3/6", "count:(")).toBe(1);
+    });
+  });
 });
 
 describe("assignRanks (helper)", () => {

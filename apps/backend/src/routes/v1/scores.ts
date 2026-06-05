@@ -10,7 +10,7 @@ import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { itemScores, items, lists, users } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
-import { matchGameScoreRegex } from "../../lib/gameScoreRegex.js";
+import { matchGameScoreRegex, SCORE_COUNT_PREFIX } from "../../lib/gameScoreRegex.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule } from "../../lib/moduleGate.js";
 import { parseJsonBody } from "../../lib/request.js";
@@ -56,18 +56,31 @@ export const __test = {
  */
 function tryParseScoreValue(raw: string, pattern: string | null = null): number | null {
   if (pattern && pattern.length > 0) {
-    try {
-      const re = new RegExp(pattern, "i");
-      const match = raw.match(re);
-      if (match) {
-        const captured = match[1] ?? match[0];
-        const n = Number(captured);
-        if (Number.isFinite(n)) return n;
+    // "count:<pattern>" → score is the number of global matches (Daily Tens
+    // counts 🏆). 0 (none correct) is a valid score, distinct from a no-match
+    // null. A malformed inner pattern throws and falls through to the legacy
+    // fallback, mirroring the capture branch below.
+    if (pattern.startsWith(SCORE_COUNT_PREFIX)) {
+      try {
+        const re = new RegExp(pattern.slice(SCORE_COUNT_PREFIX.length), "gu");
+        return (raw.match(re) ?? []).length;
+      } catch {
+        // Bad count pattern — fall through to default behavior.
       }
-      return null;
-    } catch {
-      // Bad regex stored on the item — fall through to default behavior so we
-      // don't 500. The backfill validates patterns before writing them.
+    } else {
+      try {
+        const re = new RegExp(pattern, "i");
+        const match = raw.match(re);
+        if (match) {
+          const captured = match[1] ?? match[0];
+          const n = Number(captured);
+          if (Number.isFinite(n)) return n;
+        }
+        return null;
+      } catch {
+        // Bad regex stored on the item — fall through to default behavior so we
+        // don't 500. The backfill validates patterns before writing them.
+      }
     }
   }
   const match = raw.match(/-?\d+(\.\d+)?/);
