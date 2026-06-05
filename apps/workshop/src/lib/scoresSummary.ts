@@ -16,6 +16,16 @@ interface BuildSummaryParams {
 
 const URL_RE = /\bhttps?:\/\/\S+/gi;
 
+// A Globle grid's final line ends `= N`. Players sometimes hand-append a marker
+// after it — real prod shares carry `= 13(cheated)` (a manual, non-genuine-score
+// callout people add before sharing anyway). It's freeform human text, so match
+// `= N` plus whatever trails it to end-of-line rather than a fixed `(cheated)`
+// shape; that keeps the grid-block trimming from falling through to the raw
+// date/avg header (the bug), while the marker stays on the score line so the
+// recap shows the score was flagged. Globle only ever puts `=` on the grid's
+// score line, so matching it anywhere on the line is unambiguous.
+const GRID_SCORE_TAIL = /=\s*\d+.*$/;
+
 function stripUrlSubstrings(text: string): string {
   return text.replace(URL_RE, "");
 }
@@ -45,14 +55,15 @@ const FORMATTERS: Partial<Record<DetectedSharedScoreKind, Formatter>> = {
   },
 
   // Shape: `🌎 May 27, 2026 🌍\n🔥 1 | Avg. Guesses: 8.4\n⬜🟨⬜🟧🟩 = 5\n\nhttps://globle-game.com\n#globle`
-  // Long runs wrap across multiple grid lines; the final line ends `= N`.
+  // Long runs wrap across multiple grid lines; the final line ends `= N`, with
+  // an optional hand-typed marker like `(cheated)` after it (see GRID_SCORE_TAIL).
   globle(raw) {
     const lines = nonEmptyLines(stripUrlSubstrings(raw));
     const gridStart = lines.findIndex(isGridOnlyLine);
     if (gridStart === -1) return null;
     let gridEnd = -1;
     for (let i = gridStart; i < lines.length; i++) {
-      if (/=\s*\d+\s*$/.test(lines[i]!)) {
+      if (GRID_SCORE_TAIL.test(lines[i]!)) {
         gridEnd = i;
         break;
       }
@@ -136,7 +147,7 @@ const FORMATTERS: Partial<Record<DetectedSharedScoreKind, Formatter>> = {
 // optional `= N` suffix — i.e. no readable English text. Used by per-game
 // formatters to pick the visual grid block out of the raw share.
 function isGridOnlyLine(line: string): boolean {
-  return !/[A-Za-z0-9]/.test(line.replace(/=\s*\d+\s*$/, ""));
+  return !/[A-Za-z0-9]/.test(line.replace(GRID_SCORE_TAIL, ""));
 }
 
 const KEYCAP_DIGITS = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
