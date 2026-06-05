@@ -62,6 +62,7 @@ export default function GameDetail() {
   const today = localDateKey();
   const [date, setDate] = useState(today);
   const [draft, setDraft] = useState("");
+  const [editingScore, setEditingScore] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [urlDraft, setUrlDraft] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -108,13 +109,14 @@ export default function GameDetail() {
   }, [today]);
 
   const upsertMutation = useMutation({
-    mutationFn: (score: string) => {
+    mutationFn: ({ scoreRaw }: { scoreRaw: string; isEdit: boolean }) => {
       if (!itemId) throw new Error("missing item id");
-      return upsertItemScore(itemId, { periodKey: today, scoreRaw: score }, token);
+      return upsertItemScore(itemId, { periodKey: today, scoreRaw }, token);
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, variables) => {
       haptics.medium();
       setDraft("");
+      setEditingScore(false);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: queryKeys.gameScores.forItem(itemId ?? "", today),
@@ -125,7 +127,10 @@ export default function GameDetail() {
             })
           : Promise.resolve(),
       ]);
-      showToast({ message: "Score posted", tone: "success" });
+      showToast({
+        message: variables.isEdit ? "Score updated" : "Score posted",
+        tone: "success",
+      });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" });
@@ -139,6 +144,8 @@ export default function GameDetail() {
     },
     onSuccess: async () => {
       haptics.medium();
+      setDraft("");
+      setEditingScore(false);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: queryKeys.gameScores.forItem(itemId ?? "", today),
@@ -246,6 +253,7 @@ export default function GameDetail() {
   const onDate = (key: string) => {
     setDate(key);
     setDraft("");
+    setEditingScore(false);
   };
 
   const onOpenGame = () => {
@@ -258,11 +266,24 @@ export default function GameDetail() {
   const onSubmit = () => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    upsertMutation.mutate(trimmed);
+    upsertMutation.mutate({ scoreRaw: trimmed, isEdit: editingScore });
+  };
+
+  // Editing reuses the paste field in place: pre-fill it with the current
+  // result and flip the my-row into compose mode. No clear-then-repaste, no
+  // confirm dialog for the common "I pasted the wrong thing" case — Save is a
+  // plain upsert over today's bucket.
+  const onEditScore = () => {
+    setDraft(myEntry?.scoreRaw ?? "");
+    setEditingScore(true);
+  };
+
+  const onCancelEdit = () => {
+    setDraft("");
+    setEditingScore(false);
   };
 
   const onClear = async () => {
-    setMenuOpen(false);
     const ok = await confirm({
       title: "Clear today's score?",
       message: "This removes your pasted score for today only.",
@@ -287,7 +308,11 @@ export default function GameDetail() {
   const editDirty = trimmedTitleDraft !== item.title || trimmedUrlDraft !== (item.url ?? "");
   const canSaveEdit = trimmedTitleDraft.length >= 1 && trimmedTitleDraft.length <= 500 && editDirty;
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
-  const showPasteSlot = isToday && !myScore;
+  // The composer owns the my-slot when posting a first result OR editing an
+  // existing one. Both only make sense on today (scores always upload to
+  // today's bucket), so past days fall through to the read-only row.
+  const showComposer = isToday && (!myScore || editingScore);
+  const composerMode: "new" | "edit" = myScore ? "edit" : "new";
 
   return (
     <KeyboardAvoidingView
@@ -437,16 +462,26 @@ export default function GameDetail() {
               {/* My slot is always at the top: either my filled entry, the
                 paste affordance for today, or a quiet "Hasn't played" line
                 on past days. */}
-              {showPasteSlot ? (
-                <PasteSlot
+              {showComposer ? (
+                <ScoreComposer
+                  mode={composerMode}
                   draft={draft}
+                  baseline={myScore ?? ""}
                   onChangeDraft={setDraft}
                   onSubmit={onSubmit}
+                  onCancel={onCancelEdit}
+                  onClear={onClear}
                   pending={upsertMutation.isPending}
+                  clearing={clearMutation.isPending}
                   userName={user?.displayName ?? null}
                 />
               ) : myScore && myEntry ? (
-                <LeaderboardEntryRow entry={myEntry} item={item} isMe />
+                <LeaderboardEntryRow
+                  entry={myEntry}
+                  item={item}
+                  isMe
+                  onEdit={isToday ? onEditScore : undefined}
+                />
               ) : myEntry ? (
                 <UnplayedRow entry={myEntry} isMe />
               ) : null}
@@ -498,15 +533,6 @@ export default function GameDetail() {
               setMenuOpen(false);
             }}
           />
-          {myEntry?.scoreRaw ? (
-            <Button
-              testID="game-detail-clear-score"
-              label="Clear my score for today"
-              variant="ghost"
-              onPress={onClear}
-              loading={clearMutation.isPending}
-            />
-          ) : null}
           <View style={styles.sheetDivider} />
           <Pressable
             accessibilityRole="button"
@@ -590,9 +616,10 @@ interface LeaderboardEntryRowProps {
   entry: LeaderboardEntry;
   item: Item;
   isMe: boolean;
+  onEdit?: () => void;
 }
 
-function LeaderboardEntryRow({ entry, item, isMe }: LeaderboardEntryRowProps) {
+function LeaderboardEntryRow({ entry, item, isMe, onEdit }: LeaderboardEntryRowProps) {
   const name = entry.displayName ?? "Someone";
   // Distill the raw clipboard share into a clean block (per-game grid, URLs
   // stripped). A URL-only share — e.g. Daily Tens' `dailytens.com/?ref=<id>`
@@ -621,6 +648,22 @@ function LeaderboardEntryRow({ entry, item, isMe }: LeaderboardEntryRowProps) {
             </Text>
           ) : null}
         </View>
+        {onEdit ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Edit your score"
+            accessibilityHint="Fix or replace your pasted result"
+            onPress={onEdit}
+            testID="game-detail-edit-score"
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.editScoreButton,
+              pressed && styles.editScoreButtonPressed,
+            ]}
+          >
+            <Text style={styles.editScoreLabel}>Edit</Text>
+          </Pressable>
+        ) : null}
       </View>
       <View style={styles.scoreFrame}>
         <Text
@@ -685,16 +728,45 @@ function UnplayedRow({ entry, isMe }: { entry: LeaderboardEntry; isMe: boolean }
   );
 }
 
-interface PasteSlotProps {
+interface ScoreComposerProps {
+  mode: "new" | "edit";
   draft: string;
+  baseline: string;
   onChangeDraft: (v: string) => void;
   onSubmit: () => void;
+  onCancel: () => void;
+  onClear: () => void;
   pending: boolean;
+  clearing: boolean;
   userName: string | null;
 }
 
-function PasteSlot({ draft, onChangeDraft, onSubmit, pending, userName }: PasteSlotProps) {
-  const empty = draft.trim().length === 0;
+/**
+ * The my-slot in compose mode. One field serves both jobs: posting a first
+ * result ("new") and fixing a botched paste in place ("edit"). Edit mode
+ * pre-fills the field with the current result and disables Save until the text
+ * actually changes, so re-opening the editor and backing out is a no-op rather
+ * than a redundant write.
+ */
+function ScoreComposer({
+  mode,
+  draft,
+  baseline,
+  onChangeDraft,
+  onSubmit,
+  onCancel,
+  onClear,
+  pending,
+  clearing,
+  userName,
+}: ScoreComposerProps) {
+  const isEdit = mode === "edit";
+  const trimmed = draft.trim();
+  const empty = trimmed.length === 0;
+  // In edit mode, Save is meaningful only when the text differs from what's
+  // already posted; an unchanged re-save is just noise.
+  const unchanged = isEdit && trimmed === baseline.trim();
+  const canSubmit = !empty && !unchanged && !pending && !clearing;
   // On web, Cmd/Ctrl+Enter submits — a multiline paste form should never
   // require reaching for the mouse to post. Plain Enter inserts a newline
   // because users routinely paste multi-line results.
@@ -707,7 +779,7 @@ function PasteSlot({ draft, onChangeDraft, onSubmit, pending, userName }: PasteS
             ctrlKey?: boolean;
             preventDefault: () => void;
           }) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !empty && !pending) {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canSubmit) {
               e.preventDefault();
               onSubmit();
             }
@@ -715,7 +787,7 @@ function PasteSlot({ draft, onChangeDraft, onSubmit, pending, userName }: PasteS
         } as Record<string, unknown>)
       : {};
   return (
-    <View style={[styles.entry, styles.entryMe, styles.pasteSlot]} testID="game-detail-paste-slot">
+    <View style={[styles.entry, styles.entryMe]} testID="game-detail-paste-slot">
       <View style={styles.entryHeader}>
         <Avatar name={userName} size="md" />
         <View style={styles.entryNameWrap}>
@@ -728,7 +800,7 @@ function PasteSlot({ draft, onChangeDraft, onSubmit, pending, userName }: PasteS
             </View>
           </View>
           <Text variant="caption" tone="muted">
-            Paste your result to play
+            {isEdit ? "Edit your result" : "Paste your result to play"}
           </Text>
         </View>
       </View>
@@ -739,21 +811,44 @@ function PasteSlot({ draft, onChangeDraft, onSubmit, pending, userName }: PasteS
         placeholder={"Paste your result here\ne.g.\n#globle 9 | Avg. Guesses: 7.1\n= 3"}
         placeholderTextColor={tokens.text.muted}
         multiline
+        autoFocus={isEdit}
         maxLength={2000}
         style={styles.pasteInput}
         {...webProps}
       />
       <View style={styles.pasteActions}>
-        {Platform.OS === "web" && !empty ? (
+        {isEdit ? (
+          <Button
+            label="Clear score"
+            variant="ghost"
+            size="md"
+            onPress={onClear}
+            disabled={pending}
+            loading={clearing}
+            testID="game-detail-clear-score"
+            style={styles.composerClear}
+          />
+        ) : null}
+        {Platform.OS === "web" && canSubmit ? (
           <Text variant="caption" tone="muted" style={styles.pasteHint}>
-            ⌘↩ to post
+            ⌘↩ to {isEdit ? "save" : "post"}
           </Text>
         ) : null}
+        {isEdit ? (
+          <Button
+            label="Cancel"
+            variant="secondary"
+            size="md"
+            onPress={onCancel}
+            disabled={pending || clearing}
+            testID="game-detail-edit-cancel"
+          />
+        ) : null}
         <Button
-          label="Post score"
+          label={isEdit ? "Save" : "Post score"}
           size="md"
           onPress={onSubmit}
-          disabled={empty || pending}
+          disabled={!canSubmit}
           loading={pending}
           testID="game-detail-paste-submit"
         />
@@ -872,7 +967,6 @@ const styles = StyleSheet.create({
     // doubles as a textual label so the highlight isn't color-only.
     backgroundColor: `${tokens.accent.default}14`,
   },
-  pasteSlot: {},
   entryHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -881,6 +975,19 @@ const styles = StyleSheet.create({
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  // Quiet, accent-tinted text affordance on the my-row. Editing your own
+  // score is the only per-row action, so it earns a label, not an icon glyph.
+  editScoreButton: {
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: 4,
+    borderRadius: tokens.radius.sm,
+  },
+  editScoreButtonPressed: { backgroundColor: tokens.accent.muted },
+  editScoreLabel: {
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.semibold,
+    color: tokens.accent.default,
+  },
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
@@ -979,6 +1086,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
   },
+  // Pushes everything after it (hint, Cancel, Save) to the right edge so the
+  // destructive Clear sits apart from the affirmative actions.
+  composerClear: { marginRight: "auto" },
   pasteHint: { letterSpacing: 0.3 },
   sheetHeader: {
     gap: 4,
