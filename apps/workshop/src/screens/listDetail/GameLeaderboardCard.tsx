@@ -276,29 +276,30 @@ function PlayerRow({ entry, item, isMe }: PlayerRowProps) {
   // Identical distillation to the clipboard recap: per-game grid, URLs stripped.
   // A URL-only share distills to nothing — show "Played" rather than echo a ref link.
   const body = summarizeScoreBody(item, entry);
+  // Names are dropped from the row to save vertical space — the score sits
+  // inline next to the avatar so each player is one line, not two. Identity
+  // rides on the initials circle (+ its hashed color); the full name stays in
+  // the accessibility label so screen readers still announce who's who.
   return (
     <View
       style={[styles.playerRow, isMe && styles.playerRowMe]}
       testID={`game-card-row-${entry.userId}`}
+      accessible
+      accessibilityLabel={`${name}${isMe ? " (you)" : ""}: ${body ?? "played"}`}
     >
-      <View style={styles.nameLine}>
-        <RankMark rank={entry.rank} />
-        <Avatar name={entry.displayName} size="sm" />
-        <Text variant="label" numberOfLines={1} style={styles.playerName}>
-          {name}
-        </Text>
-        {isMe ? (
-          <View style={styles.youPill}>
-            <Text style={styles.youPillText}>you</Text>
-          </View>
-        ) : null}
-      </View>
+      <RankMark rank={entry.rank} />
+      <Avatar name={entry.displayName} size="sm" />
       <Text
         style={[styles.scoreBody, body ? null : styles.scoreBodyMuted]}
         testID={`game-card-score-${entry.userId}`}
       >
         {body ?? "Played"}
       </Text>
+      {isMe ? (
+        <View style={styles.youPill}>
+          <Text style={styles.youPillText}>you</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -421,18 +422,15 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xs,
   },
   playerRow: {
-    gap: 3,
-    paddingVertical: 3,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    paddingVertical: 4,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
     borderRadius: tokens.radius.sm,
   },
   playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
-  nameLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-  },
   rankSlot: {
     width: RANK_SLOT,
     height: RANK_SLOT,
@@ -456,11 +454,6 @@ const styles = StyleSheet.create({
     fontWeight: tokens.font.weight.bold,
     fontVariant: ["tabular-nums"],
   },
-  playerName: {
-    flexShrink: 1,
-    fontSize: tokens.font.size.sm,
-    color: tokens.text.primary,
-  },
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
@@ -475,7 +468,7 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   scoreBody: {
-    paddingLeft: SCORE_INDENT,
+    flex: 1,
     color: tokens.text.secondary,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     fontSize: tokens.font.size.sm,

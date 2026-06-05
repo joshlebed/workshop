@@ -75,6 +75,55 @@ describe("summarizeScoreBody", () => {
     ).toBe("⬜⬜🟥🟧🟧🟥🟥🟥\n🟥🟥🟧🟩 = 12");
   });
 
+  // Real prod share: a player hand-typed `(cheated)` onto the grid's `= N` line.
+  // The old `= N$`-anchored match missed it and dumped the whole date/avg header.
+  it("keeps a Globle grid whose `= N` line carries a hand-typed `(cheated)` marker", () => {
+    const raw = [
+      "🌎 Jun 5, 2026 🌍",
+      "🔥 5 | Avg. Guesses: 6.97",
+      "⬜🟧🟥🟨🟧🟧🟥🟥",
+      "🟥🟨🟧🟧🟩 = 13(cheated)",
+      "",
+      "https://globle-game.com",
+      "#globle",
+    ].join("\n");
+    expect(
+      summarizeScoreBody(item("a", "Globle", "https://globle-game.com/game"), entry("u", raw)),
+    ).toBe("⬜🟧🟥🟨🟧🟧🟥🟥\n🟥🟨🟧🟧🟩 = 13(cheated)");
+  });
+
+  // Real prod share: the marker sits on the trailing hashtag line instead, while
+  // the grid's `= 9` is clean — the grid block trims as usual, marker dropped.
+  it("trims a Globle grid when `(cheated)` is on the hashtag line, not the score", () => {
+    const raw = [
+      "🌎 Jun 5, 2026 🌍",
+      "🔥 3 | Avg. Guesses: 6.46",
+      "⬜🟧🟨🟥🟧🟧🟥🟧",
+      "🟩 = 9",
+      "",
+      "https://globle-game.com",
+      "#globle (cheated)",
+    ].join("\n");
+    expect(
+      summarizeScoreBody(item("a", "Globle", "https://globle-game.com/game"), entry("u", raw)),
+    ).toBe("⬜🟧🟨🟥🟧🟧🟥🟧\n🟩 = 9");
+  });
+
+  // Single-line grid with the marker glued on: the grid line is also the score
+  // line, so `isGridOnlyLine` must still recognize it past the `(cheated)` tail.
+  it("keeps a single-line Globle grid with a `(cheated)` marker", () => {
+    const raw = [
+      "🌎 Jun 3, 2026 🌍",
+      "🔥 1 | Avg. Guesses: 6",
+      "🟨🟨🟥🟥🟥🟩 = 6(cheated)",
+      "https://globle-game.com",
+      "#globle",
+    ].join("\n");
+    expect(
+      summarizeScoreBody(item("a", "Globle", "https://globle-game.com/game"), entry("u", raw)),
+    ).toBe("🟨🟨🟥🟥🟥🟩 = 6(cheated)");
+  });
+
   it("formats Satle as `<grid> <fraction>` from the `Satle #N N/6` header", () => {
     const raw = "🛰Satle #468 6/6\n🟥🟥🟥🟥🟥🟩\nhttps://satle.ca";
     expect(summarizeScoreBody(item("a", "Satle", "https://satle.ca/"), entry("u", raw))).toBe(
