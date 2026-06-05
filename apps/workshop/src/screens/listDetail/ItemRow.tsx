@@ -10,7 +10,7 @@
 
 import type { Item, ItemKind } from "@workshop/shared";
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { formatRelative } from "../../lib/relativeTime";
@@ -107,6 +107,19 @@ export function ItemRow({
   const view = describeItem(item);
   const provenance = provenanceOverride ?? describeProvenance(item, section, addedByName);
 
+  // A broken or hotlink-blocked image (common for scraped place/link covers
+  // on web) used to fall through to a bare elevated square, which reads as a
+  // loading bug. Track load failure and fall back to the tinted placeholder
+  // glyph instead. Reset during render (not an effect) when the row recycles
+  // onto a different image URL — the React-blessed "reset state on prop change".
+  const [imageFailed, setImageFailed] = useState(false);
+  const [trackedUrl, setTrackedUrl] = useState(view.imageUrl);
+  if (view.imageUrl !== trackedUrl) {
+    setTrackedUrl(view.imageUrl);
+    setImageFailed(false);
+  }
+  const showImage = !!view.imageUrl && !imageFailed;
+
   const leading =
     section === "ordered" ? (
       <PositionChip
@@ -143,10 +156,11 @@ export function ItemRow({
       <PositionChip dragHandle={dragHandle} isDragging={isDragging} accent={accent} rank={null} />
     ) : null;
 
-  const coverInner = view.imageUrl ? (
+  const coverInner = showImage ? (
     <Animated.Image
       source={{ uri: view.imageUrl }}
       style={[styles.cover, coverStyle]}
+      onError={() => setImageFailed(true)}
       accessibilityIgnoresInvertColors
     />
   ) : (

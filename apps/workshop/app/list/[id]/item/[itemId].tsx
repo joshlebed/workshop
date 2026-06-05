@@ -662,8 +662,8 @@ function describeItem(item: Item): KindView {
         hasUrlField: true,
       };
     }
-    case "plain":
     default: {
+      // plain + any future kind: a neutral glyph, no eyebrow.
       return {
         placeholderGlyph: "✦",
         subline: "",

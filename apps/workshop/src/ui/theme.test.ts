@@ -32,14 +32,14 @@ describe("theme tokens", () => {
           "muted": "#F5A52422",
         },
         "bg": {
-          "canvas": "#081325",
-          "elevated": "#1F1F25",
-          "surface": "#16161A",
+          "canvas": "#0E0C0B",
+          "elevated": "#24221F",
+          "surface": "#191715",
         },
         "border": {
-          "default": "#33333D",
-          "strong": "#4A4A56",
-          "subtle": "#26262E",
+          "default": "#3C3835",
+          "strong": "#55504C",
+          "subtle": "#2D2926",
         },
         "font": {
           "size": {
@@ -48,7 +48,7 @@ describe("theme tokens", () => {
             "sm": 13,
             "xl": 22,
             "xs": 12,
-            "xxl": 30,
+            "xxl": 28,
           },
           "weight": {
             "bold": "700",
@@ -86,10 +86,10 @@ describe("theme tokens", () => {
           "warning": "#F5A524",
         },
         "text": {
-          "muted": "#6E6E78",
-          "onAccent": "#0E0E10",
-          "primary": "#F2F2F5",
-          "secondary": "#A8A8B3",
+          "muted": "#86817C",
+          "onAccent": "#0E0C0B",
+          "primary": "#F2F0ED",
+          "secondary": "#A7A29E",
         },
       }
     `);
@@ -104,14 +104,14 @@ describe("theme tokens", () => {
           "muted": "#F5A52422",
         },
         "bg": {
-          "canvas": "#FAFAFB",
-          "elevated": "#E6E6EC",
-          "surface": "#F2F2F5",
+          "canvas": "#FEFCFA",
+          "elevated": "#EFECE9",
+          "surface": "#F7F4F2",
         },
         "border": {
-          "default": "#C8C8D0",
-          "strong": "#A8A8B3",
-          "subtle": "#DCDCE2",
+          "default": "#D4CEC9",
+          "strong": "#AFA8A1",
+          "subtle": "#E3DFDA",
         },
         "font": {
           "size": {
@@ -120,7 +120,7 @@ describe("theme tokens", () => {
             "sm": 13,
             "xl": 22,
             "xs": 12,
-            "xxl": 30,
+            "xxl": 28,
           },
           "weight": {
             "bold": "700",
@@ -158,10 +158,10 @@ describe("theme tokens", () => {
           "warning": "#F5A524",
         },
         "text": {
-          "muted": "#8E8E98",
-          "onAccent": "#0E0E10",
-          "primary": "#16161A",
-          "secondary": "#5A5A66",
+          "muted": "#726C66",
+          "onAccent": "#0E0C0B",
+          "primary": "#1F1B17",
+          "secondary": "#554F49",
         },
       }
     `);

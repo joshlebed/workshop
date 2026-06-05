@@ -30,7 +30,7 @@ export default function CreateListType() {
             Pick a template
           </Text>
           <Text variant="caption" tone="muted">
-            Templates are starting points — you can change modules later.
+            Templates are starting points. You can change anything later.
           </Text>
         </View>
         <View style={styles.options}>
@@ -77,9 +77,6 @@ export default function CreateListType() {
                   </Text>
                   <Text variant="caption" tone="muted" numberOfLines={2}>
                     {tpl.description}
-                  </Text>
-                  <Text variant="caption" tone="muted" style={styles.optionModules}>
-                    {tpl.defaults.modules.join(" · ")}
                   </Text>
                 </View>
               </Pressable>
@@ -144,7 +141,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   optionEmoji: { fontSize: 26, lineHeight: 30 },
-  optionText: { flex: 1, gap: 2, minWidth: 0 },
+  optionText: { flex: 1, gap: 3, minWidth: 0 },
   optionLabel: { fontSize: tokens.font.size.md },
-  optionModules: { letterSpacing: 0.5, textTransform: "uppercase", marginTop: 2 },
 });

@@ -6,12 +6,30 @@ import { tokens } from "./theme";
 type Variant = "title" | "heading" | "body" | "caption" | "label";
 type Tone = "primary" | "secondary" | "muted" | "onAccent" | "danger";
 
+// Each variant carries its own line-height so vertical rhythm is correct by
+// default (RN's auto line-height runs tight on large weights and made titles
+// feel cramped). Titles also get a touch of negative tracking — large text
+// reads tighter and more composed with letters pulled in slightly.
 const variantStyle: Record<Variant, TextStyle> = {
-  title: { fontSize: tokens.font.size.xxl, fontWeight: tokens.font.weight.semibold },
-  heading: { fontSize: tokens.font.size.lg, fontWeight: tokens.font.weight.semibold },
-  body: { fontSize: tokens.font.size.md, fontWeight: tokens.font.weight.regular },
-  caption: { fontSize: tokens.font.size.xs, fontWeight: tokens.font.weight.regular },
-  label: { fontSize: tokens.font.size.sm, fontWeight: tokens.font.weight.medium },
+  title: {
+    fontSize: tokens.font.size.xxl,
+    lineHeight: 34,
+    fontWeight: tokens.font.weight.semibold,
+    letterSpacing: -0.4,
+  },
+  heading: {
+    fontSize: tokens.font.size.lg,
+    lineHeight: 24,
+    fontWeight: tokens.font.weight.semibold,
+    letterSpacing: -0.2,
+  },
+  body: { fontSize: tokens.font.size.md, lineHeight: 22, fontWeight: tokens.font.weight.regular },
+  caption: {
+    fontSize: tokens.font.size.xs,
+    lineHeight: 16,
+    fontWeight: tokens.font.weight.regular,
+  },
+  label: { fontSize: tokens.font.size.sm, lineHeight: 18, fontWeight: tokens.font.weight.medium },
 };
 
 const toneColor: Record<Tone, string> = {

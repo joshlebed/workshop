@@ -14,27 +14,32 @@ type ColorScheme = {
   border: { subtle: string; default: string; strong: string };
 };
 
+// Neutrals are tinted warm (OKLCH hue ~66, the amber accent's hue) at very
+// low chroma, so every surface belongs to one warm family instead of the
+// old navy-canvas / neutral-surface mismatch. Canvas is the darkest layer;
+// surface and elevated step up in lightness, not hue. Values derived in
+// OKLCH and checked for WCAG AA (muted clears 4.5:1 on canvas + surface).
 const darkColors: ColorScheme = {
-  bg: { canvas: "#081325", surface: "#16161A", elevated: "#1F1F25" },
+  bg: { canvas: "#0E0C0B", surface: "#191715", elevated: "#24221F" },
   text: {
-    primary: "#F2F2F5",
-    secondary: "#A8A8B3",
-    muted: "#6E6E78",
-    onAccent: "#0E0E10",
+    primary: "#F2F0ED",
+    secondary: "#A7A29E",
+    muted: "#86817C",
+    onAccent: "#0E0C0B",
   },
-  border: { subtle: "#26262E", default: "#33333D", strong: "#4A4A56" },
+  border: { subtle: "#2D2926", default: "#3C3835", strong: "#55504C" },
 };
 
 const lightColors: ColorScheme = {
-  bg: { canvas: "#FAFAFB", surface: "#F2F2F5", elevated: "#E6E6EC" },
+  bg: { canvas: "#FEFCFA", surface: "#F7F4F2", elevated: "#EFECE9" },
   text: {
-    primary: "#16161A",
-    secondary: "#5A5A66",
-    muted: "#8E8E98",
+    primary: "#1F1B17",
+    secondary: "#554F49",
+    muted: "#726C66",
     // Accent is amber in both modes; dark text on amber stays readable.
-    onAccent: "#0E0E10",
+    onAccent: "#0E0C0B",
   },
-  border: { subtle: "#DCDCE2", default: "#C8C8D0", strong: "#A8A8B3" },
+  border: { subtle: "#E3DFDA", default: "#D4CEC9", strong: "#AFA8A1" },
 };
 
 const SHARED = {
@@ -52,7 +57,7 @@ const SHARED = {
   space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 },
   radius: { sm: 6, md: 10, lg: 14, pill: 999 },
   font: {
-    size: { xs: 12, sm: 13, md: 16, lg: 18, xl: 22, xxl: 30 },
+    size: { xs: 12, sm: 13, md: 16, lg: 18, xl: 22, xxl: 28 },
     weight: {
       regular: "400" as const,
       medium: "500" as const,
