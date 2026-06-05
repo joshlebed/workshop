@@ -828,7 +828,7 @@ export default function ListSettings() {
                   onPress={async () => {
                     const ok = await copyToClipboard(buildListShareUrl(list.shareSlug));
                     showToast({
-                      message: ok ? "Copied" : "Couldn't copy — copy the link manually",
+                      message: ok ? "Copied" : "Couldn't copy. Copy the link manually.",
                       tone: ok ? "success" : "danger",
                     });
                   }}

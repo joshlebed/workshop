@@ -827,13 +827,14 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: tokens.space.lg,
     bottom: tokens.space.lg,
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: tokens.accent.default,
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0px 6px 16px rgba(245, 165, 36, 0.28), 0px 2px 4px rgba(0, 0, 0, 0.3)",
+    // Calm neutral elevation, not an amber glow (see DESIGN.md "calm by default").
+    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
     elevation: 5,
   },
   fabHovered: {
@@ -841,7 +842,7 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.04 }],
   },
   fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 26, fontWeight: tokens.font.weight.semibold, lineHeight: 30 },
+  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
   profileSheetHeader: {
     flexDirection: "row",
     alignItems: "center",

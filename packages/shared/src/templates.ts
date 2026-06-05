@@ -33,7 +33,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
   {
     id: "movie_watchlist",
     displayName: "Movie Watchlist",
-    description: "Films to catch — complete, drag to rank.",
+    description: "Films to catch. Check them off, drag to rank.",
     defaults: {
       itemKind: "movie",
       modules: ["todo", "ranking"],
@@ -97,7 +97,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     },
     requiresSource: {
       kind: "spotify_playlist",
-      promptCopy: "Paste a public Spotify playlist URL — Workshop will mirror it as a shelf.",
+      promptCopy: "Paste a public Spotify playlist URL. Workshop mirrors it as a shelf.",
     },
   },
   {
@@ -114,7 +114,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
   {
     id: "letterboxd_watchlist",
     displayName: "Letterboxd Watchlist",
-    description: "Mirrors a public Letterboxd list — films land enriched via TMDB.",
+    description: "Mirrors a public Letterboxd list. Films arrive with details from TMDB.",
     defaults: {
       itemKind: "movie",
       modules: ["todo", "ranking", "sources"],
@@ -123,7 +123,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     },
     requiresSource: {
       kind: "letterboxd_list",
-      promptCopy: "Paste a public Letterboxd list URL — Workshop will mirror it as a watchlist.",
+      promptCopy: "Paste a public Letterboxd list URL. Workshop mirrors it as a watchlist.",
     },
   },
   {
@@ -140,7 +140,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
   {
     id: "blank_list",
     displayName: "Blank List",
-    description: "Start from nothing — pick modules later.",
+    description: "Start from nothing. Add what you like.",
     defaults: {
       itemKind: null,
       modules: ["ranking"],

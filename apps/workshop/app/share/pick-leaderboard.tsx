@@ -94,7 +94,7 @@ export default function PickLeaderboard() {
   const postScore = (item: Item, list: ListSummary) => {
     if (isResultlessShare(scoreDraft)) {
       showToast({
-        message: "That's just a link — paste your result text to post a score.",
+        message: "That's just a link. Paste your result text to post a score.",
         tone: "danger",
       });
       return;

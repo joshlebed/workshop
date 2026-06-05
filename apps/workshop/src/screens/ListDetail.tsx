@@ -165,7 +165,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
     },
     onError: (e) => {
       showToast({
-        message: sourceErrorMessage(e, "Couldn't refresh — try again?"),
+        message: sourceErrorMessage(e, "Couldn't refresh. Try again?"),
         tone: "danger",
       });
     },
@@ -332,7 +332,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
     });
     if (!summary) {
       showToast({
-        message: "No scores from you today yet — post one to share a recap.",
+        message: "No scores from you today yet. Post one to share a recap.",
         tone: "default",
       });
       return;
@@ -632,9 +632,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
                 {headerSubline}
               </Text>
             </View>
-            <Text variant="caption" tone="muted" style={styles.modulesLine}>
-              {list.modules.join(" · ")}
-            </Text>
           </View>
         </View>
 
@@ -1016,16 +1013,16 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.sm,
   },
   titleBadge: {
-    width: 52,
-    height: 52,
+    width: 48,
+    height: 48,
     borderRadius: tokens.radius.lg,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  titleEmoji: { fontSize: 26, lineHeight: 30 },
-  titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.6, fontSize: 28, lineHeight: 32 },
+  titleEmoji: { fontSize: 24, lineHeight: 28 },
+  titleText: { flex: 1, minWidth: 0, gap: 5 },
+  titleName: { fontSize: 23, lineHeight: 28, letterSpacing: -0.3 },
   sublineRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1033,7 +1030,6 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   subline: { letterSpacing: 0.1 },
-  modulesLine: { textTransform: "uppercase", letterSpacing: 0.5 },
   toolbar: {
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,
@@ -1127,7 +1123,10 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.accent.default,
     alignItems: "center",
     justifyContent: "center",
-    boxShadow: "0px 6px 18px rgba(245, 165, 36, 0.30), 0px 2px 4px rgba(0, 0, 0, 0.35)",
+    // Calm neutral elevation, not an amber glow. The accent fill carries the
+    // warmth; a colored halo would read as the "glow aesthetic" the brand
+    // explicitly avoids.
+    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
     elevation: 6,
   },
   fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },

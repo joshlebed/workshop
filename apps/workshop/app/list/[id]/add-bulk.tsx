@@ -89,7 +89,7 @@ export default function AddBulk() {
         bottomOffset={tokens.space.lg}
       >
         <Text tone="secondary" style={styles.intro}>
-          One per line. Numbered or bulleted lists are fine — leading{" "}
+          One per line. Numbered or bulleted lists are fine; leading{" "}
           <Text style={styles.code}>1.</Text>, <Text style={styles.code}>-</Text>, or{" "}
           <Text style={styles.code}>*</Text> markers are stripped automatically.
         </Text>
@@ -110,7 +110,7 @@ export default function AddBulk() {
         <View style={styles.countRow}>
           <Text tone={tooMany ? "danger" : "muted"} style={styles.count} testID="add-bulk-count">
             {tooMany
-              ? `${parsed.length} items — server caps each request at ${BULK_LIMIT}, the rest is chunked.`
+              ? `${parsed.length} items. We add the first ${BULK_LIMIT} now and the rest in batches.`
               : countLabel}
           </Text>
         </View>
