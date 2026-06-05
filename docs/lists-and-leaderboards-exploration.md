@@ -267,6 +267,13 @@ single collection for now; cross-collection smart lists are a later, bigger step
 
 ## 4. Problem B — Lists app vs Daily Leaderboards app
 
+> **Superseded (2026-06-05):** the league/arena/season/role model sketched below was judged
+> over-built. The committed design ([spec §3](./lists-and-leaderboards-spec.md)) is far simpler:
+> a **global, URL-deduped game catalog** + a **per-user ordered selection** + a **symmetric
+> friend graph**, where a leaderboard is a per-viewer _query_ (your friends' scores on a game you
+> both play). No leagues, arenas, roles, seasons, join-codes, or visibility flags. This section
+> is kept only as the option-space rationale that motivated splitting Games out of the list model.
+
 ### 4.1 Why it's genuinely a different primitive
 
 Collaboration and competition diverge at the **data model** and the **permission** layer:

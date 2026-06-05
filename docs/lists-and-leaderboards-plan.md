@@ -7,7 +7,7 @@ _what_). Same conventions as [`docs/redesign-plan.md`](./redesign-plan.md): each
 (or small stack) with file-level deliverables, dependencies, acceptance, and risks. The
 foundation is unchanged — pnpm monorepo, Expo + expo-router, Hono on Lambda, Neon, Drizzle, EAS.
 
-Two independent tracks. **Track L** (Lists: facets) and **Track B** (Leaderboards: split) share
+Two independent tracks. **Track L** (Lists: facets) and **Track B** (Games: leaderboards) share
 no code below the app shell and can ship in either order or in parallel. Pickup order below is
 the recommended one (L0 first — cheapest, directly answers the burgers/date-ideas ask).
 
@@ -16,13 +16,14 @@ the recommended one (L0 first — cheapest, directly answers the burgers/date-id
 ## 0. Guiding principles
 
 - **Shared types first.** Every API change starts in `packages/shared/src/types.ts` (or a
-  subpath registry — `itemKinds.ts`, new `leagues.ts`). Backend + client both depend on it, so
+  subpath registry — `itemKinds.ts`, new `games.ts`). Backend + client both depend on it, so
   the type error is the to-do list.
 - **Zod at the boundary.** Every route validates input before touching the DB. No `as` on
   `JSON.parse`/`Response.json()` (ts-reset is on).
 - **One Playwright happy-path per chunk.** Don't defer E2E to the end.
 - **Reuse the registries.** Item kinds, modules, source kinds, the permissions matrix, and the
-  `gameScoreRegex` catalog are all append-only registries — extend, don't fork.
+  `gameScoreRegex` catalog are all append-only registries — extend, don't fork. The catalog
+  doubles as the seed for the global `games` table.
 - **Runtime-version discipline.** Only L2 (map view) adds a native module → it MUST bump
   `apps/workshop/app.json` `version` in the same PR (runtime-version guard). Everything else is
   JS/OTA-able.
@@ -33,14 +34,14 @@ the recommended one (L0 first — cheapest, directly answers the burgers/date-id
 
 ## 1. Cross-cutting workstreams
 
-| Workstream              | Where                                                                      | Per-chunk meaning                                                        |
-| ----------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Shared types/registries | `packages/shared/src/*`                                                    | `place` kind; `facets.ts`; `leagues.ts` types + league permission matrix |
-| Zod validation          | `apps/backend/src/routes/v1/*`                                             | tags, view config, merge body, league/arena/entry bodies                 |
-| Permissions             | `apps/backend/src/lib/permissions.ts` (lists) + new `leaguePermissions.ts` | one matrix per domain; handlers ask for a capability                     |
-| Activity feed           | `apps/backend/src/lib/events.ts` + client renderers                        | new event types: `item_tagged`, `list_merged`, league events             |
-| Migrate smoke           | CI                                                                         | every schema chunk green on fresh-DB + idempotent re-run                 |
-| Tests                   | vitest beside each route/lib; Playwright per chunk                         | matches existing `lists.test.ts` / `scores.test.ts` patterns             |
+| Workstream              | Where                                               | Per-chunk meaning                                                                                                     |
+| ----------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Shared types/registries | `packages/shared/src/*`                             | `place` kind; `facets.ts`; `games.ts` (Game/UserGame/GameScore/Friend types + `normalizeGameUrl`)                     |
+| Zod validation          | `apps/backend/src/routes/v1/*`                      | tags, view config, merge body; game-add/score, friend invite/accept bodies                                            |
+| Permissions             | `apps/backend/src/lib/permissions.ts` (lists)       | Lists keep the capability matrix; **Games has no role matrix** — reads gate on the friend graph, writes are self-only |
+| Activity feed           | `apps/backend/src/lib/events.ts` + client renderers | new event types: `item_tagged`, `list_merged`, `friend_accepted`                                                      |
+| Migrate smoke           | CI                                                  | every schema chunk green on fresh-DB + idempotent re-run                                                              |
+| Tests                   | vitest beside each route/lib; Playwright per chunk  | matches existing `lists.test.ts` / `scores.test.ts` patterns                                                          |
 
 ---
 
@@ -126,76 +127,90 @@ safe either way).
 
 ---
 
-## 3. Track B — Leaderboards split
+## 3. Track B — Games: global catalog + friend-graph leaderboards
 
-### B0 — app shell: top-level Lists/Boards switch
+The whole track is four small tables (`games`, `user_games`, `game_scores`, `friendships` +
+`friend_requests`) and a per-viewer leaderboard query. No leagues, arenas, roles, seasons,
+join-codes, or visibility flags. `game_scores` is `item_scores` re-keyed `item_id → game_id`.
+
+### B0 — app shell: top-level Lists/Games switch
 
 **Goal:** introduce the two-surface shell without changing any data model.
 
 **Deliverables:**
 
 - `apps/workshop/app/_layout.tsx` — restructure into a top-level switch: expo-router `Tabs` on
-  native (`◧ Lists` / `◆ Boards`), sidebar switch in `src/ui/Layout.tsx` on web. Existing list
-  routes nest under the Lists surface; a new `app/leaderboards/` segment under Boards.
-- `apps/workshop/app/leaderboards/index.tsx` — placeholder Boards home (real content in B1).
+  native (`◧ Lists` / `◆ Games`), sidebar switch in `src/ui/Layout.tsx` on web. Existing list
+  routes nest under the Lists surface; a new `app/games/` segment under Games.
+- `apps/workshop/app/games/index.tsx` — placeholder Games home (real content in B1).
 - Preserve deep links + back-stack + share-intent routing (verify both tabs reachable).
 - Playwright: switch between surfaces on web; assert routes resolve.
 
 **Deps:** none. **Risks:** navigation refactor touches the most central file; keep modals'
-`presentation` options intact; verify share-extension redirect still lands.
+`presentation` options intact; verify the share-extension redirect still lands.
 
-### B1 — read-only Leaderboards home (reuses `item_scores`)
+### B1 — global game catalog + "My Games" (ordered) + re-keyed scores
 
-**Goal:** the Boards surface feels alive over **existing** data — no new tables, no migration.
-
-**Deliverables:**
-
-- `apps/backend/src/routes/v1/leagues.ts` (new, read-only) — `GET /v1/leaderboards` aggregates
-  the user's `modules:[leaderboard]` lists + their `item_scores` into today/week/all-time
-  boards, streaks, participation, and the placement-points overall rank.
-- `apps/backend/src/lib/leaderboard/aggregate.ts` (new) — pure aggregation + placement-points +
-  streak/participation calculators (heavy unit-test target).
-- `packages/shared/src/types.ts` — `LeaderboardWindow`, board/streak response types.
-- Client: `app/leaderboards/index.tsx` (today's board, window switcher),
-  `app/leaderboards/[gameId].tsx` (per-arena history); reuse `scoresSummary.ts`. `src/api/leaderboards.ts`.
-- Playwright: Boards home shows today's per-game + overall standings from seeded scores.
-
-**Deps:** B0. **Acceptance:** the Geo Games data renders as a live board in the Boards surface
-while still stored as a list. **Risks:** aggregation correctness — cover the calculators
-heavily; reuse `gameDate.ts`/`dates.ts` for puzzle-day keys.
-
-### B2 — leagues as a first-class primitive (tables + sharing)
-
-**Goal:** real leagues with their own membership, roles, join-by-code, visibility, seasons.
+**Goal:** the Games surface works end-to-end for a **solo** user over real data — add games by
+URL, reorder them, paste scores, see your own results. (Friends arrive in B2.)
 
 **Deliverables:**
 
-- Migration: `leagues`, `league_members`, `arenas`, `league_entries` (spec §3.5).
-- `apps/backend/src/lib/leaguePermissions.ts` (new) — capability matrix mirroring
-  `lib/permissions.ts`: roles `admin|participant|spectator`.
-- `apps/backend/src/routes/v1/leagues.ts` — full CRUD: leagues, join/join-code-reset, arenas,
-  `PUT /v1/arenas/:id/entries` (idempotent on `(arena,user,period)`), members/role. Visibility
-  gating for `view`. Activity events for league actions.
-- `apps/backend/src/lib/shareSlug.ts` — reuse the rotatable-code generator for `join_code`.
-- `packages/shared/src/leagues.ts` (new subpath) — league/arena/entry types + role enum +
-  unplayed-policy enum + the capability list.
-- Client: `app/leaderboards/create.tsx`, `app/leaderboards/[id]/settings.tsx` (admin), join flow,
-  arena management; `src/api/leagues.ts`.
-- Re-point capture: `app/share/pick-leaderboard.tsx` + `shareScoreDetection` post to an arena.
-- Playwright: create league → join by code (2nd dev user) → post score via paste → board updates;
-  spectator can view but not post; admin adds an arena.
+- Migration: `games`, `user_games`, `game_scores` (spec §3.6). Backfill: seed `games` from the
+  `gameScoreRegex` catalog (canonical `game_key`/title/`score_direction`); migrate existing
+  leaderboard-list items + their `item_scores` → `games` (dedup by normalized URL) +
+  `game_scores`. Keep `item_scores` readable until B-migrate verifies.
+- `packages/shared/src/games.ts` (new subpath) — `Game`/`UserGame`/`GameScore` types +
+  `normalizeGameUrl()` (pure, Metro-safe: lowercase host, strip `www.`, drop query+fragment,
+  trim trailing slash, keep path) + the catalog's URL→`game_key` canonicalization.
+- `apps/backend/src/routes/v1/games.ts` (new) — `GET /v1/games` (my ordered games + today's
+  status), `POST /v1/games` (find-or-create by normalized URL, append to `user_games`),
+  `DELETE /v1/games/:id` (my row only), `POST /v1/games/:id/move` (reuse `positions.ts`),
+  `PUT /v1/games/:id/scores` (upsert, auto-add to my games, idempotent),
+  `GET /v1/games/:id/leaderboard` (self-only until B2). Score parsing via `gameScoreRegex.ts`.
+- Client: `app/games/index.tsx` (my ordered, drag-reorder — reuse the `ItemList` drag pattern),
+  `app/games/[id].tsx` (per-game board + paste slot), add-game flow (paste URL / pick from
+  catalog); `src/api/games.ts`. Re-point capture: rename `app/share/pick-leaderboard.tsx` →
+  `pick-game.tsx`, post to a game.
+- Playwright: add a game by URL → paste a score → it lands on the board; reorder persists.
 
-**Deps:** B1 (aggregation logic generalizes to `league_entries`). **Risks:** the new permission
-domain — test the matrix like `permissions.test.ts`; idempotent entry upsert; join-code abuse →
-rate-limit `POST …/join` (reuse `middleware/rate-limit.ts`).
+**Deps:** B0. **Acceptance:** the solo Games surface works on the real Geo-Games data.
+**Risks:** **URL normalization is the sharp edge** — it's the dedup key for the whole catalog
+(CLAUDE.md already documents the `dailytens.com/?ref=` junk). Heavily unit-test `normalizeGameUrl`;
+the `item_scores`→`game_scores` backfill must collapse variants to one `games` row.
 
-### B-migrate — Geo Games list → a League; deprecate the module
+### B2 — friend graph (the social layer)
 
-One-shot migration (Neon-branch first): for each `modules:[leaderboard]` list, create a league;
-items → arenas; `item_scores` → `league_entries`; `list_members` → `league_members` (owner →
-admin). Then deprecate: drop `leaderboard` from `MODULE_NAMES`, remove the `daily_games`
-template, retire `app/list/[id]/game/[itemId].tsx`. Update `formatActivityEvent` for retired
-event types. Ships **after** B2 is verified.
+**Goal:** a friend's scores appear in your per-game leaderboards.
+
+**Deliverables:**
+
+- Migration: `friendships` (canonical `user_low < user_high`), `friend_requests` (spec §3.6).
+- `apps/backend/src/lib/friends.ts` (new) — `friendsOf(userId)` (one indexed query over both
+  columns); idempotent symmetric insert.
+- `apps/backend/src/routes/v1/friends.ts` (new) — `GET /v1/friends`,
+  `POST /v1/friends/invite` (token via `shareSlug.ts`), `GET /v1/friends/requests/:token`
+  (preview inviter), `POST /v1/friends/requests/:token/accept`, `DELETE /v1/friends/:userId`.
+  Rate-limit accept (reuse `middleware/rate-limit.ts`).
+- `apps/backend/src/routes/v1/games.ts` — `GET /v1/games/:id/leaderboard` + `GET /v1/games`
+  today-status now union `friendsOf(viewer)`.
+- Client: `app/friends/index.tsx` (friends list + share-link invite + incoming pending) and an
+  accept-landing route reusing the `onboarding/accept-invite.tsx` + `inviteStash.ts` deep-link
+  round-trip; `src/api/friends.ts`. Friends entry from the Games header + Settings.
+- Playwright: two dev users — A creates an invite link, B accepts, B's score on a shared game
+  appears in A's leaderboard (and vice versa).
+
+**Deps:** B1. **Risks:** the invite deep-link round-trip through sign-in (reuse the list-invite
+stash); idempotent symmetric friendship insert; rate-limit accept against token-guessing.
+
+### B-migrate — Geo Games list → games + friends; deprecate the module
+
+One-shot (Neon-branch first): games + scores already migrated in B1's backfill — here insert
+`user_games` for each scorer (preserve the owner's order) and turn every pair of co-members of a
+leaderboard list into a mutual `friendships` edge (all pairs; sanity-cap large lists). Then
+deprecate: drop `leaderboard` from `MODULE_NAMES`, remove the `daily_games` template, retire
+`app/list/[id]/game/[itemId].tsx`, update `formatActivityEvent`, and drop the legacy
+`item_scores` table once `game_scores` is verified. Ships **after** B2 is verified.
 
 ---
 
@@ -204,33 +219,36 @@ event types. Ships **after** B2 is verified.
 ```
 L0 ──> L1 ──> L2            (Lists track)
 L0 ──> L-migrate
-B0 ──> B1 ──> B2 ──> B-migrate   (Leaderboards track)
+B0 ──> B1 ──> B2 ──> B-migrate   (Games track)
 
 Tracks L and B are independent. Recommended pickup:
-L0  →  L1  →  B0  →  B1  →  L2  →  B2  →  (L-migrate, B-migrate)
+L0  →  L1  →  B0  →  B1  →  B2  →  L2  →  (L-migrate, B-migrate)
 ```
 
-Rationale: L0 is the cheapest, highest-value, and directly answers the original ask; B0/B1 prove
-the Leaderboards surface over existing data before committing to B2's tables; the two `-migrate`
-chunks land last, each gated on its track being verified.
+Rationale: L0 is the cheapest, highest-value, and directly answers the original ask; B1 makes the
+Games surface work solo on real data; B2 adds the social layer; the two `-migrate` chunks land
+last, each gated on its track being verified.
 
 ---
 
 ## 5. Risks & open engineering questions
 
+- **URL normalization is the sharp edge of Track B.** It's the dedup key for the entire `games`
+  catalog; CLAUDE.md already documents the `dailytens.com/?ref=` referral junk that poisoned
+  score parsing. Ship a pure, heavily-tested `normalizeGameUrl`; let the catalog canonicalize
+  known variants; unknown URLs dedup on the normalized form alone.
 - **Map view is the only native dependency.** It forces a `version` bump + TestFlight build;
-  everything else ships via OTA. Consider deferring L2 if EAS minutes are tight (CLAUDE.md
-  free-tier budget) — facets work without it.
+  everything else ships via OTA. Defer L2 if EAS minutes are tight — facets work without it.
 - **Reverse-geocoding for `neighborhood`.** Needs a geocode call on write; cache in `content`
-  (we already cache Maps thumbnails), never on read. Decide provider (Google vs the existing
-  Maps key) at L-migrate time.
-- **Placement-points formula** is a product call (F1-style 25/18/15… vs golf vs linear). Ship a
-  single documented default in B1; make it a league setting only if asked.
-- **Activity feed unification across surfaces.** The home bell currently sums list unread; decide
-  whether league events feed the same bell or a separate Boards badge (recommend separate, per
-  the per-surface notification split in the spec).
-- **`leaderboard` module deprecation timing.** Keep the module + old route working until B-migrate
-  verifies, to avoid a window where Geo Games is unreachable.
+  (we already cache Maps thumbnails), never on read. Decide provider at L-migrate time.
+- **Friend-invite deep-link round-trip** through sign-in — reuse the list-invite stash
+  (`inviteStash.ts`); rate-limit accept against token-guessing.
+- **`leaderboard` module deprecation timing.** Keep the module + the old `/list/[id]/game/...`
+  route working until B-migrate verifies, so Geo Games is never unreachable. Migrate
+  `item_scores`→`game_scores` in B1 but keep the old table readable until B-migrate drops it.
+- **Cut from the earlier draft:** leagues / arenas / roles / seasons / join-codes / visibility
+  flags / the placement-points overall rank. If a real multi-group or public-leaderboard need
+  ever shows up, it's an additive layer on top of the friend graph — not a prerequisite.
 
 ---
 
@@ -238,6 +256,7 @@ chunks land last, each gated on its track being verified.
 
 - **Track L done:** Date Ideas renders auto category chips + map + Want-to-go/Been; Burgers is a
   saved view inside it; merge lost nothing and is reversible.
-- **Track B done:** Geo Games is a League with join-by-code, roles, and seasons; scores post via
-  the share-extension to arenas; today's per-game + overall boards + streaks render; the
-  `leaderboard` list module is retired.
+- **Track B done:** your Games home is your own ordered, reorderable list; pasting a result posts
+  to a global, URL-deduped game; accepting a friend's invite link makes their scores appear in
+  your per-game leaderboards for the games you both play; the `leaderboard` list module is
+  retired.
