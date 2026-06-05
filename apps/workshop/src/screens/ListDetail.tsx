@@ -9,7 +9,7 @@ import type {
 } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -21,7 +21,7 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { archiveItem, completeItem, fetchItems, moveItem, uncompleteItem } from "../api/items";
-import { fetchListScores } from "../api/scores";
+import { fetchListScores, upsertItemScore } from "../api/scores";
 import { syncSource } from "../api/sources";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
@@ -47,10 +47,12 @@ import {
   tokens,
   useToast,
 } from "../ui/index";
+import { GameScorePasteSheet } from "./listDetail/GameScorePasteSheet";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import type { ReorderEvent } from "./listDetail/listProps";
 import type { Section } from "./listDetail/types";
+import { useReturnToPaste } from "./listDetail/useReturnToPaste";
 
 interface Props {
   list: List;
@@ -431,6 +433,56 @@ export function ListDetail({ list, members, sources, token }: Props) {
     return url ? () => openExternalUrl(url) : null;
   };
 
+  // Leaderboard "status card" plumbing. The cards read today's standings out of
+  // `scoresByItem` (already fetched above for the row count); the play loop —
+  // tap Play, then paste your result when you return to the page — is owned by
+  // `useReturnToPaste` + a paste sheet.
+  const scoresByItem = listScoresQuery.data?.scoresByItem;
+  const hasMyScore = useCallback(
+    (itemId: string): boolean => {
+      if (!selfId) return false;
+      const entries = scoresByItem?.[itemId];
+      return !!entries?.some(
+        (e) => e.userId === selfId && e.scoreRaw != null && e.scoreRaw.length > 0,
+      );
+    },
+    [scoresByItem, selfId],
+  );
+  const {
+    promptItemId,
+    markPlaying,
+    openPasteFor,
+    dismiss: dismissPaste,
+  } = useReturnToPaste({ todayKey, hasScoreForItem: hasMyScore });
+
+  const pasteScoreMutation = useMutation({
+    mutationFn: ({ item, scoreRaw }: { item: Item; scoreRaw: string }) =>
+      upsertItemScore(item.id, { periodKey: todayKey, scoreRaw }, token),
+    onSuccess: async (_data, { item }) => {
+      haptics.medium();
+      dismissPaste();
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.gameScores.forItem(item.id, todayKey),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.gameScores.forList(list.id, todayKey),
+        }),
+      ]);
+      showToast({ message: "Score posted", tone: "success" });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" });
+    },
+  });
+
+  const promptItem = useMemo(() => {
+    if (!promptItemId) return null;
+    return (
+      [...orderedRaw, ...unorderedRaw, ...completedRaw].find((i) => i.id === promptItemId) ?? null
+    );
+  }, [promptItemId, orderedRaw, unorderedRaw, completedRaw]);
+
   const headerSubline = useMemo(() => {
     const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
     if (hasSources) {
@@ -753,6 +805,12 @@ export function ListDetail({ list, members, sources, token }: Props) {
               selfId={selfId}
               playedByItem={isGameKind ? playedByItem : undefined}
               totalPlayers={isGameKind ? members.length : undefined}
+              isGameKind={isGameKind}
+              scoresByItem={scoresByItem}
+              members={members}
+              scoresLoading={isGameKind && listScoresQuery.isPending}
+              onPlayGame={markPlaying}
+              onPasteScore={openPasteFor}
               accent={accent}
               onReorderOrdered={onReorderOrdered}
               onPromoteToOrdered={onPromoteToOrdered}
@@ -788,6 +846,14 @@ export function ListDetail({ list, members, sources, token }: Props) {
         ) : null}
 
         <ItemRowMenu item={menuItem} actions={menuActions} onClose={closeMenu} />
+
+        <GameScorePasteSheet
+          item={promptItem}
+          userName={user?.displayName ?? null}
+          pending={pasteScoreMutation.isPending}
+          onSubmit={(item, scoreRaw) => pasteScoreMutation.mutate({ item, scoreRaw })}
+          onClose={dismissPaste}
+        />
       </Screen>
     </KeyboardAvoidingView>
   );

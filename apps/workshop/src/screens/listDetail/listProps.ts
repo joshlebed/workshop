@@ -2,7 +2,13 @@
 // and web (`ItemList.web.tsx`, @dnd-kit/sortable) implementations of the
 // list-detail row container.
 
-import type { Item, ItemKind, ModuleName } from "@workshop/shared";
+import type {
+  Item,
+  ItemKind,
+  LeaderboardEntry,
+  ListMemberSummary,
+  ModuleName,
+} from "@workshop/shared";
 import type { Section } from "./types";
 
 export interface ReorderEvent {
@@ -34,6 +40,22 @@ export interface ItemListProps {
   playedByItem?: Map<string, number>;
   /** Group size for the "X of Y played" label. Pair with `playedByItem`. */
   totalPlayers?: number;
+  /**
+   * Leaderboard lists render each game as a rich `GameLeaderboardCard` (full
+   * standings + Play CTA) instead of an `ItemRow`. The next five props feed
+   * those cards; they're ignored on every other list type.
+   */
+  isGameKind?: boolean;
+  /** Today's scored players per game, server-ranked. Keyed by itemId. */
+  scoresByItem?: Record<string, LeaderboardEntry[]>;
+  /** Full member roster — the "of N" denominator + the empty-state facepile. */
+  members?: ListMemberSummary[];
+  /** Scores query still in flight — cards show skeleton standings. */
+  scoresLoading?: boolean;
+  /** Open the game externally + arm the paste-on-return prompt. */
+  onPlayGame?: (item: Item) => void;
+  /** Manual paste fallback from a card — opens the paste sheet. */
+  onPasteScore?: (item: Item) => void;
   accent: string;
   onReorderOrdered: (event: ReorderEvent) => void;
   onPromoteToOrdered: (event: { item: Item; toIndex: number }) => void;
