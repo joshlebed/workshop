@@ -12,6 +12,7 @@
 // to `sessionStorage` on web as cheap insurance against a same-tab reload.
 
 import type { Item } from "@workshop/shared";
+import { usePathname } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { openExternalUrl } from "../../lib/openUrl";
@@ -95,6 +96,20 @@ export function useReturnToPaste({ todayKey, hasScoreForItem }: UseReturnToPaste
     });
     return () => sub.remove();
   }, [checkPending]);
+
+  // The share-sheet pathway supersedes the play-then-paste prompt. Sharing a
+  // game result foregrounds the app — which arms this prompt via the AppState
+  // listener above — *and* routes to `/share` to post the score (the richer
+  // path: it carries the actual result text). Without this, the paste sheet
+  // stacks on top of the share screen. Drop the pending play and dismiss the
+  // prompt whenever the share screen is active so it yields to the share flow.
+  const pathname = usePathname();
+  useEffect(() => {
+    if (pathname?.startsWith("/share")) {
+      setPending(null);
+      setPromptItemId(null);
+    }
+  }, [pathname]);
 
   const markPlaying = useCallback((item: Item) => {
     setPending({ itemId: item.id, periodKey: todayRef.current });
