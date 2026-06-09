@@ -148,6 +148,13 @@
       "when": 1779905372237,
       "tag": "0020_list_share_slug_and_visibility",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1781031980282,
+      "tag": "0021_item_tags",
+      "breakpoints": true
     }
   ]
 }

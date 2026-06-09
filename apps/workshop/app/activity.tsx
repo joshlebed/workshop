@@ -405,6 +405,7 @@ function verbGlyphFor(type: ActivityEvent["type"]): string {
     case "module_disabled":
       return "−";
     case "item_updated":
+    case "item_tagged":
     case "source_updated":
       return "·";
     case "item_completed":
@@ -443,6 +444,14 @@ function describeEvent(event: ActivityEvent): string {
       return `edited${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_archived":
       return `archived${payloadString(payload, "title", (t) => ` "${t}"`)}`;
+    case "item_tagged": {
+      const tags = Array.isArray(payload.tags)
+        ? payload.tags.filter((t): t is string => typeof t === "string")
+        : [];
+      const title = payloadString(payload, "title", (t) => ` "${t}"`);
+      if (tags.length === 0) return `cleared tags on${title || " an item"}`;
+      return `tagged${title || " an item"} ${tags.map((t) => `#${t}`).join(" ")}`;
+    }
     case "list_archived":
       return `archived this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
     case "list_duplicated":

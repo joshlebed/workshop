@@ -49,6 +49,7 @@ export type ActivityEventType =
   | "item_added"
   | "item_updated"
   | "item_archived"
+  | "item_tagged"
   | "item_completed"
   | "item_uncompleted"
   | "item_promoted"
@@ -273,6 +274,12 @@ export interface Item {
   note: string | null;
   content: ItemContent;
   position: number | null;
+  /**
+   * Manual, kind-agnostic labels (spec §2.1) — normalized lowercase,
+   * ≤40 chars, sorted alphabetically. Replaced as a set via
+   * `PUT /v1/items/:id/tags`.
+   */
+  tags: string[];
   addedBy: string;
   /**
    * `completed*` fields are gated by the `todo` module on the parent list —
@@ -311,6 +318,26 @@ export interface UpdateItemRequest {
 export interface MoveItemRequest {
   beforeItemId?: string | null;
   afterItemId?: string | null;
+}
+
+/**
+ * `PUT /v1/items/:id/tags` — replaces the item's tag set wholesale. The
+ * server normalizes each tag (trim, lowercase, collapse internal
+ * whitespace) and dedupes; tags must be 1–40 chars after normalization.
+ */
+export interface UpdateItemTagsRequest {
+  tags: string[];
+}
+
+/** One in-use tag on a list + how many non-archived items carry it. */
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+/** `GET /v1/lists/:id/tags` — powers the filter-chip bar + editor suggestions. */
+export interface ListTagsResponse {
+  tags: TagCount[];
 }
 
 export interface ListItemsResponse {

@@ -240,6 +240,50 @@ describe("moveItemSchema", () => {
   });
 });
 
+describe("updateItemTagsSchema", () => {
+  const { updateItemTagsSchema } = __test;
+
+  it("accepts an empty set (clears every tag)", () => {
+    const r = updateItemTagsSchema.safeParse({ tags: [] });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.tags).toEqual([]);
+  });
+
+  it("normalizes: trims, lowercases, collapses internal whitespace", () => {
+    const r = updateItemTagsSchema.safeParse({ tags: ["  Burgers ", "Date   Night"] });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.tags).toEqual(["burgers", "date night"]);
+  });
+
+  it("dedupes after normalization and sorts the set", () => {
+    const r = updateItemTagsSchema.safeParse({ tags: ["zest", "Burgers", " burgers", "BURGERS"] });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.tags).toEqual(["burgers", "zest"]);
+  });
+
+  it("rejects a tag that is empty after trim", () => {
+    expect(updateItemTagsSchema.safeParse({ tags: ["   "] }).success).toBe(false);
+  });
+
+  it("clamps tag length at 40 chars post-normalization", () => {
+    expect(updateItemTagsSchema.safeParse({ tags: ["a".repeat(40)] }).success).toBe(true);
+    expect(updateItemTagsSchema.safeParse({ tags: ["a".repeat(41)] }).success).toBe(false);
+  });
+
+  it("rejects more than 20 tags", () => {
+    const tags = Array.from({ length: 21 }, (_, i) => `tag-${i}`);
+    expect(updateItemTagsSchema.safeParse({ tags }).success).toBe(false);
+  });
+
+  it("rejects a missing tags field", () => {
+    expect(updateItemTagsSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("rejects non-string entries", () => {
+    expect(updateItemTagsSchema.safeParse({ tags: [42] }).success).toBe(false);
+  });
+});
+
 describe("itemRoutes auth gating", () => {
   it("GET /:id requires a bearer token", async () => {
     const res = await itemRoutes.request(`/${validUuid}`);
@@ -275,6 +319,15 @@ describe("itemRoutes auth gating", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("PUT /:id/tags requires a bearer token", async () => {
+    const res = await itemRoutes.request(`/${validUuid}/tags`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tags: ["burgers"] }),
     });
     expect(res.status).toBe(401);
   });
@@ -327,6 +380,15 @@ describe("itemRoutes input validation (bails before DB)", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  it("PUT /:id/tags 404s when id isn't a uuid", async () => {
+    const res = await itemRoutes.request("/not-a-uuid/tags", {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify({ tags: ["burgers"] }),
+    });
+    expect(res.status).toBe(404);
+  });
 });
 
 // --- List-scoped item routes (POST /v1/lists/:id/items, etc.) ---
@@ -357,6 +419,18 @@ describe("list-scoped item routes auth + uuid gating", () => {
 
   it("GET /:id/items 404s when list id isn't a uuid", async () => {
     const res = await listRoutes.request("/not-a-uuid/items", {
+      headers: authHeaders(),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /:id/tags requires a bearer token", async () => {
+    const res = await listRoutes.request(`/${validUuid}/tags`);
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /:id/tags 404s when list id isn't a uuid", async () => {
+    const res = await listRoutes.request("/not-a-uuid/tags", {
       headers: authHeaders(),
     });
     expect(res.status).toBe(404);

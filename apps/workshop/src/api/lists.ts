@@ -7,6 +7,7 @@ import type {
   ListListResponse,
   ListPreviewResponse,
   ListResponse,
+  ListTagsResponse,
   UpdateListRequest,
 } from "@workshop/shared";
 import { apiRequest } from "../lib/api";
@@ -31,6 +32,15 @@ export function fetchListPreview(id: string, token: string | null): Promise<List
     path: `/v1/lists/${id}/preview`,
     token,
   });
+}
+
+/**
+ * In-use tags on a list with per-tag item counts — powers the tag editor's
+ * suggested-chip picker. (The list-detail chip bar derives the same counts
+ * from the already-fetched items, so it doesn't refetch this.)
+ */
+export function fetchListTags(id: string, token: string | null): Promise<ListTagsResponse> {
+  return apiRequest<ListTagsResponse>({ method: "GET", path: `/v1/lists/${id}/tags`, token });
 }
 
 export function createList(body: CreateListRequest, token: string | null): Promise<ListResponse> {

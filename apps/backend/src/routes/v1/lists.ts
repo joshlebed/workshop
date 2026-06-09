@@ -21,6 +21,7 @@ import {
   type DbList,
   type DbListSource,
   items,
+  itemTags,
   listMembers,
   listSources,
   lists,
@@ -1167,6 +1168,17 @@ listRoutes.post(
           })
           .returning({ id: items.id });
         if (newItem) {
+          // Tags travel with the item — a duplicate without its tags would
+          // silently break any saved-filter workflow on the copy.
+          const sourceTags = await tx
+            .select({ tag: itemTags.tag })
+            .from(itemTags)
+            .where(eq(itemTags.itemId, it.id));
+          if (sourceTags.length > 0) {
+            await tx
+              .insert(itemTags)
+              .values(sourceTags.map((t) => ({ itemId: newItem.id, tag: t.tag })));
+          }
           await recordEvent({
             db: tx,
             listId: created.id,
@@ -1205,6 +1217,27 @@ listRoutes.get("/:id/items", requireListMember, async (c) => {
   const listId = c.req.param("id");
   const split = await fetchItemsForList(listId);
   return ok(c, split);
+});
+
+/**
+ * In-use tags on a list with per-tag item counts — powers the filter-chip
+ * bar and the tag editor's suggestions. Archived items don't count (their
+ * tag rows are kept for a future unarchive surface, same as the items).
+ */
+listRoutes.get("/:id/tags", requireListMember, async (c) => {
+  const listId = c.req.param("id");
+  const rows = await executeRows<{ tag: string; count: number }>(
+    getDb(),
+    sql`
+      SELECT t.tag, COUNT(*)::int AS count
+      FROM item_tags t
+      JOIN items i ON i.id = t.item_id
+      WHERE i.list_id = ${listId} AND i.archived_at IS NULL
+      GROUP BY t.tag
+      ORDER BY count DESC, t.tag ASC
+    `,
+  );
+  return ok(c, { tags: rows });
 });
 
 listRoutes.post(

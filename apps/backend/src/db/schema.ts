@@ -220,6 +220,26 @@ export const items = pgTable(
   }),
 );
 
+/**
+ * Manual, kind-agnostic labels on items (spec §2.1) — many-to-many,
+ * normalized lowercase, ≤40 chars. Replaced as a set via
+ * `PUT /v1/items/:id/tags`; rows cascade away with the item. The tag index
+ * powers the per-list `GET /v1/lists/:id/tags` aggregation.
+ */
+export const itemTags = pgTable(
+  "item_tags",
+  {
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    tag: text("tag").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.itemId, t.tag] }),
+    tagIdx: index("item_tags_tag_idx").on(t.tag),
+  }),
+);
+
 export const activityEvents = pgTable(
   "activity_events",
   {
@@ -362,6 +382,7 @@ export type DbList = typeof lists.$inferSelect;
 export type DbListMember = typeof listMembers.$inferSelect;
 export type DbListInvite = typeof listInvites.$inferSelect;
 export type DbItem = typeof items.$inferSelect;
+export type DbItemTag = typeof itemTags.$inferSelect;
 export type DbActivityEvent = typeof activityEvents.$inferSelect;
 export type DbUserActivityRead = typeof userActivityReads.$inferSelect;
 export type DbMetadataCache = typeof metadataCache.$inferSelect;

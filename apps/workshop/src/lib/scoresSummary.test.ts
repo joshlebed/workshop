@@ -12,6 +12,7 @@ function item(id: string, title: string, url: string | null = null): Item {
     note: null,
     content: {} as Item["content"],
     position: null,
+    tags: [],
     addedBy: "user-1",
     completed: false,
     completedAt: null,

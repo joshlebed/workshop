@@ -242,6 +242,7 @@ function makeItem(id: string, listId: string, title: string, updatedAt: string):
     note: null,
     content: {},
     position: null,
+    tags: [],
     addedBy: "user",
     completed: false,
     completedAt: null,

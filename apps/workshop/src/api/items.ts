@@ -6,6 +6,7 @@ import type {
   ListItemsResponse,
   MoveItemRequest,
   UpdateItemRequest,
+  UpdateItemTagsRequest,
 } from "@workshop/shared";
 import { apiRequest } from "../lib/api";
 
@@ -55,6 +56,24 @@ export function updateItem(
   return apiRequest<ItemResponse>({
     method: "PATCH",
     path: `/v1/items/${itemId}`,
+    body,
+    token,
+  });
+}
+
+/**
+ * Replace the item's tag set wholesale (PUT semantics). The server
+ * normalizes (trim, lowercase, collapse whitespace) and dedupes, so the
+ * returned `item.tags` is the canonical sorted set.
+ */
+export function updateItemTags(
+  itemId: string,
+  body: UpdateItemTagsRequest,
+  token: string | null,
+): Promise<ItemResponse> {
+  return apiRequest<ItemResponse>({
+    method: "PUT",
+    path: `/v1/items/${itemId}/tags`,
     body,
     token,
   });

@@ -10,7 +10,9 @@ import {
   fetchItem,
   uncompleteItem,
   updateItem,
+  updateItemTags,
 } from "../../../../src/api/items";
+import { fetchListTags } from "../../../../src/api/lists";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { ApiError } from "../../../../src/lib/api";
 import { confirm } from "../../../../src/lib/confirm";
@@ -21,6 +23,7 @@ import { queryKeys } from "../../../../src/lib/queryKeys";
 import { formatRelative } from "../../../../src/lib/relativeTime";
 import {
   Button,
+  Chip,
   EmptyState,
   IconButton,
   Screen,
@@ -138,6 +141,31 @@ export default function ItemDetail() {
         tone: "danger",
       });
     },
+  });
+
+  // The list's in-use tags power the suggested-chip picker — tagging is
+  // never a bare free-text field (spec §2.1). Suggestions refresh whenever
+  // a tag edit lands so two members editing in parallel converge.
+  const listTagsQuery = useQuery({
+    queryKey: queryKeys.tags.byList(listId ?? ""),
+    queryFn: () => fetchListTags(listId ?? "", token),
+    enabled: !!token && !!listId,
+  });
+
+  const tagsMutation = useMutation({
+    mutationFn: (tags: string[]) => updateItemTags(itemId ?? "", { tags }, token),
+    onSuccess: async () => {
+      haptics.light();
+      await invalidateItem();
+      if (listId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.tags.byList(listId) });
+      }
+    },
+    onError: (e) =>
+      showToast({
+        message: e instanceof ApiError ? e.message : "Couldn't update tags",
+        tone: "danger",
+      }),
   });
 
   const archiveMutation = useMutation({
@@ -330,6 +358,13 @@ export default function ItemDetail() {
           onChange={setNote}
           onBlur={flushSave}
           placeholder={notePlaceholderFor(loadedItem, todoEnabled)}
+        />
+
+        <TagEditor
+          tags={loadedItem.tags ?? []}
+          listTags={(listTagsQuery.data?.tags ?? []).map((t) => t.tag)}
+          pending={tagsMutation.isPending}
+          onChange={(next) => tagsMutation.mutate(next)}
         />
 
         {todoEnabled ? (
@@ -532,6 +567,86 @@ function NoteField({ value, onChange, onBlur, placeholder }: NoteFieldProps) {
       style={styles.noteInput}
       scrollEnabled={false}
     />
+  );
+}
+
+interface TagEditorProps {
+  /** The item's current tags (server-canonical: lowercase, sorted). */
+  tags: string[];
+  /** Every in-use tag on the parent list — drives the suggested chips. */
+  listTags: string[];
+  /** A replace-set request is in flight; chips disable to prevent races. */
+  pending: boolean;
+  onChange: (next: string[]) => void;
+}
+
+/** Mirror of the server's tag normalization (trim, lowercase, collapse). */
+function normalizeTag(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Suggested-chip tag picker (spec §2.1): the item's tags render selected
+ * (tap to remove), the rest of the list's in-use tags render as unselected
+ * suggestions (tap to add), and a quiet inline input creates a new tag on
+ * submit. Never a bare free-text field — the list's existing vocabulary is
+ * always one tap away.
+ */
+function TagEditor({ tags, listTags, pending, onChange }: TagEditorProps) {
+  const [draft, setDraft] = useState("");
+  const suggestions = listTags.filter((t) => !tags.includes(t));
+
+  const addDraft = () => {
+    const tag = normalizeTag(draft);
+    if (!tag || tag.length > 40) return;
+    setDraft("");
+    if (tags.includes(tag)) return;
+    onChange([...tags, tag]);
+  };
+
+  return (
+    <View style={styles.tagSection}>
+      <Text variant="caption" tone="muted" style={styles.eyebrow}>
+        Tags
+      </Text>
+      <View style={styles.tagChips}>
+        {tags.map((tag) => (
+          <Chip
+            key={tag}
+            label={tag}
+            selected
+            disabled={pending}
+            onPress={() => onChange(tags.filter((t) => t !== tag))}
+            testID={`item-tag-${tag}`}
+          />
+        ))}
+        {suggestions.map((tag) => (
+          <Chip
+            key={tag}
+            label={tag}
+            disabled={pending}
+            onPress={() => onChange([...tags, tag])}
+            testID={`item-tag-suggest-${tag}`}
+          />
+        ))}
+        <TextInput
+          testID="item-tag-input"
+          value={draft}
+          onChangeText={setDraft}
+          onSubmitEditing={addDraft}
+          onBlur={addDraft}
+          placeholder={tags.length === 0 && suggestions.length === 0 ? "Add a tag" : "Add tag"}
+          placeholderTextColor={tokens.text.muted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          maxLength={40}
+          // Keep the keyboard up for rapid multi-tag entry on native; web
+          // ignores this and keeps focus anyway.
+          blurOnSubmit={false}
+          style={styles.tagInput}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -913,6 +1028,27 @@ const styles = StyleSheet.create({
     borderTopColor: tokens.border.subtle,
     minHeight: 44,
     textAlignVertical: "top",
+  },
+
+  // Tags — chip picker over the list's existing tags
+  tagSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.border.subtle,
+    paddingTop: tokens.space.md,
+    gap: tokens.space.sm,
+  },
+  tagChips: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: tokens.space.sm,
+  },
+  tagInput: {
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.sm,
+    paddingVertical: 6,
+    paddingHorizontal: tokens.space.sm,
+    minWidth: 96,
   },
 
   // Primary action — completion
