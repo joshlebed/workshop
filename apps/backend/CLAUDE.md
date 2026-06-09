@@ -167,6 +167,23 @@ prod, Terraform sets env vars on the Lambda function (`STAGE`, `DATABASE_URL`,
 - `postgres` (the pg driver) is bundled because there's no built-in.
 - Cold start ~300–500ms for a bundled Node.js 20 Hono handler.
 
+## Discord operator notifications are observable — grep the logs first
+
+`notifyDiscord` (`src/lib/discord.ts`) logs **every** outcome, so "a `#workshop-admin`
+message is missing" is triageable from CloudWatch without guessing. A signup emits
+`new signup` (the call site, proving a user was created) then one of: `discord notify
+sent` (delivered), `discord notify non-2xx` / `discord notify threw` (Discord rejected —
+auto-retried once on 429/5xx/network), or `discord notify skipped: webhook not configured`
+(the `DISCORD_NOTIFY_WEBHOOK_URL` Lambda env is empty). Notifications only fire for
+**genuinely new users** (`createdUser` in `routes/v1/auth.ts`); a returning user signing
+in with a second provider links by email (`createdUser: false`) and correctly stays
+silent — so "no message" can simply mean nobody new signed up. Cross-check against the
+`users` table (max `created_at`) before assuming a delivery bug.
+
+```bash
+AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 720h --filter '?"new signup" ?"discord notify"' --no-follow
+```
+
 ## Request analytics
 
 Every Lambda request emits one structured JSON line (`kind: "request"`) with

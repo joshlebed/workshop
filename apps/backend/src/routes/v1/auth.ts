@@ -142,7 +142,11 @@ authRoutes.post("/apple", async (c) => {
   });
   if (createdUser) {
     const label = user.displayName ?? user.email ?? user.id;
-    await notifyDiscord(`:wave: new signup — ${label} via apple`);
+    // Log the signup independently of Discord so a missing admin message can be
+    // traced: this line proves a new user was created and the notify was
+    // attempted, even if the Discord POST later fails.
+    logger.info("new signup", { userId: user.id, provider: "apple", label });
+    await notifyDiscord(`:wave: new signup — ${label} via apple`, { kind: "signup" });
   }
 
   const token = signSession(user.id);
@@ -179,7 +183,8 @@ authRoutes.post("/google", async (c) => {
   });
   if (createdUser) {
     const label = user.displayName ?? user.email ?? user.id;
-    await notifyDiscord(`:wave: new signup — ${label} via google`);
+    logger.info("new signup", { userId: user.id, provider: "google", label });
+    await notifyDiscord(`:wave: new signup — ${label} via google`, { kind: "signup" });
   }
 
   const token = signSession(user.id);
