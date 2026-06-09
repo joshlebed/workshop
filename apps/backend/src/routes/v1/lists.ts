@@ -623,6 +623,7 @@ listRoutes.post("/", async (c) => {
   const kindLabel = created.itemKind ?? "any";
   await notifyDiscord(
     `:clipboard: new list — "${created.name}" (${kindLabel}${modulesLabel ? `, ${modulesLabel}` : ""}) by ${actorLabel}`,
+    { kind: "new_list" },
   );
 
   return ok(c, { list: toListShape(created) }, 201);
