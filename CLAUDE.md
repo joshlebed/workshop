@@ -64,8 +64,9 @@ small products — first feature is **watchlist** (movie tracker). New features 
 - **No secrets in repo**. DB password, session secret, DATABASE_URL all in SSM Parameter Store.
   Read via OIDC in CI. `terraform.tfvars` and `.env` are gitignored.
 - **Share types in `@workshop/shared`**. No manually-duplicated interfaces between backend/mobile.
-- **Drizzle migrations**: from `apps/backend/`, `pnpm run db:generate -- --name=descriptive_name`.
-  Always pass `--name`. Commit all generated files in `drizzle/` and `drizzle/meta/`.
+- **Drizzle migrations**: from `apps/backend/`, `pnpm run db:generate --name=descriptive_name`.
+  Always pass `--name`, with no `--` separator — pnpm forwards the flag as-is and drizzle-kit
+  errors on a literal `--`. Commit all generated files in `drizzle/` and `drizzle/meta/`.
 - **Biome auto-formats on pre-commit via lefthook** (`--write` with `stage_fixed: true`). Tools
   like `eas-cli` reformat `app.json` — run `pnpm run lint:fix` after. Gitleaks runs locally if
   installed; CI enforces regardless.
