@@ -46,7 +46,13 @@ export interface ItemListProps {
    * those cards; they're ignored on every other list type.
    */
   isGameKind?: boolean;
-  /** Today's scored players per game, server-ranked. Keyed by itemId. */
+  /**
+   * Whether `scoresByItem` is today's standings (vs a past day picked from the
+   * day rail). Forwarded to each card so past days drop the "…today" wording
+   * and hide the Play CTA. Defaults to today when omitted.
+   */
+  viewingToday?: boolean;
+  /** Scored players per game for the viewed day, server-ranked. Keyed by itemId. */
   scoresByItem?: Record<string, LeaderboardEntry[]>;
   /** Full member roster — the "of N" denominator + the empty-state facepile. */
   members?: ListMemberSummary[];

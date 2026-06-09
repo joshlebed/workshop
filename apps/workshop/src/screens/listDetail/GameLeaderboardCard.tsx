@@ -43,6 +43,13 @@ export interface GameLeaderboardCardProps {
   /** Full member roster — the "of N" denominator + the dimmed empty facepile. */
   members: ListMemberSummary[];
   selfId: string | null;
+  /**
+   * Whether the displayed day is today. The day rail can re-date the whole
+   * card to a past day; when it does we drop the present-tense "…today"
+   * wording and hide the Play / paste CTA (results can only be posted to
+   * today's bucket — switch back to Today to play).
+   */
+  viewingToday?: boolean;
   /** Scores still loading — show skeleton standings, not a 0-turnout card. */
   loading?: boolean;
   /** Tap the title or standings → game detail. */
@@ -90,6 +97,7 @@ export const GameLeaderboardCard = memo(function GameLeaderboardCard({
   entries,
   members,
   selfId,
+  viewingToday = true,
   loading,
   onPressBody,
   onLongPressBody,
@@ -117,10 +125,14 @@ export const GameLeaderboardCard = memo(function GameLeaderboardCard({
     total === 0
       ? "No members yet"
       : playedCount === 0
-        ? "No one's played yet"
+        ? viewingToday
+          ? "No one's played yet"
+          : "No one played"
         : playedCount === total
-          ? "Everyone's played today"
-          : `${playedCount} of ${total} played today`;
+          ? viewingToday
+            ? "Everyone's played today"
+            : "Everyone played"
+          : `${playedCount} of ${total} played${viewingToday ? " today" : ""}`;
 
   return (
     <View style={[styles.card, isDragging && styles.cardDragging]} testID={`game-card-${item.id}`}>
@@ -200,7 +212,7 @@ export const GameLeaderboardCard = memo(function GameLeaderboardCard({
         {loading ? (
           <SkeletonRows />
         ) : playedCount === 0 ? (
-          <EmptyStandings members={members} />
+          <EmptyStandings members={members} viewingToday={viewingToday} />
         ) : (
           <>
             {topRows.map((entry) => (
@@ -226,8 +238,9 @@ export const GameLeaderboardCard = memo(function GameLeaderboardCard({
         )}
       </Pressable>
 
-      {/* Play CTA — only when the viewer hasn't logged today's result. */}
-      {!loading && !iPlayed && total > 0 ? (
+      {/* Play CTA — only on today (past days are read-only — you can't post
+          to a closed bucket), and only when the viewer hasn't logged a result. */}
+      {viewingToday && !loading && !iPlayed && total > 0 ? (
         <View style={styles.cta}>
           <Pressable
             accessibilityRole="link"
@@ -326,7 +339,13 @@ function RankMark({ rank }: { rank: number | null }) {
   );
 }
 
-function EmptyStandings({ members }: { members: ListMemberSummary[] }) {
+function EmptyStandings({
+  members,
+  viewingToday,
+}: {
+  members: ListMemberSummary[];
+  viewingToday: boolean;
+}) {
   const faces = members.slice(0, 5);
   return (
     <View style={styles.empty}>
@@ -340,7 +359,7 @@ function EmptyStandings({ members }: { members: ListMemberSummary[] }) {
         </View>
       ) : null}
       <Text variant="caption" tone="muted" style={styles.emptyText}>
-        Be the first to play today.
+        {viewingToday ? "Be the first to play today." : "No one played."}
       </Text>
     </View>
   );
