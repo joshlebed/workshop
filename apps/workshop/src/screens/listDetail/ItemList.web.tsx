@@ -63,6 +63,7 @@ export function ItemList({
   playedByItem,
   totalPlayers,
   isGameKind,
+  viewingToday,
   scoresByItem,
   members,
   scoresLoading,
@@ -121,6 +122,7 @@ export function ItemList({
         entries={scoresByItem?.[item.id] ?? EMPTY_ENTRIES}
         members={members ?? EMPTY_MEMBERS}
         selfId={selfId}
+        viewingToday={viewingToday ?? true}
         loading={scoresLoading}
         onPressBody={() => onRowPressBody(item, section)}
         onMenu={() => onRowMenu(item, section)}
@@ -133,6 +135,7 @@ export function ItemList({
       scoresByItem,
       members,
       selfId,
+      viewingToday,
       scoresLoading,
       onRowPressBody,
       onRowMenu,

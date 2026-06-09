@@ -113,6 +113,16 @@ small products — first feature is **watchlist** (movie tracker). New features 
   (`SortableGameCard`/`DraggableGameCard` mirror the row variants), so reorder uses the same
   `moveItem` machinery — which works because **`leaderboard` now implies `ordered` bucketing**
   even without the `ranking` module (see `apps/backend/CLAUDE.md`).
+- **The shared `DayRail` (`src/components/DayRail.tsx`) re-dates leaderboards on both the
+  per-game detail screen and the list-level status-card view.** `ListDetail` keeps two
+  list-scores queries: one pinned to `todayKey` (drives the play→paste loop's "have I played
+  today" + the clipboard recap) and one keyed off the selected `viewDate` (drives the card
+  standings). When viewing today they share a queryKey, so it's **one fetch** — the second
+  query only does work on a past day. Pass `viewingToday` down through `ItemList` to
+  `GameLeaderboardCard`: a past day drops the "…today" turnout wording and hides the Play /
+  paste CTA (scores can only be _posted_ to today's bucket — switch back to Today to play).
+  The copy-scores button follows the viewed day. If you add a new today-coupled behavior to a
+  leaderboard card, gate it on `viewingToday` too.
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:

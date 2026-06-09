@@ -23,6 +23,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { archiveItem, completeItem, fetchItems, moveItem, uncompleteItem } from "../api/items";
 import { fetchListScores, upsertItemScore } from "../api/scores";
 import { syncSource } from "../api/sources";
+import { DayRail } from "../components/DayRail";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { applyOptimisticMove, neighborsForOrderedReorder } from "../lib/albumShelfPositions";
@@ -98,27 +99,44 @@ export function ListDetail({ list, members, sources, token }: Props) {
     refetchInterval: livePoll,
   });
 
-  // Leaderboard lists: pull today's scores so each row can show "X of Y
-  // played today" in place of the per-row "Added by …" attribution — the
-  // social signal users actually care about on a daily-games shelf.
+  // Which day's standings the leaderboard cards show. Defaults to today; the
+  // day rail re-dates every card at once. Scores can only ever be *posted* to
+  // today's bucket, so the play→paste loop below stays pinned to `todayKey`
+  // regardless of which day is on screen.
   const todayKey = localDateKey();
-  const listScoresQuery = useQuery({
+  const [viewDate, setViewDate] = useState(todayKey);
+  const viewingToday = viewDate === todayKey;
+
+  // Today's scores drive the play→paste loop ("have I played today") and the
+  // clipboard recap — always today, independent of the viewed day.
+  const todayScoresQuery = useQuery({
     queryKey: queryKeys.gameScores.forList(list.id, todayKey),
     queryFn: () => fetchListScores(list.id, todayKey, token),
     enabled: !!token && isGameKind,
     refetchInterval: livePoll,
   });
+  // The viewed day's scores drive the card standings. When viewing today this
+  // resolves to the exact same queryKey as `todayScoresQuery`, so react-query
+  // serves both from one fetch + cache entry — the second query is free on the
+  // common path and only does real work when browsing a past day (which is
+  // immutable, hence no polling).
+  const viewScoresQuery = useQuery({
+    queryKey: queryKeys.gameScores.forList(list.id, viewDate),
+    queryFn: () => fetchListScores(list.id, viewDate, token),
+    enabled: !!token && isGameKind,
+    refetchInterval: viewingToday ? livePoll : false,
+  });
+  const todayScoresByItem = todayScoresQuery.data?.scoresByItem;
   const playedByItem = useMemo(() => {
     const map = new Map<string, number>();
-    const byItem = listScoresQuery.data?.scoresByItem;
-    if (!byItem) return map;
-    for (const itemId of Object.keys(byItem)) {
-      const entries = byItem[itemId] ?? [];
+    if (!todayScoresByItem) return map;
+    for (const itemId of Object.keys(todayScoresByItem)) {
+      const entries = todayScoresByItem[itemId] ?? [];
       const played = entries.filter((e) => e.scoreRaw != null && e.scoreRaw.length > 0).length;
       map.set(itemId, played);
     }
     return map;
-  }, [listScoresQuery.data]);
+  }, [todayScoresByItem]);
 
   const [newItemIds, setNewItemIds] = useState<Set<string>>(() => new Set());
   const beforeRefreshIdsRef = useRef<Set<string> | null>(null);
@@ -321,18 +339,20 @@ export function ListDetail({ list, members, sources, token }: Props) {
     });
   };
 
-  const onCopyTodaysScores = async () => {
+  const onCopyScores = async () => {
     const summary = buildTodaysScoresSummary({
       listName: list.name,
       listUrl: buildListShareUrl(list.shareSlug),
       items: [...orderedRaw, ...unorderedRaw, ...completedRaw],
-      scoresByItem: listScoresQuery.data?.scoresByItem ?? {},
+      scoresByItem: viewScoresQuery.data?.scoresByItem ?? {},
       selfId,
-      dateKey: todayKey,
+      dateKey: viewDate,
     });
     if (!summary) {
       showToast({
-        message: "No scores from you today yet. Post one to share a recap.",
+        message: viewingToday
+          ? "No scores from you today yet. Post one to share a recap."
+          : "You posted no scores that day.",
         tone: "default",
       });
       return;
@@ -340,7 +360,9 @@ export function ListDetail({ list, members, sources, token }: Props) {
     const ok = await copyToClipboard(summary);
     if (ok) haptics.light();
     showToast({
-      message: ok ? "Today's scores copied to clipboard" : "Couldn't copy to clipboard",
+      message: ok
+        ? `${viewingToday ? "Today's" : "That day's"} scores copied to clipboard`
+        : "Couldn't copy to clipboard",
       tone: ok ? "success" : "danger",
     });
   };
@@ -433,20 +455,21 @@ export function ListDetail({ list, members, sources, token }: Props) {
     return url ? () => openExternalUrl(url) : null;
   };
 
-  // Leaderboard "status card" plumbing. The cards read today's standings out of
-  // `scoresByItem` (already fetched above for the row count); the play loop —
-  // tap Play, then paste your result when you return to the page — is owned by
-  // `useReturnToPaste` + a paste sheet.
-  const scoresByItem = listScoresQuery.data?.scoresByItem;
+  // Leaderboard "status card" plumbing. The cards render the *viewed* day's
+  // standings out of `scoresByItem`; the play loop — tap Play, then paste your
+  // result when you return to the page — is owned by `useReturnToPaste` + a
+  // paste sheet, and keys off *today's* scores (`hasMyScore`) so browsing a
+  // past day never confuses "have I played today".
+  const scoresByItem = viewScoresQuery.data?.scoresByItem;
   const hasMyScore = useCallback(
     (itemId: string): boolean => {
       if (!selfId) return false;
-      const entries = scoresByItem?.[itemId];
+      const entries = todayScoresByItem?.[itemId];
       return !!entries?.some(
         (e) => e.userId === selfId && e.scoreRaw != null && e.scoreRaw.length > 0,
       );
     },
-    [scoresByItem, selfId],
+    [todayScoresByItem, selfId],
   );
   const {
     promptItemId,
@@ -578,8 +601,12 @@ export function ListDetail({ list, members, sources, token }: Props) {
             {isGameKind ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Copy today's scores to clipboard"
-                onPress={onCopyTodaysScores}
+                accessibilityLabel={
+                  viewingToday
+                    ? "Copy today's scores to clipboard"
+                    : "Copy the selected day's scores to clipboard"
+                }
+                onPress={onCopyScores}
                 testID="list-detail-copy-scores"
                 hitSlop={10}
                 style={styles.navButton}
@@ -675,6 +702,17 @@ export function ListDetail({ list, members, sources, token }: Props) {
             ) : null}
           </View>
         </View>
+
+        {isGameKind && !itemsQuery.isPending && !itemsQuery.isError && totalRowsUnfiltered > 0 ? (
+          <View style={styles.dayRailWrap}>
+            <DayRail
+              selectedDate={viewDate}
+              today={todayKey}
+              onSelectDate={setViewDate}
+              testIDPrefix="list-detail-day"
+            />
+          </View>
+        ) : null}
 
         {itemsQuery.isPending ? (
           <View style={styles.center}>
@@ -803,9 +841,10 @@ export function ListDetail({ list, members, sources, token }: Props) {
               playedByItem={isGameKind ? playedByItem : undefined}
               totalPlayers={isGameKind ? members.length : undefined}
               isGameKind={isGameKind}
+              viewingToday={viewingToday}
               scoresByItem={scoresByItem}
               members={members}
-              scoresLoading={isGameKind && listScoresQuery.isPending}
+              scoresLoading={isGameKind && viewScoresQuery.isPending}
               onPlayGame={markPlaying}
               onPasteScore={openPasteFor}
               accent={accent}
@@ -1034,6 +1073,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xs,
+  },
+  // Day rail sits pinned between the search toolbar and the scrolling card
+  // list, so the selected day stays put while the games scroll.
+  dayRailWrap: {
+    paddingTop: tokens.space.xs,
+    paddingBottom: tokens.space.sm,
   },
   filterPill: {
     flexDirection: "row",

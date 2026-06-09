@@ -15,10 +15,11 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { archiveItem, fetchItem, updateItem } from "../../../../src/api/items";
 import { deleteItemScore, fetchItemScores, upsertItemScore } from "../../../../src/api/scores";
+import { DayRail } from "../../../../src/components/DayRail";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { errorMessage } from "../../../../src/lib/api";
 import { confirm } from "../../../../src/lib/confirm";
-import { formatGameDateLabel, localDateKey, shiftDateKey } from "../../../../src/lib/gameDate";
+import { formatGameDateLabel, localDateKey } from "../../../../src/lib/gameDate";
 import { goBack } from "../../../../src/lib/goBack";
 import { haptics } from "../../../../src/lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../../../../src/lib/openUrl";
@@ -35,8 +36,6 @@ import {
   tokens,
   useToast,
 } from "../../../../src/ui/index";
-
-const DAY_RAIL_LENGTH = 7;
 
 /**
  * Per-game detail screen for a games list. The hero is the leaderboard for
@@ -95,18 +94,6 @@ export default function GameDetail() {
     () => (scoresQuery.data?.entries ?? []).filter((e) => e.userId !== user?.id),
     [scoresQuery.data, user?.id],
   );
-
-  // Build the day rail: today and the previous 6 days. Hoisted up here (above
-  // the early-return guards) so the useMemo runs unconditionally on every
-  // render — moving it later would violate rules-of-hooks.
-  const dayRail = useMemo(() => {
-    const out: { key: string; label: string }[] = [];
-    for (let i = 0; i < DAY_RAIL_LENGTH; i++) {
-      const key = shiftDateKey(today, -i);
-      out.push({ key, label: dayChipLabel(key, today) });
-    }
-    return out;
-  }, [today]);
 
   const upsertMutation = useMutation({
     mutationFn: ({ scoreRaw }: { scoreRaw: string; isEdit: boolean }) => {
@@ -388,37 +375,12 @@ export default function GameDetail() {
             ) : null}
           </Pressable>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.dayRail}
-          >
-            {dayRail.map((d) => {
-              const selected = d.key === date;
-              return (
-                <Pressable
-                  key={d.key}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Show ${d.label}`}
-                  accessibilityState={{ selected }}
-                  onPress={() => onDate(d.key)}
-                  testID={`game-detail-day-${d.key}`}
-                  style={({ pressed }) => [
-                    styles.dayChip,
-                    selected && styles.dayChipSelected,
-                    pressed && styles.dayChipPressed,
-                  ]}
-                >
-                  <Text
-                    variant="label"
-                    style={[styles.dayChipText, selected && styles.dayChipTextSelected]}
-                  >
-                    {d.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <DayRail
+            selectedDate={date}
+            today={today}
+            onSelectDate={onDate}
+            testIDPrefix="game-detail-day"
+          />
 
           <View style={styles.dayHeader}>
             <Text variant="heading" style={styles.dayTitle}>
@@ -601,15 +563,6 @@ export default function GameDetail() {
       </Sheet>
     </KeyboardAvoidingView>
   );
-}
-
-function dayChipLabel(key: string, today: string): string {
-  if (key === today) return "Today";
-  if (key === shiftDateKey(today, -1)) return "Yesterday";
-  const [y, m, d] = key.split("-").map(Number);
-  if (!y || !m || !d) return key;
-  const dt = new Date(y, m - 1, d);
-  return dt.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
 }
 
 interface LeaderboardEntryRowProps {
@@ -912,25 +865,6 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.md,
     lineHeight: tokens.font.size.md + 2,
   },
-  dayRail: {
-    paddingHorizontal: tokens.space.xl,
-    gap: tokens.space.sm,
-  },
-  dayChip: {
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-  },
-  dayChipSelected: {
-    backgroundColor: tokens.accent.muted,
-    borderColor: tokens.accent.default,
-  },
-  dayChipPressed: { opacity: 0.75 },
-  dayChipText: { fontSize: tokens.font.size.sm, color: tokens.text.secondary },
-  dayChipTextSelected: { color: tokens.accent.default, fontWeight: tokens.font.weight.semibold },
   dayHeader: {
     paddingHorizontal: tokens.space.xl,
     gap: 2,
