@@ -18,7 +18,7 @@ Hono app. Runs both as a Lambda handler (`src/lambda.ts`) and a local Node serve
 From this directory:
 
 ```bash
-pnpm run db:generate -- --name=descriptive_name   # always pass --name
+pnpm run db:generate --name=descriptive_name   # always pass --name; no "--" (drizzle-kit rejects it)
 pnpm run db:migrate                                # apply locally
 ```
 
