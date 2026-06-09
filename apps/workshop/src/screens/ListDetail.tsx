@@ -44,6 +44,7 @@ import {
   EmptyState,
   type ListColorKey,
   Screen,
+  TagFilterBar,
   Text,
   tokens,
   useToast,
@@ -81,6 +82,10 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const selfId = user?.id ?? null;
   const filterInputRef = useRef<TextInput>(null);
   const [filter, setFilter] = useState("");
+  // Tag chips selected in the filter bar. Multi-select reads as OR; empty
+  // set = "All" (no tag filtering). Stored as an array for stable identity
+  // in deps; converted to a Set where membership checks happen.
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const itemsKey = queryKeys.items.byList(list.id);
   const livePoll = useLivePollingInterval();
@@ -263,10 +268,38 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const unorderedRaw = data?.unordered ?? [];
   const completedRaw = data?.completed ?? [];
 
+  // In-use tags + counts for the chip bar, derived from the loaded items so
+  // the bar is always in sync with the rows (no second fetch, no cache
+  // drift). Sorted by count desc, then alphabetically.
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const it of [...orderedRaw, ...unorderedRaw, ...completedRaw]) {
+      for (const tag of it.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  }, [orderedRaw, unorderedRaw, completedRaw]);
+
+  // Drop selected tags that no longer exist on any item (last tagged item
+  // archived / untagged) so a stale selection can't filter to zero forever.
+  useEffect(() => {
+    if (selectedTags.length === 0 || itemsQuery.isPending) return;
+    const live = new Set(tagCounts.map((t) => t.tag));
+    if (selectedTags.some((t) => !live.has(t))) {
+      setSelectedTags((prev) => prev.filter((t) => live.has(t)));
+    }
+  }, [tagCounts, selectedTags, itemsQuery.isPending]);
+
+  const selectedTagSet = useMemo(() => new Set(selectedTags), [selectedTags]);
+
   const filtered = useMemo(() => {
     const needle = filter.trim().toLowerCase();
-    if (!needle) return { ordered: orderedRaw, unordered: unorderedRaw, completed: completedRaw };
-    const matches = (it: Item) => {
+    if (!needle && selectedTagSet.size === 0) {
+      return { ordered: orderedRaw, unordered: unorderedRaw, completed: completedRaw };
+    }
+    const matchesText = (it: Item) => {
+      if (!needle) return true;
       const c = it.content as { artist?: string; authors?: string[]; siteName?: string };
       const haystack = [
         it.title,
@@ -279,12 +312,17 @@ export function ListDetail({ list, members, sources, token }: Props) {
         .toLowerCase();
       return haystack.includes(needle);
     };
+    // Tag chips are OR within the bar: an item passes when it carries ANY
+    // selected tag. Text search ANDs on top.
+    const matchesTags = (it: Item) =>
+      selectedTagSet.size === 0 || (it.tags ?? []).some((t) => selectedTagSet.has(t));
+    const matches = (it: Item) => matchesTags(it) && matchesText(it);
     return {
       ordered: orderedRaw.filter(matches),
       unordered: unorderedRaw.filter(matches),
       completed: completedRaw.filter(matches),
     };
-  }, [orderedRaw, unorderedRaw, completedRaw, filter]);
+  }, [orderedRaw, unorderedRaw, completedRaw, filter, selectedTagSet]);
 
   const memberNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -308,10 +346,13 @@ export function ListDetail({ list, members, sources, token }: Props) {
     rankingOn &&
     filtered.ordered.length === 0 &&
     (filtered.unordered.length > 0 || filtered.completed.length > 0) &&
-    filter.trim().length === 0;
+    filter.trim().length === 0 &&
+    selectedTags.length === 0;
 
   const totalRows = filtered.ordered.length + filtered.unordered.length + filtered.completed.length;
   const filterActive = filter.trim().length > 0;
+  const tagFilterActive = selectedTags.length > 0;
+  const anyFilterActive = filterActive || tagFilterActive;
   const totalRowsUnfiltered = orderedRaw.length + unorderedRaw.length + completedRaw.length;
 
   const onReorderOrdered = (event: ReorderEvent) => {
@@ -534,7 +575,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const isFilterEmpty =
     !itemsQuery.isPending &&
     !itemsQuery.isError &&
-    filterActive &&
+    anyFilterActive &&
     totalRows === 0 &&
     totalRowsUnfiltered > 0;
 
@@ -714,6 +755,21 @@ export function ListDetail({ list, members, sources, token }: Props) {
           </View>
         ) : null}
 
+        {tagCounts.length > 0 && !itemsQuery.isPending && !itemsQuery.isError ? (
+          <View style={styles.tagBarWrap}>
+            <TagFilterBar
+              tags={tagCounts}
+              selected={selectedTagSet}
+              onToggle={(tag) =>
+                setSelectedTags((prev) =>
+                  prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+                )
+              }
+              onClearAll={() => setSelectedTags([])}
+            />
+          </View>
+        ) : null}
+
         {itemsQuery.isPending ? (
           <View style={styles.center}>
             <ActivityIndicator color={tokens.accent.default} />
@@ -743,12 +799,21 @@ export function ListDetail({ list, members, sources, token }: Props) {
           <View style={styles.center}>
             <EmptyState
               title="No matches"
-              description={`Nothing in this list matches “${filter.trim()}.”`}
+              description={
+                tagFilterActive && !filterActive
+                  ? `Nothing in this list is tagged ${selectedTags.map((t) => `“${t}”`).join(" or ")}.`
+                  : tagFilterActive
+                    ? `Nothing tagged ${selectedTags.map((t) => `“${t}”`).join(" or ")} matches “${filter.trim()}.”`
+                    : `Nothing in this list matches “${filter.trim()}.”`
+              }
               action={
                 <Button
-                  label="Clear search"
+                  label={tagFilterActive ? "Clear filters" : "Clear search"}
                   variant="secondary"
-                  onPress={() => setFilter("")}
+                  onPress={() => {
+                    setFilter("");
+                    setSelectedTags([]);
+                  }}
                   testID="list-detail-filter-clear"
                 />
               }
@@ -1077,6 +1142,12 @@ const styles = StyleSheet.create({
   // Day rail sits pinned between the search toolbar and the scrolling card
   // list, so the selected day stays put while the games scroll.
   dayRailWrap: {
+    paddingTop: tokens.space.xs,
+    paddingBottom: tokens.space.sm,
+  },
+  // Tag chip bar pins with the toolbar above the scrolling rows, mirroring
+  // the day rail: the active filter stays visible while results scroll.
+  tagBarWrap: {
     paddingTop: tokens.space.xs,
     paddingBottom: tokens.space.sm,
   },

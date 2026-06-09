@@ -19,11 +19,12 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { items, lists } from "../../db/schema.js";
+import { items, itemTags, lists } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { recordEvent } from "../../lib/events.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule, stripModuleGatedItemFields } from "../../lib/moduleGate.js";
+import { requireCapability } from "../../lib/permissions.js";
 import { appendPosition, moveItemPosition } from "../../lib/positions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -83,9 +84,25 @@ const moveItemSchema = z.object({
   afterItemId: z.union([z.string().uuid(), z.null()]).optional(),
 });
 
+// Tags are manual lowercase labels (spec §2.1): trim, lowercase, collapse
+// internal whitespace, then require 1–40 chars. The set is replaced
+// wholesale per request, deduped after normalization so "Burgers" and
+// " burgers " collapse into one row.
+const tagSchema = z
+  .string()
+  .transform((s) => s.trim().toLowerCase().replace(/\s+/g, " "))
+  .pipe(z.string().min(1, "tag required").max(40, "tag too long"));
+
+const updateItemTagsSchema = z
+  .object({
+    tags: z.array(tagSchema).max(20, "too many tags"),
+  })
+  .transform((v) => ({ tags: [...new Set(v.tags)].sort() }));
+
 export const __test = {
   updateItemSchema,
   moveItemSchema,
+  updateItemTagsSchema,
   clearLinkPreviewContent,
   linkPreviewToContent,
   mergeLinkPreviewContent,
@@ -102,6 +119,7 @@ interface ItemRow {
   note: string | null;
   content: Record<string, unknown> | null;
   position: number | null;
+  tags: string[] | null;
   added_by: string;
   completed: boolean;
   completed_at: Date | string | null;
@@ -120,6 +138,7 @@ function rowToItem(r: ItemRow): Item {
     note: r.note,
     content: (r.content ?? {}) as ItemContent,
     position: r.position,
+    tags: r.tags ?? [],
     addedBy: r.added_by,
     completed: Boolean(r.completed),
     completedAt: toIsoOrNull(r.completed_at),
@@ -187,6 +206,7 @@ async function fetchItemShape(itemId: string, db: DbClient = getDb()): Promise<I
         i.id, i.list_id, COALESCE(i.kind, 'plain') AS kind, i.title, i.url, i.note,
         i.content, i.position, i.added_by, i.completed, i.completed_at, i.completed_by,
         i.created_at, i.updated_at,
+        (SELECT array_agg(t.tag ORDER BY t.tag) FROM item_tags t WHERE t.item_id = i.id) AS tags,
         l.modules AS list_modules
       FROM items i
       JOIN lists l ON l.id = i.list_id
@@ -230,7 +250,8 @@ export async function fetchItemsForList(
       SELECT
         i.id, i.list_id, COALESCE(i.kind, 'plain') AS kind, i.title, i.url, i.note,
         i.content, i.position, i.added_by, i.completed, i.completed_at, i.completed_by,
-        i.created_at, i.updated_at
+        i.created_at, i.updated_at,
+        (SELECT array_agg(t.tag ORDER BY t.tag) FROM item_tags t WHERE t.item_id = i.id) AS tags
       FROM items i
       WHERE i.list_id = ${listId} AND i.archived_at IS NULL
       ORDER BY
@@ -509,6 +530,64 @@ itemRoutes.delete("/:id", requireItemMember, async (c) => {
   });
   return ok(c, { ok: true });
 });
+
+// --- Tags ---
+
+/**
+ * Replace the item's tag set wholesale (PUT semantics — the body is the new
+ * set, not a delta). Any member can tag any item (capability `edit_items`).
+ * Emits one `item_tagged` event per call with the resulting set.
+ */
+itemRoutes.put(
+  "/:id/tags",
+  requireItemMember,
+  rateLimit({
+    family: "v1.items.tags",
+    limit: 120,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const denied = requireCapability(c, c.get("listMemberRole"), "edit_items");
+    if (denied) return denied;
+
+    const parsed = await parseJsonBody(c, updateItemTagsSchema);
+    if (!parsed.ok) return parsed.response;
+
+    const itemId = c.req.param("id");
+    const userId = c.get("userId");
+    const listId = c.get("itemListId");
+    const tags = parsed.data.tags;
+    const db = getDb();
+
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ title: items.title })
+        .from(items)
+        .where(eq(items.id, itemId))
+        .limit(1);
+      if (!row) throw new Error("item missing during tag replace");
+
+      await tx.delete(itemTags).where(eq(itemTags.itemId, itemId));
+      if (tags.length > 0) {
+        await tx.insert(itemTags).values(tags.map((tag) => ({ itemId, tag })));
+      }
+
+      await recordEvent({
+        db: tx,
+        listId,
+        actorId: userId,
+        type: "item_tagged",
+        itemId,
+        payload: { title: row.title, tags },
+      });
+    });
+
+    const item = await fetchItemShape(itemId);
+    if (!item) return err(c, "NOT_FOUND", "item not found");
+    return ok(c, { item });
+  },
+);
 
 // --- Completion (todo module) ---
 

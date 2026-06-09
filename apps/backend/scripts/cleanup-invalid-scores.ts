@@ -71,6 +71,7 @@ function toItem(row: ScoreRow): Item {
     note: null,
     content: c as Item["content"],
     position: null,
+    tags: [],
     addedBy: "",
     completed: false,
     completedAt: null,

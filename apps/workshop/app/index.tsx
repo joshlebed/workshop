@@ -59,6 +59,7 @@ function summaryLabel(list: { itemKind: ItemKind | null; modules: ModuleName[] }
 const EVENT_VERB: Partial<Record<ActivityEvent["type"], string>> = {
   item_added: "added",
   item_updated: "edited",
+  item_tagged: "tagged",
   item_archived: "archived an item",
   list_archived: "archived the list",
   item_completed: "checked off",

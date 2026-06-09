@@ -21,6 +21,7 @@ import {
   activityEvents,
   itemScores,
   items,
+  itemTags,
   listMembers,
   lists,
   userIdentities,
@@ -92,6 +93,8 @@ async function main() {
     content?: Record<string, unknown>;
     position?: number;
     completed?: boolean;
+    /** Manual labels (spec §2.1) — lowercase; powers the filter-chip bar. */
+    tags?: string[];
   };
 
   const fixtures: Array<{
@@ -237,12 +240,14 @@ async function main() {
           note: "Pack a jacket — wind picks up after 7pm.",
           position: 1024,
           content: { siteName: "sftravel.com" },
+          tags: ["outdoors", "free"],
         },
         {
           title: "Tea at Smith",
           url: "https://www.smithtea.com/",
           position: 2048,
           content: { siteName: "Smith Teamaker" },
+          tags: ["cozy"],
         },
       ],
     },
@@ -379,6 +384,10 @@ async function main() {
         })
         .returning();
       if (!item) throw new Error(`[seed] failed to insert item ${seedItem.title}`);
+
+      if (seedItem.tags && seedItem.tags.length > 0) {
+        await db.insert(itemTags).values(seedItem.tags.map((tag) => ({ itemId: item.id, tag })));
+      }
 
       await db.insert(activityEvents).values({
         listId: list.id,
