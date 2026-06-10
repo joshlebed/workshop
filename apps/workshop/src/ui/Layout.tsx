@@ -1,6 +1,13 @@
 import { usePathname, useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import { Platform, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+  type ViewStyle,
+} from "react-native";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -26,14 +33,16 @@ export function Screen({ children, style, testID }: ScreenProps) {
   );
 }
 
-// The web counterpart of the native bottom tab bar: a slim left rail with
-// the top-level Lists / Games switch. Rendered by `app/(tabs)/_layout.tsx`
-// only on web with the Games flag on — native uses expo-router's tab bar,
-// and with the flag off neither surface renders any switch.
-export function SidebarTabSwitch() {
+// The web counterpart of the native bottom tab bar: a compact inline switch
+// for Lists / Games. Render it inside top-level screen headers only on web
+// with the Games flag on — native uses expo-router's tab bar, and with the
+// flag off neither surface renders any switch.
+export function InlineTabSwitch() {
   const router = useRouter();
   const pathname = usePathname();
+  const { width } = useWindowDimensions();
   const onGames = pathname === "/games" || pathname.startsWith("/games/");
+  const compact = Platform.OS === "web" && width < 360;
 
   const item = (label: string, glyph: string, active: boolean, onPress: () => void) => (
     <Pressable
@@ -42,45 +51,63 @@ export function SidebarTabSwitch() {
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      style={[sidebarStyles.item, active && { backgroundColor: tokens.accent.muted }]}
+      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+        topTabStyles.item,
+        active && topTabStyles.itemActive,
+        (pressed || hovered) && !active && topTabStyles.itemHover,
+      ]}
     >
-      <Text style={{ color: active ? tokens.accent.default : tokens.text.muted, fontSize: 16 }}>
+      <Text
+        style={[topTabStyles.glyph, { color: active ? tokens.accent.default : tokens.text.muted }]}
+      >
         {glyph}
       </Text>
-      <Text
-        variant="label"
-        style={{ color: active ? tokens.accent.default : tokens.text.secondary }}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
+      {compact ? null : (
+        <Text
+          variant="label"
+          style={[
+            topTabStyles.label,
+            { color: active ? tokens.accent.default : tokens.text.secondary },
+          ]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      )}
     </Pressable>
   );
 
   return (
-    <View style={[sidebarStyles.rail, { borderRightColor: tokens.bg.elevated }]}>
+    <View style={topTabStyles.track}>
       {item("Lists", "◧", !onGames, () => router.navigate("/"))}
       {item("Games", "◆", onGames, () => router.navigate("/games"))}
     </View>
   );
 }
 
-const sidebarStyles = StyleSheet.create({
-  rail: {
-    width: 132,
-    paddingTop: 24,
-    paddingHorizontal: 8,
-    gap: 4,
-    borderRightWidth: StyleSheet.hairlineWidth,
+const topTabStyles = StyleSheet.create({
+  track: {
+    flexDirection: "row",
+    gap: tokens.space.xs,
+    padding: 3,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.border.subtle,
   },
   item: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
+    gap: tokens.space.sm,
+    minHeight: 32,
+    paddingVertical: 6,
+    paddingHorizontal: tokens.space.md,
+    borderRadius: tokens.radius.pill,
   },
+  itemActive: { backgroundColor: tokens.accent.muted },
+  itemHover: { backgroundColor: tokens.bg.elevated },
+  glyph: { fontSize: 14, lineHeight: 18 },
+  label: { fontWeight: tokens.font.weight.semibold },
 });
 
 const styles = StyleSheet.create({

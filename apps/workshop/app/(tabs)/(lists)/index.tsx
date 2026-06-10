@@ -24,6 +24,7 @@ import {
   unmuteList,
   unpinList,
 } from "../../../src/api/lists";
+import { HeaderActivityButton } from "../../../src/components/HeaderActivityButton";
 import { PullToRefresh } from "../../../src/components/PullToRefresh";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { useLivePollingInterval } from "../../../src/hooks/useLivePollingInterval";
@@ -35,6 +36,7 @@ import {
   Avatar,
   Button,
   EmptyState,
+  InlineTabSwitch,
   type ListColorKey,
   Screen,
   Sheet,
@@ -273,7 +275,6 @@ export default function Home() {
     }
     return n;
   }, [allLists]);
-  const hasUnread = totalUnread > 0;
 
   // The latest event per list — used as the subtitle when present, and as
   // the attribution source for the "X new from Sarah" copy (we look up the
@@ -417,46 +418,16 @@ export default function Home() {
           </Text>
         </View>
         <View style={styles.headerActions}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={
-              activityFeedQuery.isError
-                ? "Activity (couldn't load, tap to retry)"
-                : hasUnread
-                  ? `Activity, ${totalUnread} new`
-                  : "Activity"
-            }
-            onPress={() => {
-              if (activityFeedQuery.isError) {
-                activityFeedQuery.refetch();
-                return;
-              }
-              onActivity();
+          {Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
+          <HeaderActivityButton
+            unreadCount={totalUnread}
+            error={activityFeedQuery.isError}
+            onPress={onActivity}
+            onRetry={() => {
+              void activityFeedQuery.refetch();
             }}
-            // @ts-expect-error: react-native-web threads native title through to <button title>
-            title={Platform.OS === "web" ? "Activity  (⌘/)" : undefined}
             testID="open-activity"
-            style={({ pressed }) => [styles.headerCircle, pressed && styles.headerCirclePressed]}
-          >
-            <ActivityGlyph unread={hasUnread} error={activityFeedQuery.isError} />
-            {hasUnread && !activityFeedQuery.isError ? (
-              <View style={styles.unreadBadge} testID="activity-unread-badge">
-                <Text style={styles.unreadBadgeText} tone="onAccent">
-                  {totalUnread > 9 ? "9+" : String(totalUnread)}
-                </Text>
-              </View>
-            ) : null}
-            {activityFeedQuery.isError ? (
-              <View
-                style={[styles.unreadBadge, { backgroundColor: tokens.status.danger }]}
-                accessibilityLabel="Activity load failed"
-              >
-                <Text style={styles.unreadBadgeText} tone="onAccent">
-                  !
-                </Text>
-              </View>
-            ) : null}
-          </Pressable>
+          />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Profile and settings"
@@ -811,20 +782,6 @@ function RowMenuAction({ label, onPress }: { label: string; onPress: () => void 
   );
 }
 
-// Activity affordance: three stacked horizontal bars of decreasing length,
-// drawn from Views. Reads as "feed" / "list of recent things" without a
-// dependency on an icon library, and stays calm at 16px.
-function ActivityGlyph({ unread, error }: { unread: boolean; error?: boolean }) {
-  const color = error ? tokens.text.muted : unread ? tokens.text.primary : tokens.text.secondary;
-  return (
-    <View style={styles.activityGlyph} pointerEvents="none">
-      <View style={[styles.activityBar, { backgroundColor: color, width: 14 }]} />
-      <View style={[styles.activityBar, { backgroundColor: color, width: 10 }]} />
-      <View style={[styles.activityBar, { backgroundColor: color, width: 6 }]} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -856,37 +813,6 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
   },
   headerCirclePressed: { backgroundColor: tokens.bg.elevated },
-  activityGlyph: {
-    gap: 3,
-    alignItems: "flex-start",
-    width: 14,
-    height: 13,
-    justifyContent: "center",
-  },
-  activityBar: {
-    height: 1.5,
-    borderRadius: 1,
-  },
-  unreadBadge: {
-    position: "absolute",
-    top: -3,
-    right: -3,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    backgroundColor: tokens.accent.default,
-    borderWidth: 2,
-    borderColor: tokens.bg.canvas,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unreadBadgeText: {
-    fontSize: 10,
-    fontWeight: tokens.font.weight.bold,
-    lineHeight: 12,
-    letterSpacing: 0.1,
-  },
   profileCircle: { borderColor: tokens.border.default, overflow: "hidden" },
   profileImage: { width: 38, height: 38, borderRadius: 19 },
   profileInitials: {

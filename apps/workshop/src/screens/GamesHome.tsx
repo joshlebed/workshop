@@ -22,8 +22,9 @@ import type {
   MyGame,
 } from "@workshop/shared/games";
 import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from "react-native";
+import { fetchActivity } from "../api/activity";
 import { createFriendInvite, fetchFriends } from "../api/friends";
 import {
   addGame,
@@ -33,6 +34,8 @@ import {
   removeGame,
   upsertGameScore,
 } from "../api/games";
+import { fetchLists } from "../api/lists";
+import { HeaderActivityButton } from "../components/HeaderActivityButton";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
@@ -46,7 +49,16 @@ import { openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { shareOrCopyLink } from "../lib/share";
-import { Button, EmptyState, Screen, Sheet, Text, tokens, useToast } from "../ui/index";
+import {
+  Button,
+  EmptyState,
+  InlineTabSwitch,
+  Screen,
+  Sheet,
+  Text,
+  tokens,
+  useToast,
+} from "../ui/index";
 import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
 import { GamesOnboarding } from "./games/GamesOnboarding";
@@ -95,6 +107,29 @@ export function GamesHome() {
   });
   const myGames = gamesQuery.data?.games ?? [];
   const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
+
+  const listsQuery = useQuery({
+    queryKey: queryKeys.lists.all,
+    queryFn: () => fetchLists(token),
+    enabled: Platform.OS === "web" && !!token,
+    refetchInterval: livePoll,
+  });
+  const totalUnread = useMemo(() => {
+    let n = 0;
+    for (const l of listsQuery.data?.lists ?? []) {
+      if (l.mutedAt) continue;
+      n += l.unreadCount;
+    }
+    return n;
+  }, [listsQuery.data?.lists]);
+
+  const activityFeedQuery = useQuery({
+    queryKey: queryKeys.activity.feed,
+    queryFn: () => fetchActivity({ limit: 50 }, token),
+    enabled: Platform.OS === "web" && !!token,
+    staleTime: 30_000,
+    refetchInterval: livePoll,
+  });
 
   // Friends drive which empty-state variant shows; discovery powers both the
   // friends-but-no-games suggestions and the + sheet's suggestion list. Both
@@ -279,6 +314,7 @@ export function GamesHome() {
     });
     if (ok) removeMutation.mutate(mg.gameId);
   };
+  const onActivity = useCallback(() => router.push("/activity"), [router]);
 
   const renderCard = useCallback(
     (mg: MyGame, isDragging: boolean, onLongPressBody?: () => void) => {
@@ -318,20 +354,40 @@ export function GamesHome() {
   return (
     <Screen testID="games-home">
       <View style={styles.headerRow}>
-        <Text variant="title">Games</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Friends"
-          onPress={() => router.push("/friends")}
-          testID="games-friends-button"
-          hitSlop={8}
-          style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-            styles.headerIconBtn,
-            (pressed || hovered) && styles.headerIconBtnHover,
-          ]}
-        >
-          <Text style={styles.headerIconGlyph}>👥</Text>
-        </Pressable>
+        <View style={styles.headerTitleBlock}>
+          <Text variant="title" numberOfLines={1}>
+            Games
+          </Text>
+        </View>
+        <View style={styles.headerActions}>
+          {Platform.OS === "web" ? (
+            <>
+              <InlineTabSwitch />
+              <HeaderActivityButton
+                unreadCount={totalUnread}
+                error={activityFeedQuery.isError}
+                onPress={onActivity}
+                onRetry={() => {
+                  void activityFeedQuery.refetch();
+                }}
+                testID="open-activity"
+              />
+            </>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Friends"
+            onPress={() => router.push("/friends")}
+            testID="games-friends-button"
+            hitSlop={8}
+            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+              styles.headerIconBtn,
+              (pressed || hovered) && styles.headerIconBtnHover,
+            ]}
+          >
+            <Text style={styles.headerIconGlyph}>👥</Text>
+          </Pressable>
+        </View>
       </View>
 
       {gamesQuery.isPending ? (
@@ -454,10 +510,13 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.md,
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.xs,
   },
+  headerTitleBlock: { flex: 1, minWidth: 0 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   headerIconBtn: {
     width: 40,
     height: 40,

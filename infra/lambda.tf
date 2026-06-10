@@ -58,6 +58,7 @@ resource "aws_lambda_function" "api" {
       GOOGLE_WEB_CLIENT_ID       = aws_ssm_parameter.google_web_client_id.value
       TMDB_API_KEY               = aws_ssm_parameter.tmdb_api_key.value
       GOOGLE_BOOKS_API_KEY       = aws_ssm_parameter.google_books_api_key.value
+      ENABLE_GAMES               = "1"
       SPOTIFY_CLIENT_ID          = aws_ssm_parameter.spotify_client_id.value
       SPOTIFY_CLIENT_SECRET      = aws_ssm_parameter.spotify_client_secret.value
       DISCORD_NOTIFY_WEBHOOK_URL = aws_ssm_parameter.discord_notify_webhook_url.value
