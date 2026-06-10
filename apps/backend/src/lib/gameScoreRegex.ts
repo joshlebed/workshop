@@ -30,6 +30,12 @@ export const SCORE_COUNT_PREFIX = "count:";
 
 interface GameScoreRegex {
   key: string;
+  // Canonical display metadata for the global `games` catalog (spec §3.3).
+  // `canonicalUrl` must normalize (via `normalizeGameUrl`) to the key the
+  // games table dedupes on; the migration seed and the find-or-create path
+  // both derive from these.
+  title: string;
+  canonicalUrl: string;
   // Match against any of: item title, item url, content.siteName, content.sourceId.
   identifyPatterns: RegExp[];
   // How to pull the score out of a pasted share, stored verbatim on
@@ -46,6 +52,8 @@ interface GameScoreRegex {
 export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   {
     key: "maptap",
+    title: "MapTap",
+    canonicalUrl: "https://maptap.gg",
     identifyPatterns: [/\bmap\s*tap\b/i, /maptap\.gg/i],
     // "Final score: 970" → 970
     scoreRegex: "Final score:\\s*(\\d+)",
@@ -53,6 +61,8 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   },
   {
     key: "globle",
+    title: "Globle",
+    canonicalUrl: "https://globle-game.com",
     identifyPatterns: [/\bgloble\b/i, /globle-game\.com/i],
     // "⬜⬜🟧🟥🟩 = 5" → 5 (today's guess count; lower is better). No `$`
     // anchor — the backend applies the regex with only `i`, so `$` would
@@ -63,6 +73,8 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   },
   {
     key: "satle",
+    title: "Satle",
+    canonicalUrl: "https://satle.ca",
     identifyPatterns: [/\bsatle\b/i, /satle\.ca/i],
     // "Satle #449 5/6" → 5
     scoreRegex: "Satle\\s*#\\d+\\s+(\\d+)/6",
@@ -70,6 +82,8 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   },
   {
     key: "travle",
+    title: "Travle",
+    canonicalUrl: "https://travle.earth",
     identifyPatterns: [/\btravle\b/i, /travle\.earth/i],
     // "#travle #1250 +0" → 0 (extra-guess count; lower is better)
     scoreRegex: "#travle\\s+#?\\d+\\s+\\+(\\d+)",
@@ -77,6 +91,8 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   },
   {
     key: "wordle",
+    title: "Wordle",
+    canonicalUrl: "https://www.nytimes.com/games/wordle",
     identifyPatterns: [/\bwordle\b/i, /nytimes\.com\/games\/wordle/i],
     // "Wordle 1,127 3/6" → 3 (guess count out of 6; lower is better). The
     // [\d,] swallows the puzzle number's thousands separator without
@@ -86,6 +102,8 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   },
   {
     key: "worldle",
+    title: "Worldle",
+    canonicalUrl: "https://worldle.teuteuf.fr",
     identifyPatterns: [/\bworldle\b/i, /worldle\.teuteuf\.fr/i],
     // "#Worldle #842 3/6 (100%)" → 3
     scoreRegex: "Worldle\\s*#?\\d+\\s+(\\d+)/6",
@@ -93,6 +111,8 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   },
   {
     key: "tradle",
+    title: "Tradle",
+    canonicalUrl: "https://tradle.net",
     // Tradle now lives at tradle.net; oec.world kept for legacy bookmarks.
     identifyPatterns: [/\btradle\b/i, /tradle\.net/i, /oec\.world.*tradle/i],
     // "#Tradle #1547 1/6" → 1 (guess count out of 6; lower is better)
@@ -101,6 +121,8 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   },
   {
     key: "framed",
+    title: "Framed",
+    canonicalUrl: "https://framed.wtf",
     identifyPatterns: [/\bframed\b/i, /framed\.wtf/i],
     // No explicit numeric score in the share — the squares encode guesses.
     // Count the gray boxes by treating the trailing run of squares as the
@@ -112,6 +134,8 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
   },
   {
     key: "dailytens",
+    title: "Daily Tens",
+    canonicalUrl: "https://dailytens.com",
     identifyPatterns: [/\bdaily\s*tens\b/i, /dailytens\.com/i],
     // The share is a 5×2 grid of 🏆 (correct) / ❌ (wrong) for the day's 10
     // questions. Score = number of 🏆 (more is better). `count:🏆` counts the

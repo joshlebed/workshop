@@ -7,7 +7,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { items } from "../db/schema.js";
 import type { DbClient } from "./sql.js";
 
-const POSITION_SPACING = 1024;
+export const POSITION_SPACING = 1024;
 
 /**
  * Trigger a normalizing rebalance when `MIN(position) < REBALANCE_FLOOR`.

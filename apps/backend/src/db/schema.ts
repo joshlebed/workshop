@@ -390,6 +390,75 @@ export const itemScores = pgTable(
   }),
 );
 
+/**
+ * Games surface (spec §3) — the global game catalog, deduped by
+ * `normalized_url` (see `normalizeGameUrl` in `@workshop/shared/games`).
+ * Seeded from the `gameScoreRegex` catalog in migration 0023; unknown URLs
+ * get a hostname title at find-or-create time. Entirely separate from the
+ * Lists leaderboard surface (`items` / `item_scores`) — never join across.
+ */
+export const games = pgTable("games", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  normalizedUrl: text("normalized_url").notNull().unique(),
+  url: text("url").notNull(),
+  title: text("title").notNull(),
+  iconUrl: text("icon_url"),
+  /** Key into the `gameScoreRegex` catalog; NULL for unknown games. */
+  gameKey: text("game_key"),
+  /** 'desc' = bigger is better, 'asc' = lower is better. */
+  scoreDirection: text("score_direction").notNull().default("desc"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+/**
+ * "My Games" — a per-user ordered selection of catalog games. Same sparse
+ * `position` scheme as `items.position` (see `lib/positions.ts` /
+ * `lib/gamePositions.ts`); NULL positions sort last until first dragged.
+ */
+export const userGames = pgTable(
+  "user_games",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    position: integer("position"),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.gameId] }),
+    userPositionIdx: index("user_games_user_position_idx").on(t.userId, t.position),
+  }),
+);
+
+/**
+ * Scores for the Games surface. One row per (game, user, period_key);
+ * `period_key` is the puzzle day ("YYYY-MM-DD"). NEW table — the old Lists
+ * leaderboard keeps `item_scores`; the two never read each other.
+ */
+export const gameScores = pgTable(
+  "game_scores",
+  {
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    periodKey: text("period_key").notNull(),
+    scoreValue: numeric("score_value"),
+    scoreRaw: text("score_raw").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.gameId, t.userId, t.periodKey] }),
+    gamePeriodIdx: index("game_scores_game_period_idx").on(t.gameId, t.periodKey),
+  }),
+);
+
 export const rateLimits = pgTable(
   "rate_limits",
   {
@@ -416,3 +485,6 @@ export type DbMetadataCache = typeof metadataCache.$inferSelect;
 export type DbRateLimit = typeof rateLimits.$inferSelect;
 export type DbListSource = typeof listSources.$inferSelect;
 export type DbItemScore = typeof itemScores.$inferSelect;
+export type DbGame = typeof games.$inferSelect;
+export type DbUserGame = typeof userGames.$inferSelect;
+export type DbGameScore = typeof gameScores.$inferSelect;

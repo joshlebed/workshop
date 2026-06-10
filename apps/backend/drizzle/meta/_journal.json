@@ -162,6 +162,13 @@
       "when": 1781064808947,
       "tag": "0022_list_saved_views",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1781070405949,
+      "tag": "0023_games_tables",
+      "breakpoints": true
     }
   ]
 }

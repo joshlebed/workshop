@@ -52,7 +52,7 @@ importers:
         version: link:../../packages/shared
       drizzle-orm:
         specifier: 0.45.2
-        version: 0.45.2(postgres@3.4.9)
+        version: 0.45.2(@electric-sql/pglite@0.5.1)(postgres@3.4.9)
       hono:
         specifier: 4.12.15
         version: 4.12.15
@@ -69,6 +69,9 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
+      '@electric-sql/pglite':
+        specifier: ^0.5.1
+        version: 0.5.1
       '@types/node':
         specifier: 25.6.0
         version: 25.6.0
@@ -871,6 +874,9 @@ packages:
   '@egjs/hammerjs@2.0.17':
     resolution: {integrity: sha512-XQsZgjm2EcVUiZQf11UBJQfmZeEmOW8DpI1gsFeln6w0ae0ii4dMQEQ0kjl6DspdWX1aGY1/loyXnP0JS06e/A==}
     engines: {node: '>=0.8.0'}
+
+  '@electric-sql/pglite@0.5.1':
+    resolution: {integrity: sha512-h2Vc+qkQqsEL5kvyN5nBAxn3Vbyvka7QfDW7Io+CdcwU1+X8JbCAN2og+5dI11S3eJuDfroUCxzJaap6k+ezEw==}
 
   '@emnapi/core@1.9.2':
     resolution: {integrity: sha512-UC+ZhH3XtczQYfOlu3lNEkdW/p4dsJ1r/bP7H8+rhao3TTTMO1ATq/4DdIi23XuGoFY+Cz0JmCbdVl0hz9jZcA==}
@@ -7129,6 +7135,8 @@ snapshots:
     dependencies:
       '@types/hammerjs': 2.0.46
 
+  '@electric-sql/pglite@0.5.1': {}
+
   '@emnapi/core@1.9.2':
     dependencies:
       '@emnapi/wasi-threads': 1.2.1
@@ -9896,8 +9904,9 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.21.0
 
-  drizzle-orm@0.45.2(postgres@3.4.9):
+  drizzle-orm@0.45.2(@electric-sql/pglite@0.5.1)(postgres@3.4.9):
     optionalDependencies:
+      '@electric-sql/pglite': 0.5.1
       postgres: 3.4.9
 
   dtrace-provider@0.8.8:
