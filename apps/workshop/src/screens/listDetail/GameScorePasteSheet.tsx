@@ -20,6 +20,7 @@ interface GameScorePasteSheetProps<T extends { title: string }> {
   /** Target game, or `null` when the sheet should be closed. */
   item: T | null;
   userName: string | null;
+  userAvatarUrl?: string | null;
   pending: boolean;
   onSubmit: (item: T, scoreRaw: string) => void;
   onClose: () => void;
@@ -28,6 +29,7 @@ interface GameScorePasteSheetProps<T extends { title: string }> {
 export function GameScorePasteSheet<T extends { title: string }>({
   item,
   userName,
+  userAvatarUrl,
   pending,
   onSubmit,
   onClose,
@@ -77,7 +79,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
       {snapshot ? (
         <>
           <View style={styles.header}>
-            <Avatar name={userName} size="md" />
+            <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
             <View style={styles.headerText}>
               <Text variant="heading" numberOfLines={1}>
                 Played {snapshot.title}?

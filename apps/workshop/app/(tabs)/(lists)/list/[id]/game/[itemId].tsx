@@ -22,6 +22,7 @@ import {
 import { DayRail } from "../../../../../../src/components/DayRail";
 import { useAuth } from "../../../../../../src/hooks/useAuth";
 import { errorMessage } from "../../../../../../src/lib/api";
+import { userAvatarImageUrl } from "../../../../../../src/lib/avatar";
 import { confirm } from "../../../../../../src/lib/confirm";
 import { formatGameDateLabel, localDateKey } from "../../../../../../src/lib/gameDate";
 import { goBack } from "../../../../../../src/lib/goBack";
@@ -440,6 +441,7 @@ export default function GameDetail() {
                   pending={upsertMutation.isPending}
                   clearing={clearMutation.isPending}
                   userName={user?.displayName ?? null}
+                  userAvatarUrl={user?.avatarUrl ?? null}
                 />
               ) : myScore && myEntry ? (
                 <LeaderboardEntryRow
@@ -587,7 +589,7 @@ function LeaderboardEntryRow({ entry, item, isMe, onEdit }: LeaderboardEntryRowP
     <View style={[styles.entry, isMe && styles.entryMe]} testID={`leaderboard-row-${entry.userId}`}>
       <View style={styles.entryHeader}>
         {entry.rank != null ? <RankBadge rank={entry.rank} /> : null}
-        <Avatar name={entry.displayName} size="md" />
+        <Avatar name={entry.displayName} imageUrl={userAvatarImageUrl(entry.userId)} size="md" />
         <View style={styles.entryNameWrap}>
           <View style={styles.entryNameRow}>
             <Text variant="label" style={styles.entryName} numberOfLines={1}>
@@ -667,7 +669,12 @@ function UnplayedRow({ entry, isMe }: { entry: LeaderboardEntry; isMe: boolean }
   const name = entry.displayName ?? "Someone";
   return (
     <View style={styles.unplayedRow} testID={`leaderboard-row-${entry.userId}`}>
-      <Avatar name={entry.displayName} size="md" style={styles.unplayedAvatar} />
+      <Avatar
+        name={entry.displayName}
+        imageUrl={userAvatarImageUrl(entry.userId)}
+        size="md"
+        style={styles.unplayedAvatar}
+      />
       <View style={styles.unplayedNameWrap}>
         <Text variant="label" style={styles.unplayedName} numberOfLines={1}>
           {name}
@@ -696,6 +703,7 @@ interface ScoreComposerProps {
   pending: boolean;
   clearing: boolean;
   userName: string | null;
+  userAvatarUrl?: string | null;
 }
 
 /**
@@ -716,6 +724,7 @@ function ScoreComposer({
   pending,
   clearing,
   userName,
+  userAvatarUrl,
 }: ScoreComposerProps) {
   const isEdit = mode === "edit";
   const trimmed = draft.trim();
@@ -746,7 +755,7 @@ function ScoreComposer({
   return (
     <View style={[styles.entry, styles.entryMe]} testID="game-detail-paste-slot">
       <View style={styles.entryHeader}>
-        <Avatar name={userName} size="md" />
+        <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
         <View style={styles.entryNameWrap}>
           <View style={styles.entryNameRow}>
             <Text variant="label" style={styles.entryName}>

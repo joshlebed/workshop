@@ -7,6 +7,7 @@ import { createFriendInvite, fetchFriends, unfriend } from "../../src/api/friend
 import { useAuth } from "../../src/hooks/useAuth";
 import { useLivePollingInterval } from "../../src/hooks/useLivePollingInterval";
 import { errorMessage } from "../../src/lib/api";
+import { userAvatarImageUrl } from "../../src/lib/avatar";
 import { confirm } from "../../src/lib/confirm";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 import { goBack } from "../../src/lib/goBack";
@@ -188,7 +189,11 @@ export default function FriendsScreen() {
                 style={styles.friendRow}
                 testID={`friend-row-${friend.userId}`}
               >
-                <Avatar name={friend.displayName} size="md" />
+                <Avatar
+                  name={friend.displayName}
+                  imageUrl={userAvatarImageUrl(friend.userId)}
+                  size="md"
+                />
                 <View style={styles.friendText}>
                   <Text variant="label" numberOfLines={1} style={styles.friendName}>
                     {friend.displayName?.trim() || "Someone"}

@@ -7,6 +7,7 @@ import { acceptFriendRequest, fetchFriendRequestPreview } from "../../../src/api
 import { addGame, fetchGameDiscovery } from "../../../src/api/games";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { errorMessage } from "../../../src/lib/api";
+import { userAvatarImageUrl } from "../../../src/lib/avatar";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 import { localDateKey } from "../../../src/lib/gameDate";
 import { haptics } from "../../../src/lib/haptics";
@@ -187,7 +188,12 @@ export default function AcceptFriendInvite() {
     <Centered testID="friend-accept">
       <Card style={styles.card} elevated>
         <View style={styles.inviterBlock}>
-          <Avatar name={preview.inviter.displayName} size="lg" testID="friend-accept-avatar" />
+          <Avatar
+            name={preview.inviter.displayName}
+            imageUrl={userAvatarImageUrl(preview.inviter.userId)}
+            size="lg"
+            testID="friend-accept-avatar"
+          />
           <Text variant="title" style={styles.inviterTitle}>
             {inviterName} wants to be friends
           </Text>
@@ -283,7 +289,11 @@ function PostAcceptPicker({
     <Centered testID="friend-accept-picker">
       <Card style={styles.card} elevated>
         <View style={styles.inviterBlock}>
-          <Avatar name={friend.displayName} size="lg" />
+          <Avatar
+            name={friend.displayName}
+            imageUrl={userAvatarImageUrl(friend.userId)}
+            size="lg"
+          />
           <Text variant="title" style={styles.inviterTitle}>
             You're friends with {name}
           </Text>
