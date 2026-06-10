@@ -100,6 +100,18 @@ depend on the `ranking` module being present:
 If you add a leaderboard surface that buckets/gates on `ranking`, add `leaderboard` too, or
 leaderboard-only lists (no `ranking` module — e.g. "Geo games") silently lose reorder.
 
+## Profile pictures live inline on `users.avatar_url` (base64 data URL)
+
+`PATCH /v1/users/me` (`routes/v1/users.ts`) updates `displayName` and/or `avatarUrl`
+independently — both optional, send only what changed; `avatarUrl: null` clears the
+picture; an empty body 400s. The avatar is stored as a base64 `data:` URL (same approach
+as list `cover_photo_url` — no object store yet), capped + raster-only by `avatarUrlSchema`
+(reused shape from `coverPhotoUrlSchema`). `toUserShape` is duplicated in `users.ts` **and**
+`auth.ts` — add new user fields to both. **`avatarUrl` is deliberately NOT joined into
+leaderboard / activity / member payloads**: those fan out across many users and inlining
+~1MB base64 per row would bloat responses. If you want other users' photos there, move
+avatars to a URL/CDN store first — don't naively join the data URL column.
+
 ## Games surface (`routes/v1/games.ts`) is isolated from the Lists leaderboard
 
 The Games tab (spec §3, G1a) has its own tables — `games` (global catalog, deduped by

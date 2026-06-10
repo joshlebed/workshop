@@ -67,6 +67,8 @@ export interface User {
   id: string;
   email: string | null;
   displayName: string | null;
+  /** Base64 `data:` URL of the profile picture, or null when using initials. */
+  avatarUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -109,8 +111,14 @@ export interface AuthResponse {
   needsDisplayName: boolean;
 }
 
+/**
+ * Partial profile update. Both fields are optional and updated independently —
+ * send only what changed. `avatarUrl: null` clears the profile picture; omitting
+ * a field leaves it untouched.
+ */
 export interface UpdateMeRequest {
-  displayName: string;
+  displayName?: string;
+  avatarUrl?: string | null;
 }
 
 // --- Lists ---
