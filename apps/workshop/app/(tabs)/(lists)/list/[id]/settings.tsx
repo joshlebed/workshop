@@ -29,6 +29,7 @@ import {
 import { syncSource } from "../../../../../src/api/sources";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { errorMessage } from "../../../../../src/lib/api";
+import { userAvatarImageUrl } from "../../../../../src/lib/avatar";
 import { pickCoverPhoto } from "../../../../../src/lib/coverPhoto";
 import { goBack } from "../../../../../src/lib/goBack";
 import { queryKeys } from "../../../../../src/lib/queryKeys";
@@ -36,6 +37,7 @@ import { formatRelative } from "../../../../../src/lib/relativeTime";
 import { buildListShareUrl, copyToClipboard } from "../../../../../src/lib/share";
 import { sourceErrorMessage } from "../../../../../src/lib/sourceErrors";
 import {
+  Avatar,
   Button,
   IconButton,
   type ListColorKey,
@@ -946,12 +948,14 @@ function MemberRow({
 }: MemberRowProps) {
   const canRemove = isOwner && !isCurrentUser && member.role !== "owner";
   const canPromote = isOwner && !isCurrentUser && member.role !== "owner";
-  const initial = (member.displayName?.trim()[0] ?? "·").toUpperCase();
   return (
     <View style={styles.memberRow} testID={`settings-member-${member.userId}`}>
-      <View style={styles.memberAvatar}>
-        <Text style={styles.memberAvatarText}>{initial}</Text>
-      </View>
+      <Avatar
+        name={member.displayName}
+        imageUrl={userAvatarImageUrl(member.userId)}
+        size="md"
+        style={styles.memberAvatar}
+      />
       <View style={styles.memberInfo}>
         <Text variant="body" numberOfLines={1}>
           {member.displayName ?? "(no name)"}
@@ -1105,14 +1109,6 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
     borderWidth: 1,
     borderColor: tokens.border.subtle,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  memberAvatarText: {
-    color: tokens.text.primary,
-    fontSize: 13,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.2,
   },
   memberInfo: { flex: 1, gap: 2 },
   visibilityList: { gap: tokens.space.xs, marginTop: tokens.space.sm },

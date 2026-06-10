@@ -30,6 +30,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { applyOptimisticMove, neighborsForOrderedReorder } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
+import { userAvatarImageUrl } from "../lib/avatar";
 import { confirm } from "../lib/confirm";
 import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/goBack";
@@ -41,6 +42,7 @@ import { buildTodaysScoresSummary } from "../lib/scoresSummary";
 import { buildListShareUrl, copyToClipboard } from "../lib/share";
 import { sourceErrorMessage } from "../lib/sourceErrors";
 import {
+  Avatar,
   Button,
   CopyIcon,
   EmptyState,
@@ -1103,6 +1105,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
         <GameScorePasteSheet
           item={promptItem}
           userName={user?.displayName ?? null}
+          userAvatarUrl={user?.avatarUrl ?? null}
           pending={pasteScoreMutation.isPending}
           onSubmit={(item, scoreRaw) => pasteScoreMutation.mutate({ item, scoreRaw })}
           onClose={dismissPaste}
@@ -1122,12 +1125,6 @@ function tagSetsEqual(a: readonly string[], b: readonly string[]): boolean {
   if (a.length !== b.length) return false;
   const set = new Set(a);
   return b.every((t) => set.has(t));
-}
-
-function memberInitial(name: string | null): string {
-  const trimmed = name?.trim();
-  if (!trimmed) return "·";
-  return (trimmed[0] ?? "·").toUpperCase();
 }
 
 // Per-list-color halo behind the list's emoji. Carries the list's identity
@@ -1214,13 +1211,17 @@ function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent
       {shown.map((m, i) => (
         <View
           key={m.userId}
-          style={[
-            memberStackStyles.chip,
-            { backgroundColor: `${accent}26`, borderColor: tokens.bg.canvas },
-            i > 0 ? memberStackStyles.chipOverlap : null,
-          ]}
+          style={[memberStackStyles.chip, i > 0 ? memberStackStyles.chipOverlap : null]}
         >
-          <Text style={memberStackStyles.initials}>{memberInitial(m.displayName)}</Text>
+          <Avatar
+            name={m.displayName}
+            imageUrl={userAvatarImageUrl(m.userId)}
+            size="sm"
+            style={[
+              memberStackStyles.avatar,
+              { backgroundColor: `${accent}26`, borderColor: tokens.bg.canvas },
+            ]}
+          />
         </View>
       ))}
     </View>
@@ -1230,21 +1231,15 @@ function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent
 const memberStackStyles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center" },
   chip: {
+    borderRadius: 13,
+  },
+  avatar: {
     width: 26,
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
   },
   chipOverlap: { marginLeft: -9 },
-  initials: {
-    fontSize: 12,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.2,
-    lineHeight: 14,
-    color: tokens.text.primary,
-  },
 });
 
 const styles = StyleSheet.create({

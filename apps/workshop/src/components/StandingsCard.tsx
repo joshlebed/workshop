@@ -29,6 +29,7 @@ const SCORE_INDENT = RANK_SLOT + tokens.space.sm + AVATAR_SM + tokens.space.sm;
 export interface StandingsRow {
   userId: string;
   displayName: string | null;
+  avatarUrl?: string | null;
   /** Standard competition rank (1, 2, 2, 4); null when no numeric score. */
   rank: number | null;
   body: string | null;
@@ -37,6 +38,7 @@ export interface StandingsRow {
 export interface StandingsFace {
   userId: string;
   displayName: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface StandingsCardProps {
@@ -264,8 +266,8 @@ function PlayerRow({ row, isMe }: PlayerRowProps) {
   const name = row.displayName ?? "Someone";
   // Names are dropped from the row to save vertical space — the score sits
   // inline next to the avatar so each player is one line, not two. Identity
-  // rides on the initials circle (+ its hashed color); the full name stays in
-  // the accessibility label so screen readers still announce who's who.
+  // rides on the avatar circle; the full name stays in the accessibility
+  // label so screen readers still announce who's who.
   return (
     <View
       style={[styles.playerRow, isMe && styles.playerRowMe]}
@@ -274,7 +276,7 @@ function PlayerRow({ row, isMe }: PlayerRowProps) {
       accessibilityLabel={`${name}${isMe ? " (you)" : ""}: ${row.body ?? "played"}`}
     >
       <RankMark rank={row.rank} />
-      <Avatar name={row.displayName} size="sm" />
+      <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
       <Text
         style={[styles.scoreBody, row.body ? null : styles.scoreBodyMuted]}
         testID={`game-card-score-${row.userId}`}
@@ -320,7 +322,7 @@ function EmptyStandings({ faces, text }: { faces: StandingsFace[]; text: string 
         <View style={styles.facepile}>
           {shown.map((m, i) => (
             <View key={m.userId} style={[styles.faceWrap, i > 0 && styles.faceOverlap]}>
-              <Avatar name={m.displayName} size="sm" />
+              <Avatar name={m.displayName} imageUrl={m.avatarUrl} size="sm" />
             </View>
           ))}
         </View>

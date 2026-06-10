@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Image,
   type ImageStyle,
@@ -19,7 +20,7 @@ export interface AvatarProps {
    */
   imageUrl?: string | null;
   size?: "sm" | "md" | "lg";
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
@@ -60,15 +61,17 @@ function colorFor(name: string | null): string {
 }
 
 export function Avatar({ name, imageUrl, size = "md", style, testID }: AvatarProps) {
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const dim = SIZE[size];
   const circle: ViewStyle = { width: dim, height: dim, borderRadius: dim / 2 };
 
-  if (imageUrl) {
+  if (imageUrl && failedUrl !== imageUrl) {
     return (
       <Image
         testID={testID}
         source={{ uri: imageUrl }}
         accessibilityLabel={name ? `${name}'s profile picture` : "Profile picture"}
+        onError={() => setFailedUrl(imageUrl)}
         // Callers pass a ViewStyle (width/height/borderRadius); the shared subset
         // is valid for an Image too.
         style={[styles.base, circle, styles.image, style] as StyleProp<ImageStyle>}

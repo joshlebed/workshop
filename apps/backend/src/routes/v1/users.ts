@@ -17,6 +17,7 @@ import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 
 export const userRoutes = new Hono();
+export const publicUserRoutes = new Hono();
 userRoutes.use("*", requireAuth);
 
 // Display names: stripped, 1–40 chars, no leading/trailing whitespace,
@@ -38,6 +39,13 @@ export const avatarUrlSchema = z
     (s) => /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s),
     "profile picture must be a base64 data URL",
   );
+
+const avatarDataUrlRe = /^data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=]+)$/;
+const uuidSchema = z.string().uuid();
+
+function avatarContentType(kind: string): string {
+  return kind === "jpg" ? "image/jpeg" : `image/${kind}`;
+}
 
 // Both fields are optional; the client sends only what changed. `avatarUrl: null`
 // clears the picture. `.refine` rejects an empty body so a no-op PATCH can't
@@ -66,6 +74,29 @@ function toUserShape(u: DbUser) {
     updatedAt: u.updatedAt.toISOString(),
   };
 }
+
+publicUserRoutes.get("/:id/avatar", async (c) => {
+  const parsed = uuidSchema.safeParse(c.req.param("id"));
+  if (!parsed.success) return err(c, "NOT_FOUND", "profile picture not found");
+
+  const db = getDb();
+  const [user] = await db
+    .select({ avatarUrl: users.avatarUrl })
+    .from(users)
+    .where(eq(users.id, parsed.data))
+    .limit(1);
+  const match = user?.avatarUrl?.match(avatarDataUrlRe);
+  if (!match) return err(c, "NOT_FOUND", "profile picture not found");
+
+  const [, kind, payload] = match;
+  const body = Buffer.from(payload ?? "", "base64");
+  return new Response(body, {
+    headers: {
+      "Cache-Control": "private, max-age=60",
+      "Content-Type": avatarContentType(kind ?? "png"),
+    },
+  });
+});
 
 userRoutes.patch("/me", async (c) => {
   const parsed = await parseJsonBody(c, patchMeSchema);

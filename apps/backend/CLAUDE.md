@@ -140,10 +140,11 @@ independently — both optional, send only what changed; `avatarUrl: null` clear
 picture; an empty body 400s. The avatar is stored as a base64 `data:` URL (same approach
 as list `cover_photo_url` — no object store yet), capped + raster-only by `avatarUrlSchema`
 (reused shape from `coverPhotoUrlSchema`). `toUserShape` is duplicated in `users.ts` **and**
-`auth.ts` — add new user fields to both. **`avatarUrl` is deliberately NOT joined into
-leaderboard / activity / member payloads**: those fan out across many users and inlining
-~1MB base64 per row would bloat responses. If you want other users' photos there, move
-avatars to a URL/CDN store first — don't naively join the data URL column.
+`auth.ts` — add new user fields to both. **Do not join `avatarUrl` into leaderboard /
+activity / member payloads**: those fan out across many users and inlining ~1MB base64 per
+row would bloat responses. User-facing facepiles/leaderboards should point `Avatar` at
+`GET /v1/users/:id/avatar` (public image response, 404 = initials fallback) until avatars move
+to a real URL/CDN store.
 
 ## Games surface (`routes/v1/games.ts`) is isolated from the Lists leaderboard
 
