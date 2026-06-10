@@ -1,0 +1,190 @@
+import { useState } from "react";
+import { StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useAuth } from "../../../src/hooks/useAuth";
+import { errorMessage } from "../../../src/lib/api";
+import { goBack } from "../../../src/lib/goBack";
+import { pickProfilePhoto } from "../../../src/lib/profilePhoto";
+import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "../../../src/ui/index";
+
+export default function EditProfile() {
+  const { user, updateProfile } = useAuth();
+  const { showToast } = useToast();
+
+  const [name, setName] = useState(user?.displayName ?? "");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
+  const [busy, setBusy] = useState(false);
+
+  const initialName = user?.displayName ?? "";
+  const initialAvatar = user?.avatarUrl ?? null;
+  const trimmed = name.trim();
+
+  const nameChanged = trimmed !== initialName.trim();
+  const avatarChanged = avatarUrl !== initialAvatar;
+  const dirty = nameChanged || avatarChanged;
+  const nameValid = trimmed.length >= 1 && trimmed.length <= 40;
+  const canSave = dirty && nameValid && !busy;
+
+  async function onPickPhoto() {
+    const picked = await pickProfilePhoto();
+    if (picked) setAvatarUrl(picked.dataUrl);
+  }
+
+  async function onSave() {
+    if (!canSave) return;
+    try {
+      setBusy(true);
+      // Send only what changed so an unchanged field is never re-validated or
+      // re-written. `avatarUrl: null` clears the picture.
+      const patch: { displayName?: string; avatarUrl?: string | null } = {};
+      if (nameChanged) patch.displayName = trimmed;
+      if (avatarChanged) patch.avatarUrl = avatarUrl;
+      await updateProfile(patch);
+      showToast({ message: "Profile updated", tone: "success" });
+      goBack("/");
+    } catch (e) {
+      showToast({ message: errorMessage(e, "Could not save profile"), tone: "danger" });
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Screen style={styles.root}>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
+            Account
+          </Text>
+          <Text variant="heading" numberOfLines={1}>
+            Edit profile
+          </Text>
+        </View>
+        <IconButton
+          accessibilityLabel="Close profile editor"
+          onPress={() => goBack("/")}
+          testID="profile-edit-close"
+        >
+          <Text style={styles.closeGlyph}>✕</Text>
+        </IconButton>
+      </View>
+
+      <KeyboardAwareScrollView
+        contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        bottomOffset={tokens.space.lg}
+      >
+        <View style={styles.avatarSection}>
+          <Avatar
+            name={trimmed || user?.email || null}
+            imageUrl={avatarUrl}
+            size="lg"
+            style={styles.avatarPreview}
+            testID="profile-edit-avatar"
+          />
+          <View style={styles.avatarButtons}>
+            <Button
+              testID="profile-photo-pick"
+              label={avatarUrl ? "Change photo" : "Upload photo"}
+              variant="secondary"
+              size="md"
+              onPress={onPickPhoto}
+            />
+            {avatarUrl ? (
+              <Button
+                testID="profile-photo-remove"
+                label="Remove"
+                variant="secondary"
+                size="md"
+                onPress={() => setAvatarUrl(null)}
+              />
+            ) : null}
+          </View>
+        </View>
+
+        <View style={styles.field}>
+          <Text variant="caption" tone="muted">
+            Display name
+          </Text>
+          <TextInput
+            testID="profile-display-name"
+            value={name}
+            onChangeText={setName}
+            placeholder="Ada Lovelace"
+            placeholderTextColor={tokens.text.muted}
+            autoComplete="name"
+            maxLength={40}
+            style={styles.input}
+            returnKeyType="done"
+            onSubmitEditing={onSave}
+          />
+          <Text variant="caption" tone="muted" style={styles.hint}>
+            Shown to people you share lists and leaderboards with.
+          </Text>
+        </View>
+
+        {user?.email ? (
+          <View style={styles.field}>
+            <Text variant="caption" tone="muted">
+              Email
+            </Text>
+            <Text tone="secondary" numberOfLines={1}>
+              {user.email}
+            </Text>
+          </View>
+        ) : null}
+
+        <Button
+          testID="profile-save"
+          label="Save changes"
+          size="lg"
+          disabled={!canSave}
+          loading={busy}
+          onPress={onSave}
+          style={styles.saveButton}
+        />
+      </KeyboardAwareScrollView>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.md,
+    gap: tokens.space.md,
+  },
+  headerText: { flex: 1, minWidth: 0, gap: 2 },
+  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
+  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  body: {
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.xxl,
+    gap: tokens.space.xl,
+  },
+  avatarSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.lg,
+  },
+  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
+  avatarButtons: { flex: 1, gap: tokens.space.sm },
+  field: { gap: tokens.space.sm },
+  input: {
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: 14,
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.lg,
+    backgroundColor: tokens.bg.surface,
+  },
+  hint: { marginTop: tokens.space.xs },
+  saveButton: { marginTop: tokens.space.sm },
+});

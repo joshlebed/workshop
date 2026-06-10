@@ -16,6 +16,7 @@ export default function ListsLayout() {
       }}
     >
       <Stack.Screen name="index" />
+      <Stack.Screen name="profile" options={{ presentation: "modal" }} />
       <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="create-list/playlist" options={{ animation: "slide_from_right" }} />

@@ -24,6 +24,12 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     email: text("email"),
     displayName: text("display_name"),
+    /**
+     * Profile picture, stored as a base64 `data:` URL (same approach as list
+     * cover photos — no object store yet). NULL = no custom avatar; clients
+     * fall back to initials. Capped by `avatarUrlSchema` in routes/v1/users.ts.
+     */
+    avatarUrl: text("avatar_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
     /**

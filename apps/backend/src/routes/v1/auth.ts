@@ -33,6 +33,7 @@ function toUserShape(u: DbUser) {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
+    avatarUrl: u.avatarUrl,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
   };

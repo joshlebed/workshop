@@ -1,10 +1,23 @@
-import { StyleSheet, View, type ViewStyle } from "react-native";
+import {
+  Image,
+  type ImageStyle,
+  type StyleProp,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from "react-native";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
 export interface AvatarProps {
   /** Display name used to derive initials. Falls back to "?" when missing. */
   name: string | null;
+  /**
+   * Profile picture URI (a base64 `data:` URL or remote URL). When present it
+   * renders over the initials circle; otherwise the deterministic
+   * initials-on-color fallback shows.
+   */
+  imageUrl?: string | null;
   size?: "sm" | "md" | "lg";
   style?: ViewStyle;
   testID?: string;
@@ -46,18 +59,25 @@ function colorFor(name: string | null): string {
   return PALETTE[seed % PALETTE.length] ?? tokens.list.slate;
 }
 
-export function Avatar({ name, size = "md", style, testID }: AvatarProps) {
+export function Avatar({ name, imageUrl, size = "md", style, testID }: AvatarProps) {
   const dim = SIZE[size];
-  const bg = colorFor(name);
+  const circle: ViewStyle = { width: dim, height: dim, borderRadius: dim / 2 };
+
+  if (imageUrl) {
+    return (
+      <Image
+        testID={testID}
+        source={{ uri: imageUrl }}
+        accessibilityLabel={name ? `${name}'s profile picture` : "Profile picture"}
+        // Callers pass a ViewStyle (width/height/borderRadius); the shared subset
+        // is valid for an Image too.
+        style={[styles.base, circle, styles.image, style] as StyleProp<ImageStyle>}
+      />
+    );
+  }
+
   return (
-    <View
-      testID={testID}
-      style={[
-        styles.base,
-        { width: dim, height: dim, borderRadius: dim / 2, backgroundColor: bg },
-        style,
-      ]}
-    >
+    <View testID={testID} style={[styles.base, circle, { backgroundColor: colorFor(name) }, style]}>
       <Text tone="onAccent" style={[styles.label, { fontSize: FONT_SIZE[size] }]}>
         {initialsFor(name)}
       </Text>
@@ -67,5 +87,6 @@ export function Avatar({ name, size = "md", style, testID }: AvatarProps) {
 
 const styles = StyleSheet.create({
   base: { alignItems: "center", justifyContent: "center" },
+  image: { backgroundColor: tokens.bg.surface },
   label: { fontWeight: tokens.font.weight.semibold },
 });
