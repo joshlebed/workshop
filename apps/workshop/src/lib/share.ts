@@ -1,5 +1,5 @@
 import * as Clipboard from "expo-clipboard";
-import { Platform } from "react-native";
+import { Platform, Share } from "react-native";
 
 const PROD_WEB_BASE_URL = "https://workshop-a2v.pages.dev";
 
@@ -56,4 +56,25 @@ export async function copyToClipboard(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Hand a share URL to the system share sheet on native, or copy it to the
+ * clipboard on web (where there's no share sheet — RNW's `Share` only works
+ * behind the not-always-present Web Share API). On native a thrown error
+ * (sheet unavailable) falls back to a clipboard copy; a user dismissing the
+ * sheet still counts as `"shared"`. Returns what actually happened so callers
+ * can pick the right toast.
+ */
+export async function shareOrCopyLink(url: string): Promise<"shared" | "copied" | "failed"> {
+  if (Platform.OS !== "web") {
+    try {
+      await Share.share({ message: url });
+      return "shared";
+    } catch {
+      // Share sheet unavailable — fall through to a clipboard copy.
+    }
+  }
+  const copied = await copyToClipboard(url);
+  return copied ? "copied" : "failed";
 }

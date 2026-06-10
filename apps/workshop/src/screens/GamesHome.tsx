@@ -224,6 +224,19 @@ export function GamesHome() {
     <Screen testID="games-home">
       <View style={styles.headerRow}>
         <Text variant="title">Games</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Friends"
+          onPress={() => router.push("/friends")}
+          testID="games-friends-button"
+          hitSlop={8}
+          style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+            styles.headerIconBtn,
+            (pressed || hovered) && styles.headerIconBtnHover,
+          ]}
+        >
+          <Text style={styles.headerIconGlyph}>👥</Text>
+        </Pressable>
       </View>
 
       {gamesQuery.isPending ? (
@@ -344,6 +357,15 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
   },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.md,
+  },
+  headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
+  headerIconGlyph: { fontSize: 20, lineHeight: 24 },
   center: {
     flex: 1,
     alignItems: "center",

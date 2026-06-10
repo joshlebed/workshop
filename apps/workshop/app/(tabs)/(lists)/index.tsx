@@ -28,6 +28,7 @@ import { useAuth } from "../../../src/hooks/useAuth";
 import { useLivePollingInterval } from "../../../src/hooks/useLivePollingInterval";
 import { errorMessage } from "../../../src/lib/api";
 import { confirm } from "../../../src/lib/confirm";
+import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import {
   Avatar,
@@ -555,6 +556,17 @@ export default function Home() {
             }}
             testID="open-edit-profile"
           />
+          {GAMES_TAB_ENABLED ? (
+            <Button
+              label="Friends"
+              variant="secondary"
+              onPress={() => {
+                setProfileOpen(false);
+                router.push("/friends");
+              }}
+              testID="open-friends"
+            />
+          ) : null}
           {archivedLists.length > 0 ? (
             <Button
               label={`Archived lists (${archivedLists.length})`}

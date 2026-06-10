@@ -27,6 +27,28 @@ cache when an `EXPO_PUBLIC_*` value changes — after flipping the flag, restart
 `expo start --clear` or the bundle serves the stale value (`scripts/e2e.sh` always
 clears for this reason).
 
+## Friends surface (G2b, issue #286)
+
+The share-link friend graph lives at `app/friends/index.tsx` (list + invite + unfriend) and
+`app/friends/accept/[token].tsx` (preview inviter + Accept) — both at the **root** stack,
+NOT inside `(tabs)`, since the backend mints invite URLs as `/friends/accept/:token`
+(`friendInviteUrl` in `routes/v1/friends.ts`). Reached from the Games header (`👥` button in
+`GamesHome`) and the profile/settings sheet on home; both entry points are flag-gated, and
+the screens `<Redirect href="/" />` when the flag is off. The accept landing reuses the
+list-invite deep-link round-trip (`inviteStash.ts`): it stashes
+`PENDING_FRIEND_INVITE_TOKEN_KEY` so a brand-new user can sign in mid-flow and land back on
+the accept screen — AuthGate (`_layout.tsx`) allows `/friends/accept/*` to mount signed-out
+(`onFriendAccept`) and consults that stash in its post-sign-in bounce. There is **no**
+"incoming requests" list: a share-link has no directed recipient until someone opens it, so
+the accept route _is_ the incoming-request surface. API wrappers (zod-validated — the public
+preview endpoint is the least-trusted boundary) in `src/api/friends.ts`; keys under
+`queryKeys.friends.*`. The social board (home cards + per-game `[id]` board) needs no
+solo-vs-multi branch: the backend's `rankEntries` already returns rank-ordered standings
+(ties as 1,2,2,4) for `viewer ∪ friends`, and `StandingsCard` + the board's `EntryRow`
+render ranks/ties/"you" highlighting straight from the entries. After accept/unfriend,
+invalidate both `queryKeys.friends.all` and the `["games"]` prefix (friendship gates score
+visibility); cross-client propagation otherwise waits on the 15s `useLivePollingInterval`.
+
 ## Cross-platform code sharing
 
 Metro resolves `.web.ts(x)` before `.ts(x)` on web and `.native.ts(x)` before `.ts(x)` on

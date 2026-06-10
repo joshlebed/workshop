@@ -59,4 +59,10 @@ export const queryKeys = {
     leaderboard: (gameId: string, periodKey: string) =>
       ["games", "leaderboard", gameId, periodKey] as const,
   },
+  friends: {
+    /** `GET /v1/friends` — my accepted friends. */
+    all: ["friends"] as const,
+    /** `GET /v1/friends/requests/:token` — public inviter preview. */
+    requestPreview: (inviteToken: string) => ["friends", "requestPreview", inviteToken] as const,
+  },
 } as const;

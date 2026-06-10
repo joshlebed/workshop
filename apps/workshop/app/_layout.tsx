@@ -15,7 +15,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
-import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
+import { PENDING_FRIEND_INVITE_TOKEN_KEY, PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
 import { getItem, removeItem } from "../src/lib/storage";
@@ -127,6 +127,10 @@ function AuthGate() {
     const onOnboarding = first === "onboarding";
     const onAcceptInvite = onOnboarding && segments[1] === "accept-invite";
     const onInvite = first === "invite";
+    // Friend invite deep-link (`/friends/accept/:token`, G2b). Like the list
+    // invite, it must mount while signed-out so it can stash its token before
+    // forwarding to /sign-in.
+    const onFriendAccept = first === "friends" && segments[1] === "accept";
 
     if (status !== "signed-in") {
       postSignInResolvedRef.current = false;
@@ -142,7 +146,7 @@ function AuthGate() {
       // Let `/invite/:token`, `/onboarding/accept-invite`, and the public
       // list landing mount briefly so they can stash a return target
       // before AuthGate forwards to /sign-in.
-      if (!onSignIn && !onInvite && !onAcceptInvite && !onListLanding) {
+      if (!onSignIn && !onInvite && !onAcceptInvite && !onListLanding && !onFriendAccept) {
         router.replace("/sign-in");
       }
       return;
@@ -167,6 +171,13 @@ function AuthGate() {
       const stashed = await getItem(PENDING_INVITE_TOKEN_KEY).catch(() => null);
       if (stashed) {
         router.replace(`/onboarding/accept-invite?token=${encodeURIComponent(stashed)}`);
+        return;
+      }
+      // Same round-trip for a friend invite (G2b) — land back on the accept
+      // screen, which previews the inviter and waits for an explicit Accept.
+      const stashedFriend = await getItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => null);
+      if (stashedFriend) {
+        router.replace(`/friends/accept/${encodeURIComponent(stashedFriend)}`);
         return;
       }
       const returnPath = await getItem(PENDING_RETURN_PATH_KEY).catch(() => null);
@@ -216,6 +227,8 @@ function AuthGate() {
         <Stack.Screen name="onboarding/display-name" />
         <Stack.Screen name="onboarding/accept-invite" />
         <Stack.Screen name="invite/[token]" />
+        <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="friends/accept/[token]" />
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="share/pick-leaderboard" options={{ animation: "slide_from_right" }} />
