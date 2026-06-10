@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./constants": "./src/constants.ts",
     "./games": "./src/games.ts",
+    "./friends": "./src/friends.ts",
     "./og": "./src/og.ts",
     "./itemKinds": "./src/itemKinds.ts",
     "./sourceKinds": "./src/sourceKinds.ts",

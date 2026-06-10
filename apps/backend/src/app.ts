@@ -9,6 +9,7 @@ import { requestLog } from "./middleware/request-log.js";
 import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
 import { authRoutes } from "./routes/v1/auth.js";
+import { friendRoutes } from "./routes/v1/friends.js";
 import { gameRoutes } from "./routes/v1/games.js";
 import { inviteRoutes, publicInviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
@@ -122,6 +123,7 @@ export function buildApp() {
   app.route("/v1/items", itemScoreRoutes);
   // Games surface (spec §3) — flag-gated inside the router (404 when off).
   app.route("/v1/games", gameRoutes);
+  app.route("/v1/friends", friendRoutes);
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/activity", activityRoutes);

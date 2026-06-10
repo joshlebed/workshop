@@ -169,6 +169,13 @@
       "when": 1781070405949,
       "tag": "0023_games_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1781071318904,
+      "tag": "0024_friendships",
+      "breakpoints": true
     }
   ]
 }
