@@ -240,6 +240,32 @@ export const itemTags = pgTable(
   }),
 );
 
+/**
+ * Named, stored tag filters on a list (spec §2.3) — a saved view is a
+ * one-tap preset ("Burgers" inside "Date Ideas"). `config` is
+ * `{ tags: string[], sort?: string }`. Views are **shared by every list
+ * member** (not per-viewer): any member creates one, the creator or the list
+ * owner edits/removes it. `created_by` goes NULL (not cascade-delete) if the
+ * author leaves so the shared view survives. Rows cascade with the list.
+ */
+export const listSavedViews = pgTable(
+  "list_saved_views",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    listId: uuid("list_id")
+      .notNull()
+      .references(() => lists.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    config: jsonb("config").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    position: integer("position"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    listIdx: index("list_saved_views_list_idx").on(t.listId),
+  }),
+);
+
 export const activityEvents = pgTable(
   "activity_events",
   {
@@ -383,6 +409,7 @@ export type DbListMember = typeof listMembers.$inferSelect;
 export type DbListInvite = typeof listInvites.$inferSelect;
 export type DbItem = typeof items.$inferSelect;
 export type DbItemTag = typeof itemTags.$inferSelect;
+export type DbListSavedView = typeof listSavedViews.$inferSelect;
 export type DbActivityEvent = typeof activityEvents.$inferSelect;
 export type DbUserActivityRead = typeof userActivityReads.$inferSelect;
 export type DbMetadataCache = typeof metadataCache.$inferSelect;

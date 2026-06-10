@@ -57,6 +57,15 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
   in `apps/workshop/CLAUDE.md` listing the three modes × two vars. The sandbox already
   bakes the flags; this is purely a "make the contract discoverable" doc edit.
 
+- **Six e2e specs reference a stale `create-list-type-*` testID.** The create-list
+  template picker now renders `create-list-template-${tpl.id}` (`app/create-list/type.tsx`),
+  but `list-flow`, `add-search`, `add-link-preview`, `activity-feed`, `share-link-accept`,
+  and `share-pick-list` still call `getByTestId("create-list-type-...")` and time out at the
+  template step. Only the post-refactor specs (`tags-filter`, `saved-views`) use the current
+  id. e2e isn't a required CI check so this has gone unnoticed. **Fix:** sweep the six specs
+  to `create-list-template-<id>` (and confirm the `<id>` slugs: `date_ideas`, `movie`, `trip`
+  — note `date_ideas` not `date_idea`). ~30min, mechanical.
+
 ### CI / deploy
 
 - **No CI check enforces `app.json` `version` bump when native deps change.** PR #160

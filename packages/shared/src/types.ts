@@ -340,6 +340,56 @@ export interface ListTagsResponse {
   tags: TagCount[];
 }
 
+// --- Saved views (spec §2.3) ---
+
+/**
+ * A saved view's stored filter. `tags` are normalized lowercase tag names
+ * (OR semantics, same as the live chip bar); `sort` is reserved for a future
+ * sort control and round-tripped untouched today.
+ */
+export interface SavedViewConfig {
+  tags: string[];
+  sort?: string;
+}
+
+/**
+ * A named, stored tag filter on a list (spec §2.3) — a one-tap preset like
+ * "Burgers" inside "Date Ideas". Shared by every list member: any member
+ * creates one; the creator or the list owner edits/removes it. `createdBy` is
+ * null once the author has left the list (the shared view survives).
+ */
+export interface SavedView {
+  id: string;
+  listId: string;
+  name: string;
+  config: SavedViewConfig;
+  createdBy: string | null;
+  position: number | null;
+  createdAt: string;
+}
+
+/** `GET /v1/lists/:id/views` — every saved view on the list, in display order. */
+export interface SavedViewsResponse {
+  views: SavedView[];
+}
+
+/** Single-view envelope returned by create/update. */
+export interface SavedViewResponse {
+  view: SavedView;
+}
+
+/** `POST /v1/lists/:id/views` — any member; the server assigns `position`. */
+export interface CreateSavedViewRequest {
+  name: string;
+  config: SavedViewConfig;
+}
+
+/** `PATCH /v1/lists/:id/views/:viewId` — creator or list owner; partial. */
+export interface UpdateSavedViewRequest {
+  name?: string;
+  config?: SavedViewConfig;
+}
+
 export interface ListItemsResponse {
   ordered: Item[];
   unordered: Item[];

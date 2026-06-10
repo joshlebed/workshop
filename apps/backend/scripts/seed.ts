@@ -23,6 +23,7 @@ import {
   items,
   itemTags,
   listMembers,
+  listSavedViews,
   lists,
   userIdentities,
   users,
@@ -106,6 +107,8 @@ async function main() {
     itemKind: ItemKind;
     modules: ModuleName[];
     items: SeedItem[];
+    /** Saved views (spec §2.3) — named, shared tag-filter presets on the list. */
+    savedViews?: Array<{ name: string; tags: string[] }>;
   }> = [
     {
       name: "Movie Night",
@@ -249,6 +252,10 @@ async function main() {
           content: { siteName: "Smith Teamaker" },
           tags: ["cozy"],
         },
+      ],
+      savedViews: [
+        { name: "Outdoors", tags: ["outdoors"] },
+        { name: "Cozy nights", tags: ["cozy"] },
       ],
     },
     {
@@ -450,6 +457,18 @@ async function main() {
           ]);
         }
       }
+    }
+
+    if (fixture.savedViews && fixture.savedViews.length > 0) {
+      await db.insert(listSavedViews).values(
+        fixture.savedViews.map((v, i) => ({
+          listId: list.id,
+          name: v.name,
+          config: { tags: v.tags },
+          createdBy: previewId,
+          position: i,
+        })),
+      );
     }
   }
 
