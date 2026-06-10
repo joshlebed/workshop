@@ -1,7 +1,7 @@
 // Horizontal chip bar for filtering a list's items by tag (spec §2.2).
-// Multi-select reads as OR within the bar; the explicit "All" chip clears
-// the selection. Counts come from the caller (derived from the loaded
-// items), so the bar never fetches.
+// Multi-select reads as AND within the bar (intersection); the explicit
+// "All" chip clears the selection. Counts come from the caller (derived
+// from the loaded items), so the bar never fetches.
 
 import { ScrollView, StyleSheet } from "react-native";
 import { Chip } from "./Chip";
@@ -10,7 +10,7 @@ import { tokens } from "./theme";
 export interface TagFilterBarProps {
   /** In-use tags + item counts, in display order. */
   tags: ReadonlyArray<{ tag: string; count: number }>;
-  /** Currently selected tags (OR semantics). Empty = "All". */
+  /** Currently selected tags (AND semantics). Empty = "All". */
   selected: ReadonlySet<string>;
   onToggle: (tag: string) => void;
   /** "All" chip pressed — clear every selected tag. */
