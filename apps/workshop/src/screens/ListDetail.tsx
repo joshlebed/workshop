@@ -882,9 +882,9 @@ export function ListDetail({ list, members, sources, token }: Props) {
               title="No matches"
               description={
                 tagFilterActive && !filterActive
-                  ? `Nothing in this list is tagged ${selectedTags.map((t) => `“${t}”`).join(" or ")}.`
+                  ? `Nothing in this list is tagged ${selectedTags.map((t) => `“${t}”`).join(" and ")}.`
                   : tagFilterActive
-                    ? `Nothing tagged ${selectedTags.map((t) => `“${t}”`).join(" or ")} matches “${filter.trim()}.”`
+                    ? `Nothing tagged ${selectedTags.map((t) => `“${t}”`).join(" and ")} matches “${filter.trim()}.”`
                     : `Nothing in this list matches “${filter.trim()}.”`
               }
               action={
