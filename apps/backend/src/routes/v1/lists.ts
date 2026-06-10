@@ -163,6 +163,7 @@ export const __test = {
   configPreviewSchema,
   duplicateListSchema,
   createSourceSchema,
+  buildNewListNotification,
 };
 
 function toListShape(l: DbList): List {
@@ -181,6 +182,41 @@ function toListShape(l: DbList): List {
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
   };
+}
+
+// Operator-channel copy for a freshly made list. `duplicated` only swaps the
+// lead word so a copy reads distinctly from a from-scratch list — both are "a
+// user made a list". Pure so it's unit-tested without a DB (see lists.test.ts
+// via `__test`).
+function buildNewListNotification(
+  list: Pick<DbList, "name" | "itemKind" | "modules">,
+  actorLabel: string,
+  duplicated: boolean,
+): { content: string; kind: string } {
+  const modulesLabel = (list.modules ?? []).join(" · ");
+  const kindLabel = list.itemKind ?? "any";
+  const lead = duplicated ? "new list (duplicated)" : "new list";
+  return {
+    content: `:clipboard: ${lead} — "${list.name}" (${kindLabel}${modulesLabel ? `, ${modulesLabel}` : ""}) by ${actorLabel}`,
+    kind: duplicated ? "new_list_duplicate" : "new_list",
+  };
+}
+
+// Ping the operator channel whenever a user makes a list — both the canonical
+// create path and the duplicate path land here (a duplicate is still a new
+// list). Call it AFTER the creating transaction commits so a Discord outage can
+// never roll the list back. The actor read is a cheap post-commit lookup off
+// the memoized pool; the label falls back display name → email → id.
+async function notifyNewList(userId: string, list: DbList, duplicated = false): Promise<void> {
+  const db = getDb();
+  const [actor] = await db
+    .select({ displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const actorLabel = actor?.displayName ?? actor?.email ?? userId;
+  const { content, kind } = buildNewListNotification(list, actorLabel, duplicated);
+  await notifyDiscord(content, { kind });
 }
 
 const SHARE_VISIBILITIES = ["off", "view", "join"] as const satisfies readonly ShareVisibility[];
@@ -614,18 +650,7 @@ listRoutes.post("/", async (c) => {
     return refreshed ?? list;
   });
 
-  const [actor] = await db
-    .select({ displayName: users.displayName, email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  const actorLabel = actor?.displayName ?? actor?.email ?? userId;
-  const modulesLabel = (created.modules ?? []).join(" · ");
-  const kindLabel = created.itemKind ?? "any";
-  await notifyDiscord(
-    `:clipboard: new list — "${created.name}" (${kindLabel}${modulesLabel ? `, ${modulesLabel}` : ""}) by ${actorLabel}`,
-    { kind: "new_list" },
-  );
+  await notifyNewList(userId, created);
 
   return ok(c, { list: toListShape(created) }, 201);
 });
@@ -1206,6 +1231,8 @@ listRoutes.post(
 
       return created;
     });
+
+    await notifyNewList(userId, dup, true);
 
     return ok(c, { list: toListShape(dup) }, 201);
   },

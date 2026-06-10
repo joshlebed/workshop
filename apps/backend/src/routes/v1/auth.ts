@@ -110,6 +110,42 @@ async function upsertIdentity({
   return { user: created, createdUser: true };
 }
 
+// Build the operator-channel message for a sign-in. A genuinely new user gets
+// the high-signal ":wave: new signup" copy; a returning user — including one
+// linking a second provider to a known email (`createdUser: false`) — gets a
+// quieter "signed in" line. Label falls back display name → email → id. Pure so
+// it's unit-tested without a DB or Discord (see auth.test.ts).
+export function buildSignInNotification(
+  user: Pick<DbUser, "id" | "email" | "displayName">,
+  provider: AuthProvider,
+  createdUser: boolean,
+): { content: string; kind: string } {
+  const label = user.displayName ?? user.email ?? user.id;
+  return createdUser
+    ? { content: `:wave: new signup — ${label} via ${provider}`, kind: "signup" }
+    : { content: `:bust_in_silhouette: signed in — ${label} via ${provider}`, kind: "signin" };
+}
+
+// Ping the operator channel on every sign-in (new or returning). The auth event
+// is logged independently of Discord so a missing admin message stays
+// traceable: the log line proves the sign-in happened and the notify was
+// attempted even if the Discord POST later fails (grep `discord notify` for the
+// delivery outcome). Discord failures swallow inside notifyDiscord, so this can
+// never break the sign-in.
+async function notifySignIn(
+  user: DbUser,
+  provider: AuthProvider,
+  createdUser: boolean,
+): Promise<void> {
+  const { content, kind } = buildSignInNotification(user, provider, createdUser);
+  logger.info(createdUser ? "new signup" : "sign-in", {
+    userId: user.id,
+    provider,
+    label: user.displayName ?? user.email ?? user.id,
+  });
+  await notifyDiscord(content, { kind });
+}
+
 authRoutes.post("/apple", async (c) => {
   const parsed = await parseJsonBody(c, appleBodySchema);
   if (!parsed.ok) return parsed.response;
@@ -140,14 +176,7 @@ authRoutes.post("/apple", async (c) => {
     email,
     displayName: fullName ?? null,
   });
-  if (createdUser) {
-    const label = user.displayName ?? user.email ?? user.id;
-    // Log the signup independently of Discord so a missing admin message can be
-    // traced: this line proves a new user was created and the notify was
-    // attempted, even if the Discord POST later fails.
-    logger.info("new signup", { userId: user.id, provider: "apple", label });
-    await notifyDiscord(`:wave: new signup — ${label} via apple`, { kind: "signup" });
-  }
+  await notifySignIn(user, "apple", createdUser);
 
   const token = signSession(user.id);
   return ok(c, {
@@ -181,11 +210,7 @@ authRoutes.post("/google", async (c) => {
     email,
     displayName,
   });
-  if (createdUser) {
-    const label = user.displayName ?? user.email ?? user.id;
-    logger.info("new signup", { userId: user.id, provider: "google", label });
-    await notifyDiscord(`:wave: new signup — ${label} via google`, { kind: "signup" });
-  }
+  await notifySignIn(user, "google", createdUser);
 
   const token = signSession(user.id);
   return ok(c, {
@@ -203,6 +228,12 @@ const devBodySchema = z.object({
 // Dev-only sign-in for E2E tests. Gated on DEV_AUTH_ENABLED=1. Never enable in prod.
 // Uses a stable synthetic `provider_sub` derived from the email so repeat calls
 // resolve to the same user.
+//
+// Deliberately does NOT call notifySignIn: this is the sandbox/E2E auto-sign-in
+// path (the web app re-hits it on every boot), and pinging the operator channel
+// on each preview load / test run would be pure noise. It no-ops in prod anyway
+// (route is disabled) and locally (webhook unset), so a ping here only ever
+// fires in a sandbox with the webhook set — exactly where it's least wanted.
 authRoutes.post("/dev", async (c) => {
   if (!getConfig().devAuthEnabled) {
     return err(c, "NOT_FOUND", "not found");

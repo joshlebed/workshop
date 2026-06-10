@@ -170,18 +170,22 @@ prod, Terraform sets env vars on the Lambda function (`STAGE`, `DATABASE_URL`,
 ## Discord operator notifications are observable — grep the logs first
 
 `notifyDiscord` (`src/lib/discord.ts`) logs **every** outcome, so "a `#workshop-admin`
-message is missing" is triageable from CloudWatch without guessing. A signup emits
-`new signup` (the call site, proving a user was created) then one of: `discord notify
-sent` (delivered), `discord notify non-2xx` / `discord notify threw` (Discord rejected —
-auto-retried once on 429/5xx/network), or `discord notify skipped: webhook not configured`
-(the `DISCORD_NOTIFY_WEBHOOK_URL` Lambda env is empty). Notifications only fire for
-**genuinely new users** (`createdUser` in `routes/v1/auth.ts`); a returning user signing
-in with a second provider links by email (`createdUser: false`) and correctly stays
-silent — so "no message" can simply mean nobody new signed up. Cross-check against the
-`users` table (max `created_at`) before assuming a delivery bug.
+message is missing" is triageable from CloudWatch without guessing. An event emits its
+call-site line — `new signup` / `sign-in` (`routes/v1/auth.ts`), or nothing extra for a
+new list — then one of: `discord notify sent` (delivered), `discord notify non-2xx` /
+`discord notify threw` (Discord rejected — auto-retried once on 429/5xx/network), or
+`discord notify skipped: webhook not configured` (the `DISCORD_NOTIFY_WEBHOOK_URL` Lambda
+env is empty). **Every sign-in pings** (`notifySignIn`): a genuinely new user
+(`createdUser: true`) emits `new signup` + the `:wave:` / `kind: "signup"` message, a
+returning user (incl. a known email linking a second provider, `createdUser: false`) emits
+`sign-in` + the `:bust_in_silhouette:` / `kind: "signin"` message. The dev auth route
+(`/v1/auth/dev`) is deliberately silent — it's the sandbox/E2E auto-sign-in. **Every list
+made pings** (`notifyNewList`): the create path (`kind: "new_list"`) and the duplicate path
+(`kind: "new_list_duplicate"`). So "no message" means the event didn't happen (or the
+webhook is unset) — cross-check the `users` / `lists` tables before assuming a delivery bug.
 
 ```bash
-AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 720h --filter '?"new signup" ?"discord notify"' --no-follow
+AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 720h --filter '?"new signup" ?"sign-in" ?"discord notify"' --no-follow
 ```
 
 ## Request analytics
