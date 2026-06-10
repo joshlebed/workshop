@@ -52,6 +52,7 @@ if [ "$NODE_MAJOR" -lt 22 ]; then
 fi
 
 echo "▶ building apps/workshop/dist..."
+export EXPO_PUBLIC_ENABLE_GAMES="${EXPO_PUBLIC_ENABLE_GAMES:-1}"
 pnpm --filter workshop-app exec expo export --platform web 1>/dev/null
 
 echo "▶ deploying to Cloudflare Pages (project=workshop, branch=$BRANCH)..."

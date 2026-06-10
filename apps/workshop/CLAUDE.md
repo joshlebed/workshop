@@ -12,7 +12,8 @@ stack (home, lists, activity, create-list) and `app/(tabs)/games/` the Games sur
 segments never appear in URLs, so all deep links are unchanged — but they DO appear in
 `useSegments()`; AuthGate in `app/_layout.tsx` filters `(`-prefixed segments before matching.
 The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`: launched
-2026-06-10 — unset means ON; `"0"` is the kill switch). Flag off must look exactly like the
+2026-06-10 — production declares `"1"` in `.env.production`, EAS config, and OTA/TestFlight
+workflows; unset still means ON, and `"0"` is the kill switch). Flag off must look exactly like the
 pre-tabs app: tab bar hidden, `/games` redirects home, no web sidebar. Auth/onboarding/invite/share
 routes live OUTSIDE `(tabs)` in the root stack — add new tab-content routes to the
 `(lists)` or `games` stack layout (`app/(tabs)/games/_layout.tsx` since G1b), not the root
