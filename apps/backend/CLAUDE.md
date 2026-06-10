@@ -150,7 +150,7 @@ the one in `scores.ts` (keep both in sync when the `count:` sentinel semantics c
 are shared). The catalog seed lives in migration `0023_games_tables.sql` and must stay in
 sync with `GAME_REGEX_CATALOG` (each entry's `title`/`canonicalUrl`); `games.test.ts`
 enforces it. Routes are flag-gated **inside the router** (404 when off): on when
-`STAGE=local`, and production declares `ENABLE_GAMES=1` in Terraform-managed Lambda env.
+`STAGE=local`, otherwise requires `ENABLE_GAMES=1` in the Lambda env (set by Terraform).
 Standings cover `viewer ∪ friends_of(viewer)` via `visibleUserIds()` (G2a) — the friend graph
 lives in `friendships` (one canonical row per pair, `user_low < user_high`; `lib/friends.ts` is
 the only writer and owns the invariant) with share-link invites in `friend_requests`
