@@ -1,15 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { DiscoveryGame } from "@workshop/shared/games";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import { acceptFriendRequest, fetchFriendRequestPreview } from "../../../src/api/friends";
+import { addGame, fetchGameDiscovery } from "../../../src/api/games";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { errorMessage } from "../../../src/lib/api";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
+import { localDateKey } from "../../../src/lib/gameDate";
 import { haptics } from "../../../src/lib/haptics";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../../../src/lib/inviteStash";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import { removeItem, setItem } from "../../../src/lib/storage";
+import { FriendGameSuggestions } from "../../../src/screens/games/FriendGameSuggestions";
 import { Avatar, Button, Card, Text, tokens } from "../../../src/ui/index";
 
 /**
@@ -27,7 +31,9 @@ import { Avatar, Button, Card, Text, tokens } from "../../../src/ui/index";
  *   2. Signed-out → AuthGate routes to `/sign-in`; the stash bounces the user
  *      back here once signed in.
  *   3. Signed-in → preview the inviter, then on Accept POST the acceptance,
- *      clear the stash, refresh the friend + games caches, and go to /friends.
+ *      clear the stash, refresh the friend + games caches, and show the
+ *      post-accept picker of the new friend's games (G3) — so a brand-new user
+ *      leaves onboarding with a populated home.
  */
 export default function AcceptFriendInvite() {
   const params = useLocalSearchParams<{ token?: string }>();
@@ -36,6 +42,10 @@ export default function AcceptFriendInvite() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [acceptedFriend, setAcceptedFriend] = useState<{
+    userId: string;
+    displayName: string | null;
+  } | null>(null);
 
   // Stash on mount so a redirect through /sign-in can recover the token. Gated
   // on the flag so a stale link can never strand a prod (flag-off) user.
@@ -56,12 +66,12 @@ export default function AcceptFriendInvite() {
   const previewQuery = useQuery({
     queryKey: queryKeys.friends.requestPreview(inviteToken ?? ""),
     queryFn: () => fetchFriendRequestPreview(inviteToken ?? "", authToken),
-    enabled: GAMES_TAB_ENABLED && !!inviteToken && status === "signed-in",
+    enabled: GAMES_TAB_ENABLED && !!inviteToken && status === "signed-in" && !acceptedFriend,
   });
 
   const acceptMutation = useMutation({
     mutationFn: () => acceptFriendRequest(inviteToken ?? "", authToken),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       haptics.medium();
       await removeItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => {});
       await Promise.all([
@@ -69,7 +79,8 @@ export default function AcceptFriendInvite() {
         // Friendship gates score visibility — refresh the social board.
         queryClient.invalidateQueries({ queryKey: ["games"] }),
       ]);
-      router.replace("/friends");
+      // Hand off to the post-accept picker instead of bouncing to /friends.
+      setAcceptedFriend(data.friend);
     },
     onError: (e) => {
       // Drop the stash on a hard failure so re-opening doesn't loop back here.
@@ -117,6 +128,17 @@ export default function AcceptFriendInvite() {
           Sign in to add your friend
         </Text>
       </Centered>
+    );
+  }
+
+  // Accepted — pick which of the new friend's games to add (skippable).
+  if (acceptedFriend) {
+    return (
+      <PostAcceptPicker
+        friend={acceptedFriend}
+        token={authToken}
+        onDone={() => router.replace("/games")}
+      />
     );
   }
 
@@ -195,6 +217,127 @@ export default function AcceptFriendInvite() {
   );
 }
 
+/**
+ * Post-accept game picker (G3) — the new friend's games you don't already have,
+ * each one-tap addable plus an "Add all". Skippable via "Done"; either way we
+ * land on the Games home so a brand-new user leaves onboarding with content.
+ */
+function PostAcceptPicker({
+  friend,
+  token,
+  onDone,
+}: {
+  friend: { userId: string; displayName: string | null };
+  token: string | null;
+  onDone: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const name = friend.displayName?.trim() || "Your friend";
+  const [adding, setAdding] = useState<string[]>([]);
+  const [added, setAdded] = useState<string[]>([]);
+
+  const discoveryQuery = useQuery({
+    queryKey: queryKeys.games.discovery(friend.userId),
+    queryFn: () => fetchGameDiscovery(token, friend.userId),
+    enabled: GAMES_TAB_ENABLED && !!friend.userId,
+  });
+  const games = discoveryQuery.data?.games ?? [];
+
+  // Refresh only the home's My Games — leave this picker's discovery list
+  // stable so added rows stay visible (flipped to "✓ Added").
+  const invalidateMine = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(localDateKey()) });
+
+  const addOne = useMutation({
+    mutationFn: (game: DiscoveryGame) => addGame(game.game.url, token),
+    onMutate: (game) => setAdding((ids) => [...ids, game.game.id]),
+    onSuccess: async (_data, game) => {
+      haptics.medium();
+      setAdded((ids) => (ids.includes(game.game.id) ? ids : [...ids, game.game.id]));
+      await invalidateMine();
+    },
+    onSettled: (_data, _e, game) => setAdding((ids) => ids.filter((id) => id !== game.game.id)),
+  });
+
+  const addAll = useMutation({
+    mutationFn: async () => {
+      const toAdd = games.filter((g) => !added.includes(g.game.id));
+      setAdding(toAdd.map((g) => g.game.id));
+      for (const g of toAdd) {
+        await addGame(g.game.url, token);
+      }
+      return toAdd.map((g) => g.game.id);
+    },
+    onSuccess: async (ids) => {
+      haptics.medium();
+      setAdded((prev) => Array.from(new Set([...prev, ...ids])));
+      await invalidateMine();
+    },
+    onSettled: () => setAdding([]),
+  });
+
+  const allAdded = games.length > 0 && games.every((g) => added.includes(g.game.id));
+  const addedAny = added.length > 0;
+
+  return (
+    <Centered testID="friend-accept-picker">
+      <Card style={styles.card} elevated>
+        <View style={styles.inviterBlock}>
+          <Avatar name={friend.displayName} size="lg" />
+          <Text variant="title" style={styles.inviterTitle}>
+            You're friends with {name}
+          </Text>
+        </View>
+
+        {discoveryQuery.isLoading ? (
+          <View style={styles.pickerLoading}>
+            <ActivityIndicator color={tokens.accent.default} />
+          </View>
+        ) : games.length > 0 ? (
+          <>
+            <Text tone="secondary" style={styles.inviterCaption}>
+              {name} plays these — add any to your home.
+            </Text>
+            <ScrollView
+              style={styles.pickerScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <FriendGameSuggestions
+                games={games}
+                addingGameIds={adding}
+                addedGameIds={added}
+                onAdd={(g) => addOne.mutate(g)}
+                hideFriendLine
+                testIDPrefix="friend-accept-suggestion"
+              />
+            </ScrollView>
+            {allAdded ? null : (
+              <Button
+                label="Add all"
+                variant="secondary"
+                onPress={() => addAll.mutate()}
+                loading={addAll.isPending}
+                testID="friend-accept-add-all"
+              />
+            )}
+          </>
+        ) : (
+          <Text tone="secondary" style={styles.inviterCaption}>
+            {name} hasn't added any games yet. Add games anytime from the Games tab.
+          </Text>
+        )}
+
+        <Button
+          label={addedAny ? "Done" : "Maybe later"}
+          onPress={onDone}
+          testID="friend-accept-picker-done"
+        />
+      </Card>
+    </Centered>
+  );
+}
+
 function Centered({ children, testID }: { children: React.ReactNode; testID?: string }) {
   return (
     <View style={styles.center} testID={testID}>
@@ -222,4 +365,6 @@ const styles = StyleSheet.create({
   inviterTitle: { textAlign: "center" },
   inviterCaption: { textAlign: "center" },
   loadingText: { textAlign: "center" },
+  pickerLoading: { paddingVertical: tokens.space.lg, alignItems: "center" },
+  pickerScroll: { maxHeight: 280, alignSelf: "stretch" },
 });

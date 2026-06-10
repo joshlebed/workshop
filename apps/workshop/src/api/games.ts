@@ -4,6 +4,7 @@
 
 import type {
   AddGameResponse,
+  GameDiscoveryResponse,
   GameLeaderboardResponse,
   GamesResponse,
   UpsertGameScoreResponse,
@@ -58,6 +59,26 @@ export function upsertGameScore(
     method: "PUT",
     path: `/v1/games/${gameId}/scores`,
     body,
+    token,
+  });
+}
+
+/**
+ * `GET /v1/games/discovery` (G2a) — friends' games I haven't added yet, each
+ * tagged with which friends play it. `friendUserId` narrows to one friend
+ * (the post-accept picker); omit it for the all-friends feed that powers the
+ * + sheet suggestions and the friends-but-no-games empty state.
+ */
+export function fetchGameDiscovery(
+  token: string | null,
+  friendUserId?: string,
+): Promise<GameDiscoveryResponse> {
+  const params = new URLSearchParams();
+  if (friendUserId) params.set("friend", friendUserId);
+  const qs = params.toString();
+  return apiRequest<GameDiscoveryResponse>({
+    method: "GET",
+    path: `/v1/games/discovery${qs ? `?${qs}` : ""}`,
     token,
   });
 }

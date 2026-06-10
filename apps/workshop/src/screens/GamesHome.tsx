@@ -8,28 +8,48 @@
 // Lists surface: Play opens the game and arms a paste-on-return prompt
 // (`useReturnToPaste`, scope "games"); pasting posts to *today's* bucket.
 //
-// Empty state v1 is add-by-URL only — the friends-first onboarding is G3.
+// Empty state is the friends-first onboarding (G3, #293) — `GamesOnboarding`
+// pushes "Add friends" when you have none, or your friends' games as one-tap
+// suggestions when you do. The + sheet carries the same discovery suggestions
+// above its URL field; the home card list itself stays purely your own games.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Game, GameStandingsEntry, GamesResponse, MyGame } from "@workshop/shared/games";
+import type {
+  DiscoveryGame,
+  Game,
+  GameStandingsEntry,
+  GamesResponse,
+  MyGame,
+} from "@workshop/shared/games";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { addGame, fetchMyGames, moveGame, removeGame, upsertGameScore } from "../api/games";
+import { createFriendInvite, fetchFriends } from "../api/friends";
+import {
+  addGame,
+  fetchGameDiscovery,
+  fetchMyGames,
+  moveGame,
+  removeGame,
+  upsertGameScore,
+} from "../api/games";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { neighborsForOrderedReorder } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { confirm } from "../lib/confirm";
+import { GAMES_TAB_ENABLED } from "../lib/featureFlags";
 import { localDateKey } from "../lib/gameDate";
 import { haptics } from "../lib/haptics";
 import { openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
+import { shareOrCopyLink } from "../lib/share";
 import { Button, EmptyState, Screen, Sheet, Text, tokens, useToast } from "../ui/index";
 import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
+import { GamesOnboarding } from "./games/GamesOnboarding";
 import type { GameReorderEvent } from "./games/gameCardListProps";
 import { GameScorePasteSheet } from "./listDetail/GameScorePasteSheet";
 import { useReturnToPaste } from "./listDetail/useReturnToPaste";
@@ -61,6 +81,11 @@ export function GamesHome() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  // Track in-flight + completed one-tap discovery adds by game id so each row
+  // can show its own spinner / "✓ Added" pill (one mutation, many rows).
+  const [addingDiscoveryIds, setAddingDiscoveryIds] = useState<string[]>([]);
+  const [addedDiscoveryIds, setAddedDiscoveryIds] = useState<string[]>([]);
 
   const gamesQuery = useQuery({
     queryKey: gamesKey,
@@ -69,6 +94,26 @@ export function GamesHome() {
     refetchInterval: livePoll,
   });
   const myGames = gamesQuery.data?.games ?? [];
+  const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
+
+  // Friends drive which empty-state variant shows; discovery powers both the
+  // friends-but-no-games suggestions and the + sheet's suggestion list. Both
+  // are only needed when the home is empty or the sheet is open.
+  const friendsQuery = useQuery({
+    queryKey: queryKeys.friends.all,
+    queryFn: () => fetchFriends(token),
+    enabled: !!token && GAMES_TAB_ENABLED && isEmpty,
+    refetchInterval: livePoll,
+  });
+  const friends = friendsQuery.data?.friends ?? [];
+
+  const discoveryQuery = useQuery({
+    queryKey: queryKeys.games.discovery(),
+    queryFn: () => fetchGameDiscovery(token),
+    enabled: !!token && GAMES_TAB_ENABLED && (addOpen || isEmpty),
+    refetchInterval: livePoll,
+  });
+  const discovery = discoveryQuery.data?.games ?? [];
 
   const addMutation = useMutation({
     mutationFn: (url: string) => addGame(url, token),
@@ -82,6 +127,56 @@ export function GamesHome() {
       showToast({ message: errorMessage(e, "Couldn't add that game."), tone: "danger" });
     },
   });
+
+  // One-tap add of a discovery suggestion (sheet + empty state). Unlike the
+  // URL add it keeps the sheet open so the user can add several, and it drops
+  // the added game off the discovery feed.
+  const addDiscoveryMutation = useMutation({
+    mutationFn: (game: DiscoveryGame) => addGame(game.game.url, token),
+    onMutate: (game) => {
+      setAddingDiscoveryIds((ids) => [...ids, game.game.id]);
+    },
+    onSuccess: async (_data, game) => {
+      haptics.medium();
+      setAddedDiscoveryIds((ids) => (ids.includes(game.game.id) ? ids : [...ids, game.game.id]));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: gamesKey }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.games.discovery() }),
+      ]);
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't add that game."), tone: "danger" });
+    },
+    onSettled: (_data, _e, game) => {
+      setAddingDiscoveryIds((ids) => ids.filter((id) => id !== game.game.id));
+    },
+  });
+
+  // Empty-state "Add friends": mint a share-link invite and hand it to the
+  // system share sheet (native) / clipboard (web) — same machinery as the
+  // Friends screen.
+  const inviteMutation = useMutation({
+    mutationFn: () => createFriendInvite(token),
+    onSuccess: async (data) => {
+      haptics.medium();
+      setInviteUrl(data.url);
+      const result = await shareOrCopyLink(data.url);
+      if (result === "copied") {
+        showToast({ message: "Invite link copied", tone: "success" });
+      } else if (result === "failed") {
+        showToast({ message: "Couldn't copy — copy the link below manually.", tone: "danger" });
+      }
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't create an invite link."), tone: "danger" });
+    },
+  });
+
+  const onCopyInvite = async () => {
+    if (!inviteUrl) return;
+    const result = await shareOrCopyLink(inviteUrl);
+    if (result === "copied") showToast({ message: "Invite link copied", tone: "success" });
+  };
 
   const moveMutation = useMutation<
     { position: number | null; rebalanced: boolean },
@@ -253,20 +348,21 @@ export function GamesHome() {
             }
           />
         </View>
-      ) : myGames.length === 0 ? (
-        <View style={styles.center}>
-          <EmptyState
-            title="No games yet"
-            description="Add a daily game by URL to start tracking scores with one card per game."
-            action={
-              <Button
-                label="Add a game"
-                onPress={() => setAddOpen(true)}
-                testID="games-empty-add"
-              />
-            }
-          />
-        </View>
+      ) : isEmpty ? (
+        <GamesOnboarding
+          friendsLoading={friendsQuery.isLoading}
+          hasFriends={friends.length > 0}
+          discovery={discovery}
+          discoveryLoading={discoveryQuery.isLoading}
+          invitePending={inviteMutation.isPending}
+          inviteUrl={inviteUrl}
+          onAddFriends={() => inviteMutation.mutate()}
+          onCopyInvite={onCopyInvite}
+          onAddByUrl={() => setAddOpen(true)}
+          onAddDiscovery={(game) => addDiscoveryMutation.mutate(game)}
+          addingGameIds={addingDiscoveryIds}
+          addedGameIds={addedDiscoveryIds}
+        />
       ) : (
         <GameCardList
           games={myGames}
@@ -298,6 +394,11 @@ export function GamesHome() {
         pending={addMutation.isPending}
         onSubmit={(url) => addMutation.mutate(url)}
         onClose={() => setAddOpen(false)}
+        discovery={discovery}
+        discoveryLoading={discoveryQuery.isLoading}
+        onAddDiscovery={(game) => addDiscoveryMutation.mutate(game)}
+        addingGameIds={addingDiscoveryIds}
+        addedGameIds={addedDiscoveryIds}
       />
 
       <GameScorePasteSheet

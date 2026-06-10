@@ -62,6 +62,15 @@ export const queryKeys = {
     /** `GET /v1/games/:id/leaderboard` for one period. */
     leaderboard: (gameId: string, periodKey: string) =>
       ["games", "leaderboard", gameId, periodKey] as const,
+    /**
+     * `GET /v1/games/discovery` — friends' games I haven't added. The
+     * `friendUserId` form (post-accept picker) sorts under the all-friends
+     * key so invalidating `["games", "discovery"]` clears both.
+     */
+    discovery: (friendUserId?: string) =>
+      friendUserId
+        ? (["games", "discovery", friendUserId] as const)
+        : (["games", "discovery"] as const),
   },
   friends: {
     /** `GET /v1/friends` — my accepted friends. */

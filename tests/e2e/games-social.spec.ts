@@ -62,11 +62,20 @@ test("games social: A invites → B accepts → scores cross-show on card + boar
   // Hit the same web bundle the test runs against (strip the baked-in origin).
   const acceptPath = new URL(inviteUrl).pathname;
 
-  // B lands on the accept screen, sees the inviter, and accepts → /friends.
+  // B lands on the accept screen, sees the inviter, and accepts.
   await bPage.goto(acceptPath);
   await expect(bPage.getByTestId("friend-accept")).toBeVisible();
   await expect(bPage.getByTestId("friend-accept")).toContainText("Social Ada");
   await bPage.getByTestId("friend-accept-button").click();
+
+  // Post-accept picker (G3): A's only game is already in B's My Games, so the
+  // picker has nothing to suggest — continue through it to the Games home.
+  await expect(bPage.getByTestId("friend-accept-picker")).toBeVisible();
+  await bPage.getByTestId("friend-accept-picker-done").click();
+  await expect(bPage.getByTestId("games-home")).toBeVisible();
+
+  // The symmetric edge is now visible from B's Friends screen.
+  await bPage.getByTestId("games-friends-button").click();
   await expect(bPage.getByTestId("friends-screen")).toBeVisible();
   await expect(bPage.getByTestId(`friend-row-${aUser.id}`)).toBeVisible();
 
