@@ -49,6 +49,40 @@ render ranks/ties/"you" highlighting straight from the entries. After accept/unf
 invalidate both `queryKeys.friends.all` and the `["games"]` prefix (friendship gates score
 visibility); cross-client propagation otherwise waits on the 15s `useLivePollingInterval`.
 
+## Friends-first onboarding + game discovery (G3, issue #293)
+
+Games are discovered **through friends** — `GET /v1/games/discovery` (G2a) returns friends'
+games you haven't added, each tagged with which friends play it; `?friend=<userId>` narrows
+to one friend (404s for non-friends). Wrapper: `fetchGameDiscovery` in `src/api/games.ts`;
+keys under `queryKeys.games.discovery(friendUserId?)` — the friend form nests under the
+all-friends key so invalidating `["games", "discovery"]` clears both. One-tap "add" reuses
+`POST /v1/games` with the discovery game's `url` (find-or-create collapses onto the existing
+catalog row); there is **no** add-by-id endpoint. Three surfaces render the same presentational
+`FriendGameSuggestions` (`src/screens/games/FriendGameSuggestions.tsx`):
+
+1. **`GamesHome` empty state** (`src/screens/games/GamesOnboarding.tsx`) — two variants gated
+   on friend count (the home queries `queryKeys.friends.all`, enabled only while empty): **no
+   friends** → primary "Add friends" (mints + shares an invite via the G2b `createFriendInvite`
+   - `shareOrCopyLink` machinery, link revealed inline on web), secondary "Add a game by URL";
+     **friends but no games** → their games as one-tap suggestions. The home card list itself
+     stays purely your chosen games — suggestions never appear there.
+2. **The + add-game sheet** (`AddGameSheet`) — discovery suggestions ABOVE the URL field
+   (capped-height scroll); URL field's `autoFocus` is suppressed when suggestions exist so the
+   keyboard doesn't shove them offscreen.
+3. **Post-accept picker** — `app/friends/accept/[token].tsx` no longer bounces to `/friends`
+   on Accept; it sets `acceptedFriend` and renders an inline `PostAcceptPicker` (the new
+   friend's games via `discovery?friend=<id>`, one-tap + "Add all", skippable) then
+   `router.replace("/games")` so a brand-new user lands on a populated home. `games-social.spec`
+   was updated to click through this picker (`friend-accept-picker` / `-picker-done`).
+
+The home/sheet share one discovery query (`queryKeys.games.discovery()`, enabled when the
+home is empty OR the sheet is open) so they don't double-fetch. Per-row add state
+(spinner / "✓ Added") is tracked by game id in the call site (one mutation, many rows), since
+RQ's `useMutation` only surfaces the latest call. The picker invalidates only
+`queryKeys.games.mine(today)` on add (keeps its own suggestion list stable); the home add
+invalidates both `mine` and `["games", "discovery"]` so the added game drops off suggestions.
+Everything stays behind `EXPO_PUBLIC_ENABLE_GAMES` (queries gate on `GAMES_TAB_ENABLED`).
+
 ## Cross-platform code sharing
 
 Metro resolves `.web.ts(x)` before `.ts(x)` on web and `.native.ts(x)` before `.ts(x)` on
