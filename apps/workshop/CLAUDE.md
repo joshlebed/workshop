@@ -167,6 +167,16 @@ footer.
 
 Raw `<Animated.Text>` strips our `variant`/`tone` props.
 
+## Override `lineHeight` whenever you bump `fontSize` on the shared `<Text>`
+
+`Text` defaults to `variant="body"`, which carries a fixed `lineHeight: 22` (each variant
+sets its own line-height for vertical rhythm — see `variantStyle` in `src/ui/Text.tsx`).
+A local style that overrides only `fontSize` (e.g. a 34px wordmark) keeps the 22px line
+box, and **iOS clips the tops of the glyphs** (web/RN-Web doesn't — the overflow just
+renders, so this is invisible until you look on device). Always set a matching `lineHeight`
+(~1.2× the font size) alongside any custom `fontSize`. The sign-in wordmark
+(`app/sign-in.tsx`) regressed this way; emoji/icon glyphs are exempt (no ascenders to clip).
+
 ## Wrap top-level screens in `Screen` from `src/ui/Layout.tsx`
 
 No-op on native; on web it constrains content to a ~560px reading column. Without it,
