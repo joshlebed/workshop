@@ -2,6 +2,7 @@ import type { Item, LeaderboardEntry } from "@workshop/shared";
 import {
   type DetectedSharedScoreKind,
   detectGameKindForItem,
+  detectGameKindForText,
   detectSharedScore,
 } from "./shareScoreDetection";
 
@@ -187,9 +188,33 @@ export function summarizeScoreBody(
   item: Item,
   entry: { scoreValue: number | null; scoreRaw: string | null },
 ): string | null {
+  return summarizeBody((raw) => detectKind(item, raw), entry);
+}
+
+/**
+ * Games-surface twin of `summarizeScoreBody`: identical distillation, but the
+ * game-kind inference runs over the catalog row's title + URL instead of an
+ * `Item`. Keeps a Games card's score block byte-identical to what the same
+ * raw result renders as on the Lists surface.
+ */
+export function summarizeGameScoreBody(
+  game: { title: string; url: string | null },
+  entry: { scoreValue: number | null; scoreRaw: string | null },
+): string | null {
+  return summarizeBody(
+    (raw) =>
+      detectSharedScore(raw)?.kind ?? detectGameKindForText(`${game.title} ${game.url ?? ""}`),
+    entry,
+  );
+}
+
+function summarizeBody(
+  detect: (raw: string) => DetectedSharedScoreKind | null,
+  entry: { scoreValue: number | null; scoreRaw: string | null },
+): string | null {
   const raw = entry.scoreRaw ?? "";
   if (raw.trim()) {
-    const kind = detectKind(item, raw);
+    const kind = detect(raw);
     const formatter = kind ? FORMATTERS[kind] : undefined;
     const formatted = formatter?.(raw);
     if (formatted && formatted.trim().length > 0) return formatted;

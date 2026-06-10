@@ -198,6 +198,18 @@ export function detectGameKindForItem(item: Item): DetectedSharedScoreKind | nul
   return null;
 }
 
+/**
+ * Same inference as `detectGameKindForItem`, but over a caller-assembled
+ * blob of identifying text (title + URL). Used by the Games surface, whose
+ * catalog rows aren't `Item`s.
+ */
+export function detectGameKindForText(text: string): DetectedSharedScoreKind | null {
+  for (const pattern of GAME_PATTERNS) {
+    if (pattern.itemPatterns.some((re) => re.test(text))) return pattern.kind;
+  }
+  return null;
+}
+
 function matchTextPattern(text: string): GamePattern | null {
   for (const pattern of GAME_PATTERNS) {
     if (pattern.textPatterns.some((re) => re.test(text))) return pattern;

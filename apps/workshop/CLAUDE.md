@@ -5,6 +5,28 @@ the primary dev surface — faster iteration, browser-automation can drive the r
 
 Human onboarding (clone → run → deploy) lives in `apps/workshop/README.md`.
 
+## App shell: Lists/Games tabs via route groups (G0, epic #279)
+
+The root is an expo-router `Tabs` shell: `app/(tabs)/(lists)/` holds the entire pre-Games
+stack (home, lists, activity, create-list) and `app/(tabs)/games/` the Games surface. Group
+segments never appear in URLs, so all deep links are unchanged — but they DO appear in
+`useSegments()`; AuthGate in `app/_layout.tsx` filters `(`-prefixed segments before matching.
+The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`: unset →
+follows `__DEV__`, so prod exports are off). Flag off must look exactly like the pre-tabs
+app: tab bar hidden, `/games` redirects home, no web sidebar. Auth/onboarding/invite/share
+routes live OUTSIDE `(tabs)` in the root stack — add new tab-content routes to the
+`(lists)` or `games` stack layout (`app/(tabs)/games/_layout.tsx` since G1b), not the root
+one. The Games surface (G1b): `games/index` → `src/screens/GamesHome.tsx` (My Games as
+`StandingsCard`s, drag-reorder via `src/screens/games/GameCardList[.web].tsx`, add-by-URL
+sheet, paste → `PUT /v1/games/:id/scores`); `games/[id]` is the per-game history board
+(DayRail + today paste slot). Games API wrappers live in `src/api/games.ts`; query keys
+under `queryKeys.games.*`. Every flag-off route must `<Redirect href="/" />`. Use the static `tokens` (not
+`useTheme()`) for navigator backgrounds, matching the root layout, or light-preferring
+browsers get a light scene behind dark screen content. Metro does NOT invalidate its
+cache when an `EXPO_PUBLIC_*` value changes — after flipping the flag, restart with
+`expo start --clear` or the bundle serves the stale value (`scripts/e2e.sh` always
+clears for this reason).
+
 ## Cross-platform code sharing
 
 Metro resolves `.web.ts(x)` before `.ts(x)` on web and `.native.ts(x)` before `.ts(x)` on
@@ -113,6 +135,25 @@ Preserve both when handling `useShareIntent()` in `_layout.tsx`; score shares of
 `shareIntent.text` even when `shareIntent.webUrl` is also present. `/share` owns the
 top-level choice, `/share/pick-list` handles normal item adds, and
 `/share/pick-leaderboard` handles score posting.
+
+## A cross-navigator `router.replace` collapses the target stack — pass `withAnchor`
+
+`router.replace("/list/:id/...")` from a **root-level** screen (the `/share/*` flow lives in
+the root stack, the content lives in `(tabs)/(lists)`) rebuilds the `(lists)` stack fresh with
+**only** the target route — no parent beneath it. `canGoBack()` is then `false`, so every
+screen's back button falls through `goBack()` (`src/lib/goBack.ts`) to `router.replace(parent)`,
+which animates as a **forward push** (`animationTypeForReplace` defaults to `"push"` in
+`@react-navigation/native-stack`) — the back button visibly slides the wrong way. The share
+flow hit this on every destination it reached. Fix: `(lists)/_layout.tsx` declares
+`unstable_settings = { initialRouteName: "index" }` (the anchor), and the share flow's terminal
+`router.replace(...)` calls pass `{ withAnchor: true }` so the anchor is injected at runtime
+(`initialRouteName` alone only applies to cold deep-link state, **not** runtime `replace`). Net:
+`canGoBack()` is true → `goBack()` uses a real `router.back()` (a proper pop). Two corollaries:
+keep the `/share/*` forward moves as `router.replace` (a clean linear chain — a stray `push`
+leaves a phantom `/share` screen beneath `(tabs)` that a home swipe-back can surface), but
+`pick-leaderboard`'s "add a game" stays `router.push` so the picker (and its in-progress score
+draft) survives the round-trip. Any new cross-navigator `replace` into `(lists)` needs
+`withAnchor` too (e.g. the invite-accept / public-landing → list paths share this shape).
 
 ## Web HTML shell lives in `public/index.html`
 

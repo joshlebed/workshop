@@ -24,6 +24,12 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     email: text("email"),
     displayName: text("display_name"),
+    /**
+     * Profile picture, stored as a base64 `data:` URL (same approach as list
+     * cover photos — no object store yet). NULL = no custom avatar; clients
+     * fall back to initials. Capped by `avatarUrlSchema` in routes/v1/users.ts.
+     */
+    avatarUrl: text("avatar_url"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
     /**
@@ -407,6 +413,49 @@ export const itemScores = pgTable(
 );
 
 /**
+ * Games surface (spec §3) — the global game catalog, deduped by
+ * `normalized_url` (see `normalizeGameUrl` in `@workshop/shared/games`).
+ * Seeded from the `gameScoreRegex` catalog in migration 0023; unknown URLs
+ * get a hostname title at find-or-create time. Entirely separate from the
+ * Lists leaderboard surface (`items` / `item_scores`) — never join across.
+ */
+export const games = pgTable("games", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  normalizedUrl: text("normalized_url").notNull().unique(),
+  url: text("url").notNull(),
+  title: text("title").notNull(),
+  iconUrl: text("icon_url"),
+  /** Key into the `gameScoreRegex` catalog; NULL for unknown games. */
+  gameKey: text("game_key"),
+  /** 'desc' = bigger is better, 'asc' = lower is better. */
+  scoreDirection: text("score_direction").notNull().default("desc"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+/**
+ * "My Games" — a per-user ordered selection of catalog games. Same sparse
+ * `position` scheme as `items.position` (see `lib/positions.ts` /
+ * `lib/gamePositions.ts`); NULL positions sort last until first dragged.
+ */
+export const userGames = pgTable(
+  "user_games",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    position: integer("position"),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.gameId] }),
+    userPositionIdx: index("user_games_user_position_idx").on(t.userId, t.position),
+  }),
+);
+
+/**
  * Per-user cached Letterboxd watchlist (Letterboxd-match lists). Replaced
  * wholesale on each watchlist sync; rows are keyed by the canonical
  * Letterboxd film slug, which is stable across users — overlap between
@@ -455,6 +504,73 @@ export const itemAcceptances = pgTable(
   }),
 );
 
+/**
+ * Scores for the Games surface. One row per (game, user, period_key);
+ * `period_key` is the puzzle day ("YYYY-MM-DD"). NEW table — the old Lists
+ * leaderboard keeps `item_scores`; the two never read each other.
+ */
+export const gameScores = pgTable(
+  "game_scores",
+  {
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    periodKey: text("period_key").notNull(),
+    scoreValue: numeric("score_value"),
+    scoreRaw: text("score_raw").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.gameId, t.userId, t.periodKey] }),
+    gamePeriodIdx: index("game_scores_game_period_idx").on(t.gameId, t.periodKey),
+  }),
+);
+
+/**
+ * Symmetric friend graph (spec §3.6, G2a). One row per unordered pair,
+ * stored canonically as `user_low < user_high` (enforced in
+ * `lib/friends.ts`, the only writer). Lookups for either side stay indexed:
+ * the PK covers `user_low`, `friendships_high_idx` covers `user_high`.
+ */
+export const friendships = pgTable(
+  "friendships",
+  {
+    userLow: uuid("user_low")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userHigh: uuid("user_high")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userLow, t.userHigh] }),
+    highIdx: index("friendships_high_idx").on(t.userHigh),
+  }),
+);
+
+/**
+ * Personal friend-invite links (spec §3.4) — share-link → accept, reusing
+ * the list-invite token machinery (`lib/shareSlug.ts`). `status` is
+ * pending | accepted | declined; `invitee_id` + `responded_at` are set on
+ * response. Accepting creates the `friendships` edge.
+ */
+export const friendRequests = pgTable("friend_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  inviterId: uuid("inviter_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  inviteeId: uuid("invitee_id").references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+});
+
 export const rateLimits = pgTable(
   "rate_limits",
   {
@@ -481,5 +597,10 @@ export type DbMetadataCache = typeof metadataCache.$inferSelect;
 export type DbRateLimit = typeof rateLimits.$inferSelect;
 export type DbListSource = typeof listSources.$inferSelect;
 export type DbItemScore = typeof itemScores.$inferSelect;
+export type DbGame = typeof games.$inferSelect;
+export type DbFriendship = typeof friendships.$inferSelect;
+export type DbFriendRequest = typeof friendRequests.$inferSelect;
+export type DbUserGame = typeof userGames.$inferSelect;
+export type DbGameScore = typeof gameScores.$inferSelect;
 export type DbLetterboxdWatchlistFilm = typeof letterboxdWatchlistFilms.$inferSelect;
 export type DbItemAcceptance = typeof itemAcceptances.$inferSelect;

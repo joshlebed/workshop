@@ -70,11 +70,11 @@ export default function PickList() {
     if (!normalizedSharedUrl && sharedText) search.set("prefillText", sharedText);
     const qs = search.toString();
     const target = qs ? (`/list/${list.id}/add?${qs}` as const) : (`/list/${list.id}/add` as const);
-    router.replace(target);
+    router.replace(target, { withAnchor: true });
   };
 
   const onCreateNew = () => {
-    router.replace("/create-list/type");
+    router.replace("/create-list/type", { withAnchor: true });
   };
 
   const onCancel = () => {

@@ -14,7 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { fetchActivity } from "../src/api/activity";
+import { fetchActivity } from "../../../src/api/activity";
 import {
   archiveList,
   fetchLists,
@@ -23,13 +23,13 @@ import {
   unarchiveList,
   unmuteList,
   unpinList,
-} from "../src/api/lists";
-import { PullToRefresh } from "../src/components/PullToRefresh";
-import { useAuth } from "../src/hooks/useAuth";
-import { useLivePollingInterval } from "../src/hooks/useLivePollingInterval";
-import { errorMessage } from "../src/lib/api";
-import { confirm } from "../src/lib/confirm";
-import { queryKeys } from "../src/lib/queryKeys";
+} from "../../../src/api/lists";
+import { PullToRefresh } from "../../../src/components/PullToRefresh";
+import { useAuth } from "../../../src/hooks/useAuth";
+import { useLivePollingInterval } from "../../../src/hooks/useLivePollingInterval";
+import { errorMessage } from "../../../src/lib/api";
+import { confirm } from "../../../src/lib/confirm";
+import { queryKeys } from "../../../src/lib/queryKeys";
 import {
   Avatar,
   Button,
@@ -40,7 +40,7 @@ import {
   Text,
   tokens,
   useToast,
-} from "../src/ui/index";
+} from "../../../src/ui/index";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -467,9 +467,17 @@ export default function Home() {
               pressed && styles.headerCirclePressed,
             ]}
           >
-            <Text style={styles.profileInitials} tone="secondary">
-              {initials}
-            </Text>
+            {user?.avatarUrl ? (
+              <Image
+                source={{ uri: user.avatarUrl }}
+                style={styles.profileImage}
+                accessibilityIgnoresInvertColors
+              />
+            ) : (
+              <Text style={styles.profileInitials} tone="secondary">
+                {initials}
+              </Text>
+            )}
           </Pressable>
         </View>
       </View>
@@ -639,6 +647,7 @@ export default function Home() {
         <View style={styles.profileSheetHeader}>
           <Avatar
             name={user?.displayName ?? user?.email ?? null}
+            imageUrl={user?.avatarUrl}
             size="lg"
             testID="profile-sheet-avatar"
           />
@@ -664,6 +673,15 @@ export default function Home() {
           </View>
         </View>
         <View style={styles.profileSheetActions}>
+          <Button
+            label="Edit profile"
+            variant="secondary"
+            onPress={() => {
+              setProfileOpen(false);
+              router.push("/profile");
+            }}
+            testID="open-edit-profile"
+          />
           {archivedLists.length > 0 ? (
             <Button
               label={`Archived lists (${archivedLists.length})`}
@@ -857,7 +875,8 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     letterSpacing: 0.1,
   },
-  profileCircle: { borderColor: tokens.border.default },
+  profileCircle: { borderColor: tokens.border.default, overflow: "hidden" },
+  profileImage: { width: 38, height: 38, borderRadius: 19 },
   profileInitials: {
     fontSize: 12,
     fontWeight: tokens.font.weight.semibold,

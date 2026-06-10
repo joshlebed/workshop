@@ -1,4 +1,4 @@
-import type { AuthResponse, User } from "@workshop/shared";
+import type { AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ApiError, apiRequest } from "../lib/api";
 import { getItem, removeItem, setItem } from "../lib/storage";
@@ -28,6 +28,8 @@ export interface AuthContextValue {
   signInDev: (req: { email: string; displayName?: string | null }) => Promise<void>;
   signOut: () => Promise<void>;
   setDisplayName: (name: string) => Promise<void>;
+  /** Patch the signed-in user's profile (display name and/or avatar). */
+  updateProfile: (patch: UpdateMeRequest) => Promise<void>;
   /** Connect/change the account-level Letterboxd username. Resolves with the synced watchlist size. */
   connectLetterboxd: (username: string) => Promise<number>;
   disconnectLetterboxd: () => Promise<void>;
@@ -157,19 +159,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState({ status: "signed-out", user: null, token: null });
   }, [state.token]);
 
-  const setDisplayName = useCallback<AuthContextValue["setDisplayName"]>(
-    async (name) => {
+  const updateProfile = useCallback<AuthContextValue["updateProfile"]>(
+    async (patch) => {
       const token = state.token;
       if (!token) throw new Error("not signed in");
       const res = await apiRequest<{ user: User }>({
         method: "PATCH",
         path: "/v1/users/me",
-        body: { displayName: name },
+        body: patch,
         token,
       });
       setState({ status: statusFor(res.user), user: res.user, token });
     },
     [state.token],
+  );
+
+  const setDisplayName = useCallback<AuthContextValue["setDisplayName"]>(
+    (name) => updateProfile({ displayName: name }),
+    [updateProfile],
   );
 
   const connectLetterboxd = useCallback<AuthContextValue["connectLetterboxd"]>(
@@ -209,6 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInDev,
       signOut,
       setDisplayName,
+      updateProfile,
       connectLetterboxd,
       disconnectLetterboxd,
       refresh: bootstrap,
@@ -220,6 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInDev,
       signOut,
       setDisplayName,
+      updateProfile,
       connectLetterboxd,
       disconnectLetterboxd,
       bootstrap,

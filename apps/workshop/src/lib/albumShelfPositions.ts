@@ -63,11 +63,11 @@ export function midpointForOrderedReorder(
  *
  * Returns `null` for out-of-range / no-op inputs so callers can short-circuit.
  */
-export function neighborsForOrderedReorder(
-  orderedItems: Item[],
+export function neighborsForOrderedReorder<T>(
+  orderedItems: T[],
   fromIndex: number,
   toIndex: number,
-): { before: Item | null; after: Item | null } | null {
+): { before: T | null; after: T | null } | null {
   if (fromIndex < 0 || fromIndex >= orderedItems.length) return null;
   if (toIndex < 0 || toIndex >= orderedItems.length) return null;
   if (fromIndex === toIndex) return null;

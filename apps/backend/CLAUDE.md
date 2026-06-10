@@ -125,6 +125,42 @@ Read-time annotation (`annotateLetterboxd` in `routes/v1/items.ts`) attaches
 stored on the row, always derived from the caches. Pending items bucket into the
 `suggested` section of `ListItemsResponse` (empty array on every other list).
 
+## Profile pictures live inline on `users.avatar_url` (base64 data URL)
+
+`PATCH /v1/users/me` (`routes/v1/users.ts`) updates `displayName` and/or `avatarUrl`
+independently — both optional, send only what changed; `avatarUrl: null` clears the
+picture; an empty body 400s. The avatar is stored as a base64 `data:` URL (same approach
+as list `cover_photo_url` — no object store yet), capped + raster-only by `avatarUrlSchema`
+(reused shape from `coverPhotoUrlSchema`). `toUserShape` is duplicated in `users.ts` **and**
+`auth.ts` — add new user fields to both. **`avatarUrl` is deliberately NOT joined into
+leaderboard / activity / member payloads**: those fan out across many users and inlining
+~1MB base64 per row would bloat responses. If you want other users' photos there, move
+avatars to a URL/CDN store first — don't naively join the data URL column.
+
+## Games surface (`routes/v1/games.ts`) is isolated from the Lists leaderboard
+
+The Games tab (spec §3, G1a) has its own tables — `games` (global catalog, deduped by
+`normalized_url` via `normalizeGameUrl` from `@workshop/shared/games`), `user_games`
+(per-user ordered selection), `game_scores` (`(game_id,user_id,period_key)` PK) — and must
+never read or write `items` / `item_scores`; a test in `games.test.ts` asserts the source
+stays clean, so don't add such an import even for "harmless" reuse. Consequences of the
+isolation: the score parser in `games.ts` (`parseGameScoreValue`) is a deliberate twin of
+the one in `scores.ts` (keep both in sync when the `count:` sentinel semantics change), and
+`lib/gamePositions.ts` twins `lib/positions.ts` for `user_games.position` (the pure helpers
+are shared). The catalog seed lives in migration `0023_games_tables.sql` and must stay in
+sync with `GAME_REGEX_CATALOG` (each entry's `title`/`canonicalUrl`); `games.test.ts`
+enforces it. Routes are flag-gated **inside the router** (404 when off): on when
+`STAGE=local`, otherwise requires `ENABLE_GAMES=1` in the Lambda env (not yet set in prod).
+Standings cover `viewer ∪ friends_of(viewer)` via `visibleUserIds()` (G2a) — the friend graph
+lives in `friendships` (one canonical row per pair, `user_low < user_high`; `lib/friends.ts` is
+the only writer and owns the invariant) with share-link invites in `friend_requests`
+(`routes/v1/friends.ts`, same flag gate as games). `GET /v1/games/discovery` (friends' games I
+haven't added) is registered **before** the `/:id` routes so the literal path isn't shadowed;
+its `?friend=` filter 404s for non-friends so the endpoint can't be used to probe a stranger's
+games. `games.test.ts` is also the repo's first real-DB vitest suite: it runs the actual `drizzle/`
+migrations against in-memory PGlite (`@electric-sql/pglite`) with `getDb` mocked — copy that
+pattern when a route's acceptance criteria are DB behaviors, not just schema validation.
+
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's

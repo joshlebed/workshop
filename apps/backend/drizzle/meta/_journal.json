@@ -166,8 +166,29 @@
     {
       "idx": 23,
       "version": "7",
-      "when": 1781073446669,
-      "tag": "0023_letterboxd_match",
+      "when": 1781070405949,
+      "tag": "0023_games_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1781071318904,
+      "tag": "0024_friendships",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1781104112237,
+      "tag": "0025_user_avatar_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1781109222768,
+      "tag": "0026_letterboxd_match",
       "breakpoints": true
     }
   ]
