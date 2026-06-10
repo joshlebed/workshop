@@ -1,6 +1,33 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { resetConfigForTesting } from "../../lib/config.js";
-import { authRoutes } from "./auth.js";
+import { authRoutes, buildSignInNotification } from "./auth.js";
+
+describe("buildSignInNotification", () => {
+  const user = { id: "u_1", email: "a@b.test", displayName: "Ada" };
+
+  it("uses the celebratory signup copy for a genuinely new user", () => {
+    expect(buildSignInNotification(user, "apple", true)).toEqual({
+      content: ":wave: new signup — Ada via apple",
+      kind: "signup",
+    });
+  });
+
+  it("uses the quieter signed-in copy for a returning user", () => {
+    expect(buildSignInNotification(user, "google", false)).toEqual({
+      content: ":bust_in_silhouette: signed in — Ada via google",
+      kind: "signin",
+    });
+  });
+
+  it("falls back display name → email → id for the label", () => {
+    expect(buildSignInNotification({ ...user, displayName: null }, "apple", false).content).toBe(
+      ":bust_in_silhouette: signed in — a@b.test via apple",
+    );
+    expect(
+      buildSignInNotification({ id: "u_2", email: null, displayName: null }, "apple", true).content,
+    ).toBe(":wave: new signup — u_2 via apple");
+  });
+});
 
 describe("POST /v1/auth/dev", () => {
   beforeAll(() => {

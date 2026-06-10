@@ -26,6 +26,42 @@ function authHeaders(): { Authorization: string; "Content-Type": string } {
 // covered by the Playwright suite — these tests lock the wire shape so the
 // server contract doesn't silently regress.
 
+describe("buildNewListNotification", () => {
+  const { buildNewListNotification } = __test;
+
+  it("formats a from-scratch list with its kind + modules", () => {
+    expect(
+      buildNewListNotification(
+        { name: "Movie Watchlist", itemKind: "movie", modules: ["todo", "ranking"] },
+        "Josh",
+        false,
+      ),
+    ).toEqual({
+      content: ':clipboard: new list — "Movie Watchlist" (movie, todo · ranking) by Josh',
+      kind: "new_list",
+    });
+  });
+
+  it("marks a duplicate distinctly (lead + kind tag)", () => {
+    const out = buildNewListNotification(
+      { name: "Movie Watchlist (copy)", itemKind: "movie", modules: ["todo"] },
+      "Josh",
+      true,
+    );
+    expect(out.content).toBe(
+      ':clipboard: new list (duplicated) — "Movie Watchlist (copy)" (movie, todo) by Josh',
+    );
+    expect(out.kind).toBe("new_list_duplicate");
+  });
+
+  it("renders kind 'any' and omits the module clause when empty", () => {
+    expect(
+      buildNewListNotification({ name: "Blank", itemKind: null, modules: [] }, "a@b.test", false)
+        .content,
+    ).toBe(':clipboard: new list — "Blank" (any) by a@b.test');
+  });
+});
+
 describe("createListSchema", () => {
   const { createListSchema } = __test;
 

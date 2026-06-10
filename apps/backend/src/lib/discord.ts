@@ -1,4 +1,4 @@
-// Discord webhook notifier for operator-facing events (new signups, new lists).
+// Discord webhook notifier for operator-facing events (sign-ins, new lists).
 // Posts to a single channel webhook configured via DISCORD_NOTIFY_WEBHOOK_URL.
 // The webhook URL is itself the secret — there's no separate auth header — so
 // we keep it in SSM SecureString and read it from the Lambda env at runtime.
@@ -23,10 +23,11 @@ import { getConfig } from "./config.js";
 import { logger } from "./logger.js";
 
 const TIMEOUT_MS = 1500;
-// One retry on a transient failure (429 rate-limit, 5xx, network/timeout). A
-// new signup is a rare, high-value event; a single transient hiccup shouldn't
-// silently drop the only record of it. Non-transient rejections (4xx other than
-// 429 — e.g. a deleted webhook) aren't retried since they'd just fail again.
+// One retry on a transient failure (429 rate-limit, 5xx, network/timeout). An
+// operator notification is a low-volume, high-value event; a single transient
+// hiccup shouldn't silently drop the only record of it. Non-transient
+// rejections (4xx other than 429 — e.g. a deleted webhook) aren't retried since
+// they'd just fail again.
 const MAX_ATTEMPTS = 2;
 const RETRY_BACKOFF_MS = 400;
 
