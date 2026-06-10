@@ -17,7 +17,7 @@ import {
   useReorderableDrag,
 } from "react-native-reorderable-list";
 import { PullToRefresh } from "../../components/PullToRefresh";
-import { tokens } from "../../ui/index";
+import { homeLayout } from "../../ui/index";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({
@@ -72,7 +72,8 @@ const DraggableCard = memo(function DraggableCard({ game, render }: DraggableCar
 
 const styles = StyleSheet.create({
   listContent: {
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl * 2,
+    paddingHorizontal: homeLayout.horizontalInset,
+    paddingTop: homeLayout.contentTopGap,
+    paddingBottom: homeLayout.bottomInset,
   },
 });

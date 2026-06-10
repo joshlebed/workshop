@@ -54,6 +54,8 @@ import { shareOrCopyLink } from "../lib/share";
 import {
   Button,
   EmptyState,
+  HomeHeader,
+  homeLayout,
   InlineTabSwitch,
   Screen,
   Sheet,
@@ -374,64 +376,66 @@ export function GamesHome() {
 
   return (
     <Screen style={styles.root} testID="games-home">
-      <View style={styles.headerRow}>
-        <View style={styles.headerTabs}>
-          {Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
-        </View>
-        <View style={styles.headerActions}>
-          {Platform.OS === "web" ? (
-            <HeaderActivityButton
-              unreadCount={totalUnread}
-              error={activityFeedQuery.isError}
-              onPress={onActivity}
-              onRetry={() => {
-                void activityFeedQuery.refetch();
-              }}
-              testID="open-activity"
-            />
-          ) : null}
-          <ProfileMenu archivedLists={archivedLists} />
-        </View>
-      </View>
+      <HomeHeader
+        left={Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
+        right={
+          <>
+            {Platform.OS === "web" ? (
+              <HeaderActivityButton
+                unreadCount={totalUnread}
+                error={activityFeedQuery.isError}
+                onPress={onActivity}
+                onRetry={() => {
+                  void activityFeedQuery.refetch();
+                }}
+                testID="open-activity"
+              />
+            ) : null}
+            <ProfileMenu archivedLists={archivedLists} />
+          </>
+        }
+      />
 
-      {gamesQuery.isPending ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
-        </View>
-      ) : gamesQuery.isError ? (
-        <View style={styles.center}>
-          <EmptyState
-            title="Couldn't load your games"
-            description={errorMessage(gamesQuery.error)}
-            action={
-              <Button label="Retry" variant="secondary" onPress={() => gamesQuery.refetch()} />
-            }
+      <View style={styles.body}>
+        {gamesQuery.isPending ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={tokens.accent.default} />
+          </View>
+        ) : gamesQuery.isError ? (
+          <View style={styles.center}>
+            <EmptyState
+              title="Couldn't load your games"
+              description={errorMessage(gamesQuery.error)}
+              action={
+                <Button label="Retry" variant="secondary" onPress={() => gamesQuery.refetch()} />
+              }
+            />
+          </View>
+        ) : isEmpty ? (
+          <GamesOnboarding
+            friendsLoading={friendsQuery.isLoading}
+            hasFriends={friends.length > 0}
+            discovery={discovery}
+            discoveryLoading={discoveryQuery.isLoading}
+            invitePending={inviteMutation.isPending}
+            inviteUrl={inviteUrl}
+            onAddFriends={() => inviteMutation.mutate()}
+            onCopyInvite={onCopyInvite}
+            onAddByUrl={() => setAddOpen(true)}
+            onAddDiscovery={(game) => addDiscoveryMutation.mutate(game)}
+            addingGameIds={addingDiscoveryIds}
+            addedGameIds={addedDiscoveryIds}
           />
-        </View>
-      ) : isEmpty ? (
-        <GamesOnboarding
-          friendsLoading={friendsQuery.isLoading}
-          hasFriends={friends.length > 0}
-          discovery={discovery}
-          discoveryLoading={discoveryQuery.isLoading}
-          invitePending={inviteMutation.isPending}
-          inviteUrl={inviteUrl}
-          onAddFriends={() => inviteMutation.mutate()}
-          onCopyInvite={onCopyInvite}
-          onAddByUrl={() => setAddOpen(true)}
-          onAddDiscovery={(game) => addDiscoveryMutation.mutate(game)}
-          addingGameIds={addingDiscoveryIds}
-          addedGameIds={addedDiscoveryIds}
-        />
-      ) : (
-        <GameCardList
-          games={myGames}
-          renderCard={renderCard}
-          onReorder={onReorder}
-          refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
-          onRefresh={() => gamesQuery.refetch()}
-        />
-      )}
+        ) : (
+          <GameCardList
+            games={myGames}
+            renderCard={renderCard}
+            onReorder={onReorder}
+            refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
+            onRefresh={() => gamesQuery.refetch()}
+          />
+        )}
+      </View>
 
       <Pressable
         accessibilityRole="button"
@@ -516,19 +520,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
     paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.lg,
-    gap: tokens.space.md,
   },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.sm,
-    paddingBottom: tokens.space.xs,
-  },
-  headerTabs: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center" },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  body: { flex: 1 },
   center: {
     flex: 1,
     alignItems: "center",
@@ -537,8 +530,8 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    right: tokens.space.lg,
-    bottom: tokens.space.lg,
+    right: homeLayout.horizontalInset,
+    bottom: homeLayout.horizontalInset,
     width: 56,
     height: 56,
     borderRadius: 28,

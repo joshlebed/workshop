@@ -32,6 +32,8 @@ import { queryKeys } from "../../../src/lib/queryKeys";
 import {
   Button,
   EmptyState,
+  HomeHeader,
+  homeLayout,
   InlineTabSwitch,
   type ListColorKey,
   Screen,
@@ -249,23 +251,23 @@ export default function Home() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <View style={styles.headerTabs}>
-          {Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
-        </View>
-        <View style={styles.headerActions}>
-          <HeaderActivityButton
-            unreadCount={totalUnread}
-            error={activityFeedQuery.isError}
-            onPress={onActivity}
-            onRetry={() => {
-              void activityFeedQuery.refetch();
-            }}
-            testID="open-activity"
-          />
-          <ProfileMenu archivedLists={archivedLists} />
-        </View>
-      </View>
+      <HomeHeader
+        left={Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
+        right={
+          <>
+            <HeaderActivityButton
+              unreadCount={totalUnread}
+              error={activityFeedQuery.isError}
+              onPress={onActivity}
+              onRetry={() => {
+                void activityFeedQuery.refetch();
+              }}
+              testID="open-activity"
+            />
+            <ProfileMenu archivedLists={archivedLists} />
+          </>
+        }
+      />
 
       <View style={styles.body}>
         {listsQuery.isPending ? (
@@ -451,19 +453,7 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
     paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.lg,
-    gap: tokens.space.md,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.sm,
-    paddingBottom: tokens.space.xs,
-  },
-  headerTabs: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center" },
-  headerActions: { flexDirection: "row", gap: tokens.space.sm, alignItems: "center" },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: tokens.space.lg },
   emptyGlyphBadge: {
@@ -475,7 +465,10 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.accent.muted,
   },
   emptyGlyph: { fontSize: 28, color: tokens.accent.default },
-  listContent: { paddingBottom: tokens.space.xxl * 2 },
+  listContent: {
+    paddingTop: homeLayout.contentTopGap,
+    paddingBottom: homeLayout.bottomInset,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -555,8 +548,8 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    right: tokens.space.lg,
-    bottom: tokens.space.lg,
+    right: homeLayout.horizontalInset,
+    bottom: homeLayout.horizontalInset,
     width: 56,
     height: 56,
     borderRadius: 28,
