@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbUser, letterboxdWatchlistFilms, users } from "../../db/schema.js";
+import { isAdminUser } from "../../lib/admin.js";
 import { logger } from "../../lib/logger.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -68,6 +69,7 @@ function toUserShape(u: DbUser) {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
+    isAdmin: isAdminUser(u),
     avatarUrl: u.avatarUrl,
     letterboxdUsername: u.letterboxdUsername,
     createdAt: u.createdAt.toISOString(),

@@ -6,6 +6,7 @@ import { isSessionRevoked } from "../lib/sessionRevocation.js";
 declare module "hono" {
   interface ContextVariableMap {
     userId: string;
+    impersonatorUserId?: string;
   }
 }
 
@@ -29,6 +30,15 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   }
   if (await isSessionRevoked(payload.userId, payload.iat ?? 0)) {
     return err(c, "UNAUTHORIZED", "invalid or expired session");
+  }
+  if (payload.impersonatorUserId) {
+    if (payload.impersonatorUserId === payload.userId) {
+      return err(c, "UNAUTHORIZED", "invalid or expired session");
+    }
+    if (await isSessionRevoked(payload.impersonatorUserId, payload.iat ?? 0)) {
+      return err(c, "UNAUTHORIZED", "invalid or expired session");
+    }
+    c.set("impersonatorUserId", payload.impersonatorUserId);
   }
   c.set("userId", payload.userId);
   await next();

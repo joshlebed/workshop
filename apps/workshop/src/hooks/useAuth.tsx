@@ -1,4 +1,4 @@
-import type { AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
+import type { AuthImpersonation, AuthResponse, Me, UpdateMeRequest, User } from "@workshop/shared";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { ApiError, apiRequest } from "../lib/api";
 import { getItem, removeItem, setItem } from "../lib/storage";
@@ -12,12 +12,14 @@ interface AuthState {
   status: AuthStatus;
   user: User | null;
   token: string | null;
+  impersonation: AuthImpersonation | null;
 }
 
 export interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
   token: string | null;
+  impersonation: AuthImpersonation | null;
   signInWithApple: (req: {
     identityToken: string;
     nonce?: string;
@@ -26,6 +28,8 @@ export interface AuthContextValue {
   }) => Promise<void>;
   signInWithGoogle: (req: { idToken: string }) => Promise<void>;
   signInDev: (req: { email: string; displayName?: string | null }) => Promise<void>;
+  impersonateUser: (target: string) => Promise<User>;
+  stopImpersonating: () => Promise<User>;
   signOut: () => Promise<void>;
   setDisplayName: (name: string) => Promise<void>;
   /** Patch the signed-in user's profile (display name and/or avatar). */
@@ -48,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     status: "loading",
     user: null,
     token: null,
+    impersonation: null,
   });
 
   const applyAuth = useCallback(async (res: AuthResponse) => {
@@ -56,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status: res.needsDisplayName ? "needs-display-name" : "signed-in",
       user: res.user,
       token: res.token,
+      impersonation: res.impersonation ?? null,
     });
   }, []);
 
@@ -82,21 +88,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const token = await getItem(TOKEN_KEY);
     if (!token) {
       if (await autoDevSignIn()) return;
-      setState({ status: "signed-out", user: null, token: null });
+      setState({ status: "signed-out", user: null, token: null, impersonation: null });
       return;
     }
     try {
-      const me = await apiRequest<{ user: User }>({
+      const me = await apiRequest<Me>({
         method: "GET",
         path: "/v1/auth/me",
         token,
       });
-      setState({ status: statusFor(me.user), user: me.user, token });
+      setState({
+        status: statusFor(me.user),
+        user: me.user,
+        token,
+        impersonation: me.impersonation ?? null,
+      });
     } catch (e) {
       if (e instanceof ApiError && (e.status === 401 || e.status === 404)) {
         await removeItem(TOKEN_KEY);
         if (await autoDevSignIn()) return;
-        setState({ status: "signed-out", user: null, token: null });
+        setState({ status: "signed-out", user: null, token: null, impersonation: null });
         return;
       }
       throw e;
@@ -106,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     bootstrap().catch((e) => {
       console.error("auth bootstrap failed", e);
-      setState({ status: "signed-out", user: null, token: null });
+      setState({ status: "signed-out", user: null, token: null, impersonation: null });
     });
   }, [bootstrap]);
 
@@ -146,6 +157,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applyAuth],
   );
 
+  const impersonateUser = useCallback<AuthContextValue["impersonateUser"]>(
+    async (target) => {
+      const token = state.token;
+      if (!token) throw new Error("not signed in");
+      const res = await apiRequest<AuthResponse>({
+        method: "POST",
+        path: "/v1/auth/impersonate",
+        body: { target },
+        token,
+      });
+      await applyAuth(res);
+      return res.user;
+    },
+    [applyAuth, state.token],
+  );
+
+  const stopImpersonating = useCallback<AuthContextValue["stopImpersonating"]>(async () => {
+    const token = state.token;
+    if (!token) throw new Error("not signed in");
+    const res = await apiRequest<AuthResponse>({
+      method: "POST",
+      path: "/v1/auth/impersonation/stop",
+      token,
+    });
+    await applyAuth(res);
+    return res.user;
+  }, [applyAuth, state.token]);
+
   const signOut = useCallback(async () => {
     const token = state.token;
     try {
@@ -156,7 +195,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // stateless HMAC session — local clear is sufficient even if the request fails
     }
     await removeItem(TOKEN_KEY);
-    setState({ status: "signed-out", user: null, token: null });
+    setState({ status: "signed-out", user: null, token: null, impersonation: null });
   }, [state.token]);
 
   const updateProfile = useCallback<AuthContextValue["updateProfile"]>(
@@ -169,7 +208,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: patch,
         token,
       });
-      setState({ status: statusFor(res.user), user: res.user, token });
+      setState((current) => ({
+        status: statusFor(res.user),
+        user: res.user,
+        token,
+        impersonation: current.impersonation,
+      }));
     },
     [state.token],
   );
@@ -189,7 +233,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: { username },
         token,
       });
-      setState({ status: statusFor(res.user), user: res.user, token });
+      setState((current) => ({
+        status: statusFor(res.user),
+        user: res.user,
+        token,
+        impersonation: current.impersonation,
+      }));
       return res.filmCount;
     },
     [state.token],
@@ -203,7 +252,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       path: "/v1/users/me/letterboxd",
       token,
     });
-    setState({ status: statusFor(res.user), user: res.user, token });
+    setState((current) => ({
+      status: statusFor(res.user),
+      user: res.user,
+      token,
+      impersonation: current.impersonation,
+    }));
   }, [state.token]);
 
   const value = useMemo<AuthContextValue>(
@@ -211,9 +265,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status: state.status,
       user: state.user,
       token: state.token,
+      impersonation: state.impersonation,
       signInWithApple,
       signInWithGoogle,
       signInDev,
+      impersonateUser,
+      stopImpersonating,
       signOut,
       setDisplayName,
       updateProfile,
@@ -226,6 +283,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithApple,
       signInWithGoogle,
       signInDev,
+      impersonateUser,
+      stopImpersonating,
       signOut,
       setDisplayName,
       updateProfile,

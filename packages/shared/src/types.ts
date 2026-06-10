@@ -69,6 +69,8 @@ export interface User {
   id: string;
   email: string | null;
   displayName: string | null;
+  /** Server-authored admin flag. Clients use it only to reveal admin UI. */
+  isAdmin: boolean;
   /** Base64 `data:` URL of the profile picture, or null when using initials. */
   avatarUrl: string | null;
   /**
@@ -81,8 +83,15 @@ export interface User {
   updatedAt: string;
 }
 
+export interface AuthImpersonation {
+  adminUserId: string;
+  adminEmail: string | null;
+  adminDisplayName: string | null;
+}
+
 export interface Me {
   user: User;
+  impersonation: AuthImpersonation | null;
 }
 
 export type ErrorCode =
@@ -117,6 +126,12 @@ export interface AuthResponse {
   user: User;
   token: string;
   needsDisplayName: boolean;
+  impersonation: AuthImpersonation | null;
+}
+
+export interface ImpersonateRequest {
+  /** Target user's email address or UUID. */
+  target: string;
 }
 
 /**

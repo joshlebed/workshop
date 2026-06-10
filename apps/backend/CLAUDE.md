@@ -260,10 +260,13 @@ env is empty). **Every sign-in pings** (`notifySignIn`): a genuinely new user
 (`createdUser: true`) emits `new signup` + the `:wave:` / `kind: "signup"` message, a
 returning user (incl. a known email linking a second provider, `createdUser: false`) emits
 `sign-in` + the `:bust_in_silhouette:` / `kind: "signin"` message. The dev auth route
-(`/v1/auth/dev`) is deliberately silent — it's the sandbox/E2E auto-sign-in. **Every list
-made pings** (`notifyNewList`): the create path (`kind: "new_list"`) and the duplicate path
-(`kind: "new_list_duplicate"`). So "no message" means the event didn't happen (or the
-webhook is unset) — cross-check the `users` / `lists` tables before assuming a delivery bug.
+(`/v1/auth/dev`) is deliberately silent — it's the sandbox/E2E auto-sign-in. **Every admin
+impersonation start pings** (`kind: "impersonation"`); the signed session stores
+`impersonatorUserId`, `/v1/auth/me` reflects it, and `/v1/auth/impersonation/stop` mints a
+normal original-account session again. **Every list made pings** (`notifyNewList`): the create path
+(`kind: "new_list"`) and the duplicate path (`kind: "new_list_duplicate"`). So "no message"
+means the event didn't happen (or the webhook is unset) — cross-check the `users` / `lists`
+tables before assuming a delivery bug.
 
 ```bash
 AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 720h --filter '?"new signup" ?"sign-in" ?"discord notify"' --no-follow

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ItemKind, ListSummary, ModuleName } from "@workshop/shared";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { unarchiveList } from "../api/lists";
 import { useAuth } from "../hooks/useAuth";
@@ -77,6 +77,13 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
     });
     if (ok) signOut();
   };
+
+  const onAuthSessionChanged = useCallback(() => {
+    setProfileOpen(false);
+    setArchivedOpen(false);
+    setOpenArchivedAfterProfileClose(false);
+    queryClient.clear();
+  }, [queryClient]);
 
   return (
     <>
@@ -175,7 +182,7 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
               const subject = encodeURIComponent("Workshop feedback");
               const version = Constants.expoConfig?.version ?? "0.0.0";
               const body = encodeURIComponent(
-                `\n\n—\nWorkshop v${version} · ${Platform.OS}${user?.id ? ` · ${user.id.slice(0, 8)}` : ""}`,
+                `\n\nFeedback context\nWorkshop v${version} · ${Platform.OS}${user?.id ? ` · ${user.id.slice(0, 8)}` : ""}`,
               );
               Linking.openURL(`mailto:joshlebed@gmail.com?subject=${subject}&body=${body}`).catch(
                 () => {},
@@ -183,6 +190,7 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
             }}
             testID="send-feedback"
           />
+          <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
           <LetterboxdAccountRow />
         </View>
         <View style={styles.profileSheetDivider} />
@@ -274,7 +282,7 @@ function LetterboxdAccountRow() {
     try {
       const filmCount = await connectLetterboxd(name);
       showToast({
-        message: `Letterboxd connected — ${filmCount} ${filmCount === 1 ? "film" : "films"} on your watchlist`,
+        message: `Letterboxd connected: ${filmCount} ${filmCount === 1 ? "film" : "films"} on your watchlist`,
         tone: "success",
       });
       setEditing(false);
@@ -320,7 +328,7 @@ function LetterboxdAccountRow() {
     );
   }
   return (
-    <View style={letterboxdRowStyles.form}>
+    <View style={accountActionStyles.form}>
       <TextInput
         testID="letterboxd-account-input"
         value={username}
@@ -330,10 +338,11 @@ function LetterboxdAccountRow() {
         autoCapitalize="none"
         autoCorrect={false}
         autoFocus
-        style={letterboxdRowStyles.input}
+        accessibilityLabel="Letterboxd username"
+        style={accountActionStyles.input}
         onSubmitEditing={onSave}
       />
-      <View style={letterboxdRowStyles.actions}>
+      <View style={accountActionStyles.actions}>
         <Button
           label="Save"
           size="md"
@@ -353,6 +362,118 @@ function LetterboxdAccountRow() {
           />
         ) : null}
         <Button label="Cancel" size="md" variant="ghost" onPress={() => setEditing(false)} />
+      </View>
+    </View>
+  );
+}
+
+function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => void }) {
+  const { user, impersonation, impersonateUser, stopImpersonating } = useAuth();
+  const { showToast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [target, setTarget] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const labelFor = (u: { displayName: string | null; email: string | null }) =>
+    u.displayName?.trim() || u.email || "user";
+
+  const onImpersonate = async () => {
+    const trimmed = target.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    try {
+      const nextUser = await impersonateUser(trimmed);
+      showToast({ message: `Signed in as ${labelFor(nextUser)}`, tone: "success" });
+      setEditing(false);
+      setTarget("");
+      onSessionChanged();
+    } catch (e) {
+      showToast({ message: errorMessage(e, "Couldn't impersonate that user."), tone: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onStop = async () => {
+    setBusy(true);
+    try {
+      await stopImpersonating();
+      showToast({ message: "Back to your account", tone: "success" });
+      onSessionChanged();
+    } catch (e) {
+      showToast({ message: errorMessage(e, "Couldn't stop impersonating."), tone: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (impersonation) {
+    const adminLabel =
+      impersonation.adminDisplayName?.trim() || impersonation.adminEmail || "Admin";
+    return (
+      <View style={accountActionStyles.form} testID="admin-impersonation-status">
+        <Text variant="caption" tone="muted" style={accountActionStyles.note}>
+          Impersonating. Started by {adminLabel}.
+        </Text>
+        <Button
+          label="Stop impersonating"
+          variant="secondary"
+          loading={busy}
+          onPress={onStop}
+          testID="stop-impersonating"
+        />
+      </View>
+    );
+  }
+
+  if (!user?.isAdmin) return null;
+
+  if (!editing) {
+    return (
+      <Button
+        label="Admin: impersonate user"
+        variant="secondary"
+        onPress={() => setEditing(true)}
+        testID="open-admin-impersonation"
+      />
+    );
+  }
+
+  return (
+    <View style={accountActionStyles.form} testID="admin-impersonation-form">
+      <TextInput
+        testID="admin-impersonation-input"
+        value={target}
+        onChangeText={setTarget}
+        placeholder="Email or user ID"
+        placeholderTextColor={tokens.text.muted}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoFocus
+        accessibilityLabel="User to impersonate"
+        keyboardType="email-address"
+        style={accountActionStyles.input}
+        onSubmitEditing={onImpersonate}
+      />
+      <View style={accountActionStyles.actions}>
+        <Button
+          label="Sign in"
+          size="md"
+          disabled={!target.trim() || busy}
+          loading={busy}
+          onPress={onImpersonate}
+          testID="admin-impersonation-submit"
+        />
+        <Button
+          label="Cancel"
+          size="md"
+          variant="ghost"
+          disabled={busy}
+          onPress={() => {
+            setEditing(false);
+            setTarget("");
+          }}
+        />
       </View>
     </View>
   );
@@ -417,7 +538,7 @@ const styles = StyleSheet.create({
   avatarEmoji: { fontSize: 20, lineHeight: 24 },
 });
 
-const letterboxdRowStyles = StyleSheet.create({
+const accountActionStyles = StyleSheet.create({
   form: { gap: tokens.space.sm },
   input: {
     borderWidth: 1,
@@ -430,4 +551,5 @@ const letterboxdRowStyles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
   },
   actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
+  note: { paddingHorizontal: tokens.space.xs },
 });

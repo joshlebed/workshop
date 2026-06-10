@@ -11,9 +11,14 @@ const sessionPayloadSchema = z.object({
   userId: z.string(),
   exp: z.number(),
   iat: z.number().optional(),
+  impersonatorUserId: z.string().optional(),
 });
 
 type SessionPayload = z.infer<typeof sessionPayloadSchema>;
+
+interface SignSessionOptions {
+  impersonatorUserId?: string | null;
+}
 
 function b64urlEncode(input: Buffer | string): string {
   return Buffer.from(input)
@@ -29,7 +34,7 @@ function b64urlDecode(input: string): Buffer {
   return Buffer.from(padded + pad, "base64");
 }
 
-export function signSession(userId: string): string {
+export function signSession(userId: string, opts: SignSessionOptions = {}): string {
   const { sessionSecret } = getConfig();
   const now = Math.floor(Date.now() / 1000);
   const payload: SessionPayload = {
@@ -37,6 +42,7 @@ export function signSession(userId: string): string {
     exp: now + SESSION_TTL_SECONDS,
     iat: now,
   };
+  if (opts.impersonatorUserId) payload.impersonatorUserId = opts.impersonatorUserId;
   const payloadB64 = b64urlEncode(JSON.stringify(payload));
   const sig = createHmac("sha256", sessionSecret).update(payloadB64).digest();
   return `${payloadB64}.${b64urlEncode(sig)}`;
