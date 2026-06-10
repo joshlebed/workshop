@@ -153,7 +153,14 @@ requests into canonical `game_scores` reads/writes and return the old response s
 item id. Shared helpers live in `lib/gameCatalog.ts` (URL normalization, catalog lookup,
 parser) and `lib/userGames.ts` (idempotently add to My Games). The catalog seed lives in
 migration `0023_games_tables.sql` and must stay in sync with `GAME_REGEX_CATALOG` (each
-entry's `title`/`canonicalUrl`); `games.test.ts` enforces it. Routes are flag-gated **inside
+entry's `title`/`canonicalUrl`); `games.test.ts` enforces it. Every `games` row carries an
+`icon_url` (the Games tab card thumbnail): `findOrCreateGame` sets it at insert — preview
+favicon when the caller passes hints (POST `/v1/games` wires `resolveLinkPreview` as a lazy
+provider, awaited only when a row is actually created), Google s2 favicon otherwise — and
+unknown games prefer the preview's page title (via `cleanGameTitle`) over the hostname.
+Migration `0028` backfilled s2 favicons for pre-existing rows;
+`scripts/backfill-game-metadata.ts` upgrades rows to real favicons / preview titles and is
+safe to re-run. Routes are flag-gated **inside
 the router** (404 when off): on when `STAGE=local`, otherwise requires `ENABLE_GAMES=1` in
 the Lambda env (set by Terraform). Standings cover `viewer ∪ friends_of(viewer)` via
 `visibleUserIds()` (G2a) — the friend graph lives in `friendships` (one canonical row per

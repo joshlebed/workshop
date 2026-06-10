@@ -1,8 +1,9 @@
 // Add-game sheet — the + button's target on the Games home. Two ways in: pick
 // a game a friend already plays (discovery suggestions, G3) or paste any URL
 // (the skip / bootstrap path — spec §3.3: known dailies collapse onto their
-// catalog row, unknown URLs get a hostname title). Home itself stays purely
-// your chosen games; discovery only ever surfaces here and on the empty state.
+// catalog row, unknown URLs get a link-preview title + favicon, falling back
+// to hostname + Google favicon). Home itself stays purely your chosen games;
+// discovery only ever surfaces here and on the empty state.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
 import { useEffect, useState } from "react";

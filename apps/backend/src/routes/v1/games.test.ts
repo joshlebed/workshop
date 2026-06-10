@@ -20,6 +20,17 @@ vi.mock("../../db/client.js", () => ({
   getDb: () => testDb,
 }));
 
+// The add-game path enriches brand-new catalog rows via the link-preview
+// pipeline (network). Default to rejecting so tests exercise the fallback
+// (hostname title + Google favicon); individual tests override the resolved
+// value to assert preview-derived metadata.
+const resolveLinkPreviewMock = vi.fn<
+  (url: URL) => Promise<{ title: string | null; favicon: string }>
+>(() => Promise.reject(new Error("network disabled in tests")));
+vi.mock("./link-preview.js", () => ({
+  resolveLinkPreview: (url: URL) => resolveLinkPreviewMock(url),
+}));
+
 // Imported after the mock so the router's `getDb` resolves to PGlite.
 import { gameRoutes } from "./games.js";
 
@@ -112,9 +123,12 @@ describe("migration seed", () => {
       normalized_url: string;
       url: string;
       title: string;
+      icon_url: string | null;
       game_key: string;
       score_direction: string;
-    }>(`SELECT normalized_url, url, title, game_key, score_direction FROM games ORDER BY game_key`);
+    }>(
+      `SELECT normalized_url, url, title, icon_url, game_key, score_direction FROM games ORDER BY game_key`,
+    );
     expect(seeded.length).toBe(GAME_REGEX_CATALOG.length);
     for (const entry of GAME_REGEX_CATALOG) {
       const row = seeded.find((r) => r.game_key === entry.key);
@@ -123,6 +137,8 @@ describe("migration seed", () => {
       expect(row?.url).toBe(entry.canonicalUrl);
       expect(row?.title).toBe(entry.title);
       expect(row?.score_direction).toBe(entry.scoreDirection);
+      // Migration 0028 backfills every seeded row with the s2 favicon fallback.
+      expect(row?.icon_url).toMatch(/^https:\/\/www\.google\.com\/s2\/favicons\?domain=/);
     }
   });
 });
@@ -151,17 +167,43 @@ describe("POST /v1/games — find-or-create by normalized URL", () => {
     expect(res.game.id).toBe(seeded[0]?.id);
   });
 
-  it("an unknown URL gets a hostname title and dedups on the normalized form", async () => {
+  it("an unknown URL gets a hostname title + favicon fallback and dedups on the normalized form", async () => {
     const a = await addGame("https://www.chessle.example.net/play/?day=5");
     const b = await addGame("chessle.example.net/play");
     expect(b.game.id).toBe(a.game.id);
-    const row = await rows<{ title: string; game_key: string | null; url: string }>(
-      `SELECT title, game_key, url FROM games WHERE id = $1`,
-      [a.game.id],
-    );
+    const row = await rows<{
+      title: string;
+      icon_url: string | null;
+      game_key: string | null;
+      url: string;
+    }>(`SELECT title, icon_url, game_key, url FROM games WHERE id = $1`, [a.game.id]);
     expect(row[0]?.title).toBe("chessle.example.net");
+    expect(row[0]?.icon_url).toBe(
+      "https://www.google.com/s2/favicons?domain=chessle.example.net&sz=128",
+    );
     expect(row[0]?.game_key).toBeNull();
     expect(row[0]?.url).toBe("https://chessle.example.net/play");
+  });
+
+  it("an unknown URL whose link preview resolves gets the page title + favicon", async () => {
+    resolveLinkPreviewMock.mockResolvedValueOnce({
+      title: "Squardle — The Daily Word-Square Puzzle Everyone Loves",
+      favicon: "https://squardle.example.org/apple-touch-icon.png",
+    });
+    const added = await addGame("https://squardle.example.org/daily");
+    const row = await rows<{ title: string; icon_url: string | null }>(
+      `SELECT title, icon_url FROM games WHERE id = $1`,
+      [added.game.id],
+    );
+    // Long page titles are distilled to the segment before the separator.
+    expect(row[0]?.title).toBe("Squardle");
+    expect(row[0]?.icon_url).toBe("https://squardle.example.org/apple-touch-icon.png");
+  });
+
+  it("adding an existing game never refetches its preview", async () => {
+    resolveLinkPreviewMock.mockClear();
+    await addGame("https://framed.wtf/", otherUserId);
+    expect(resolveLinkPreviewMock).not.toHaveBeenCalled();
   });
 
   it("rejects an unusable URL", async () => {

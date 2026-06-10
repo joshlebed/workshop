@@ -29,15 +29,18 @@ import { friendsOf } from "../../lib/friends.js";
 import {
   catalogEntryForKey,
   findOrCreateGame,
+  type GameMetadataHints,
   normalizeScoreDirection,
   parseScoreValue,
 } from "../../lib/gameCatalog.js";
 import { moveUserGamePosition } from "../../lib/gamePositions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
+import { resolveLinkPreview } from "./link-preview.js";
 
 const periodKeySchema = z
   .string()
@@ -305,6 +308,30 @@ gameRoutes.get("/discovery", async (c) => {
   return ok(c, response);
 });
 
+/**
+ * Best-effort display metadata for a brand-new catalog row — the same
+ * SSRF-guarded, 7-day-cached link-preview pipeline the Lists tab uses for
+ * item thumbnails. Only invoked when the URL doesn't match an existing games
+ * row (lazy hints), and failure just falls back to hostname title + Google
+ * favicon, so adding a game never breaks on a slow/blocked site.
+ */
+async function previewHintsFor(
+  rawUrl: string,
+  normalizedUrl: string,
+): Promise<GameMetadataHints | null> {
+  try {
+    // normalizeGameUrl accepts scheme-less input ("wordle.com"); re-add the
+    // scheme before SSRF validation.
+    const withScheme = /^https?:\/\//i.test(rawUrl.trim())
+      ? rawUrl.trim()
+      : `https://${normalizedUrl}`;
+    const preview = await resolveLinkPreview(parseAndValidateUrl(withScheme));
+    return { title: preview.title, iconUrl: preview.favicon };
+  } catch {
+    return null;
+  }
+}
+
 gameRoutes.post(
   "/",
   rateLimit({
@@ -321,7 +348,9 @@ gameRoutes.post(
     const normalized = normalizeGameUrl(parsed.data.url);
     if (!normalized) return err(c, "VALIDATION", "url is not a valid http(s) game URL");
 
-    const game = await findOrCreateGame(parsed.data.url, normalized);
+    const game = await findOrCreateGame(parsed.data.url, normalized, getDb(), () =>
+      previewHintsFor(parsed.data.url, normalized),
+    );
     const membership = await addToMyGames(userId, game.id);
 
     const response: AddGameResponse = {
