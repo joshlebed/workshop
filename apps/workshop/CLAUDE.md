@@ -13,10 +13,12 @@ segments never appear in URLs, so all deep links are unchanged — but they DO a
 `useSegments()`; AuthGate in `app/_layout.tsx` filters `(`-prefixed segments before matching.
 The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`: launched
 2026-06-10 — unset means ON; `"0"` is the kill switch). Flag off must look exactly like the
-pre-tabs app: tab bar hidden, `/games` redirects home, no web sidebar. Auth/onboarding/invite/share
+pre-tabs app: tab bar hidden, `/games` redirects home, no web top switch. Auth/onboarding/invite/share
 routes live OUTSIDE `(tabs)` in the root stack — add new tab-content routes to the
 `(lists)` or `games` stack layout (`app/(tabs)/games/_layout.tsx` since G1b), not the root
-one. The Games surface (G1b): `games/index` → `src/screens/GamesHome.tsx` (My Games as
+one. Web shows the Lists/Games switch inline inside the top-level screen header actions,
+immediately left of Activity on both Lists and Games; native uses the Expo bottom tab bar.
+The Games surface (G1b): `games/index` → `src/screens/GamesHome.tsx` (My Games as
 `StandingsCard`s, drag-reorder via `src/screens/games/GameCardList[.web].tsx`, add-by-URL
 sheet, paste → `PUT /v1/games/:id/scores`); `games/[id]` is the per-game history board
 (DayRail + today paste slot). Games API wrappers live in `src/api/games.ts`; query keys
