@@ -11,7 +11,7 @@
 
 import type { DiscoveryGame } from "@workshop/shared/games";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from "react-native";
-import { Button, Text, tokens } from "../../ui/index";
+import { Button, homeLayout, Text, tokens } from "../../ui/index";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface GamesOnboardingProps {
@@ -60,14 +60,12 @@ export function GamesOnboarding({
         keyboardShouldPersistTaps="handled"
         testID="games-onboarding"
       >
-        <View style={styles.hero}>
-          <Text style={styles.heroGlyph}>🎮</Text>
-          <Text variant="title" style={styles.heroTitle}>
-            Better with friends
+        <View style={styles.intro}>
+          <Text variant="heading" style={styles.introTitle}>
+            Add friends to compare scores
           </Text>
-          <Text tone="secondary" style={styles.heroBody}>
-            Games show up here once you add a friend — you'll see what they play and how today's
-            scores stack up.
+          <Text tone="secondary" style={styles.introBody}>
+            Invite someone you play with. Their games and today's scores will show up here.
           </Text>
         </View>
         <View style={styles.ctaStack}>
@@ -88,8 +86,8 @@ export function GamesOnboarding({
           <View style={styles.inviteBlock}>
             <Text variant="caption" tone="muted" style={styles.inviteHint}>
               {Platform.OS === "web"
-                ? "Send this link — whoever opens it and taps Accept becomes your friend."
-                : "Share this link — whoever opens it and taps Accept becomes your friend."}
+                ? "Send this link. Whoever opens it and taps Accept becomes your friend."
+                : "Share this link. Whoever opens it and taps Accept becomes your friend."}
             </Text>
             <View style={styles.inviteUrlRow}>
               <View style={styles.inviteUrlField}>
@@ -123,12 +121,12 @@ export function GamesOnboarding({
       keyboardShouldPersistTaps="handled"
       testID="games-onboarding"
     >
-      <View style={styles.hero}>
-        <Text variant="title" style={styles.heroTitle}>
-          Add games your friends play
+      <View style={styles.intro}>
+        <Text variant="heading" style={styles.introTitle}>
+          Pick a first game
         </Text>
-        <Text tone="secondary" style={styles.heroBody}>
-          One tap adds a game to your home so you can compare daily scores.
+        <Text tone="secondary" style={styles.introBody}>
+          Add one your friends already play, or paste a game URL.
         </Text>
       </View>
 
@@ -169,19 +167,18 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.xxl,
-    gap: tokens.space.xl,
+    paddingHorizontal: homeLayout.horizontalInset,
+    paddingTop: tokens.space.xxl,
+    paddingBottom: homeLayout.bottomInset,
+    gap: tokens.space.lg,
   },
-  hero: { alignItems: "center", gap: tokens.space.sm },
-  heroGlyph: { fontSize: 44, lineHeight: 52 },
-  heroTitle: { textAlign: "center" },
-  heroBody: { textAlign: "center", maxWidth: 360 },
-  ctaStack: { gap: tokens.space.sm },
-  emptyHint: { textAlign: "center" },
-  inviteBlock: { gap: tokens.space.sm },
-  inviteHint: { textAlign: "center" },
+  intro: { gap: tokens.space.sm, maxWidth: 420 },
+  introTitle: { fontSize: tokens.font.size.lg, lineHeight: 24 },
+  introBody: { maxWidth: 420, lineHeight: 22 },
+  ctaStack: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
+  emptyHint: { maxWidth: 420 },
+  inviteBlock: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
+  inviteHint: { maxWidth: 420 },
   inviteUrlRow: {
     flexDirection: "row",
     alignItems: "center",

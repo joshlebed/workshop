@@ -1,21 +1,26 @@
 import { usePathname, useRouter } from "expo-router";
 import type { ReactNode } from "react";
-import {
-  Platform,
-  Pressable,
-  StyleSheet,
-  useWindowDimensions,
-  View,
-  type ViewStyle,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
 const WEB_MAX_WIDTH = 560;
 
+export const homeLayout = {
+  horizontalInset: tokens.space.lg,
+  contentTopGap: tokens.space.xs,
+  bottomInset: tokens.space.xxl * 2,
+} as const;
+
 interface ScreenProps {
   children: ReactNode;
   style?: ViewStyle;
+  testID?: string;
+}
+
+interface HomeHeaderProps {
+  left?: ReactNode;
+  right?: ReactNode;
   testID?: string;
 }
 
@@ -33,6 +38,15 @@ export function Screen({ children, style, testID }: ScreenProps) {
   );
 }
 
+export function HomeHeader({ left, right, testID }: HomeHeaderProps) {
+  return (
+    <View style={styles.homeHeader} testID={testID}>
+      <View style={styles.homeHeaderLeft}>{left}</View>
+      {right ? <View style={styles.homeHeaderRight}>{right}</View> : null}
+    </View>
+  );
+}
+
 // The web counterpart of the native bottom tab bar: a compact inline switch
 // for Lists / Games. Render it inside top-level screen headers only on web
 // with the Games flag on — native uses expo-router's tab bar, and with the
@@ -40,11 +54,9 @@ export function Screen({ children, style, testID }: ScreenProps) {
 export function InlineTabSwitch() {
   const router = useRouter();
   const pathname = usePathname();
-  const { width } = useWindowDimensions();
   const onGames = pathname === "/games" || pathname.startsWith("/games/");
-  const compact = Platform.OS === "web" && width < 360;
 
-  const item = (label: string, glyph: string, active: boolean, onPress: () => void) => (
+  const item = (label: string, active: boolean, onPress: () => void) => (
     <Pressable
       key={label}
       testID={`tab-switch-${label.toLowerCase()}`}
@@ -58,29 +70,22 @@ export function InlineTabSwitch() {
       ]}
     >
       <Text
-        style={[topTabStyles.glyph, { color: active ? tokens.accent.default : tokens.text.muted }]}
+        variant="label"
+        style={[
+          topTabStyles.label,
+          { color: active ? tokens.text.primary : tokens.text.secondary },
+        ]}
+        numberOfLines={1}
       >
-        {glyph}
+        {label}
       </Text>
-      {compact ? null : (
-        <Text
-          variant="label"
-          style={[
-            topTabStyles.label,
-            { color: active ? tokens.accent.default : tokens.text.secondary },
-          ]}
-          numberOfLines={1}
-        >
-          {label}
-        </Text>
-      )}
     </Pressable>
   );
 
   return (
     <View style={topTabStyles.track}>
-      {item("Lists", "◧", !onGames, () => router.navigate("/"))}
-      {item("Games", "◆", onGames, () => router.navigate("/games"))}
+      {item("Lists", !onGames, () => router.navigate("/"))}
+      {item("Games", onGames, () => router.navigate("/games"))}
     </View>
   );
 }
@@ -88,26 +93,21 @@ export function InlineTabSwitch() {
 const topTabStyles = StyleSheet.create({
   track: {
     flexDirection: "row",
-    gap: tokens.space.xs,
-    padding: 3,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    alignItems: "center",
+    gap: tokens.space.md,
+    minHeight: 40,
   },
   item: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-    minHeight: 32,
-    paddingVertical: 6,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.pill,
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: tokens.space.sm,
+    borderRadius: tokens.radius.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
-  itemActive: { backgroundColor: tokens.accent.muted },
-  itemHover: { backgroundColor: tokens.bg.elevated },
-  glyph: { fontSize: 14, lineHeight: 18 },
-  label: { fontWeight: tokens.font.weight.semibold },
+  itemActive: { borderBottomColor: tokens.accent.default },
+  itemHover: { backgroundColor: tokens.bg.surface },
+  label: { fontSize: tokens.font.size.md, fontWeight: tokens.font.weight.semibold },
 });
 
 const styles = StyleSheet.create({
@@ -125,6 +125,26 @@ const styles = StyleSheet.create({
       web: { maxWidth: WEB_MAX_WIDTH },
       default: {},
     }),
+  },
+  homeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: tokens.space.md,
+    paddingHorizontal: homeLayout.horizontalInset,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.md,
+  },
+  homeHeaderLeft: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  homeHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
   },
 });
 

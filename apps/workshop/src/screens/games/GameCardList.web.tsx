@@ -19,7 +19,7 @@ import type { MyGame } from "@workshop/shared/games";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { PullToRefresh } from "../../components/PullToRefresh";
-import { tokens } from "../../ui/index";
+import { homeLayout } from "../../ui/index";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({
@@ -112,7 +112,8 @@ function stripButtonRole(attributes: unknown): Record<string, unknown> {
 
 const styles = StyleSheet.create({
   listContent: {
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl * 2,
+    paddingHorizontal: homeLayout.horizontalInset,
+    paddingTop: homeLayout.contentTopGap,
+    paddingBottom: homeLayout.bottomInset,
   },
 });
