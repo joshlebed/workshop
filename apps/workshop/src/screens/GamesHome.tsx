@@ -22,7 +22,7 @@ import type {
   MyGame,
 } from "@workshop/shared/games";
 import { useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from "react-native";
 import { fetchActivity } from "../api/activity";
 import { createFriendInvite, fetchFriends } from "../api/friends";
@@ -314,7 +314,23 @@ export function GamesHome() {
     });
     if (ok) removeMutation.mutate(mg.gameId);
   };
-  const onActivity = useCallback(() => router.push("/activity"), [router]);
+  const onActivity = useCallback(() => router.push("/activity?from=games"), [router]);
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "/") {
+        e.preventDefault();
+        onActivity();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onActivity]);
 
   const renderCard = useCallback(
     (mg: MyGame, isDragging: boolean, onLongPressBody?: () => void) => {
@@ -352,7 +368,7 @@ export function GamesHome() {
   );
 
   return (
-    <Screen testID="games-home">
+    <Screen style={styles.root} testID="games-home">
       <View style={styles.headerRow}>
         <View style={styles.headerTitleBlock}>
           <Text variant="title" numberOfLines={1}>
@@ -506,6 +522,13 @@ export function GamesHome() {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: tokens.bg.canvas,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.lg,
+    gap: tokens.space.md,
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",

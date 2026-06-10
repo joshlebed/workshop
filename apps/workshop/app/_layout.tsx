@@ -218,11 +218,12 @@ function AuthGate() {
           fullScreenGestureEnabled: true,
         }}
       >
-        {/* The Lists surface (home, lists, activity, create-list) lives in
+        {/* The Lists surface (home, lists, create-list) lives in
             the (tabs)/(lists) group — see app/(tabs)/_layout.tsx. Routes
-            below stay outside the tab shell: auth, onboarding, invites, and
-            the share-intent flow overlay whichever tab is active. */}
+            below stay outside the tab shell: auth, onboarding, invites,
+            activity, and the share-intent flow overlay whichever tab is active. */}
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="onboarding/display-name" />
         <Stack.Screen name="onboarding/accept-invite" />
