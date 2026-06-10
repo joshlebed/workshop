@@ -1,6 +1,10 @@
 resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/${local.prefix}-api"
-  retention_in_days = 30
+  name = "/aws/lambda/${local.prefix}-api"
+  # 1 year so per-request telemetry (platform / app_version / user_agent / user)
+  # supports quarter-over-quarter analysis. At current volume (~3 MB/mo) a year
+  # of retention is ~36 MB — well inside the CloudWatch Logs always-free tier
+  # (5 GB ingest + 5 GB storage/mo), so this stays $0.
+  retention_in_days = 365
 }
 
 resource "aws_iam_role" "lambda" {
