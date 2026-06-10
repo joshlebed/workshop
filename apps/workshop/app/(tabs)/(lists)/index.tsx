@@ -1,17 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ActivityEvent, ItemKind, ListSummary, ModuleName } from "@workshop/shared";
-import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
-  Linking,
   Platform,
   Pressable,
   StyleSheet,
-  TextInput,
   View,
 } from "react-native";
 import { fetchActivity } from "../../../src/api/activity";
@@ -25,15 +22,14 @@ import {
   unpinList,
 } from "../../../src/api/lists";
 import { HeaderActivityButton } from "../../../src/components/HeaderActivityButton";
+import { ProfileMenu } from "../../../src/components/ProfileMenu";
 import { PullToRefresh } from "../../../src/components/PullToRefresh";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { useLivePollingInterval } from "../../../src/hooks/useLivePollingInterval";
 import { errorMessage } from "../../../src/lib/api";
-import { confirm } from "../../../src/lib/confirm";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 import { queryKeys } from "../../../src/lib/queryKeys";
 import {
-  Avatar,
   Button,
   EmptyState,
   InlineTabSwitch,
@@ -42,7 +38,6 @@ import {
   Sheet,
   Text,
   tokens,
-  useToast,
 } from "../../../src/ui/index";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
@@ -103,136 +98,8 @@ function sharedDotAlphas(memberCount: number): string[] {
   return ["CC", "88", "44"];
 }
 
-// "Apr 2026". Falls back to year-only for ancient invalid dates so we never
-// surface "since Jan 1970" if the server hands back a zero timestamp.
-function formatMemberSince(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime()) || d.getFullYear() < 2024) return "early access";
-  return d.toLocaleString(undefined, { month: "short", year: "numeric" });
-}
-
-/**
- * Account-level Letterboxd connection, managed from the profile sheet.
- * Collapsed: one button ("Connect Letterboxd" / "Change Letterboxd account").
- * Expanded: inline username input + save, plus disconnect when connected.
- * The username powers every Letterboxd-match list the user is a member of.
- */
-function LetterboxdAccountRow() {
-  const { user, connectLetterboxd, disconnectLetterboxd } = useAuth();
-  const { showToast } = useToast();
-  const [editing, setEditing] = useState(false);
-  const [username, setUsername] = useState("");
-  const [busy, setBusy] = useState(false);
-  const connected = user?.letterboxdUsername ?? null;
-
-  const onSave = async () => {
-    const name = username.trim();
-    if (!name) return;
-    setBusy(true);
-    try {
-      const filmCount = await connectLetterboxd(name);
-      showToast({
-        message: `Letterboxd connected — ${filmCount} ${filmCount === 1 ? "film" : "films"} on your watchlist`,
-        tone: "success",
-      });
-      setEditing(false);
-      setUsername("");
-    } catch (e) {
-      showToast({
-        message: errorMessage(e, "Couldn't connect that Letterboxd account."),
-        tone: "danger",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onDisconnect = async () => {
-    const ok = await confirm({
-      title: "Disconnect Letterboxd?",
-      message: "Match lists stop seeing your watchlist. Films already on lists stay.",
-      confirmLabel: "Disconnect",
-      destructive: true,
-    });
-    if (!ok) return;
-    setBusy(true);
-    try {
-      await disconnectLetterboxd();
-      showToast({ message: "Letterboxd disconnected", tone: "default" });
-      setEditing(false);
-    } catch (e) {
-      showToast({ message: errorMessage(e, "Couldn't disconnect."), tone: "danger" });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!editing) {
-    return (
-      <Button
-        label={connected ? `Change Letterboxd (@${connected})` : "Connect Letterboxd"}
-        variant="secondary"
-        onPress={() => setEditing(true)}
-        testID="letterboxd-account-row"
-      />
-    );
-  }
-  return (
-    <View style={letterboxdRowStyles.form}>
-      <TextInput
-        testID="letterboxd-account-input"
-        value={username}
-        onChangeText={setUsername}
-        placeholder={connected ? `@${connected}` : "Letterboxd username"}
-        placeholderTextColor={tokens.text.muted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoFocus
-        style={letterboxdRowStyles.input}
-        onSubmitEditing={onSave}
-      />
-      <View style={letterboxdRowStyles.actions}>
-        <Button
-          label="Save"
-          size="md"
-          disabled={!username.trim() || busy}
-          loading={busy}
-          onPress={onSave}
-          testID="letterboxd-account-save"
-        />
-        {connected ? (
-          <Button
-            label="Disconnect"
-            size="md"
-            variant="secondary"
-            disabled={busy}
-            onPress={onDisconnect}
-            testID="letterboxd-account-disconnect"
-          />
-        ) : null}
-        <Button label="Cancel" size="md" variant="ghost" onPress={() => setEditing(false)} />
-      </View>
-    </View>
-  );
-}
-
-const letterboxdRowStyles = StyleSheet.create({
-  form: { gap: tokens.space.sm },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 10,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    backgroundColor: tokens.bg.surface,
-  },
-  actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
-});
-
 export default function Home() {
-  const { user, token, signOut } = useAuth();
+  const { user, token } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
   const livePoll = useLivePollingInterval();
@@ -310,8 +177,6 @@ export default function Home() {
 
   const archivedLists = useMemo(() => allLists.filter((l) => !!l.archivedAt), [allLists]);
 
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [archivedOpen, setArchivedOpen] = useState(false);
   const [rowMenuFor, setRowMenuFor] = useState<ListSummary | null>(null);
 
   // Per-list view-state toggles. Each is optimistic on the query cache so the
@@ -376,38 +241,19 @@ export default function Home() {
       } else if (mod && e.key === "/") {
         e.preventDefault();
         onActivity();
-      } else if (mod && e.key === ",") {
-        e.preventDefault();
-        setProfileOpen(true);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onCreateList, onActivity]);
-  const onSignOut = async () => {
-    setProfileOpen(false);
-    const ok = await confirm({
-      title: "Sign out?",
-      message: "You'll need to sign in again to access your lists.",
-      confirmLabel: "Sign out",
-      destructive: true,
-    });
-    if (ok) signOut();
-  };
-
-  const displayName = user?.displayName?.trim();
-  const greeting = displayName ? `Hi, ${displayName}` : "Your lists";
 
   return (
     <Screen style={styles.root}>
       <View style={styles.header}>
-        <View style={styles.headerTitleBlock}>
-          <Text variant="title" testID="home-greeting" style={styles.title}>
-            {greeting}
-          </Text>
+        <View style={styles.headerTabs}>
+          {Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
         </View>
         <View style={styles.headerActions}>
-          {Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
           <HeaderActivityButton
             unreadCount={totalUnread}
             error={activityFeedQuery.isError}
@@ -417,24 +263,7 @@ export default function Home() {
             }}
             testID="open-activity"
           />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Profile and settings"
-            onPress={() => setProfileOpen(true)}
-            testID="open-profile"
-            style={({ pressed }) => [
-              styles.headerCircle,
-              styles.profileCircle,
-              pressed && styles.headerCirclePressed,
-            ]}
-          >
-            <Avatar
-              name={user?.displayName ?? user?.email ?? null}
-              imageUrl={user?.avatarUrl}
-              size="md"
-              style={styles.profileAvatar}
-            />
-          </Pressable>
+          <ProfileMenu archivedLists={archivedLists} />
         </View>
       </View>
 
@@ -594,156 +423,6 @@ export default function Home() {
           </View>
         ) : null}
       </Sheet>
-
-      <Sheet
-        visible={profileOpen}
-        onRequestClose={() => setProfileOpen(false)}
-        testID="profile-sheet"
-      >
-        <View style={styles.profileSheetHeader}>
-          <Avatar
-            name={user?.displayName ?? user?.email ?? null}
-            imageUrl={user?.avatarUrl}
-            size="lg"
-            testID="profile-sheet-avatar"
-          />
-          <View style={styles.profileSheetIdentity}>
-            <Text variant="heading" numberOfLines={1}>
-              {user?.displayName?.trim() || "You"}
-            </Text>
-            {user?.email ? (
-              <Text variant="caption" tone="muted" numberOfLines={1}>
-                {user.email}
-              </Text>
-            ) : null}
-            {user?.letterboxdUsername ? (
-              <Text variant="caption" tone="muted" numberOfLines={1} testID="profile-letterboxd">
-                Letterboxd: @{user.letterboxdUsername}
-              </Text>
-            ) : null}
-            {user?.createdAt ? (
-              <Text variant="caption" tone="muted" numberOfLines={1}>
-                On Workshop since {formatMemberSince(user.createdAt)}
-              </Text>
-            ) : null}
-          </View>
-        </View>
-        <View style={styles.profileSheetActions}>
-          <Button
-            label="Edit profile"
-            variant="secondary"
-            onPress={() => {
-              setProfileOpen(false);
-              router.push("/profile");
-            }}
-            testID="open-edit-profile"
-          />
-          {GAMES_TAB_ENABLED ? (
-            <Button
-              label="Friends"
-              variant="secondary"
-              onPress={() => {
-                setProfileOpen(false);
-                router.push("/friends");
-              }}
-              testID="open-friends"
-            />
-          ) : null}
-          {archivedLists.length > 0 ? (
-            <Button
-              label={`Archived lists (${archivedLists.length})`}
-              variant="secondary"
-              onPress={() => {
-                setProfileOpen(false);
-                setArchivedOpen(true);
-              }}
-              testID="open-archived"
-            />
-          ) : null}
-          <Button
-            label="Send feedback"
-            variant="secondary"
-            onPress={() => {
-              const subject = encodeURIComponent("Workshop feedback");
-              const version = Constants.expoConfig?.version ?? "0.0.0";
-              const body = encodeURIComponent(
-                `\n\n—\nWorkshop v${version} · ${Platform.OS}${user?.id ? ` · ${user.id.slice(0, 8)}` : ""}`,
-              );
-              Linking.openURL(`mailto:joshlebed@gmail.com?subject=${subject}&body=${body}`).catch(
-                () => {},
-              );
-            }}
-            testID="send-feedback"
-          />
-          <LetterboxdAccountRow />
-        </View>
-        <View style={styles.profileSheetDivider} />
-        <Button label="Sign out" variant="ghost" onPress={onSignOut} testID="sign-out" />
-        <Text variant="caption" tone="muted" style={styles.profileSheetVersion}>
-          Workshop · v{Constants.expoConfig?.version ?? "0.0.0"}
-        </Text>
-      </Sheet>
-
-      <Sheet
-        visible={archivedOpen}
-        onRequestClose={() => setArchivedOpen(false)}
-        testID="archived-sheet"
-      >
-        <View>
-          <Text variant="heading" style={styles.archivedHeading}>
-            Archived lists
-          </Text>
-          <Text variant="caption" tone="muted" style={styles.archivedSub}>
-            Hidden from home. Unarchive to bring them back.
-          </Text>
-          {archivedLists.length === 0 ? (
-            <Text tone="muted" style={styles.archivedEmpty}>
-              Nothing archived.
-            </Text>
-          ) : (
-            <View style={styles.archivedList}>
-              {archivedLists.map((l) => {
-                const accent = tokens.list[l.color as ListColorKey] ?? tokens.accent.default;
-                return (
-                  <View key={l.id} style={styles.archivedRow}>
-                    <View
-                      style={[
-                        styles.archivedAvatar,
-                        { backgroundColor: `${accent}26`, borderColor: `${accent}3D` },
-                      ]}
-                    >
-                      <Text style={styles.avatarEmoji}>{l.emoji}</Text>
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
-                        {l.name}
-                      </Text>
-                      <Text variant="caption" tone="muted" numberOfLines={1}>
-                        {summaryLabel(l)} ·{" "}
-                        {l.itemCount === 0
-                          ? "empty"
-                          : `${l.itemCount} ${l.itemCount === 1 ? "item" : "items"}`}
-                      </Text>
-                    </View>
-                    <Button
-                      label="Unarchive"
-                      size="md"
-                      variant="secondary"
-                      onPress={() =>
-                        viewStateMutation.mutate({
-                          id: l.id,
-                          field: "archivedAt",
-                          value: null,
-                        })
-                      }
-                    />
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      </Sheet>
     </Screen>
   );
 }
@@ -783,22 +462,8 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.xs,
   },
-  headerTitleBlock: { flex: 1, minWidth: 0 },
-  title: { fontSize: tokens.font.size.xl, letterSpacing: -0.4 },
+  headerTabs: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center" },
   headerActions: { flexDirection: "row", gap: tokens.space.sm, alignItems: "center" },
-  headerCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
-  },
-  headerCirclePressed: { backgroundColor: tokens.bg.elevated },
-  profileCircle: { borderColor: tokens.border.default, overflow: "hidden" },
-  profileAvatar: { width: 38, height: 38, borderRadius: 19 },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: tokens.space.lg },
   emptyGlyphBadge: {
@@ -908,25 +573,6 @@ const styles = StyleSheet.create({
   },
   fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
   fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
-  profileSheetHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    marginBottom: tokens.space.lg,
-  },
-  profileSheetIdentity: { flex: 1, minWidth: 0, gap: 2 },
-  profileSheetActions: { gap: tokens.space.sm },
-  profileSheetDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginTop: tokens.space.lg,
-    marginBottom: tokens.space.sm,
-  },
-  profileSheetVersion: {
-    textAlign: "center",
-    marginTop: tokens.space.lg,
-    letterSpacing: 0.4,
-  },
   rowMenuHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -952,27 +598,6 @@ const styles = StyleSheet.create({
   rowMenuActionLabel: {
     fontSize: tokens.font.size.md,
     fontWeight: tokens.font.weight.medium,
-  },
-  archivedHeading: { paddingBottom: tokens.space.xs },
-  archivedSub: { paddingBottom: tokens.space.md },
-  archivedEmpty: {
-    paddingVertical: tokens.space.lg,
-    textAlign: "center",
-  },
-  archivedList: { gap: tokens.space.sm },
-  archivedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-  },
-  archivedAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });
 
