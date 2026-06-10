@@ -3,9 +3,58 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { type DbGame, games, items } from "../db/schema.js";
 import { GAME_REGEX_CATALOG, matchGameScoreRegex, SCORE_COUNT_PREFIX } from "./gameScoreRegex.js";
+import { googleFaviconUrl } from "./link-preview/image-validation.js";
 import type { DbClient } from "./sql.js";
 
 type ScoreDirection = "asc" | "desc";
+
+/**
+ * Display metadata for a games row being created. `title` only applies to
+ * non-catalog games (catalog titles are canonical); `iconUrl` applies to both.
+ */
+export interface GameMetadataHints {
+  title?: string | null;
+  iconUrl?: string | null;
+}
+
+/**
+ * Lazy hints — only awaited when a new row is actually inserted, so callers
+ * can wire a network fetch (link preview) without paying for it on the
+ * already-in-catalog path.
+ */
+type GameMetadataHintsProvider = () => Promise<GameMetadataHints | null>;
+
+const MAX_GAME_TITLE_LENGTH = 80;
+
+/**
+ * Distill a page `<title>` into a card-sized game name: collapse whitespace,
+ * and when the title is long, keep the segment before the first separator
+ * ("Wordle — The New York Times" → "Wordle"). Short titles pass through
+ * untouched so legit hyphenated names survive.
+ */
+export function cleanGameTitle(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let title = raw.replace(/\s+/g, " ").trim();
+  if (title.length === 0) return null;
+  if (title.length > 40) {
+    const head = title.split(/\s*[|·—–]\s*|\s+-\s+/)[0]?.trim();
+    if (head && head.length >= 3) title = head;
+  }
+  if (title.length > MAX_GAME_TITLE_LENGTH) {
+    title = `${title.slice(0, MAX_GAME_TITLE_LENGTH - 1).trimEnd()}…`;
+  }
+  return title;
+}
+
+/**
+ * Last-resort thumbnail for a catalog row — Google's s2 favicon for the host
+ * (always returns *something*; the generic globe for unknown hosts). Kept in
+ * sync with the SQL fallback in migration 0028.
+ */
+export function defaultGameIconUrl(normalizedUrl: string): string {
+  const host = normalizedUrl.split("/")[0]?.split(":")[0] ?? normalizedUrl;
+  return googleFaviconUrl(host);
+}
 
 interface GameCatalogEntry {
   key: string;
@@ -62,12 +111,15 @@ export function parseScoreValue(raw: string, pattern: string | null = null): num
 /**
  * Find-or-create a catalog row for `normalizedUrl`. Known games collapse onto
  * their canonical row even when the pasted variant uses a different path/host
- * form; unknown URLs dedup on the normalized form and get a hostname title.
+ * form; unknown URLs dedup on the normalized form and get a hostname title
+ * unless `hints` carries a better one (e.g. from a link preview). Every new
+ * row gets an `iconUrl` — the hinted favicon or the Google s2 fallback.
  */
 export async function findOrCreateGame(
   inputUrl: string,
   normalizedUrl = normalizeGameUrl(inputUrl),
   db: DbClient = getDb(),
+  hints?: GameMetadataHints | GameMetadataHintsProvider,
 ): Promise<DbGame> {
   if (!normalizedUrl) throw new Error("game URL did not normalize");
 
@@ -86,19 +138,27 @@ export async function findOrCreateGame(
     if (canonical) return canonical;
   }
 
+  // Only now (an insert is actually happening) pay for lazy hints.
+  const resolvedHints =
+    (typeof hints === "function" ? await hints().catch(() => null) : hints) ?? {};
+  const iconHint = resolvedHints.iconUrl ?? null;
+
   const values =
     detected && canonicalKey
       ? {
           normalizedUrl: canonicalKey,
           url: detected.canonicalUrl,
           title: detected.title,
+          iconUrl: iconHint ?? defaultGameIconUrl(canonicalKey),
           gameKey: detected.key,
           scoreDirection: detected.scoreDirection,
         }
       : {
           normalizedUrl,
           url: `https://${normalizedUrl}`,
-          title: normalizedUrl.split("/")[0] ?? normalizedUrl,
+          title:
+            cleanGameTitle(resolvedHints.title) ?? normalizedUrl.split("/")[0] ?? normalizedUrl,
+          iconUrl: iconHint ?? defaultGameIconUrl(normalizedUrl),
           gameKey: null,
           scoreDirection: "desc" as const,
         };
@@ -154,7 +214,9 @@ export async function ensureLeaderboardItemGame(
   const normalized = normalizeGameUrl(inputUrl);
   if (!normalized) return null;
 
-  const game = await findOrCreateGame(inputUrl, normalized, db);
+  // The item's title is the best name we have for a non-catalog game; no
+  // network fetch here so the score-post path stays fast.
+  const game = await findOrCreateGame(inputUrl, normalized, db, { title: fields.title });
   const catalog = detected ?? catalogEntryForKey(game.gameKey);
   const nextScoreRegex = catalog?.scoreRegex ?? fields.scoreRegex;
   const nextScoreDirection =
