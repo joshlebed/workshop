@@ -1,11 +1,13 @@
-// Games surface (spec §3, G1a) — global catalog + "My Games" + scores.
+// Games surface (spec §3, G1a + G2a) — global catalog + "My Games" + scores.
 // Entirely separate from the Lists leaderboard: this file must never read or
 // write the old surface's tables (a test asserts the source stays clean).
-// Self-only for now; G2a unions friends into the same standings shape.
+// Standings cover `viewer ∪ friends_of(viewer)` (G2a) in the G1a shape.
 
 import type {
   AddGameResponse,
+  DiscoveryGame,
   Game,
+  GameDiscoveryResponse,
   GameLeaderboardResponse,
   GameScore,
   GameScoreDirection,
@@ -16,13 +18,14 @@ import type {
   UpsertGameScoreResponse,
 } from "@workshop/shared/games";
 import { normalizeGameUrl } from "@workshop/shared/games";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbGame, gameScores, games, userGames, users } from "../../db/schema.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
+import { friendsOf } from "../../lib/friends.js";
 import { appendUserGamePosition, moveUserGamePosition } from "../../lib/gamePositions.js";
 import {
   GAME_REGEX_CATALOG,
@@ -173,12 +176,13 @@ function rankEntries(
 }
 
 /**
- * The user set whose scores a viewer can see (spec §3.2): self-only today;
- * G2a widens this to `viewer ∪ friends_of(viewer)` and everything downstream
- * (standings blocks, the leaderboard endpoint) picks it up unchanged.
+ * The user set whose scores a viewer can see (spec §3.2):
+ * `viewer ∪ friends_of(viewer)` (G2a). Everything downstream (standings
+ * blocks, the leaderboard endpoint) picks it up unchanged — widening here
+ * only grows the user set, never reshapes the response payload.
  */
-function visibleUserIds(viewerId: string): string[] {
-  return [viewerId];
+async function visibleUserIds(viewerId: string): Promise<string[]> {
+  return [viewerId, ...(await friendsOf(viewerId))];
 }
 
 async function loadStandingsByGame(
@@ -204,7 +208,7 @@ async function loadStandingsByGame(
       and(
         inArray(gameScores.gameId, gameIds),
         eq(gameScores.periodKey, periodKey),
-        inArray(gameScores.userId, visibleUserIds(viewerId)),
+        inArray(gameScores.userId, await visibleUserIds(viewerId)),
       ),
     );
   for (const r of rows) {
@@ -283,6 +287,65 @@ gameRoutes.get("/", async (c) => {
   });
 
   const response: GamesResponse = { periodKey, games: myGames };
+  return ok(c, response);
+});
+
+/**
+ * GET /v1/games/discovery (G2a) — games my friends play that I haven't
+ * added, each with which friends play it. `?friend=<userId>` narrows to one
+ * friend and 404s for anyone who isn't a friend (a non-friend must not be
+ * able to probe whether the id plays anything). Registered before the
+ * `/:id` routes so the literal path isn't shadowed.
+ */
+gameRoutes.get("/discovery", async (c) => {
+  const userId = c.get("userId");
+  const friendIds = await friendsOf(userId);
+
+  const friendFilter = c.req.query("friend");
+  let scopedFriendIds = friendIds;
+  if (friendFilter !== undefined) {
+    const parsed = uuidSchema.safeParse(friendFilter);
+    if (!parsed.success || !friendIds.includes(parsed.data)) {
+      return err(c, "NOT_FOUND", "friend not found");
+    }
+    scopedFriendIds = [parsed.data];
+  }
+
+  if (scopedFriendIds.length === 0) {
+    const response: GameDiscoveryResponse = { games: [] };
+    return ok(c, response);
+  }
+
+  const db = getDb();
+  const myGameIds = db
+    .select({ gameId: userGames.gameId })
+    .from(userGames)
+    .where(eq(userGames.userId, userId));
+  const rows = await db
+    .select({
+      game: games,
+      friendId: userGames.userId,
+      displayName: users.displayName,
+      addedAt: userGames.addedAt,
+    })
+    .from(userGames)
+    .innerJoin(games, eq(games.id, userGames.gameId))
+    .leftJoin(users, eq(users.id, userGames.userId))
+    .where(and(inArray(userGames.userId, scopedFriendIds), notInArray(userGames.gameId, myGameIds)))
+    .orderBy(asc(userGames.addedAt), asc(userGames.gameId));
+
+  const byGame = new Map<string, DiscoveryGame>();
+  for (const r of rows) {
+    const entry = byGame.get(r.game.id) ?? { game: toGameShape(r.game), friends: [] };
+    entry.friends.push({ userId: r.friendId, displayName: r.displayName });
+    byGame.set(r.game.id, entry);
+  }
+  // Most-played-among-friends first; stable tiebreak on title.
+  const discovered = [...byGame.values()].sort(
+    (a, b) => b.friends.length - a.friends.length || a.game.title.localeCompare(b.game.title),
+  );
+
+  const response: GameDiscoveryResponse = { games: discovered };
   return ok(c, response);
 });
 

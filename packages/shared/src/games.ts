@@ -40,8 +40,8 @@ export interface GameScore {
 }
 
 /**
- * One row of a game's standings for a period. Self-only today; G2a widens
- * the user set to friends without reshaping this entry.
+ * One row of a game's standings for a period. Covers the viewer and their
+ * friends (G2a); the entry shape is the same either way.
  */
 export interface GameStandingsEntry {
   userId: string;
@@ -86,6 +86,26 @@ export interface AddGameResponse {
 
 export interface UpsertGameScoreResponse {
   score: GameScore;
+}
+
+/**
+ * `GET /v1/games/discovery` (G2a) — games my friends play that I haven't
+ * added, each tagged with which friends play it. Powers the + sheet
+ * suggestions, the friends-but-no-games empty state, and the post-accept
+ * picker (UI in G3).
+ */
+export interface DiscoveryFriend {
+  userId: string;
+  displayName: string | null;
+}
+
+export interface DiscoveryGame {
+  game: Game;
+  friends: DiscoveryFriend[];
+}
+
+export interface GameDiscoveryResponse {
+  games: DiscoveryGame[];
 }
 
 /**

@@ -114,8 +114,13 @@ are shared). The catalog seed lives in migration `0023_games_tables.sql` and mus
 sync with `GAME_REGEX_CATALOG` (each entry's `title`/`canonicalUrl`); `games.test.ts`
 enforces it. Routes are flag-gated **inside the router** (404 when off): on when
 `STAGE=local`, otherwise requires `ENABLE_GAMES=1` in the Lambda env (not yet set in prod).
-Standings are self-only via `visibleUserIds()` — G2a widens that one function to friends.
-`games.test.ts` is also the repo's first real-DB vitest suite: it runs the actual `drizzle/`
+Standings cover `viewer ∪ friends_of(viewer)` via `visibleUserIds()` (G2a) — the friend graph
+lives in `friendships` (one canonical row per pair, `user_low < user_high`; `lib/friends.ts` is
+the only writer and owns the invariant) with share-link invites in `friend_requests`
+(`routes/v1/friends.ts`, same flag gate as games). `GET /v1/games/discovery` (friends' games I
+haven't added) is registered **before** the `/:id` routes so the literal path isn't shadowed;
+its `?friend=` filter 404s for non-friends so the endpoint can't be used to probe a stranger's
+games. `games.test.ts` is also the repo's first real-DB vitest suite: it runs the actual `drizzle/`
 migrations against in-memory PGlite (`@electric-sql/pglite`) with `getDb` mocked — copy that
 pattern when a route's acceptance criteria are DB behaviors, not just schema validation.
 

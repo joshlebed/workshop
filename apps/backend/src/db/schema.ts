@@ -459,6 +459,47 @@ export const gameScores = pgTable(
   }),
 );
 
+/**
+ * Symmetric friend graph (spec §3.6, G2a). One row per unordered pair,
+ * stored canonically as `user_low < user_high` (enforced in
+ * `lib/friends.ts`, the only writer). Lookups for either side stay indexed:
+ * the PK covers `user_low`, `friendships_high_idx` covers `user_high`.
+ */
+export const friendships = pgTable(
+  "friendships",
+  {
+    userLow: uuid("user_low")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userHigh: uuid("user_high")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userLow, t.userHigh] }),
+    highIdx: index("friendships_high_idx").on(t.userHigh),
+  }),
+);
+
+/**
+ * Personal friend-invite links (spec §3.4) — share-link → accept, reusing
+ * the list-invite token machinery (`lib/shareSlug.ts`). `status` is
+ * pending | accepted | declined; `invitee_id` + `responded_at` are set on
+ * response. Accepting creates the `friendships` edge.
+ */
+export const friendRequests = pgTable("friend_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  inviterId: uuid("inviter_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  inviteeId: uuid("invitee_id").references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+});
+
 export const rateLimits = pgTable(
   "rate_limits",
   {
@@ -486,5 +527,7 @@ export type DbRateLimit = typeof rateLimits.$inferSelect;
 export type DbListSource = typeof listSources.$inferSelect;
 export type DbItemScore = typeof itemScores.$inferSelect;
 export type DbGame = typeof games.$inferSelect;
+export type DbFriendship = typeof friendships.$inferSelect;
+export type DbFriendRequest = typeof friendRequests.$inferSelect;
 export type DbUserGame = typeof userGames.$inferSelect;
 export type DbGameScore = typeof gameScores.$inferSelect;
