@@ -100,6 +100,25 @@ depend on the `ranking` module being present:
 If you add a leaderboard surface that buckets/gates on `ranking`, add `leaderboard` too, or
 leaderboard-only lists (no `ranking` module — e.g. "Geo games") silently lose reorder.
 
+## Games surface (`routes/v1/games.ts`) is isolated from the Lists leaderboard
+
+The Games tab (spec §3, G1a) has its own tables — `games` (global catalog, deduped by
+`normalized_url` via `normalizeGameUrl` from `@workshop/shared/games`), `user_games`
+(per-user ordered selection), `game_scores` (`(game_id,user_id,period_key)` PK) — and must
+never read or write `items` / `item_scores`; a test in `games.test.ts` asserts the source
+stays clean, so don't add such an import even for "harmless" reuse. Consequences of the
+isolation: the score parser in `games.ts` (`parseGameScoreValue`) is a deliberate twin of
+the one in `scores.ts` (keep both in sync when the `count:` sentinel semantics change), and
+`lib/gamePositions.ts` twins `lib/positions.ts` for `user_games.position` (the pure helpers
+are shared). The catalog seed lives in migration `0023_games_tables.sql` and must stay in
+sync with `GAME_REGEX_CATALOG` (each entry's `title`/`canonicalUrl`); `games.test.ts`
+enforces it. Routes are flag-gated **inside the router** (404 when off): on when
+`STAGE=local`, otherwise requires `ENABLE_GAMES=1` in the Lambda env (not yet set in prod).
+Standings are self-only via `visibleUserIds()` — G2a widens that one function to friends.
+`games.test.ts` is also the repo's first real-DB vitest suite: it runs the actual `drizzle/`
+migrations against in-memory PGlite (`@electric-sql/pglite`) with `getDb` mocked — copy that
+pattern when a route's acceptance criteria are DB behaviors, not just schema validation.
+
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's

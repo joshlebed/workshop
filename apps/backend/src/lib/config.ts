@@ -38,6 +38,14 @@ const configSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "1" || v === "true"),
+  // Games surface flag (spec §3). The /v1/games routes 404 unless enabled —
+  // on automatically when STAGE=local (dev/sandbox/e2e); prod stays off until
+  // ENABLE_GAMES=1 lands in the Lambda env. Mirrors the client's
+  // EXPO_PUBLIC_ENABLE_GAMES tab flag (G0).
+  gamesEnabled: z
+    .string()
+    .optional()
+    .transform((v) => v === "1" || v === "true"),
   // Spotify Web API app credentials (Client Credentials flow). Used by the
   // Album Shelf feature to read public playlists with an app-level token —
   // no per-user OAuth. Empty defaults so the rest of the API still boots
@@ -70,6 +78,7 @@ export function getConfig(): Config {
     tmdbApiKey: process.env.TMDB_API_KEY,
     googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY,
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,
+    gamesEnabled: process.env.ENABLE_GAMES,
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
     discordNotifyWebhookUrl: process.env.DISCORD_NOTIFY_WEBHOOK_URL,
