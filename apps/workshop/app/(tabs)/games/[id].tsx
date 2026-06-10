@@ -16,6 +16,7 @@ import { fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../../../sr
 import { DayRail } from "../../../src/components/DayRail";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { errorMessage } from "../../../src/lib/api";
+import { userAvatarImageUrl } from "../../../src/lib/avatar";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 import { formatGameDateLabel, localDateKey } from "../../../src/lib/gameDate";
 import { goBack } from "../../../src/lib/goBack";
@@ -278,6 +279,7 @@ export default function GameBoard() {
                   }}
                   pending={upsertMutation.isPending}
                   userName={user?.displayName ?? null}
+                  userAvatarUrl={user?.avatarUrl ?? null}
                 />
               ) : myEntry ? (
                 <EntryRow
@@ -297,6 +299,7 @@ export default function GameBoard() {
                 <View style={styles.unplayedRow} testID="game-board-my-unplayed">
                   <Avatar
                     name={user?.displayName ?? null}
+                    imageUrl={user?.avatarUrl}
                     size="md"
                     style={styles.unplayedAvatar}
                   />
@@ -339,7 +342,7 @@ function EntryRow({ entry, game, isMe, onEdit }: EntryRowProps) {
             </Text>
           </View>
         ) : null}
-        <Avatar name={entry.displayName} size="md" />
+        <Avatar name={entry.displayName} imageUrl={userAvatarImageUrl(entry.userId)} size="md" />
         <View style={styles.entryNameWrap}>
           <View style={styles.entryNameRow}>
             <Text variant="label" style={styles.entryName} numberOfLines={1}>
@@ -391,6 +394,7 @@ interface ScoreComposerProps {
   onCancel: () => void;
   pending: boolean;
   userName: string | null;
+  userAvatarUrl?: string | null;
 }
 
 // The my-slot in compose mode — posting a first result ("new") or fixing a
@@ -406,6 +410,7 @@ function ScoreComposer({
   onCancel,
   pending,
   userName,
+  userAvatarUrl,
 }: ScoreComposerProps) {
   const isEdit = mode === "edit";
   const trimmed = draft.trim();
@@ -433,7 +438,7 @@ function ScoreComposer({
   return (
     <View style={[styles.entry, styles.entryMe]} testID="game-board-paste-slot">
       <View style={styles.entryHeader}>
-        <Avatar name={userName} size="md" />
+        <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
         <View style={styles.entryNameWrap}>
           <View style={styles.entryNameRow}>
             <Text variant="label" style={styles.entryName}>

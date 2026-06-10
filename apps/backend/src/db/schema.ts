@@ -201,17 +201,15 @@ export const items = pgTable(
      * Leaderboard score parsing — for items in lists with the `leaderboard`
      * module. `scoreRegex` is a JS regex pattern with a single capture group
      * around the numeric score; the backend applies it (case-insensitive) to
-     * `item_scores.score_raw` to compute `score_value`. `scoreDirection`
-     * controls leaderboard sort: 'desc' = higher is better (default),
-     * 'asc' = lower is better (Wordle / Satle / etc.). Both are NULL on
-     * non-game items. No client-facing surface to edit them: the score upsert
-     * self-heals a NULL regex on first post via the `gameScoreRegex` catalog,
-     * and `apps/backend/scripts/backfill-score-regex.ts` replays the catalog
-     * across existing items + historical scores. Both share the catalog in
-     * `apps/backend/src/lib/gameScoreRegex.ts`.
+     * the raw score to compute `score_value`. `scoreDirection` controls
+     * leaderboard sort: 'desc' = higher is better (default), 'asc' = lower is
+     * better (Wordle / Satle / etc.). `gameId` links migrated daily-game list
+     * items to the canonical Games surface row; mapped items read/write
+     * `game_scores`, while unmapped legacy items keep using `item_scores`.
      */
     scoreRegex: text("score_regex"),
     scoreDirection: text("score_direction"),
+    gameId: uuid("game_id").references(() => games.id, { onDelete: "set null" }),
     /**
      * Suggestion lifecycle on Letterboxd-match lists (`letterboxd` module).
      * `'pending'` = suggested but not yet accepted by another member — the
@@ -222,6 +220,7 @@ export const items = pgTable(
   },
   (t) => ({
     listIdx: index("items_list_idx").on(t.listId),
+    gameIdx: index("items_game_idx").on(t.gameId),
     listCompletedCreatedIdx: index("items_list_completed_created_idx").on(
       t.listId,
       t.completed,
@@ -416,8 +415,9 @@ export const itemScores = pgTable(
  * Games surface (spec §3) — the global game catalog, deduped by
  * `normalized_url` (see `normalizeGameUrl` in `@workshop/shared/games`).
  * Seeded from the `gameScoreRegex` catalog in migration 0023; unknown URLs
- * get a hostname title at find-or-create time. Entirely separate from the
- * Lists leaderboard surface (`items` / `item_scores`) — never join across.
+ * get a hostname title at find-or-create time. Migrated Lists leaderboard
+ * items point at this table through `items.game_id` so both surfaces share the
+ * same canonical game and score rows.
  */
 export const games = pgTable("games", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -505,9 +505,11 @@ export const itemAcceptances = pgTable(
 );
 
 /**
- * Scores for the Games surface. One row per (game, user, period_key);
- * `period_key` is the puzzle day ("YYYY-MM-DD"). NEW table — the old Lists
- * leaderboard keeps `item_scores`; the two never read each other.
+ * Scores for daily games. One row per (game, user, period_key); `period_key`
+ * is the puzzle day ("YYYY-MM-DD"). Games-tab posts write here directly, and
+ * migrated Lists leaderboard items translate their legacy `item_id` into
+ * `game_id` before reading or writing scores. The primary key enforces one
+ * score per user per game per day.
  */
 export const gameScores = pgTable(
   "game_scores",

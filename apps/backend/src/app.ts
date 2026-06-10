@@ -21,7 +21,7 @@ import { itemScoreRoutes, listScoresRoutes } from "./routes/v1/scores.js";
 import { searchRoutes } from "./routes/v1/search.js";
 import { sourcePreviewRoutes } from "./routes/v1/sources.js";
 import { telemetryRoutes } from "./routes/v1/telemetry.js";
-import { userRoutes } from "./routes/v1/users.js";
+import { publicUserRoutes, userRoutes } from "./routes/v1/users.js";
 import { listViewRoutes } from "./routes/v1/views.js";
 import { webhookRoutes } from "./routes/v1/webhooks.js";
 
@@ -114,6 +114,7 @@ export function buildApp() {
   );
 
   app.route("/v1/auth", authRoutes);
+  app.route("/v1/users", publicUserRoutes);
   app.route("/v1/users", userRoutes);
   app.route("/v1", publicListRoutes);
   app.route("/v1/lists", listRoutes);

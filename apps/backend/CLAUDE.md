@@ -61,25 +61,21 @@ Source: `src/lib/logger.ts`.
 ts-reset is enabled repo-wide. Validate with zod (see `src/lib/session.ts`) or a type
 guard. Don't blind-cast.
 
-## Leaderboard `score_regex` self-heals — don't rely on the backfill alone
+## Leaderboard games map to the Games catalog — don't rely on the backfill alone
 
 A leaderboard item's `score_regex` / `score_direction` (used to parse a numeric
-`score_value` out of the pasted share) is set two ways: the one-time
-`scripts/backfill-score-regex.ts` for existing rows, **and** the score upsert
-(`routes/v1/scores.ts`), which detects the game from the item's title/url/siteName/sourceId
-and persists the regex the first time a score is posted. Without the self-heal, an item
-created after the backfill falls back to "first number anywhere in the text" and stores
-junk (e.g. the `dailytens.com/?ref=<id>` referral id) as the score. Both paths share the
-catalog in `src/lib/gameScoreRegex.ts` — add a new game there and both pick it up. A
-catalog entry's `scoreRegex` is normally a capture-group regex (group 1 = the number), but
-`count:<pattern>` means the score is the **count** of global matches of `<pattern>` — Daily
-Tens has no numeric score, so it counts 🏆 (`count:🏆`, desc). Both `tryParseScoreValue` and
-the backfill's `parseScore` understand the `SCORE_COUNT_PREFIX` sentinel; keep them in sync.
-**Changing a game's scoring rule only fixes _new_ posts** (self-heal sets the catalog regex on
-items that lack one) — existing items keep their stored regex and existing `item_scores.score_value`
-stays stale, so **re-run `scripts/backfill-score-regex.ts` on prod** after a catalog change
-to update items + re-parse history. The client mirrors the same distillation for _display_:
-the leaderboard row and the clipboard
+`score_value` out of the pasted share) and `game_id` are set two ways: migration
+`0027_migrate_geo_games_leaderboard.sql` for existing rows, **and** the item create/edit +
+score upsert paths (`routes/v1/items.ts`, `routes/v1/scores.ts`) through
+`lib/gameCatalog.ts`. Mapped leaderboard items keep the old list/item URLs but read/write
+`game_scores`, so the `(game_id,user_id,period_key)` primary key enforces one score per
+player per game per day across both the list and Games tab. Unmapped legacy items still fall
+back to `item_scores`. The catalog in `src/lib/gameScoreRegex.ts` remains the source of known
+game regexes; `count:<pattern>` means score by the count of global matches (Daily Tens:
+`count:🏆`, desc). **Changing a game's scoring rule only fixes new posts** unless you also
+re-run `scripts/backfill-score-regex.ts` (for legacy `item_scores`) or add a targeted
+`game_scores` rescore. The client mirrors the same distillation for _display_: the
+leaderboard row and the clipboard
 recap both render through `summarizeScoreBody` (`apps/workshop/src/lib/scoresSummary.ts`),
 which strips URLs/headers so a URL-only share shows "Played", never the raw link.
 
@@ -140,34 +136,35 @@ independently — both optional, send only what changed; `avatarUrl: null` clear
 picture; an empty body 400s. The avatar is stored as a base64 `data:` URL (same approach
 as list `cover_photo_url` — no object store yet), capped + raster-only by `avatarUrlSchema`
 (reused shape from `coverPhotoUrlSchema`). `toUserShape` is duplicated in `users.ts` **and**
-`auth.ts` — add new user fields to both. **`avatarUrl` is deliberately NOT joined into
-leaderboard / activity / member payloads**: those fan out across many users and inlining
-~1MB base64 per row would bloat responses. If you want other users' photos there, move
-avatars to a URL/CDN store first — don't naively join the data URL column.
+`auth.ts` — add new user fields to both. **Do not join `avatarUrl` into leaderboard /
+activity / member payloads**: those fan out across many users and inlining ~1MB base64 per
+row would bloat responses. User-facing facepiles/leaderboards should point `Avatar` at
+`GET /v1/users/:id/avatar` (public image response, 404 = initials fallback) until avatars move
+to a real URL/CDN store.
 
-## Games surface (`routes/v1/games.ts`) is isolated from the Lists leaderboard
+## Games surface is canonical for daily-game scores
 
 The Games tab (spec §3, G1a) has its own tables — `games` (global catalog, deduped by
 `normalized_url` via `normalizeGameUrl` from `@workshop/shared/games`), `user_games`
-(per-user ordered selection), `game_scores` (`(game_id,user_id,period_key)` PK) — and must
-never read or write `items` / `item_scores`; a test in `games.test.ts` asserts the source
-stays clean, so don't add such an import even for "harmless" reuse. Consequences of the
-isolation: the score parser in `games.ts` (`parseGameScoreValue`) is a deliberate twin of
-the one in `scores.ts` (keep both in sync when the `count:` sentinel semantics change), and
-`lib/gamePositions.ts` twins `lib/positions.ts` for `user_games.position` (the pure helpers
-are shared). The catalog seed lives in migration `0023_games_tables.sql` and must stay in
-sync with `GAME_REGEX_CATALOG` (each entry's `title`/`canonicalUrl`); `games.test.ts`
-enforces it. Routes are flag-gated **inside the router** (404 when off): on when
-`STAGE=local`, otherwise requires `ENABLE_GAMES=1` in the Lambda env (set by Terraform).
-Standings cover `viewer ∪ friends_of(viewer)` via `visibleUserIds()` (G2a) — the friend graph
-lives in `friendships` (one canonical row per pair, `user_low < user_high`; `lib/friends.ts` is
-the only writer and owns the invariant) with share-link invites in `friend_requests`
-(`routes/v1/friends.ts`, same flag gate as games). `GET /v1/games/discovery` (friends' games I
-haven't added) is registered **before** the `/:id` routes so the literal path isn't shadowed;
-its `?friend=` filter 404s for non-friends so the endpoint can't be used to probe a stranger's
-games. `games.test.ts` is also the repo's first real-DB vitest suite: it runs the actual `drizzle/`
-migrations against in-memory PGlite (`@electric-sql/pglite`) with `getDb` mocked — copy that
-pattern when a route's acceptance criteria are DB behaviors, not just schema validation.
+(per-user ordered selection), `game_scores` (`(game_id,user_id,period_key)` PK). The Games
+router still owns only those tables directly, but leaderboard-list items can point at the
+same `games` row through `items.game_id`; the list score routes translate legacy `item_id`
+requests into canonical `game_scores` reads/writes and return the old response shape keyed by
+item id. Shared helpers live in `lib/gameCatalog.ts` (URL normalization, catalog lookup,
+parser) and `lib/userGames.ts` (idempotently add to My Games). The catalog seed lives in
+migration `0023_games_tables.sql` and must stay in sync with `GAME_REGEX_CATALOG` (each
+entry's `title`/`canonicalUrl`); `games.test.ts` enforces it. Routes are flag-gated **inside
+the router** (404 when off): on when `STAGE=local`, otherwise requires `ENABLE_GAMES=1` in
+the Lambda env (set by Terraform). Standings cover `viewer ∪ friends_of(viewer)` via
+`visibleUserIds()` (G2a) — the friend graph lives in `friendships` (one canonical row per
+pair, `user_low < user_high`; `lib/friends.ts` is the only writer and owns the invariant)
+with share-link invites in `friend_requests` (`routes/v1/friends.ts`, same flag gate as
+games). `GET /v1/games/discovery` (friends' games I haven't added) is registered **before**
+the `/:id` routes so the literal path isn't shadowed; its `?friend=` filter 404s for
+non-friends so the endpoint can't be used to probe a stranger's games. `games.test.ts` and
+`scores.integration.test.ts` run actual `drizzle/` migrations against in-memory PGlite
+(`@electric-sql/pglite`) with `getDb` mocked — copy that pattern when a route's acceptance
+criteria are DB behaviors, not just schema validation.
 
 ## Lists and items are soft-deleted via `archived_at`
 

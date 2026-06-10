@@ -22,6 +22,7 @@ import { getDb } from "../../db/client.js";
 import { items, itemTags, lists } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { recordEvent } from "../../lib/events.js";
+import { ensureLeaderboardItemGame } from "../../lib/gameCatalog.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule, stripModuleGatedItemFields } from "../../lib/moduleGate.js";
 import { requireCapability } from "../../lib/permissions.js";
@@ -480,6 +481,23 @@ export async function createItem(
       .returning();
     if (!row) throw new Error("item insert returned no row");
 
+    if (hasModule(modules, "leaderboard")) {
+      const c = content as Record<string, unknown>;
+      await ensureLeaderboardItemGame(
+        {
+          itemId: row.id,
+          gameId: row.gameId ?? null,
+          scoreRegex: row.scoreRegex ?? null,
+          scoreDirection: row.scoreDirection ?? null,
+          title: row.title,
+          url: row.url,
+          siteName: typeof c.siteName === "string" ? c.siteName : null,
+          sourceId: typeof c.sourceId === "string" ? c.sourceId : null,
+        },
+        tx,
+      );
+    }
+
     await recordEvent({
       db: tx,
       listId,
@@ -585,6 +603,23 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
 
   const [updated] = await db.update(items).set(patch).where(eq(items.id, itemId)).returning();
   if (!updated) return err(c, "NOT_FOUND", "item not found");
+
+  if (parent && hasModule((parent.modules ?? []) as ModuleName[], "leaderboard")) {
+    const c = (updated.content ?? {}) as Record<string, unknown>;
+    const mapping = await ensureLeaderboardItemGame({
+      itemId: updated.id,
+      gameId: null,
+      scoreRegex: updated.scoreRegex ?? null,
+      scoreDirection: updated.scoreDirection ?? null,
+      title: updated.title,
+      url: updated.url,
+      siteName: typeof c.siteName === "string" ? c.siteName : null,
+      sourceId: typeof c.sourceId === "string" ? c.sourceId : null,
+    });
+    if (!mapping && updated.gameId) {
+      await db.update(items).set({ gameId: null }).where(eq(items.id, updated.id));
+    }
+  }
 
   await recordEvent({
     listId: updated.listId,

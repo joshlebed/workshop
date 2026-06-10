@@ -41,6 +41,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { neighborsForOrderedReorder } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
+import { userAvatarImageUrl } from "../lib/avatar";
 import { confirm } from "../lib/confirm";
 import { GAMES_TAB_ENABLED } from "../lib/featureFlags";
 import { localDateKey } from "../lib/gameDate";
@@ -338,6 +339,7 @@ export function GamesHome() {
       const rows: StandingsRow[] = entries.map((entry) => ({
         userId: entry.userId,
         displayName: entry.displayName,
+        avatarUrl: userAvatarImageUrl(entry.userId),
         rank: entry.rank,
         body: summarizeGameScoreBody(mg.game, entry),
       }));
@@ -476,6 +478,7 @@ export function GamesHome() {
       <GameScorePasteSheet
         item={pasteTarget}
         userName={user?.displayName ?? null}
+        userAvatarUrl={user?.avatarUrl ?? null}
         pending={upsertMutation.isPending}
         onSubmit={(game, scoreRaw) => upsertMutation.mutate({ game, scoreRaw })}
         onClose={dismiss}

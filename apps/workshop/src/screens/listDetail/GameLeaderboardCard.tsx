@@ -20,6 +20,7 @@
 import type { Item, LeaderboardEntry, ListMemberSummary } from "@workshop/shared";
 import { memo } from "react";
 import { StandingsCard, type StandingsRow } from "../../components/StandingsCard";
+import { userAvatarImageUrl } from "../../lib/avatar";
 import { summarizeScoreBody } from "../../lib/scoresSummary";
 
 export interface GameLeaderboardCardProps {
@@ -96,6 +97,7 @@ export const GameLeaderboardCard = memo(function GameLeaderboardCard({
   const rows: StandingsRow[] = entries.filter(hasScore).map((entry) => ({
     userId: entry.userId,
     displayName: entry.displayName,
+    avatarUrl: userAvatarImageUrl(entry.userId),
     rank: entry.rank,
     body: summarizeScoreBody(item, entry),
   }));
@@ -130,7 +132,11 @@ export const GameLeaderboardCard = memo(function GameLeaderboardCard({
       rows={rows}
       selfId={selfId}
       loading={loading}
-      emptyFaces={members}
+      emptyFaces={members.map((m) => ({
+        userId: m.userId,
+        displayName: m.displayName,
+        avatarUrl: userAvatarImageUrl(m.userId),
+      }))}
       emptyText={viewingToday ? "Be the first to play today." : "No one played."}
       // Past days are read-only — you can't post to a closed bucket.
       showCta={viewingToday && !iPlayed && total > 0}

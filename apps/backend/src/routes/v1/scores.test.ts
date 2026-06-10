@@ -19,11 +19,11 @@ function authHeaders(): { Authorization: string; "Content-Type": string } {
   };
 }
 
-// Score routes generalize the old `game_scores` table into `item_scores`,
-// indexed by (item_id, user_id, period_key). The `period_key` is a free-form
-// token chosen by the client (YYYY-MM-DD, YYYY-WNN, all-time, etc.). These
-// tests lock the schema shape, the helper that parses a numeric out of the
-// raw input, and auth + uuid gating on the three exposed endpoints.
+// Score routes expose the legacy leaderboard-list shape keyed by item id. Some
+// items are now backed by canonical `game_scores`, but the client contract still
+// accepts an item id plus a free-form period key (YYYY-MM-DD, YYYY-WNN,
+// all-time, etc.). These tests lock the schema shape, the helper that parses a
+// numeric out of the raw input, and auth + uuid gating on the exposed endpoints.
 
 describe("periodKeySchema", () => {
   const { periodKeySchema } = __test;

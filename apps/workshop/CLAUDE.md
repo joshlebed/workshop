@@ -86,6 +86,15 @@ RQ's `useMutation` only surfaces the latest call. The picker invalidates only
 invalidates both `mine` and `["games", "discovery"]` so the added game drops off suggestions.
 Everything stays behind `EXPO_PUBLIC_ENABLE_GAMES` (queries gate on `GAMES_TAB_ENABLED`).
 
+## Profile avatar circles
+
+Use the shared `Avatar` component for any user identity circle. For the signed-in user, pass
+`user.avatarUrl` directly so profile edits update immediately; for other user ids, use
+`userAvatarImageUrl(userId)` from `src/lib/avatar.ts`. That route returns the stored picture
+as an image when one exists and 404s otherwise; `Avatar` handles image load failure by falling
+back to initials. Do not hand-roll initials-only circles for members, friends, or leaderboard
+rows.
+
 ## Cross-platform code sharing
 
 Metro resolves `.web.ts(x)` before `.ts(x)` on web and `.native.ts(x)` before `.ts(x)` on

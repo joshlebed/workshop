@@ -231,16 +231,6 @@ const letterboxdRowStyles = StyleSheet.create({
   actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
 });
 
-function initialsFor(name: string | null | undefined): string {
-  const trimmed = name?.trim();
-  if (!trimmed) return "·";
-  const parts = trimmed.split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? "";
-  const last = parts[parts.length - 1]?.[0] ?? "";
-  const initials = parts.length === 1 ? first : `${first}${last}`;
-  return initials.toUpperCase() || "·";
-}
-
 export default function Home() {
   const { user, token, signOut } = useAuth();
   const router = useRouter();
@@ -405,7 +395,6 @@ export default function Home() {
     if (ok) signOut();
   };
 
-  const initials = initialsFor(user?.displayName ?? user?.email);
   const displayName = user?.displayName?.trim();
   const greeting = displayName ? `Hi, ${displayName}` : "Your lists";
 
@@ -439,17 +428,12 @@ export default function Home() {
               pressed && styles.headerCirclePressed,
             ]}
           >
-            {user?.avatarUrl ? (
-              <Image
-                source={{ uri: user.avatarUrl }}
-                style={styles.profileImage}
-                accessibilityIgnoresInvertColors
-              />
-            ) : (
-              <Text style={styles.profileInitials} tone="secondary">
-                {initials}
-              </Text>
-            )}
+            <Avatar
+              name={user?.displayName ?? user?.email ?? null}
+              imageUrl={user?.avatarUrl}
+              size="md"
+              style={styles.profileAvatar}
+            />
           </Pressable>
         </View>
       </View>
@@ -814,12 +798,7 @@ const styles = StyleSheet.create({
   },
   headerCirclePressed: { backgroundColor: tokens.bg.elevated },
   profileCircle: { borderColor: tokens.border.default, overflow: "hidden" },
-  profileImage: { width: 38, height: 38, borderRadius: 19 },
-  profileInitials: {
-    fontSize: 12,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.5,
-  },
+  profileAvatar: { width: 38, height: 38, borderRadius: 19 },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: tokens.space.lg },
   emptyGlyphBadge: {
