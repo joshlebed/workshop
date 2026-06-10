@@ -11,9 +11,9 @@ The root is an expo-router `Tabs` shell: `app/(tabs)/(lists)/` holds the entire 
 stack (home, lists, activity, create-list) and `app/(tabs)/games/` the Games surface. Group
 segments never appear in URLs, so all deep links are unchanged — but they DO appear in
 `useSegments()`; AuthGate in `app/_layout.tsx` filters `(`-prefixed segments before matching.
-The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`: unset →
-follows `__DEV__`, so prod exports are off). Flag off must look exactly like the pre-tabs
-app: tab bar hidden, `/games` redirects home, no web sidebar. Auth/onboarding/invite/share
+The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`: launched
+2026-06-10 — unset means ON; `"0"` is the kill switch). Flag off must look exactly like the
+pre-tabs app: tab bar hidden, `/games` redirects home, no web sidebar. Auth/onboarding/invite/share
 routes live OUTSIDE `(tabs)` in the root stack — add new tab-content routes to the
 `(lists)` or `games` stack layout (`app/(tabs)/games/_layout.tsx` since G1b), not the root
 one. The Games surface (G1b): `games/index` → `src/screens/GamesHome.tsx` (My Games as
