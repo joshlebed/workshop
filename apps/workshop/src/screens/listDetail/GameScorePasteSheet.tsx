@@ -7,29 +7,32 @@
 //
 // Holds a snapshot of the target item so the sheet keeps rendering its content
 // through the exit animation after the parent clears the target.
+//
+// Generic over the target shape (anything with a `title`) so both leaderboard
+// surfaces reuse it: the Lists surface passes `Item`s, the Games tab passes
+// catalog `Game`s.
 
-import type { Item } from "@workshop/shared";
 import { useEffect, useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { Avatar, Button, Sheet, Text, tokens } from "../../ui/index";
 
-interface GameScorePasteSheetProps {
+interface GameScorePasteSheetProps<T extends { title: string }> {
   /** Target game, or `null` when the sheet should be closed. */
-  item: Item | null;
+  item: T | null;
   userName: string | null;
   pending: boolean;
-  onSubmit: (item: Item, scoreRaw: string) => void;
+  onSubmit: (item: T, scoreRaw: string) => void;
   onClose: () => void;
 }
 
-export function GameScorePasteSheet({
+export function GameScorePasteSheet<T extends { title: string }>({
   item,
   userName,
   pending,
   onSubmit,
   onClose,
-}: GameScorePasteSheetProps) {
-  const [snapshot, setSnapshot] = useState<Item | null>(item);
+}: GameScorePasteSheetProps<T>) {
+  const [snapshot, setSnapshot] = useState<T | null>(item);
   const [draft, setDraft] = useState("");
 
   useEffect(() => {

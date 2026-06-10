@@ -52,4 +52,11 @@ export const queryKeys = {
   sources: {
     forList: (listId: string) => ["sources", "forList", listId] as const,
   },
+  games: {
+    /** `GET /v1/games` — My Games with each game's standings for one period. */
+    mine: (periodKey: string) => ["games", "mine", periodKey] as const,
+    /** `GET /v1/games/:id/leaderboard` for one period. */
+    leaderboard: (gameId: string, periodKey: string) =>
+      ["games", "leaderboard", gameId, periodKey] as const,
+  },
 } as const;

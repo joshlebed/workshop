@@ -15,7 +15,12 @@ The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`:
 follows `__DEV__`, so prod exports are off). Flag off must look exactly like the pre-tabs
 app: tab bar hidden, `/games` redirects home, no web sidebar. Auth/onboarding/invite/share
 routes live OUTSIDE `(tabs)` in the root stack — add new tab-content routes to the
-`(lists)` (or future games) stack layout, not the root one. Use the static `tokens` (not
+`(lists)` or `games` stack layout (`app/(tabs)/games/_layout.tsx` since G1b), not the root
+one. The Games surface (G1b): `games/index` → `src/screens/GamesHome.tsx` (My Games as
+`StandingsCard`s, drag-reorder via `src/screens/games/GameCardList[.web].tsx`, add-by-URL
+sheet, paste → `PUT /v1/games/:id/scores`); `games/[id]` is the per-game history board
+(DayRail + today paste slot). Games API wrappers live in `src/api/games.ts`; query keys
+under `queryKeys.games.*`. Every flag-off route must `<Redirect href="/" />`. Use the static `tokens` (not
 `useTheme()`) for navigator backgrounds, matching the root layout, or light-preferring
 browsers get a light scene behind dark screen content. Metro does NOT invalidate its
 cache when an `EXPO_PUBLIC_*` value changes — after flipping the flag, restart with
