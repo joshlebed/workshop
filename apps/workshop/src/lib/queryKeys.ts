@@ -15,6 +15,10 @@ export const queryKeys = {
     /** Per-list in-use tags + counts (`GET /v1/lists/:id/tags`). */
     byList: (listId: string) => ["tags", "byList", listId] as const,
   },
+  views: {
+    /** Per-list saved views (`GET /v1/lists/:id/views`). */
+    byList: (listId: string) => ["views", "byList", listId] as const,
+  },
   auth: {
     me: ["auth", "me"] as const,
   },

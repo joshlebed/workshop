@@ -128,6 +128,21 @@ The home bell badge is `sum(list.unreadCount across non-muted lists)` from
 derivation — it has no per-list granularity, and a single `/activity` visit clears
 everything.
 
+## Saved views are a separate list-scoped router (`routes/v1/views.ts`)
+
+Saved views (spec §2.3 — named, stored tag filters) live in their own `listViewRoutes`
+router mounted at `/v1/lists` alongside `memberRoutes` / `listScoresRoutes`, **not** inside
+`lists.ts`. Routes: `GET/POST/PATCH/DELETE /v1/lists/:id/views[/:viewId]`; `requireListMember`
+reads the list `:id`, so the `:viewId` uuid is re-validated inside the handler. They're
+**shared per-list, not per-viewer** (unlike `list_members` view-state above): any member
+creates (membership is the only gate, no capability), but `canMutateView` restricts PATCH +
+DELETE to the view's `created_by` **or** the list owner. `created_by` is `ON DELETE SET NULL`
+so a departed author's shared view survives. `config` is jsonb `{ tags, sort? }`; `config.tags`
+is normalized with the **same** trim/lowercase/collapse/dedupe/≤40-char rules as item tags —
+that zod `tagSchema` is duplicated from `items.ts` (kept local to avoid a cross-file import),
+so if you change tag normalization, change it in both. Not module-gated — works on any list,
+like tags. `position` is assigned `max+1` on create for strip ordering.
+
 ## CORS lives in Hono — and the allowed-origin list is a whitelist
 
 Single source of truth: `cors()` in `src/app.ts`. API Gateway intentionally has **no**

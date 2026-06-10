@@ -6,6 +6,7 @@ import type {
   ListItemsResponse,
   ListMemberSummary,
   ListSource,
+  SavedView,
 } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
 import { useRouter } from "expo-router";
@@ -23,6 +24,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { archiveItem, completeItem, fetchItems, moveItem, uncompleteItem } from "../api/items";
 import { fetchListScores, upsertItemScore } from "../api/scores";
 import { syncSource } from "../api/sources";
+import { createSavedView, deleteSavedView, fetchSavedViews } from "../api/views";
 import { DayRail } from "../components/DayRail";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
@@ -53,6 +55,7 @@ import { GameScorePasteSheet } from "./listDetail/GameScorePasteSheet";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import type { ReorderEvent } from "./listDetail/listProps";
+import { SavedViewsBar } from "./listDetail/SavedViewsBar";
 import type { Section } from "./listDetail/types";
 import { useReturnToPaste } from "./listDetail/useReturnToPaste";
 
@@ -103,6 +106,15 @@ export function ListDetail({ list, members, sources, token }: Props) {
     enabled: !!token,
     refetchInterval: livePoll,
   });
+
+  // Saved views (spec §2.3): named, shared tag-filter presets. Cheap query,
+  // its own key — applying a view just sets `selectedTags`.
+  const viewsQuery = useQuery({
+    queryKey: queryKeys.views.byList(list.id),
+    queryFn: () => fetchSavedViews(list.id, token),
+    enabled: !!token,
+  });
+  const savedViews = viewsQuery.data?.views ?? [];
 
   // Which day's standings the leaderboard cards show. Defaults to today; the
   // day rail re-dates every card at once. Scores can only ever be *posted* to
@@ -263,6 +275,32 @@ export function ListDetail({ list, members, sources, token }: Props) {
     },
   });
 
+  const createViewMutation = useMutation<SavedView, Error, { name: string; tags: string[] }>({
+    mutationFn: async ({ name, tags }) => {
+      const res = await createSavedView(list.id, { name, config: { tags } }, token);
+      return res.view;
+    },
+    onSuccess: () => {
+      haptics.light();
+      queryClient.invalidateQueries({ queryKey: queryKeys.views.byList(list.id) });
+      showToast({ message: "View saved", tone: "success" });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't save that view."), tone: "danger" });
+    },
+  });
+
+  const deleteViewMutation = useMutation<{ ok: true }, Error, { viewId: string }>({
+    mutationFn: ({ viewId }) => deleteSavedView(list.id, viewId, token),
+    onSuccess: () => {
+      haptics.medium();
+      queryClient.invalidateQueries({ queryKey: queryKeys.views.byList(list.id) });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't delete that view."), tone: "danger" });
+    },
+  });
+
   const data = itemsQuery.data;
   const orderedRaw = data?.ordered ?? [];
   const unorderedRaw = data?.unordered ?? [];
@@ -354,6 +392,29 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const tagFilterActive = selectedTags.length > 0;
   const anyFilterActive = filterActive || tagFilterActive;
   const totalRowsUnfiltered = orderedRaw.length + unorderedRaw.length + completedRaw.length;
+
+  // Saved-view application + persistence (spec §2.3). Applying a view sets the
+  // tag filter to its tag set (toggling off when it's already active) and
+  // leaves the text search untouched. "Save view" is offered only when the
+  // current tag selection isn't already stored.
+  const currentSelectionSaved = savedViews.some((v) => tagSetsEqual(v.config.tags, selectedTags));
+  const canSaveView = tagFilterActive && !currentSelectionSaved;
+  const viewMutating = createViewMutation.isPending || deleteViewMutation.isPending;
+
+  const onApplyView = (view: SavedView) => {
+    haptics.light();
+    setSelectedTags((prev) => (tagSetsEqual(prev, view.config.tags) ? [] : [...view.config.tags]));
+  };
+
+  const onDeleteView = async (view: SavedView) => {
+    const ok = await confirm({
+      title: `Delete the “${view.name}” view?`,
+      message: "This removes it for everyone on the list.",
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (ok) deleteViewMutation.mutate({ viewId: view.id });
+  };
 
   const onReorderOrdered = (event: ReorderEvent) => {
     const ordered = filtered.ordered;
@@ -755,6 +816,20 @@ export function ListDetail({ list, members, sources, token }: Props) {
           </View>
         ) : null}
 
+        {!itemsQuery.isPending && !itemsQuery.isError && (savedViews.length > 0 || canSaveView) ? (
+          <View style={styles.savedViewsWrap}>
+            <SavedViewsBar
+              views={savedViews}
+              selectedTags={selectedTags}
+              onApply={onApplyView}
+              onCreate={(name) => createViewMutation.mutate({ name, tags: selectedTags })}
+              onDelete={onDeleteView}
+              canSave={canSaveView}
+              busy={viewMutating}
+            />
+          </View>
+        ) : null}
+
         {tagCounts.length > 0 && !itemsQuery.isPending && !itemsQuery.isError ? (
           <View style={styles.tagBarWrap}>
             <TagFilterBar
@@ -960,6 +1035,13 @@ export function ListDetail({ list, members, sources, token }: Props) {
   );
 }
 
+/** True when two tag selections hold the same set (order-insensitive). */
+function tagSetsEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((t) => set.has(t));
+}
+
 function memberInitial(name: string | null): string {
   const trimmed = name?.trim();
   if (!trimmed) return "·";
@@ -1144,6 +1226,12 @@ const styles = StyleSheet.create({
   dayRailWrap: {
     paddingTop: tokens.space.xs,
     paddingBottom: tokens.space.sm,
+  },
+  // Saved-views strip sits directly above the tag chips — the presets, then
+  // the granular tags they're built from.
+  savedViewsWrap: {
+    paddingTop: tokens.space.xs,
+    paddingBottom: tokens.space.xs,
   },
   // Tag chip bar pins with the toolbar above the scrolling rows, mirroring
   // the day rail: the active filter stays visible while results scroll.

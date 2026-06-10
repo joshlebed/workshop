@@ -19,6 +19,7 @@ import { searchRoutes } from "./routes/v1/search.js";
 import { sourcePreviewRoutes } from "./routes/v1/sources.js";
 import { telemetryRoutes } from "./routes/v1/telemetry.js";
 import { userRoutes } from "./routes/v1/users.js";
+import { listViewRoutes } from "./routes/v1/views.js";
 import { webhookRoutes } from "./routes/v1/webhooks.js";
 
 const clientIp: RateLimitKeyFn = (c) => {
@@ -115,6 +116,7 @@ export function buildApp() {
   app.route("/v1/lists", listRoutes);
   app.route("/v1/lists", memberRoutes);
   app.route("/v1/lists", listScoresRoutes);
+  app.route("/v1/lists", listViewRoutes);
   app.route("/v1/items", itemRoutes);
   app.route("/v1/items", itemScoreRoutes);
   app.route("/v1/search", searchRoutes);
