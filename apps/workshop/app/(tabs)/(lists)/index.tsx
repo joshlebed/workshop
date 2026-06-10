@@ -13,7 +13,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { fetchActivity } from "../src/api/activity";
+import { fetchActivity } from "../../../src/api/activity";
 import {
   archiveList,
   fetchLists,
@@ -22,13 +22,13 @@ import {
   unarchiveList,
   unmuteList,
   unpinList,
-} from "../src/api/lists";
-import { PullToRefresh } from "../src/components/PullToRefresh";
-import { useAuth } from "../src/hooks/useAuth";
-import { useLivePollingInterval } from "../src/hooks/useLivePollingInterval";
-import { errorMessage } from "../src/lib/api";
-import { confirm } from "../src/lib/confirm";
-import { queryKeys } from "../src/lib/queryKeys";
+} from "../../../src/api/lists";
+import { PullToRefresh } from "../../../src/components/PullToRefresh";
+import { useAuth } from "../../../src/hooks/useAuth";
+import { useLivePollingInterval } from "../../../src/hooks/useLivePollingInterval";
+import { errorMessage } from "../../../src/lib/api";
+import { confirm } from "../../../src/lib/confirm";
+import { queryKeys } from "../../../src/lib/queryKeys";
 import {
   Avatar,
   Button,
@@ -38,7 +38,7 @@ import {
   Sheet,
   Text,
   tokens,
-} from "../src/ui/index";
+} from "../../../src/ui/index";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",

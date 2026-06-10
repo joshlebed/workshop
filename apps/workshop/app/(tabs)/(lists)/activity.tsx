@@ -3,16 +3,16 @@ import type { ActivityEvent, ActivityFeedResponse } from "@workshop/shared";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { fetchActivity, markActivityRead } from "../src/api/activity";
-import { fetchLists } from "../src/api/lists";
-import { PullToRefresh } from "../src/components/PullToRefresh";
-import { useAuth } from "../src/hooks/useAuth";
-import { useLivePollingInterval } from "../src/hooks/useLivePollingInterval";
-import { errorMessage } from "../src/lib/api";
-import { goBack } from "../src/lib/goBack";
-import { setActivityLastViewedAt } from "../src/lib/lastViewed";
-import { queryKeys } from "../src/lib/queryKeys";
-import { Button, EmptyState, type ListColorKey, Screen, Text, tokens } from "../src/ui/index";
+import { fetchActivity, markActivityRead } from "../../../src/api/activity";
+import { fetchLists } from "../../../src/api/lists";
+import { PullToRefresh } from "../../../src/components/PullToRefresh";
+import { useAuth } from "../../../src/hooks/useAuth";
+import { useLivePollingInterval } from "../../../src/hooks/useLivePollingInterval";
+import { errorMessage } from "../../../src/lib/api";
+import { goBack } from "../../../src/lib/goBack";
+import { setActivityLastViewedAt } from "../../../src/lib/lastViewed";
+import { queryKeys } from "../../../src/lib/queryKeys";
+import { Button, EmptyState, type ListColorKey, Screen, Text, tokens } from "../../../src/ui/index";
 
 const PAGE_SIZE = 50;
 

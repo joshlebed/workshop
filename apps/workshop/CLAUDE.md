@@ -5,6 +5,23 @@ the primary dev surface — faster iteration, browser-automation can drive the r
 
 Human onboarding (clone → run → deploy) lives in `apps/workshop/README.md`.
 
+## App shell: Lists/Games tabs via route groups (G0, epic #279)
+
+The root is an expo-router `Tabs` shell: `app/(tabs)/(lists)/` holds the entire pre-Games
+stack (home, lists, activity, create-list) and `app/(tabs)/games/` the Games surface. Group
+segments never appear in URLs, so all deep links are unchanged — but they DO appear in
+`useSegments()`; AuthGate in `app/_layout.tsx` filters `(`-prefixed segments before matching.
+The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`: unset →
+follows `__DEV__`, so prod exports are off). Flag off must look exactly like the pre-tabs
+app: tab bar hidden, `/games` redirects home, no web sidebar. Auth/onboarding/invite/share
+routes live OUTSIDE `(tabs)` in the root stack — add new tab-content routes to the
+`(lists)` (or future games) stack layout, not the root one. Use the static `tokens` (not
+`useTheme()`) for navigator backgrounds, matching the root layout, or light-preferring
+browsers get a light scene behind dark screen content. Metro does NOT invalidate its
+cache when an `EXPO_PUBLIC_*` value changes — after flipping the flag, restart with
+`expo start --clear` or the bundle serves the stale value (`scripts/e2e.sh` always
+clears for this reason).
+
 ## Cross-platform code sharing
 
 Metro resolves `.web.ts(x)` before `.ts(x)` on web and `.native.ts(x)` before `.ts(x)` on
