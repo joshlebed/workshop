@@ -154,7 +154,7 @@ const LB_LEGACY_FRAME_YEAR_RE = /\((\d{4})\)/;
 // display string.
 function splitTitleAndYear(displayName: string): { title: string; year: number | null } {
   const m = displayName.match(/^(.*?)\s*\((\d{4})\)\s*$/);
-  if (m && m[1] && m[2]) return { title: m[1].trim(), year: Number(m[2]) };
+  if (m?.[1] && m[2]) return { title: m[1].trim(), year: Number(m[2]) };
   return { title: displayName.trim(), year: null };
 }
 

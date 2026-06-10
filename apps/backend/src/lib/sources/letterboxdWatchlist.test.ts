@@ -7,6 +7,7 @@ import {
   normalizeLetterboxdUsername,
   parseLetterboxdFilmUrl,
   parseWatchlistPageCount,
+  syncUserWatchlist,
   watchlistUrl,
 } from "./letterboxdWatchlist.js";
 
@@ -162,5 +163,67 @@ describe("fetchWatchlistFilms", () => {
     });
     expect(result.films.map((f) => f.slug).sort()).toEqual(["a", "b"]);
     expect(result.truncated).toBe(true);
+  });
+});
+
+describe("syncUserWatchlist", () => {
+  it("replaces the cache with structured chunked inserts", async () => {
+    const slugs = Array.from({ length: 201 }, (_, i) => `film-${i + 1}`);
+    const fetcher = makeFetcherByUrl({
+      "https://letterboxd.com/dave/watchlist/": pageHtml(slugs, 1),
+    });
+    interface StructuredDb {
+      transaction: <T>(fn: (tx: StructuredDb) => Promise<T>) => Promise<T>;
+      delete: () => { where: () => Promise<void> };
+      insert: () => {
+        values: (rows: unknown[]) => { onConflictDoNothing: () => Promise<void> };
+      };
+      update: () => { set: () => { where: () => Promise<void> } };
+    }
+    const calls: string[] = [];
+    const insertChunks: unknown[][] = [];
+    const db: StructuredDb = {
+      async transaction<T>(fn: (tx: StructuredDb) => Promise<T>): Promise<T> {
+        calls.push("transaction");
+        return await fn(db);
+      },
+      delete() {
+        return {
+          where: async () => {
+            calls.push("delete");
+          },
+        };
+      },
+      insert() {
+        return {
+          values: (rows: unknown[]) => ({
+            onConflictDoNothing: async () => {
+              calls.push("insert");
+              insertChunks.push(rows);
+            },
+          }),
+        };
+      },
+      update() {
+        return {
+          set: () => ({
+            where: async () => {
+              calls.push("update");
+            },
+          }),
+        };
+      },
+    };
+
+    const result = await syncUserWatchlist({
+      userId: "00000000-0000-4000-8000-000000000001",
+      username: "dave",
+      db: db as unknown as Parameters<typeof syncUserWatchlist>[0]["db"],
+      deps: { fetcher: fetcher as unknown as typeof fetch },
+    });
+
+    expect(result).toEqual({ filmCount: 201, truncated: false });
+    expect(calls).toEqual(["transaction", "delete", "insert", "insert", "update"]);
+    expect(insertChunks.map((chunk) => chunk.length)).toEqual([200, 1]);
   });
 });

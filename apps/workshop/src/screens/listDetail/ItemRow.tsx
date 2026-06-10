@@ -377,7 +377,6 @@ function describeItem(item: Item): ItemView {
         bodyLabel: `Open ${item.title}`,
       };
     }
-    case "plain":
     default: {
       const note = item.note ?? "";
       return {

@@ -14,7 +14,8 @@
 //   - `fetchFilmInfo(slug, deps?)` → { title, year } (best-effort, never throws)
 //   - `syncUserWatchlist({ userId, username, db, deps? })` → { filmCount, truncated }
 
-import { sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { letterboxdWatchlistFilms, users } from "../../db/schema.js";
 import { logger } from "../logger.js";
 import type { DbClient } from "../sql.js";
 import {
@@ -211,25 +212,7 @@ export async function syncUserWatchlist(args: {
   const { films, truncated } = await fetchWatchlistFilms(args.username, args.deps);
   const syncedAt = new Date();
 
-  // Replace wholesale: films removed from the watchlist drop out of the
-  // cache, which is exactly what powers the read-time "no longer in common"
-  // flag — items already in a list are never archived by this.
-  await args.db.execute(sql`DELETE FROM letterboxd_watchlist_films WHERE user_id = ${args.userId}`);
-  const INSERT_CHUNK = 200;
-  for (let i = 0; i < films.length; i += INSERT_CHUNK) {
-    const chunk = films.slice(i, i + INSERT_CHUNK);
-    const values = chunk.map(
-      (f) => sql`(${args.userId}, ${f.slug}, ${f.title}, ${f.year}, ${syncedAt})`,
-    );
-    await args.db.execute(sql`
-      INSERT INTO letterboxd_watchlist_films (user_id, film_slug, title, year, synced_at)
-      VALUES ${sql.join(values, sql`, `)}
-      ON CONFLICT DO NOTHING
-    `);
-  }
-  await args.db.execute(
-    sql`UPDATE users SET letterboxd_synced_at = ${syncedAt}, updated_at = now() WHERE id = ${args.userId}`,
-  );
+  await replaceWatchlistCache(args.db, args.userId, films, syncedAt);
 
   if (truncated) {
     logger.warn("letterboxd watchlist truncated at page cap", {
@@ -239,4 +222,35 @@ export async function syncUserWatchlist(args: {
     });
   }
   return { filmCount: films.length, truncated };
+}
+
+async function replaceWatchlistCache(
+  db: DbClient,
+  userId: string,
+  films: ScrapedFilm[],
+  syncedAt: Date,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    // Replace wholesale: films removed from the watchlist drop out of the
+    // cache, which is exactly what powers the read-time "no longer in common"
+    // flag — items already in a list are never archived by this.
+    await tx.delete(letterboxdWatchlistFilms).where(eq(letterboxdWatchlistFilms.userId, userId));
+
+    const INSERT_CHUNK = 200;
+    for (let i = 0; i < films.length; i += INSERT_CHUNK) {
+      const chunk = films.slice(i, i + INSERT_CHUNK).map((f) => ({
+        userId,
+        filmSlug: f.slug,
+        title: f.title,
+        year: f.year,
+        syncedAt,
+      }));
+      await tx.insert(letterboxdWatchlistFilms).values(chunk).onConflictDoNothing();
+    }
+
+    await tx
+      .update(users)
+      .set({ letterboxdSyncedAt: syncedAt, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  });
 }
