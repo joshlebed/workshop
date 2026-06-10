@@ -13,31 +13,72 @@ beforeAll(() => {
 // Scripted db.execute mock: each call pops the next canned result. The SQL
 // text is captured for assertions (drizzle's queryChunks carry the literal
 // fragments as `{ value: string[] }` entries).
+interface ScriptedDb {
+  execute: (query: unknown) => Promise<unknown[]>;
+  transaction: <T>(fn: (tx: ScriptedDb) => Promise<T>) => Promise<T>;
+  delete: () => { where: () => Promise<unknown[]> };
+  insert: () => { values: () => { onConflictDoNothing: () => Promise<unknown[]> } };
+  update: () => { set: () => { where: () => Promise<unknown[]> } };
+}
+
 function makeScriptedDb(returns: unknown[][]) {
   const calls: string[] = [];
   let i = 0;
+  const next = () => {
+    const result = returns[i] ?? [];
+    i += 1;
+    return result;
+  };
+  const db: ScriptedDb = {
+    async execute(query: unknown) {
+      const chunks =
+        (query as { queryChunks?: Array<{ value?: string[] } | unknown> }).queryChunks ?? [];
+      calls.push(
+        chunks
+          .map((c) =>
+            typeof c === "object" && c !== null && Array.isArray((c as { value?: string[] }).value)
+              ? (c as { value: string[] }).value.join("")
+              : "?",
+          )
+          .join(""),
+      );
+      return next();
+    },
+    async transaction<T>(fn: (tx: ScriptedDb) => Promise<T>): Promise<T> {
+      return await fn(db);
+    },
+    delete() {
+      return {
+        where: async () => {
+          calls.push("DELETE FROM letterboxd_watchlist_films");
+          return next();
+        },
+      };
+    },
+    insert() {
+      return {
+        values: () => ({
+          onConflictDoNothing: async () => {
+            calls.push("INSERT INTO letterboxd_watchlist_films");
+            return next();
+          },
+        }),
+      };
+    },
+    update() {
+      return {
+        set: () => ({
+          where: async () => {
+            calls.push("UPDATE users");
+            return next();
+          },
+        }),
+      };
+    },
+  };
   return {
     calls,
-    db: {
-      async execute(query: unknown) {
-        const chunks =
-          (query as { queryChunks?: Array<{ value?: string[] } | unknown> }).queryChunks ?? [];
-        calls.push(
-          chunks
-            .map((c) =>
-              typeof c === "object" &&
-              c !== null &&
-              Array.isArray((c as { value?: string[] }).value)
-                ? (c as { value: string[] }).value.join("")
-                : "?",
-            )
-            .join(""),
-        );
-        const result = returns[i] ?? [];
-        i += 1;
-        return result;
-      },
-    } as unknown as Parameters<typeof syncLetterboxdMatchSource>[0]["db"],
+    db: db as unknown as Parameters<typeof syncLetterboxdMatchSource>[0]["db"],
   };
 }
 

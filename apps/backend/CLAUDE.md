@@ -125,6 +125,14 @@ Read-time annotation (`annotateLetterboxd` in `routes/v1/items.ts`) attaches
 stored on the row, always derived from the caches. Pending items bucket into the
 `suggested` section of `ListItemsResponse` (empty array on every other list).
 
+The per-user watchlist cache write must stay schema-aware. A raw
+`INSERT INTO letterboxd_watchlist_films ... VALUES ${sql.join(...)}` looked fine in unit tests
+but failed in prod on large public watchlists after the scrape had already succeeded
+(`ERR_INVALID_ARG_TYPE` from postgres-js during the first 200-row bind), surfacing to the client
+as a generic `/v1/users/me/letterboxd` 500. Use Drizzle `.insert(letterboxdWatchlistFilms)`
+chunks inside the existing transaction so timestamp/text/null encoders stay attached and a failed
+refresh cannot leave the cache half-cleared.
+
 ## Profile pictures live inline on `users.avatar_url` (base64 data URL)
 
 `PATCH /v1/users/me` (`routes/v1/users.ts`) updates `displayName` and/or `avatarUrl`
