@@ -18,23 +18,23 @@ import {
   fetchListDetail,
   previewListConfig,
   updateList,
-} from "../../../src/api/lists";
-import { removeMember } from "../../../src/api/members";
+} from "../../../../../src/api/lists";
+import { removeMember } from "../../../../../src/api/members";
 import {
   resetListShareSlug,
   SHARE_VISIBILITY_LABELS,
   transferOwnership,
   updateListShare,
-} from "../../../src/api/share";
-import { syncSource } from "../../../src/api/sources";
-import { useAuth } from "../../../src/hooks/useAuth";
-import { errorMessage } from "../../../src/lib/api";
-import { pickCoverPhoto } from "../../../src/lib/coverPhoto";
-import { goBack } from "../../../src/lib/goBack";
-import { queryKeys } from "../../../src/lib/queryKeys";
-import { formatRelative } from "../../../src/lib/relativeTime";
-import { buildListShareUrl, copyToClipboard } from "../../../src/lib/share";
-import { sourceErrorMessage } from "../../../src/lib/sourceErrors";
+} from "../../../../../src/api/share";
+import { syncSource } from "../../../../../src/api/sources";
+import { useAuth } from "../../../../../src/hooks/useAuth";
+import { errorMessage } from "../../../../../src/lib/api";
+import { pickCoverPhoto } from "../../../../../src/lib/coverPhoto";
+import { goBack } from "../../../../../src/lib/goBack";
+import { queryKeys } from "../../../../../src/lib/queryKeys";
+import { formatRelative } from "../../../../../src/lib/relativeTime";
+import { buildListShareUrl, copyToClipboard } from "../../../../../src/lib/share";
+import { sourceErrorMessage } from "../../../../../src/lib/sourceErrors";
 import {
   Button,
   IconButton,
@@ -43,7 +43,7 @@ import {
   Text,
   tokens,
   useToast,
-} from "../../../src/ui/index";
+} from "../../../../../src/ui/index";
 
 const COLOR_KEYS: readonly ListColorKey[] = [
   "sunset",

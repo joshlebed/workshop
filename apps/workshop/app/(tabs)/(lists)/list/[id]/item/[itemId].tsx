@@ -11,16 +11,16 @@ import {
   uncompleteItem,
   updateItem,
   updateItemTags,
-} from "../../../../src/api/items";
-import { fetchListTags } from "../../../../src/api/lists";
-import { useAuth } from "../../../../src/hooks/useAuth";
-import { ApiError } from "../../../../src/lib/api";
-import { confirm } from "../../../../src/lib/confirm";
-import { goBack } from "../../../../src/lib/goBack";
-import { haptics } from "../../../../src/lib/haptics";
-import { normalizeExternalUrl, openExternalUrl } from "../../../../src/lib/openUrl";
-import { queryKeys } from "../../../../src/lib/queryKeys";
-import { formatRelative } from "../../../../src/lib/relativeTime";
+} from "../../../../../../src/api/items";
+import { fetchListTags } from "../../../../../../src/api/lists";
+import { useAuth } from "../../../../../../src/hooks/useAuth";
+import { ApiError } from "../../../../../../src/lib/api";
+import { confirm } from "../../../../../../src/lib/confirm";
+import { goBack } from "../../../../../../src/lib/goBack";
+import { haptics } from "../../../../../../src/lib/haptics";
+import { normalizeExternalUrl, openExternalUrl } from "../../../../../../src/lib/openUrl";
+import { queryKeys } from "../../../../../../src/lib/queryKeys";
+import { formatRelative } from "../../../../../../src/lib/relativeTime";
 import {
   Button,
   Chip,
@@ -31,7 +31,7 @@ import {
   Text,
   tokens,
   useToast,
-} from "../../../../src/ui/index";
+} from "../../../../../../src/ui/index";
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 

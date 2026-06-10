@@ -13,19 +13,23 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { archiveItem, fetchItem, updateItem } from "../../../../src/api/items";
-import { deleteItemScore, fetchItemScores, upsertItemScore } from "../../../../src/api/scores";
-import { DayRail } from "../../../../src/components/DayRail";
-import { useAuth } from "../../../../src/hooks/useAuth";
-import { errorMessage } from "../../../../src/lib/api";
-import { confirm } from "../../../../src/lib/confirm";
-import { formatGameDateLabel, localDateKey } from "../../../../src/lib/gameDate";
-import { goBack } from "../../../../src/lib/goBack";
-import { haptics } from "../../../../src/lib/haptics";
-import { normalizeExternalUrl, openExternalUrl } from "../../../../src/lib/openUrl";
-import { queryKeys } from "../../../../src/lib/queryKeys";
-import { formatRelative } from "../../../../src/lib/relativeTime";
-import { summarizeScoreBody } from "../../../../src/lib/scoresSummary";
+import { archiveItem, fetchItem, updateItem } from "../../../../../../src/api/items";
+import {
+  deleteItemScore,
+  fetchItemScores,
+  upsertItemScore,
+} from "../../../../../../src/api/scores";
+import { DayRail } from "../../../../../../src/components/DayRail";
+import { useAuth } from "../../../../../../src/hooks/useAuth";
+import { errorMessage } from "../../../../../../src/lib/api";
+import { confirm } from "../../../../../../src/lib/confirm";
+import { formatGameDateLabel, localDateKey } from "../../../../../../src/lib/gameDate";
+import { goBack } from "../../../../../../src/lib/goBack";
+import { haptics } from "../../../../../../src/lib/haptics";
+import { normalizeExternalUrl, openExternalUrl } from "../../../../../../src/lib/openUrl";
+import { queryKeys } from "../../../../../../src/lib/queryKeys";
+import { formatRelative } from "../../../../../../src/lib/relativeTime";
+import { summarizeScoreBody } from "../../../../../../src/lib/scoresSummary";
 import {
   Avatar,
   Button,
@@ -35,7 +39,7 @@ import {
   Text,
   tokens,
   useToast,
-} from "../../../../src/ui/index";
+} from "../../../../../../src/ui/index";
 
 /**
  * Per-game detail screen for a games list. The hero is the leaderboard for

@@ -106,8 +106,11 @@ function AuthGate() {
   useShareIntentRedirect(status);
   // Widen to `string[]` so segments[1] typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
-  // generated in CI.
-  const segments: string[] = useSegments();
+  // generated in CI. Group segments (`(tabs)`, `(lists)`) are stripped so
+  // the route checks below keep matching URL-shaped paths — the groups
+  // never appear in URLs but DO appear in `useSegments()`.
+  const rawSegments: string[] = useSegments();
+  const segments = rawSegments.filter((segment) => !segment.startsWith("("));
   const router = useRouter();
   // Latched once we've resolved the post-sign-in destination (invite vs.
   // home). Prevents the async stash lookup from racing a synchronous
@@ -204,18 +207,13 @@ function AuthGate() {
           fullScreenGestureEnabled: true,
         }}
       >
-        <Stack.Screen name="index" />
+        {/* The Lists surface (home, lists, activity, create-list) lives in
+            the (tabs)/(lists) group — see app/(tabs)/_layout.tsx. Routes
+            below stay outside the tab shell: auth, onboarding, invites, and
+            the share-intent flow overlay whichever tab is active. */}
+        <Stack.Screen name="(tabs)" />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="onboarding/display-name" />
-        <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="create-list/playlist" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="list/[id]/index" />
-        <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
-        <Stack.Screen name="list/[id]/add-bulk" options={{ presentation: "modal" }} />
-        <Stack.Screen name="list/[id]/settings" options={{ presentation: "modal" }} />
-        <Stack.Screen name="list/[id]/item/[itemId]" />
         <Stack.Screen name="onboarding/accept-invite" />
         <Stack.Screen name="invite/[token]" />
         <Stack.Screen name="share/index" />

@@ -15,17 +15,17 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { createItem } from "../../../src/api/items";
-import { fetchLinkPreview } from "../../../src/api/linkPreview";
-import { fetchListDetail } from "../../../src/api/lists";
-import { searchBooks, searchMedia } from "../../../src/api/search";
-import { useAuth } from "../../../src/hooks/useAuth";
-import { useDebouncedQuery } from "../../../src/hooks/useDebouncedQuery";
-import { ApiError } from "../../../src/lib/api";
-import { goBack } from "../../../src/lib/goBack";
-import { haptics } from "../../../src/lib/haptics";
-import { normalizeExternalUrl } from "../../../src/lib/openUrl";
-import { queryKeys } from "../../../src/lib/queryKeys";
+import { createItem } from "../../../../../src/api/items";
+import { fetchLinkPreview } from "../../../../../src/api/linkPreview";
+import { fetchListDetail } from "../../../../../src/api/lists";
+import { searchBooks, searchMedia } from "../../../../../src/api/search";
+import { useAuth } from "../../../../../src/hooks/useAuth";
+import { useDebouncedQuery } from "../../../../../src/hooks/useDebouncedQuery";
+import { ApiError } from "../../../../../src/lib/api";
+import { goBack } from "../../../../../src/lib/goBack";
+import { haptics } from "../../../../../src/lib/haptics";
+import { normalizeExternalUrl } from "../../../../../src/lib/openUrl";
+import { queryKeys } from "../../../../../src/lib/queryKeys";
 import {
   Button,
   Card,
@@ -35,7 +35,7 @@ import {
   Text,
   tokens,
   useToast,
-} from "../../../src/ui/index";
+} from "../../../../../src/ui/index";
 
 const SEARCH_KINDS: readonly ItemKind[] = ["movie", "tv", "book"];
 
