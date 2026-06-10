@@ -131,6 +131,25 @@ Preserve both when handling `useShareIntent()` in `_layout.tsx`; score shares of
 top-level choice, `/share/pick-list` handles normal item adds, and
 `/share/pick-leaderboard` handles score posting.
 
+## A cross-navigator `router.replace` collapses the target stack — pass `withAnchor`
+
+`router.replace("/list/:id/...")` from a **root-level** screen (the `/share/*` flow lives in
+the root stack, the content lives in `(tabs)/(lists)`) rebuilds the `(lists)` stack fresh with
+**only** the target route — no parent beneath it. `canGoBack()` is then `false`, so every
+screen's back button falls through `goBack()` (`src/lib/goBack.ts`) to `router.replace(parent)`,
+which animates as a **forward push** (`animationTypeForReplace` defaults to `"push"` in
+`@react-navigation/native-stack`) — the back button visibly slides the wrong way. The share
+flow hit this on every destination it reached. Fix: `(lists)/_layout.tsx` declares
+`unstable_settings = { initialRouteName: "index" }` (the anchor), and the share flow's terminal
+`router.replace(...)` calls pass `{ withAnchor: true }` so the anchor is injected at runtime
+(`initialRouteName` alone only applies to cold deep-link state, **not** runtime `replace`). Net:
+`canGoBack()` is true → `goBack()` uses a real `router.back()` (a proper pop). Two corollaries:
+keep the `/share/*` forward moves as `router.replace` (a clean linear chain — a stray `push`
+leaves a phantom `/share` screen beneath `(tabs)` that a home swipe-back can surface), but
+`pick-leaderboard`'s "add a game" stays `router.push` so the picker (and its in-progress score
+draft) survives the round-trip. Any new cross-navigator `replace` into `(lists)` needs
+`withAnchor` too (e.g. the invite-accept / public-landing → list paths share this shape).
+
 ## Web HTML shell lives in `public/index.html`
 
 `app.json` → `web.output: "single"`, so Expo Router's `+html.tsx` hook isn't invoked.
