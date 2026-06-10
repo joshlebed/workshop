@@ -146,15 +146,21 @@ const styles = StyleSheet.create({
     alignItems: "baseline",
     gap: 6,
   },
+  // lineHeight must be set explicitly: the shared <Text> defaults to the
+  // `body` variant (lineHeight 22), and overriding only fontSize would leave a
+  // 34px glyph in a 22px line box — iOS clips the tops of the letters. ~1.23x
+  // tracks the design system's large-text ratio with headroom for ascenders.
   wordmark: {
     color: tokens.text.primary,
     fontSize: 34,
+    lineHeight: 42,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: -1.0,
   },
   wordmarkAccent: {
     color: tokens.text.muted,
     fontSize: 34,
+    lineHeight: 42,
     fontWeight: tokens.font.weight.regular,
     letterSpacing: -1.0,
   },
