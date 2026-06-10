@@ -56,8 +56,11 @@ resource "aws_apigatewayv2_stage" "default" {
 }
 
 resource "aws_cloudwatch_log_group" "apigw" {
-  name              = "/aws/apigateway/${local.prefix}-api"
-  retention_in_days = 30
+  name = "/aws/apigateway/${local.prefix}-api"
+  # Match the Lambda log group's 1-year retention so the request lifecycle
+  # (edge access log + handler telemetry) ages out together. ~2 MB/mo here;
+  # also inside the always-free tier. See lambda.tf for the cost rationale.
+  retention_in_days = 365
 }
 
 resource "aws_lambda_permission" "apigw" {
