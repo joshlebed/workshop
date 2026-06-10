@@ -11,15 +11,22 @@
 // (survives backgrounding, since the JS context stays alive) and is mirrored
 // to `sessionStorage` on web as cheap insurance against a same-tab reload.
 
-import type { Item } from "@workshop/shared";
 import { usePathname } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { openExternalUrl } from "../../lib/openUrl";
 
+/** Anything playable: a list `Item` or a Games-catalog `Game`. */
+interface PlayTarget {
+  id: string;
+  url: string | null;
+}
+
 interface Pending {
   itemId: string;
   periodKey: string;
+  /** Which surface armed the prompt — see `UseReturnToPasteArgs.scope`. */
+  scope?: string;
 }
 
 const SESSION_KEY = "workshop:pendingPlay";
@@ -37,7 +44,12 @@ function readSession(): Pending | null {
       typeof (parsed as Pending).itemId === "string" &&
       typeof (parsed as Pending).periodKey === "string"
     ) {
-      return { itemId: (parsed as Pending).itemId, periodKey: (parsed as Pending).periodKey };
+      const p = parsed as Pending;
+      return {
+        itemId: p.itemId,
+        periodKey: p.periodKey,
+        ...(typeof p.scope === "string" ? { scope: p.scope } : {}),
+      };
     }
   } catch {
     /* storage disabled / quota — fall back to memory */
@@ -68,9 +80,19 @@ interface UseReturnToPasteArgs {
   todayKey: string;
   /** Latest "has the viewer logged a score for this game today" predicate. */
   hasScoreForItem: (itemId: string) => boolean;
+  /**
+   * Which surface this instance serves ("list" by default, "games" for the
+   * Games tab). A pending play armed on one surface must not pop the paste
+   * sheet on the other — the ids live in different tables.
+   */
+  scope?: string;
 }
 
-export function useReturnToPaste({ todayKey, hasScoreForItem }: UseReturnToPasteArgs) {
+export function useReturnToPaste({
+  todayKey,
+  hasScoreForItem,
+  scope = "list",
+}: UseReturnToPasteArgs) {
   const [promptItemId, setPromptItemId] = useState<string | null>(null);
   // Read the freshest predicate/day inside the AppState listener without
   // re-subscribing on every scores refetch.
@@ -82,13 +104,15 @@ export function useReturnToPaste({ todayKey, hasScoreForItem }: UseReturnToPaste
   const checkPending = useCallback(() => {
     const pending = getPending();
     if (!pending) return;
+    // Another surface's pending play — leave it for that surface's instance.
+    if ((pending.scope ?? "list") !== scope) return;
     // Stale (yesterday's) pending, or they already logged it elsewhere: drop it.
     if (pending.periodKey !== todayRef.current || hasScoreRef.current(pending.itemId)) {
       setPending(null);
       return;
     }
     setPromptItemId(pending.itemId);
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
@@ -111,12 +135,15 @@ export function useReturnToPaste({ todayKey, hasScoreForItem }: UseReturnToPaste
     }
   }, [pathname]);
 
-  const markPlaying = useCallback((item: Item) => {
-    setPending({ itemId: item.id, periodKey: todayRef.current });
-    openExternalUrl(item.url);
-  }, []);
+  const markPlaying = useCallback(
+    (item: PlayTarget) => {
+      setPending({ itemId: item.id, periodKey: todayRef.current, scope });
+      openExternalUrl(item.url);
+    },
+    [scope],
+  );
 
-  const openPasteFor = useCallback((item: Item) => {
+  const openPasteFor = useCallback((item: PlayTarget) => {
     setPromptItemId(item.id);
   }, []);
 

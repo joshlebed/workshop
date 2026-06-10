@@ -109,8 +109,14 @@ small products — first feature is **watchlist** (movie tracker). New features 
   — `GET /v1/lists/:id/scores` assigns ranks but returns join order, unlike the per-item
   endpoint which sorts in SQL), a turnout tagline, and — when the viewer hasn't played — a
   Play CTA that opens the game and arms a paste-on-return prompt (`useReturnToPaste`,
-  AppState-driven, web + native). Per-row scores render through `summarizeScoreBody`
-  (byte-identical to the clipboard recap). The card drops into the existing drag wrappers
+  AppState-driven, web + native; it takes a `scope` — `"list"` default vs `"games"` — so a
+  pending play armed on one surface never pops the other's paste sheet). Per-row scores render
+  through `summarizeScoreBody` (byte-identical to the clipboard recap). The card chrome itself
+  is the presentational `StandingsCard` (`src/components/StandingsCard.tsx`), shared with the
+  Games tab home (G1b) — `GameLeaderboardCard` is now a thin Lists-side adapter that maps
+  `Item`/`LeaderboardEntry`/members onto it; the Games side maps `MyGame` standings through
+  `summarizeGameScoreBody` (same distiller, kind inferred from title+URL instead of an `Item`).
+  The card drops into the existing drag wrappers
   (`SortableGameCard`/`DraggableGameCard` mirror the row variants), so reorder uses the same
   `moveItem` machinery — which works because **`leaderboard` now implies `ordered` bucketing**
   even without the `ranking` module (see `apps/backend/CLAUDE.md`).
