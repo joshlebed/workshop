@@ -204,6 +204,13 @@
       "when": 1781125803348,
       "tag": "0028_games_icon_url_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1781195061263,
+      "tag": "0029_finish_games_backfill",
+      "breakpoints": true
     }
   ]
 }

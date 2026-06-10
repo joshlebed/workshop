@@ -65,8 +65,9 @@ guard. Don't blind-cast.
 
 A leaderboard item's `score_regex` / `score_direction` (used to parse a numeric
 `score_value` out of the pasted share) and `game_id` are set two ways: migration
-`0027_migrate_geo_games_leaderboard.sql` for existing rows, **and** the item create/edit +
-score upsert paths (`routes/v1/items.ts`, `routes/v1/scores.ts`) through
+`0027_migrate_geo_games_leaderboard.sql` for existing rows, `0029_finish_games_backfill.sql`
+for score-backed historical rows and My Games play-count ordering, **and** the item create/edit
+plus score upsert paths (`routes/v1/items.ts`, `routes/v1/scores.ts`) through
 `lib/gameCatalog.ts`. Mapped leaderboard items keep the old list/item URLs but read/write
 `game_scores`, so the `(game_id,user_id,period_key)` primary key enforces one score per
 player per game per day across both the list and Games tab. Unmapped legacy items still fall
@@ -74,10 +75,10 @@ back to `item_scores`. The catalog in `src/lib/gameScoreRegex.ts` remains the so
 game regexes; `count:<pattern>` means score by the count of global matches (Daily Tens:
 `count:🏆`, desc). **Changing a game's scoring rule only fixes new posts** unless you also
 re-run `scripts/backfill-score-regex.ts` (for legacy `item_scores`) or add a targeted
-`game_scores` rescore. The client mirrors the same distillation for _display_: the
-leaderboard row and the clipboard
-recap both render through `summarizeScoreBody` (`apps/workshop/src/lib/scoresSummary.ts`),
-which strips URLs/headers so a URL-only share shows "Played", never the raw link.
+`game_scores` rescore. The client mirrors the same distillation for _display_: leaderboard
+rows and the list/Games clipboard recaps render through
+`apps/workshop/src/lib/scoresSummary.ts`, which strips URLs/headers so a URL-only share shows
+"Played", never the raw link; Games recaps append a friend-invite link, not a list link.
 
 ## `leaderboard` implies an ordered, reorderable game list (even without `ranking`)
 
