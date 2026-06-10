@@ -63,6 +63,20 @@ const SOURCE_COPY: Record<SourceKind, SourceCopy> = {
     errorFallback: "Couldn't read that list. Try again?",
     createErrorFallback: "Couldn't create the watchlist",
   },
+  // letterboxd_match never routes through this screen (it's attached as an
+  // autoSource with no URL prompt); the entry keeps the record exhaustive
+  // for the SourceKind union.
+  letterboxd_match: {
+    lead: "Letterboxd Match",
+    defaultPrompt: "Workshop matches films across members' Letterboxd watchlists.",
+    fieldLabel: "",
+    placeholder: "",
+    hint: "",
+    submitLabel: "Create list",
+    checkingLabel: "Checking…",
+    errorFallback: "Couldn't set up Letterboxd matching. Try again?",
+    createErrorFallback: "Couldn't create the list",
+  },
 };
 
 function buildConfig(kind: SourceKind, rawUrl: string): Record<string, unknown> {
@@ -71,6 +85,8 @@ function buildConfig(kind: SourceKind, rawUrl: string): Record<string, unknown> 
       return { spotifyPlaylistUrl: rawUrl };
     case "letterboxd_list":
       return { letterboxdUrl: rawUrl };
+    case "letterboxd_match":
+      return {};
   }
 }
 
@@ -280,20 +296,23 @@ function SourcePreviewBody({ preview }: { preview: SourcePreview }) {
       </>
     );
   }
-  // letterboxd_list
-  return (
-    <>
-      <Text variant="heading" numberOfLines={1}>
-        {preview.slug === "watchlist" ? `${preview.username}'s watchlist` : preview.slug}
-      </Text>
-      <Text tone="secondary" numberOfLines={1}>
-        by {preview.username}
-      </Text>
-      <Text variant="caption" tone="muted">
-        {preview.filmCount} {preview.filmCount === 1 ? "film" : "films"}
-      </Text>
-    </>
-  );
+  if (preview.kind === "letterboxd_list") {
+    return (
+      <>
+        <Text variant="heading" numberOfLines={1}>
+          {preview.slug === "watchlist" ? `${preview.username}'s watchlist` : preview.slug}
+        </Text>
+        <Text tone="secondary" numberOfLines={1}>
+          by {preview.username}
+        </Text>
+        <Text variant="caption" tone="muted">
+          {preview.filmCount} {preview.filmCount === 1 ? "film" : "films"}
+        </Text>
+      </>
+    );
+  }
+  // letterboxd_match has no URL-derived preview (it never routes here).
+  return null;
 }
 
 const styles = StyleSheet.create({

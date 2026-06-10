@@ -52,6 +52,10 @@ export const queryKeys = {
   sources: {
     forList: (listId: string) => ["sources", "forList", listId] as const,
   },
+  letterboxd: {
+    /** Per-list member connection + sync status (`GET /v1/lists/:id/letterboxd`). */
+    status: (listId: string) => ["letterboxd", "status", listId] as const,
+  },
   games: {
     /** `GET /v1/games` — My Games with each game's standings for one period. */
     mine: (periodKey: string) => ["games", "mine", periodKey] as const,

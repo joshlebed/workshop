@@ -90,6 +90,11 @@ export default function CreateListCustomize() {
           modules: template.defaults.modules,
           ...(description.trim().length > 0 ? { description: description.trim() } : {}),
           ...(coverPhotoUrl ? { coverPhotoUrl } : {}),
+          // Templates like Letterboxd Match attach a fixed-config source
+          // automatically — no URL prompt step.
+          ...(template.autoSource
+            ? { sources: [{ kind: template.autoSource.kind, config: template.autoSource.config }] }
+            : {}),
         },
         token,
       ),

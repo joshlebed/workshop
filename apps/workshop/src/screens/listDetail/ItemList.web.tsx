@@ -61,6 +61,7 @@ export function ItemList({
   showProvenance,
   selfId,
   playedByItem,
+  letterboxdBadgeByItem,
   totalPlayers,
   isGameKind,
   viewingToday,
@@ -104,6 +105,8 @@ export function ItemList({
   // the actual social signal on a daily-games shelf. Returns `undefined` to
   // leave the default provenance untouched.
   const resolveProvenanceOverride = (item: Item): string | undefined => {
+    const letterboxdBadge = letterboxdBadgeByItem?.get(item.id);
+    if (letterboxdBadge) return letterboxdBadge;
     if (!playedByItem || totalPlayers == null) return undefined;
     const played = playedByItem.get(item.id) ?? 0;
     return `${played} of ${totalPlayers} played today`;

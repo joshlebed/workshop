@@ -100,6 +100,31 @@ depend on the `ranking` module being present:
 If you add a leaderboard surface that buckets/gates on `ranking`, add `leaderboard` too, or
 leaderboard-only lists (no `ranking` module — e.g. "Geo games") silently lose reorder.
 
+## Letterboxd-match lists (`letterboxd` module) — three-layer model
+
+The match feature splits across three storage layers; know which one you're touching:
+
+1. **Account**: `users.letterboxd_username` + per-user cache `letterboxd_watchlist_films`
+   (replaced wholesale by `syncUserWatchlist`, keyed by canonical film slug). Connect via
+   `PUT /v1/users/me/letterboxd` — it scrape-validates and runs the initial sync inline.
+2. **List**: the `letterboxd_match` source (config `{}`) joins members' caches and
+   materializes films on ≥2 members' watchlists as `kind=movie` items
+   (`lib/sources/letterboxdMatch.ts`). It refreshes member caches stale past 6h during
+   sync; a member's failed scrape degrades to their stale cache. Dedup is by
+   `content->>'letterboxdSlug'` **checked in code against archived rows too** (the tmdbId
+   partial index only backstops enriched films) — an archived film must not resurface.
+3. **Item**: `items.suggestion_state` (`'pending'` | NULL) + `item_acceptances` rows drive
+   the suggest/accept flow (`routes/v1/letterboxd.ts`). The suggester gets an acceptance
+   row at suggest time; the first acceptance from a _different_ member promotes
+   (`suggestion_state → NULL`). Withdrawal never re-pends. Workshop **cannot write to
+   Letterboxd** (no public API) — "accept" records intent and the client deep-links to the
+   film page; the next watchlist sync verifies via the read-time `watchlistOf` state.
+
+Read-time annotation (`annotateLetterboxd` in `routes/v1/items.ts`) attaches
+`item.letterboxd = { watchlistOf, pending, acceptances }` when the module is on — never
+stored on the row, always derived from the caches. Pending items bucket into the
+`suggested` section of `ListItemsResponse` (empty array on every other list).
+
 ## Profile pictures live inline on `users.avatar_url` (base64 data URL)
 
 `PATCH /v1/users/me` (`routes/v1/users.ts`) updates `displayName` and/or `avatarUrl`

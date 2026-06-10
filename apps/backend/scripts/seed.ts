@@ -19,11 +19,14 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
 import {
   activityEvents,
+  itemAcceptances,
   itemScores,
   items,
   itemTags,
+  letterboxdWatchlistFilms,
   listMembers,
   listSavedViews,
+  listSources,
   lists,
   userIdentities,
   users,
@@ -472,7 +475,133 @@ async function main() {
     }
   }
 
-  console.log(`[seed] inserted ${fixtures.length} lists for ${PREVIEW_EMAIL}`);
+  await seedLetterboxdMatch(previewId, friendId);
+
+  console.log(`[seed] inserted ${fixtures.length + 1} lists for ${PREVIEW_EMAIL}`);
+}
+
+/**
+ * A lived-in Letterboxd-match list: both seed users have a connected
+ * Letterboxd username + cached watchlist (no live scrape — fixture rows),
+ * two films overlap and exist as matched items, and one pending suggestion
+ * from the friend awaits Josh's accept.
+ */
+async function seedLetterboxdMatch(previewId: string, friendId: string) {
+  const db = getDb();
+
+  await db
+    .update(users)
+    .set({ letterboxdUsername: "joshlebed", letterboxdSyncedAt: new Date() })
+    .where(eq(users.id, previewId));
+  await db
+    .update(users)
+    .set({ letterboxdUsername: "alexfilm", letterboxdSyncedAt: new Date() })
+    .where(eq(users.id, friendId));
+
+  const watchlists: Array<{ userId: string; films: Array<[string, string, number]> }> = [
+    {
+      userId: previewId,
+      films: [
+        ["aftersun", "Aftersun", 2022],
+        ["the-zone-of-interest", "The Zone of Interest", 2023],
+        ["perfect-days", "Perfect Days", 2023],
+        ["la-chimera", "La Chimera", 2023],
+      ],
+    },
+    {
+      userId: friendId,
+      films: [
+        ["aftersun", "Aftersun", 2022],
+        ["the-zone-of-interest", "The Zone of Interest", 2023],
+        ["anatomy-of-a-fall", "Anatomy of a Fall", 2023],
+      ],
+    },
+  ];
+  for (const wl of watchlists) {
+    await db
+      .insert(letterboxdWatchlistFilms)
+      .values(
+        wl.films.map(([slug, title, year]) => ({ userId: wl.userId, filmSlug: slug, title, year })),
+      )
+      .onConflictDoNothing();
+  }
+
+  const [list] = await db
+    .insert(lists)
+    .values({
+      name: "Movie Match",
+      emoji: "🍿",
+      color: "grape",
+      description: "Films we both want to watch, straight from Letterboxd.",
+      ownerId: previewId,
+      itemKind: "movie",
+      modules: ["ranking", "sources", "letterboxd"],
+      shareSlug: generateShareSlug(),
+    })
+    .returning();
+  if (!list) throw new Error("[seed] failed to insert letterboxd match list");
+
+  await db.insert(listMembers).values([
+    { listId: list.id, userId: previewId, role: "owner" as const },
+    { listId: list.id, userId: friendId, role: "member" as const },
+  ]);
+  await db.insert(listSources).values({
+    listId: list.id,
+    kind: "letterboxd_match",
+    config: {},
+    lastSyncedAt: new Date(),
+    lastSyncedBy: previewId,
+  });
+
+  const matched: Array<{ slug: string; title: string; year: number; position: number | null }> = [
+    { slug: "aftersun", title: "Aftersun", year: 2022, position: 1024 },
+    { slug: "the-zone-of-interest", title: "The Zone of Interest", year: 2023, position: null },
+  ];
+  for (const film of matched) {
+    await db.insert(items).values({
+      listId: list.id,
+      kind: "movie",
+      title: film.title,
+      url: `https://letterboxd.com/film/${film.slug}/`,
+      content: {
+        source: "letterboxd",
+        letterboxdUrl: `https://letterboxd.com/film/${film.slug}/`,
+        letterboxdSlug: film.slug,
+        year: film.year,
+      },
+      position: film.position,
+      addedBy: previewId,
+    });
+  }
+
+  // Pending suggestion from the friend — Josh sees the accept flow.
+  const [suggestion] = await db
+    .insert(items)
+    .values({
+      listId: list.id,
+      kind: "movie",
+      title: "Anatomy of a Fall",
+      url: "https://letterboxd.com/film/anatomy-of-a-fall/",
+      content: {
+        source: "letterboxd",
+        letterboxdUrl: "https://letterboxd.com/film/anatomy-of-a-fall/",
+        letterboxdSlug: "anatomy-of-a-fall",
+        year: 2023,
+      },
+      addedBy: friendId,
+      suggestionState: "pending",
+    })
+    .returning();
+  if (suggestion) {
+    await db.insert(itemAcceptances).values({ itemId: suggestion.id, userId: friendId });
+    await db.insert(activityEvents).values({
+      listId: list.id,
+      actorId: friendId,
+      eventType: "item_suggested",
+      itemId: suggestion.id,
+      payload: { title: suggestion.title, letterboxdSlug: "anatomy-of-a-fall" },
+    });
+  }
 }
 
 main()

@@ -54,6 +54,7 @@ import {
 import { GameScorePasteSheet } from "./listDetail/GameScorePasteSheet";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
+import { LetterboxdPanel } from "./listDetail/LetterboxdPanel";
 import type { ReorderEvent } from "./listDetail/listProps";
 import { SavedViewsBar } from "./listDetail/SavedViewsBar";
 import type { Section } from "./listDetail/types";
@@ -99,6 +100,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const isGameKind = list.modules.includes("leaderboard");
   const rankingOn = hasModule(list.modules, "ranking");
   const todoOn = hasModule(list.modules, "todo");
+  const letterboxdOn = hasModule(list.modules, "letterboxd");
 
   const itemsQuery = useQuery({
     queryKey: itemsKey,
@@ -180,6 +182,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
         ordered: res.ordered,
         unordered: res.unordered,
         completed: res.completed,
+        suggested: res.suggested,
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(list.id) });
@@ -305,6 +308,32 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const orderedRaw = data?.ordered ?? [];
   const unorderedRaw = data?.unordered ?? [];
   const completedRaw = data?.completed ?? [];
+  const suggestedRaw = useMemo(() => data?.suggested ?? [], [data?.suggested]);
+
+  // Letterboxd-match overlap badge per item — replaces the "Added by …"
+  // provenance line so the social signal ("on whose watchlist?") lives on the
+  // row. Suggestions render in the panel above the list instead.
+  const letterboxdBadgeByItem = useMemo(() => {
+    if (!letterboxdOn) return undefined;
+    const map = new Map<string, string>();
+    const nameOf = (userId: string) =>
+      userId === selfId ? "you" : (memberNameByIdRef(members, userId) ?? "someone");
+    for (const it of [...orderedRaw, ...unorderedRaw, ...completedRaw]) {
+      const lb = it.letterboxd;
+      if (!lb) continue;
+      const n = lb.watchlistOf.length;
+      if (n >= 2) {
+        map.set(it.id, `On ${n} watchlists · ${lb.watchlistOf.map(nameOf).join(", ")}`);
+      } else if (n === 1) {
+        map.set(it.id, `Only on ${nameOf(lb.watchlistOf[0] ?? "")}'s watchlist now`);
+      } else if (lb.acceptances.length > 0) {
+        map.set(it.id, `Accepted by ${lb.acceptances.map((a) => nameOf(a.userId)).join(", ")}`);
+      } else {
+        map.set(it.id, "Off everyone's watchlists now");
+      }
+    }
+    return map;
+  }, [letterboxdOn, orderedRaw, unorderedRaw, completedRaw, members, selfId]);
 
   // In-use tags + counts for the chip bar, derived from the loaded items so
   // the bar is always in sync with the rows (no second fetch, no cache
@@ -901,8 +930,39 @@ export function ListDetail({ list, members, sources, token }: Props) {
             />
           </View>
         ) : isEmptyAfterFetch ? (
-          <View style={styles.center}>
-            {hasSources ? (
+          <View style={letterboxdOn ? styles.listWrap : styles.center}>
+            {letterboxdOn ? (
+              <>
+                <LetterboxdPanel
+                  list={list}
+                  members={members}
+                  suggested={suggestedRaw}
+                  token={token}
+                  accent={accent}
+                  onRequestSync={() => refreshMutation.mutate()}
+                />
+                <View style={styles.center}>
+                  <EmptyState
+                    motion
+                    illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
+                    title="No films in common yet"
+                    description={
+                      members.length < 2
+                        ? "Invite a friend, connect your Letterboxd accounts, and films you both want to watch show up here."
+                        : "Once two members connect Letterboxd, films on both watchlists show up here. You can also suggest one above."
+                    }
+                    action={
+                      <Button
+                        label="Check for matches"
+                        onPress={() => refreshMutation.mutate()}
+                        loading={refreshing}
+                        testID="list-detail-empty-refresh"
+                      />
+                    }
+                  />
+                </View>
+              </>
+            ) : hasSources ? (
               <EmptyState
                 motion
                 illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
@@ -972,10 +1032,21 @@ export function ListDetail({ list, members, sources, token }: Props) {
           </View>
         ) : (
           <View style={styles.listWrap}>
+            {letterboxdOn ? (
+              <LetterboxdPanel
+                list={list}
+                members={members}
+                suggested={suggestedRaw}
+                token={token}
+                accent={accent}
+                onRequestSync={() => refreshMutation.mutate()}
+              />
+            ) : null}
             <ItemList
               ordered={filtered.ordered}
               unordered={filtered.unordered}
               completed={filtered.completed}
+              letterboxdBadgeByItem={letterboxdBadgeByItem}
               listItemKind={itemKind}
               isAlbumShelf={isSpotifyShelf}
               modules={list.modules}
@@ -1039,6 +1110,11 @@ export function ListDetail({ list, members, sources, token }: Props) {
       </Screen>
     </KeyboardAvoidingView>
   );
+}
+
+/** Display-name lookup that tolerates members who've left the list. */
+function memberNameByIdRef(members: ListMemberSummary[], userId: string): string | null {
+  return members.find((m) => m.userId === userId)?.displayName ?? null;
 }
 
 /** True when two tag selections hold the same set (order-insensitive). */

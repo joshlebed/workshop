@@ -14,6 +14,8 @@ const MESSAGES: Record<ModuleName, string> = {
     "This list doesn't have a leaderboard. Turn on “Leaderboard” in list settings to submit scores.",
   sources:
     "This list doesn't have external sources enabled. Turn on “Sources” in list settings to attach a source.",
+  letterboxd:
+    "This list doesn't have Letterboxd matching enabled. Turn on “Letterboxd” in list settings to sync watchlists and suggest films.",
 };
 
 /**

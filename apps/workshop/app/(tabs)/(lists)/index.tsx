@@ -11,6 +11,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  TextInput,
   View,
 } from "react-native";
 import { fetchActivity } from "../../../src/api/activity";
@@ -39,6 +40,7 @@ import {
   Sheet,
   Text,
   tokens,
+  useToast,
 } from "../../../src/ui/index";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
@@ -106,6 +108,126 @@ function formatMemberSince(iso: string): string {
   if (Number.isNaN(d.getTime()) || d.getFullYear() < 2024) return "early access";
   return d.toLocaleString(undefined, { month: "short", year: "numeric" });
 }
+
+/**
+ * Account-level Letterboxd connection, managed from the profile sheet.
+ * Collapsed: one button ("Connect Letterboxd" / "Change Letterboxd account").
+ * Expanded: inline username input + save, plus disconnect when connected.
+ * The username powers every Letterboxd-match list the user is a member of.
+ */
+function LetterboxdAccountRow() {
+  const { user, connectLetterboxd, disconnectLetterboxd } = useAuth();
+  const { showToast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [username, setUsername] = useState("");
+  const [busy, setBusy] = useState(false);
+  const connected = user?.letterboxdUsername ?? null;
+
+  const onSave = async () => {
+    const name = username.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      const filmCount = await connectLetterboxd(name);
+      showToast({
+        message: `Letterboxd connected — ${filmCount} ${filmCount === 1 ? "film" : "films"} on your watchlist`,
+        tone: "success",
+      });
+      setEditing(false);
+      setUsername("");
+    } catch (e) {
+      showToast({
+        message: errorMessage(e, "Couldn't connect that Letterboxd account."),
+        tone: "danger",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onDisconnect = async () => {
+    const ok = await confirm({
+      title: "Disconnect Letterboxd?",
+      message: "Match lists stop seeing your watchlist. Films already on lists stay.",
+      confirmLabel: "Disconnect",
+      destructive: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await disconnectLetterboxd();
+      showToast({ message: "Letterboxd disconnected", tone: "default" });
+      setEditing(false);
+    } catch (e) {
+      showToast({ message: errorMessage(e, "Couldn't disconnect."), tone: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <Button
+        label={connected ? `Change Letterboxd (@${connected})` : "Connect Letterboxd"}
+        variant="secondary"
+        onPress={() => setEditing(true)}
+        testID="letterboxd-account-row"
+      />
+    );
+  }
+  return (
+    <View style={letterboxdRowStyles.form}>
+      <TextInput
+        testID="letterboxd-account-input"
+        value={username}
+        onChangeText={setUsername}
+        placeholder={connected ? `@${connected}` : "Letterboxd username"}
+        placeholderTextColor={tokens.text.muted}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoFocus
+        style={letterboxdRowStyles.input}
+        onSubmitEditing={onSave}
+      />
+      <View style={letterboxdRowStyles.actions}>
+        <Button
+          label="Save"
+          size="md"
+          disabled={!username.trim() || busy}
+          loading={busy}
+          onPress={onSave}
+          testID="letterboxd-account-save"
+        />
+        {connected ? (
+          <Button
+            label="Disconnect"
+            size="md"
+            variant="secondary"
+            disabled={busy}
+            onPress={onDisconnect}
+            testID="letterboxd-account-disconnect"
+          />
+        ) : null}
+        <Button label="Cancel" size="md" variant="ghost" onPress={() => setEditing(false)} />
+      </View>
+    </View>
+  );
+}
+
+const letterboxdRowStyles = StyleSheet.create({
+  form: { gap: tokens.space.sm },
+  input: {
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 10,
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.sm,
+    backgroundColor: tokens.bg.surface,
+  },
+  actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
+});
 
 function initialsFor(name: string | null | undefined): string {
   const trimmed = name?.trim();
@@ -539,6 +661,11 @@ export default function Home() {
                 {user.email}
               </Text>
             ) : null}
+            {user?.letterboxdUsername ? (
+              <Text variant="caption" tone="muted" numberOfLines={1} testID="profile-letterboxd">
+                Letterboxd: @{user.letterboxdUsername}
+              </Text>
+            ) : null}
             {user?.createdAt ? (
               <Text variant="caption" tone="muted" numberOfLines={1}>
                 On Workshop since {formatMemberSince(user.createdAt)}
@@ -593,6 +720,7 @@ export default function Home() {
             }}
             testID="send-feedback"
           />
+          <LetterboxdAccountRow />
         </View>
         <View style={styles.profileSheetDivider} />
         <Button label="Sign out" variant="ghost" onPress={onSignOut} testID="sign-out" />

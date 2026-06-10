@@ -70,6 +70,10 @@ const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> 
     label: "Leaderboard",
     description: "Post scores for daily games.",
   },
+  letterboxd: {
+    label: "Letterboxd",
+    description: "Match members' watchlists and suggest films.",
+  },
   sources: {
     label: "Sources",
     description: "Sync from external feeds.",

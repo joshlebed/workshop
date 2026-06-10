@@ -105,12 +105,18 @@ export function applyPositionPatch(
     const ordered = [...otherOrdered, patched].sort(
       (a, b) => (positionOf(a) ?? 0) - (positionOf(b) ?? 0),
     );
-    return { ordered, unordered: otherUnordered, completed: data.completed };
+    return {
+      ordered,
+      unordered: otherUnordered,
+      completed: data.completed,
+      suggested: data.suggested,
+    };
   }
   return {
     ordered: otherOrdered,
     unordered: [...otherUnordered, patched],
     completed: data.completed,
+    suggested: data.suggested,
   };
 }
 

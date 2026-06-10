@@ -126,6 +126,7 @@ interface ItemRow {
   completed_by: string | null;
   created_at: Date | string;
   updated_at: Date | string;
+  suggestion_state: string | null;
 }
 
 function rowToItem(r: ItemRow): Item {
@@ -195,17 +196,88 @@ function mergeLinkPreviewContent(
 }
 
 /**
+ * Per-item Letterboxd-match annotation (the `letterboxd` module): which
+ * members' cached watchlists carry the film, whether it's still a pending
+ * suggestion, and who accepted. Computed at read time against
+ * `letterboxd_watchlist_films` / `item_acceptances` — never stored on the
+ * item row — so badges always reflect the latest watchlist sync.
+ */
+async function annotateLetterboxd(
+  listId: string,
+  rows: ItemRow[],
+  shaped: Map<string, Item>,
+  db: DbClient,
+): Promise<void> {
+  if (rows.length === 0) return;
+  const ids = rows.map((r) => r.id);
+
+  const acceptanceRows = await executeRows<{
+    item_id: string;
+    user_id: string;
+    accepted_at: Date | string;
+  }>(
+    db,
+    sql`
+      SELECT item_id, user_id, accepted_at FROM item_acceptances
+      WHERE item_id IN (${sql.join(ids, sql`, `)})
+      ORDER BY accepted_at ASC
+    `,
+  );
+  const acceptancesByItem = new Map<string, { userId: string; acceptedAt: string }[]>();
+  for (const a of acceptanceRows) {
+    const list = acceptancesByItem.get(a.item_id) ?? [];
+    list.push({ userId: a.user_id, acceptedAt: toIsoString(a.accepted_at) });
+    acceptancesByItem.set(a.item_id, list);
+  }
+
+  const slugByItem = new Map<string, string>();
+  for (const r of rows) {
+    const slug = r.content?.letterboxdSlug;
+    if (typeof slug === "string" && slug.length > 0) slugByItem.set(r.id, slug);
+  }
+  const watchersBySlug = new Map<string, string[]>();
+  const slugs = [...new Set(slugByItem.values())];
+  if (slugs.length > 0) {
+    const watchRows = await executeRows<{ film_slug: string; user_id: string }>(
+      db,
+      sql`
+        SELECT w.film_slug, w.user_id
+        FROM letterboxd_watchlist_films w
+        JOIN list_members m ON m.user_id = w.user_id AND m.list_id = ${listId}
+        WHERE w.film_slug IN (${sql.join(slugs, sql`, `)})
+      `,
+    );
+    for (const w of watchRows) {
+      const list = watchersBySlug.get(w.film_slug) ?? [];
+      list.push(w.user_id);
+      watchersBySlug.set(w.film_slug, list);
+    }
+  }
+
+  for (const r of rows) {
+    const item = shaped.get(r.id);
+    if (!item) continue;
+    const slug = slugByItem.get(r.id);
+    item.letterboxd = {
+      watchlistOf: slug ? (watchersBySlug.get(slug) ?? []) : [],
+      pending: r.suggestion_state === "pending",
+      acceptances: acceptancesByItem.get(r.id) ?? [],
+    };
+  }
+}
+
+/**
  * Fetch one item by id with module-gated fields stripped per the parent
  * list's `modules`.
  */
-async function fetchItemShape(itemId: string, db: DbClient = getDb()): Promise<Item | null> {
+export async function fetchItemShape(itemId: string, db: DbClient = getDb()): Promise<Item | null> {
   const rows = await executeRows<ItemRow & { list_modules: string[] | null }>(
     db,
     sql`
       SELECT
         i.id, i.list_id, COALESCE(i.kind, 'plain') AS kind, i.title, i.url, i.note,
         i.content, i.position, i.added_by, i.completed, i.completed_at, i.completed_by,
-        i.created_at, i.updated_at,
+        i.created_at, i.updated_at, i.suggestion_state,
         (SELECT array_agg(t.tag ORDER BY t.tag) FROM item_tags t WHERE t.item_id = i.id) AS tags,
         l.modules AS list_modules
       FROM items i
@@ -216,8 +288,11 @@ async function fetchItemShape(itemId: string, db: DbClient = getDb()): Promise<I
   );
   const r = rows[0];
   if (!r) return null;
-  const item = rowToItem(r);
-  return applyModuleFilters(item, r.list_modules ?? []);
+  const item = applyModuleFilters(rowToItem(r), r.list_modules ?? []);
+  if (hasModule(r.list_modules ?? [], "letterboxd")) {
+    await annotateLetterboxd(r.list_id, [r], new Map([[r.id, item]]), db);
+  }
+  return item;
 }
 
 /**
@@ -250,7 +325,7 @@ export async function fetchItemsForList(
       SELECT
         i.id, i.list_id, COALESCE(i.kind, 'plain') AS kind, i.title, i.url, i.note,
         i.content, i.position, i.added_by, i.completed, i.completed_at, i.completed_by,
-        i.created_at, i.updated_at,
+        i.created_at, i.updated_at, i.suggestion_state,
         (SELECT array_agg(t.tag ORDER BY t.tag) FROM item_tags t WHERE t.item_id = i.id) AS tags
       FROM items i
       WHERE i.list_id = ${listId} AND i.archived_at IS NULL
@@ -265,11 +340,22 @@ export async function fetchItemsForList(
   const rankingOn = hasModule(modules, "ranking");
   const leaderboardOn = hasModule(modules, "leaderboard");
   const todoOn = hasModule(modules, "todo");
+  const letterboxdOn = hasModule(modules, "letterboxd");
   const ordered: Item[] = [];
   const unordered: Item[] = [];
   const completed: Item[] = [];
+  const suggested: Item[] = [];
+  const shaped = new Map<string, Item>();
   for (const r of rows) {
     const item = applyModuleFilters(rowToItem(r), modules);
+    shaped.set(r.id, item);
+    // Pending suggestions live in their own section on Letterboxd-match
+    // lists — outside the ranking until another member accepts. Without the
+    // module they fall through and bucket like any other item.
+    if (letterboxdOn && r.suggestion_state === "pending") {
+      suggested.push(item);
+      continue;
+    }
     const isCompleted = todoOn && Boolean(r.completed);
     if (isCompleted) {
       completed.push(item);
@@ -291,7 +377,10 @@ export async function fetchItemsForList(
     const tb = b.completedAt ? Date.parse(b.completedAt) : 0;
     return tb - ta;
   });
-  return { ordered, unordered, completed, modules };
+  if (letterboxdOn) {
+    await annotateLetterboxd(listId, rows, shaped, db);
+  }
+  return { ordered, unordered, completed, suggested, modules };
 }
 
 /** Thrown by `createItem` when content validation fails. */
