@@ -64,6 +64,19 @@ test("add tag → chip appears → filter narrows rows → All clears", async ({
   await expect(page.getByTestId("item-tag-suggest-burgers")).toBeVisible();
   await page.getByTestId("item-tag-suggest-burgers").click();
   await expect(page.getByTestId("item-tag-burgers")).toBeVisible();
+  // Second tag on the museum item only, so multi-select has a real intersection.
+  await page.getByTestId("item-tag-input").fill("Indoor");
+  await page.getByTestId("item-tag-input").press("Enter");
+  await expect(page.getByTestId("item-tag-indoor")).toBeVisible();
   await page.getByTestId("item-back-to-list").click();
   await expect(page.getByTestId("tag-filter-burgers")).toContainText("burgers (2)");
+
+  // Multi-select is AND: burgers alone shows both, burgers + indoor narrows
+  // to the item carrying every selected tag.
+  await page.getByTestId("tag-filter-burgers").click();
+  await expect(list.getByText("Burger crawl downtown")).toBeVisible();
+  await expect(list.getByText("Museum afternoon")).toBeVisible();
+  await page.getByTestId("tag-filter-indoor").click();
+  await expect(list.getByText("Museum afternoon")).toBeVisible();
+  await expect(list.getByText("Burger crawl downtown")).toHaveCount(0);
 });

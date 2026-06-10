@@ -350,10 +350,16 @@ export function ListDetail({ list, members, sources, token }: Props) {
         .toLowerCase();
       return haystack.includes(needle);
     };
-    // Tag chips are OR within the bar: an item passes when it carries ANY
-    // selected tag. Text search ANDs on top.
-    const matchesTags = (it: Item) =>
-      selectedTagSet.size === 0 || (it.tags ?? []).some((t) => selectedTagSet.has(t));
+    // Tag chips are AND within the bar: an item passes only when it carries
+    // EVERY selected tag. Text search ANDs on top.
+    const matchesTags = (it: Item) => {
+      if (selectedTagSet.size === 0) return true;
+      const itemTags = it.tags ?? [];
+      for (const tag of selectedTagSet) {
+        if (!itemTags.includes(tag)) return false;
+      }
+      return true;
+    };
     const matches = (it: Item) => matchesTags(it) && matchesText(it);
     return {
       ordered: orderedRaw.filter(matches),
