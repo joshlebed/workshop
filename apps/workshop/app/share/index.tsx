@@ -97,7 +97,7 @@ export default function ShareHome() {
         }),
       ]);
       showToast({ message: "Score posted", tone: "success" });
-      router.replace(`/list/${target.list.id}/game/${target.item.id}`);
+      router.replace(`/list/${target.list.id}/game/${target.item.id}`, { withAnchor: true });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't post score"), tone: "danger" });
@@ -151,7 +151,7 @@ export default function ShareHome() {
             error={listsQuery.isError ? errorMessage(listsQuery.error) : null}
             pending={submitSuggestion.isPending}
             resultless={resultlessShare}
-            onPasteInstead={() => router.push(leaderboardTarget)}
+            onPasteInstead={() => router.replace(leaderboardTarget)}
             onPost={() => suggestedTarget && submitSuggestion.mutate(suggestedTarget)}
           />
         ) : null}
@@ -171,7 +171,7 @@ export default function ShareHome() {
             title="Add to a leaderboard"
             subtitle="Choose a leaderboard list, then choose the game."
             glyph="#"
-            onPress={() => router.push(leaderboardTarget)}
+            onPress={() => router.replace(leaderboardTarget)}
           />
         </View>
       </ScrollView>

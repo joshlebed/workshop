@@ -84,7 +84,7 @@ export default function PickLeaderboard() {
         queryClient.invalidateQueries({ queryKey: queryKeys.gameScores.forList(list.id, today) }),
       ]);
       showToast({ message: "Score posted", tone: "success" });
-      router.replace(`/list/${list.id}/game/${item.id}`);
+      router.replace(`/list/${list.id}/game/${item.id}`, { withAnchor: true });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't post score"), tone: "danger" });
@@ -162,7 +162,7 @@ export default function PickLeaderboard() {
           lists={leaderboardLists}
           sharedPayload={sharedPayload}
           onPick={setSelectedListId}
-          onCreateNew={() => router.replace("/create-list/type")}
+          onCreateNew={() => router.replace("/create-list/type", { withAnchor: true })}
         />
       )}
     </Screen>

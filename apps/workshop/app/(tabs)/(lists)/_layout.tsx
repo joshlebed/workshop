@@ -1,6 +1,19 @@
 import { Stack } from "expo-router";
 import { tokens } from "../../../src/ui/index";
 
+// Anchor the stack on home. When a route deep in this stack is reached without
+// an in-app history beneath it — a cold deep link, a Universal Link, or the
+// share-intent flow's cross-navigator `router.replace` (which rebuilds this
+// stack fresh with only the target screen) — expo-router otherwise leaves the
+// target as the sole entry. `canGoBack()` is then false, so the screens' back
+// buttons fall through `goBack()` to `router.replace(parent)`, which animates
+// as a forward push (`animationTypeForReplace` defaults to "push") — the back
+// button visibly slides the wrong way. Declaring `index` as the anchor puts
+// home beneath the target so `router.back()` (a real pop) handles it instead.
+export const unstable_settings = {
+  initialRouteName: "index",
+};
+
 // The pre-Games app stack, unchanged — it moved here from the root layout
 // when the Lists/Games tab shell landed (G0). Group segments don't appear in
 // URLs, so `/`, `/list/:id/...`, `/activity`, and `/create-list/...` resolve
