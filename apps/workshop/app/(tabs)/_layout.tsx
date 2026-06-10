@@ -1,6 +1,12 @@
-import { Tabs } from "expo-router";
+import { Tabs, usePathname, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { Platform, Text as RNText } from "react-native";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
+import {
+  getPreferredHomeTab,
+  homeTabForPathname,
+  setPreferredHomeTab,
+} from "../../src/lib/navigationPreferences";
 import { tokens } from "../../src/ui/index";
 
 // Top-level Lists / Games switch (spec §4). The Lists tab is the existing
@@ -18,6 +24,38 @@ import { tokens } from "../../src/ui/index";
 // browsers.
 export default function TabsLayout() {
   const showNativeTabBar = GAMES_TAB_ENABLED && Platform.OS !== "web";
+  const router = useRouter();
+  const pathname = usePathname();
+  const [preferenceReady, setPreferenceReady] = useState(!GAMES_TAB_ENABLED);
+
+  useEffect(() => {
+    if (!GAMES_TAB_ENABLED || preferenceReady) return;
+    let cancelled = false;
+
+    getPreferredHomeTab()
+      .then((tab) => {
+        if (cancelled) return;
+        if (pathname === "/" && tab === "games") {
+          router.replace("/games");
+          return;
+        }
+        setPreferenceReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setPreferenceReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, preferenceReady, router]);
+
+  useEffect(() => {
+    if (!GAMES_TAB_ENABLED || !preferenceReady) return;
+    const tab = homeTabForPathname(pathname);
+    if (!tab) return;
+    setPreferredHomeTab(tab).catch(() => {});
+  }, [pathname, preferenceReady]);
 
   const tabs = (
     <Tabs

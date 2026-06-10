@@ -179,6 +179,11 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `prefers-color-scheme` hydrates). A naive `scheme === "dark" ? darkTokens : lightTokens`
   silently flips to light on first paint. Default to the baseline explicitly:
   `scheme === "light" ? lightTokens : darkTokens`. See `apps/workshop/src/ui/ThemeProvider.tsx`.
+- **Vitest tests that import helpers using `src/lib/storage.ts` should mock storage first.**
+  Otherwise the test collector can follow the native `expo-secure-store` path and fail before
+  tests run with a Rollup parser error like `Expected 'from', got 'typeOf'`. For pure helper
+  tests, `vi.mock("./storage", () => ({ getItem: vi.fn(), setItem: vi.fn() }))` keeps collection
+  on the JS surface you actually mean to test.
 - **Reanimated press-feedback: wrap `Pressable`, don't replace it.**
   `Animated.createAnimatedComponent(Pressable)` looks tempting, but `Pressable`'s
   `style={({ pressed }) => [...]}` re-resolves on every render and clobbers transform
