@@ -41,6 +41,12 @@ export interface ItemListProps {
   /** Group size for the "X of Y played" label. Pair with `playedByItem`. */
   totalPlayers?: number;
   /**
+   * Letterboxd-match lists: per-item overlap badge ("On 3 watchlists · …")
+   * that replaces the "Added by …" provenance line. Keyed by itemId; rows
+   * absent from the map keep the default provenance.
+   */
+  letterboxdBadgeByItem?: Map<string, string>;
+  /**
    * Leaderboard lists render each game as a rich `GameLeaderboardCard` (full
    * standings + Play CTA) instead of an `ItemRow`. The next five props feed
    * those cards; they're ignored on every other list type.

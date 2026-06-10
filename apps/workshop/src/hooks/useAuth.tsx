@@ -28,6 +28,9 @@ export interface AuthContextValue {
   signInDev: (req: { email: string; displayName?: string | null }) => Promise<void>;
   signOut: () => Promise<void>;
   setDisplayName: (name: string) => Promise<void>;
+  /** Connect/change the account-level Letterboxd username. Resolves with the synced watchlist size. */
+  connectLetterboxd: (username: string) => Promise<number>;
+  disconnectLetterboxd: () => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -169,6 +172,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [state.token],
   );
 
+  const connectLetterboxd = useCallback<AuthContextValue["connectLetterboxd"]>(
+    async (username) => {
+      const token = state.token;
+      if (!token) throw new Error("not signed in");
+      const res = await apiRequest<{ user: User; filmCount: number }>({
+        method: "PUT",
+        path: "/v1/users/me/letterboxd",
+        body: { username },
+        token,
+      });
+      setState({ status: statusFor(res.user), user: res.user, token });
+      return res.filmCount;
+    },
+    [state.token],
+  );
+
+  const disconnectLetterboxd = useCallback<AuthContextValue["disconnectLetterboxd"]>(async () => {
+    const token = state.token;
+    if (!token) throw new Error("not signed in");
+    const res = await apiRequest<{ user: User }>({
+      method: "DELETE",
+      path: "/v1/users/me/letterboxd",
+      token,
+    });
+    setState({ status: statusFor(res.user), user: res.user, token });
+  }, [state.token]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status: state.status,
@@ -179,9 +209,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInDev,
       signOut,
       setDisplayName,
+      connectLetterboxd,
+      disconnectLetterboxd,
       refresh: bootstrap,
     }),
-    [state, signInWithApple, signInWithGoogle, signInDev, signOut, setDisplayName, bootstrap],
+    [
+      state,
+      signInWithApple,
+      signInWithGoogle,
+      signInDev,
+      signOut,
+      setDisplayName,
+      connectLetterboxd,
+      disconnectLetterboxd,
+      bootstrap,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

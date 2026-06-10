@@ -2,11 +2,19 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { type DbUser, users } from "../../db/schema.js";
+import { type DbUser, letterboxdWatchlistFilms, users } from "../../db/schema.js";
+import { logger } from "../../lib/logger.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { revokeAllSessions } from "../../lib/sessionRevocation.js";
+import { LetterboxdScrapeError } from "../../lib/sources/letterboxdList.js";
+import {
+  InvalidLetterboxdUsernameError,
+  normalizeLetterboxdUsername,
+  syncUserWatchlist,
+} from "../../lib/sources/letterboxdWatchlist.js";
 import { requireAuth } from "../../middleware/auth.js";
+import { rateLimit } from "../../middleware/rate-limit.js";
 
 export const userRoutes = new Hono();
 userRoutes.use("*", requireAuth);
@@ -23,11 +31,16 @@ const patchMeSchema = z.object({
   displayName: displayNameSchema,
 });
 
+const connectLetterboxdSchema = z.object({
+  username: z.string().min(1, "username required").max(2048, "username too long"),
+});
+
 function toUserShape(u: DbUser) {
   return {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
+    letterboxdUsername: u.letterboxdUsername,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
   };
@@ -44,6 +57,83 @@ userRoutes.patch("/me", async (c) => {
     .where(eq(users.id, userId))
     .returning();
   if (!updated) return err(c, "NOT_FOUND", "user not found");
+  return ok(c, { user: toUserShape(updated) });
+});
+
+// --- Letterboxd connection (account-level, reused by every match list) ---
+
+/**
+ * Connect (or change) the account-level Letterboxd username. Accepts a bare
+ * username, "@name", or any letterboxd.com profile/watchlist URL. Validates
+ * the watchlist is publicly reachable by running the initial watchlist sync
+ * inline — a private/missing watchlist rejects with a stable code instead of
+ * silently storing a username that can never sync.
+ */
+userRoutes.put(
+  "/me/letterboxd",
+  rateLimit({
+    family: "v1.users.letterboxd-connect",
+    limit: 5,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, connectLetterboxdSchema);
+    if (!parsed.ok) return parsed.response;
+    const userId = c.get("userId");
+
+    let username: string;
+    try {
+      username = normalizeLetterboxdUsername(parsed.data.username);
+    } catch (e) {
+      if (e instanceof InvalidLetterboxdUsernameError) {
+        return err(c, "VALIDATION", "invalid Letterboxd username", {
+          code: "INVALID_LETTERBOXD_USERNAME",
+        });
+      }
+      throw e;
+    }
+
+    const db = getDb();
+    let filmCount = 0;
+    try {
+      const result = await syncUserWatchlist({ userId, username, db });
+      filmCount = result.filmCount;
+    } catch (e) {
+      if (e instanceof LetterboxdScrapeError) {
+        const code =
+          e.status === 404
+            ? "LETTERBOXD_USER_NOT_FOUND"
+            : e.status === 403
+              ? "LETTERBOXD_WATCHLIST_PRIVATE"
+              : "LETTERBOXD_FETCH_FAILED";
+        logger.warn("letterboxd connect failed", { userId, username, status: e.status });
+        return err(c, "VALIDATION", "could not read that Letterboxd watchlist", { code });
+      }
+      throw e;
+    }
+
+    const [updated] = await db
+      .update(users)
+      .set({ letterboxdUsername: username, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!updated) return err(c, "NOT_FOUND", "user not found");
+    return ok(c, { user: toUserShape(updated), filmCount });
+  },
+);
+
+/** Disconnect Letterboxd — clears the username and the cached watchlist. */
+userRoutes.delete("/me/letterboxd", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb();
+  const [updated] = await db
+    .update(users)
+    .set({ letterboxdUsername: null, letterboxdSyncedAt: null, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning();
+  if (!updated) return err(c, "NOT_FOUND", "user not found");
+  await db.delete(letterboxdWatchlistFilms).where(eq(letterboxdWatchlistFilms.userId, userId));
   return ok(c, { user: toUserShape(updated) });
 });
 

@@ -33,6 +33,15 @@ export const users = pgTable(
      * `DELETE /v1/users/me/sessions` endpoint. NULL = never revoked.
      */
     sessionsInvalidatedAt: timestamp("sessions_invalidated_at", { withTimezone: true }),
+    /**
+     * Account-level Letterboxd username (lowercase, as it appears in
+     * `letterboxd.com/<username>/`). Set via `PUT /v1/users/me/letterboxd`,
+     * reused by every Letterboxd-match list the user belongs to.
+     * NULL = not connected.
+     */
+    letterboxdUsername: text("letterboxd_username"),
+    /** When the user's cached watchlist (`letterboxd_watchlist_films`) was last refreshed. */
+    letterboxdSyncedAt: timestamp("letterboxd_synced_at", { withTimezone: true }),
   },
   (t) => ({
     emailLowerIdx: uniqueIndex("users_email_lower_idx")
@@ -197,6 +206,13 @@ export const items = pgTable(
      */
     scoreRegex: text("score_regex"),
     scoreDirection: text("score_direction"),
+    /**
+     * Suggestion lifecycle on Letterboxd-match lists (`letterboxd` module).
+     * `'pending'` = suggested but not yet accepted by another member — the
+     * item renders in the suggestions section, outside the ranked list.
+     * NULL = a regular item (either never suggested, or promoted on accept).
+     */
+    suggestionState: text("suggestion_state"),
   },
   (t) => ({
     listIdx: index("items_list_idx").on(t.listId),
@@ -390,6 +406,55 @@ export const itemScores = pgTable(
   }),
 );
 
+/**
+ * Per-user cached Letterboxd watchlist (Letterboxd-match lists). Replaced
+ * wholesale on each watchlist sync; rows are keyed by the canonical
+ * Letterboxd film slug, which is stable across users — overlap between
+ * members is a slug-equality join, no TMDB enrichment needed until a film
+ * actually enters a list.
+ */
+export const letterboxdWatchlistFilms = pgTable(
+  "letterboxd_watchlist_films",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    filmSlug: text("film_slug").notNull(),
+    /** Display title as scraped from the watchlist page (may be null on odd markup). */
+    title: text("title"),
+    year: integer("year"),
+    syncedAt: timestamp("synced_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.filmSlug] }),
+    slugIdx: index("letterboxd_watchlist_films_slug_idx").on(t.filmSlug),
+  }),
+);
+
+/**
+ * Per-member acceptance of a suggested item (Letterboxd-match lists). The
+ * suggester gets a row at suggest time; the first row from a *different*
+ * member promotes the item out of `suggestion_state = 'pending'`. Rows are
+ * kept after promotion — they power the "who's in" badge, and the watchlist
+ * cache join verifies whether the member actually added the film on
+ * Letterboxd.
+ */
+export const itemAcceptances = pgTable(
+  "item_acceptances",
+  {
+    itemId: uuid("item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.itemId, t.userId] }),
+  }),
+);
+
 export const rateLimits = pgTable(
   "rate_limits",
   {
@@ -416,3 +481,5 @@ export type DbMetadataCache = typeof metadataCache.$inferSelect;
 export type DbRateLimit = typeof rateLimits.$inferSelect;
 export type DbListSource = typeof listSources.$inferSelect;
 export type DbItemScore = typeof itemScores.$inferSelect;
+export type DbLetterboxdWatchlistFilm = typeof letterboxdWatchlistFilms.$inferSelect;
+export type DbItemAcceptance = typeof itemAcceptances.$inferSelect;

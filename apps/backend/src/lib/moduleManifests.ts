@@ -95,6 +95,22 @@ const MODULE_MANIFESTS: Record<ModuleName, ModuleManifest> = {
       ];
     },
   },
+  letterboxd: {
+    name: "letterboxd",
+    inspectRemoval: async (listId, db) => {
+      // Pending suggestions are the data at risk: without the module they
+      // surface as regular items and lose the accept flow.
+      const count = await countItemsWith(listId, db, sql`suggestion_state = 'pending'`);
+      if (count === 0) return [];
+      return [
+        {
+          code: MODULE_REMOVAL_WARNINGS.letterboxd,
+          message: `${count} pending suggestion${count === 1 ? "" : "s"} will become regular items.`,
+          affectedCount: count,
+        },
+      ];
+    },
+  },
 };
 
 export async function inspectModuleChange(args: {

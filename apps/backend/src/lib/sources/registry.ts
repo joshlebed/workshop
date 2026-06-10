@@ -16,6 +16,7 @@ import type { SourceKind } from "@workshop/shared/sourceKinds";
 import type { Context } from "hono";
 import type { DbClient } from "../sql.js";
 import { previewLetterboxdList, syncLetterboxdListSource } from "./letterboxdList.js";
+import { previewLetterboxdMatch, syncLetterboxdMatchSource } from "./letterboxdMatch.js";
 import { previewSpotifyPlaylist, syncSpotifyPlaylistSource } from "./spotifyPlaylist.js";
 
 interface PreviewResult {
@@ -82,6 +83,21 @@ const DISPATCH: Record<SourceKind, SourceDispatch> = {
         letterboxdListSlug: string;
       };
       return await syncLetterboxdListSource({ listId, userId, config: cfg, db });
+    },
+  },
+  letterboxd_match: {
+    preview: async (c, _raw) => {
+      // No config to validate — the source derives everything from the
+      // list's members at sync time.
+      const result = await previewLetterboxdMatch(c);
+      return {
+        ok: true,
+        config: result.config as Record<string, unknown>,
+        preview: result.preview as unknown as PreviewResult["preview"],
+      };
+    },
+    sync: async ({ listId, userId, config, db }) => {
+      return await syncLetterboxdMatchSource({ listId, userId, config, db });
     },
   },
 };

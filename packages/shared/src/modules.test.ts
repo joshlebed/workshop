@@ -9,8 +9,8 @@ import {
 } from "./modules.js";
 
 describe("module-name helpers", () => {
-  it("MODULE_NAMES contains the core four", () => {
-    expect([...MODULE_NAMES]).toEqual(["todo", "ranking", "leaderboard", "sources"]);
+  it("MODULE_NAMES contains the registered modules", () => {
+    expect([...MODULE_NAMES]).toEqual(["todo", "ranking", "leaderboard", "sources", "letterboxd"]);
   });
 
   it("isModuleName accepts every registered name", () => {

@@ -11,6 +11,7 @@ import { activityRoutes } from "./routes/v1/activity.js";
 import { authRoutes } from "./routes/v1/auth.js";
 import { inviteRoutes, publicInviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
+import { itemAcceptRoutes, listLetterboxdRoutes } from "./routes/v1/letterboxd.js";
 import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
 import { listRoutes, publicListRoutes } from "./routes/v1/lists.js";
 import { memberRoutes } from "./routes/v1/members.js";
@@ -117,8 +118,10 @@ export function buildApp() {
   app.route("/v1/lists", memberRoutes);
   app.route("/v1/lists", listScoresRoutes);
   app.route("/v1/lists", listViewRoutes);
+  app.route("/v1/lists", listLetterboxdRoutes);
   app.route("/v1/items", itemRoutes);
   app.route("/v1/items", itemScoreRoutes);
+  app.route("/v1/items", itemAcceptRoutes);
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/activity", activityRoutes);

@@ -2,7 +2,7 @@
 // active. Each module is a pure string identifier; the DB stores names and
 // the app interprets them.
 
-export const MODULE_NAMES = ["todo", "ranking", "leaderboard", "sources"] as const;
+export const MODULE_NAMES = ["todo", "ranking", "leaderboard", "sources", "letterboxd"] as const;
 
 export type ModuleName = (typeof MODULE_NAMES)[number];
 
@@ -30,6 +30,7 @@ export const MODULE_REMOVAL_WARNINGS = {
   ranking: "ranking.hide_order",
   leaderboard: "leaderboard.hide_scores",
   sources: "sources.deactivate_sources",
+  letterboxd: "letterboxd.hide_match",
 } as const satisfies Record<ModuleName, string>;
 
 export type ModuleWarningCode = (typeof MODULE_REMOVAL_WARNINGS)[ModuleName];
@@ -85,6 +86,12 @@ export function formatConfigWarning(warning: ConfigWarning): PrettyWarningCopy {
       return {
         headline: `Stop syncing ${count} attached ${plural(count, "source", "sources")}?`,
         detail: "Items already imported stay. Re-enable Sources to resume syncing.",
+      };
+    case MODULE_REMOVAL_WARNINGS.letterboxd:
+      return {
+        headline: `Turn ${count} pending ${plural(count, "suggestion", "suggestions")} into regular items?`,
+        detail:
+          "Watchlist matching stops and suggestions lose their accept flow. Re-enable Letterboxd to bring it back.",
       };
     default:
       return { headline: "Heads up", detail: warning.message };

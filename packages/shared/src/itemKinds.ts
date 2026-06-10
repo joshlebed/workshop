@@ -25,6 +25,13 @@ const movieContent = z
     tmdbId: optionalString(32),
     /** Original Letterboxd film URL — kept on the row for provenance. */
     letterboxdUrl: optionalString(2048),
+    /**
+     * Canonical Letterboxd film slug (`letterboxd.com/film/<slug>/`). Set by
+     * the Letterboxd match sync + suggestion flows so read paths can join an
+     * item against members' cached watchlists without re-deriving the slug
+     * from `letterboxdUrl`.
+     */
+    letterboxdSlug: optionalString(256),
     posterUrl: optionalString(2048),
     year: optionalInt(1800, 2200),
     runtimeMinutes: optionalInt(0, 10_000),

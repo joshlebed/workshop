@@ -27,6 +27,15 @@ export interface ListTemplate {
     kind: SourceKind;
     promptCopy: string;
   };
+  /**
+   * A source attached automatically at create time with a fixed config —
+   * no user prompt. Used by templates whose source derives everything from
+   * the list itself (e.g. `letterboxd_match` reads members' watchlists).
+   */
+  autoSource?: {
+    kind: SourceKind;
+    config: Record<string, never>;
+  };
 }
 
 export const LIST_TEMPLATES: readonly ListTemplate[] = [
@@ -124,6 +133,22 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     requiresSource: {
       kind: "letterboxd_list",
       promptCopy: "Paste a public Letterboxd list URL. Workshop mirrors it as a watchlist.",
+    },
+  },
+  {
+    id: "letterboxd_match",
+    displayName: "Letterboxd Match",
+    description:
+      "Finds films you and your friends all want to watch, straight from your Letterboxd watchlists.",
+    defaults: {
+      itemKind: "movie",
+      modules: ["ranking", "sources", "letterboxd"],
+      emoji: "🍿",
+      color: "grape",
+    },
+    autoSource: {
+      kind: "letterboxd_match",
+      config: {},
     },
   },
   {

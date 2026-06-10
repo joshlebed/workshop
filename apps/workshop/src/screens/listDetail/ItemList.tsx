@@ -51,6 +51,7 @@ export function ItemList({
   showProvenance,
   selfId,
   playedByItem,
+  letterboxdBadgeByItem,
   totalPlayers,
   isGameKind,
   viewingToday,
@@ -103,11 +104,13 @@ export function ItemList({
   // default provenance.
   const resolveProvenanceOverride = useCallback(
     (item: Item): string | undefined => {
+      const letterboxdBadge = letterboxdBadgeByItem?.get(item.id);
+      if (letterboxdBadge) return letterboxdBadge;
       if (!playedByItem || totalPlayers == null) return undefined;
       const played = playedByItem.get(item.id) ?? 0;
       return `${played} of ${totalPlayers} played today`;
     },
-    [playedByItem, totalPlayers],
+    [playedByItem, totalPlayers, letterboxdBadgeByItem],
   );
 
   const handleOrderedReorder = useCallback(

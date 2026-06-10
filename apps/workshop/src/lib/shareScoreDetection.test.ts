@@ -197,7 +197,9 @@ describe("flattenListItems", () => {
     const c = makeItem("c", "list", "C", "2026-05-12T12:00:00.000Z");
 
     expect(
-      flattenListItems({ ordered: [a], unordered: [b], completed: [c] }).map((i) => i.id),
+      flattenListItems({ ordered: [a], unordered: [b], completed: [c], suggested: [] }).map(
+        (i) => i.id,
+      ),
     ).toEqual(["a", "b", "c"]);
   });
 });

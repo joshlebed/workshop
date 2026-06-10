@@ -32,6 +32,16 @@ export const letterboxdListConfigSchema = z
 
 export type LetterboxdListConfig = z.infer<typeof letterboxdListConfigSchema>;
 
+/**
+ * The Letterboxd match source has no per-source config — the data it syncs
+ * is derived from the list's members (each member's account-level Letterboxd
+ * username + their cached watchlist). An empty strict object keeps the
+ * config column honest.
+ */
+export const letterboxdMatchConfigSchema = z.object({}).strict();
+
+export type LetterboxdMatchConfig = z.infer<typeof letterboxdMatchConfigSchema>;
+
 export const SOURCE_KINDS = {
   spotify_playlist: {
     kind: "spotify_playlist",
@@ -49,11 +59,23 @@ export const SOURCE_KINDS = {
     // kind tells us what shape the content has."
     producesItemKind: "movie",
   } satisfies SourceKindManifest<LetterboxdListConfig>,
+  letterboxd_match: {
+    kind: "letterboxd_match",
+    displayName: "Letterboxd Match",
+    configSchema: letterboxdMatchConfigSchema,
+    // Films on ≥2 members' Letterboxd watchlists, enriched via TMDB into
+    // plain `movie` items (same shape as letterboxd_list output).
+    producesItemKind: "movie",
+  } satisfies SourceKindManifest<LetterboxdMatchConfig>,
 } as const;
 
 export type SourceKind = keyof typeof SOURCE_KINDS;
 
-export const SOURCE_KIND_NAMES = ["spotify_playlist", "letterboxd_list"] as const;
+export const SOURCE_KIND_NAMES = [
+  "spotify_playlist",
+  "letterboxd_list",
+  "letterboxd_match",
+] as const;
 
 export function isSourceKind(value: unknown): value is SourceKind {
   return typeof value === "string" && (SOURCE_KIND_NAMES as readonly string[]).includes(value);

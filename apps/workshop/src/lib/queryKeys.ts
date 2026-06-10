@@ -52,4 +52,8 @@ export const queryKeys = {
   sources: {
     forList: (listId: string) => ["sources", "forList", listId] as const,
   },
+  letterboxd: {
+    /** Per-list member connection + sync status (`GET /v1/lists/:id/letterboxd`). */
+    status: (listId: string) => ["letterboxd", "status", listId] as const,
+  },
 } as const;

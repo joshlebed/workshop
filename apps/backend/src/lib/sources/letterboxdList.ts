@@ -246,9 +246,9 @@ interface TmdbSearchResponse {
 
 const TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w500";
 
-type Fetcher = typeof fetch;
+export type Fetcher = typeof fetch;
 
-async function searchTmdbMovie(
+export async function searchTmdbMovie(
   query: string,
   year: number | null,
   apiKey: string,
@@ -283,7 +283,7 @@ async function searchTmdbMovie(
 
 // --- Scrape wire ---
 
-async function fetchListHtml(url: string, fetcher: Fetcher = fetch): Promise<string> {
+export async function fetchListHtml(url: string, fetcher: Fetcher = fetch): Promise<string> {
   const parsed = new URL(url);
   // SSRF guard: even though we limit to letterboxd.com, the URL still resolves
   // through DNS and we don't want a poisoned record to hand us a private IP.
@@ -448,6 +448,7 @@ async function insertFilmIfMissing(args: {
   const content: Record<string, unknown> = {
     source: enriched ? "tmdb" : "letterboxd",
     letterboxdUrl: scraped.letterboxdUrl,
+    letterboxdSlug: scraped.slug,
   };
   if (enriched) {
     content.sourceId = enriched.tmdbId;

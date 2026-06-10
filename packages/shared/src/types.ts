@@ -61,12 +61,20 @@ export type ActivityEventType =
   | "source_added"
   | "source_removed"
   | "source_updated"
-  | "source_synced";
+  | "source_synced"
+  | "item_suggested"
+  | "suggestion_accepted";
 
 export interface User {
   id: string;
   email: string | null;
   displayName: string | null;
+  /**
+   * Account-level Letterboxd username — set once in settings, reused by
+   * every Letterboxd-match list the user is a member of. `null` = not
+   * connected.
+   */
+  letterboxdUsername: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -265,6 +273,27 @@ export interface ListPreviewResponse {
 
 // --- Items ---
 
+/** One member's acceptance of a suggested film (Letterboxd-match lists). */
+export interface ItemAcceptance {
+  userId: string;
+  acceptedAt: string;
+}
+
+/**
+ * Per-item Letterboxd-match state, present only when the parent list has the
+ * `letterboxd` module enabled. Computed at read time against members' cached
+ * watchlists — never stored on the item row — so overlap badges always
+ * reflect the latest sync.
+ */
+export interface ItemLetterboxd {
+  /** Member userIds whose Letterboxd watchlist currently contains this film. */
+  watchlistOf: string[];
+  /** True while the item is a pending suggestion (not yet accepted). */
+  pending: boolean;
+  /** Members who accepted the suggestion (includes the suggester). */
+  acceptances: ItemAcceptance[];
+}
+
 export interface Item {
   id: string;
   listId: string;
@@ -274,6 +303,8 @@ export interface Item {
   note: string | null;
   content: ItemContent;
   position: number | null;
+  /** Letterboxd-match state — only set when the list's `letterboxd` module is on. */
+  letterboxd?: ItemLetterboxd;
   /**
    * Manual, kind-agnostic labels (spec §2.1) — normalized lowercase,
    * ≤40 chars, sorted alphabetically. Replaced as a set via
@@ -394,6 +425,12 @@ export interface ListItemsResponse {
   ordered: Item[];
   unordered: Item[];
   completed: Item[];
+  /**
+   * Pending suggestions on Letterboxd-match lists (`letterboxd` module).
+   * Empty on every other list — suggestions promote into ordered/unordered
+   * once another member accepts.
+   */
+  suggested: Item[];
 }
 
 export interface ItemResponse {
@@ -441,10 +478,60 @@ export interface LetterboxdListPreview {
   filmCount: number;
 }
 
-export type SourcePreview = SpotifyPlaylistPreview | LetterboxdListPreview;
+export interface LetterboxdMatchPreview {
+  kind: "letterboxd_match";
+}
+
+export type SourcePreview = SpotifyPlaylistPreview | LetterboxdListPreview | LetterboxdMatchPreview;
 
 export interface SourcePreviewResponse {
   preview: SourcePreview;
+}
+
+// --- Letterboxd match (letterboxd module) ---
+
+/**
+ * `PUT /v1/users/me/letterboxd` — connect (or change) the account-level
+ * Letterboxd username. Accepts a bare username or a profile/watchlist URL;
+ * the server normalizes, validates the watchlist is publicly reachable, and
+ * runs an initial watchlist sync inline.
+ */
+export interface ConnectLetterboxdRequest {
+  username: string;
+}
+
+export interface ConnectLetterboxdResponse {
+  user: User;
+  /** Films found on the public watchlist during the initial sync. */
+  filmCount: number;
+}
+
+/** One list member's Letterboxd connection state. */
+export interface LetterboxdMemberStatus {
+  userId: string;
+  displayName: string | null;
+  /** `null` = this member hasn't connected a Letterboxd account yet. */
+  letterboxdUsername: string | null;
+  /** Cached watchlist size from the member's last sync (0 if never synced). */
+  filmCount: number;
+  /** When the member's watchlist cache was last refreshed. */
+  syncedAt: string | null;
+}
+
+/** `GET /v1/lists/:id/letterboxd` — connection + sync status for the match list. */
+export interface LetterboxdStatusResponse {
+  members: LetterboxdMemberStatus[];
+  /** The `letterboxd_match` source row to pass to the sync endpoint; null if missing. */
+  sourceId: string | null;
+  lastSyncedAt: string | null;
+}
+
+/**
+ * `POST /v1/lists/:id/letterboxd/suggest` — bring a film from Letterboxd as
+ * a suggestion. Must be a film URL (`letterboxd.com/film/<slug>/`).
+ */
+export interface SuggestFilmRequest {
+  letterboxdUrl: string;
 }
 
 // --- Config preview / module changes ---

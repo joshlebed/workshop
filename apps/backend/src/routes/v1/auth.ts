@@ -33,6 +33,7 @@ function toUserShape(u: DbUser) {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
+    letterboxdUsername: u.letterboxdUsername,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
   };
