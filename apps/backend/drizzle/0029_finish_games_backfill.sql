@@ -3,9 +3,11 @@
 -- 1. Map any remaining score-backed leaderboard items, including archived
 --    historical rows that 0027 intentionally skipped for the live list view.
 -- 2. Re-copy mapped item_scores into canonical game_scores, idempotently.
--- 3. Make My Games contain every (user, game) with historical scores and order
---    score-backed games by per-user play count, most played first. Friend edges
---    are intentionally untouched; users stay solo-only until they accept/share
+-- 3. Make My Games contain every (user, game) with historical scores and seed
+--    score-backed game positions by per-user play count, most played first.
+--    This is only the initial backfill order; after this migration, app reads
+--    use user_games.position and user moves stick. Friend edges are
+--    intentionally untouched; users stay solo-only until they accept/share
 --    personal friend invites.
 
 WITH catalog(normalized_url, score_regex, score_direction, identify_pattern) AS (

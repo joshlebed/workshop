@@ -66,8 +66,8 @@ guard. Don't blind-cast.
 A leaderboard item's `score_regex` / `score_direction` (used to parse a numeric
 `score_value` out of the pasted share) and `game_id` are set two ways: migration
 `0027_migrate_geo_games_leaderboard.sql` for existing rows, `0029_finish_games_backfill.sql`
-for score-backed historical rows and My Games play-count ordering, **and** the item create/edit
-plus score upsert paths (`routes/v1/items.ts`, `routes/v1/scores.ts`) through
+for score-backed historical rows and the one-time My Games play-count position seed, **and**
+the item create/edit plus score upsert paths (`routes/v1/items.ts`, `routes/v1/scores.ts`) through
 `lib/gameCatalog.ts`. Mapped leaderboard items keep the old list/item URLs but read/write
 `game_scores`, so the `(game_id,user_id,period_key)` primary key enforces one score per
 player per game per day across both the list and Games tab. Unmapped legacy items still fall
