@@ -40,4 +40,12 @@ describe("session tokens", () => {
     expect(payload?.iat).toBeGreaterThanOrEqual(before);
     expect(payload?.iat).toBeLessThanOrEqual(after);
   });
+
+  it("can include the impersonating admin on impersonated sessions", () => {
+    const payload = verifySession(signSession("target-user", { impersonatorUserId: "admin-user" }));
+    expect(payload).toMatchObject({
+      userId: "target-user",
+      impersonatorUserId: "admin-user",
+    });
+  });
 });

@@ -1,9 +1,10 @@
-import type { AuthProvider } from "@workshop/shared";
+import type { AuthImpersonation, AuthProvider } from "@workshop/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbUser, userIdentities, users } from "../../db/schema.js";
+import { auditUserLabel, isAdminUser, userLabel } from "../../lib/admin.js";
 import { getConfig } from "../../lib/config.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { logger } from "../../lib/logger.js";
@@ -28,15 +29,31 @@ const googleBodySchema = z.object({
   idToken: z.string().min(1),
 });
 
+const impersonateBodySchema = z.object({
+  target: z.string().trim().min(1, "target required").max(320, "target too long"),
+});
+
+const targetEmailSchema = z.string().email();
+const targetUuidSchema = z.string().uuid();
+
 function toUserShape(u: DbUser) {
   return {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
+    isAdmin: isAdminUser(u),
     avatarUrl: u.avatarUrl,
     letterboxdUsername: u.letterboxdUsername,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
+  };
+}
+
+function toImpersonationShape(admin: DbUser): AuthImpersonation {
+  return {
+    adminUserId: admin.id,
+    adminEmail: admin.email,
+    adminDisplayName: admin.displayName,
   };
 }
 
@@ -122,10 +139,49 @@ export function buildSignInNotification(
   provider: AuthProvider,
   createdUser: boolean,
 ): { content: string; kind: string } {
-  const label = user.displayName ?? user.email ?? user.id;
+  const label = userLabel(user);
   return createdUser
     ? { content: `:wave: new signup — ${label} via ${provider}`, kind: "signup" }
     : { content: `:bust_in_silhouette: signed in — ${label} via ${provider}`, kind: "signin" };
+}
+
+export function buildImpersonationNotification(
+  admin: Pick<DbUser, "id" | "email" | "displayName">,
+  target: Pick<DbUser, "id" | "email" | "displayName">,
+): { content: string; kind: string } {
+  return {
+    content: `:mag: impersonation started: ${auditUserLabel(admin)} -> ${auditUserLabel(target)}`,
+    kind: "impersonation",
+  };
+}
+
+async function userById(userId: string): Promise<DbUser | null> {
+  const db = getDb();
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  return user ?? null;
+}
+
+async function targetUserByInput(
+  target: string,
+): Promise<
+  { ok: true; user: DbUser | null } | { ok: false; reason: "invalid_email" | "invalid_user_id" }
+> {
+  const db = getDb();
+  if (target.includes("@")) {
+    const parsed = targetEmailSchema.safeParse(target);
+    if (!parsed.success) return { ok: false, reason: "invalid_email" };
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = lower(${parsed.data})`)
+      .limit(1);
+    return { ok: true, user: user ?? null };
+  }
+
+  const parsed = targetUuidSchema.safeParse(target);
+  if (!parsed.success) return { ok: false, reason: "invalid_user_id" };
+  const [user] = await db.select().from(users).where(eq(users.id, parsed.data)).limit(1);
+  return { ok: true, user: user ?? null };
 }
 
 // Ping the operator channel on every sign-in (new or returning). The auth event
@@ -185,6 +241,7 @@ authRoutes.post("/apple", async (c) => {
     user: toUserShape(user),
     token,
     needsDisplayName: !user.displayName,
+    impersonation: null,
   });
 });
 
@@ -219,6 +276,7 @@ authRoutes.post("/google", async (c) => {
     user: toUserShape(user),
     token,
     needsDisplayName: !user.displayName,
+    impersonation: null,
   });
 });
 
@@ -262,15 +320,84 @@ authRoutes.post("/dev", async (c) => {
     user: toUserShape(user),
     token,
     needsDisplayName: !user.displayName,
+    impersonation: null,
   });
 });
 
 authRoutes.post("/signout", requireAuth, (c) => ok(c, { ok: true }));
 
+authRoutes.post("/impersonate", requireAuth, async (c) => {
+  const parsed = await parseJsonBody(c, impersonateBodySchema);
+  if (!parsed.ok) return parsed.response;
+
+  const adminUserId = c.get("impersonatorUserId") ?? c.get("userId");
+  const admin = await userById(adminUserId);
+  if (!admin) return err(c, "UNAUTHORIZED", "invalid or expired session");
+  if (!isAdminUser(admin)) return err(c, "FORBIDDEN", "admin access required");
+
+  const targetResult = await targetUserByInput(parsed.data.target);
+  if (!targetResult.ok) {
+    return err(
+      c,
+      "VALIDATION",
+      targetResult.reason === "invalid_email"
+        ? "invalid target email"
+        : "target must be an email or user id",
+      { code: "INVALID_IMPERSONATION_TARGET" },
+    );
+  }
+  const target = targetResult.user;
+  if (!target) return err(c, "NOT_FOUND", "user not found");
+  if (target.id === c.get("userId")) {
+    return err(c, "VALIDATION", "already signed in as that user", {
+      code: "ALREADY_IMPERSONATING_TARGET",
+    });
+  }
+
+  logger.warn("admin impersonation started", {
+    adminUserId: admin.id,
+    targetUserId: target.id,
+    targetEmail: target.email,
+  });
+  const notification = buildImpersonationNotification(admin, target);
+  await notifyDiscord(notification.content, { kind: notification.kind });
+
+  const token = signSession(target.id, { impersonatorUserId: admin.id });
+  return ok(c, {
+    user: toUserShape(target),
+    token,
+    needsDisplayName: !target.displayName,
+    impersonation: toImpersonationShape(admin),
+  });
+});
+
+authRoutes.post("/impersonation/stop", requireAuth, async (c) => {
+  const adminUserId = c.get("impersonatorUserId");
+  if (!adminUserId) {
+    return err(c, "CONFLICT", "not impersonating", { code: "NOT_IMPERSONATING" });
+  }
+
+  const admin = await userById(adminUserId);
+  if (!admin) return err(c, "UNAUTHORIZED", "invalid or expired session");
+
+  logger.info("admin impersonation stopped", {
+    adminUserId: admin.id,
+    targetUserId: c.get("userId"),
+  });
+  const token = signSession(admin.id);
+  return ok(c, {
+    user: toUserShape(admin),
+    token,
+    needsDisplayName: !admin.displayName,
+    impersonation: null,
+  });
+});
+
 authRoutes.get("/me", requireAuth, async (c) => {
   const userId = c.get("userId");
-  const db = getDb();
-  const [u] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const u = await userById(userId);
   if (!u) return err(c, "NOT_FOUND", "user not found");
-  return ok(c, { user: toUserShape(u) });
+  const impersonatorUserId = c.get("impersonatorUserId");
+  const admin = impersonatorUserId ? await userById(impersonatorUserId) : null;
+  return ok(c, { user: toUserShape(u), impersonation: admin ? toImpersonationShape(admin) : null });
 });

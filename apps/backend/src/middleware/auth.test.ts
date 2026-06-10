@@ -15,7 +15,9 @@ const { isSessionRevoked } = await import("../lib/sessionRevocation.js");
 function buildAppForTest() {
   const app = new Hono();
   app.use("/protected", requireAuth);
-  app.get("/protected", (c) => ok(c, { userId: c.get("userId") }));
+  app.get("/protected", (c) =>
+    ok(c, { userId: c.get("userId"), impersonatorUserId: c.get("impersonatorUserId") }),
+  );
   return app;
 }
 
@@ -76,6 +78,29 @@ describe("requireAuth middleware", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ userId: "user-abc" });
     expect(isSessionRevoked).toHaveBeenCalledWith("user-abc", expect.any(Number));
+  });
+
+  it("accepts an impersonated token and checks both users for revocation", async () => {
+    const token = signSession("target-user", { impersonatorUserId: "admin-user" });
+    const res = await buildAppForTest().request("/protected", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      userId: "target-user",
+      impersonatorUserId: "admin-user",
+    });
+    expect(isSessionRevoked).toHaveBeenCalledWith("target-user", expect.any(Number));
+    expect(isSessionRevoked).toHaveBeenCalledWith("admin-user", expect.any(Number));
+  });
+
+  it("rejects an impersonated token when the admin session is revoked", async () => {
+    vi.mocked(isSessionRevoked).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const token = signSession("target-user", { impersonatorUserId: "admin-user" });
+    const res = await buildAppForTest().request("/protected", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(401);
   });
 
   it("rejects a token that the revocation check flags as revoked", async () => {
