@@ -8,14 +8,20 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { itemScores, items, lists, users } from "../../db/schema.js";
+import { gameScores, itemScores, items, lists } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
-import { matchGameScoreRegex, SCORE_COUNT_PREFIX } from "../../lib/gameScoreRegex.js";
+import {
+  catalogEntryForKey,
+  ensureLeaderboardItemGame,
+  normalizeScoreDirection,
+  parseScoreValue as tryParseScoreValue,
+} from "../../lib/gameCatalog.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule } from "../../lib/moduleGate.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { executeRows } from "../../lib/sql.js";
+import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireItemMember, requireListMember } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
@@ -41,65 +47,19 @@ export const __test = {
   assignRanks,
 };
 
-/**
- * Pulls a numeric score out of pasted share text.
- *
- * - When `pattern` is provided (the per-item `score_regex`), we use it
- *   case-insensitively. If the pattern has a capture group, we read group 1;
- *   otherwise we read the full match. This is the path most game items take
- *   once the backfill is in.
- * - Without a pattern, we fall back to "first number anywhere in the text"
- *   for legacy items + items the backfill didn't recognize. That's wrong for
- *   most share formats (it grabs the date, the puzzle number, etc.), but
- *   matches existing behavior and never crashes.
- * - Returns null on invalid regex or no match.
- */
-function tryParseScoreValue(raw: string, pattern: string | null = null): number | null {
-  if (pattern && pattern.length > 0) {
-    // "count:<pattern>" → score is the number of global matches (Daily Tens
-    // counts 🏆). 0 (none correct) is a valid score, distinct from a no-match
-    // null. A malformed inner pattern throws and falls through to the legacy
-    // fallback, mirroring the capture branch below.
-    if (pattern.startsWith(SCORE_COUNT_PREFIX)) {
-      try {
-        const re = new RegExp(pattern.slice(SCORE_COUNT_PREFIX.length), "gu");
-        return (raw.match(re) ?? []).length;
-      } catch {
-        // Bad count pattern — fall through to default behavior.
-      }
-    } else {
-      try {
-        const re = new RegExp(pattern, "i");
-        const match = raw.match(re);
-        if (match) {
-          const captured = match[1] ?? match[0];
-          const n = Number(captured);
-          if (Number.isFinite(n)) return n;
-        }
-        return null;
-      } catch {
-        // Bad regex stored on the item — fall through to default behavior so we
-        // don't 500. The backfill validates patterns before writing them.
-      }
-    }
-  }
-  const match = raw.match(/-?\d+(\.\d+)?/);
-  if (!match) return null;
-  const n = Number(match[0]);
-  return Number.isFinite(n) ? n : null;
-}
-
-function toScoreShape(row: {
-  itemId: string;
-  userId: string;
-  periodKey: string;
-  scoreValue: string | null;
-  scoreRaw: string;
-  createdAt: Date | string;
-  updatedAt: Date | string;
-}): ItemScore {
+function toScoreShape(
+  itemId: string,
+  row: {
+    userId: string;
+    periodKey: string;
+    scoreValue: string | null;
+    scoreRaw: string;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+  },
+): ItemScore {
   return {
-    itemId: row.itemId,
+    itemId,
     userId: row.userId,
     periodKey: row.periodKey,
     scoreValue: row.scoreValue === null ? null : Number(row.scoreValue),
@@ -152,16 +112,13 @@ function assignRanks<T extends { scoreValue: number | null }>(
   return ranked.map((r) => r.out);
 }
 
-function normalizeDirection(value: string | null | undefined): "asc" | "desc" {
-  return value === "asc" ? "asc" : "desc";
-}
-
 export const itemScoreRoutes = new Hono();
 itemScoreRoutes.use("*", requireAuth);
 
 interface ItemScoreContext {
   listId: string;
   modules: string[];
+  gameId: string | null;
   scoreRegex: string | null;
   scoreDirection: "asc" | "desc";
   // Searchable fields used to self-heal a missing `scoreRegex` on first
@@ -178,6 +135,7 @@ async function getItemScoreContext(itemId: string): Promise<ItemScoreContext | n
     .select({
       listId: items.listId,
       modules: lists.modules,
+      gameId: items.gameId,
       scoreRegex: items.scoreRegex,
       scoreDirection: items.scoreDirection,
       title: items.title,
@@ -193,13 +151,27 @@ async function getItemScoreContext(itemId: string): Promise<ItemScoreContext | n
   return {
     listId: row.listId,
     modules: (row.modules ?? []) as string[],
+    gameId: row.gameId,
     scoreRegex: row.scoreRegex,
-    scoreDirection: normalizeDirection(row.scoreDirection),
+    scoreDirection: normalizeScoreDirection(row.scoreDirection),
     title: row.title,
     url: row.url,
     siteName: typeof content.siteName === "string" ? content.siteName : null,
     sourceId: typeof content.sourceId === "string" ? content.sourceId : null,
   };
+}
+
+async function resolveItemGameMapping(itemId: string, ctx: ItemScoreContext) {
+  return ensureLeaderboardItemGame({
+    itemId,
+    gameId: ctx.gameId,
+    scoreRegex: ctx.scoreRegex,
+    scoreDirection: ctx.scoreDirection,
+    title: ctx.title,
+    url: ctx.url,
+    siteName: ctx.siteName,
+    sourceId: ctx.sourceId,
+  });
 }
 
 itemScoreRoutes.put(
@@ -223,22 +195,8 @@ itemScoreRoutes.put(
 
     const db = getDb();
     const now = new Date();
-    // Self-heal a missing score_regex: a leaderboard game created after the
-    // one-time backfill has no regex, so the "first number anywhere" fallback
-    // would store junk (e.g. the `dailytens.com/?ref=<id>` referral id) as the
-    // score. Detect the game from the item's fields, persist the regex so the
-    // ranking read path + future posts use it, and parse with it now.
-    let scoreRegex = ctx?.scoreRegex ?? null;
-    if (!scoreRegex && ctx) {
-      const detected = matchGameScoreRegex(ctx);
-      if (detected) {
-        scoreRegex = detected.scoreRegex;
-        await db
-          .update(items)
-          .set({ scoreRegex: detected.scoreRegex, scoreDirection: detected.scoreDirection })
-          .where(eq(items.id, itemId));
-      }
-    }
+    const mapping = ctx ? await resolveItemGameMapping(itemId, ctx) : null;
+    const scoreRegex = mapping?.scoreRegex ?? ctx?.scoreRegex ?? null;
     const value = tryParseScoreValue(parsed.data.scoreRaw, scoreRegex);
 
     // Diagnostic: capture the shape of what actually reached us so a scoreless
@@ -267,6 +225,31 @@ itemScoreRoutes.put(
       score_value: value,
     });
 
+    if (mapping) {
+      const [row] = await db
+        .insert(gameScores)
+        .values({
+          gameId: mapping.game.id,
+          userId,
+          periodKey: parsed.data.periodKey,
+          scoreRaw: parsed.data.scoreRaw,
+          scoreValue: value === null ? null : String(value),
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [gameScores.gameId, gameScores.userId, gameScores.periodKey],
+          set: {
+            scoreRaw: parsed.data.scoreRaw,
+            scoreValue: value === null ? null : String(value),
+            updatedAt: now,
+          },
+        })
+        .returning();
+      if (!row) return err(c, "INTERNAL", "score upsert returned no row");
+      await addToMyGames(userId, mapping.game.id, db);
+      return ok(c, { score: toScoreShape(itemId, row) });
+    }
+
     const [row] = await db
       .insert(itemScores)
       .values({
@@ -287,7 +270,7 @@ itemScoreRoutes.put(
       })
       .returning();
     if (!row) return err(c, "INTERNAL", "score upsert returned no row");
-    return ok(c, { score: toScoreShape(row) });
+    return ok(c, { score: toScoreShape(itemId, row) });
   },
 );
 
@@ -303,6 +286,20 @@ itemScoreRoutes.delete("/:id/scores", requireItemMember, async (c) => {
   if (!parsed.success) return err(c, "VALIDATION", "periodKey query param required");
 
   const db = getDb();
+  const mapping = ctx ? await resolveItemGameMapping(itemId, ctx) : null;
+  if (mapping) {
+    await db
+      .delete(gameScores)
+      .where(
+        and(
+          eq(gameScores.gameId, mapping.game.id),
+          eq(gameScores.userId, userId),
+          eq(gameScores.periodKey, parsed.data),
+        ),
+      );
+    return ok(c, { ok: true });
+  }
+
   await db
     .delete(itemScores)
     .where(
@@ -329,7 +326,22 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
   const db = getDb();
   // Sort: players who posted a score come first, ranked by score_value in
   // the item's direction; players who haven't played come last, by name.
-  const direction = ctx.scoreDirection;
+  const mapping = await resolveItemGameMapping(itemId, ctx);
+  const direction = mapping?.scoreDirection ?? ctx.scoreDirection;
+  const regex = mapping?.scoreRegex ?? ctx.scoreRegex;
+  const scoreJoin = mapping
+    ? sql`
+      LEFT JOIN game_scores s
+        ON s.game_id = ${mapping.game.id}
+        AND s.user_id = m.user_id
+        AND s.period_key = ${parsed.data}
+    `
+    : sql`
+      LEFT JOIN item_scores s
+        ON s.item_id = ${itemId}
+        AND s.user_id = m.user_id
+        AND s.period_key = ${parsed.data}
+    `;
   const rows = await executeRows<{
     user_id: string;
     display_name: string | null;
@@ -347,10 +359,7 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
         s.updated_at
       FROM list_members m
       LEFT JOIN users u ON u.id = m.user_id
-      LEFT JOIN item_scores s
-        ON s.item_id = ${itemId}
-        AND s.user_id = m.user_id
-        AND s.period_key = ${parsed.data}
+      ${scoreJoin}
       WHERE m.list_id = ${ctx.listId}
       ORDER BY
         (s.score_value IS NULL),
@@ -368,7 +377,7 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
     scoreValue: r.score_value === null ? null : Number(r.score_value),
     updatedAt: toIsoOrNull(r.updated_at),
   }));
-  const entries: LeaderboardEntry[] = ctx.scoreRegex
+  const entries: LeaderboardEntry[] = regex
     ? assignRanks(baseEntries, direction)
     : baseEntries.map((e) => ({ ...e, rank: null }));
 
@@ -399,21 +408,64 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
   const gate = requireModule(c, parent.modules ?? [], "leaderboard");
   if (gate) return gate;
 
-  const rows = await db
-    .select({
-      itemId: itemScores.itemId,
-      userId: itemScores.userId,
-      scoreRaw: itemScores.scoreRaw,
-      scoreValue: itemScores.scoreValue,
-      updatedAt: itemScores.updatedAt,
-      displayName: users.displayName,
-      scoreRegex: items.scoreRegex,
-      scoreDirection: items.scoreDirection,
-    })
-    .from(itemScores)
-    .innerJoin(items, and(eq(items.id, itemScores.itemId), isNull(items.archivedAt)))
-    .leftJoin(users, eq(users.id, itemScores.userId))
-    .where(and(eq(items.listId, listId), eq(itemScores.periodKey, parsed.data)));
+  const rows = await executeRows<{
+    item_id: string;
+    user_id: string;
+    score_raw: string;
+    score_value: string | null;
+    updated_at: Date | string;
+    display_name: string | null;
+    score_regex: string | null;
+    score_direction: string | null;
+    game_key: string | null;
+    game_score_direction: string | null;
+  }>(
+    db,
+    sql`
+      SELECT
+        i.id AS item_id,
+        s.user_id,
+        s.score_raw,
+        s.score_value,
+        s.updated_at,
+        u.display_name,
+        i.score_regex,
+        i.score_direction,
+        g.game_key,
+        g.score_direction AS game_score_direction
+      FROM items i
+      INNER JOIN game_scores s
+        ON s.game_id = i.game_id
+        AND s.period_key = ${parsed.data}
+      LEFT JOIN games g ON g.id = i.game_id
+      LEFT JOIN users u ON u.id = s.user_id
+      WHERE i.list_id = ${listId}
+        AND i.archived_at IS NULL
+        AND i.game_id IS NOT NULL
+
+      UNION ALL
+
+      SELECT
+        i.id AS item_id,
+        s.user_id,
+        s.score_raw,
+        s.score_value,
+        s.updated_at,
+        u.display_name,
+        i.score_regex,
+        i.score_direction,
+        NULL::text AS game_key,
+        NULL::text AS game_score_direction
+      FROM item_scores s
+      INNER JOIN items i
+        ON i.id = s.item_id
+        AND i.archived_at IS NULL
+        AND i.game_id IS NULL
+      LEFT JOIN users u ON u.id = s.user_id
+      WHERE i.list_id = ${listId}
+        AND s.period_key = ${parsed.data}
+    `,
+  );
 
   // Group rows by item so we can rank each game's entries with that item's
   // direction. Items without a regex (no reliable score parse) get rank: null.
@@ -422,20 +474,23 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
     { direction: "asc" | "desc"; regex: string | null; entries: LeaderboardEntry[] }
   >();
   for (const r of rows) {
-    const existing = byItem.get(r.itemId) ?? {
-      direction: normalizeDirection(r.scoreDirection),
-      regex: r.scoreRegex,
+    const catalog = catalogEntryForKey(r.game_key);
+    const existing = byItem.get(r.item_id) ?? {
+      direction:
+        catalog?.scoreDirection ??
+        normalizeScoreDirection(r.game_score_direction ?? r.score_direction),
+      regex: catalog?.scoreRegex ?? r.score_regex,
       entries: [] as LeaderboardEntry[],
     };
     existing.entries.push({
-      userId: r.userId,
-      displayName: r.displayName,
-      scoreRaw: r.scoreRaw,
-      scoreValue: r.scoreValue === null ? null : Number(r.scoreValue),
-      updatedAt: toIsoString(r.updatedAt),
+      userId: r.user_id,
+      displayName: r.display_name,
+      scoreRaw: r.score_raw,
+      scoreValue: r.score_value === null ? null : Number(r.score_value),
+      updatedAt: toIsoString(r.updated_at),
       rank: null,
     });
-    byItem.set(r.itemId, existing);
+    byItem.set(r.item_id, existing);
   }
 
   const scoresByItem: Record<string, LeaderboardEntry[]> = {};

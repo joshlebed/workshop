@@ -679,7 +679,7 @@ export interface MarkActivityReadResponse {
   ok: true;
 }
 
-// --- Scores (leaderboard module, replaces game_scores) ---
+// --- Scores (leaderboard-list response shape; mapped games may be backed by game_scores) ---
 
 export interface ItemScore {
   itemId: string;

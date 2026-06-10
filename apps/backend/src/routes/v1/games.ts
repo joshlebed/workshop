@@ -1,6 +1,6 @@
 // Games surface (spec §3, G1a + G2a) — global catalog + "My Games" + scores.
-// Entirely separate from the Lists leaderboard: this file must never read or
-// write the old surface's tables (a test asserts the source stays clean).
+// Legacy leaderboard-list items now map into this catalog through items.game_id,
+// but this router still only owns the Games surface tables directly.
 // Standings cover `viewer ∪ friends_of(viewer)` (G2a) in the G1a shape.
 
 import type {
@@ -26,14 +26,16 @@ import { type DbGame, gameScores, games, userGames, users } from "../../db/schem
 import { getConfig } from "../../lib/config.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { friendsOf } from "../../lib/friends.js";
-import { appendUserGamePosition, moveUserGamePosition } from "../../lib/gamePositions.js";
 import {
-  GAME_REGEX_CATALOG,
-  matchGameScoreRegex,
-  SCORE_COUNT_PREFIX,
-} from "../../lib/gameScoreRegex.js";
+  catalogEntryForKey,
+  findOrCreateGame,
+  normalizeScoreDirection,
+  parseScoreValue,
+} from "../../lib/gameCatalog.js";
+import { moveUserGamePosition } from "../../lib/gamePositions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 
@@ -59,55 +61,9 @@ const moveGameSchema = z.object({
 
 const uuidSchema = z.string().uuid();
 
-/**
- * Pull a numeric score out of pasted share text using the game's catalog
- * regex (twin of the parser in `routes/v1/scores.ts`, kept separate so the
- * Games surface never imports the old leaderboard module).
- * `count:<pattern>` counts global matches; a capture-group pattern reads
- * group 1; no pattern (unknown game) falls back to "first number anywhere".
- */
-function parseGameScoreValue(raw: string, pattern: string | null): number | null {
-  if (pattern && pattern.length > 0) {
-    if (pattern.startsWith(SCORE_COUNT_PREFIX)) {
-      try {
-        const re = new RegExp(pattern.slice(SCORE_COUNT_PREFIX.length), "gu");
-        return (raw.match(re) ?? []).length;
-      } catch {
-        // Bad count pattern — fall through to the first-number fallback.
-      }
-    } else {
-      try {
-        const re = new RegExp(pattern, "i");
-        const match = raw.match(re);
-        if (match) {
-          const captured = match[1] ?? match[0];
-          const n = Number(captured);
-          if (Number.isFinite(n)) return n;
-        }
-        return null;
-      } catch {
-        // Bad catalog regex — fall through so we don't 500.
-      }
-    }
-  }
-  const match = raw.match(/-?\d+(\.\d+)?/);
-  if (!match) return null;
-  const n = Number(match[0]);
-  return Number.isFinite(n) ? n : null;
-}
-
 /** Puzzle-day key, UTC. The client may pass `?period=` to pin its local day. */
 function todayPeriodKey(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
-}
-
-function catalogEntryForKey(gameKey: string | null) {
-  if (!gameKey) return null;
-  return GAME_REGEX_CATALOG.find((g) => g.key === gameKey) ?? null;
-}
-
-function normalizeDirection(value: string | null | undefined): GameScoreDirection {
-  return value === "asc" ? "asc" : "desc";
 }
 
 function toGameShape(row: DbGame): Game {
@@ -118,7 +74,7 @@ function toGameShape(row: DbGame): Game {
     title: row.title,
     iconUrl: row.iconUrl,
     gameKey: row.gameKey,
-    scoreDirection: normalizeDirection(row.scoreDirection),
+    scoreDirection: normalizeScoreDirection(row.scoreDirection),
     createdAt: toIsoString(row.createdAt),
   };
 }
@@ -270,7 +226,7 @@ gameRoutes.get("/", async (c) => {
   const myGames: MyGame[] = rows.map((r) => {
     const entries = rankEntries(
       standingsByGame.get(r.game.id) ?? [],
-      normalizeDirection(r.game.scoreDirection),
+      normalizeScoreDirection(r.game.scoreDirection),
     );
     const standings: GameStandings = {
       periodKey,
@@ -348,78 +304,6 @@ gameRoutes.get("/discovery", async (c) => {
   const response: GameDiscoveryResponse = { games: discovered };
   return ok(c, response);
 });
-
-/**
- * Find-or-create a catalog row for `normalizedUrl`. Known games (matched via
- * the `gameScoreRegex` catalog) collapse onto their canonical row even when
- * the pasted variant has a different path/host form; unknown URLs dedup on
- * the normalized form and get a hostname title. Race-safe: the insert is
- * ON CONFLICT DO NOTHING + re-select.
- */
-async function findOrCreateGame(inputUrl: string, normalizedUrl: string): Promise<DbGame> {
-  const db = getDb();
-  const lookup = async (key: string): Promise<DbGame | null> => {
-    const [row] = await db.select().from(games).where(eq(games.normalizedUrl, key)).limit(1);
-    return row ?? null;
-  };
-
-  const existing = await lookup(normalizedUrl);
-  if (existing) return existing;
-
-  const detected = matchGameScoreRegex({ url: inputUrl });
-  const canonicalKey = detected ? normalizeGameUrl(detected.canonicalUrl) : null;
-  if (detected && canonicalKey) {
-    const canonical = await lookup(canonicalKey);
-    if (canonical) return canonical;
-  }
-
-  const values =
-    detected && canonicalKey
-      ? {
-          normalizedUrl: canonicalKey,
-          url: detected.canonicalUrl,
-          title: detected.title,
-          gameKey: detected.key,
-          scoreDirection: detected.scoreDirection,
-        }
-      : {
-          normalizedUrl,
-          url: `https://${normalizedUrl}`,
-          // Hostname title for unknown games (spec §3.3).
-          title: normalizedUrl.split("/")[0] ?? normalizedUrl,
-          gameKey: null,
-          scoreDirection: "desc" as const,
-        };
-
-  const [inserted] = await db.insert(games).values(values).onConflictDoNothing().returning();
-  if (inserted) return inserted;
-  // Lost a concurrent-insert race — the row exists now.
-  const raced = await lookup(values.normalizedUrl);
-  if (!raced) throw new Error("game find-or-create failed");
-  return raced;
-}
-
-/** Append the game to My Games; keeps the existing row (and position) if present. */
-async function addToMyGames(
-  userId: string,
-  gameId: string,
-): Promise<{ position: number | null; addedAt: Date }> {
-  const db = getDb();
-  const position = await appendUserGamePosition(userId, db);
-  const [inserted] = await db
-    .insert(userGames)
-    .values({ userId, gameId, position })
-    .onConflictDoNothing()
-    .returning();
-  if (inserted) return { position: inserted.position, addedAt: inserted.addedAt };
-  const [existing] = await db
-    .select()
-    .from(userGames)
-    .where(and(eq(userGames.userId, userId), eq(userGames.gameId, gameId)))
-    .limit(1);
-  if (!existing) throw new Error("user_games upsert failed");
-  return { position: existing.position, addedAt: existing.addedAt };
-}
 
 gameRoutes.post(
   "/",
@@ -522,7 +406,7 @@ gameRoutes.put(
     if (!game) return err(c, "NOT_FOUND", "game not found");
 
     const catalog = catalogEntryForKey(game.gameKey);
-    const value = parseGameScoreValue(parsed.data.scoreRaw, catalog?.scoreRegex ?? null);
+    const value = parseScoreValue(parsed.data.scoreRaw, catalog?.scoreRegex ?? null);
 
     const now = new Date();
     const [row] = await db
@@ -573,7 +457,10 @@ gameRoutes.get("/:id/leaderboard", async (c) => {
   if (!game) return err(c, "NOT_FOUND", "game not found");
 
   const byGame = await loadStandingsByGame(userId, [game.id], periodKey);
-  const entries = rankEntries(byGame.get(game.id) ?? [], normalizeDirection(game.scoreDirection));
+  const entries = rankEntries(
+    byGame.get(game.id) ?? [],
+    normalizeScoreDirection(game.scoreDirection),
+  );
 
   const response: GameLeaderboardResponse = { gameId: game.id, periodKey, entries };
   return ok(c, response);
