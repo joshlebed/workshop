@@ -49,8 +49,9 @@ import { localDateKey } from "../lib/gameDate";
 import { haptics } from "../lib/haptics";
 import { openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
-import { summarizeGameScoreBody } from "../lib/scoresSummary";
-import { shareOrCopyLink } from "../lib/share";
+import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
+import { copyToClipboard, shareOrCopyLink } from "../lib/share";
+import { CopyIcon } from "../ui/CopyIcon";
 import {
   Button,
   EmptyState,
@@ -98,6 +99,7 @@ export function GamesHome() {
   const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [copyingScores, setCopyingScores] = useState(false);
   // Track in-flight + completed one-tap discovery adds by game id so each row
   // can show its own spinner / "✓ Added" pill (one mutation, many rows).
   const [addingDiscoveryIds, setAddingDiscoveryIds] = useState<string[]>([]);
@@ -217,6 +219,50 @@ export function GamesHome() {
     if (!inviteUrl) return;
     const result = await shareOrCopyLink(inviteUrl);
     if (result === "copied") showToast({ message: "Invite link copied", tone: "success" });
+  };
+
+  const onCopyScores = async () => {
+    const selfId = user?.id ?? null;
+    const preview = buildTodaysGameScoresSummary({
+      friendUrl: "",
+      games: myGames,
+      selfId,
+      dateKey: todayKey,
+    });
+    if (!preview) {
+      showToast({
+        message: "No scores from you today yet. Post one to share a recap.",
+        tone: "default",
+      });
+      return;
+    }
+
+    try {
+      setCopyingScores(true);
+      let url = inviteUrl;
+      if (!url) {
+        const invite = await createFriendInvite(token);
+        url = invite.url;
+        setInviteUrl(url);
+      }
+      const summary = buildTodaysGameScoresSummary({
+        friendUrl: url,
+        games: myGames,
+        selfId,
+        dateKey: todayKey,
+      });
+      if (!summary) return;
+      const ok = await copyToClipboard(summary);
+      if (ok) haptics.light();
+      showToast({
+        message: ok ? "Today's scores copied to clipboard" : "Couldn't copy to clipboard",
+        tone: ok ? "success" : "danger",
+      });
+    } catch (e) {
+      showToast({ message: errorMessage(e, "Couldn't create an invite link."), tone: "danger" });
+    } finally {
+      setCopyingScores(false);
+    }
   };
 
   const moveMutation = useMutation<
@@ -391,6 +437,25 @@ export function GamesHome() {
                 testID="open-activity"
               />
             ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Copy today's scores to clipboard"
+              onPress={onCopyScores}
+              disabled={copyingScores}
+              testID="games-copy-scores"
+              hitSlop={8}
+              style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                styles.headerIconBtn,
+                (pressed || hovered) && styles.headerIconBtnHover,
+                copyingScores && styles.headerIconBtnDisabled,
+              ]}
+            >
+              {copyingScores ? (
+                <ActivityIndicator size="small" color={tokens.text.primary} />
+              ) : (
+                <CopyIcon size={20} color={tokens.text.primary} />
+              )}
+            </Pressable>
             <ProfileMenu archivedLists={archivedLists} />
           </>
         }
@@ -522,6 +587,15 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.lg,
   },
   body: { flex: 1 },
+  headerIconBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.md,
+  },
+  headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
+  headerIconBtnDisabled: { opacity: 0.6 },
   center: {
     flex: 1,
     alignItems: "center",

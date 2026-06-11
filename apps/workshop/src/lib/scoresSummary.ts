@@ -1,4 +1,5 @@
 import type { Item, LeaderboardEntry } from "@workshop/shared";
+import type { MyGame } from "@workshop/shared/games";
 import {
   type DetectedSharedScoreKind,
   detectGameKindForItem,
@@ -11,6 +12,13 @@ interface BuildSummaryParams {
   listUrl: string;
   items: Item[];
   scoresByItem: Record<string, LeaderboardEntry[]>;
+  selfId: string | null;
+  dateKey: string;
+}
+
+interface BuildGameSummaryParams {
+  friendUrl: string;
+  games: MyGame[];
   selfId: string | null;
   dateKey: string;
 }
@@ -274,4 +282,31 @@ export function buildTodaysScoresSummary({
 
   const header = `My scores in ${listName} — ${formatShortDate(dateKey)}`;
   return `${header}\n${blocks.join("\n")}\n${listUrl}`;
+}
+
+/**
+ * Games-tab recap: same score distillation as the list copy action, but over
+ * My Games and with a personal friend-invite link as the call to action.
+ */
+export function buildTodaysGameScoresSummary({
+  friendUrl,
+  games,
+  selfId,
+  dateKey,
+}: BuildGameSummaryParams): string | null {
+  if (!selfId) return null;
+
+  const blocks: string[] = [];
+  for (const mg of games) {
+    const mine = mg.standings.entries.find((e) => e.userId === selfId);
+    if (!mine) continue;
+    const body = summarizeGameScoreBody(mg.game, mine);
+    if (!body) continue;
+    blocks.push(`• ${mg.game.title}\n${body}`);
+  }
+
+  if (blocks.length === 0) return null;
+
+  const header = `My game scores — ${formatShortDate(dateKey)}`;
+  return `${header}\n${blocks.join("\n")}\n${friendUrl}`;
 }

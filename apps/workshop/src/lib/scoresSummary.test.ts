@@ -1,6 +1,11 @@
 import type { Item, LeaderboardEntry } from "@workshop/shared";
+import type { Game, GameStandingsEntry, MyGame } from "@workshop/shared/games";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildTodaysScoresSummary, summarizeScoreBody } from "./scoresSummary";
+import {
+  buildTodaysGameScoresSummary,
+  buildTodaysScoresSummary,
+  summarizeScoreBody,
+} from "./scoresSummary";
 
 function item(id: string, title: string, url: string | null = null): Item {
   return {
@@ -37,7 +42,35 @@ function entry(
   };
 }
 
+function game(id: string, title: string, url: string): Game {
+  return {
+    id,
+    url,
+    normalizedUrl: url.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, ""),
+    title,
+    iconUrl: null,
+    gameKey: null,
+    scoreDirection: "desc",
+    createdAt: "2026-05-22T00:00:00Z",
+  };
+}
+
+function myGame(id: string, title: string, url: string, entries: GameStandingsEntry[]): MyGame {
+  return {
+    gameId: id,
+    position: null,
+    addedAt: "2026-05-22T00:00:00Z",
+    game: game(id, title, url),
+    standings: {
+      periodKey: "2026-05-27",
+      entries,
+      viewerHasPlayed: entries.some((e) => e.userId === "me"),
+    },
+  };
+}
+
 const LIST_URL = "https://workshop-a2v.pages.dev/list/list-1";
+const FRIEND_URL = "https://workshop-a2v.pages.dev/friends/accept/invite123";
 
 describe("summarizeScoreBody", () => {
   it("formats maptap by dropping the URL/date header", () => {
@@ -340,5 +373,65 @@ describe("buildTodaysScoresSummary", () => {
     });
     expect(summary?.startsWith("My scores in Geo games — May 25\n")).toBe(true);
     expect(summary?.endsWith(`\n${LIST_URL}`)).toBe(true);
+  });
+});
+
+describe("buildTodaysGameScoresSummary", () => {
+  it("returns null with no signed-in user", () => {
+    expect(
+      buildTodaysGameScoresSummary({
+        friendUrl: FRIEND_URL,
+        games: [
+          myGame("a", "Wordle", "https://www.nytimes.com/games/wordle", [entry("me", "4/6")]),
+        ],
+        selfId: null,
+        dateKey: "2026-05-27",
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when the viewer hasn't posted any game scores", () => {
+    expect(
+      buildTodaysGameScoresSummary({
+        friendUrl: FRIEND_URL,
+        games: [
+          myGame("a", "Wordle", "https://www.nytimes.com/games/wordle", [entry("friend", "5/6")]),
+        ],
+        selfId: "me",
+        dateKey: "2026-05-27",
+      }),
+    ).toBeNull();
+  });
+
+  it("copies the viewer's Games-tab scores with a friend invite link", () => {
+    const summary = buildTodaysGameScoresSummary({
+      friendUrl: FRIEND_URL,
+      games: [
+        myGame("a", "MapTap", "https://maptap.gg/", [
+          entry("me", "www.maptap.gg May 27\n100🎯 95🏆 94🏅 52😔 77😂\nFinal score: 770"),
+          entry("friend", "Final score: 700"),
+        ]),
+        myGame("b", "Globle", "https://globle-game.com", [
+          entry(
+            "me",
+            "🌎 May 27, 2026 🌍\n🔥 1 | Avg. Guesses: 8.4\n⬜🟨⬜🟧🟩 = 5\nhttps://globle-game.com",
+          ),
+        ]),
+      ],
+      selfId: "me",
+      dateKey: "2026-05-27",
+    });
+
+    expect(summary).toBe(
+      [
+        "My game scores — May 27",
+        "• MapTap",
+        "100🎯 95🏆 94🏅 52😔 77😂",
+        "Final score: 770",
+        "• Globle",
+        "⬜🟨⬜🟧🟩 = 5",
+        FRIEND_URL,
+      ].join("\n"),
+    );
   });
 });

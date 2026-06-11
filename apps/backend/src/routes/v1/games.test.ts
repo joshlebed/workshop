@@ -317,6 +317,68 @@ describe("GET /v1/games — ordered list + standings block per game", () => {
     const body = await myGames(fresh);
     expect(body.games).toEqual([]);
   });
+
+  it("keeps user_games.position order after backfill instead of recalculating by play count", async () => {
+    const reordered = "00000000-0000-4000-8000-000000000004";
+    await rows(`INSERT INTO users (id, email) VALUES ($1, 'reordered@example.com')`, [reordered]);
+
+    const catalog = await rows<{ id: string; game_key: string }>(
+      `SELECT id, game_key
+       FROM games
+       WHERE game_key IN ('wordle', 'globle', 'maptap')`,
+    );
+    const gameIds = new Map(catalog.map((g) => [g.game_key, g.id]));
+    const wordleId = gameIds.get("wordle");
+    const globleId = gameIds.get("globle");
+    const maptapId = gameIds.get("maptap");
+    expect({ wordleId, globleId, maptapId }).toEqual({
+      wordleId: expect.any(String),
+      globleId: expect.any(String),
+      maptapId: expect.any(String),
+    });
+    const wordle = wordleId as string;
+    const globle = globleId as string;
+    const maptap = maptapId as string;
+
+    await rows(
+      `INSERT INTO game_scores (game_id, user_id, period_key, score_value, score_raw, created_at, updated_at)
+       VALUES
+       ($1, $4, '2026-06-08', 3, 'Wordle 1,447 3/6', '2026-06-08T12:00:00Z', '2026-06-08T12:00:00Z'),
+       ($1, $4, '2026-06-09', 4, 'Wordle 1,448 4/6', '2026-06-09T12:00:00Z', '2026-06-09T12:00:00Z'),
+       ($1, $4, '2026-06-10', 5, 'Wordle 1,449 5/6', '2026-06-10T12:00:00Z', '2026-06-10T12:00:00Z'),
+       ($2, $4, '2026-06-09', 4, '⬜🟨🟩 = 4', '2026-06-09T12:05:00Z', '2026-06-09T12:05:00Z'),
+       ($2, $4, '2026-06-10', 5, '⬜🟨🟩 = 5', '2026-06-10T12:05:00Z', '2026-06-10T12:05:00Z'),
+       ($3, $4, '2026-06-10', 770, 'Final score: 770', '2026-06-10T12:10:00Z', '2026-06-10T12:10:00Z')`,
+      [wordle, globle, maptap, reordered],
+    );
+
+    // Simulate a user reorder after the play-count backfill. Play count would
+    // put Wordle first, but stored positions put MapTap first.
+    await rows(
+      `INSERT INTO user_games (user_id, game_id, position, added_at)
+       VALUES
+       ($1, $2, 1024, '2026-06-10T12:10:00Z'),
+       ($1, $3, 2048, '2026-06-09T12:05:00Z'),
+       ($1, $4, 3072, '2026-06-08T12:00:00Z')`,
+      [reordered, maptap, globle, wordle],
+    );
+
+    const before = await myGames(reordered, "2026-06-10");
+    expect(before.games.map((g) => g.game.gameKey)).toEqual(["maptap", "globle", "wordle"]);
+
+    const postMoreWordle = await gameRoutes.request(`/${wordle}/scores`, {
+      method: "PUT",
+      headers: authHeaders(reordered),
+      body: JSON.stringify({
+        periodKey: "2026-06-11",
+        scoreRaw: "Wordle 1,450 2/6",
+      }),
+    });
+    expect(postMoreWordle.status).toBe(200);
+
+    const after = await myGames(reordered, "2026-06-11");
+    expect(after.games.map((g) => g.game.gameKey)).toEqual(["maptap", "globle", "wordle"]);
+  });
 });
 
 describe("POST /v1/games/:id/move", () => {
