@@ -602,8 +602,9 @@ This is where the iOS Safari URL-bar/home-indicator tint (`<meta name="theme-col
 ## Share-link Open Graph previews
 
 Every URL on the production domain renders an Open Graph + Twitter Card preview so iMessage,
-Slack, Facebook, etc. show a thumbnail instead of a dead link. Four routes, layered around
-the per-list `share_slug` / `share_visibility` model owned by the backend `lists` table:
+Slack, Facebook, etc. show a thumbnail instead of a dead link. Five routes — four layered
+around the per-list `share_slug` / `share_visibility` model owned by the backend `lists`
+table, plus the friend-invite card:
 
 1. **Default** — `apps/workshop/public/index.html` ships a static set of OG tags pointing at
    `/og/default.png`. Applied to every URL with no more specific override (home, sign-in,
@@ -620,15 +621,24 @@ the per-list `share_slug` / `share_visibility` model owned by the backend `lists
    into iMessage / email keep working. Calls the legacy `/v1/invites/:token/preview` and
    emits the same list-specific card via `functions/og/invite/[token].ts`. We don't mint
    new invite tokens; this is a back-compat surface only.
+5. **Friend invite** — `functions/friends/accept/[token].ts` intercepts the share-link
+   friend invite (`/friends/accept/:token`, minted by `POST /v1/friends/invite`). Calls the
+   public `GET /v1/friends/requests/:token` preview and emits a friend card naming the
+   inviter ("Josh wants to be friends"), image via `functions/og/friend/[token].ts`. Unlike
+   the list routes it never falls through to the default card on a missing preview — a
+   friend link always reads as a friend invite, so a null preview (API down / games flag
+   off / bad token) still emits the generic "Add a friend" 👋 card.
 
 ```
-GET /l/:slug              → preview API → HTMLRewriter swaps defaults for per-list tags
-GET /og/l/:slug.png       → workers-og  → 1200×630 per-list PNG
-GET /list/:id/...         → /list/_middleware.ts → rich card when shareVisibility ∈ {view, join}, locked otherwise
-GET /og/list/:id.png      → workers-og  → 1200×630 per-list PNG (id-keyed)
-GET /invite/:token        → legacy preview API (back-compat) → per-list tags
-GET /og/invite/:token.png → legacy PNG renderer (back-compat)
-GET /og/:name.png         → workers-og  → 1200×630 static PNG (default, locked-list)
+GET /l/:slug                → preview API → HTMLRewriter swaps defaults for per-list tags
+GET /og/l/:slug.png         → workers-og  → 1200×630 per-list PNG
+GET /list/:id/...           → /list/_middleware.ts → rich card when shareVisibility ∈ {view, join}, locked otherwise
+GET /og/list/:id.png        → workers-og  → 1200×630 per-list PNG (id-keyed)
+GET /invite/:token          → legacy preview API (back-compat) → per-list tags
+GET /og/invite/:token.png   → legacy PNG renderer (back-compat)
+GET /friends/accept/:token  → friends preview API → inviter-named friend tags
+GET /og/friend/:token.png   → workers-og  → 1200×630 friend PNG (inviter named, 👋 card)
+GET /og/:name.png           → workers-og  → 1200×630 static PNG (default, locked-list)
 ```
 
 Three non-obvious things:

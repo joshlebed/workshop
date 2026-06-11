@@ -20,15 +20,27 @@ model owned by the backend `lists` table:
    iMessage / email keep working. Calls `GET /v1/invites/:token/preview` and emits the
    same list-specific card (via `og/invite/[token].ts`). We don't mint new invite
    tokens; this is a back-compat surface only.
+5. **Friend invite** — `friends/accept/[token].ts` intercepts the share-link friend invite
+   (`/friends/accept/:slug`, minted by `POST /v1/friends/invite`). Calls the public
+   `GET /v1/friends/requests/:token` preview and emits a friend card naming the inviter
+   ("Josh wants to be friends"), image via `og/friend/[token].ts`. Unlike the list routes
+   it does **not** fall through on a missing preview — a friend link always reads as a
+   friend invite, so a null preview (API down / games flag off / bad token) still emits the
+   generic "Add a friend" card. The friend preview endpoint is behind the games flag, so a
+   flag-off environment degrades to that generic card. Pure helpers (`buildFriendMetaTags`,
+   `buildFriendOgImageHtml`, `fetchFriendInvitePreview`) live in `_lib/og.ts` + the
+   `packages/shared/src/og.ts` mirror.
 
 ```
-GET /l/:slug              → preview API → HTMLRewriter swaps defaults for per-list tags
-GET /og/l/:slug.png       → workers-og  → 1200×630 per-list PNG
-GET /list/:id/...         → list/_middleware.ts → rich card when shareVisibility ∈ {view, join}, locked otherwise
-GET /og/list/:id.png      → workers-og  → 1200×630 per-list PNG (id-keyed)
-GET /invite/:token        → legacy preview API → per-list tags (back-compat)
-GET /og/invite/:token.png → legacy PNG renderer (back-compat)
-GET /og/:name.png         → workers-og  → 1200×630 static PNG (default, locked-list)
+GET /l/:slug                  → preview API → HTMLRewriter swaps defaults for per-list tags
+GET /og/l/:slug.png           → workers-og  → 1200×630 per-list PNG
+GET /list/:id/...             → list/_middleware.ts → rich card when shareVisibility ∈ {view, join}, locked otherwise
+GET /og/list/:id.png          → workers-og  → 1200×630 per-list PNG (id-keyed)
+GET /invite/:token            → legacy preview API → per-list tags (back-compat)
+GET /og/invite/:token.png     → legacy PNG renderer (back-compat)
+GET /friends/accept/:token    → friends preview API → inviter-named friend tags
+GET /og/friend/:token.png     → workers-og  → 1200×630 friend PNG (inviter named, 👋 card)
+GET /og/:name.png             → workers-og  → 1200×630 static PNG (default, locked-list)
 ```
 
 ## Don't import from workspace packages

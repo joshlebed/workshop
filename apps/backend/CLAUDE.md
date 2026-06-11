@@ -167,7 +167,13 @@ the Lambda env (set by Terraform). Standings cover `viewer ∪ friends_of(viewer
 `visibleUserIds()` (G2a) — the friend graph lives in `friendships` (one canonical row per
 pair, `user_low < user_high`; `lib/friends.ts` is the only writer and owns the invariant)
 with share-link invites in `friend_requests` (`routes/v1/friends.ts`, same flag gate as
-games). `GET /v1/games/discovery` (friends' games I haven't added) is registered **before**
+games). **Friend invite links are reusable, not single-use**: anyone who opens
+`/friends/accept/:token` can accept and form an edge, any number of times — the `friendships`
+table is the source of truth and the insert is idempotent. `POST /v1/friends/invite` returns
+one stable link per inviter (reuses the existing row). The `friend_requests.invitee_id` /
+`status` / `responded_at` columns are **legacy** from the original single-use model and are no
+longer written (kept for back-compat with old rows); don't reintroduce gating on them.
+`GET /v1/games/discovery` (friends' games I haven't added) is registered **before**
 the `/:id` routes so the literal path isn't shadowed; its `?friend=` filter 404s for
 non-friends so the endpoint can't be used to probe a stranger's games. `games.test.ts` and
 `scores.integration.test.ts` run actual `drizzle/` migrations against in-memory PGlite

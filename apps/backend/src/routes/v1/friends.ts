@@ -10,7 +10,7 @@ import type {
   FriendRequestStatus,
   FriendsResponse,
 } from "@workshop/shared/friends";
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, asc, eq, inArray, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { getDb } from "../../db/client.js";
 import { withDbRetry } from "../../db/retry.js";
@@ -97,7 +97,11 @@ friendRoutes.get("/", requireAuth, async (c) => {
   return ok(c, response);
 });
 
-// --- POST /v1/friends/invite — mint a personal share-link invite ---
+// --- POST /v1/friends/invite — get my personal share-link invite ---
+// The link is **reusable** (anyone who opens it can add me — see the accept
+// handler), so a user has exactly one stable personal link: reuse the
+// existing row if present, mint one on first request. Re-opening Friends or
+// re-sharing therefore returns the same URL instead of accumulating dead rows.
 
 friendRoutes.post(
   "/invite",
@@ -112,7 +116,23 @@ friendRoutes.post(
     const userId = c.get("userId");
     const db = getDb();
 
-    // Slug collisions are rare but real at scale — retry a few times.
+    // Stable link: reuse the oldest existing one for this inviter.
+    const [existing] = await db
+      .select({ token: friendRequests.token })
+      .from(friendRequests)
+      .where(eq(friendRequests.inviterId, userId))
+      .orderBy(asc(friendRequests.createdAt))
+      .limit(1);
+    if (existing) {
+      const response: FriendInviteResponse = {
+        token: existing.token,
+        url: friendInviteUrl(existing.token),
+      };
+      return ok(c, response, 201);
+    }
+
+    // First link for this user — mint one. Slug collisions are rare but
+    // real at scale, so retry a few times.
     for (let attempt = 0; attempt < 3; attempt++) {
       const token = generateShareSlug();
       const [inserted] = await db
@@ -185,7 +205,7 @@ friendRoutes.post(
 
     const db = getDb();
     const [request] = await db
-      .select()
+      .select({ inviterId: friendRequests.inviterId })
       .from(friendRequests)
       .where(eq(friendRequests.token, token))
       .limit(1);
@@ -193,21 +213,13 @@ friendRoutes.post(
     if (request.inviterId === userId) {
       return err(c, "VALIDATION", "you can't accept your own invite");
     }
-    if (request.status === "declined") return err(c, "NOT_FOUND", "invite not found");
-    if (request.status === "accepted" && request.inviteeId !== userId) {
-      // Someone else already used this link.
-      return err(c, "NOT_FOUND", "invite not found");
-    }
 
-    // Idempotent: re-accepting an already-accepted token by the same user
-    // just re-asserts the edge.
+    // Reusable link: anyone who opens it can add the inviter, any number of
+    // times. The `friendships` edge is the source of truth and the insert is
+    // idempotent, so re-accepting (or a second person accepting) is a no-op
+    // beyond ensuring the edge exists. The legacy `status` / `invitee_id` /
+    // `responded_at` columns are left untouched (see schema comment).
     await addFriendship(request.inviterId, userId);
-    if (request.status !== "accepted") {
-      await db
-        .update(friendRequests)
-        .set({ status: "accepted", inviteeId: userId, respondedAt: new Date() })
-        .where(eq(friendRequests.id, request.id));
-    }
 
     const pair = canonicalPair(request.inviterId, userId);
     const [edge] = await db
