@@ -170,7 +170,11 @@ with share-link invites in `friend_requests` (`routes/v1/friends.ts`, same flag 
 games). **Friend invite links are reusable, not single-use**: anyone who opens
 `/friends/accept/:token` can accept and form an edge, any number of times — the `friendships`
 table is the source of truth and the insert is idempotent. `POST /v1/friends/invite` returns
-one stable link per inviter (reuses the existing row). The `friend_requests.invitee_id` /
+one stable link per inviter (reuses the existing row); `POST /v1/friends/invite/reset` rotates
+the slug on that one row (mirrors `POST /v1/lists/:id/share/reset` via the shared
+`isUniqueViolation` in `lib/pgErrors.ts`), invalidating the old URL (preview + accept 404) and
+minting a fresh one — it only touches the oldest/canonical row, so legacy multi-row users don't
+self-collide. The `friend_requests.invitee_id` /
 `status` / `responded_at` columns are **legacy** from the original single-use model and are no
 longer written (kept for back-compat with old rows); don't reintroduce gating on them.
 `GET /v1/games/discovery` (friends' games I haven't added) is registered **before**
