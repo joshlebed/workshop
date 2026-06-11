@@ -4,6 +4,7 @@ import { Redirect, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -202,9 +203,17 @@ export default function GameBoard() {
             testID="game-board-title-link"
             style={({ pressed }) => [styles.titleBlock, pressed && styles.titleBlockPressed]}
           >
-            <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
-              <Text style={styles.titleBadgeGlyph}>🎮</Text>
-            </View>
+            {game.iconUrl ? (
+              <Image
+                source={{ uri: game.iconUrl }}
+                style={styles.titleBadge}
+                accessibilityIgnoresInvertColors
+              />
+            ) : (
+              <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
+                <Text style={styles.titleBadgeGlyph}>🎮</Text>
+              </View>
+            )}
             <View style={styles.titleText}>
               <Text variant="title" numberOfLines={2} style={styles.titleName}>
                 {game.title}
