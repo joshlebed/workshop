@@ -70,13 +70,6 @@ export default function TabsLayout() {
       }}
     >
       <Tabs.Screen
-        name="(lists)"
-        options={{
-          title: "Lists",
-          tabBarIcon: ({ color }) => <RNText style={{ color, fontSize: 17 }}>◧</RNText>,
-        }}
-      />
-      <Tabs.Screen
         name="games"
         options={
           GAMES_TAB_ENABLED
@@ -86,6 +79,13 @@ export default function TabsLayout() {
               }
             : { href: null }
         }
+      />
+      <Tabs.Screen
+        name="(lists)"
+        options={{
+          title: "Lists",
+          tabBarIcon: ({ color }) => <RNText style={{ color, fontSize: 17 }}>◧</RNText>,
+        }}
       />
     </Tabs>
   );
