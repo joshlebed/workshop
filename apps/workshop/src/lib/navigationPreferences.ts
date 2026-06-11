@@ -23,7 +23,7 @@ export function homeTabForPathname(pathname: string): HomeTab | null {
 
 export async function getPreferredHomeTab(): Promise<HomeTab> {
   const value = await getItem(PREFERRED_HOME_TAB_KEY);
-  return value === "games" ? "games" : "lists";
+  return value === "lists" ? "lists" : "games";
 }
 
 export async function setPreferredHomeTab(tab: HomeTab): Promise<void> {
