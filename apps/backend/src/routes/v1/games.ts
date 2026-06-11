@@ -36,7 +36,12 @@ import {
 } from "../../lib/gameCatalog.js";
 import { moveUserGamePosition } from "../../lib/gamePositions.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
-import { notifyFirstScore, notifyGameAdded, userHasAnyScore } from "../../lib/opsNotifications.js";
+import {
+  notifyFirstScore,
+  notifyGameAdded,
+  opsNotificationsEnabled,
+  userHasAnyScore,
+} from "../../lib/opsNotifications.js";
 import { rankEntries } from "../../lib/ranking.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -412,7 +417,9 @@ gameRoutes.put(
 
     // Capture activation state BEFORE the upsert — false means this is the
     // user's first score ever (see userHasAnyScore for the tables it spans).
-    const isFirstScore = !(await userHasAnyScore(userId, db));
+    // The `&&` skips the existence query when no operator webhook is set, so
+    // the steady-state hot path pays nothing extra.
+    const isFirstScore = opsNotificationsEnabled() && !(await userHasAnyScore(userId, db));
     const now = new Date();
     const [row] = await db
       .insert(gameScores)

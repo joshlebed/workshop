@@ -23,6 +23,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { gameScores, itemScores, lists, users } from "../db/schema.js";
 import { userLabel } from "./admin.js";
+import { getConfig } from "./config.js";
 import { notifyDiscord } from "./discord.js";
 import { logger } from "./logger.js";
 import type { DbClient } from "./sql.js";
@@ -174,7 +175,22 @@ export async function userHasAnyScore(userId: string, db: DbClient = getDb()): P
 
 // --- Async wrappers (best-effort; never throw to the caller) ----------------
 
+/**
+ * Whether operator notifications are wired up (the `#workshop-admin` webhook is
+ * set). False in local dev by default and any env that leaves the webhook env
+ * empty. Callers gate notification-only DB work (e.g. the first-score
+ * existence check on the hot score path) on this so an unconfigured deploy
+ * pays nothing — `getConfig()` is memoized, so the check itself is free.
+ */
+export function opsNotificationsEnabled(): boolean {
+  return Boolean(getConfig().discordNotifyWebhookUrl);
+}
+
 async function safeNotify(build: () => Promise<Notification>): Promise<void> {
+  // Short-circuit before resolving any labels: with no webhook there's nothing
+  // to deliver, so we skip the per-ping DB lookups entirely (notifyDiscord
+  // would no-op anyway, but only after we'd paid for the labels).
+  if (!opsNotificationsEnabled()) return;
   try {
     const { content, kind } = await build();
     await notifyDiscord(content, { kind });
