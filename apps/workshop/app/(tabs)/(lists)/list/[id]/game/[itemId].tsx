@@ -733,24 +733,18 @@ function ScoreComposer({
   // already posted; an unchanged re-save is just noise.
   const unchanged = isEdit && trimmed === baseline.trim();
   const canSubmit = !empty && !unchanged && !pending && !clearing;
-  // On web, Cmd/Ctrl+Enter submits — a multiline paste form should never
-  // require reaching for the mouse to post. Plain Enter inserts a newline
-  // because users routinely paste multi-line results.
+  // On web, Enter posts — results arrive via paste, so a newline keystroke is
+  // almost never intentional (Shift+Enter still inserts one). RN-Web's
+  // TextInput overwrites any custom onKeyDown with its own handler, which only
+  // routes Enter to onSubmitEditing when blurOnSubmit is set on a multiline.
   const webProps =
     Platform.OS === "web"
-      ? ({
-          onKeyDown: (e: {
-            key: string;
-            metaKey?: boolean;
-            ctrlKey?: boolean;
-            preventDefault: () => void;
-          }) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && canSubmit) {
-              e.preventDefault();
-              onSubmit();
-            }
+      ? {
+          blurOnSubmit: true,
+          onSubmitEditing: () => {
+            if (canSubmit) onSubmit();
           },
-        } as Record<string, unknown>)
+        }
       : {};
   return (
     <View style={[styles.entry, styles.entryMe]} testID="game-detail-paste-slot">
@@ -794,11 +788,6 @@ function ScoreComposer({
             testID="game-detail-clear-score"
             style={styles.composerClear}
           />
-        ) : null}
-        {Platform.OS === "web" && canSubmit ? (
-          <Text variant="caption" tone="muted" style={styles.pasteHint}>
-            ⌘↩ to {isEdit ? "save" : "post"}
-          </Text>
         ) : null}
         {isEdit ? (
           <Button
@@ -1033,10 +1022,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
   },
-  // Pushes everything after it (hint, Cancel, Save) to the right edge so the
+  // Pushes everything after it (Cancel, Save) to the right edge so the
   // destructive Clear sits apart from the affirmative actions.
   composerClear: { marginRight: "auto" },
-  pasteHint: { letterSpacing: 0.3 },
   sheetHeader: {
     gap: 4,
   },
