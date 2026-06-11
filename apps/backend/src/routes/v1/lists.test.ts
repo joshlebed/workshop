@@ -62,6 +62,27 @@ describe("buildNewListNotification", () => {
   });
 });
 
+describe("legacy game list filtering", () => {
+  const { isLegacyGameListSummaryRow } = __test;
+
+  it("hides leaderboard-module lists from the list summary surface", () => {
+    expect(isLegacyGameListSummaryRow({ item_kind: "link", modules: ["leaderboard"] })).toBe(true);
+    expect(isLegacyGameListSummaryRow({ item_kind: "link", modules: ["todo", "ranking"] })).toBe(
+      false,
+    );
+  });
+
+  it("hides old item_kind=game rows even without the leaderboard module", () => {
+    expect(isLegacyGameListSummaryRow({ item_kind: "game", modules: [] })).toBe(true);
+    expect(isLegacyGameListSummaryRow({ item_kind: null, modules: [] })).toBe(false);
+  });
+
+  it("treats null modules as a normal non-game list unless the old kind is game", () => {
+    expect(isLegacyGameListSummaryRow({ item_kind: "plain", modules: null })).toBe(false);
+    expect(isLegacyGameListSummaryRow({ item_kind: "game", modules: null })).toBe(true);
+  });
+});
+
 describe("createListSchema", () => {
   const { createListSchema } = __test;
 

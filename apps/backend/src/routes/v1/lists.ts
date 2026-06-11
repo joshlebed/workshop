@@ -164,7 +164,15 @@ export const __test = {
   duplicateListSchema,
   createSourceSchema,
   buildNewListNotification,
+  isLegacyGameListSummaryRow,
 };
+
+function isLegacyGameListSummaryRow(list: {
+  item_kind: string | null;
+  modules: readonly string[] | null;
+}): boolean {
+  return list.item_kind === "game" || (list.modules ?? []).includes("leaderboard");
+}
 
 function toListShape(l: DbList): List {
   return {
@@ -514,32 +522,38 @@ listRoutes.get("/", async (c) => {
       FROM lists l
       JOIN list_members me ON me.list_id = l.id AND me.user_id = ${userId}
       WHERE l.archived_at IS NULL
+        AND NOT (
+          'leaderboard' = ANY(COALESCE(l.modules, '{}'::text[]))
+          OR l.item_kind = 'game'
+        )
       ORDER BY l.updated_at DESC
     `,
   );
 
-  const summaries: ListSummary[] = rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    emoji: r.emoji,
-    color: r.color as ListColor,
-    description: r.description,
-    coverPhotoUrl: r.cover_photo_url,
-    ownerId: r.owner_id,
-    itemKind: (r.item_kind && isItemKind(r.item_kind) ? r.item_kind : null) as ItemKind | null,
-    modules: (r.modules ?? []) as ModuleName[],
-    shareSlug: r.share_slug,
-    shareVisibility: r.share_visibility as ShareVisibility,
-    createdAt: toIsoString(r.created_at),
-    updatedAt: toIsoString(r.updated_at),
-    role: r.my_role as MemberRole,
-    memberCount: Number(r.member_count),
-    itemCount: Number(r.item_count),
-    pinnedAt: r.pinned_at ? toIsoString(r.pinned_at) : null,
-    archivedAt: r.archived_at ? toIsoString(r.archived_at) : null,
-    mutedAt: r.muted_at ? toIsoString(r.muted_at) : null,
-    unreadCount: Number(r.unread_count),
-  }));
+  const summaries: ListSummary[] = rows
+    .filter((r) => !isLegacyGameListSummaryRow(r))
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      emoji: r.emoji,
+      color: r.color as ListColor,
+      description: r.description,
+      coverPhotoUrl: r.cover_photo_url,
+      ownerId: r.owner_id,
+      itemKind: (r.item_kind && isItemKind(r.item_kind) ? r.item_kind : null) as ItemKind | null,
+      modules: (r.modules ?? []) as ModuleName[],
+      shareSlug: r.share_slug,
+      shareVisibility: r.share_visibility as ShareVisibility,
+      createdAt: toIsoString(r.created_at),
+      updatedAt: toIsoString(r.updated_at),
+      role: r.my_role as MemberRole,
+      memberCount: Number(r.member_count),
+      itemCount: Number(r.item_count),
+      pinnedAt: r.pinned_at ? toIsoString(r.pinned_at) : null,
+      archivedAt: r.archived_at ? toIsoString(r.archived_at) : null,
+      mutedAt: r.muted_at ? toIsoString(r.muted_at) : null,
+      unreadCount: Number(r.unread_count),
+    }));
 
   return ok(c, { lists: summaries });
 });
