@@ -218,6 +218,13 @@
       "when": 1781204759241,
       "tag": "0030_directed_friend_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1781590000000,
+      "tag": "0031_add_geosports_game",
+      "breakpoints": true
     }
   ]
 }

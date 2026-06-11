@@ -146,6 +146,16 @@ export const GAME_REGEX_CATALOG: GameScoreRegex[] = [
     scoreRegex: `${SCORE_COUNT_PREFIX}🏆`,
     scoreDirection: "desc",
   },
+  {
+    key: "geosports",
+    title: "GeoSports",
+    canonicalUrl: "https://www.geosports.app",
+    identifyPatterns: [/\bgeosports\b/i, /geosports\.app/i],
+    // "711 / 1,000" → 711 (points scored; higher is better). Comma-formatted
+    // numbers are stripped before Number() in parseScoreValue.
+    scoreRegex: "([\\d,]+)\\s*/\\s*[\\d,]+",
+    scoreDirection: "desc",
+  },
 ];
 
 interface GameIdentifyFields {

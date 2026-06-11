@@ -227,6 +227,14 @@ describe("summarizeScoreBody", () => {
     );
   });
 
+  it("formats GeoSports as `<emoji grid>\\n<score / max>`", () => {
+    const raw =
+      "GeoSports — Daily sports geography game\nGeoSports · June 11th\n🟡🟡🔴🟡🟢\n711 / 1,000\nwww.geosports.app";
+    expect(
+      summarizeScoreBody(item("a", "GeoSports", "https://www.geosports.app"), entry("u", raw)),
+    ).toBe("🟡🟡🔴🟡🟢\n711 / 1,000");
+  });
+
   it("formats NYT Mini as the `M:SS` solve time rendered as keycap-emoji digits", () => {
     const raw = "I solved the 5/20/2026 New York Times Mini Crossword in 0:16!";
     expect(

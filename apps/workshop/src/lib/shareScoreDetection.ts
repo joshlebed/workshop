@@ -14,7 +14,8 @@ export type DetectedSharedScoreKind =
   | "framed"
   | "heardle"
   | "nyt-mini"
-  | "spelling-bee";
+  | "spelling-bee"
+  | "geosports";
 
 export interface DetectedSharedScore {
   kind: DetectedSharedScoreKind;
@@ -84,6 +85,12 @@ const GAME_PATTERNS: GamePattern[] = [
     // keep the legacy oec.world pattern for any old bookmarks already saved.
     textPatterns: [/#?\bTradle\b\s*#?\d+/i, /\btradle\.net\b/i, /\boec\.world\/.+\/tradle\b/i],
     itemPatterns: [/\btradle\b/i, /tradle\.net/i, /oec\.world.*tradle/i],
+  },
+  {
+    kind: "geosports",
+    gameLabel: "GeoSports",
+    textPatterns: [/\bgeosports\b/i, /geosports\.app/i],
+    itemPatterns: [/\bgeosports\b/i, /geosports\.app/i],
   },
   {
     kind: "framed",

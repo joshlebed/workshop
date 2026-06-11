@@ -52,6 +52,11 @@ describe("detectSharedScore", () => {
   // Patterns we add proactively for popular games not yet in prod data.
   it.each<{ name: string; kind: DetectedSharedScoreKind; raw: string }>([
     {
+      name: "GeoSports",
+      kind: "geosports",
+      raw: "GeoSports — Daily sports geography game\nGeoSports · June 11th\n🟡🟡🔴🟡🟢\n711 / 1,000\nwww.geosports.app",
+    },
+    {
       name: "Wordle",
       kind: "wordle",
       raw: "Wordle 1,127 3/6\n\n⬜⬜🟩🟩🟩\n🟨🟩🟩🟩🟩\n🟩🟩🟩🟩🟩",

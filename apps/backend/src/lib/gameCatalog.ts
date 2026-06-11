@@ -92,7 +92,7 @@ export function parseScoreValue(raw: string, pattern: string | null = null): num
         const re = new RegExp(pattern, "i");
         const match = raw.match(re);
         if (match) {
-          const captured = match[1] ?? match[0];
+          const captured = (match[1] ?? match[0]).replace(/,/g, "");
           const n = Number(captured);
           if (Number.isFinite(n)) return n;
         }
