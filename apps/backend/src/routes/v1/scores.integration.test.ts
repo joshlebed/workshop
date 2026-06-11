@@ -1,4 +1,6 @@
 import { PGlite } from "@electric-sql/pglite";
+import { gameDefinitionForKey } from "@workshop/shared/gameRegistry";
+import { specFromStoredRule } from "@workshop/shared/scoreParsing";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -96,7 +98,11 @@ describe("legacy leaderboard item score bridge", () => {
     const gameId = mapped[0]?.game_id;
     expect(gameId).toBeTruthy();
     expect(mapped[0]?.game_key).toBe("dailytens");
-    expect(mapped[0]?.score_regex).toBe("count:🏆");
+    // The self-heal writes the registry spec in its stored-rule encoding;
+    // decode it rather than pinning the serialization.
+    expect(specFromStoredRule(mapped[0]?.score_regex)).toEqual(
+      gameDefinitionForKey("dailytens")?.spec,
+    );
 
     const oldRows = await rows<{ n: number }>(
       `SELECT count(*)::int AS n FROM item_scores WHERE item_id = $1`,

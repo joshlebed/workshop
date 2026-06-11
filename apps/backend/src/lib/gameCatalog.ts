@@ -1,8 +1,28 @@
+// Backend adapter over the shared game registry (@workshop/shared/gameRegistry)
+// plus the games-catalog DB helpers (find-or-create, legacy item mapping).
+//
+// Score parsing is spec-driven (see @workshop/shared/scoreParsing): registry
+// games carry their spec in code, user-taught games store one in
+// `games.score_spec`, and legacy items keep a stored-rule string on
+// `items.score_regex` (bare regex / `count:` / `spec:` generations all decode).
+
+import {
+  type GameDefinition,
+  gameDefinitionForKey,
+  identifyGame,
+} from "@workshop/shared/gameRegistry";
 import { normalizeGameUrl } from "@workshop/shared/games";
+import {
+  evaluateScoreSpec,
+  parseFirstNumber,
+  type ScoreSpec,
+  safeParseScoreSpec,
+  specFromStoredRule,
+  storedRuleFromSpec,
+} from "@workshop/shared/scoreParsing";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { type DbGame, games, items } from "../db/schema.js";
-import { GAME_REGEX_CATALOG, matchGameScoreRegex, SCORE_COUNT_PREFIX } from "./gameScoreRegex.js";
 import { googleFaviconUrl } from "./link-preview/image-validation.js";
 import type { DbClient } from "./sql.js";
 
@@ -56,56 +76,42 @@ export function defaultGameIconUrl(normalizedUrl: string): string {
   return googleFaviconUrl(host);
 }
 
-interface GameCatalogEntry {
-  key: string;
-  title: string;
-  canonicalUrl: string;
-  scoreRegex: string;
-  scoreDirection: ScoreDirection;
-}
-
 export function normalizeScoreDirection(value: string | null | undefined): ScoreDirection {
   return value === "asc" ? "asc" : "desc";
 }
 
-export function catalogEntryForKey(gameKey: string | null): GameCatalogEntry | null {
-  if (!gameKey) return null;
-  return GAME_REGEX_CATALOG.find((g) => g.key === gameKey) ?? null;
+/** Registry definition for a catalog game_key (null for unknown games). */
+export function catalogEntryForKey(gameKey: string | null): GameDefinition | null {
+  const def = gameDefinitionForKey(gameKey);
+  return def?.catalog ? def : null;
 }
 
 /**
- * Pull a numeric score out of pasted share text. `count:<pattern>` counts
- * global matches; a capture-group pattern reads group 1; no pattern falls
- * back to "first number anywhere" for legacy/custom games.
+ * The parser resolution chain for a games-table row:
+ * registry spec (by game_key) → user-taught `games.score_spec` jsonb → null.
  */
-export function parseScoreValue(raw: string, pattern: string | null = null): number | null {
-  if (pattern && pattern.length > 0) {
-    if (pattern.startsWith(SCORE_COUNT_PREFIX)) {
-      try {
-        const re = new RegExp(pattern.slice(SCORE_COUNT_PREFIX.length), "gu");
-        return (raw.match(re) ?? []).length;
-      } catch {
-        // Bad count pattern - fall through to the first-number fallback.
-      }
-    } else {
-      try {
-        const re = new RegExp(pattern, "i");
-        const match = raw.match(re);
-        if (match) {
-          const captured = (match[1] ?? match[0]).replace(/,/g, "");
-          const n = Number(captured);
-          if (Number.isFinite(n)) return n;
-        }
-        return null;
-      } catch {
-        // Bad regex - fall through so score posting does not 500.
-      }
-    }
+export function specForGame(game: {
+  gameKey: string | null;
+  scoreSpec?: unknown;
+}): ScoreSpec | null {
+  const def = catalogEntryForKey(game.gameKey);
+  if (def?.spec) return def.spec;
+  return safeParseScoreSpec(game.scoreSpec ?? null);
+}
+
+/**
+ * Pull a numeric score out of pasted share text. With a spec, the spec
+ * decides — including "this share has no result" (null). Without one, fall
+ * back to "first number anywhere" so legacy/custom games keep their historical
+ * behavior. A spec whose rules are all malformed is treated like no spec
+ * (score posting must not 500 on a bad stored pattern).
+ */
+export function parseScoreValue(raw: string, spec: ScoreSpec | null): number | null {
+  if (spec) {
+    const result = evaluateScoreSpec(spec, raw);
+    if (result.hadValidRule) return result.value;
   }
-  const match = raw.match(/-?\d+(\.\d+)?/);
-  if (!match) return null;
-  const n = Number(match[0]);
-  return Number.isFinite(n) ? n : null;
+  return parseFirstNumber(raw);
 }
 
 /**
@@ -131,7 +137,7 @@ export async function findOrCreateGame(
   const existing = await lookup(normalizedUrl);
   if (existing) return existing;
 
-  const detected = matchGameScoreRegex({ url: inputUrl });
+  const detected = identifyGame([inputUrl], { catalogOnly: true });
   const canonicalKey = detected ? normalizeGameUrl(detected.canonicalUrl) : null;
   if (detected && canonicalKey) {
     const canonical = await lookup(canonicalKey);
@@ -183,14 +189,15 @@ interface LeaderboardItemGameFields {
 
 interface LeaderboardGameMapping {
   game: DbGame;
-  scoreRegex: string | null;
+  /** Resolved parser for this item's game (registry → user spec → item rule). */
+  spec: ScoreSpec | null;
   scoreDirection: ScoreDirection;
 }
 
 /**
  * Resolve a legacy leaderboard item to the canonical Games catalog row. Known
- * games use the shared regex catalog; unknown URL-backed items can still map
- * to a catalog row, but keep any item-local parser metadata.
+ * games use the shared registry; unknown URL-backed items can still map to a
+ * catalog row, but keep any item-local parser metadata.
  */
 export async function ensureLeaderboardItemGame(
   fields: LeaderboardItemGameFields,
@@ -202,13 +209,15 @@ export async function ensureLeaderboardItemGame(
       const catalog = catalogEntryForKey(game.gameKey);
       return {
         game,
-        scoreRegex: catalog?.scoreRegex ?? fields.scoreRegex,
+        spec: specForGame(game) ?? specFromStoredRule(fields.scoreRegex),
         scoreDirection: catalog?.scoreDirection ?? normalizeScoreDirection(game.scoreDirection),
       };
     }
   }
 
-  const detected = matchGameScoreRegex(fields);
+  const detected = identifyGame([fields.title, fields.url, fields.siteName, fields.sourceId], {
+    catalogOnly: true,
+  });
   const inputUrl = detected?.canonicalUrl ?? fields.url;
   if (!inputUrl) return null;
   const normalized = normalizeGameUrl(inputUrl);
@@ -218,7 +227,8 @@ export async function ensureLeaderboardItemGame(
   // network fetch here so the score-post path stays fast.
   const game = await findOrCreateGame(inputUrl, normalized, db, { title: fields.title });
   const catalog = detected ?? catalogEntryForKey(game.gameKey);
-  const nextScoreRegex = catalog?.scoreRegex ?? fields.scoreRegex;
+  const spec =
+    catalog?.spec ?? safeParseScoreSpec(game.scoreSpec) ?? specFromStoredRule(fields.scoreRegex);
   const nextScoreDirection =
     catalog?.scoreDirection ??
     normalizeScoreDirection(fields.scoreDirection ?? game.scoreDirection);
@@ -226,15 +236,15 @@ export async function ensureLeaderboardItemGame(
   const patch: { gameId: string; scoreRegex?: string; scoreDirection?: string } = {
     gameId: game.id,
   };
-  if (catalog) {
-    patch.scoreRegex = catalog.scoreRegex;
+  if (catalog?.spec) {
+    patch.scoreRegex = storedRuleFromSpec(catalog.spec);
     patch.scoreDirection = catalog.scoreDirection;
   }
   await db.update(items).set(patch).where(eq(items.id, fields.itemId));
 
   return {
     game,
-    scoreRegex: nextScoreRegex,
+    spec,
     scoreDirection: nextScoreDirection,
   };
 }

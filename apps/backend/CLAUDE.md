@@ -61,24 +61,49 @@ Source: `src/lib/logger.ts`.
 ts-reset is enabled repo-wide. Validate with zod (see `src/lib/session.ts`) or a type
 guard. Don't blind-cast.
 
-## Leaderboard games map to the Games catalog — don't rely on the backfill alone
+## Score parsing is spec-driven via the shared game registry
 
-A leaderboard item's `score_regex` / `score_direction` (used to parse a numeric
-`score_value` out of the pasted share) and `game_id` are set two ways: migration
-`0027_migrate_geo_games_leaderboard.sql` for existing rows, `0029_finish_games_backfill.sql`
-for score-backed historical rows and the one-time My Games play-count position seed, **and**
-the item create/edit plus score upsert paths (`routes/v1/items.ts`, `routes/v1/scores.ts`) through
-`lib/gameCatalog.ts`. Mapped leaderboard items keep the old list/item URLs but read/write
-`game_scores`, so the `(game_id,user_id,period_key)` primary key enforces one score per
-player per game per day across both the list and Games tab. Unmapped legacy items still fall
-back to `item_scores`. The catalog in `src/lib/gameScoreRegex.ts` remains the source of known
-game regexes; `count:<pattern>` means score by the count of global matches (Daily Tens:
-`count:🏆`, desc). **Changing a game's scoring rule only fixes new posts** unless you also
-re-run `scripts/backfill-score-regex.ts` (for legacy `item_scores`) or add a targeted
-`game_scores` rescore. The client mirrors the same distillation for _display_: leaderboard
-rows and the list/Games clipboard recaps render through
-`apps/workshop/src/lib/scoresSummary.ts`, which strips URLs/headers so a URL-only share shows
-"Played", never the raw link; Games recaps append a friend-invite link, not a list link.
+Per-game knowledge (identify patterns, share-text patterns, the parser, direction, display
+formatter) lives in ONE place: `packages/shared/src/gameRegistry.ts` (`GAME_REGISTRY`).
+Parsers are declarative **ScoreSpecs** (`packages/shared/src/scoreParsing.ts`) — small JSON
+rules (`capture`, `count`, `countLines`, `duration`, `tokenPosition`, `wordMap`,
+first-match-wins) interpreted identically on backend and client. To add a game: one registry
+entry + a seed migration row (follow 0032's ON CONFLICT DO UPDATE shape so a pre-existing
+unknown row gets claimed); `games.test.ts` enforces the seed sync against
+`CATALOG_GAME_DEFINITIONS`. Never extend per-game code — add a spec primitive to the
+interpreter if a share shape doesn't fit.
+
+Parser resolution at post time (`lib/gameCatalog.ts`): registry spec by `games.game_key` →
+user-taught `games.score_spec` jsonb (written by `PUT /v1/games/:id/score-spec`, the
+tap-the-score teach flow — server re-runs the spec against the teaching example and rejects
+non-reproducing specs; registry games are read-only) → the item's stored rule string
+`items.score_regex` (three generations decode: bare regex, `count:<token>`, `spec:<json>`)
+→ first-number-anywhere fallback only when no parser exists at all.
+
+A leaderboard item's `game_id` is set by migrations 0027/0029 for historical rows **and**
+self-heals on item create/edit + score upsert (`routes/v1/items.ts`, `routes/v1/scores.ts`).
+Mapped items keep the old list/item URLs but read/write `game_scores`, so the
+`(game_id,user_id,period_key)` primary key enforces one score per player per game per day
+across both the list and Games tab. Unmapped legacy items still fall back to `item_scores`.
+**Changing a game's scoring rule only fixes new posts** unless you also run
+`scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first)
+— it replays the current parser over stored `score_raw` in both `game_scores` and legacy
+`item_scores`, importing the real parser so it can't drift. The client mirrors the same
+distillation for _display_: leaderboard rows and the list/Games clipboard recaps render
+through `apps/workshop/src/lib/scoresSummary.ts` (formatters live on the registry), which
+strips URLs/headers so a URL-only share shows "Played", never the raw link; Games recaps
+append a friend-invite link, not a list link. The paste sheet previews the parse client-side
+(`src/lib/scoreSpecs.ts` mirrors the backend chain) — keep the two chains in sync.
+
+## Migration journal `when` values must be monotonic
+
+The drizzle migrator records each migration's journal `when` as `created_at` and only
+applies migrations whose `when` exceeds the newest applied `created_at`. Migration 0031
+shipped with a hand-mangled future `when` (1781590000000 = 2026-06-16), which silently
+blocked every later migration on any DB that had applied it; the journal entry was
+corrected and `src/db/migrate.ts` carries a one-time fixup that rewrites the recorded row
+(delete it once prod has run it). If you ever hand-edit `drizzle/meta/_journal.json`, keep
+`when` strictly increasing and never in the future.
 
 ## `leaderboard` implies an ordered, reorderable game list (even without `ranking`)
 
@@ -151,10 +176,10 @@ The Games tab (spec §3, G1a) has its own tables — `games` (global catalog, de
 router still owns only those tables directly, but leaderboard-list items can point at the
 same `games` row through `items.game_id`; the list score routes translate legacy `item_id`
 requests into canonical `game_scores` reads/writes and return the old response shape keyed by
-item id. Shared helpers live in `lib/gameCatalog.ts` (URL normalization, catalog lookup,
+item id. Shared helpers live in `lib/gameCatalog.ts` (URL normalization, registry lookup,
 parser) and `lib/userGames.ts` (idempotently add to My Games). The catalog seed lives in
-migration `0023_games_tables.sql` and must stay in sync with `GAME_REGEX_CATALOG` (each
-entry's `title`/`canonicalUrl`); `games.test.ts` enforces it. Every `games` row carries an
+migrations `0023`/`0031`/`0032` and must stay in sync with the shared registry's
+`CATALOG_GAME_DEFINITIONS` (each entry's `title`/`canonicalUrl`); `games.test.ts` enforces it. Every `games` row carries an
 `icon_url` (the Games tab card thumbnail): `findOrCreateGame` sets it at insert — preview
 favicon when the caller passes hints (POST `/v1/games` wires `resolveLinkPreview` as a lazy
 provider, awaited only when a row is actually created), Google s2 favicon otherwise — and

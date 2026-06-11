@@ -4,6 +4,8 @@
 // re-exports, so the client must import this file directly —
 // `import { normalizeGameUrl } from "@workshop/shared/games"`.
 
+import type { ScoreSpec } from "./scoreParsing.js";
+
 export type GameScoreDirection = "asc" | "desc";
 
 /** A row in the global game catalog, deduped by `normalizedUrl`. */
@@ -15,9 +17,14 @@ export interface Game {
   normalizedUrl: string;
   title: string;
   iconUrl: string | null;
-  /** Key into the backend `gameScoreRegex` catalog; null for unknown games. */
+  /** Key into the shared game registry; null for unknown games. */
   gameKey: string | null;
   scoreDirection: GameScoreDirection;
+  /**
+   * User-taught parser spec (games the registry doesn't know). Null when
+   * unset — and always null for registry games, whose specs live in code.
+   */
+  scoreSpec: ScoreSpec | null;
   createdAt: string;
 }
 
@@ -86,6 +93,11 @@ export interface AddGameResponse {
 
 export interface UpsertGameScoreResponse {
   score: GameScore;
+}
+
+/** `PUT /v1/games/:id/score-spec` — teach a non-registry game its parser. */
+export interface SetGameScoreSpecResponse {
+  game: Game;
 }
 
 /**

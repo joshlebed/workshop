@@ -18,6 +18,7 @@ import type {
   MutualsResponse,
   SendFriendRequestResponse,
 } from "@workshop/shared/friends";
+import { safeParseScoreSpec } from "@workshop/shared/scoreParsing";
 import { z } from "zod";
 import { apiRequest } from "../lib/api";
 
@@ -147,6 +148,8 @@ const profileGameSchema = z.object({
     iconUrl: z.string().nullable(),
     gameKey: z.string().nullable(),
     scoreDirection: z.enum(["asc", "desc"]),
+    // Validated into a ScoreSpec (or null) so the parsed type matches `Game`.
+    scoreSpec: z.unknown().transform((v) => safeParseScoreSpec(v)),
     createdAt: z.string(),
   }),
   viewerHasGame: z.boolean(),

@@ -32,6 +32,7 @@ import {
   fetchMyGames,
   moveGame,
   removeGame,
+  setGameScoreSpec,
   upsertGameScore,
 } from "../api/games";
 import { fetchLists } from "../api/lists";
@@ -50,6 +51,7 @@ import { localDateKey } from "../lib/gameDate";
 import { haptics } from "../lib/haptics";
 import { openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
+import { specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
 import { CopyIcon } from "../ui/CopyIcon";
@@ -69,7 +71,7 @@ import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
 import { GamesOnboarding } from "./games/GamesOnboarding";
 import type { GameReorderEvent } from "./games/gameCardListProps";
-import { GameScorePasteSheet } from "./listDetail/GameScorePasteSheet";
+import { GameScorePasteSheet, type TaughtScoreSpec } from "./listDetail/GameScorePasteSheet";
 import { useReturnToPaste } from "./listDetail/useReturnToPaste";
 
 function hasScore(entry: GameStandingsEntry): boolean {
@@ -349,8 +351,20 @@ export function GamesHome() {
     (promptItemId ? myGames.find((g) => g.gameId === promptItemId)?.game : null) ?? null;
 
   const upsertMutation = useMutation({
-    mutationFn: ({ game, scoreRaw }: { game: Game; scoreRaw: string }) =>
-      upsertGameScore(game.id, { periodKey: todayKey, scoreRaw }, token),
+    // `taught` (the tap-the-score flow, see GameScorePasteSheet) stores the
+    // learned parser on the game first, so this very post parses with it.
+    mutationFn: async ({
+      game,
+      scoreRaw,
+      taught,
+    }: {
+      game: Game;
+      scoreRaw: string;
+      taught?: TaughtScoreSpec;
+    }) => {
+      if (taught) await setGameScoreSpec(game.id, taught, token);
+      return upsertGameScore(game.id, { periodKey: todayKey, scoreRaw }, token);
+    },
     onSuccess: async (_data, { game }) => {
       haptics.medium();
       dismiss();
@@ -575,6 +589,8 @@ export function GamesHome() {
         userName={user?.displayName ?? null}
         userAvatarUrl={user?.avatarUrl ?? null}
         pending={upsertMutation.isPending}
+        spec={pasteTarget ? specForGame(pasteTarget) : null}
+        onTeach={(game, scoreRaw, taught) => upsertMutation.mutate({ game, scoreRaw, taught })}
         onSubmit={(game, scoreRaw) => upsertMutation.mutate({ game, scoreRaw })}
         onClose={dismiss}
       />

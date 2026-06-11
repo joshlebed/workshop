@@ -1,6 +1,6 @@
 {
-  "id": "adb8951a-5e18-4421-bb76-17033338bb71",
-  "prevId": "135709f2-ab6e-4298-97c1-b43720e3adf5",
+  "id": "092dd051-3513-41ca-9d15-3d751232320c",
+  "prevId": "adb8951a-5e18-4421-bb76-17033338bb71",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -521,6 +521,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'desc'"
+        },
+        "score_spec": {
+          "name": "score_spec",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",

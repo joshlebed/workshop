@@ -38,6 +38,7 @@ import { haptics } from "../lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
+import { specForItem } from "../lib/scoreSpecs";
 import { buildTodaysScoresSummary } from "../lib/scoresSummary";
 import { buildListShareUrl, copyToClipboard } from "../lib/share";
 import { sourceErrorMessage } from "../lib/sourceErrors";
@@ -1107,6 +1108,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
           userName={user?.displayName ?? null}
           userAvatarUrl={user?.avatarUrl ?? null}
           pending={pasteScoreMutation.isPending}
+          spec={promptItem ? specForItem(promptItem) : null}
           onSubmit={(item, scoreRaw) => pasteScoreMutation.mutate({ item, scoreRaw })}
           onClose={dismissPaste}
         />

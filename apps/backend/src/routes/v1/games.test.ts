@@ -7,11 +7,11 @@
 
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
+import { CATALOG_GAME_DEFINITIONS } from "@workshop/shared/gameRegistry";
 import { normalizeGameUrl } from "@workshop/shared/games";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { GAME_REGEX_CATALOG } from "../../lib/gameScoreRegex.js";
 import { signSession } from "../../lib/session.js";
 
 let testDb: ReturnType<typeof drizzle>;
@@ -118,7 +118,7 @@ beforeAll(async () => {
 }, 60_000);
 
 describe("migration seed", () => {
-  it("seeds one games row per gameScoreRegex catalog entry, keyed by normalizeGameUrl(canonicalUrl)", async () => {
+  it("seeds one games row per registry catalog entry, keyed by normalizeGameUrl(canonicalUrl)", async () => {
     const seeded = await rows<{
       normalized_url: string;
       url: string;
@@ -129,8 +129,8 @@ describe("migration seed", () => {
     }>(
       `SELECT normalized_url, url, title, icon_url, game_key, score_direction FROM games ORDER BY game_key`,
     );
-    expect(seeded.length).toBe(GAME_REGEX_CATALOG.length);
-    for (const entry of GAME_REGEX_CATALOG) {
+    expect(seeded.length).toBe(CATALOG_GAME_DEFINITIONS.length);
+    for (const entry of CATALOG_GAME_DEFINITIONS) {
       const row = seeded.find((r) => r.game_key === entry.key);
       expect(row, `catalog entry ${entry.key} missing from migration seed`).toBeDefined();
       expect(row?.normalized_url).toBe(normalizeGameUrl(entry.canonicalUrl));

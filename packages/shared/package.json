@@ -9,6 +9,8 @@
     ".": "./src/index.ts",
     "./constants": "./src/constants.ts",
     "./games": "./src/games.ts",
+    "./gameRegistry": "./src/gameRegistry.ts",
+    "./scoreParsing": "./src/scoreParsing.ts",
     "./friends": "./src/friends.ts",
     "./og": "./src/og.ts",
     "./itemKinds": "./src/itemKinds.ts",

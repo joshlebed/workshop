@@ -20,14 +20,12 @@ import type {
   MutualsResponse,
   SendFriendRequestResponse,
 } from "@workshop/shared/friends";
-import type { Game } from "@workshop/shared/games";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { withDbRetry } from "../../db/retry.js";
 import {
-  type DbGame,
   friendRequests,
   friendships,
   gameScores,
@@ -38,10 +36,11 @@ import {
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
-import { normalizeScoreDirection } from "../../lib/gameCatalog.js";
+import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { periodKeySchema } from "../../lib/scoreSchemas.js";
 import { generateShareSlug, isValidShareSlug } from "../../lib/shareSlug.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { type RateLimitKeyFn, rateLimit } from "../../middleware/rate-limit.js";
@@ -62,33 +61,6 @@ function normalizeStatus(value: string): FriendRequestStatus {
 }
 
 const sendRequestSchema = z.object({ userId: z.string().uuid() });
-
-// Same shape as the Games router's period validation (kept local — both are
-// tiny and the routers stay independent).
-const periodKeySchema = z
-  .string()
-  .min(1, "period required")
-  .max(64, "period too long")
-  .refine((s) => /^[A-Za-z0-9_\-:.]+$/.test(s), "period contains invalid characters");
-
-/** Puzzle-day key, UTC. The client passes `?period=` to pin its local day. */
-function todayPeriodKey(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
-
-/** Mirror of the Games router's catalog-row mapper (kept local, same reason). */
-function toGameShape(row: DbGame): Game {
-  return {
-    id: row.id,
-    url: row.url,
-    normalizedUrl: row.normalizedUrl,
-    title: row.title,
-    iconUrl: row.iconUrl,
-    gameKey: row.gameKey,
-    scoreDirection: normalizeScoreDirection(row.scoreDirection),
-    createdAt: toIsoString(row.createdAt),
-  };
-}
 
 /**
  * Drop every pending directed request between two users (both directions).
