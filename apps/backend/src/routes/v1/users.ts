@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -77,6 +77,19 @@ function toUserShape(u: DbUser) {
   };
 }
 
+function toImpersonationTargetShape(u: {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+}) {
+  if (!u.email) return null;
+  return {
+    id: u.id,
+    email: u.email,
+    displayName: u.displayName,
+  };
+}
+
 publicUserRoutes.get("/:id/avatar", async (c) => {
   const parsed = uuidSchema.safeParse(c.req.param("id"));
   if (!parsed.success) return err(c, "NOT_FOUND", "profile picture not found");
@@ -98,6 +111,23 @@ publicUserRoutes.get("/:id/avatar", async (c) => {
       "Content-Type": avatarContentType(kind ?? "png"),
     },
   });
+});
+
+userRoutes.get("/impersonation-targets", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb();
+  const [admin] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!admin) return err(c, "UNAUTHORIZED", "invalid or expired session");
+  if (!isAdminUser(admin)) return err(c, "FORBIDDEN", "admin access required");
+
+  const rows = await db
+    .select({ id: users.id, email: users.email, displayName: users.displayName })
+    .from(users)
+    .where(and(isNotNull(users.email), ne(users.id, admin.id)))
+    .orderBy(sql`lower(${users.email})`)
+    .limit(200);
+
+  return ok(c, { users: rows.map(toImpersonationTargetShape).filter((u) => u !== null) });
 });
 
 userRoutes.patch("/me", async (c) => {

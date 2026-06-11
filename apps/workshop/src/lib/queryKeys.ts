@@ -22,6 +22,9 @@ export const queryKeys = {
   auth: {
     me: ["auth", "me"] as const,
   },
+  users: {
+    impersonationTargets: ["users", "impersonationTargets"] as const,
+  },
   invites: {
     forList: (listId: string) => ["invites", "forList", listId] as const,
   },

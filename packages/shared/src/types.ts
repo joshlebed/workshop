@@ -134,6 +134,16 @@ export interface ImpersonateRequest {
   target: string;
 }
 
+export interface ImpersonationTargetUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+}
+
+export interface ImpersonationTargetsResponse {
+  users: ImpersonationTargetUser[];
+}
+
 /**
  * Partial profile update. Both fields are optional and updated independently —
  * send only what changed. `avatarUrl: null` clears the profile picture; omitting
