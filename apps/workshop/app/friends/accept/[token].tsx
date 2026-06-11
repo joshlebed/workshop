@@ -338,7 +338,7 @@ function PostAcceptPicker({
           </>
         ) : friendHasGames ? (
           <Text tone="secondary" style={styles.inviterCaption}>
-            You already have all of {name}'s games. Add more anytime from the Games tab.
+            You already play everything {name} does — add more anytime from the Games tab.
           </Text>
         ) : (
           <Text tone="secondary" style={styles.inviterCaption}>
@@ -346,11 +346,17 @@ function PostAcceptPicker({
           </Text>
         )}
 
-        <Button
-          label={addedAny ? "Done" : "Maybe later"}
-          onPress={onDone}
-          testID="friend-accept-picker-done"
-        />
+        {/* "Maybe later" only makes sense while an offer (suggestions) is on
+            screen being declined; with nothing to add the button is pure
+            forward navigation, so name the destination. Hidden while discovery
+            loads so the label can't flicker between the two meanings. */}
+        {discoveryQuery.isLoading ? null : (
+          <Button
+            label={games.length === 0 ? "Go to Games" : addedAny ? "Done" : "Maybe later"}
+            onPress={onDone}
+            testID="friend-accept-picker-done"
+          />
+        )}
       </Card>
     </Centered>
   );
