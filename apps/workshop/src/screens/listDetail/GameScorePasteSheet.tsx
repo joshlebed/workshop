@@ -95,7 +95,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
             {...webProps}
           />
           <View style={styles.actions}>
-            <Button label="Not yet" variant="ghost" onPress={onClose} disabled={pending} />
+            <Button label="Cancel" variant="ghost" onPress={onClose} disabled={pending} />
             <Button
               label="Post score"
               onPress={submit}
