@@ -1,10 +1,19 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ItemKind, ListSummary, ModuleName } from "@workshop/shared";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import {
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 import { unarchiveList } from "../api/lists";
+import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
 import { errorMessage } from "../lib/api";
 import { confirm } from "../lib/confirm";
@@ -368,14 +377,27 @@ function LetterboxdAccountRow() {
 }
 
 function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => void }) {
-  const { user, impersonation, impersonateUser, stopImpersonating } = useAuth();
+  const { user, token, impersonation, impersonateUser, stopImpersonating } = useAuth();
   const { showToast } = useToast();
   const [editing, setEditing] = useState(false);
   const [target, setTarget] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const targetsQuery = useQuery({
+    queryKey: queryKeys.users.impersonationTargets,
+    queryFn: () => fetchImpersonationTargets(token),
+    enabled: Boolean(user?.isAdmin && editing && token && !impersonation),
+    staleTime: 60_000,
+  });
 
   const labelFor = (u: { displayName: string | null; email: string | null }) =>
     u.displayName?.trim() || u.email || "user";
+
+  const targets = targetsQuery.data?.users ?? [];
+  const selectedTarget = targets.find((u) => u.email === target) ?? null;
+  const loadingTargets = targetsQuery.isLoading || (targetsQuery.isFetching && !targetsQuery.data);
+  const selectDisabled = busy || loadingTargets || targetsQuery.isError || targets.length === 0;
 
   const onImpersonate = async () => {
     const trimmed = target.trim();
@@ -386,6 +408,7 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
       showToast({ message: `Signed in as ${labelFor(nextUser)}`, tone: "success" });
       setEditing(false);
       setTarget("");
+      setDropdownOpen(false);
       onSessionChanged();
     } catch (e) {
       showToast({ message: errorMessage(e, "Couldn't impersonate that user."), tone: "danger" });
@@ -441,20 +464,93 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
 
   return (
     <View style={accountActionStyles.form} testID="admin-impersonation-form">
-      <TextInput
-        testID="admin-impersonation-input"
-        value={target}
-        onChangeText={setTarget}
-        placeholder="Email or user ID"
-        placeholderTextColor={tokens.text.muted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        autoFocus
+      <Pressable
+        testID="admin-impersonation-select"
+        accessibilityRole="button"
         accessibilityLabel="User to impersonate"
-        keyboardType="email-address"
-        style={accountActionStyles.input}
-        onSubmitEditing={onImpersonate}
-      />
+        accessibilityState={{ disabled: selectDisabled, expanded: dropdownOpen }}
+        onPress={selectDisabled ? undefined : () => setDropdownOpen((open) => !open)}
+        style={({ pressed }) => [
+          accountActionStyles.select,
+          pressed && !selectDisabled ? accountActionStyles.selectPressed : null,
+          selectDisabled ? accountActionStyles.selectDisabled : null,
+        ]}
+      >
+        <Text
+          variant="label"
+          numberOfLines={1}
+          style={[
+            accountActionStyles.selectText,
+            !selectedTarget ? accountActionStyles.selectPlaceholder : null,
+          ]}
+        >
+          {selectedTarget?.email ??
+            (loadingTargets
+              ? "Loading users..."
+              : targetsQuery.isError
+                ? "Couldn't load users"
+                : targets.length === 0
+                  ? "No users with email"
+                  : "Select a user")}
+        </Text>
+        <Text variant="label" tone="muted" style={accountActionStyles.selectChevron}>
+          {dropdownOpen ? "⌃" : "⌄"}
+        </Text>
+      </Pressable>
+      {dropdownOpen && !selectDisabled ? (
+        <ScrollView
+          style={accountActionStyles.optionList}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+        >
+          {targets.map((targetUser) => {
+            const selected = targetUser.email === target;
+            const displayName = targetUser.displayName?.trim();
+            return (
+              <Pressable
+                key={targetUser.id}
+                testID={`admin-impersonation-option-${targetUser.email}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Impersonate ${targetUser.email}`}
+                accessibilityState={{ selected }}
+                onPress={() => {
+                  setTarget(targetUser.email);
+                  setDropdownOpen(false);
+                }}
+                style={({ pressed }) => [
+                  accountActionStyles.option,
+                  selected ? accountActionStyles.optionSelected : null,
+                  pressed ? accountActionStyles.optionPressed : null,
+                ]}
+              >
+                <Text variant="label" numberOfLines={1} style={accountActionStyles.optionEmail}>
+                  {targetUser.email}
+                </Text>
+                {displayName ? (
+                  <Text variant="caption" tone="muted" numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+      {targetsQuery.isError ? (
+        <View style={accountActionStyles.retryRow}>
+          <Text variant="caption" tone="muted" style={accountActionStyles.retryText}>
+            User emails could not be loaded.
+          </Text>
+          <Button
+            label="Retry"
+            size="md"
+            variant="secondary"
+            disabled={targetsQuery.isFetching}
+            loading={targetsQuery.isFetching}
+            onPress={() => targetsQuery.refetch()}
+          />
+        </View>
+      ) : null}
       <View style={accountActionStyles.actions}>
         <Button
           label="Sign in"
@@ -472,6 +568,7 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
           onPress={() => {
             setEditing(false);
             setTarget("");
+            setDropdownOpen(false);
           }}
         />
       </View>
@@ -550,6 +647,51 @@ const accountActionStyles = StyleSheet.create({
     fontSize: tokens.font.size.sm,
     backgroundColor: tokens.bg.surface,
   },
+  select: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 10,
+    backgroundColor: tokens.bg.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+  },
+  selectPressed: { backgroundColor: tokens.bg.elevated },
+  selectDisabled: { borderColor: tokens.border.subtle },
+  selectText: { flex: 1, minWidth: 0, color: tokens.text.primary },
+  selectPlaceholder: { color: tokens.text.muted },
+  selectChevron: {
+    width: 18,
+    textAlign: "center",
+    color: tokens.text.muted,
+  },
+  optionList: {
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.bg.surface,
+  },
+  option: {
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    gap: 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border.subtle,
+  },
+  optionPressed: { backgroundColor: tokens.bg.elevated },
+  optionSelected: { backgroundColor: tokens.accent.muted },
+  optionEmail: { color: tokens.text.primary },
+  retryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    flexWrap: "wrap",
+  },
+  retryText: { flex: 1, minWidth: 160 },
   actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
   note: { paddingHorizontal: tokens.space.xs },
 });
