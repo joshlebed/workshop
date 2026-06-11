@@ -426,17 +426,6 @@ export function GamesHome() {
         left={Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
         right={
           <>
-            {Platform.OS === "web" ? (
-              <HeaderActivityButton
-                unreadCount={totalUnread}
-                error={activityFeedQuery.isError}
-                onPress={onActivity}
-                onRetry={() => {
-                  void activityFeedQuery.refetch();
-                }}
-                testID="open-activity"
-              />
-            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Copy today's scores to clipboard"
@@ -456,6 +445,17 @@ export function GamesHome() {
                 <CopyIcon size={20} color={tokens.text.primary} />
               )}
             </Pressable>
+            {Platform.OS === "web" ? (
+              <HeaderActivityButton
+                unreadCount={totalUnread}
+                error={activityFeedQuery.isError}
+                onPress={onActivity}
+                onRetry={() => {
+                  void activityFeedQuery.refetch();
+                }}
+                testID="open-activity"
+              />
+            ) : null}
             <ProfileMenu archivedLists={archivedLists} />
           </>
         }
