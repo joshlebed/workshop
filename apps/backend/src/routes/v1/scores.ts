@@ -18,6 +18,7 @@ import {
 } from "../../lib/gameCatalog.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule } from "../../lib/moduleGate.js";
+import { notifyFirstScore, userHasAnyScore } from "../../lib/opsNotifications.js";
 import { rankEntries } from "../../lib/ranking.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -139,6 +140,10 @@ itemScoreRoutes.put(
     if (!parsed.ok) return parsed.response;
 
     const db = getDb();
+    // Capture activation state BEFORE the upsert so the row we're about to
+    // write doesn't count — a false here means this post is the user's first
+    // score ever (across canonical game_scores + legacy item_scores).
+    const isFirstScore = !(await userHasAnyScore(userId, db));
     const now = new Date();
     const mapping = ctx ? await resolveItemGameMapping(itemId, ctx) : null;
     const spec = mapping?.spec ?? specFromStoredRule(ctx?.scoreRegex);
@@ -193,6 +198,7 @@ itemScoreRoutes.put(
         .returning();
       if (!row) return err(c, "INTERNAL", "score upsert returned no row");
       await addToMyGames(userId, mapping.game.id, db);
+      if (isFirstScore) await notifyFirstScore(userId, ctx?.title ?? mapping.game.title);
       return ok(c, { score: toScoreShape(itemId, row) });
     }
 
@@ -216,6 +222,7 @@ itemScoreRoutes.put(
       })
       .returning();
     if (!row) return err(c, "INTERNAL", "score upsert returned no row");
+    if (isFirstScore) await notifyFirstScore(userId, ctx?.title ?? "a game");
     return ok(c, { score: toScoreShape(itemId, row) });
   },
 );

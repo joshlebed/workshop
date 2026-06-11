@@ -36,6 +36,7 @@ import {
 } from "../../lib/gameCatalog.js";
 import { moveUserGamePosition } from "../../lib/gamePositions.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
+import { notifyFirstScore, notifyGameAdded, userHasAnyScore } from "../../lib/opsNotifications.js";
 import { rankEntries } from "../../lib/ranking.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -324,6 +325,7 @@ gameRoutes.post(
       previewHintsFor(parsed.data.url, normalized),
     );
     const membership = await addToMyGames(userId, game.id);
+    if (membership.created) await notifyGameAdded(userId, game.title);
 
     const response: AddGameResponse = {
       game: toGameShape(game),
@@ -408,6 +410,9 @@ gameRoutes.put(
 
     const value = parseScoreValue(parsed.data.scoreRaw, specForGame(game));
 
+    // Capture activation state BEFORE the upsert — false means this is the
+    // user's first score ever (see userHasAnyScore for the tables it spans).
+    const isFirstScore = !(await userHasAnyScore(userId, db));
     const now = new Date();
     const [row] = await db
       .insert(gameScores)
@@ -433,6 +438,7 @@ gameRoutes.put(
     // Posting a score auto-adds the game to My Games (spec §3.5) — no
     // membership prerequisite, idempotent if it's already there.
     await addToMyGames(userId, game.id);
+    if (isFirstScore) await notifyFirstScore(userId, game.title);
 
     const response: UpsertGameScoreResponse = { score: toScoreShape(row) };
     return ok(c, response);

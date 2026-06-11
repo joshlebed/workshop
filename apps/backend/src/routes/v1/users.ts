@@ -5,6 +5,7 @@ import { getDb } from "../../db/client.js";
 import { type DbUser, letterboxdWatchlistFilms, users } from "../../db/schema.js";
 import { isAdminUser } from "../../lib/admin.js";
 import { logger } from "../../lib/logger.js";
+import { notifyLetterboxdConnected, notifySessionsRevoked } from "../../lib/opsNotifications.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { revokeAllSessions } from "../../lib/sessionRevocation.js";
@@ -204,6 +205,7 @@ userRoutes.put(
       .where(eq(users.id, userId))
       .returning();
     if (!updated) return err(c, "NOT_FOUND", "user not found");
+    await notifyLetterboxdConnected(userId, username, filmCount);
     return ok(c, { user: toUserShape(updated), filmCount });
   },
 );
@@ -226,6 +228,8 @@ userRoutes.delete("/me/letterboxd", async (c) => {
 // session token for this user is rejected on its next request. The user has
 // to sign in again to mint a fresh token.
 userRoutes.delete("/me/sessions", async (c) => {
-  await revokeAllSessions(c.get("userId"));
+  const userId = c.get("userId");
+  await revokeAllSessions(userId);
+  await notifySessionsRevoked(userId);
   return ok(c, { ok: true });
 });

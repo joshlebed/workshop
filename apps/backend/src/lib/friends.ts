@@ -29,10 +29,17 @@ export async function friendsOf(userId: string): Promise<string[]> {
 /**
  * Idempotent symmetric insert — always stores the canonical orientation, so
  * `addFriendship(a, b)` and `addFriendship(b, a)` land on the same row.
+ * Returns `true` when a new edge was created, `false` when the pair was
+ * already friends (lets callers ping ops only on genuinely-new friendships).
  */
-export async function addFriendship(a: string, b: string): Promise<void> {
+export async function addFriendship(a: string, b: string): Promise<boolean> {
   const pair = canonicalPair(a, b);
-  await getDb().insert(friendships).values(pair).onConflictDoNothing();
+  const inserted = await getDb()
+    .insert(friendships)
+    .values(pair)
+    .onConflictDoNothing()
+    .returning({ userLow: friendships.userLow });
+  return inserted.length > 0;
 }
 
 /** Remove the edge between two users (no-op when it doesn't exist). */
