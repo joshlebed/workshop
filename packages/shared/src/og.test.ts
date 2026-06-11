@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDefaultMetaTags,
+  buildFriendMetaTags,
+  buildFriendOgDescription,
+  buildFriendOgImageHtml,
+  buildFriendOgTitle,
   buildLockedListMetaTags,
   buildMetaTags,
   buildMetaTagsRaw,
@@ -15,6 +19,8 @@ import {
   DEFAULT_OG_TITLE,
   escapeXml,
   extractListIdFromPath,
+  FRIEND_OG_EMOJI,
+  FRIEND_OG_FALLBACK_TITLE,
   type InvitePreview,
   LOCKED_LIST_OG_SUBTITLE,
   OG_IMAGE_HEIGHT,
@@ -366,5 +372,100 @@ describe("buildStaticImageHtml", () => {
   it("falls back to the default variant for unknown names", () => {
     const html = buildStaticImageHtml("does-not-exist");
     expect(html).toContain(DEFAULT_OG_TITLE);
+  });
+});
+
+describe("friend invite previews", () => {
+  describe("buildFriendOgTitle", () => {
+    it("names the inviter when present", () => {
+      expect(buildFriendOgTitle({ inviterName: "Josh" })).toBe("Josh wants to be friends");
+    });
+
+    it("falls back to a generic title with no name", () => {
+      expect(buildFriendOgTitle({ inviterName: null })).toBe(FRIEND_OG_FALLBACK_TITLE);
+      expect(buildFriendOgTitle({ inviterName: "   " })).toBe(FRIEND_OG_FALLBACK_TITLE);
+      expect(buildFriendOgTitle(null)).toBe(FRIEND_OG_FALLBACK_TITLE);
+    });
+  });
+
+  describe("buildFriendOgDescription", () => {
+    it("names the inviter when present and never renders 'undefined'", () => {
+      const out = buildFriendOgDescription({ inviterName: "Josh" });
+      expect(out).toContain("Josh");
+      expect(out).not.toContain("undefined");
+    });
+
+    it("falls back to a generic description with no name", () => {
+      const out = buildFriendOgDescription(null);
+      expect(out).not.toContain("undefined");
+      expect(out).toContain("Workshop.dev");
+    });
+  });
+
+  describe("buildFriendMetaTags", () => {
+    const tags = buildFriendMetaTags(
+      { inviterName: "Josh" },
+      {
+        pageUrl: "https://workshop-a2v.pages.dev/friends/accept/abc12345",
+        imageUrl: "https://workshop-a2v.pages.dev/og/friend/abc12345.png",
+      },
+    );
+
+    it("points og:image at the co-located friend PNG", () => {
+      expect(tags).toContain(
+        `<meta property="og:image" content="https://workshop-a2v.pages.dev/og/friend/abc12345.png" />`,
+      );
+    });
+
+    it("uses the named title and a summary_large_image card", () => {
+      expect(tags).toContain(`content="Josh wants to be friends"`);
+      expect(tags).toContain(`<meta name="twitter:card" content="summary_large_image" />`);
+    });
+
+    it("emits exactly one tag per OG_META_SELECTORS entry", () => {
+      for (const selector of OG_META_SELECTORS) {
+        const attr = selector.match(/\[(.+?)="(.+?)"\]/);
+        if (!attr) continue;
+        const [, name, value] = attr;
+        expect(tags, `tags contain ${name}="${value}"`).toContain(`${name}="${value}"`);
+      }
+    });
+
+    it("escapes XML-unsafe characters in the inviter name", () => {
+      const unsafe = buildFriendMetaTags(
+        { inviterName: 'A<b>"c"' },
+        { pageUrl: "https://x.test/friends/accept/a", imageUrl: "https://x.test/og/friend/a.png" },
+      );
+      expect(unsafe).toContain("A&lt;b&gt;");
+      expect(unsafe).toContain("&quot;c&quot;");
+      expect(unsafe).not.toContain('"c"');
+    });
+  });
+
+  describe("buildFriendOgImageHtml", () => {
+    it("renders the wave emoji, the inviter name, and the grape gradient", () => {
+      const [start, end] = COLOR_GRADIENTS.grape;
+      const html = buildFriendOgImageHtml({ inviterName: "Josh" });
+      expect(html).toContain(FRIEND_OG_EMOJI);
+      expect(html).toContain("Josh");
+      expect(html).toContain(`linear-gradient(135deg, ${start} 0%, ${end} 100%)`);
+    });
+
+    it("renders a generic card when no name is available", () => {
+      const html = buildFriendOgImageHtml(null);
+      expect(html).toContain(FRIEND_OG_EMOJI);
+      expect(html).toContain("Add a friend");
+    });
+
+    it("sets the exact pixel dimensions the meta tags advertise", () => {
+      const html = buildFriendOgImageHtml({ inviterName: "Josh" });
+      expect(html).toContain(`width: ${OG_IMAGE_WIDTH}px`);
+      expect(html).toContain(`height: ${OG_IMAGE_HEIGHT}px`);
+    });
+
+    it("truncates a very long inviter name", () => {
+      const html = buildFriendOgImageHtml({ inviterName: "x".repeat(40) });
+      expect(html).toMatch(/x{27}…/);
+    });
   });
 });

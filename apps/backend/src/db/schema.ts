@@ -557,9 +557,14 @@ export const friendships = pgTable(
 
 /**
  * Personal friend-invite links (spec §3.4) — share-link → accept, reusing
- * the list-invite token machinery (`lib/shareSlug.ts`). `status` is
- * pending | accepted | declined; `invitee_id` + `responded_at` are set on
- * response. Accepting creates the `friendships` edge.
+ * the list-invite token machinery (`lib/shareSlug.ts`). The link is
+ * **reusable**: anyone who opens it can accept and form a `friendships`
+ * edge with the inviter, any number of times (the edge table is the source
+ * of truth). One stable row per inviter — `POST /v1/friends/invite` reuses
+ * it rather than minting a new one. The `invitee_id` / `status` /
+ * `responded_at` columns are legacy from the original single-use model and
+ * are no longer written; kept (defaulting to `pending` / NULL) for
+ * back-compat with rows created before links became reusable.
  */
 export const friendRequests = pgTable("friend_requests", {
   id: uuid("id").primaryKey().defaultRandom(),

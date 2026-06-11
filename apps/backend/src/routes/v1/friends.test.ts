@@ -23,6 +23,8 @@ import { gameRoutes } from "./games.js";
 const me = "00000000-0000-4000-8000-000000000011";
 const friend = "00000000-0000-4000-8000-000000000012";
 const stranger = "00000000-0000-4000-8000-000000000013";
+// A second accepter, used to prove a friend link is reusable (not single-use).
+const reuser = "00000000-0000-4000-8000-000000000014";
 const PERIOD = "2026-06-10";
 
 function authHeaders(asUser: string): Record<string, string> {
@@ -89,8 +91,9 @@ beforeAll(async () => {
     `INSERT INTO users (id, email, display_name) VALUES
        ($1, 'me@example.com', 'Me'),
        ($2, 'friend@example.com', 'Friendly'),
-       ($3, 'stranger@example.com', 'Stranger')`,
-    [me, friend, stranger],
+       ($3, 'stranger@example.com', 'Stranger'),
+       ($4, 'reuser@example.com', 'Reuser')`,
+    [me, friend, stranger, reuser],
   );
 }, 60_000);
 
@@ -105,6 +108,21 @@ describe("POST /v1/friends/invite", () => {
     expect(body.token).toMatch(/^[A-Za-z0-9]{8}$/);
     expect(body.url).toContain(body.token);
     inviteToken = body.token;
+  });
+
+  it("is idempotent — re-minting returns the same stable link", async () => {
+    const res = await friendRoutes.request("/invite", {
+      method: "POST",
+      headers: authHeaders(me),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { token: string };
+    expect(body.token).toBe(inviteToken);
+    const count = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM friend_requests WHERE inviter_id = $1`,
+      [me],
+    );
+    expect(count[0]?.n).toBe(1);
   });
 
   it("requires auth", async () => {
@@ -164,11 +182,13 @@ describe("POST /v1/friends/requests/:token/accept", () => {
       { user_low: me < friend ? me : friend, user_high: me < friend ? friend : me },
     ]);
 
-    const request = await rows<{ status: string; invitee_id: string }>(
+    // The link is reusable, so accepting never consumes it — the row's
+    // legacy single-use columns stay at their defaults.
+    const request = await rows<{ status: string; invitee_id: string | null }>(
       `SELECT status, invitee_id FROM friend_requests WHERE token = $1`,
       [inviteToken],
     );
-    expect(request[0]).toEqual({ status: "accepted", invitee_id: friend });
+    expect(request[0]).toEqual({ status: "pending", invitee_id: null });
   });
 
   it("re-accepting by the same user is idempotent, not an error", async () => {
@@ -181,14 +201,28 @@ describe("POST /v1/friends/requests/:token/accept", () => {
     expect(count[0]?.n).toBe(1);
   });
 
-  it("404s when a different user tries an already-used token", async () => {
+  it("is reusable — a different user can accept the same link", async () => {
     const res = await friendRoutes.request(`/requests/${inviteToken}/accept`, {
       method: "POST",
-      headers: authHeaders(stranger),
+      headers: authHeaders(reuser),
     });
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { friend: { userId: string } };
+    expect(body.friend.userId).toBe(me);
+
+    // A second, independent edge now exists (me↔friend and me↔reuser).
     const count = await rows<{ n: number }>(`SELECT count(*)::int AS n FROM friendships`);
-    expect(count[0]?.n).toBe(1);
+    expect(count[0]?.n).toBe(2);
+
+    // Clean up so the later visibility tests still see `friend` as my only
+    // friend (and `stranger` / `reuser` as non-friends).
+    const cleanup = await friendRoutes.request(`/${reuser}`, {
+      method: "DELETE",
+      headers: authHeaders(me),
+    });
+    expect(cleanup.status).toBe(200);
+    const after = await rows<{ n: number }>(`SELECT count(*)::int AS n FROM friendships`);
+    expect(after[0]?.n).toBe(1);
   });
 });
 

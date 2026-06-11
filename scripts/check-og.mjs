@@ -133,6 +133,9 @@ if (meta.get("twitter:card") && meta.get("twitter:card") !== "summary_large_imag
 //                                         the bare brand default, which means the
 //                                         middleware didn't fire at all.
 //   - `/list/<non-uuid>/...`           → "Sign in to view this list" fallback
+//   - `/friends/accept/<token>`        → friend card (inviter named, or the generic
+//                                         "Add a friend on Workshop.dev"). A bare
+//                                         "Workshop.dev" means the function didn't fire.
 //   - everything else                  → "Workshop.dev" default
 //
 // A site-name fallback on `/l/...` or `/invite/...` means the API was unreachable
@@ -152,11 +155,13 @@ const listIdMatch = /^\/list\/([^/]+)/.exec(pathname);
 const variant =
   pathname.startsWith("/l/") || pathname.startsWith("/invite/")
     ? "list-specific"
-    : listIdMatch && UUID_RE.test(listIdMatch[1])
-      ? "list-or-locked"
-      : pathname.startsWith("/list/")
-        ? "locked-list"
-        : "default";
+    : pathname.startsWith("/friends/accept/")
+      ? "friend"
+      : listIdMatch && UUID_RE.test(listIdMatch[1])
+        ? "list-or-locked"
+        : pathname.startsWith("/list/")
+          ? "locked-list"
+          : "default";
 if (variant === "list-specific") {
   if (ogTitle === "Workshop.dev" || ogTitle.includes("Sign in") || ogTitle === "") {
     fail(
@@ -176,6 +181,17 @@ if (variant === "list-specific") {
 } else if (variant === "locked-list") {
   if (!ogTitle.includes("Sign in") && ogTitle !== "Workshop.dev") {
     fail("locked-list-title", `og:title is "${ogTitle}" — expected locked-list variant`);
+  }
+} else if (variant === "friend") {
+  // The friend card is either "<name> wants to be friends" or the generic
+  // "Add a friend on Workshop.dev". A bare, exact "Workshop.dev" (or empty)
+  // means the Pages function didn't fire / the preview pipeline degraded to
+  // the brand default.
+  if (ogTitle === "Workshop.dev" || ogTitle === "") {
+    fail(
+      "friend-fallback-title",
+      `og:title is "${ogTitle}" — the friend Pages function didn't fire`,
+    );
   }
 } else if (ogTitle === "") {
   fail("empty-title", "og:title is empty");

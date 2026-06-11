@@ -293,6 +293,72 @@ export function buildLockedListMetaTags(opts: { url: string; origin: string }): 
   });
 }
 
+// --- Friend invite link previews (`/friends/accept/:token`) ---------------
+// A friend invite has no list behind it — just the inviter's name — so it
+// gets its own small card variant instead of the list-shaped one above.
+
+export const FRIEND_OG_EMOJI = "👋";
+export const FRIEND_OG_GRADIENT = COLOR_GRADIENTS.grape;
+export const FRIEND_OG_FALLBACK_TITLE = "Add a friend on Workshop.dev";
+
+/** Minimal preview returned by `GET /v1/friends/requests/:token`. */
+export interface FriendInvitePreview {
+  /** Inviter's display name, or null if they haven't set one. */
+  inviterName: string | null;
+}
+
+function friendName(preview: FriendInvitePreview | null): string | null {
+  const name = preview?.inviterName?.trim();
+  return name && name.length > 0 ? name : null;
+}
+
+export function buildFriendOgTitle(preview: FriendInvitePreview | null): string {
+  const name = friendName(preview);
+  return name ? `${name} wants to be friends` : FRIEND_OG_FALLBACK_TITLE;
+}
+
+export function buildFriendOgDescription(preview: FriendInvitePreview | null): string {
+  const name = friendName(preview);
+  return name
+    ? `${name} invited you to Workshop.dev. Accept to compare your daily game scores.`
+    : "You've been invited to Workshop.dev. Accept to compare your daily game scores.";
+}
+
+/** Big title rendered inside the thumbnail image. */
+export function buildFriendThumbnailTitle(preview: FriendInvitePreview | null): string {
+  return friendName(preview) ?? "Add a friend";
+}
+
+/** Subtitle rendered inside the thumbnail image. */
+export function buildFriendThumbnailSubtitle(preview: FriendInvitePreview | null): string {
+  return friendName(preview)
+    ? "wants to be friends on Workshop.dev"
+    : "Compare your daily game scores on Workshop.dev";
+}
+
+/** Per-friend-invite preview meta tags (same belt-and-suspenders set). */
+export function buildFriendMetaTags(
+  preview: FriendInvitePreview | null,
+  opts: { pageUrl: string; imageUrl: string },
+): string {
+  return buildMetaTagsRaw({
+    title: buildFriendOgTitle(preview),
+    description: buildFriendOgDescription(preview),
+    url: opts.pageUrl,
+    image: opts.imageUrl,
+  });
+}
+
+/** The friend-invite thumbnail HTML passed to `workers-og`. */
+export function buildFriendOgImageHtml(preview: FriendInvitePreview | null): string {
+  return renderImageHtml({
+    gradient: FRIEND_OG_GRADIENT,
+    emoji: FRIEND_OG_EMOJI,
+    title: buildFriendThumbnailTitle(preview),
+    subtitle: buildFriendThumbnailSubtitle(preview),
+  });
+}
+
 /**
  * HTML passed to `workers-og` (Satori) for the actual thumbnail. Uses
  * inline `style="…"` rather than `tw="…"` so we don't pay for the
@@ -437,6 +503,32 @@ export async function fetchInvitePreview(
     if (!res.ok) return null;
     const body = (await res.json()) as { preview?: unknown };
     return normalizePreview(body.preview);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the inviter's name for a friend invite link. Hits the public
+ * `GET /v1/friends/requests/:token` preview. Same null-on-failure contract as
+ * the list fetchers — a flaky API or a flag-off games surface degrades to the
+ * generic friend card, never a broken share link.
+ */
+export async function fetchFriendInvitePreview(
+  token: string,
+  env: PagesEnv,
+): Promise<FriendInvitePreview | null> {
+  const apiUrl = env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) return null;
+  try {
+    const res = await fetch(
+      `${apiUrl.replace(/\/$/, "")}/v1/friends/requests/${encodeURIComponent(token)}`,
+      { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as { inviter?: { displayName?: unknown } };
+    const displayName = body.inviter?.displayName;
+    return { inviterName: typeof displayName === "string" ? displayName : null };
   } catch {
     return null;
   }

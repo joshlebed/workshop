@@ -42,6 +42,8 @@ const AASA = {
           { "/": "/invite/*" },
           // Direct list / item / game URLs — open in app for installed users.
           { "/": "/list/*" },
+          // Friend invite links — open the accept screen in app, not Safari.
+          { "/": "/friends/accept/*" },
         ],
       },
     ],
