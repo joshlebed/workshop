@@ -226,6 +226,53 @@ describe("POST /v1/friends/requests/:token/accept", () => {
   });
 });
 
+describe("POST /v1/friends/invite/reset", () => {
+  it("requires auth", async () => {
+    const res = await friendRoutes.request("/invite/reset", { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  it("rotates the token on the same single row, invalidating the old link", async () => {
+    const previous = inviteToken;
+    const res = await friendRoutes.request("/invite/reset", {
+      method: "POST",
+      headers: authHeaders(me),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string; url: string };
+    expect(body.token).toMatch(/^[A-Za-z0-9]{8}$/);
+    expect(body.token).not.toBe(previous);
+    expect(body.url).toContain(body.token);
+
+    // The slug rotated in place — still exactly one row for me.
+    const count = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM friend_requests WHERE inviter_id = $1`,
+      [me],
+    );
+    expect(count[0]?.n).toBe(1);
+
+    // Old link is dead; the new link previews fine.
+    const oldPreview = await friendRoutes.request(`/requests/${previous}`);
+    expect(oldPreview.status).toBe(404);
+    const newPreview = await friendRoutes.request(`/requests/${body.token}`);
+    expect(newPreview.status).toBe(200);
+
+    inviteToken = body.token;
+  });
+
+  it("the rotated link still works end-to-end (reusable as before)", async () => {
+    // friend↔me already exists, so this re-accept is idempotent — but it must
+    // still 200, proving the rotated slug accepts.
+    const res = await friendRoutes.request(`/requests/${inviteToken}/accept`, {
+      method: "POST",
+      headers: authHeaders(friend),
+    });
+    expect(res.status).toBe(200);
+    const count = await rows<{ n: number }>(`SELECT count(*)::int AS n FROM friendships`);
+    expect(count[0]?.n).toBe(1);
+  });
+});
+
 describe("GET /v1/friends", () => {
   it("lists my friends (both directions of the edge)", async () => {
     const mine = await friendRoutes.request("/", { headers: authHeaders(me) });

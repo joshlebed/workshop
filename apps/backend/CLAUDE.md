@@ -173,16 +173,19 @@ set, `token` NULL). Share links stay **reusable, not single-use**: anyone who op
 `/friends/accept/:token` can accept and form an edge, any number of times — the `friendships`
 table is the source of truth and the insert is idempotent. `POST /v1/friends/invite` returns
 one stable link per inviter (reuses the oldest `invitee_id IS NULL` row — keep that filter on
-any query that touches link rows). Directed requests (mutuals / profile flow) exist **only
-while pending**: accept (`POST /v1/friends/requests/user/:userId/accept`, or accepting the
-sender's share link, or a cross-request via `POST /v1/friends/requests`) forms the edge and
-deletes the row; `DELETE /v1/friends/requests/user/:userId` is both cancel and silent deny
-(re-requesting is allowed). A partial unique index keeps one pending row per (inviter,
-invitee); the legacy `status` / `responded_at` columns stay at defaults. `GET
-/v1/friends/mutuals` is a two-hop walk over `friendships` computed in app code, and `GET
-/v1/friends/users/:userId` 404s when the viewer has no relationship AND no mutual friends
-with the target (profiles can't probe strangers); it attaches the target's games + period
-scores only for friends/self.
+any query that touches link rows); `POST /v1/friends/invite/reset` rotates the slug on that
+one row (mirrors `POST /v1/lists/:id/share/reset` via the shared `isUniqueViolation` in
+`lib/pgErrors.ts`), invalidating the old URL (preview + accept 404) and minting a fresh one —
+it only touches the oldest/canonical link row, so legacy multi-row users don't self-collide.
+Directed requests (mutuals / profile flow) exist **only while pending**: accept (`POST
+/v1/friends/requests/user/:userId/accept`, or accepting the sender's share link, or a
+cross-request via `POST /v1/friends/requests`) forms the edge and deletes the row; `DELETE
+/v1/friends/requests/user/:userId` is both cancel and silent deny (re-requesting is allowed).
+A partial unique index keeps one pending row per (inviter, invitee); the legacy `status` /
+`responded_at` columns stay at defaults. `GET /v1/friends/mutuals` is a two-hop walk over
+`friendships` computed in app code, and `GET /v1/friends/users/:userId` 404s when the viewer
+has no relationship AND no mutual friends with the target (profiles can't probe strangers);
+it attaches the target's games + period scores only for friends/self.
 `GET /v1/games/discovery` (friends' games I haven't added) is registered **before**
 the `/:id` routes so the literal path isn't shadowed; its `?friend=` filter 404s for
 non-friends so the endpoint can't be used to probe a stranger's games. `games.test.ts` and

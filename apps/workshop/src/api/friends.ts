@@ -61,6 +61,19 @@ export async function createFriendInvite(token: string | null): Promise<FriendIn
 }
 
 /**
+ * `POST /v1/friends/invite/reset` — rotate my invite link. The old URL stops
+ * working (preview + accept 404) and a fresh one is minted in its place.
+ */
+export async function resetFriendInvite(token: string | null): Promise<FriendInviteResponse> {
+  const raw = await apiRequest<unknown>({
+    method: "POST",
+    path: "/v1/friends/invite/reset",
+    token,
+  });
+  return friendInviteResponseSchema.parse(raw);
+}
+
+/**
  * `GET /v1/friends/requests/:token` — preview who's inviting before accepting.
  * Public on the backend; we still forward the session token when present so a
  * signed-in user shares the same warmed connection.

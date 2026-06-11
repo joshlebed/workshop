@@ -100,8 +100,9 @@ Everything stays behind `EXPO_PUBLIC_ENABLE_GAMES` (queries gate on `GAMES_TAB_E
 **An empty `discovery?friend=<id>.games` does NOT mean the friend has no games** — discovery
 filters out games you already have, so a friend whose whole library you already play yields an
 empty list (common right after friending, since scores gate on friendship). The `?friend=`
-form returns `friendGameCount` (the friend's total) so the picker can say "you already have all
-of {name}'s games" (count > 0) instead of the wrong "hasn't added any games yet" (count 0).
+form returns `friendGameCount` (the friend's total) so the picker can tell the cases apart:
+count > 0 → you already have them all, nothing looks missing, so it shows no caption; count 0 →
+"hasn't added any games yet".
 Don't render a "no games" message off `games.length === 0` alone.
 
 ## Profile avatar circles

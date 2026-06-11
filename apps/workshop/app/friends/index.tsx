@@ -10,6 +10,7 @@ import {
   fetchFriends,
   fetchMutuals,
   removeFriendRequest,
+  resetFriendInvite,
   sendFriendRequest,
   unfriend,
 } from "../../src/api/friends";
@@ -101,6 +102,39 @@ export default function FriendsScreen() {
       showToast({ message: errorMessage(e, "Couldn't create an invite link."), tone: "danger" });
     },
   });
+
+  const resetMutation = useMutation({
+    mutationFn: () => resetFriendInvite(token),
+    onSuccess: async (data) => {
+      haptics.medium();
+      setInviteUrl(data.url);
+      const result = await shareOrCopyLink(data.url);
+      if (result === "copied") {
+        showToast({ message: "New link copied — the old one no longer works", tone: "success" });
+      } else if (result === "failed") {
+        showToast({
+          message: "New link created — copy it below. The old one no longer works.",
+          tone: "danger",
+        });
+      } else {
+        showToast({ message: "New link created — the old one no longer works", tone: "success" });
+      }
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't reset the invite link."), tone: "danger" });
+    },
+  });
+
+  const onReset = async () => {
+    const ok = await confirm({
+      title: "Reset invite link?",
+      message:
+        "Your current link will stop working. Anyone you've already shared it with won't be able to use it.",
+      confirmLabel: "Reset link",
+      destructive: true,
+    });
+    if (ok) resetMutation.mutate();
+  };
 
   const unfriendMutation = useMutation({
     mutationFn: (userId: string) => unfriend(userId, token),
@@ -245,25 +279,45 @@ export default function FriendsScreen() {
             testID="friends-invite-button"
           />
           {inviteUrl ? (
-            <View style={styles.inviteUrlRow}>
-              <View style={styles.inviteUrlField}>
-                <Text
-                  variant="caption"
-                  tone="secondary"
-                  numberOfLines={1}
-                  testID="friends-invite-url"
+            <>
+              <View style={styles.inviteUrlRow}>
+                <View style={styles.inviteUrlField}>
+                  <Text
+                    variant="caption"
+                    tone="secondary"
+                    numberOfLines={1}
+                    testID="friends-invite-url"
+                  >
+                    {inviteUrl}
+                  </Text>
+                </View>
+                <Button
+                  label="Copy"
+                  variant="secondary"
+                  size="md"
+                  onPress={onCopy}
+                  testID="friends-invite-copy"
+                />
+              </View>
+              <View style={styles.resetRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Reset invite link"
+                  onPress={onReset}
+                  disabled={resetMutation.isPending}
+                  testID="friends-invite-reset"
+                  hitSlop={8}
+                  style={({ pressed }) => [pressed && styles.resetPressed]}
                 >
-                  {inviteUrl}
+                  <Text variant="caption" tone="muted" style={styles.resetLabel}>
+                    {resetMutation.isPending ? "Resetting…" : "Reset link"}
+                  </Text>
+                </Pressable>
+                <Text variant="caption" tone="muted">
+                  Makes the current link stop working.
                 </Text>
               </View>
-              <Button
-                label="Copy"
-                variant="secondary"
-                size="md"
-                onPress={onCopy}
-                testID="friends-invite-copy"
-              />
-            </View>
+            </>
           ) : null}
         </View>
 
@@ -517,6 +571,17 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.canvas,
+  },
+  resetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: tokens.space.sm,
+  },
+  resetPressed: { opacity: 0.6 },
+  resetLabel: {
+    color: tokens.status.danger,
+    fontWeight: tokens.font.weight.semibold,
   },
   center: {
     alignItems: "center",

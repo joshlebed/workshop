@@ -39,6 +39,7 @@ import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
 import { normalizeScoreDirection } from "../../lib/gameCatalog.js";
+import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { generateShareSlug, isValidShareSlug } from "../../lib/shareSlug.js";
@@ -228,6 +229,78 @@ friendRoutes.post(
           url: friendInviteUrl(inserted.token),
         };
         return ok(c, response, 201);
+      }
+    }
+    return err(c, "INTERNAL", "could not allocate an invite token");
+  },
+);
+
+// --- POST /v1/friends/invite/reset — rotate my personal invite link ---
+// Mints a fresh slug on my one stable invite row, invalidating the old link:
+// anyone holding the previous URL now 404s on preview + accept. Same reusable-
+// link model as /invite (one row per inviter) — this just rotates the slug, the
+// way `POST /v1/lists/:id/share/reset` rotates a list's share slug. If I've
+// never generated a link, this mints my first one, so reset doubles as a safe
+// first-time create. Retries on the rare slug collision.
+
+friendRoutes.post(
+  "/invite/reset",
+  requireAuth,
+  rateLimit({
+    family: "v1.friends.invite",
+    limit: 30,
+    windowSec: 3600,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const userId = c.get("userId");
+    const db = getDb();
+
+    // Rotate the canonical (oldest) LINK row only — legacy single-use data
+    // could leave a user with several rows, and updating them all to one slug
+    // would self-collide. The oldest `invitee_id IS NULL` row is the one
+    // `/invite` hands out; directed-request rows (invitee set, token NULL)
+    // must never receive a token or they'd become accept-able share links.
+    const [existing] = await db
+      .select({ id: friendRequests.id })
+      .from(friendRequests)
+      .where(and(eq(friendRequests.inviterId, userId), isNull(friendRequests.inviteeId)))
+      .orderBy(asc(friendRequests.createdAt))
+      .limit(1);
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const token = generateShareSlug();
+      try {
+        if (existing) {
+          const [updated] = await db
+            .update(friendRequests)
+            .set({ token })
+            .where(eq(friendRequests.id, existing.id))
+            .returning({ token: friendRequests.token });
+          if (updated?.token) {
+            const response: FriendInviteResponse = {
+              token: updated.token,
+              url: friendInviteUrl(updated.token),
+            };
+            return ok(c, response);
+          }
+        } else {
+          const [inserted] = await db
+            .insert(friendRequests)
+            .values({ inviterId: userId, token })
+            .onConflictDoNothing({ target: friendRequests.token })
+            .returning({ token: friendRequests.token });
+          if (inserted?.token) {
+            const response: FriendInviteResponse = {
+              token: inserted.token,
+              url: friendInviteUrl(inserted.token),
+            };
+            return ok(c, response, 201);
+          }
+        }
+      } catch (e) {
+        if (isUniqueViolation(e, "friend_requests_token_unique")) continue;
+        throw e;
       }
     }
     return err(c, "INTERNAL", "could not allocate an invite token");

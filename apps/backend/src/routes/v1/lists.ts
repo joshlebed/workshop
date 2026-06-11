@@ -32,6 +32,7 @@ import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
 import { inspectModuleChange } from "../../lib/moduleManifests.js";
 import { requireCapability } from "../../lib/permissions.js";
+import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { verifySession } from "../../lib/session.js";
@@ -234,17 +235,6 @@ const SHARE_VISIBILITIES = ["off", "view", "join"] as const satisfies readonly S
  * named constraint. Drizzle wraps the original `postgres.PostgresError` in a
  * `DrizzleQueryError` so we walk the cause chain.
  */
-function isUniqueViolation(e: unknown, constraint: string): boolean {
-  let cur: unknown = e;
-  for (let i = 0; i < 5; i++) {
-    if (!cur || typeof cur !== "object") return false;
-    const obj = cur as { code?: unknown; constraint_name?: unknown; cause?: unknown };
-    if (obj.code === "23505" && obj.constraint_name === constraint) return true;
-    cur = obj.cause;
-  }
-  return false;
-}
-
 /**
  * Build a public preview payload for a list. Used by both the by-id and
  * by-slug preview endpoints — sharing one shape means the OG image
