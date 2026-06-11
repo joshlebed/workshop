@@ -1,6 +1,6 @@
 import { Tabs, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Platform, Text as RNText } from "react-native";
+import { Text as RNText } from "react-native";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 import {
   getPreferredHomeTab,
@@ -15,15 +15,14 @@ import { tokens } from "../../src/ui/index";
 // share-intent redirects are unchanged.
 //
 // Flag off: the Games screen is unlinked and the tab bar is hidden, so the
-// shell renders exactly like the pre-tabs app. Flag on: native gets a bottom
-// tab bar; web hides it so top-level screen headers can render the inline
-// switch next to their existing action icons.
+// shell renders exactly like the pre-tabs app. Flag on: both web and native
+// hide the bottom tab bar and render the inline Lists / Games switch at the
+// top of their screen headers, next to the existing action icons.
 // Uses the static `tokens` (not `useTheme()`) for backgrounds, matching the
 // root layout's Stack `contentStyle` — mixing the theme-resolved tokens here
 // paints a light scene behind dark screen content in light-preferring
 // browsers.
 export default function TabsLayout() {
-  const showNativeTabBar = GAMES_TAB_ENABLED && Platform.OS !== "web";
   const router = useRouter();
   const pathname = usePathname();
   const [preferenceReady, setPreferenceReady] = useState(!GAMES_TAB_ENABLED);
@@ -64,9 +63,9 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: tokens.bg.canvas },
         tabBarActiveTintColor: tokens.accent.default,
         tabBarInactiveTintColor: tokens.text.muted,
-        tabBarStyle: showNativeTabBar
-          ? { backgroundColor: tokens.bg.surface, borderTopColor: tokens.bg.elevated }
-          : { display: "none" },
+        // Bottom tab bar is hidden on every platform; the Lists / Games switch
+        // lives in the top screen headers (InlineTabSwitch) instead.
+        tabBarStyle: { display: "none" },
       }}
     >
       <Tabs.Screen

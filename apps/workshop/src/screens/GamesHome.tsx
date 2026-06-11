@@ -423,7 +423,7 @@ export function GamesHome() {
   return (
     <Screen style={styles.root} testID="games-home">
       <HomeHeader
-        left={Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
+        left={GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
         right={
           <>
             <Pressable

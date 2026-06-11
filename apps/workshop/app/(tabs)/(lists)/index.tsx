@@ -252,7 +252,7 @@ export default function Home() {
   return (
     <Screen style={styles.root}>
       <HomeHeader
-        left={Platform.OS === "web" && GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
+        left={GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
         right={
           <>
             <HeaderActivityButton

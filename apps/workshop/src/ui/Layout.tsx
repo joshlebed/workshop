@@ -47,10 +47,10 @@ export function HomeHeader({ left, right, testID }: HomeHeaderProps) {
   );
 }
 
-// The web counterpart of the native bottom tab bar: a compact inline switch
-// for Lists / Games. Render it inside top-level screen headers only on web
-// with the Games flag on — native uses expo-router's tab bar, and with the
-// flag off neither surface renders any switch.
+// The top-of-screen Lists / Games switch, replacing a bottom tab bar on both
+// web and native. Render it inside top-level screen headers when the Games
+// flag is on; with the flag off neither surface renders any switch (and the
+// bottom tab bar stays hidden too).
 export function InlineTabSwitch() {
   const router = useRouter();
   const pathname = usePathname();
