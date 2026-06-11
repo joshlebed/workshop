@@ -2,8 +2,8 @@
 //
 // Shown two ways (both driven by `useReturnToPaste`): automatically when you
 // return to the page after tapping Play, and manually via a card's "or paste
-// result" link. Mirrors the game-detail PasteSlot (monospace input, ⌘↩ submit
-// on web) but as a bottom sheet so it can ride on top of the card list.
+// result" link. Mirrors the game-detail PasteSlot (monospace input, Enter
+// submits on web) but as a bottom sheet so it can ride on top of the card list.
 //
 // Holds a snapshot of the target item so the sheet keeps rendering its content
 // through the exit animation after the parent clears the target.
@@ -50,23 +50,16 @@ export function GameScorePasteSheet<T extends { title: string }>({
     if (snapshot && !empty && !pending) onSubmit(snapshot, draft.trim());
   };
 
-  // On web, ⌘/Ctrl+Enter posts — a multiline paste form shouldn't require the
-  // mouse. Plain Enter inserts a newline (results are multi-line).
+  // On web, Enter posts — results arrive via paste, so a newline keystroke is
+  // almost never intentional (Shift+Enter still inserts one). RN-Web's
+  // TextInput overwrites any custom onKeyDown with its own handler, which only
+  // routes Enter to onSubmitEditing when blurOnSubmit is set on a multiline.
   const webProps =
     Platform.OS === "web"
-      ? ({
-          onKeyDown: (e: {
-            key: string;
-            metaKey?: boolean;
-            ctrlKey?: boolean;
-            preventDefault: () => void;
-          }) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !empty && !pending) {
-              e.preventDefault();
-              submit();
-            }
-          },
-        } as Record<string, unknown>)
+      ? {
+          blurOnSubmit: true,
+          onSubmitEditing: submit,
+        }
       : {};
 
   return (
@@ -102,11 +95,6 @@ export function GameScorePasteSheet<T extends { title: string }>({
             {...webProps}
           />
           <View style={styles.actions}>
-            {Platform.OS === "web" && !empty ? (
-              <Text variant="caption" tone="muted" style={styles.hint}>
-                ⌘↩ to post
-              </Text>
-            ) : null}
             <Button label="Not yet" variant="ghost" onPress={onClose} disabled={pending} />
             <Button
               label="Post score"
@@ -149,5 +137,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
   },
-  hint: { letterSpacing: 0.3, marginRight: "auto" },
 });
