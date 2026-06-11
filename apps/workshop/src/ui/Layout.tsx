@@ -84,8 +84,8 @@ export function InlineTabSwitch() {
 
   return (
     <View style={topTabStyles.track}>
-      {item("Lists", !onGames, () => router.navigate("/"))}
       {item("Games", onGames, () => router.navigate("/games"))}
+      {item("Lists", !onGames, () => router.navigate("/"))}
     </View>
   );
 }
