@@ -166,13 +166,23 @@ the router** (404 when off): on when `STAGE=local`, otherwise requires `ENABLE_G
 the Lambda env (set by Terraform). Standings cover `viewer ∪ friends_of(viewer)` via
 `visibleUserIds()` (G2a) — the friend graph lives in `friendships` (one canonical row per
 pair, `user_low < user_high`; `lib/friends.ts` is the only writer and owns the invariant)
-with share-link invites in `friend_requests` (`routes/v1/friends.ts`, same flag gate as
-games). **Friend invite links are reusable, not single-use**: anyone who opens
+with invites in `friend_requests` (`routes/v1/friends.ts`, same flag gate as
+games). **Two row shapes share `friend_requests`, discriminated by `invitee_id`**: share-link
+invites (`invitee_id IS NULL`, `token` set) and directed user-to-user requests (`invitee_id`
+set, `token` NULL). Share links stay **reusable, not single-use**: anyone who opens
 `/friends/accept/:token` can accept and form an edge, any number of times — the `friendships`
 table is the source of truth and the insert is idempotent. `POST /v1/friends/invite` returns
-one stable link per inviter (reuses the existing row). The `friend_requests.invitee_id` /
-`status` / `responded_at` columns are **legacy** from the original single-use model and are no
-longer written (kept for back-compat with old rows); don't reintroduce gating on them.
+one stable link per inviter (reuses the oldest `invitee_id IS NULL` row — keep that filter on
+any query that touches link rows). Directed requests (mutuals / profile flow) exist **only
+while pending**: accept (`POST /v1/friends/requests/user/:userId/accept`, or accepting the
+sender's share link, or a cross-request via `POST /v1/friends/requests`) forms the edge and
+deletes the row; `DELETE /v1/friends/requests/user/:userId` is both cancel and silent deny
+(re-requesting is allowed). A partial unique index keeps one pending row per (inviter,
+invitee); the legacy `status` / `responded_at` columns stay at defaults. `GET
+/v1/friends/mutuals` is a two-hop walk over `friendships` computed in app code, and `GET
+/v1/friends/users/:userId` 404s when the viewer has no relationship AND no mutual friends
+with the target (profiles can't probe strangers); it attaches the target's games + period
+scores only for friends/self.
 `GET /v1/games/discovery` (friends' games I haven't added) is registered **before**
 the `/:id` routes so the literal path isn't shadowed; its `?friend=` filter 404s for
 non-friends so the endpoint can't be used to probe a stranger's games. `games.test.ts` and

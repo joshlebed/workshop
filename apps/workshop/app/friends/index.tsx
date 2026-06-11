@@ -1,9 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { FriendSummary } from "@workshop/shared/friends";
-import { Redirect } from "expo-router";
+import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
+import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { createFriendInvite, fetchFriends, unfriend } from "../../src/api/friends";
+import {
+  acceptFriendRequestFrom,
+  createFriendInvite,
+  fetchFriendRequests,
+  fetchFriends,
+  fetchMutuals,
+  removeFriendRequest,
+  sendFriendRequest,
+  unfriend,
+} from "../../src/api/friends";
 import { useAuth } from "../../src/hooks/useAuth";
 import { useLivePollingInterval } from "../../src/hooks/useLivePollingInterval";
 import { errorMessage } from "../../src/lib/api";
@@ -18,31 +27,63 @@ import { shareOrCopyLink } from "../../src/lib/share";
 import { Avatar, Button, EmptyState, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
 /**
- * Friends screen (G2b, issue #286) — the share-link friend graph behind the
- * Games surface flag. Reachable from the Games header and the profile/settings
- * sheet. Share-link is the only friend-add mechanism in v1 (no search/QR —
- * decided 2026-06-10).
+ * Friends screen (G2b, issue #286; directed requests + mutuals added with the
+ * social-features pass) — behind the Games surface flag. Reachable from the
+ * Games header and the profile/settings sheet.
  *
- * Incoming requests are *not* listed here: the share-link model has no directed
- * pending request until someone opens a link, so accepting happens on the
- * accept-landing route (`/friends/accept/:token`), which previews the inviter
- * and forms the edge.
+ * Three sections: pending inbound requests (accept/deny inline), my friends,
+ * and "people you may know" (friends of friends, most-connected first, with a
+ * one-tap request button). Every person card opens `/friends/:userId`. The
+ * share-link invite stays the universal add path for people outside the graph.
  */
+
+/** "1 mutual friend · Alice" / "2 mutual friends · Alice & Bob" / "+N". */
+export function mutualLine(m: MutualSummary): string {
+  const names = m.mutualFriends.map((f) => f.displayName?.trim() || "Someone");
+  const count = m.mutualCount === 1 ? "1 mutual friend" : `${m.mutualCount} mutual friends`;
+  if (names.length === 0) return count;
+  if (names.length === 1) return `${count} · ${names[0]}`;
+  if (names.length === 2) return `${count} · ${names[0]} & ${names[1]}`;
+  return `${count} · ${names[0]}, ${names[1]} +${names.length - 2}`;
+}
+
 export default function FriendsScreen() {
   const { token } = useAuth();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const livePoll = useLivePollingInterval();
 
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  // Per-row in-flight state — one mutation serves many mutual cards.
+  const [requestingIds, setRequestingIds] = useState<string[]>([]);
+  const [answeringIds, setAnsweringIds] = useState<string[]>([]);
 
+  const enabled = !!token && GAMES_TAB_ENABLED;
   const friendsQuery = useQuery({
     queryKey: queryKeys.friends.all,
     queryFn: () => fetchFriends(token),
-    enabled: !!token && GAMES_TAB_ENABLED,
+    enabled,
     refetchInterval: livePoll,
   });
+  const requestsQuery = useQuery({
+    queryKey: queryKeys.friends.requests,
+    queryFn: () => fetchFriendRequests(token),
+    enabled,
+    refetchInterval: livePoll,
+  });
+  const mutualsQuery = useQuery({
+    queryKey: queryKeys.friends.mutuals,
+    queryFn: () => fetchMutuals(token),
+    enabled,
+  });
   const friends = friendsQuery.data?.friends ?? [];
+  const inbound = requestsQuery.data?.inbound ?? [];
+  const outboundIds = new Set((requestsQuery.data?.outbound ?? []).map((r) => r.userId));
+  // Inbound requesters surface in the Requests section — don't repeat them
+  // below as suggestions.
+  const inboundIds = new Set(inbound.map((r) => r.userId));
+  const mutuals = (mutualsQuery.data?.mutuals ?? []).filter((m) => !inboundIds.has(m.userId));
 
   const inviteMutation = useMutation({
     mutationFn: () => createFriendInvite(token),
@@ -77,6 +118,74 @@ export default function FriendsScreen() {
     },
   });
 
+  const sendRequestMutation = useMutation({
+    mutationFn: (userId: string) => {
+      setRequestingIds((ids) => [...ids, userId]);
+      return sendFriendRequest(userId, token);
+    },
+    onSuccess: async (data) => {
+      haptics.medium();
+      if (data.status === "accepted") {
+        showToast({
+          message: `You're now friends with ${data.friend?.displayName?.trim() || "them"}!`,
+          tone: "success",
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.friends.all }),
+          queryClient.invalidateQueries({ queryKey: ["games"] }),
+        ]);
+      } else {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.friends.requests });
+      }
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't send that request."), tone: "danger" });
+    },
+    onSettled: (_data, _err, userId) => {
+      setRequestingIds((ids) => ids.filter((id) => id !== userId));
+    },
+  });
+
+  const acceptRequestMutation = useMutation({
+    mutationFn: (userId: string) => {
+      setAnsweringIds((ids) => [...ids, userId]);
+      return acceptFriendRequestFrom(userId, token);
+    },
+    onSuccess: async (data) => {
+      haptics.medium();
+      showToast({
+        message: `You're now friends with ${data.friend.displayName?.trim() || "them"}!`,
+        tone: "success",
+      });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.friends.all }),
+        queryClient.invalidateQueries({ queryKey: ["games"] }),
+      ]);
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't accept that request."), tone: "danger" });
+    },
+    onSettled: (_data, _err, userId) => {
+      setAnsweringIds((ids) => ids.filter((id) => id !== userId));
+    },
+  });
+
+  const denyRequestMutation = useMutation({
+    mutationFn: (userId: string) => {
+      setAnsweringIds((ids) => [...ids, userId]);
+      return removeFriendRequest(userId, token);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't decline that request."), tone: "danger" });
+    },
+    onSettled: (_data, _err, userId) => {
+      setAnsweringIds((ids) => ids.filter((id) => id !== userId));
+    },
+  });
+
   const onRemove = async (friend: FriendSummary) => {
     const name = friend.displayName?.trim() || "this friend";
     const ok = await confirm({
@@ -98,6 +207,8 @@ export default function FriendsScreen() {
     if (ok === "copied") showToast({ message: "Invite link copied", tone: "success" });
   };
 
+  const openProfile = (userId: string) => router.push(`/friends/${userId}`);
+
   return (
     <Screen testID="friends-screen">
       <View style={styles.headerNav}>
@@ -116,7 +227,7 @@ export default function FriendsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {/* Invite — share-link is the only add path in v1. */}
+        {/* Invite — the share-link path for people outside the graph. */}
         <View style={styles.inviteCard}>
           <Text variant="heading" style={styles.inviteTitle}>
             Add a friend
@@ -156,6 +267,76 @@ export default function FriendsScreen() {
           ) : null}
         </View>
 
+        {/* Pending inbound requests. */}
+        {inbound.length > 0 ? (
+          <View style={styles.list} testID="friend-requests-section">
+            <Text variant="caption" tone="muted" style={styles.listLabel}>
+              {inbound.length === 1 ? "1 friend request" : `${inbound.length} friend requests`}
+            </Text>
+            {inbound.map((request) => {
+              const answering = answeringIds.includes(request.userId);
+              return (
+                <Pressable
+                  key={request.userId}
+                  onPress={() => openProfile(request.userId)}
+                  accessibilityLabel={`View ${request.displayName?.trim() || "their"} profile`}
+                  style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                    styles.friendRow,
+                    (pressed || hovered) && styles.friendRowHover,
+                  ]}
+                  testID={`friend-request-row-${request.userId}`}
+                >
+                  <Avatar
+                    name={request.displayName}
+                    imageUrl={userAvatarImageUrl(request.userId)}
+                    size="md"
+                  />
+                  <View style={styles.friendText}>
+                    <Text variant="label" numberOfLines={1} style={styles.friendName}>
+                      {request.displayName?.trim() || "Someone"}
+                    </Text>
+                    <Text variant="caption" tone="muted" numberOfLines={1}>
+                      Wants to be friends · {formatRelative(request.requestedAt)}
+                    </Text>
+                  </View>
+                  {answering ? (
+                    <ActivityIndicator size="small" color={tokens.accent.default} />
+                  ) : (
+                    <>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Accept ${request.displayName?.trim() || "request"}`}
+                        onPress={() => acceptRequestMutation.mutate(request.userId)}
+                        testID={`friend-request-accept-${request.userId}`}
+                        hitSlop={6}
+                        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                          styles.acceptBtn,
+                          (pressed || hovered) && styles.acceptBtnHover,
+                        ]}
+                      >
+                        <Text style={styles.acceptLabel}>Accept</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Decline ${request.displayName?.trim() || "request"}`}
+                        onPress={() => denyRequestMutation.mutate(request.userId)}
+                        testID={`friend-request-deny-${request.userId}`}
+                        hitSlop={6}
+                        style={({ pressed }) => [
+                          styles.removeBtn,
+                          pressed && styles.removeBtnPressed,
+                        ]}
+                      >
+                        <Text style={styles.removeLabel}>Decline</Text>
+                      </Pressable>
+                    </>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+
         {/* Friends list. */}
         {friendsQuery.isPending ? (
           <View style={styles.center}>
@@ -184,9 +365,14 @@ export default function FriendsScreen() {
               {friends.length === 1 ? "1 friend" : `${friends.length} friends`}
             </Text>
             {friends.map((friend) => (
-              <View
+              <Pressable
                 key={friend.userId}
-                style={styles.friendRow}
+                onPress={() => openProfile(friend.userId)}
+                accessibilityLabel={`View ${friend.displayName?.trim() || "friend"}'s profile`}
+                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                  styles.friendRow,
+                  (pressed || hovered) && styles.friendRowHover,
+                ]}
                 testID={`friend-row-${friend.userId}`}
               >
                 <Avatar
@@ -212,10 +398,74 @@ export default function FriendsScreen() {
                 >
                   <Text style={styles.removeLabel}>Remove</Text>
                 </Pressable>
-              </View>
+              </Pressable>
             ))}
           </View>
         )}
+
+        {/* People you may know — friends of friends, most-connected first. */}
+        {mutuals.length > 0 ? (
+          <View style={styles.list} testID="friend-mutuals-section">
+            <Text variant="caption" tone="muted" style={styles.listLabel}>
+              People you may know
+            </Text>
+            {mutuals.map((mutual) => {
+              const requested = outboundIds.has(mutual.userId);
+              const requesting = requestingIds.includes(mutual.userId);
+              return (
+                <Pressable
+                  key={mutual.userId}
+                  onPress={() => openProfile(mutual.userId)}
+                  accessibilityLabel={`View ${mutual.displayName?.trim() || "their"} profile`}
+                  style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                    styles.friendRow,
+                    (pressed || hovered) && styles.friendRowHover,
+                  ]}
+                  testID={`friend-mutual-row-${mutual.userId}`}
+                >
+                  <Avatar
+                    name={mutual.displayName}
+                    imageUrl={userAvatarImageUrl(mutual.userId)}
+                    size="md"
+                  />
+                  <View style={styles.friendText}>
+                    <Text variant="label" numberOfLines={1} style={styles.friendName}>
+                      {mutual.displayName?.trim() || "Someone"}
+                    </Text>
+                    <Text variant="caption" tone="muted" numberOfLines={1}>
+                      {mutualLine(mutual)}
+                    </Text>
+                  </View>
+                  {requested ? (
+                    <View style={styles.requestedPill} testID={`friend-requested-${mutual.userId}`}>
+                      <Text style={styles.requestedText}>Requested</Text>
+                    </View>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Send ${mutual.displayName?.trim() || "them"} a friend request`}
+                      onPress={() => sendRequestMutation.mutate(mutual.userId)}
+                      disabled={requesting}
+                      testID={`friend-mutual-add-${mutual.userId}`}
+                      hitSlop={6}
+                      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                        styles.addBtn,
+                        (pressed || hovered) && styles.addBtnHover,
+                        requesting && styles.addBtnBusy,
+                      ]}
+                    >
+                      {requesting ? (
+                        <ActivityIndicator size="small" color={tokens.accent.default} />
+                      ) : (
+                        <Text style={styles.addGlyph}>+</Text>
+                      )}
+                    </Pressable>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
       </ScrollView>
     </Screen>
   );
@@ -286,6 +536,7 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.surface,
   },
+  friendRowHover: { backgroundColor: tokens.bg.elevated },
   friendText: { flex: 1, minWidth: 0, gap: 2 },
   friendName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
   removeBtn: {
@@ -298,5 +549,47 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
     color: tokens.status.danger,
+  },
+  acceptBtn: {
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.accent.muted,
+    borderWidth: 1,
+    borderColor: `${tokens.accent.default}55`,
+  },
+  acceptBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  acceptLabel: {
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.semibold,
+    color: tokens.accent.default,
+  },
+  addBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: tokens.accent.muted,
+    borderWidth: 1,
+    borderColor: `${tokens.accent.default}55`,
+  },
+  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  addBtnBusy: { opacity: 0.8 },
+  addGlyph: {
+    fontSize: 20,
+    lineHeight: 24,
+    color: tokens.accent.default,
+    fontWeight: tokens.font.weight.semibold,
+  },
+  requestedPill: {
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.md,
+  },
+  requestedText: {
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.semibold,
+    color: tokens.text.muted,
   },
 });

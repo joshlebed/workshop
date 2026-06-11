@@ -556,27 +556,43 @@ export const friendships = pgTable(
 );
 
 /**
- * Personal friend-invite links (spec §3.4) — share-link → accept, reusing
- * the list-invite token machinery (`lib/shareSlug.ts`). The link is
- * **reusable**: anyone who opens it can accept and form a `friendships`
- * edge with the inviter, any number of times (the edge table is the source
- * of truth). One stable row per inviter — `POST /v1/friends/invite` reuses
- * it rather than minting a new one. The `invitee_id` / `status` /
- * `responded_at` columns are legacy from the original single-use model and
- * are no longer written; kept (defaulting to `pending` / NULL) for
- * back-compat with rows created before links became reusable.
+ * Friend invites — two row shapes share this table, discriminated by
+ * `invitee_id`:
+ *
+ * - **Share-link invite** (`invitee_id IS NULL`, `token` set): reusable
+ *   personal link (spec §3.4) — anyone who opens it can accept and form a
+ *   `friendships` edge with the inviter, any number of times. One stable
+ *   row per inviter; `POST /v1/friends/invite` reuses it.
+ * - **Directed request** (`invitee_id` set, `token` NULL): a user-to-user
+ *   friend request (mutuals / profile-page flow). Rows exist only while
+ *   pending — accept forms the edge and deletes the row; deny/cancel
+ *   deletes it silently (re-requesting is allowed). The partial unique
+ *   index keeps one pending request per (inviter, invitee).
+ *
+ * Either way `friendships` is the source of truth for edges. `status` /
+ * `responded_at` are legacy from the original single-use link model: kept
+ * for old rows, and directed rows only ever exist as `pending`.
  */
-export const friendRequests = pgTable("friend_requests", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  inviterId: uuid("inviter_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "cascade" }),
-  token: text("token").notNull().unique(),
-  inviteeId: uuid("invitee_id").references(() => users.id, { onDelete: "cascade" }),
-  status: text("status").notNull().default("pending"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-  respondedAt: timestamp("responded_at", { withTimezone: true }),
-});
+export const friendRequests = pgTable(
+  "friend_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    inviterId: uuid("inviter_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").unique(),
+    inviteeId: uuid("invitee_id").references(() => users.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+  },
+  (t) => ({
+    inviteeIdx: index("friend_requests_invitee_idx").on(t.inviteeId),
+    directedPendingUniq: uniqueIndex("friend_requests_directed_pending_idx")
+      .on(t.inviterId, t.inviteeId)
+      .where(sql`invitee_id IS NOT NULL AND status = 'pending'`),
+  }),
+);
 
 export const rateLimits = pgTable(
   "rate_limits",

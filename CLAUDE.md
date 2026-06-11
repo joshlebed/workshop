@@ -521,10 +521,13 @@ Point at a scrubbed staging branch if that's not OK.
 
 `apps/backend/scripts/seed.ts` populates Postgres with a lived-in set of lists owned by
 `joshlebed@gmail.com` (the web app's auto-dev-sign-in identity). Second user
-`friend@workshop.local` is added on a few shared lists, plus recent `game_scores` rows. Both `dev.sh` and `niteshift-setup.sh` run
-`pnpm --filter @workshop/backend run db:seed`. Idempotent, hard-guarded against non-local
-stages. `SEED_DEV_DATA=0` to skip. To re-seed: `DELETE FROM users WHERE email IN
-('joshlebed@gmail.com','friend@workshop.local');` and re-run.
+`friend@workshop.local` (Alex) is added on a few shared lists, plus recent `game_scores`
+rows and a friend graph (Alex + Casey as friends, mutuals Sam/Riley/Quinn, a pending
+inbound request from Quinn) for the friends/mutuals/profile surfaces. Both `dev.sh` and
+`niteshift-setup.sh` run `pnpm --filter @workshop/backend run db:seed`. Idempotent,
+hard-guarded against non-local stages. `SEED_DEV_DATA=0` to skip. To re-seed, follow the
+header comment in `seed.ts` — a bare `DELETE FROM users …` fails on the non-cascade
+`activity_events.actor_id` FK; clear `activity_events` and `lists` for those users first.
 
 On a Niteshift Neon branch forked from prod the seed is skipped by default — the real
 `joshlebed@gmail.com` row already exists with the apple identity, and the dev sign-in

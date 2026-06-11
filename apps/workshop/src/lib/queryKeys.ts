@@ -76,9 +76,20 @@ export const queryKeys = {
         : (["games", "discovery"] as const),
   },
   friends: {
-    /** `GET /v1/friends` — my accepted friends. */
+    /**
+     * `GET /v1/friends` — my accepted friends. Also the prefix every other
+     * friends key nests under, so invalidating it clears requests, mutuals,
+     * and profiles in one go.
+     */
     all: ["friends"] as const,
     /** `GET /v1/friends/requests/:token` — public inviter preview. */
     requestPreview: (inviteToken: string) => ["friends", "requestPreview", inviteToken] as const,
+    /** `GET /v1/friends/requests` — pending directed requests, both sides. */
+    requests: ["friends", "requests"] as const,
+    /** `GET /v1/friends/mutuals` — friends of friends. */
+    mutuals: ["friends", "mutuals"] as const,
+    /** `GET /v1/friends/users/:userId?period=` — viewer-relative profile. */
+    profile: (userId: string, periodKey: string) =>
+      ["friends", "profile", userId, periodKey] as const,
   },
 } as const;

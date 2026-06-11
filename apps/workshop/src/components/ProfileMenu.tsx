@@ -12,9 +12,11 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { fetchFriendRequests } from "../api/friends";
 import { unarchiveList } from "../api/lists";
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
+import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { errorMessage } from "../lib/api";
 import { confirm } from "../lib/confirm";
 import { GAMES_TAB_ENABLED } from "../lib/featureFlags";
@@ -59,6 +61,17 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [openArchivedAfterProfileClose, setOpenArchivedAfterProfileClose] = useState(false);
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
+  const livePoll = useLivePollingInterval();
+
+  // Pending inbound friend requests — badges the avatar trigger and the
+  // Friends button so a request isn't invisible until the friends page opens.
+  const requestsQuery = useQuery({
+    queryKey: queryKeys.friends.requests,
+    queryFn: () => fetchFriendRequests(token),
+    enabled: !!token && GAMES_TAB_ENABLED,
+    refetchInterval: livePoll,
+  });
+  const inboundRequestCount = requestsQuery.data?.inbound.length ?? 0;
 
   const unarchiveMutation = useMutation({
     mutationFn: (id: string) => {
@@ -96,23 +109,33 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
 
   return (
     <>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Profile and settings"
-        onPress={() => setProfileOpen(true)}
-        testID="open-profile"
-        style={({ pressed, hovered }: PressableState) => [
-          styles.profileButton,
-          (pressed || hovered) && styles.profileButtonPressed,
-        ]}
-      >
-        <Avatar
-          name={user?.displayName ?? user?.email ?? null}
-          imageUrl={user?.avatarUrl}
-          size="md"
-          style={styles.profileAvatar}
-        />
-      </Pressable>
+      {/* Badge sits on a wrapper — the trigger itself clips (overflow hidden). */}
+      <View style={styles.profileButtonWrap}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Profile and settings"
+          onPress={() => setProfileOpen(true)}
+          testID="open-profile"
+          style={({ pressed, hovered }: PressableState) => [
+            styles.profileButton,
+            (pressed || hovered) && styles.profileButtonPressed,
+          ]}
+        >
+          <Avatar
+            name={user?.displayName ?? user?.email ?? null}
+            imageUrl={user?.avatarUrl}
+            size="md"
+            style={styles.profileAvatar}
+          />
+        </Pressable>
+        {inboundRequestCount > 0 ? (
+          <View style={styles.requestBadge} pointerEvents="none" testID="friend-request-badge">
+            <Text style={styles.requestBadgeText} tone="onAccent">
+              {inboundRequestCount > 9 ? "9+" : String(inboundRequestCount)}
+            </Text>
+          </View>
+        ) : null}
+      </View>
 
       <Sheet
         visible={profileOpen}
@@ -164,7 +187,11 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
           />
           {GAMES_TAB_ENABLED ? (
             <Button
-              label="Friends"
+              label={
+                inboundRequestCount > 0
+                  ? `Friends (${inboundRequestCount} ${inboundRequestCount === 1 ? "request" : "requests"})`
+                  : "Friends"
+              }
               variant="secondary"
               onPress={() => {
                 setProfileOpen(false);
@@ -577,6 +604,26 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
 }
 
 const styles = StyleSheet.create({
+  profileButtonWrap: { width: 40, height: 40 },
+  requestBadge: {
+    position: "absolute",
+    top: -3,
+    right: -3,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    backgroundColor: tokens.accent.default,
+    borderWidth: 2,
+    borderColor: tokens.bg.canvas,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  requestBadgeText: {
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: tokens.font.weight.bold,
+  },
   profileButton: {
     width: 40,
     height: 40,

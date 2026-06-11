@@ -7,9 +7,16 @@
  * Idempotent: if the seed user already owns lists, exits without touching the
  * database.
  *
- * Re-seed locally with:
- *   docker exec workshop-pg psql -U postgres -d workshop \
- *     -c "DELETE FROM users WHERE email IN ('joshlebed@gmail.com','friend@workshop.local');"
+ * Re-seed locally (activity_events.actor_id is NOT cascade, so clear events
+ * and lists before users):
+ *   docker exec workshop-pg psql -U postgres -d workshop -c "
+ *     BEGIN;
+ *     WITH t AS (SELECT id FROM users WHERE email LIKE '%@workshop.local' OR email = 'joshlebed@gmail.com')
+ *     DELETE FROM activity_events WHERE actor_id IN (SELECT id FROM t);
+ *     WITH t AS (SELECT id FROM users WHERE email LIKE '%@workshop.local' OR email = 'joshlebed@gmail.com')
+ *     DELETE FROM lists WHERE owner_id IN (SELECT id FROM t);
+ *     DELETE FROM users WHERE email LIKE '%@workshop.local' OR email = 'joshlebed@gmail.com';
+ *     COMMIT;"
  *   pnpm --filter @workshop/backend run db:seed
  */
 
@@ -19,6 +26,9 @@ import { eq, sql } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
 import {
   activityEvents,
+  friendRequests,
+  friendships,
+  gameScores,
   itemAcceptances,
   itemScores,
   items,
@@ -32,7 +42,9 @@ import {
   users,
 } from "../src/db/schema.js";
 import { getConfig } from "../src/lib/config.js";
+import { findOrCreateGame } from "../src/lib/gameCatalog.js";
 import { generateShareSlug } from "../src/lib/shareSlug.js";
+import { addToMyGames } from "../src/lib/userGames.js";
 
 const PREVIEW_EMAIL = "joshlebed@gmail.com";
 const PREVIEW_DISPLAY_NAME = "Josh";
@@ -476,6 +488,7 @@ async function main() {
   }
 
   await seedLetterboxdMatch(previewId, friendId);
+  await seedFriendGraph(previewId, friendId);
 
   console.log(`[seed] inserted ${fixtures.length + 1} lists for ${PREVIEW_EMAIL}`);
 }
@@ -602,6 +615,66 @@ async function seedLetterboxdMatch(previewId: string, friendId: string) {
       payload: { title: suggestion.title, letterboxdSlug: "anatomy-of-a-fall" },
     });
   }
+}
+
+/**
+ * Friend graph for the social surfaces (requests / mutuals / profiles):
+ * Josh ↔ Alex and Josh ↔ Casey are friends; Sam knows both (2 mutual
+ * friends), Riley knows Alex (1), and Quinn (also 1) has a pending inbound
+ * request to Josh so the Requests section + profile-menu badge render. Alex
+ * gets two Games-tab games (Globle scored today, one Josh shares) so the
+ * friend profile page has content.
+ */
+async function seedFriendGraph(previewId: string, friendId: string) {
+  const db = getDb();
+  const casey = await ensureSeedUser("casey@workshop.local", "Casey");
+  const sam = await ensureSeedUser("sam@workshop.local", "Sam");
+  const riley = await ensureSeedUser("riley@workshop.local", "Riley");
+  const quinn = await ensureSeedUser("quinn@workshop.local", "Quinn");
+
+  const edge = (a: string, b: string) =>
+    a < b ? { userLow: a, userHigh: b } : { userLow: b, userHigh: a };
+  await db
+    .insert(friendships)
+    .values([
+      edge(previewId, friendId),
+      edge(previewId, casey.id),
+      edge(friendId, sam.id),
+      edge(casey.id, sam.id),
+      edge(friendId, riley.id),
+      edge(friendId, quinn.id),
+    ])
+    .onConflictDoNothing();
+
+  // Pending directed request: Quinn → Josh (token stays NULL — directed rows
+  // never carry a share-link token).
+  await db
+    .insert(friendRequests)
+    .values({ inviterId: quinn.id, inviteeId: previewId })
+    .onConflictDoNothing();
+
+  // Games for the profile page: Josh and Alex share Globle (Alex scored
+  // today); Wordle is Alex-only so Josh sees the quick-add affordance.
+  const globle = await findOrCreateGame("https://globle-game.com/", undefined, db);
+  const wordle = await findOrCreateGame(
+    "https://www.nytimes.com/games/wordle/index.html",
+    undefined,
+    db,
+  );
+  await addToMyGames(previewId, globle.id, db);
+  await addToMyGames(friendId, globle.id, db);
+  await addToMyGames(friendId, wordle.id, db);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  await db
+    .insert(gameScores)
+    .values({
+      gameId: globle.id,
+      userId: friendId,
+      periodKey: todayKey,
+      scoreRaw: "🌎 Jun 11, 2026 🔥 2 | Avg. Guesses: 5\n🟨🟧🟥🟩 = 4\nhttps://globle-game.com",
+      scoreValue: "4",
+    })
+    .onConflictDoNothing();
 }
 
 main()
