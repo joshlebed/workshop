@@ -1,6 +1,8 @@
+import { specFromStoredRule } from "@workshop/shared/scoreParsing";
 import { Hono } from "hono";
 import { beforeAll, describe, expect, it } from "vitest";
 import { requireModule } from "../../lib/moduleGate.js";
+import { scoreRawSchema } from "../../lib/scoreSchemas.js";
 import { signSession } from "../../lib/session.js";
 import { __test, itemScoreRoutes, listScoresRoutes } from "./scores.js";
 
@@ -70,8 +72,6 @@ describe("periodKeySchema", () => {
 });
 
 describe("scoreRawSchema", () => {
-  const { scoreRawSchema } = __test;
-
   it("accepts a number-shaped string", () => {
     expect(scoreRawSchema.safeParse("42").success).toBe(true);
   });
@@ -120,111 +120,125 @@ describe("upsertScoreSchema", () => {
   });
 });
 
-describe("tryParseScoreValue (helper)", () => {
-  const { tryParseScoreValue } = __test;
+describe("parseScoreValue over stored rule strings (helper)", () => {
+  const { parseScoreValue } = __test;
+  // Items store their parser as a rule string (bare regex / count: / spec:);
+  // the route decodes it with specFromStoredRule before parsing.
+  const parse = (raw: string, stored?: string) =>
+    parseScoreValue(raw, specFromStoredRule(stored ?? null));
 
-  describe("with no pattern (legacy fallback)", () => {
+  describe("with no rule (legacy fallback)", () => {
     it("parses a leading integer", () => {
-      expect(tryParseScoreValue("42")).toBe(42);
+      expect(parse("42")).toBe(42);
     });
 
     it("parses a decimal", () => {
-      expect(tryParseScoreValue("3.14")).toBe(3.14);
+      expect(parse("3.14")).toBe(3.14);
     });
 
     it("parses a negative", () => {
-      expect(tryParseScoreValue("-7")).toBe(-7);
+      expect(parse("-7")).toBe(-7);
     });
 
     it("extracts the first number from a Wordle-style block", () => {
-      expect(tryParseScoreValue("Wordle 1,127 3/6")).toBe(1);
+      expect(parse("Wordle 1,127 3/6")).toBe(1);
     });
 
     it("returns null when no number is present", () => {
-      expect(tryParseScoreValue("⬜⬜🟩🟩🟩")).toBeNull();
-      expect(tryParseScoreValue("abc")).toBeNull();
+      expect(parse("⬜⬜🟩🟩🟩")).toBeNull();
+      expect(parse("abc")).toBeNull();
     });
   });
 
-  describe("with a per-item pattern (post-backfill)", () => {
+  describe("with a per-item regex rule (legacy stored format)", () => {
     it("extracts MapTap's final score from a real share", () => {
       const raw = "www.maptap.gg May 18\n96🔥 95🏅 99🎯 96🔥 93👑\nFinal score: 956";
-      expect(tryParseScoreValue(raw, "Final score:\\s*(\\d+)")).toBe(956);
+      expect(parse(raw, "Final score:\\s*(\\d+)")).toBe(956);
     });
 
     it("extracts Satle's guesses (X/6) — not the puzzle number", () => {
       const raw = "🛰Satle #449 5/6\n🟥🟥🟥🟥🟩⬜\nhttps://satle.ca";
-      expect(tryParseScoreValue(raw, "Satle\\s*#\\d+\\s+(\\d+)/6")).toBe(5);
+      expect(parse(raw, "Satle\\s*#\\d+\\s+(\\d+)/6")).toBe(5);
     });
 
     it("extracts travle's extra-guess count from +N", () => {
       const raw = "#travle #1252 +1\n🟧✅✅✅\nhttps://travle.earth";
-      expect(tryParseScoreValue(raw, "#travle\\s+#?\\d+\\s+\\+(\\d+)")).toBe(1);
+      expect(parse(raw, "#travle\\s+#?\\d+\\s+\\+(\\d+)")).toBe(1);
     });
 
     it("extracts Tradle's guesses (X/6) — not the puzzle number", () => {
       const raw = "#Tradle #1547 1/6\n🟩🟩🟩🟩🟩\nhttps://tradle.net/";
-      expect(tryParseScoreValue(raw, "Tradle\\s*#?\\d+\\s+(\\d+)/6")).toBe(1);
+      expect(parse(raw, "Tradle\\s*#?\\d+\\s+(\\d+)/6")).toBe(1);
     });
 
     it("extracts Globle's = N daily count even with URL + hashtag trailing", () => {
       const raw = "🌎 May 19, 2026 🌍\n⬜⬜🟧🟥🟩 = 5\n\nhttps://globle-game.com\n#globle";
-      expect(tryParseScoreValue(raw, "=\\s*(\\d+)")).toBe(5);
+      expect(parse(raw, "=\\s*(\\d+)")).toBe(5);
     });
 
     it("returns null when the configured pattern doesn't match — does NOT fall back to legacy", () => {
-      // Once a per-item regex is configured we trust it. Falling back to the
-      // first number would resurface the "pulled the puzzle number out of the
-      // share" bug we're fixing.
-      expect(tryParseScoreValue("abc 42 def", "Final score:\\s*(\\d+)")).toBeNull();
+      // Once a parser is configured we trust it. Falling back to the first
+      // number would resurface the "pulled the puzzle number out of the
+      // share" bug this fixed.
+      expect(parse("abc 42 def", "Final score:\\s*(\\d+)")).toBeNull();
     });
 
-    it("is case-insensitive (backend always applies the `i` flag)", () => {
-      expect(tryParseScoreValue("FINAL SCORE: 70", "Final score:\\s*(\\d+)")).toBe(70);
+    it("is case-insensitive (the capture rule always applies the `i` flag)", () => {
+      expect(parse("FINAL SCORE: 70", "Final score:\\s*(\\d+)")).toBe(70);
     });
 
     it("returns null when the pattern itself is invalid (no crash)", () => {
       // unclosed group; new RegExp() throws — we swallow and fall back. With
       // no other digits in the input this means null.
-      expect(tryParseScoreValue("no digits here", "(\\d+")).toBeNull();
+      expect(parse("no digits here", "(\\d+")).toBeNull();
     });
 
     it("falls back to legacy first-number when the stored regex throws", () => {
       // Bad pattern + free-form input → legacy fallback finds the first num.
-      expect(tryParseScoreValue("Wordle 1,127 3/6", "(\\d+")).toBe(1);
+      expect(parse("Wordle 1,127 3/6", "(\\d+")).toBe(1);
+    });
+
+    it("strips thousands separators from a captured number", () => {
+      expect(parse("1,000 / 1,000", "([\\d,]+)\\s*/\\s*[\\d,]+")).toBe(1000);
     });
   });
 
-  describe("with a count: pattern (tally games like Daily Tens)", () => {
+  describe("with a count: rule (tally games like Daily Tens)", () => {
     it("scores by the number of 🏆 (more correct is better)", () => {
       const raw = "DailyTens #760\n🏆 🏆 🏆 🏆 🏆 🏆 🏆 🏆 ❌ ❌";
-      expect(tryParseScoreValue(raw, "count:🏆")).toBe(8);
+      expect(parse(raw, "count:🏆")).toBe(8);
     });
 
     it("counts only 🏆 — ignores the puzzle number and ?ref id in the share", () => {
       const raw =
         "https://dailytens.com/?ref=943757\nDailyTens #760\n🏆 🏆 🏆 🏆 🏆 🏆 🏆 🏆 🏆 ❌";
-      expect(tryParseScoreValue(raw, "count:🏆")).toBe(9);
+      expect(parse(raw, "count:🏆")).toBe(9);
     });
 
     it("returns 0 (a valid worst score), not null, when nothing was correct", () => {
-      expect(tryParseScoreValue("DailyTens #761\n❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌", "count:🏆")).toBe(
-        0,
-      );
+      expect(parse("DailyTens #761\n❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌ ❌", "count:🏆")).toBe(0);
     });
 
-    it("falls back to legacy first-number when the count pattern is malformed", () => {
-      // Unclosed group throws → legacy fallback finds the first number.
-      expect(tryParseScoreValue("Wordle 1,127 3/6", "count:(")).toBe(1);
+    it("treats the count token as a literal string, not a regex", () => {
+      // The old parser compiled count:<pattern> as a regex; the spec rule
+      // counts literal occurrences. "(" is just a character now.
+      expect(parse("a ( b ( c", "count:(")).toBe(2);
+    });
+  });
+
+  describe("with a spec: rule (current stored format)", () => {
+    it("decodes and applies a serialized ScoreSpec", () => {
+      const stored = `spec:${JSON.stringify({ rules: [{ kind: "duration" }] })}`;
+      expect(parse("solved in 0:42!", stored)).toBe(42);
     });
   });
 });
 
-describe("assignRanks (helper)", () => {
-  const { assignRanks } = __test;
+describe("rankEntries (helper)", () => {
+  const { rankEntries } = __test;
 
   it("ranks descending (higher is better) — MapTap-style", () => {
-    const ranked = assignRanks(
+    const ranked = rankEntries(
       [
         { userId: "a", scoreValue: 980 },
         { userId: "b", scoreValue: 950 },
@@ -240,7 +254,7 @@ describe("assignRanks (helper)", () => {
   });
 
   it("ranks ascending (lower is better) — Wordle / Satle-style", () => {
-    const ranked = assignRanks(
+    const ranked = rankEntries(
       [
         { userId: "a", scoreValue: 6 },
         { userId: "b", scoreValue: 3 },
@@ -253,7 +267,7 @@ describe("assignRanks (helper)", () => {
   });
 
   it("uses standard competition ranking for ties (1, 2, 2, 4)", () => {
-    const ranked = assignRanks(
+    const ranked = rankEntries(
       [
         { userId: "a", scoreValue: 100 },
         { userId: "b", scoreValue: 90 },
@@ -267,7 +281,7 @@ describe("assignRanks (helper)", () => {
   });
 
   it("leaves unplayed entries with rank: null", () => {
-    const ranked = assignRanks(
+    const ranked = rankEntries(
       [
         { userId: "a", scoreValue: 100 },
         { userId: "b", scoreValue: null },
@@ -279,15 +293,29 @@ describe("assignRanks (helper)", () => {
     expect(ranksById).toEqual({ a: 1, b: null, c: 2 });
   });
 
-  it("preserves the caller's order (so the SQL ORDER BY isn't disturbed)", () => {
-    const ranked = assignRanks(
+  it("returns display order: played sorted by rank, then unplayed", () => {
+    // Responses are rank-sorted server-side — clients render entries as-is
+    // (the old contract returned join order and made StandingsCard re-sort).
+    const ranked = rankEntries(
       [
+        { userId: "u", scoreValue: null },
         { userId: "a", scoreValue: 100 },
         { userId: "b", scoreValue: 200 },
       ],
       "desc",
     );
-    expect(ranked.map((r) => r.userId)).toEqual(["a", "b"]);
+    expect(ranked.map((r) => r.userId)).toEqual(["b", "a", "u"]);
+  });
+
+  it("ties keep their incoming relative order (stable sort for SQL tiebreaks)", () => {
+    const ranked = rankEntries(
+      [
+        { userId: "newer", scoreValue: 5 },
+        { userId: "older", scoreValue: 5 },
+      ],
+      "asc",
+    );
+    expect(ranked.map((r) => r.userId)).toEqual(["newer", "older"]);
   });
 });
 

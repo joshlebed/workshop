@@ -105,9 +105,8 @@ small products — first feature is **watchlist** (movie tracker). New features 
   handles normal item adds, and `/share/pick-leaderboard` handles score posting.
 - **Leaderboard lists render games as `GameLeaderboardCard` (the status-card view), and a
   leaderboard's games are an ordered, reorderable list.** On `isGameKind`, `ItemList` swaps
-  `ItemRow` for a card showing today's full standings (top 5, **sorted by rank client-side**
-  — `GET /v1/lists/:id/scores` assigns ranks but returns join order, unlike the per-item
-  endpoint which sorts in SQL), a turnout tagline, and — when the viewer hasn't played — a
+  `ItemRow` for a card showing today's full standings (top 5 — every scores endpoint
+  returns entries rank-sorted server-side; render them as-is), a turnout tagline, and — when the viewer hasn't played — a
   Play CTA that opens the game and arms a paste-on-return prompt (`useReturnToPaste`,
   AppState-driven, web + native; it takes a `scope` — `"list"` default vs `"games"` — so a
   pending play armed on one surface never pops the other's paste sheet). Per-row scores render

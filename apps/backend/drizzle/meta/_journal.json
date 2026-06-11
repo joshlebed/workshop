@@ -222,8 +222,15 @@
     {
       "idx": 31,
       "version": "7",
-      "when": 1781590000000,
+      "when": 1781204759242,
       "tag": "0031_add_geosports_game",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1781211358756,
+      "tag": "0032_game_score_specs",
       "breakpoints": true
     }
   ]

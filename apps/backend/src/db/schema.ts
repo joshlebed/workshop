@@ -414,7 +414,7 @@ export const itemScores = pgTable(
 /**
  * Games surface (spec §3) — the global game catalog, deduped by
  * `normalized_url` (see `normalizeGameUrl` in `@workshop/shared/games`).
- * Seeded from the `gameScoreRegex` catalog in migration 0023; unknown URLs
+ * Seeded from the shared game registry (migrations 0023/0031/0032); unknown URLs
  * get a hostname title at find-or-create time. Migrated Lists leaderboard
  * items point at this table through `items.game_id` so both surfaces share the
  * same canonical game and score rows.
@@ -425,10 +425,16 @@ export const games = pgTable("games", {
   url: text("url").notNull(),
   title: text("title").notNull(),
   iconUrl: text("icon_url"),
-  /** Key into the `gameScoreRegex` catalog; NULL for unknown games. */
+  /** Key into the shared game registry; NULL for unknown games. */
   gameKey: text("game_key"),
   /** 'desc' = bigger is better, 'asc' = lower is better. */
   scoreDirection: text("score_direction").notNull().default("desc"),
+  /**
+   * User-taught parser spec (ScoreSpec jsonb) for non-registry games — see
+   * `@workshop/shared/scoreParsing`. NULL when unset; registry games keep
+   * their specs in code and ignore this column.
+   */
+  scoreSpec: jsonb("score_spec"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
 });
 

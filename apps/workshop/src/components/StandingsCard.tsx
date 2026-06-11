@@ -59,8 +59,8 @@ export interface StandingsCardProps {
   /** One-line social signal under the title ("3 of 5 played today"). */
   turnout: string;
   /**
-   * Players with a score for the displayed day, any order — sorted by rank
-   * here so the standings read top-down (rankless rows sort last).
+   * Players with a score for the displayed day, in server display order
+   * (rank-sorted, rankless rows last) — rendered as-is.
    */
   rows: StandingsRow[];
   selfId: string | null;
@@ -79,14 +79,6 @@ export interface StandingsCardProps {
   onPlay: () => void;
   /** Manual paste fallback — opens the paste sheet without leaving the page. */
   onPaste: () => void;
-}
-
-// Sort by server rank; rows that played but carry no parseable rank sort last.
-function byRank(a: StandingsRow, b: StandingsRow): number {
-  if (a.rank == null && b.rank == null) return 0;
-  if (a.rank == null) return 1;
-  if (b.rank == null) return -1;
-  return a.rank - b.rank;
 }
 
 export const StandingsCard = memo(function StandingsCard({
@@ -108,7 +100,7 @@ export const StandingsCard = memo(function StandingsCard({
   onPlay,
   onPaste,
 }: StandingsCardProps) {
-  const scored = [...rows].sort(byRank);
+  const scored = rows;
   const playedCount = scored.length;
 
   const myRow = selfId ? scored.find((r) => r.userId === selfId) : undefined;

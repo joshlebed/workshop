@@ -4,9 +4,9 @@ import type {
   LeaderboardResponse,
   ListScoresResponse,
 } from "@workshop/shared";
+import { specFromStoredRule } from "@workshop/shared/scoreParsing";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { gameScores, itemScores, items, lists } from "../../db/schema.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
@@ -14,38 +14,26 @@ import {
   catalogEntryForKey,
   ensureLeaderboardItemGame,
   normalizeScoreDirection,
-  parseScoreValue as tryParseScoreValue,
+  parseScoreValue,
 } from "../../lib/gameCatalog.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule } from "../../lib/moduleGate.js";
 import { notifyFirstScore, userHasAnyScore } from "../../lib/opsNotifications.js";
+import { rankEntries } from "../../lib/ranking.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { periodKeySchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 import { executeRows } from "../../lib/sql.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireItemMember, requireListMember } from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 
-const periodKeySchema = z
-  .string()
-  .min(1, "periodKey required")
-  .max(64, "periodKey too long")
-  .refine((s) => /^[A-Za-z0-9_\-:.]+$/.test(s), "periodKey contains invalid characters");
-
-const scoreRawSchema = z.string().min(1, "scoreRaw required").max(2000, "scoreRaw too long");
-
-const upsertScoreSchema = z.object({
-  periodKey: periodKeySchema,
-  scoreRaw: scoreRawSchema,
-});
-
 export const __test = {
   periodKeySchema,
-  scoreRawSchema,
   upsertScoreSchema,
-  tryParseScoreValue,
-  assignRanks,
+  parseScoreValue,
+  rankEntries,
 };
 
 function toScoreShape(
@@ -70,49 +58,6 @@ function toScoreShape(
   };
 }
 
-/**
- * Assigns "standard competition" ranks (1, 2, 2, 4) to entries that have a
- * numeric score. Direction controls comparison: 'desc' = bigger is better,
- * 'asc' = smaller is better. Entries without a numeric score get `rank: null`.
- * Pure helper — no DB access — exported for unit testing.
- */
-function assignRanks<T extends { scoreValue: number | null }>(
-  entries: readonly T[],
-  direction: "asc" | "desc",
-): (T & { rank: number | null })[] {
-  const played: { entry: T; idx: number }[] = [];
-  const unplayed: { entry: T; idx: number }[] = [];
-  entries.forEach((entry, idx) => {
-    if (typeof entry.scoreValue === "number" && Number.isFinite(entry.scoreValue)) {
-      played.push({ entry, idx });
-    } else {
-      unplayed.push({ entry, idx });
-    }
-  });
-  played.sort((a, b) => {
-    const av = a.entry.scoreValue as number;
-    const bv = b.entry.scoreValue as number;
-    return direction === "desc" ? bv - av : av - bv;
-  });
-  const ranked: { idx: number; out: T & { rank: number | null } }[] = [];
-  let lastValue: number | null = null;
-  let lastRank = 0;
-  played.forEach(({ entry, idx }, i) => {
-    const v = entry.scoreValue as number;
-    const rank = lastValue !== null && v === lastValue ? lastRank : i + 1;
-    lastValue = v;
-    lastRank = rank;
-    ranked.push({ idx, out: { ...entry, rank } });
-  });
-  unplayed.forEach(({ entry, idx }) => {
-    ranked.push({ idx, out: { ...entry, rank: null } });
-  });
-  // Restore caller order so we don't disturb the SQL ORDER BY (played first
-  // by score, then unplayed by display name).
-  ranked.sort((a, b) => a.idx - b.idx);
-  return ranked.map((r) => r.out);
-}
-
 export const itemScoreRoutes = new Hono();
 itemScoreRoutes.use("*", requireAuth);
 
@@ -122,7 +67,7 @@ interface ItemScoreContext {
   gameId: string | null;
   scoreRegex: string | null;
   scoreDirection: "asc" | "desc";
-  // Searchable fields used to self-heal a missing `scoreRegex` on first
+  // Searchable fields used to self-heal a missing game mapping on first
   // score post (see the upsert handler).
   title: string;
   url: string | null;
@@ -201,8 +146,8 @@ itemScoreRoutes.put(
     const isFirstScore = !(await userHasAnyScore(userId, db));
     const now = new Date();
     const mapping = ctx ? await resolveItemGameMapping(itemId, ctx) : null;
-    const scoreRegex = mapping?.scoreRegex ?? ctx?.scoreRegex ?? null;
-    const value = tryParseScoreValue(parsed.data.scoreRaw, scoreRegex);
+    const spec = mapping?.spec ?? specFromStoredRule(ctx?.scoreRegex);
+    const value = parseScoreValue(parsed.data.scoreRaw, spec);
 
     // Diagnostic: capture the shape of what actually reached us so a scoreless
     // "Played" row (the share extension handed the client only a game's referral
@@ -226,7 +171,8 @@ itemScoreRoutes.put(
       has_url: /\bhttps?:\/\//i.test(parsed.data.scoreRaw),
       has_grid_emoji: /[🏆❌🟩🟨🟧🟥⬛⬜🔵🟢🟡]/u.test(parsed.data.scoreRaw),
       url_only: rawStripped.length === 0,
-      score_regex: scoreRegex,
+      game_key: mapping?.game.gameKey ?? null,
+      has_spec: spec !== null,
       score_value: value,
     });
 
@@ -331,11 +277,12 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
   if (!ctx) return err(c, "NOT_FOUND", "item not found");
 
   const db = getDb();
-  // Sort: players who posted a score come first, ranked by score_value in
-  // the item's direction; players who haven't played come last, by name.
+  // SQL pre-orders ties (updated_at DESC) and unplayed members (by name);
+  // rankEntries then sorts played entries by score and assigns ranks — its
+  // stable sort preserves the SQL tiebreaks.
   const mapping = await resolveItemGameMapping(itemId, ctx);
   const direction = mapping?.scoreDirection ?? ctx.scoreDirection;
-  const regex = mapping?.scoreRegex ?? ctx.scoreRegex;
+  const spec = mapping?.spec ?? specFromStoredRule(ctx.scoreRegex);
   const scoreJoin = mapping
     ? sql`
       LEFT JOIN game_scores s
@@ -370,7 +317,6 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
       WHERE m.list_id = ${ctx.listId}
       ORDER BY
         (s.score_value IS NULL),
-        ${direction === "desc" ? sql`s.score_value DESC` : sql`s.score_value ASC`},
         (s.updated_at IS NULL),
         s.updated_at DESC,
         COALESCE(u.display_name, '')
@@ -384,8 +330,8 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
     scoreValue: r.score_value === null ? null : Number(r.score_value),
     updatedAt: toIsoOrNull(r.updated_at),
   }));
-  const entries: LeaderboardEntry[] = regex
-    ? assignRanks(baseEntries, direction)
+  const entries: LeaderboardEntry[] = spec
+    ? rankEntries(baseEntries, direction)
     : baseEntries.map((e) => ({ ...e, rank: null }));
 
   const response: LeaderboardResponse = {
@@ -426,6 +372,7 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
     score_direction: string | null;
     game_key: string | null;
     game_score_direction: string | null;
+    game_score_spec: unknown;
   }>(
     db,
     sql`
@@ -439,7 +386,8 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
         i.score_regex,
         i.score_direction,
         g.game_key,
-        g.score_direction AS game_score_direction
+        g.score_direction AS game_score_direction,
+        g.score_spec AS game_score_spec
       FROM items i
       INNER JOIN game_scores s
         ON s.game_id = i.game_id
@@ -462,7 +410,8 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
         i.score_regex,
         i.score_direction,
         NULL::text AS game_key,
-        NULL::text AS game_score_direction
+        NULL::text AS game_score_direction,
+        NULL::jsonb AS game_score_spec
       FROM item_scores s
       INNER JOIN items i
         ON i.id = s.item_id
@@ -475,10 +424,12 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
   );
 
   // Group rows by item so we can rank each game's entries with that item's
-  // direction. Items without a regex (no reliable score parse) get rank: null.
+  // direction. Items without a parser (no reliable score parse) keep
+  // rank: null. Entries are returned in display order (rank-sorted) — the
+  // client renders them as-is, same contract as the per-item endpoint.
   const byItem = new Map<
     string,
-    { direction: "asc" | "desc"; regex: string | null; entries: LeaderboardEntry[] }
+    { direction: "asc" | "desc"; hasParser: boolean; entries: LeaderboardEntry[] }
   >();
   for (const r of rows) {
     const catalog = catalogEntryForKey(r.game_key);
@@ -486,7 +437,7 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
       direction:
         catalog?.scoreDirection ??
         normalizeScoreDirection(r.game_score_direction ?? r.score_direction),
-      regex: catalog?.scoreRegex ?? r.score_regex,
+      hasParser: catalog?.spec != null || r.game_score_spec != null || (r.score_regex ?? "") !== "",
       entries: [] as LeaderboardEntry[],
     };
     existing.entries.push({
@@ -502,8 +453,8 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
 
   const scoresByItem: Record<string, LeaderboardEntry[]> = {};
   for (const [itemId, group] of byItem) {
-    scoresByItem[itemId] = group.regex
-      ? assignRanks(group.entries, group.direction)
+    scoresByItem[itemId] = group.hasParser
+      ? rankEntries(group.entries, group.direction)
       : group.entries;
   }
 

@@ -218,6 +218,18 @@ to update with `authentication.idToken`. `useGoogleSignIn` already bridges this;
 "simplify" it back to a one-shot read or iOS Google sign-in silently bounces users back
 to the sign-in screen.
 
+## Game detection, parsing and share-body formatting come from the shared registry
+
+`@workshop/shared/gameRegistry` is the single source of per-game knowledge;
+`src/lib/shareScoreDetection.ts` and `src/lib/scoresSummary.ts` are thin adapters over it
+(don't add per-game patterns/formatters locally — extend the registry). The paste sheet
+(`GameScorePasteSheet`) previews what the server will record via `src/lib/scoreSpecs.ts`
+(mirrors the backend's parser chain: registry spec → `game.scoreSpec` → first-number) and,
+for spec-less non-registry games on the Games surface, runs the **tap-the-score teach
+flow**: `tokenizeScoreCandidates` chips → `synthesizeScoreSpec` → direction confirm →
+`PUT /v1/games/:id/score-spec` then the normal score post (see `onTeach` in `GamesHome`).
+Standings arrive rank-sorted from every endpoint — render entries as-is, never re-sort.
+
 ## A game share can reach us as just its referral URL (grid dropped)
 
 Some games (Daily Tens) share via the iOS share sheet with a single item provider

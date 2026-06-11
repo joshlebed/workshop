@@ -50,6 +50,7 @@ function game(id: string, title: string, url: string): Game {
     title,
     iconUrl: null,
     gameKey: null,
+    scoreSpec: null,
     scoreDirection: "desc",
     createdAt: "2026-05-22T00:00:00Z",
   };

@@ -6,23 +6,23 @@
 import type {
   AddGameResponse,
   DiscoveryGame,
-  Game,
   GameDiscoveryResponse,
   GameLeaderboardResponse,
   GameScore,
-  GameScoreDirection,
   GameStandings,
   GameStandingsEntry,
   GamesResponse,
   MyGame,
+  SetGameScoreSpecResponse,
   UpsertGameScoreResponse,
 } from "@workshop/shared/games";
 import { normalizeGameUrl } from "@workshop/shared/games";
+import { parseScoreWithSpec, scoreSpecSchema } from "@workshop/shared/scoreParsing";
 import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { type DbGame, gameScores, games, userGames, users } from "../../db/schema.js";
+import { gameScores, games, userGames, users } from "../../db/schema.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { friendsOf } from "../../lib/friends.js";
@@ -32,30 +32,34 @@ import {
   type GameMetadataHints,
   normalizeScoreDirection,
   parseScoreValue,
+  specForGame,
 } from "../../lib/gameCatalog.js";
 import { moveUserGamePosition } from "../../lib/gamePositions.js";
+import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { notifyFirstScore, notifyGameAdded, userHasAnyScore } from "../../lib/opsNotifications.js";
+import { rankEntries } from "../../lib/ranking.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 import { resolveLinkPreview } from "./link-preview.js";
 
-const periodKeySchema = z
-  .string()
-  .min(1, "periodKey required")
-  .max(64, "periodKey too long")
-  .refine((s) => /^[A-Za-z0-9_\-:.]+$/.test(s), "periodKey contains invalid characters");
-
 const addGameSchema = z.object({
   url: z.string().min(1, "url required").max(2000, "url too long"),
 });
 
-const upsertScoreSchema = z.object({
-  periodKey: periodKeySchema,
-  scoreRaw: z.string().min(1, "scoreRaw required").max(2000, "scoreRaw too long"),
+const setScoreSpecSchema = z.object({
+  spec: scoreSpecSchema,
+  /**
+   * The share the user taught from. The spec must reproduce `expectedValue`
+   * on it — a spec that can't parse its own teaching example is never stored.
+   */
+  exampleRaw: scoreRawSchema,
+  expectedValue: z.number().finite(),
+  scoreDirection: z.enum(["asc", "desc"]),
 });
 
 const moveGameSchema = z.object({
@@ -64,24 +68,6 @@ const moveGameSchema = z.object({
 });
 
 const uuidSchema = z.string().uuid();
-
-/** Puzzle-day key, UTC. The client may pass `?period=` to pin its local day. */
-function todayPeriodKey(now: Date = new Date()): string {
-  return now.toISOString().slice(0, 10);
-}
-
-function toGameShape(row: DbGame): Game {
-  return {
-    id: row.id,
-    url: row.url,
-    normalizedUrl: row.normalizedUrl,
-    title: row.title,
-    iconUrl: row.iconUrl,
-    gameKey: row.gameKey,
-    scoreDirection: normalizeScoreDirection(row.scoreDirection),
-    createdAt: toIsoString(row.createdAt),
-  };
-}
 
 function toScoreShape(row: {
   gameId: string;
@@ -101,38 +87,6 @@ function toScoreShape(row: {
     createdAt: toIsoString(row.createdAt),
     updatedAt: toIsoString(row.updatedAt),
   };
-}
-
-/**
- * Standard competition ranks (1, 2, 2, 4) over entries with a numeric score;
- * null-score entries keep rank null and sort after. Returns a new array in
- * display order: played (by score in `direction`) then unplayed.
- */
-function rankEntries(
-  entries: readonly GameStandingsEntry[],
-  direction: GameScoreDirection,
-): GameStandingsEntry[] {
-  const played = entries.filter(
-    (e) => typeof e.scoreValue === "number" && Number.isFinite(e.scoreValue),
-  );
-  const unplayed = entries.filter(
-    (e) => !(typeof e.scoreValue === "number" && Number.isFinite(e.scoreValue)),
-  );
-  played.sort((a, b) => {
-    const av = a.scoreValue as number;
-    const bv = b.scoreValue as number;
-    return direction === "desc" ? bv - av : av - bv;
-  });
-  let lastValue: number | null = null;
-  let lastRank = 0;
-  const ranked = played.map((e, i) => {
-    const v = e.scoreValue as number;
-    const rank = lastValue !== null && v === lastValue ? lastRank : i + 1;
-    lastValue = v;
-    lastRank = rank;
-    return { ...e, rank };
-  });
-  return [...ranked, ...unplayed.map((e) => ({ ...e, rank: null }))];
 }
 
 /**
@@ -454,8 +408,7 @@ gameRoutes.put(
     const [game] = await db.select().from(games).where(eq(games.id, gameId.data)).limit(1);
     if (!game) return err(c, "NOT_FOUND", "game not found");
 
-    const catalog = catalogEntryForKey(game.gameKey);
-    const value = parseScoreValue(parsed.data.scoreRaw, catalog?.scoreRegex ?? null);
+    const value = parseScoreValue(parsed.data.scoreRaw, specForGame(game));
 
     // Capture activation state BEFORE the upsert — false means this is the
     // user's first score ever (see userHasAnyScore for the tables it spans).
@@ -518,3 +471,60 @@ gameRoutes.get("/:id/leaderboard", async (c) => {
   const response: GameLeaderboardResponse = { gameId: game.id, periodKey, entries };
   return ok(c, response);
 });
+
+/**
+ * PUT /v1/games/:id/score-spec — the self-serve "teach us your game" flow.
+ * The client tokenizes the user's share, the user taps their score, the
+ * client synthesizes a ScoreSpec (`@workshop/shared/scoreParsing`) and sends
+ * it here with the example it learned from. Two gates before anything is
+ * stored:
+ *
+ * 1. Registry games are read-only — their specs live in code, so a user
+ *    can't (accidentally or otherwise) re-teach Wordle.
+ * 2. The spec must reproduce `expectedValue` on `exampleRaw`. A spec that
+ *    can't parse its own teaching example is rejected outright.
+ *
+ * Specs live on the shared catalog row, so the first person to teach a game
+ * fixes it for everyone — and anyone can re-teach (the same validation
+ * applies; `score_raw` history makes a bad spec one rescore away from fixed).
+ * The caller's own score for the example is re-posted by the client via the
+ * normal upsert, so no rescore happens here.
+ */
+gameRoutes.put(
+  "/:id/score-spec",
+  rateLimit({
+    family: "v1.games.score-spec",
+    limit: 20,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const gameId = uuidSchema.safeParse(c.req.param("id"));
+    if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+
+    const parsed = await parseJsonBody(c, setScoreSpecSchema);
+    if (!parsed.ok) return parsed.response;
+
+    const db = getDb();
+    const [game] = await db.select().from(games).where(eq(games.id, gameId.data)).limit(1);
+    if (!game) return err(c, "NOT_FOUND", "game not found");
+    if (catalogEntryForKey(game.gameKey)) {
+      return err(c, "VALIDATION", "this game's scoring is built in and can't be changed");
+    }
+
+    const reproduced = parseScoreWithSpec(parsed.data.spec, parsed.data.exampleRaw);
+    if (reproduced !== parsed.data.expectedValue) {
+      return err(c, "VALIDATION", "spec does not reproduce the expected score on the example");
+    }
+
+    const [updated] = await db
+      .update(games)
+      .set({ scoreSpec: parsed.data.spec, scoreDirection: parsed.data.scoreDirection })
+      .where(eq(games.id, game.id))
+      .returning();
+    if (!updated) return err(c, "INTERNAL", "score spec update returned no row");
+
+    const response: SetGameScoreSpecResponse = { game: toGameShape(updated) };
+    return ok(c, response);
+  },
+);
