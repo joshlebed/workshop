@@ -1,19 +1,24 @@
-// Presentational leaderboard "status card" — one per game, shared between the
+// Presentational leaderboard section — one per game, shared between the
 // Lists surface (leaderboard lists render it via `GameLeaderboardCard`) and
-// the Games tab home (one card per game in My Games).
+// the Games tab home (one section per game in My Games).
+//
+// Not a boxed card: each game is a compact ledger section sitting directly on
+// the canvas, separated by a hairline rule. A game nobody has played collapses
+// to a single header row; standings rows give a game height only when there's
+// activity. While dragging, the section lifts into an elevated chip.
 //
 // Pure presentation: rows arrive pre-distilled (the caller runs each player's
 // raw result through the `scoresSummary` distiller) and surface-specific copy
-// (turnout line, empty text, CTA visibility) is computed at the call site.
-// What lives here is the standings rendering itself: rank marks, top-N cut
-// with a pinned "you" row, the dimmed empty facepile, skeletons, and the
-// Play / paste CTA chrome.
+// (turnout line, CTA visibility) is computed at the call site. What lives
+// here is the standings rendering itself: rank marks, top-N cut with a pinned
+// "you" row, the dimmed empty facepile, skeletons, and the Play / paste
+// affordances.
 //
 // Both drag stacks compose this inside their own drag-aware wrappers:
-// long-press the card body to reorder on native (`onLongPressBody`); web
-// drags via the wrapper's pointer listeners. The cover, menu, Play and paste
-// controls are their own Pressables so a tap on them never starts a drag or
-// a body-tap.
+// long-press the title or standings to reorder on native (`onLongPressBody`);
+// web drags via the wrapper's pointer listeners. The cover, menu, Play and
+// paste controls are their own Pressables so a tap on them never starts a
+// drag or a body-tap.
 
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
@@ -22,6 +27,7 @@ import { Avatar, Text, tokens } from "../ui/index";
 const TOP_N = 5;
 const RANK_SLOT = 20;
 const AVATAR_SM = 24;
+const COVER = 36;
 // The score block aligns under the player's name: rank slot + gap + avatar + gap.
 const SCORE_INDENT = RANK_SLOT + tokens.space.sm + AVATAR_SM + tokens.space.sm;
 
@@ -58,13 +64,11 @@ export interface StandingsCardProps {
    */
   rows: StandingsRow[];
   selfId: string | null;
-  /** Scores still loading — show skeleton standings, not an empty card. */
+  /** Scores still loading — show skeleton standings, not an empty section. */
   loading?: boolean;
   /** Dimmed facepile shown when nobody has played (may be empty). */
   emptyFaces: StandingsFace[];
-  /** Caption beside the empty facepile. */
-  emptyText: string;
-  /** Show the Play / paste CTA row (caller gates on "viewer hasn't played today"). */
+  /** Show the Play pill / paste link (caller gates on "viewer hasn't played today"). */
   showCta: boolean;
   /** Tap the title or standings → detail. */
   onPressBody?: () => void;
@@ -97,7 +101,6 @@ export const StandingsCard = memo(function StandingsCard({
   selfId,
   loading,
   emptyFaces,
-  emptyText,
   showCta,
   onPressBody,
   onLongPressBody,
@@ -118,15 +121,18 @@ export const StandingsCard = memo(function StandingsCard({
   const pinnedSelf = !selfInTop && myRow ? myRow : undefined;
   const overflow = scored.slice(TOP_N).filter((r) => r.userId !== selfId).length;
 
+  const ctaVisible = showCta && !loading;
+  const emptyShown = !loading && playedCount === 0;
+
   return (
     <View style={[styles.card, isDragging && styles.cardDragging]} testID={`game-card-${cardId}`}>
-      {/* Header: cover opens the game; the title block taps through to detail. */}
+      {/* Header: cover opens the game; the title taps through to detail. */}
       <View style={styles.header}>
         <Pressable
           accessibilityRole="link"
           accessibilityLabel={`Play ${title}`}
           onPress={onPlay}
-          hitSlop={4}
+          hitSlop={6}
           testID={`game-card-cover-${cardId}`}
           style={({ pressed }) => [styles.cover, pressed && styles.coverPressed]}
         >
@@ -149,25 +155,68 @@ export const StandingsCard = memo(function StandingsCard({
           )}
         </Pressable>
 
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open ${title} leaderboard`}
-          onPress={onPressBody}
-          onLongPress={onLongPressBody}
-          delayLongPress={250}
-          testID={`game-card-body-${cardId}`}
-          style={({ pressed, hovered }) => [
-            styles.headerText,
-            (pressed || hovered) && styles.bodyPressed,
-          ]}
-        >
-          <Text variant="heading" numberOfLines={1} style={styles.title}>
-            {title}
-          </Text>
-          <Text variant="caption" tone="muted" numberOfLines={1} style={styles.turnout}>
-            {turnout}
-          </Text>
-        </Pressable>
+        <View style={styles.headerText}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${title} leaderboard`}
+            onPress={onPressBody}
+            onLongPress={onLongPressBody}
+            delayLongPress={250}
+            hitSlop={{ top: 6, bottom: 2 }}
+            testID={`game-card-body-${cardId}`}
+            style={({ pressed, hovered }) => [
+              styles.titlePress,
+              (pressed || hovered) && styles.bodyPressed,
+            ]}
+          >
+            <Text variant="heading" numberOfLines={1} style={styles.title}>
+              {title}
+            </Text>
+          </Pressable>
+          <View style={styles.metaRow}>
+            <Text variant="caption" tone="muted" numberOfLines={1} style={styles.turnout}>
+              {turnout}
+            </Text>
+            {ctaVisible ? (
+              <>
+                <Text variant="caption" tone="muted">
+                  ·
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Paste your ${title} result`}
+                  onPress={onPaste}
+                  hitSlop={8}
+                  testID={`game-card-paste-${cardId}`}
+                  style={({ pressed, hovered }) => [
+                    styles.pasteLink,
+                    (pressed || hovered) && styles.pasteLinkHover,
+                  ]}
+                >
+                  <Text variant="caption" tone="muted" style={styles.pasteLinkText}>
+                    paste
+                  </Text>
+                </Pressable>
+              </>
+            ) : null}
+          </View>
+        </View>
+
+        {ctaVisible ? (
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Play ${title}`}
+            onPress={onPlay}
+            hitSlop={8}
+            testID={`game-card-play-${cardId}`}
+            style={({ pressed, hovered }) => [
+              styles.playPill,
+              (pressed || hovered) && styles.playPillHover,
+            ]}
+          >
+            <Text style={styles.playLabel}>Play</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable
           accessibilityRole="button"
@@ -184,75 +233,40 @@ export const StandingsCard = memo(function StandingsCard({
         </Pressable>
       </View>
 
-      {/* Standings — long-press here also activates reorder on native. */}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${title}: ${turnout}`}
-        onPress={onPressBody}
-        onLongPress={onLongPressBody}
-        delayLongPress={250}
-        style={styles.standings}
-      >
-        {loading ? (
-          <SkeletonRows />
-        ) : playedCount === 0 ? (
-          <EmptyStandings faces={emptyFaces} text={emptyText} />
-        ) : (
-          <>
-            {topRows.map((row) => (
-              <PlayerRow key={row.userId} row={row} isMe={row.userId === selfId} />
-            ))}
-            {pinnedSelf ? (
-              <>
-                <View style={styles.pinnedDivider} />
-                <PlayerRow row={pinnedSelf} isMe />
-              </>
-            ) : null}
-            {overflow > 0 ? (
-              <Text variant="caption" tone="muted" style={styles.moreLine}>
-                +{overflow} more
-              </Text>
-            ) : null}
-          </>
-        )}
-      </Pressable>
-
-      {/* Play CTA — only when the caller says the viewer can still log a
-          result for the displayed day. */}
-      {showCta && !loading ? (
-        <View style={styles.cta}>
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={`Play ${title}`}
-            onPress={onPlay}
-            testID={`game-card-play-${cardId}`}
-            style={({ pressed, hovered }) => [
-              styles.playBtn,
-              (pressed || hovered) && styles.playBtnHover,
-            ]}
-          >
-            <Text style={styles.playGlyph}>▶</Text>
-            <Text style={styles.playLabel} numberOfLines={1}>
-              Play {title}
+      {/* Standings — only when there's something to show. The turnout line
+          already carries the nobody-played story; an empty game stays one
+          header row tall. Long-press here also activates reorder on native. */}
+      {loading ? (
+        <SkeletonRows />
+      ) : emptyShown ? (
+        emptyFaces.length > 0 ? (
+          <EmptyFacepile faces={emptyFaces} />
+        ) : null
+      ) : (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${title}: ${turnout}`}
+          onPress={onPressBody}
+          onLongPress={onLongPressBody}
+          delayLongPress={250}
+          style={styles.standings}
+        >
+          {topRows.map((row) => (
+            <PlayerRow key={row.userId} row={row} isMe={row.userId === selfId} />
+          ))}
+          {pinnedSelf ? (
+            <>
+              <View style={styles.pinnedDivider} />
+              <PlayerRow row={pinnedSelf} isMe />
+            </>
+          ) : null}
+          {overflow > 0 ? (
+            <Text variant="caption" tone="muted" style={styles.moreLine}>
+              +{overflow} more
             </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Paste your ${title} result`}
-            onPress={onPaste}
-            hitSlop={6}
-            testID={`game-card-paste-${cardId}`}
-            style={({ pressed, hovered }) => [
-              styles.pasteLink,
-              (pressed || hovered) && styles.pasteLinkHover,
-            ]}
-          >
-            <Text variant="caption" tone="muted" style={styles.pasteLinkText}>
-              or paste result
-            </Text>
-          </Pressable>
-        </View>
-      ) : null}
+          ) : null}
+        </Pressable>
+      )}
     </View>
   );
 });
@@ -314,22 +328,17 @@ function RankMark({ rank }: { rank: number | null }) {
   );
 }
 
-function EmptyStandings({ faces, text }: { faces: StandingsFace[]; text: string }) {
+// Lists surface: the member roster, dimmed, so "nobody played" still shows
+// who could. The Games home passes no faces and the section stays one row.
+function EmptyFacepile({ faces }: { faces: StandingsFace[] }) {
   const shown = faces.slice(0, 5);
   return (
-    <View style={styles.empty}>
-      {shown.length > 0 ? (
-        <View style={styles.facepile}>
-          {shown.map((m, i) => (
-            <View key={m.userId} style={[styles.faceWrap, i > 0 && styles.faceOverlap]}>
-              <Avatar name={m.displayName} imageUrl={m.avatarUrl} size="sm" />
-            </View>
-          ))}
+    <View style={styles.facepile}>
+      {shown.map((m, i) => (
+        <View key={m.userId} style={[styles.faceWrap, i > 0 && styles.faceOverlap]}>
+          <Avatar name={m.displayName} imageUrl={m.avatarUrl} size="sm" />
         </View>
-      ) : null}
-      <Text variant="caption" tone="muted" style={styles.emptyText}>
-        {text}
-      </Text>
+      ))}
     </View>
   );
 }
@@ -348,20 +357,21 @@ function SkeletonRows() {
 }
 
 const styles = StyleSheet.create({
+  // A ledger section, not a box: hairline rule below, breathing room inside.
+  // The slight horizontal bleed gives hover/drag backgrounds room without
+  // shifting content off the column grid.
   card: {
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    borderRadius: tokens.radius.lg,
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-    marginBottom: tokens.space.md,
-    gap: tokens.space.md,
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.sm,
+    marginHorizontal: -tokens.space.sm,
+    gap: tokens.space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border.subtle,
   },
   cardDragging: {
     backgroundColor: tokens.bg.elevated,
-    borderColor: tokens.border.default,
+    borderRadius: tokens.radius.lg,
+    borderBottomColor: "transparent",
     boxShadow: "0px 8px 18px rgba(0, 0, 0, 0.4)",
     elevation: 10,
   },
@@ -370,31 +380,52 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
   },
-  cover: { borderRadius: tokens.radius.md },
+  cover: { borderRadius: tokens.radius.sm },
   coverPressed: { opacity: 0.7 },
   coverImage: {
-    width: 44,
-    height: 44,
-    borderRadius: tokens.radius.md,
+    width: COVER,
+    height: COVER,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.elevated,
   },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
-  coverGlyph: { fontSize: 22 },
-  headerText: {
-    flex: 1,
-    minWidth: 0,
-    gap: 2,
-    paddingVertical: tokens.space.xs,
+  coverGlyph: { fontSize: 18 },
+  headerText: { flex: 1, minWidth: 0 },
+  titlePress: {
+    alignSelf: "flex-start",
+    maxWidth: "100%",
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
     borderRadius: tokens.radius.sm,
   },
   bodyPressed: { backgroundColor: tokens.bg.elevated },
-  title: { fontSize: tokens.font.size.md, letterSpacing: 0 },
-  turnout: { letterSpacing: 0 },
+  title: { fontSize: tokens.font.size.md, lineHeight: 21, letterSpacing: 0 },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+    marginTop: 1,
+  },
+  turnout: { flexShrink: 1, letterSpacing: 0 },
+  pasteLink: { borderRadius: tokens.radius.sm },
+  pasteLinkHover: { backgroundColor: tokens.bg.elevated },
+  pasteLinkText: { textDecorationLine: "underline" },
+  playPill: {
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: 6,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.accent.muted,
+  },
+  playPillHover: { backgroundColor: `${tokens.accent.default}33` },
+  playLabel: {
+    color: tokens.accent.default,
+    fontSize: tokens.font.size.sm,
+    lineHeight: 18,
+    fontWeight: tokens.font.weight.semibold,
+  },
   menuBtn: {
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: tokens.radius.sm,
@@ -405,10 +436,7 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.lg,
     lineHeight: tokens.font.size.lg,
   },
-  standings: {
-    gap: tokens.space.sm,
-    paddingTop: tokens.space.xs,
-  },
+  standings: { gap: tokens.space.sm },
   playerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -473,59 +501,15 @@ const styles = StyleSheet.create({
     paddingLeft: SCORE_INDENT,
     paddingTop: 2,
   },
-  empty: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.xs,
-  },
-  facepile: { flexDirection: "row" },
+  facepile: { flexDirection: "row", paddingLeft: COVER + tokens.space.md },
   faceWrap: {
     borderWidth: 2,
-    borderColor: tokens.bg.surface,
+    borderColor: tokens.bg.canvas,
     borderRadius: 999,
     opacity: 0.45,
   },
   faceOverlap: { marginLeft: -10 },
-  emptyText: { flex: 1 },
-  cta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    marginTop: 2,
-    paddingTop: tokens.space.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: tokens.border.subtle,
-  },
-  playBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
-  },
-  playBtnHover: { backgroundColor: `${tokens.accent.default}33` },
-  playGlyph: { color: tokens.accent.default, fontSize: 11 },
-  playLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    flexShrink: 1,
-  },
-  pasteLink: {
-    paddingVertical: tokens.space.xs,
-    paddingHorizontal: tokens.space.xs,
-    borderRadius: tokens.radius.sm,
-  },
-  pasteLinkHover: { backgroundColor: tokens.bg.elevated },
-  pasteLinkText: { textDecorationLine: "underline" },
-  skeletonWrap: { gap: tokens.space.sm, paddingVertical: tokens.space.xs },
+  skeletonWrap: { gap: tokens.space.sm },
   skeletonRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   skeletonDot: {
     width: AVATAR_SM,

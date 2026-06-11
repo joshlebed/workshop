@@ -137,7 +137,6 @@ export const GameLeaderboardCard = memo(function GameLeaderboardCard({
         displayName: m.displayName,
         avatarUrl: userAvatarImageUrl(m.userId),
       }))}
-      emptyText={viewingToday ? "Be the first to play today." : "No one played."}
       // Past days are read-only — you can't post to a closed bucket.
       showCta={viewingToday && !iPlayed && total > 0}
       onPressBody={onPressBody}
