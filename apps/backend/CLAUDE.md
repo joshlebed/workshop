@@ -295,6 +295,25 @@ normal original-account session again. **Every list made pings** (`notifyNewList
 means the event didn't happen (or the webhook is unset) — cross-check the `users` / `lists`
 tables before assuming a delivery bug.
 
+**The broader ops-observability pings live in `src/lib/opsNotifications.ts`** — one catalog
+of pure `build*Notification()` builders (unit-tested in `opsNotifications.test.ts`, no DB /
+Discord) plus thin async `notify*` wrappers that resolve human labels and call
+`notifyDiscord`. Every wrapper routes through `safeNotify`, which swallows + logs failures so
+a missing/failed ping can never break the user action that triggered it (the action has
+already committed by the time we ping). Tiers + kinds:
+
+- **Social graph**: `friend_request` (directed request sent — only on a _fresh_ pending row),
+  `friend_added` (any new edge — directed accept, invite-link accept, or mutual auto-accept;
+  gated on `addFriendship` returning `true` so re-accepts don't spam), `list_joined`
+  (share-link or legacy-invite join — gated on `newlyJoined` so re-hits don't re-ping).
+- **Activation**: `first_score` (first-ever score, item or game path — `userHasAnyScore` is
+  checked **before** the upsert, spanning both `game_scores` and the legacy `item_scores`),
+  `letterboxd_connected`, `game_added` (gated on `addToMyGames` returning `created: true`).
+- **Ops/safety**: `sessions_revoked` (sign-out-all), `list_archived`, `ownership_transferred`,
+  `source_webhook` (verified inbound webhook — scaffolding surface, no traffic yet).
+  When you add a new gated-by-newness ping, return a created/newly-X boolean from the writer
+  (see `addFriendship` / `addToMyGames`) rather than re-querying — and add a builder + test here.
+
 ```bash
 AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 720h --filter '?"new signup" ?"sign-in" ?"discord notify"' --no-follow
 ```

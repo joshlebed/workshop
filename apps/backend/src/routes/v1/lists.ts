@@ -31,6 +31,7 @@ import { toIsoString } from "../../lib/dates.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
 import { inspectModuleChange } from "../../lib/moduleManifests.js";
+import { notifyListArchived, notifyListJoined } from "../../lib/opsNotifications.js";
 import { requireCapability } from "../../lib/permissions.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
@@ -821,13 +822,17 @@ listRoutes.post("/by-slug/:slug/join", async (c) => {
       });
     }
 
-    return { kind: "ok" as const, list, member: memberRow };
+    return { kind: "ok" as const, list, member: memberRow, newlyJoined };
   });
 
   if (result.kind === "not_found") return err(c, "NOT_FOUND", "list not found");
   if (result.kind === "view_only") {
     return err(c, "FORBIDDEN", "list_view_only", { code: "list_view_only" }, 403);
   }
+
+  // Ping ops only on a genuine first join — re-hitting the link when already a
+  // member is a no-op and shouldn't re-notify.
+  if (result.newlyJoined) await notifyListJoined(userId, result.list.name, "share link");
 
   const [userRow] = await db
     .select({ displayName: users.displayName })
@@ -1087,6 +1092,7 @@ listRoutes.delete("/:id", requireListMember, async (c) => {
       type: "list_archived",
       payload: { name: row.name },
     });
+    await notifyListArchived(userId, row.name);
   }
   return ok(c, { ok: true });
 });
