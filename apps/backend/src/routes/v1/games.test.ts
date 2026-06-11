@@ -472,6 +472,84 @@ describe("DELETE /v1/games/:id", () => {
   });
 });
 
+describe("GET /v1/games/discovery — friend's games + friendGameCount", () => {
+  // user_low < user_high so the inserted friendship row is canonical.
+  const viewer = "00000000-0000-4000-8000-0000000000d1";
+  const friendWithGames = "00000000-0000-4000-8000-0000000000d2";
+  const friendNoGames = "00000000-0000-4000-8000-0000000000d3";
+
+  async function discover(asUser: string, friendId: string) {
+    const res = await gameRoutes.request(`/discovery?friend=${friendId}`, {
+      headers: authHeaders(asUser),
+    });
+    return res;
+  }
+
+  beforeAll(async () => {
+    for (const [id, email] of [
+      [viewer, "viewer@example.com"],
+      [friendWithGames, "fwg@example.com"],
+      [friendNoGames, "fng@example.com"],
+    ]) {
+      await rows(`INSERT INTO users (id, email) VALUES ($1, $2)`, [id, email]);
+    }
+    await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2), ($1, $3)`, [
+      viewer,
+      friendWithGames,
+      friendNoGames,
+    ]);
+    // The friend plays two games; the viewer already plays one of them.
+    await addGame("https://www.nytimes.com/games/wordle/index.html", friendWithGames);
+    await addGame("https://globle-game.com", friendWithGames);
+    await addGame("https://www.nytimes.com/games/wordle/index.html", viewer);
+  });
+
+  it("reports games the viewer lacks plus the friend's total game count", async () => {
+    const res = await discover(viewer, friendWithGames);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      games: { game: { gameKey: string | null } }[];
+      friendGameCount?: number;
+    };
+    // Only Globle is new to the viewer (they already have Wordle)...
+    expect(body.games.map((g) => g.game.gameKey)).toEqual(["globle"]);
+    // ...but the count reflects the friend's full library, not the filtered list.
+    expect(body.friendGameCount).toBe(2);
+  });
+
+  it("distinguishes 'all already added' (count > 0) from 'no games' (count 0)", async () => {
+    // Viewer adds the friend's remaining game → discovery is now empty, but the
+    // friend still has games, so friendGameCount stays > 0 (the bug: the UI
+    // must not say "hasn't added any games yet" here).
+    await addGame("https://globle-game.com", viewer);
+    const caughtUp = await discover(viewer, friendWithGames);
+    const caughtUpBody = (await caughtUp.json()) as {
+      games: unknown[];
+      friendGameCount?: number;
+    };
+    expect(caughtUpBody.games).toEqual([]);
+    expect(caughtUpBody.friendGameCount).toBe(2);
+
+    // A friend with no games at all reports an empty list and a zero count.
+    const empty = await discover(viewer, friendNoGames);
+    const emptyBody = (await empty.json()) as { games: unknown[]; friendGameCount?: number };
+    expect(emptyBody.games).toEqual([]);
+    expect(emptyBody.friendGameCount).toBe(0);
+  });
+
+  it("omits friendGameCount for the all-friends feed", async () => {
+    const res = await gameRoutes.request("/discovery", { headers: authHeaders(viewer) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { friendGameCount?: number };
+    expect(body.friendGameCount).toBeUndefined();
+  });
+
+  it("404s for a non-friend (can't probe a stranger's games)", async () => {
+    const res = await discover(viewer, otherUserId);
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("requires auth", () => {
   it("401s without a bearer token", async () => {
     const res = await gameRoutes.request("/");

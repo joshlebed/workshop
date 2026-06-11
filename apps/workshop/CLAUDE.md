@@ -88,6 +88,13 @@ RQ's `useMutation` only surfaces the latest call. The picker invalidates only
 invalidates both `mine` and `["games", "discovery"]` so the added game drops off suggestions.
 Everything stays behind `EXPO_PUBLIC_ENABLE_GAMES` (queries gate on `GAMES_TAB_ENABLED`).
 
+**An empty `discovery?friend=<id>.games` does NOT mean the friend has no games** — discovery
+filters out games you already have, so a friend whose whole library you already play yields an
+empty list (common right after friending, since scores gate on friendship). The `?friend=`
+form returns `friendGameCount` (the friend's total) so the picker can say "you already have all
+of {name}'s games" (count > 0) instead of the wrong "hasn't added any games yet" (count 0).
+Don't render a "no games" message off `games.length === 0` alone.
+
 ## Profile avatar circles
 
 Use the shared `Avatar` component for any user identity circle. For the signed-in user, pass
