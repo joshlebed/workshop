@@ -48,5 +48,6 @@ INSERT INTO "games" ("normalized_url", "url", "title", "game_key", "score_direct
 	('worldle.teuteuf.fr', 'https://worldle.teuteuf.fr', 'Worldle', 'worldle', 'asc'),
 	('tradle.net', 'https://tradle.net', 'Tradle', 'tradle', 'asc'),
 	('framed.wtf', 'https://framed.wtf', 'Framed', 'framed', 'desc'),
-	('dailytens.com', 'https://dailytens.com', 'Daily Tens', 'dailytens', 'desc')
+	('dailytens.com', 'https://dailytens.com', 'Daily Tens', 'dailytens', 'desc'),
+	('geosports.app', 'https://www.geosports.app', 'GeoSports', 'geosports', 'desc')
 ON CONFLICT ("normalized_url") DO NOTHING;

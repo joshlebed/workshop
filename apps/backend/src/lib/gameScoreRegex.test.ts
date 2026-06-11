@@ -26,6 +26,21 @@ describe("matchGameScoreRegex", () => {
     );
   });
 
+  it("identifies GeoSports from its domain", () => {
+    const game = matchGameScoreRegex({ url: "https://www.geosports.app" });
+    expect(game?.key).toBe("geosports");
+    expect(game?.scoreDirection).toBe("desc");
+  });
+
+  it("parses GeoSports score from `711 / 1,000`", () => {
+    const game = GAME_REGEX_CATALOG.find((g) => g.key === "geosports");
+    const raw =
+      "GeoSports — Daily sports geography game\nGeoSports · June 11th\n🟡🟡🔴🟡🟢\n711 / 1,000\nwww.geosports.app";
+    const match = raw.match(new RegExp(game!.scoreRegex, "i"));
+    // Capture group 1 is the left-hand number; commas stripped by parseScoreValue.
+    expect(match?.[1]).toBe("711");
+  });
+
   it("scores Daily Tens by counting 🏆, not the puzzle/ref number", () => {
     const dailytens = GAME_REGEX_CATALOG.find((g) => g.key === "dailytens");
     expect(dailytens?.scoreRegex).toBe(`${SCORE_COUNT_PREFIX}🏆`);

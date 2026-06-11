@@ -150,6 +150,17 @@ const FORMATTERS: Partial<Record<DetectedSharedScoreKind, Formatter>> = {
     const time = stripUrlSubstrings(raw).match(/\b\d+:\d{2}\b/)?.[0];
     return time ? toKeycapDigits(time) : null;
   },
+
+  // Shape: `GeoSports — Daily sports geography game\nGeoSports · June 11th\n🟡🟡🔴🟡🟢\n711 / 1,000\nwww.geosports.app`
+  // Keep the emoji grid row and the "N / 1,000" score line; drop the header
+  // lines and the URL (already stripped).
+  geosports(raw) {
+    const lines = nonEmptyLines(stripUrlSubstrings(raw));
+    const grid = lines.find(isGridOnlyLine);
+    const score = lines.find((l) => /[\d,]+\s*\/\s*[\d,]+/.test(l));
+    if (!grid || !score) return null;
+    return `${grid}\n${score}`;
+  },
 };
 
 // A "grid-only" line carries only emoji / box-drawing / checkmarks plus an
