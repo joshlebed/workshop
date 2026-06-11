@@ -34,19 +34,28 @@ clears for this reason).
 
 ## Friends surface (G2b, issue #286)
 
-The share-link friend graph lives at `app/friends/index.tsx` (list + invite + unfriend) and
-`app/friends/accept/[token].tsx` (preview inviter + Accept) — both at the **root** stack,
-NOT inside `(tabs)`, since the backend mints invite URLs as `/friends/accept/:token`
-(`friendInviteUrl` in `routes/v1/friends.ts`). Reached from the Games header (`👥` button in
-`GamesHome`) and the profile/settings sheet on home; both entry points are flag-gated, and
-the screens `<Redirect href="/" />` when the flag is off. The accept landing reuses the
-list-invite deep-link round-trip (`inviteStash.ts`): it stashes
+The friend graph lives at `app/friends/index.tsx` (requests + list + mutuals + invite),
+`app/friends/[userId].tsx` (per-user profile), and `app/friends/accept/[token].tsx` (preview
+inviter + Accept) — all at the **root** stack, NOT inside `(tabs)`, since the backend mints
+invite URLs as `/friends/accept/:token` (`friendInviteUrl` in `routes/v1/friends.ts`).
+Reached from the profile/settings sheet (`ProfileMenu`, which also badges its avatar trigger
+with the pending inbound-request count from `queryKeys.friends.requests`); entry points are
+flag-gated, and the screens `<Redirect href="/" />` when the flag is off. The accept landing
+reuses the list-invite deep-link round-trip (`inviteStash.ts`): it stashes
 `PENDING_FRIEND_INVITE_TOKEN_KEY` so a brand-new user can sign in mid-flow and land back on
 the accept screen — AuthGate (`_layout.tsx`) allows `/friends/accept/*` to mount signed-out
-(`onFriendAccept`) and consults that stash in its post-sign-in bounce. There is **no**
-"incoming requests" list: a share-link has no directed recipient until someone opens it, so
-the accept route _is_ the incoming-request surface. API wrappers (zod-validated — the public
-preview endpoint is the least-trusted boundary) in `src/api/friends.ts`; keys under
+(`onFriendAccept`) and consults that stash in its post-sign-in bounce. The friends page has
+three sections: pending **inbound requests** (accept/decline inline), friends, and **mutuals**
+("people you may know" — friends of friends ranked by mutual count, one-tap request). The
+client filters inbound requesters out of the mutuals list (they're already in Requests) and
+marks outbound-pending mutuals as "Requested" by cross-referencing
+`queryKeys.friends.requests` — the mutuals endpoint itself doesn't know about pending
+requests. Every person card opens `/friends/:userId`, which renders the relationship-specific
+action (add / cancel / accept-decline / remove) and, for friends only, their game list with
+today's score (`summarizeGameScoreBody`) + quick-add (`POST /v1/games` by URL). Decline and
+unfriend `goBack("/friends")` after success — removing the relationship can 404 the profile
+on refetch (no relationship + no mutuals). API wrappers (zod-validated — the public preview
+endpoint is the least-trusted boundary) in `src/api/friends.ts`; keys under
 `queryKeys.friends.*`. The social board (home cards + per-game `[id]` board) needs no
 solo-vs-multi branch: the backend's `rankEntries` already returns rank-ordered standings
 (ties as 1,2,2,4) for `viewer ∪ friends`, and `StandingsCard` + the board's `EntryRow`

@@ -416,3 +416,329 @@ describe("DELETE /v1/friends/:userId", () => {
     expect(self.status).toBe(400);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Directed friend requests + mutuals + profiles (the social-features pass).
+// These run after the share-link suite above; at this point there are NO
+// friendship edges (everything was unfriended), one share-link row for `me`,
+// and games/scores from the leaderboard tests.
+// ---------------------------------------------------------------------------
+
+// Extra users for the mutuals graph.
+const alice = "00000000-0000-4000-8000-000000000021";
+const bob = "00000000-0000-4000-8000-000000000022";
+const dave = "00000000-0000-4000-8000-000000000023";
+
+async function insertGraphUsers() {
+  await rows(
+    `INSERT INTO users (id, email, display_name) VALUES
+       ($1, 'alice@example.com', 'Alice'),
+       ($2, 'bob@example.com', 'Bob'),
+       ($3, 'dave@example.com', 'Dave')
+     ON CONFLICT (id) DO NOTHING`,
+    [alice, bob, dave],
+  );
+}
+
+async function addEdge(a: string, b: string) {
+  const [lo, hi] = [a, b].sort() as [string, string];
+  await rows(
+    `INSERT INTO friendships (user_low, user_high) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    [lo, hi],
+  );
+}
+
+async function directedRowCount(): Promise<number> {
+  const r = await rows<{ n: number }>(
+    `SELECT count(*)::int AS n FROM friend_requests WHERE invitee_id IS NOT NULL`,
+  );
+  return r[0]?.n ?? 0;
+}
+
+async function sendRequest(asUser: string, toUser: string) {
+  return friendRoutes.request("/requests", {
+    method: "POST",
+    headers: authHeaders(asUser),
+    body: JSON.stringify({ userId: toUser }),
+  });
+}
+
+async function listRequests(asUser: string) {
+  const res = await friendRoutes.request("/requests", { headers: authHeaders(asUser) });
+  expect(res.status).toBe(200);
+  return (await res.json()) as {
+    inbound: { userId: string; displayName: string | null; requestedAt: string }[];
+    outbound: { userId: string; displayName: string | null; requestedAt: string }[];
+  };
+}
+
+describe("directed friend requests — send / list / accept / deny / cancel", () => {
+  it("sending creates one pending request visible from both sides", async () => {
+    const res = await sendRequest(friend, me);
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { status: string; friend: unknown };
+    expect(body).toEqual({ status: "pending", friend: null });
+
+    const mine = await listRequests(me);
+    expect(mine.inbound.map((r) => r.userId)).toEqual([friend]);
+    expect(mine.inbound[0]?.displayName).toBe("Friendly");
+    expect(mine.outbound).toEqual([]);
+
+    const theirs = await listRequests(friend);
+    expect(theirs.outbound.map((r) => r.userId)).toEqual([me]);
+    expect(theirs.inbound).toEqual([]);
+  });
+
+  it("re-sending is idempotent — still one pending row", async () => {
+    const res = await sendRequest(friend, me);
+    expect(res.status).toBe(201);
+    expect(await directedRowCount()).toBe(1);
+  });
+
+  it("rejects self-requests and unknown targets", async () => {
+    const self = await sendRequest(me, me);
+    expect(self.status).toBe(400);
+    const unknown = await sendRequest(me, "00000000-0000-4000-8000-0000000000ff");
+    expect(unknown.status).toBe(404);
+  });
+
+  it("share-link minting ignores directed rows", async () => {
+    // `friend` has a directed row but no link row — minting must create a
+    // fresh token, not reuse the directed request.
+    const res = await friendRoutes.request("/invite", {
+      method: "POST",
+      headers: authHeaders(friend),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { token: string };
+    expect(body.token).toMatch(/^[A-Za-z0-9]{8}$/);
+    const linkRows = await rows<{ invitee_id: string | null }>(
+      `SELECT invitee_id FROM friend_requests WHERE token = $1`,
+      [body.token],
+    );
+    expect(linkRows[0]).toEqual({ invitee_id: null });
+  });
+
+  it("accepting forms the edge and consumes the request", async () => {
+    const res = await friendRoutes.request(`/requests/user/${friend}/accept`, {
+      method: "POST",
+      headers: authHeaders(me),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      friend: { userId: string; displayName: string | null; friendsSince: string };
+    };
+    expect(body.friend.userId).toBe(friend);
+    expect(body.friend.displayName).toBe("Friendly");
+
+    expect(await directedRowCount()).toBe(0);
+    const mine = await listRequests(me);
+    expect(mine.inbound).toEqual([]);
+    const list = await friendRoutes.request("/", { headers: authHeaders(me) });
+    const listBody = (await list.json()) as { friends: { userId: string }[] };
+    expect(listBody.friends.map((f) => f.userId)).toEqual([friend]);
+  });
+
+  it("accept 404s when nothing is pending", async () => {
+    const res = await friendRoutes.request(`/requests/user/${stranger}/accept`, {
+      method: "POST",
+      headers: authHeaders(me),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("sending to an existing friend returns accepted without a new row", async () => {
+    const res = await sendRequest(me, friend);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; friend: { friendsSince: string } };
+    expect(body.status).toBe("accepted");
+    expect(body.friend.friendsSince).toBeTruthy();
+    expect(await directedRowCount()).toBe(0);
+  });
+
+  it("deny silently deletes and the sender can re-request", async () => {
+    const sent = await sendRequest(stranger, me);
+    expect(sent.status).toBe(201);
+
+    const deny = await friendRoutes.request(`/requests/user/${stranger}`, {
+      method: "DELETE",
+      headers: authHeaders(me),
+    });
+    expect(deny.status).toBe(200);
+    expect(await directedRowCount()).toBe(0);
+
+    // No edge was formed, and re-requesting works.
+    const again = await sendRequest(stranger, me);
+    expect(again.status).toBe(201);
+    expect(await directedRowCount()).toBe(1);
+  });
+
+  it("the sender can cancel their own outbound request", async () => {
+    const cancel = await friendRoutes.request(`/requests/user/${me}`, {
+      method: "DELETE",
+      headers: authHeaders(stranger),
+    });
+    expect(cancel.status).toBe(200);
+    expect(await directedRowCount()).toBe(0);
+  });
+
+  it("cross-requests auto-accept", async () => {
+    const first = await sendRequest(reuser, me);
+    expect(first.status).toBe(201);
+
+    const second = await sendRequest(me, reuser);
+    expect(second.status).toBe(201);
+    const body = (await second.json()) as { status: string; friend: { userId: string } };
+    expect(body.status).toBe("accepted");
+    expect(body.friend.userId).toBe(reuser);
+
+    expect(await directedRowCount()).toBe(0);
+    const list = await friendRoutes.request("/", { headers: authHeaders(me) });
+    const listBody = (await list.json()) as { friends: { userId: string }[] };
+    expect(listBody.friends.map((f) => f.userId).sort()).toEqual([friend, reuser].sort());
+  });
+
+  it("a share-link accept consumes a pending directed request", async () => {
+    await insertGraphUsers();
+    const sent = await sendRequest(dave, me);
+    expect(sent.status).toBe(201);
+
+    // Dave then opens my reusable link instead of waiting.
+    const res = await friendRoutes.request(`/requests/${inviteToken}/accept`, {
+      method: "POST",
+      headers: authHeaders(dave),
+    });
+    expect(res.status).toBe(200);
+    expect(await directedRowCount()).toBe(0);
+    const mine = await listRequests(me);
+    expect(mine.inbound).toEqual([]);
+  });
+});
+
+describe("GET /v1/friends/mutuals", () => {
+  it("ranks friends-of-friends by mutual count with named connectors", async () => {
+    // My friends at this point: friend, reuser, dave.
+    await addEdge(alice, friend);
+    await addEdge(alice, reuser);
+    await addEdge(bob, friend);
+
+    const res = await friendRoutes.request("/mutuals", { headers: authHeaders(me) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      mutuals: {
+        userId: string;
+        displayName: string | null;
+        mutualCount: number;
+        mutualFriends: { userId: string; displayName: string | null }[];
+      }[];
+    };
+    expect(body.mutuals.map((m) => m.userId)).toEqual([alice, bob]);
+    expect(body.mutuals[0]).toMatchObject({ displayName: "Alice", mutualCount: 2 });
+    expect(body.mutuals[0]?.mutualFriends.map((f) => f.displayName)).toEqual([
+      "Friendly",
+      "Reuser",
+    ]);
+    expect(body.mutuals[1]).toMatchObject({ displayName: "Bob", mutualCount: 1 });
+    // Existing friends and the viewer never appear as candidates.
+    const ids = body.mutuals.map((m) => m.userId);
+    for (const known of [me, friend, reuser, dave]) expect(ids).not.toContain(known);
+  });
+
+  it("a user with no friends has no mutuals", async () => {
+    const res = await friendRoutes.request("/mutuals", { headers: authHeaders(stranger) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { mutuals: unknown[] };
+    expect(body.mutuals).toEqual([]);
+  });
+});
+
+describe("GET /v1/friends/users/:userId — profile", () => {
+  it("a friend's profile carries games with the period score + viewer overlap", async () => {
+    const res = await friendRoutes.request(`/users/${friend}?period=${PERIOD}`, {
+      headers: authHeaders(me),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      user: { userId: string; displayName: string | null };
+      relationship: string;
+      friendsSince: string | null;
+      periodKey: string;
+      games: {
+        game: { title: string };
+        viewerHasGame: boolean;
+        score: { scoreValue: number | null } | null;
+      }[];
+    };
+    expect(body.user).toEqual({ userId: friend, displayName: "Friendly" });
+    expect(body.relationship).toBe("friends");
+    expect(body.friendsSince).toBeTruthy();
+    expect(body.periodKey).toBe(PERIOD);
+    // Friend has Globle (scored 2, which I also have) and Wordle (unplayed).
+    expect(body.games).toHaveLength(2);
+    const globle = body.games.find((g) => g.game.title === "Globle");
+    const wordle = body.games.find((g) => g.game.title === "Wordle");
+    expect(globle).toMatchObject({ viewerHasGame: true, score: { scoreValue: 2 } });
+    expect(wordle).toMatchObject({ viewerHasGame: false, score: null });
+  });
+
+  it("my own profile reads as self with games attached", async () => {
+    const res = await friendRoutes.request(`/users/${me}`, { headers: authHeaders(me) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { relationship: string; games: unknown[] | null };
+    expect(body.relationship).toBe("self");
+    expect(Array.isArray(body.games)).toBe(true);
+  });
+
+  it("a mutual's profile is visible but withholds games", async () => {
+    const res = await friendRoutes.request(`/users/${alice}`, { headers: authHeaders(me) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      relationship: string;
+      games: unknown;
+      mutualFriends: { displayName: string | null }[];
+    };
+    expect(body.relationship).toBe("none");
+    expect(body.games).toBeNull();
+    expect(body.mutualFriends.map((f) => f.displayName).sort()).toEqual(["Friendly", "Reuser"]);
+  });
+
+  it("reflects outbound/inbound pending requests", async () => {
+    const sent = await sendRequest(me, alice);
+    expect(sent.status).toBe(201);
+
+    const outbound = await friendRoutes.request(`/users/${alice}`, { headers: authHeaders(me) });
+    expect(((await outbound.json()) as { relationship: string }).relationship).toBe("outbound");
+
+    const inbound = await friendRoutes.request(`/users/${me}`, { headers: authHeaders(alice) });
+    expect(((await inbound.json()) as { relationship: string }).relationship).toBe("inbound");
+
+    // Clean up the pending request.
+    const cancel = await friendRoutes.request(`/requests/user/${alice}`, {
+      method: "DELETE",
+      headers: authHeaders(me),
+    });
+    expect(cancel.status).toBe(200);
+  });
+
+  it("404s a stranger with no relationship and no mutuals (and bad ids)", async () => {
+    const res = await friendRoutes.request(`/users/${stranger}`, { headers: authHeaders(me) });
+    expect(res.status).toBe(404);
+
+    const malformed = await friendRoutes.request("/users/not-a-uuid", {
+      headers: authHeaders(me),
+    });
+    expect(malformed.status).toBe(404);
+
+    const missing = await friendRoutes.request("/users/00000000-0000-4000-8000-0000000000fe", {
+      headers: authHeaders(me),
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it("rejects an invalid period", async () => {
+    const res = await friendRoutes.request(`/users/${friend}?period=bad%20period!!`, {
+      headers: authHeaders(me),
+    });
+    expect(res.status).toBe(400);
+  });
+});

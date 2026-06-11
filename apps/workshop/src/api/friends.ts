@@ -11,8 +11,12 @@
 import type {
   AcceptFriendRequestResponse,
   FriendInviteResponse,
+  FriendProfileResponse,
   FriendRequestPreview,
+  FriendRequestsResponse,
   FriendsResponse,
+  MutualsResponse,
+  SendFriendRequestResponse,
 } from "@workshop/shared/friends";
 import { z } from "zod";
 import { apiRequest } from "../lib/api";
@@ -106,4 +110,123 @@ export function unfriend(userId: string, token: string | null): Promise<{ ok: tr
     path: `/v1/friends/${encodeURIComponent(userId)}`,
     token,
   });
+}
+
+const friendUserSchema = z.object({
+  userId: z.string(),
+  displayName: z.string().nullable(),
+});
+
+const friendRequestSummarySchema = friendUserSchema.extend({ requestedAt: z.string() });
+
+const friendRequestsResponseSchema = z.object({
+  inbound: z.array(friendRequestSummarySchema),
+  outbound: z.array(friendRequestSummarySchema),
+});
+
+const sendFriendRequestResponseSchema = z.object({
+  status: z.enum(["pending", "accepted"]),
+  friend: friendSummarySchema.nullable(),
+});
+
+const mutualsResponseSchema = z.object({
+  mutuals: z.array(
+    friendUserSchema.extend({
+      mutualCount: z.number(),
+      mutualFriends: z.array(friendUserSchema),
+    }),
+  ),
+});
+
+const profileGameSchema = z.object({
+  game: z.object({
+    id: z.string(),
+    url: z.string(),
+    normalizedUrl: z.string(),
+    title: z.string(),
+    iconUrl: z.string().nullable(),
+    gameKey: z.string().nullable(),
+    scoreDirection: z.enum(["asc", "desc"]),
+    createdAt: z.string(),
+  }),
+  viewerHasGame: z.boolean(),
+  score: z.object({ scoreRaw: z.string(), scoreValue: z.number().nullable() }).nullable(),
+});
+
+const friendProfileResponseSchema = z.object({
+  user: friendUserSchema,
+  relationship: z.enum(["self", "friends", "outbound", "inbound", "none"]),
+  friendsSince: z.string().nullable(),
+  mutualFriends: z.array(friendUserSchema),
+  periodKey: z.string(),
+  games: z.array(profileGameSchema).nullable(),
+});
+
+/** `GET /v1/friends/requests` — my pending directed requests, both sides. */
+export async function fetchFriendRequests(token: string | null): Promise<FriendRequestsResponse> {
+  const raw = await apiRequest<unknown>({ method: "GET", path: "/v1/friends/requests", token });
+  return friendRequestsResponseSchema.parse(raw);
+}
+
+/**
+ * `POST /v1/friends/requests` — send a directed request to a user. Comes back
+ * `accepted` (with the new friend) when we were already friends or they had
+ * already requested me.
+ */
+export async function sendFriendRequest(
+  userId: string,
+  token: string | null,
+): Promise<SendFriendRequestResponse> {
+  const raw = await apiRequest<unknown>({
+    method: "POST",
+    path: "/v1/friends/requests",
+    token,
+    body: { userId },
+  });
+  return sendFriendRequestResponseSchema.parse(raw);
+}
+
+/** `POST /v1/friends/requests/user/:userId/accept` — accept their request. */
+export async function acceptFriendRequestFrom(
+  userId: string,
+  token: string | null,
+): Promise<AcceptFriendRequestResponse> {
+  const raw = await apiRequest<unknown>({
+    method: "POST",
+    path: `/v1/friends/requests/user/${encodeURIComponent(userId)}/accept`,
+    token,
+  });
+  return acceptFriendRequestResponseSchema.parse(raw);
+}
+
+/**
+ * `DELETE /v1/friends/requests/user/:userId` — cancel my outbound request to
+ * them, or silently deny their inbound one (same verb on the backend).
+ */
+export function removeFriendRequest(userId: string, token: string | null): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({
+    method: "DELETE",
+    path: `/v1/friends/requests/user/${encodeURIComponent(userId)}`,
+    token,
+  });
+}
+
+/** `GET /v1/friends/mutuals` — friends of friends, most-connected first. */
+export async function fetchMutuals(token: string | null): Promise<MutualsResponse> {
+  const raw = await apiRequest<unknown>({ method: "GET", path: "/v1/friends/mutuals", token });
+  return mutualsResponseSchema.parse(raw);
+}
+
+/** `GET /v1/friends/users/:userId?period=` — viewer-relative profile. */
+export async function fetchFriendProfile(
+  userId: string,
+  periodKey: string,
+  token: string | null,
+): Promise<FriendProfileResponse> {
+  const raw = await apiRequest<unknown>({
+    method: "GET",
+    path: `/v1/friends/users/${encodeURIComponent(userId)}?period=${encodeURIComponent(periodKey)}`,
+    token,
+  });
+  return friendProfileResponseSchema.parse(raw);
 }
