@@ -1,0 +1,123 @@
+diff --git a/lib/commonjs/components/ReorderableListCore.js b/lib/commonjs/components/ReorderableListCore.js
+index 2e5bea3f18742f06844cf03555547af440bacc31..6a67d2fc4a171376687758f21d5ab774968dfc73 100644
+--- a/lib/commonjs/components/ReorderableListCore.js
++++ b/lib/commonjs/components/ReorderableListCore.js
+@@ -211,6 +211,10 @@ const ReorderableListCore = ({
+   const panGestureHandler = (0, _react.useMemo)(() => (panGesture || _reactNativeGestureHandler.Gesture.Pan()).onBegin(e => {
+     'worklet';
+ 
++    // PATCH(workshop): always record gesture state on touch-down so startDrag
++    // can check whether the activating touch is still in progress.
++    gestureState.value = e.state;
++
+     // prevent new dragging until item is completely released
+     if (state.value === _types.ReorderableListState.IDLE) {
+       const xy = horizontalProp.value ? e.x : e.y;
+@@ -219,7 +223,6 @@ const ReorderableListCore = ({
+       currentXY.value = xy;
+       currentTranslationXY.value = translationXY;
+       dragXY.value = translationXY;
+-      gestureState.value = e.state;
+     }
+   }).onUpdate(e => {
+     'worklet';
+@@ -636,6 +639,14 @@ const ReorderableListCore = ({
+ 
+     // Allow new drag when item is completely released.
+     if (state.value === _types.ReorderableListState.IDLE) {
++      // PATCH(workshop): a drag activated from a JS-thread long-press can land
++      // on the UI thread after the activating touch already ended; starting it
++      // then disables scroll with no gesture event left to re-enable it. Bail
++      // unless the pan gesture is currently down.
++      if (gestureState.value !== _reactNativeGestureHandler.State.BEGAN && gestureState.value !== _reactNativeGestureHandler.State.ACTIVE) {
++        return;
++      }
++
+       // Resetting shared values again fixes a flickeing bug in nested lists where
+       // after scrolling the parent list it would offset the new dragged item in another nested list.
+       resetSharedValues();
+diff --git a/lib/module/components/ReorderableListCore.js b/lib/module/components/ReorderableListCore.js
+index 3b394e70604563e5886a72f19d33f06fda792bc7..2c610f08d901815134b303fbeb13a42438e86d33 100644
+--- a/lib/module/components/ReorderableListCore.js
++++ b/lib/module/components/ReorderableListCore.js
+@@ -203,6 +203,10 @@ const ReorderableListCore = ({
+   const panGestureHandler = useMemo(() => (panGesture || Gesture.Pan()).onBegin(e => {
+     'worklet';
+ 
++    // PATCH(workshop): always record gesture state on touch-down so startDrag
++    // can check whether the activating touch is still in progress.
++    gestureState.value = e.state;
++
+     // prevent new dragging until item is completely released
+     if (state.value === ReorderableListState.IDLE) {
+       const xy = horizontalProp.value ? e.x : e.y;
+@@ -211,7 +215,6 @@ const ReorderableListCore = ({
+       currentXY.value = xy;
+       currentTranslationXY.value = translationXY;
+       dragXY.value = translationXY;
+-      gestureState.value = e.state;
+     }
+   }).onUpdate(e => {
+     'worklet';
+@@ -628,6 +631,14 @@ const ReorderableListCore = ({
+ 
+     // Allow new drag when item is completely released.
+     if (state.value === ReorderableListState.IDLE) {
++      // PATCH(workshop): a drag activated from a JS-thread long-press can land
++      // on the UI thread after the activating touch already ended; starting it
++      // then disables scroll with no gesture event left to re-enable it. Bail
++      // unless the pan gesture is currently down.
++      if (gestureState.value !== State.BEGAN && gestureState.value !== State.ACTIVE) {
++        return;
++      }
++
+       // Resetting shared values again fixes a flickeing bug in nested lists where
+       // after scrolling the parent list it would offset the new dragged item in another nested list.
+       resetSharedValues();
+diff --git a/src/components/ReorderableListCore.tsx b/src/components/ReorderableListCore.tsx
+index 908155c30015a456375b41d845b3e4f26c39e065..679e15b97b7dddb90cc3d97c4c3e619099c950d4 100644
+--- a/src/components/ReorderableListCore.tsx
++++ b/src/components/ReorderableListCore.tsx
+@@ -347,6 +347,12 @@ const ReorderableListCore = <T,>(
+         .onBegin(e => {
+           'worklet';
+ 
++          // PATCH(workshop): always record gesture state on touch-down so
++          // startDrag can check whether the activating touch is still in
++          // progress (the stored value is otherwise the previous gesture's
++          // terminal state whenever onBegin fires outside IDLE).
++          gestureState.value = e.state;
++
+           // prevent new dragging until item is completely released
+           if (state.value === ReorderableListState.IDLE) {
+             const xy = horizontalProp.value ? e.x : e.y;
+@@ -358,7 +364,6 @@ const ReorderableListCore = <T,>(
+             currentXY.value = xy;
+             currentTranslationXY.value = translationXY;
+             dragXY.value = translationXY;
+-            gestureState.value = e.state;
+           }
+         })
+         .onUpdate(e => {
+@@ -1001,6 +1006,21 @@ const ReorderableListCore = <T,>(
+ 
+       // Allow new drag when item is completely released.
+       if (state.value === ReorderableListState.IDLE) {
++        // PATCH(workshop): a drag activated from a JS-thread long-press
++        // (useReorderableDrag -> runOnUI(startDrag)) can land on the UI
++        // thread after the activating touch already ended: the pan gesture
++        // finalized while state was still IDLE, so the gesture-state
++        // reaction that re-enables scroll never fires again. Starting the
++        // drag then disables scroll on the FlatList and the outer
++        // ScrollViewContainer permanently (setNativeProps, untouched by
++        // re-renders). Bail unless the pan gesture is currently down.
++        if (
++          gestureState.value !== State.BEGAN &&
++          gestureState.value !== State.ACTIVE
++        ) {
++          return;
++        }
++
+         // Resetting shared values again fixes a flickeing bug in nested lists where
+         // after scrolling the parent list it would offset the new dragged item in another nested list.
+         resetSharedValues();
