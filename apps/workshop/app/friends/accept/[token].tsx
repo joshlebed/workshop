@@ -336,11 +336,7 @@ function PostAcceptPicker({
               />
             )}
           </>
-        ) : friendHasGames ? (
-          <Text tone="secondary" style={styles.inviterCaption}>
-            You already play everything {name} does — add more anytime from the Games tab.
-          </Text>
-        ) : (
+        ) : friendHasGames ? null : ( // have-them-all → nothing looks missing; explaining is noise
           <Text tone="secondary" style={styles.inviterCaption}>
             {name} hasn't added any games yet. Add games anytime from the Games tab.
           </Text>
