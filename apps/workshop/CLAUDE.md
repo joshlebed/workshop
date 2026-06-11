@@ -137,6 +137,26 @@ is visible on the phone. All of this is **JS + backend**, so it ships to an inst
 over-the-air — no new TestFlight binary needed to start collecting data. Remove the
 scaffolding once the share-extension payload bug is nailed.
 
+## `react-native-reorderable-list` is patched: drag-start races could freeze scrolling
+
+Native list reorder (`ItemList.tsx`, `GameCardList.tsx`) activates via a 250ms `Pressable`
+`onLongPress` calling `useReorderableDrag()`'s `drag()` — a JS-thread event that hops to the
+UI thread via `runOnUI(startDrag)`. The finger-lift is processed directly on the UI thread by
+the library's pan gesture, so a lift near the 250ms mark (or under JS-thread load) could land
+**after** the pan finalized: the library entered `DRAGGED`, disabled scroll on both the
+FlatList and the outer `ScrollViewContainer` via `setNativeProps({scrollEnabled: false})`,
+and its gesture-state reaction (the only re-enable path) never fired again — the whole screen
+stopped scrolling until the user happened to drag on the ordered section or left the screen.
+`patches/react-native-reorderable-list.patch` fixes this in `startDrag` (bail unless the pan
+gesture is currently BEGAN/ACTIVE — same-thread check, fully closes the race) and in
+`onBegin` (always record gesture state so the check sees the current touch, not the previous
+gesture's terminal state). The patch edits `src/` (what Metro bundles — the package's
+`react-native` field points at `src/index`) **and** both `lib/` builds; keep all three in
+sync if you touch it. Pure-JS patch: the iOS fingerprint doesn't move, so no `app.json`
+version bump and it OTAs to existing builds. If you bump the library, re-verify upstream
+fixed this (drag start must validate gesture liveness on the UI thread) before dropping the
+patch.
+
 ## `expo-share-intent` is patched: capture `attributedContentText`
 
 A Web Share (`navigator.share({ text, url })` — Daily Tens, etc.) reaches the iOS share

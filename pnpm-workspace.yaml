@@ -4,3 +4,4 @@ packages:
 
 patchedDependencies:
   expo-share-intent: patches/expo-share-intent.patch
+  react-native-reorderable-list: patches/react-native-reorderable-list.patch
