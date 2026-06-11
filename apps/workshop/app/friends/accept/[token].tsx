@@ -248,6 +248,10 @@ function PostAcceptPicker({
     enabled: GAMES_TAB_ENABLED && !!friend.userId,
   });
   const games = discoveryQuery.data?.games ?? [];
+  // `games` is the friend's games you DON'T already have, so an empty list has
+  // two very different meanings. `friendGameCount` (friend's total) tells them
+  // apart: 0 → they genuinely have no games; >0 → you already have them all.
+  const friendHasGames = (discoveryQuery.data?.friendGameCount ?? 0) > 0;
 
   // Refresh only the home's My Games — leave this picker's discovery list
   // stable so added rows stay visible (flipped to "✓ Added").
@@ -332,6 +336,10 @@ function PostAcceptPicker({
               />
             )}
           </>
+        ) : friendHasGames ? (
+          <Text tone="secondary" style={styles.inviterCaption}>
+            You already have all of {name}'s games. Add more anytime from the Games tab.
+          </Text>
         ) : (
           <Text tone="secondary" style={styles.inviterCaption}>
             {name} hasn't added any games yet. Add games anytime from the Games tab.

@@ -262,20 +262,38 @@ gameRoutes.get("/discovery", async (c) => {
 
   const friendFilter = c.req.query("friend");
   let scopedFriendIds = friendIds;
+  let scopedFriendId: string | undefined;
   if (friendFilter !== undefined) {
     const parsed = uuidSchema.safeParse(friendFilter);
     if (!parsed.success || !friendIds.includes(parsed.data)) {
       return err(c, "NOT_FOUND", "friend not found");
     }
     scopedFriendIds = [parsed.data];
-  }
-
-  if (scopedFriendIds.length === 0) {
-    const response: GameDiscoveryResponse = { games: [] };
-    return ok(c, response);
+    scopedFriendId = parsed.data;
   }
 
   const db = getDb();
+
+  // For the single-friend form, also report how many games that friend has
+  // total — the UI uses it to distinguish "friend has no games" from "friend
+  // has games but you already have them all" (both leave `games` empty below).
+  const friendGameCount =
+    scopedFriendId === undefined
+      ? undefined
+      : ((
+          await db
+            .select({ n: sql<number>`count(*)::int` })
+            .from(userGames)
+            .where(eq(userGames.userId, scopedFriendId))
+        )[0]?.n ?? 0);
+
+  // `exactOptionalPropertyTypes` — only attach friendGameCount when defined.
+  const countField = friendGameCount === undefined ? {} : { friendGameCount };
+
+  if (scopedFriendIds.length === 0) {
+    const response: GameDiscoveryResponse = { games: [], ...countField };
+    return ok(c, response);
+  }
   const myGameIds = db
     .select({ gameId: userGames.gameId })
     .from(userGames)
@@ -304,7 +322,7 @@ gameRoutes.get("/discovery", async (c) => {
     (a, b) => b.friends.length - a.friends.length || a.game.title.localeCompare(b.game.title),
   );
 
-  const response: GameDiscoveryResponse = { games: discovered };
+  const response: GameDiscoveryResponse = { games: discovered, ...countField };
   return ok(c, response);
 });
 

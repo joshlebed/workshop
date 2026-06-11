@@ -106,6 +106,14 @@ export interface DiscoveryGame {
 
 export interface GameDiscoveryResponse {
   games: DiscoveryGame[];
+  /**
+   * Total number of games the scoped friend has added — set only for the
+   * `?friend=<userId>` form, omitted for the all-friends feed. Lets the UI
+   * tell "friend has no games" apart from "friend has games but you already
+   * have them all" (both yield an empty `games` list, since discovery filters
+   * out games you've already added).
+   */
+  friendGameCount?: number;
 }
 
 /**
