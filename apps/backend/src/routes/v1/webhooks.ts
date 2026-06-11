@@ -11,6 +11,7 @@ import { getDb } from "../../db/client.js";
 import { listSources } from "../../db/schema.js";
 import { recordEvent } from "../../lib/events.js";
 import { logger } from "../../lib/logger.js";
+import { notifySourceWebhook } from "../../lib/opsNotifications.js";
 import { err, ok } from "../../lib/response.js";
 import { dispatchFor } from "../../lib/sources/registry.js";
 import { openSecrets, SecretEnvelopeError } from "../../lib/sources/secrets.js";
@@ -112,6 +113,8 @@ webhookRoutes.post(
         payload: { kind: source.kind, addedCount: sync.addedCount, via: "webhook" },
       });
     }
+
+    await notifySourceWebhook(slug, source.kind, sync.addedCount);
 
     return ok(c, { ok: true, addedCount: sync.addedCount });
   },

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { listMembers, lists, users } from "../../db/schema.js";
 import { recordEvent } from "../../lib/events.js";
+import { notifyOwnershipTransferred } from "../../lib/opsNotifications.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { requireListMember } from "../../middleware/authorize.js";
@@ -174,5 +175,6 @@ memberRoutes.post("/:id/members/:userId/promote", requireListMember, async (c) =
   });
 
   if (result.kind === "not_found") return err(c, "NOT_FOUND", "member not found");
+  await notifyOwnershipTransferred(listId, requesterId, targetUserId);
   return ok(c, { members: result.members });
 });
