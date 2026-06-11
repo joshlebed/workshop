@@ -35,6 +35,7 @@ import {
   upsertGameScore,
 } from "../api/games";
 import { fetchLists } from "../api/lists";
+import { DayRail } from "../components/DayRail";
 import { HeaderActivityButton } from "../components/HeaderActivityButton";
 import { ProfileMenu } from "../components/ProfileMenu";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
@@ -76,14 +77,16 @@ function hasScore(entry: GameStandingsEntry): boolean {
 }
 
 /**
- * Today-only turnout line. Unlike the Lists card there's no roster
+ * Turnout line for the viewed day. Unlike the Lists card there's no roster
  * denominator — the standings only carry players who posted — so the line
- * reads off the played count alone.
+ * reads off the played count alone. Past days drop the present tense.
  */
-function turnoutLine(playedCount: number, viewerHasPlayed: boolean): string {
-  if (playedCount === 0) return "No one's played yet";
-  if (playedCount === 1 && viewerHasPlayed) return "You've played today";
-  return `${playedCount} played today`;
+function turnoutLine(playedCount: number, viewerHasPlayed: boolean, viewingToday: boolean): string {
+  if (playedCount === 0) return viewingToday ? "No one's played yet" : "No one played";
+  if (playedCount === 1 && viewerHasPlayed) {
+    return viewingToday ? "You've played today" : "You played";
+  }
+  return `${playedCount} played${viewingToday ? " today" : ""}`;
 }
 
 export function GamesHome() {
@@ -95,6 +98,12 @@ export function GamesHome() {
 
   const todayKey = localDateKey();
   const gamesKey = queryKeys.games.mine(todayKey);
+
+  // The day rail re-dates every card's standings. Scores can only be POSTED
+  // to today's bucket, so the play→paste loop below stays pinned to
+  // `todayKey`; only the displayed standings follow `viewDate`.
+  const [viewDate, setViewDate] = useState(todayKey);
+  const viewingToday = viewDate === todayKey;
 
   const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
@@ -113,6 +122,21 @@ export function GamesHome() {
   });
   const myGames = gamesQuery.data?.games ?? [];
   const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
+
+  // Standings for the selected day. When viewing today this shares the
+  // today-pinned query's key, so it costs nothing extra; it only does work
+  // once the rail points at a past day.
+  const viewQuery = useQuery({
+    queryKey: queryKeys.games.mine(viewDate),
+    queryFn: () => fetchMyGames(viewDate, token),
+    enabled: !!token,
+    refetchInterval: viewingToday ? livePoll : false,
+  });
+  const viewStandings = useMemo(() => {
+    const byGameId = new Map<string, MyGame["standings"]>();
+    for (const g of viewQuery.data?.games ?? []) byGameId.set(g.gameId, g.standings);
+    return byGameId;
+  }, [viewQuery.data]);
 
   const listsQuery = useQuery({
     queryKey: queryKeys.lists.all,
@@ -386,7 +410,10 @@ export function GamesHome() {
 
   const renderCard = useCallback(
     (mg: MyGame, isDragging: boolean, onLongPressBody?: () => void) => {
-      const entries = mg.standings.entries.filter(hasScore);
+      // Standings follow the rail's selected day; the game list itself (which
+      // games, what order) stays the today-pinned canonical My Games.
+      const standings = viewStandings.get(mg.gameId);
+      const entries = (standings?.entries ?? []).filter(hasScore);
       const rows: StandingsRow[] = entries.map((entry) => ({
         userId: entry.userId,
         displayName: entry.displayName,
@@ -403,12 +430,14 @@ export function GamesHome() {
           coverGlyph="🎮"
           accent={tokens.accent.default}
           isDragging={isDragging}
-          turnout={turnoutLine(rows.length, mg.standings.viewerHasPlayed)}
+          turnout={turnoutLine(rows.length, standings?.viewerHasPlayed ?? false, viewingToday)}
           rows={rows}
           selfId={user?.id ?? null}
+          loading={!viewingToday && viewQuery.isPending}
           emptyFaces={[]}
-          emptyText="Be the first to play today."
-          showCta={!mg.standings.viewerHasPlayed}
+          // Results can only be posted to today's bucket — past days are
+          // read-only, so the Play / paste affordances hide off-today.
+          showCta={viewingToday && !mg.standings.viewerHasPlayed}
           onPressBody={() => router.push(`/games/${mg.gameId}`)}
           {...(onLongPressBody ? { onLongPressBody } : {})}
           onMenu={() => setMenuGame(mg)}
@@ -417,7 +446,7 @@ export function GamesHome() {
         />
       );
     },
-    [user?.id, router, markPlaying, openPasteFor],
+    [user?.id, router, markPlaying, openPasteFor, viewStandings, viewingToday, viewQuery.isPending],
   );
 
   return (
@@ -492,13 +521,24 @@ export function GamesHome() {
             addedGameIds={addedDiscoveryIds}
           />
         ) : (
-          <GameCardList
-            games={myGames}
-            renderCard={renderCard}
-            onReorder={onReorder}
-            refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
-            onRefresh={() => gamesQuery.refetch()}
-          />
+          <>
+            <View style={styles.dayRail}>
+              <DayRail
+                selectedDate={viewDate}
+                today={todayKey}
+                onSelectDate={setViewDate}
+                testIDPrefix="games-day"
+                horizontalInset={homeLayout.horizontalInset}
+              />
+            </View>
+            <GameCardList
+              games={myGames}
+              renderCard={renderCard}
+              onReorder={onReorder}
+              refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
+              onRefresh={() => gamesQuery.refetch()}
+            />
+          </>
         )}
       </View>
 
@@ -596,6 +636,9 @@ const styles = StyleSheet.create({
   },
   headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
   headerIconBtnDisabled: { opacity: 0.6 },
+  dayRail: {
+    paddingBottom: tokens.space.sm,
+  },
   center: {
     flex: 1,
     alignItems: "center",

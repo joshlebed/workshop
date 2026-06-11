@@ -23,6 +23,8 @@ export interface DayRailProps {
   length?: number;
   /** testID prefix; each chip is `${testIDPrefix}-${dateKey}`. */
   testIDPrefix?: string;
+  /** Edge padding so chips align with the host screen's content inset. */
+  horizontalInset?: number;
 }
 
 export function DayRail({
@@ -31,6 +33,7 @@ export function DayRail({
   onSelectDate,
   length = DEFAULT_LENGTH,
   testIDPrefix = "day",
+  horizontalInset = tokens.space.xl,
 }: DayRailProps) {
   const days: { key: string; label: string }[] = [];
   for (let i = 0; i < length; i++) {
@@ -41,7 +44,7 @@ export function DayRail({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.rail}
+      contentContainerStyle={[styles.rail, { paddingHorizontal: horizontalInset }]}
     >
       {days.map((d) => {
         const selected = d.key === selectedDate;
@@ -81,7 +84,6 @@ function dayChipLabel(key: string, today: string): string {
 
 const styles = StyleSheet.create({
   rail: {
-    paddingHorizontal: tokens.space.xl,
     gap: tokens.space.sm,
   },
   chip: {
