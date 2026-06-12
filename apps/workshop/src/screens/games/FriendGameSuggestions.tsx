@@ -48,6 +48,9 @@ export function FriendGameSuggestions({
       {games.map((dg) => {
         const adding = addingGameIds.includes(dg.game.id);
         const added = addedGameIds.includes(dg.game.id);
+        // Games already in My Games (only present in the `includeOwned` feed)
+        // stay in the ranked list for context but aren't addable.
+        const owned = dg.inMyGames;
         return (
           <View key={dg.game.id} style={styles.row} testID={`${testIDPrefix}-row-${dg.game.id}`}>
             <View style={styles.cover}>
@@ -71,7 +74,13 @@ export function FriendGameSuggestions({
                 </Text>
               )}
             </View>
-            {added ? (
+            {owned ? (
+              <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
+                <Text style={styles.addedText} numberOfLines={1}>
+                  ✓ In your games
+                </Text>
+              </View>
+            ) : added ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
                 <Text style={styles.addedText}>✓ Added</Text>
               </View>

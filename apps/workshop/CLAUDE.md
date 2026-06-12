@@ -82,15 +82,20 @@ catalog row); there is **no** add-by-id endpoint. Three surfaces render the same
      stays purely your chosen games — suggestions never appear there.
 2. **The + add-game sheet** (`AddGameSheet`) — discovery suggestions ABOVE the URL field
    (capped-height scroll); URL field's `autoFocus` is suppressed when suggestions exist so the
-   keyboard doesn't shove them offscreen.
+   keyboard doesn't shove them offscreen. The sheet fetches with `includeOwned: true` so it
+   shows **all** the games friends play (ranked by friend count), including ones already in My
+   Games — those render as a non-addable "✓ In your games" row (testID `…-owned-<id>`). Without
+   this, a user who already plays everything their friends do sees an empty section.
 3. **Post-accept picker** — `app/friends/accept/[token].tsx` no longer bounces to `/friends`
    on Accept; it sets `acceptedFriend` and renders an inline `PostAcceptPicker` (the new
    friend's games via `discovery?friend=<id>`, one-tap + "Add all", skippable) then
    `router.replace("/games")` so a brand-new user lands on a populated home. `games-social.spec`
    was updated to click through this picker (`friend-accept-picker` / `-picker-done`).
 
-The home/sheet share one discovery query (`queryKeys.games.discovery()`, enabled when the
-home is empty OR the sheet is open) so they don't double-fetch. Per-row add state
+The home/sheet share one discovery query (`queryKeys.games.discovery()`, fetched with
+`includeOwned: true`, enabled when the home is empty OR the sheet is open) so they don't
+double-fetch. The empty state shares this query but a no-games user has nothing owned, so
+`includeOwned` is a no-op there (all suggestions stay addable). Per-row add state
 (spinner / "✓ Added") is tracked by game id in the call site (one mutation, many rows), since
 RQ's `useMutation` only surfaces the latest call. The picker invalidates only
 `queryKeys.games.mine(today)` on add (keeps its own suggestion list stable); the home add
@@ -255,10 +260,9 @@ checks URL before text, so it captures only the `?ref=<id>` link and drops the �
 — we then post a bare link that renders as a "Played" row with no score. The share
 screens guard against this with `isResultlessShare()` (`src/lib/shareScoreDetection.ts`):
 if the payload strips to nothing (URL-only / hashtag-only), `/share` offers a "Paste"
-affordance instead of one-tap posting (routing to `/share/pick-game`, or
-`/share/pick-leaderboard` when the Games flag is off), and both pickers block the post and
-ask the user to paste their result. This is a band-aid for the symptom; the root-cause
-fix lives in the share extension's url-before-text precedence.
+affordance instead of one-tap posting (routing to `/share/pick-game`), and the picker blocks
+the post and asks the user to paste their result. This is a band-aid for the symptom; the
+root-cause fix lives in the share extension's url-before-text precedence.
 
 ## Don't override `ios.infoPlist.CFBundleURLTypes` without re-listing the scheme
 
@@ -270,10 +274,10 @@ catches it before EAS does.
 
 Preserve both when handling `useShareIntent()` in `_layout.tsx`; score shares often need
 `shareIntent.text` even when `shareIntent.webUrl` is also present. `/share` owns the
-top-level choice (incl. the one-tap post of a detected score — Games surface first, legacy
-leaderboard item as fallback), `/share/pick-list` handles normal item adds,
-`/share/pick-game` posts to the Games surface (find-or-creates the catalog game when it
-isn't in My Games yet), and `/share/pick-leaderboard` posts to legacy leaderboard lists.
+top-level choice (incl. the one-tap post of a detected score to Games), `/share/pick-list`
+handles normal item adds, and `/share/pick-game` posts to the Games surface
+(find-or-creates the catalog game when it isn't in My Games yet). `/share/pick-leaderboard`
+is only a compatibility redirect to Games.
 
 ## A cross-navigator `router.replace` collapses the target stack — pass `withAnchor`
 

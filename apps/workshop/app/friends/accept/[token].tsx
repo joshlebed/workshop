@@ -244,7 +244,7 @@ function PostAcceptPicker({
 
   const discoveryQuery = useQuery({
     queryKey: queryKeys.games.discovery(friend.userId),
-    queryFn: () => fetchGameDiscovery(token, friend.userId),
+    queryFn: () => fetchGameDiscovery(token, { friendUserId: friend.userId }),
     enabled: GAMES_TAB_ENABLED && !!friend.userId,
   });
   const games = discoveryQuery.data?.games ?? [];

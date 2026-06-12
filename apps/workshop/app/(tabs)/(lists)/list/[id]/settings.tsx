@@ -82,6 +82,8 @@ const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> 
   },
 };
 
+const EDITABLE_MODULE_NAMES = MODULE_NAMES.filter((mod) => mod !== "leaderboard");
+
 export default function ListSettings() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -644,7 +646,7 @@ export default function ListSettings() {
               Modules
             </Text>
             <View style={styles.moduleList}>
-              {MODULE_NAMES.map((mod) => {
+              {EDITABLE_MODULE_NAMES.map((mod) => {
                 const isOn = selectedModules.includes(mod);
                 const labels = MODULE_LABELS[mod];
                 return (

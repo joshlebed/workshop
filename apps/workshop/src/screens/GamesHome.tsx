@@ -207,9 +207,12 @@ export function GamesHome() {
   });
   const friends = friendsQuery.data?.friends ?? [];
 
+  // `includeOwned` so the + sheet shows the full ranked list of what friends
+  // play — including games already in My Games (rendered non-addable). The
+  // empty state shares this query but has no owned games, so it's unaffected.
   const discoveryQuery = useQuery({
     queryKey: queryKeys.games.discovery(),
-    queryFn: () => fetchGameDiscovery(token),
+    queryFn: () => fetchGameDiscovery(token, { includeOwned: true }),
     enabled: !!token && GAMES_TAB_ENABLED && (addOpen || isEmpty),
     refetchInterval: livePoll,
   });

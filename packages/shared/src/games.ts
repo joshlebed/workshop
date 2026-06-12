@@ -148,6 +148,14 @@ export interface DiscoveryFriend {
 export interface DiscoveryGame {
   game: Game;
   friends: DiscoveryFriend[];
+  /**
+   * Whether the viewer already has this game in My Games. Always `false` in the
+   * default feed (which omits games you already added); only ever `true` in the
+   * `?includeOwned=1` feed that powers the + add-game sheet, where owned games
+   * stay in the ranked list — rendered non-addable — so the viewer sees the
+   * full "what my friends play" picture, not just the addable remainder.
+   */
+  inMyGames: boolean;
 }
 
 export interface GameDiscoveryResponse {
@@ -156,8 +164,9 @@ export interface GameDiscoveryResponse {
    * Total number of games the scoped friend has added — set only for the
    * `?friend=<userId>` form, omitted for the all-friends feed. Lets the UI
    * tell "friend has no games" apart from "friend has games but you already
-   * have them all" (both yield an empty `games` list, since discovery filters
-   * out games you've already added).
+   * have them all" (both yield an empty `games` list, since the default feed
+   * filters out games you've already added — the `?includeOwned=1` feed keeps
+   * them).
    */
   friendGameCount?: number;
 }

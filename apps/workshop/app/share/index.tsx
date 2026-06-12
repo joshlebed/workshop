@@ -1,14 +1,10 @@
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ListItemsResponse } from "@workshop/shared";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Constants from "expo-constants";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Updates from "expo-updates";
 import { useMemo } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { addGame, fetchMyGames, upsertGameScore } from "../../src/api/games";
-import { fetchItems } from "../../src/api/items";
-import { fetchLists } from "../../src/api/lists";
-import { upsertItemScore } from "../../src/api/scores";
 import { useAuth } from "../../src/hooks/useAuth";
 import { errorMessage } from "../../src/lib/api";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
@@ -17,12 +13,9 @@ import { haptics } from "../../src/lib/haptics";
 import { queryKeys } from "../../src/lib/queryKeys";
 import {
   detectSharedScore,
-  flattenListItems,
   isResultlessShare,
   pickSuggestedGameTarget,
-  pickSuggestedScoreTarget,
   type ShareGameTarget,
-  type ShareScoreTarget,
 } from "../../src/lib/shareScoreDetection";
 import { Button, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
@@ -30,16 +23,6 @@ interface SharedPayload {
   url: string | null;
   text: string | null;
 }
-
-/**
- * Where the one-tap "Post" sends a detected score. The Games surface is
- * canonical for daily-game scores; a legacy leaderboard-list item is kept as
- * the target only for users who organize through lists and don't have the
- * game in My Games (mapped items write the same `game_scores` rows anyway).
- */
-type ShareSuggestion =
-  | { kind: "game"; target: ShareGameTarget }
-  | { kind: "item"; target: ShareScoreTarget };
 
 export default function ShareHome() {
   const params = useLocalSearchParams<{ url?: string; text?: string }>();
@@ -50,45 +33,12 @@ export default function ShareHome() {
   // as just the game's referral URL (e.g. `dailytens.com/?ref=<id>`). It still
   // matches the game's text pattern, so `detection` is non-null, but there's no
   // result to post — one-tap posting would store a bare link that renders as
-  // "Played". Steer the user to a picker with a paste field (the Games picker,
-  // or the leaderboard picker when the Games flag is off).
+  // "Played". Steer the user to the Games picker, which has a paste field.
   const resultlessShare = !!detection && isResultlessShare(payloadText);
   const router = useRouter();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
-
-  const listsQuery = useQuery({
-    queryKey: queryKeys.lists.all,
-    queryFn: () => fetchLists(token),
-    enabled: !!token,
-  });
-
-  const leaderboardLists = useMemo(() => {
-    const data = listsQuery.data?.lists ?? [];
-    return [...data]
-      .filter((list) => list.modules.includes("leaderboard"))
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [listsQuery.data]);
-
-  const itemQueries = useQueries({
-    queries: leaderboardLists.map((list) => ({
-      queryKey: queryKeys.items.byList(list.id),
-      queryFn: (): Promise<ListItemsResponse> => fetchItems(list.id, token),
-      enabled: !!token && !!detection,
-      staleTime: 30_000,
-    })),
-  });
-
-  const suggestedTarget = useMemo(() => {
-    if (!detection) return null;
-    const itemsByListId: Record<string, ReturnType<typeof flattenListItems>> = {};
-    leaderboardLists.forEach((list, index) => {
-      const data = itemQueries[index]?.data;
-      if (data) itemsByListId[list.id] = flattenListItems(data);
-    });
-    return pickSuggestedScoreTarget(detection, leaderboardLists, itemsByListId);
-  }, [detection, itemQueries, leaderboardLists]);
 
   const today = localDateKey();
   const myGamesQuery = useQuery({
@@ -104,46 +54,8 @@ export default function ShareHome() {
     [detection, myGamesQuery.data],
   );
 
-  // My Games match first (the canonical surface), then a legacy leaderboard
-  // item, then the registry's canonical game (posted via find-or-create) so a
-  // detected score never dead-ends without a Post button.
-  const suggestion: ShareSuggestion | null = useMemo(() => {
-    if (suggestedGameTarget?.gameId) return { kind: "game", target: suggestedGameTarget };
-    if (suggestedTarget) return { kind: "item", target: suggestedTarget };
-    if (suggestedGameTarget) return { kind: "game", target: suggestedGameTarget };
-    return null;
-  }, [suggestedGameTarget, suggestedTarget]);
-
   const suggestionLoading =
-    !!detection &&
-    (listsQuery.isPending ||
-      itemQueries.some((query) => query.isPending || query.isFetching) ||
-      (GAMES_TAB_ENABLED && !!token && myGamesQuery.isPending));
-
-  const submitSuggestion = useMutation({
-    mutationFn: (target: ShareScoreTarget) =>
-      upsertItemScore(
-        target.item.id,
-        { periodKey: localDateKey(), scoreRaw: detection?.scoreRaw ?? payloadText },
-        token,
-      ),
-    onSuccess: async (_data, target) => {
-      haptics.medium();
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.gameScores.forItem(target.item.id, localDateKey()),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.gameScores.forList(target.list.id, localDateKey()),
-        }),
-      ]);
-      showToast({ message: "Score posted", tone: "success" });
-      router.replace(`/list/${target.list.id}/game/${target.item.id}`, { withAnchor: true });
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't post score"), tone: "danger" });
-    },
-  });
+    !!detection && GAMES_TAB_ENABLED && !!token && myGamesQuery.isPending && !suggestedGameTarget;
 
   const submitGameSuggestion = useMutation({
     // No My Games row yet → find-or-create the catalog game from its
@@ -179,15 +91,12 @@ export default function ShareHome() {
   const listTarget = shareQuery
     ? (`/share/pick-list${shareQuery}` as `/share/pick-list?${string}`)
     : "/share/pick-list";
-  const leaderboardTarget = shareQuery
-    ? (`/share/pick-leaderboard${shareQuery}` as `/share/pick-leaderboard?${string}`)
-    : "/share/pick-leaderboard";
   const gamesTarget = shareQuery
     ? (`/share/pick-game${shareQuery}` as `/share/pick-game?${string}`)
     : "/share/pick-game";
-  // Resultless shares need a paste field — the Games picker has one (and is
-  // the canonical surface); the leaderboard picker is the flag-off fallback.
-  const pasteTarget = GAMES_TAB_ENABLED ? gamesTarget : leaderboardTarget;
+  // Resultless shares need a paste field — the Games picker has one and is the
+  // only current score-posting surface.
+  const pasteTarget = GAMES_TAB_ENABLED ? gamesTarget : listTarget;
 
   return (
     <Screen style={styles.root} testID="share-home">
@@ -215,16 +124,14 @@ export default function ShareHome() {
         {detection ? (
           <DetectedScoreSuggestion
             label={detection.gameLabel}
-            suggestion={suggestion}
+            suggestion={suggestedGameTarget}
             loading={suggestionLoading}
-            error={listsQuery.isError && !suggestion ? errorMessage(listsQuery.error) : null}
-            pending={submitSuggestion.isPending || submitGameSuggestion.isPending}
+            error={null}
+            pending={submitGameSuggestion.isPending}
             resultless={resultlessShare}
             onPasteInstead={() => router.replace(pasteTarget)}
             onPost={() => {
-              if (!suggestion) return;
-              if (suggestion.kind === "game") submitGameSuggestion.mutate(suggestion.target);
-              else submitSuggestion.mutate(suggestion.target);
+              if (suggestedGameTarget) submitGameSuggestion.mutate(suggestedGameTarget);
             }}
           />
         ) : null}
@@ -244,14 +151,6 @@ export default function ShareHome() {
           {GAMES_TAB_ENABLED && !detection ? (
             <GamesActionRow onPress={() => router.replace(gamesTarget)} />
           ) : null}
-          <ActionRow
-            testID="share-home-add-leaderboard"
-            eyebrow="Leaderboard"
-            title="Add to a leaderboard"
-            subtitle="Choose a leaderboard list, then choose the game."
-            glyph="#"
-            onPress={() => router.replace(leaderboardTarget)}
-          />
         </View>
       </ScrollView>
     </Screen>
@@ -356,7 +255,7 @@ function DetectedScoreSuggestion({
   onPost,
 }: {
   label: string;
-  suggestion: ShareSuggestion | null;
+  suggestion: ShareGameTarget | null;
   loading: boolean;
   error: string | null;
   pending: boolean;
@@ -425,12 +324,9 @@ function DetectedScoreSuggestion({
     );
   }
 
-  const destination =
-    suggestion.kind === "item"
-      ? `Post to ${suggestion.target.item.title} in ${suggestion.target.list.name}`
-      : suggestion.target.gameId
-        ? `Post to ${suggestion.target.title} in your Games`
-        : `Post to ${suggestion.target.title} — we'll add it to your Games`;
+  const destination = suggestion.gameId
+    ? `Post to ${suggestion.title} in your Games`
+    : `Post to ${suggestion.title} — we'll add it to your Games`;
 
   return (
     <View style={styles.suggestionBox} testID="share-home-detection-suggestion">

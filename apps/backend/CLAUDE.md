@@ -85,6 +85,9 @@ self-heals on item create/edit + score upsert (`routes/v1/items.ts`, `routes/v1/
 Mapped items keep the old list/item URLs but read/write `game_scores`, so the
 `(game_id,user_id,period_key)` primary key enforces one score per player per game per day
 across both the list and Games tab. Unmapped legacy items still fall back to `item_scores`.
+New leaderboard-list creation is retired: list create/duplicate/config changes must not
+introduce `leaderboard` or old `item_kind='game'`; keep existing legacy direct reads working
+until usage is zero and the backend bridge can be removed.
 **Changing a game's scoring rule only fixes new posts** unless you also run
 `scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first)
 — it replays the current parser over stored `score_raw` in both `game_scores` and legacy
@@ -211,9 +214,13 @@ A partial unique index keeps one pending row per (inviter, invitee); the legacy 
 `friendships` computed in app code, and `GET /v1/friends/users/:userId` 404s when the viewer
 has no relationship AND no mutual friends with the target (profiles can't probe strangers);
 it attaches the target's games + period scores only for friends/self.
-`GET /v1/games/discovery` (friends' games I haven't added) is registered **before**
-the `/:id` routes so the literal path isn't shadowed; its `?friend=` filter 404s for
-non-friends so the endpoint can't be used to probe a stranger's games. `games.test.ts` and
+`GET /v1/games/discovery` (friends' games, ranked by how many friends play each) is
+registered **before** the `/:id` routes so the literal path isn't shadowed; its `?friend=`
+filter 404s for non-friends so the endpoint can't be used to probe a stranger's games. The
+default feed omits games I already added; `?includeOwned=1` keeps them in the ranked list
+(tagged `inMyGames`, rendered non-addable client-side) so the + add-game sheet shows the full
+"what my friends play" picture instead of an empty section when I already play everything my
+friends do. All ranking reads `user_games` (people's lists), never scores. `games.test.ts` and
 `scores.integration.test.ts` run actual `drizzle/` migrations against in-memory PGlite
 (`@electric-sql/pglite`) with `getDb` mocked — copy that pattern when a route's acceptance
 criteria are DB behaviors, not just schema validation.

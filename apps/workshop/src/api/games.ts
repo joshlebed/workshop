@@ -91,17 +91,20 @@ export function setGameScoreSpec(
 }
 
 /**
- * `GET /v1/games/discovery` (G2a) — friends' games I haven't added yet, each
- * tagged with which friends play it. `friendUserId` narrows to one friend
- * (the post-accept picker); omit it for the all-friends feed that powers the
- * + sheet suggestions and the friends-but-no-games empty state.
+ * `GET /v1/games/discovery` (G2a) — friends' games, each tagged with which
+ * friends play it, ranked by friend count. `friendUserId` narrows to one friend
+ * (the post-accept picker). `includeOwned` keeps games I already added in the
+ * feed (tagged `inMyGames`) so the + sheet can show the full "what my friends
+ * play" list; omit it for the addable-only feeds (post-accept picker,
+ * friends-but-no-games empty state).
  */
 export function fetchGameDiscovery(
   token: string | null,
-  friendUserId?: string,
+  options: { friendUserId?: string; includeOwned?: boolean } = {},
 ): Promise<GameDiscoveryResponse> {
   const params = new URLSearchParams();
-  if (friendUserId) params.set("friend", friendUserId);
+  if (options.friendUserId) params.set("friend", options.friendUserId);
+  if (options.includeOwned) params.set("includeOwned", "1");
   const qs = params.toString();
   return apiRequest<GameDiscoveryResponse>({
     method: "GET",

@@ -167,6 +167,8 @@ export const __test = {
   createSourceSchema,
   buildNewListNotification,
   isLegacyGameListSummaryRow,
+  isRetiredLegacyGameListConfig,
+  wouldCreateRetiredLegacyGameList,
 };
 
 function isLegacyGameListSummaryRow(list: {
@@ -174,6 +176,34 @@ function isLegacyGameListSummaryRow(list: {
   modules: readonly string[] | null;
 }): boolean {
   return list.item_kind === "game" || (list.modules ?? []).includes("leaderboard");
+}
+
+function isRetiredLegacyGameListConfig(list: {
+  itemKind: string | null | undefined;
+  modules: readonly string[] | null | undefined;
+}): boolean {
+  return isLegacyGameListSummaryRow({
+    item_kind: list.itemKind ?? null,
+    modules: list.modules ?? null,
+  });
+}
+
+function wouldCreateRetiredLegacyGameList(
+  existing: { itemKind: string | null; modules: readonly string[] | null },
+  proposed: { itemKind?: string | null; modules?: readonly string[] | null },
+): boolean {
+  const currentIsLegacy = isRetiredLegacyGameListConfig(existing);
+  const nextIsLegacy = isRetiredLegacyGameListConfig({
+    itemKind: proposed.itemKind !== undefined ? proposed.itemKind : existing.itemKind,
+    modules: proposed.modules !== undefined ? proposed.modules : existing.modules,
+  });
+  return nextIsLegacy && !currentIsLegacy;
+}
+
+function retiredLegacyGameListResponse(c: Parameters<typeof err>[0]) {
+  return err(c, "VALIDATION", "Game leaderboards now live in the Games tab.", {
+    code: "legacy_game_lists_retired",
+  });
 }
 
 function toListShape(l: DbList): List {
@@ -555,6 +585,9 @@ listRoutes.post("/", async (c) => {
   const userId = c.get("userId");
   const db = getDb();
   const data = parsed.data;
+  if (isRetiredLegacyGameListConfig({ itemKind: data.itemKind, modules: data.modules })) {
+    return retiredLegacyGameListResponse(c);
+  }
 
   // Validate any sources up-front so we don't create an orphan list. The
   // dispatcher rejects unknown kinds with a v1 error envelope.
@@ -883,6 +916,17 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
 
   const [existing] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
   if (!existing) return err(c, "NOT_FOUND", "list not found");
+  if (
+    wouldCreateRetiredLegacyGameList(
+      { itemKind: existing.itemKind, modules: existing.modules ?? [] },
+      {
+        ...(wantsItemKind ? { itemKind: data.itemKind ?? null } : {}),
+        ...(wantsModules ? { modules: data.modules ?? [] } : {}),
+      },
+    )
+  ) {
+    return retiredLegacyGameListResponse(c);
+  }
 
   // item_kind tightening: must not violate the homogeneity invariant.
   if (wantsItemKind && data.itemKind !== null && data.itemKind !== existing.itemKind) {
@@ -979,6 +1023,17 @@ listRoutes.post("/:id/config-preview", requireListMember, async (c) => {
   const db = getDb();
   const [existing] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
   if (!existing) return err(c, "NOT_FOUND", "list not found");
+  if (
+    wouldCreateRetiredLegacyGameList(
+      { itemKind: existing.itemKind, modules: existing.modules ?? [] },
+      {
+        ...(parsed.data.itemKind !== undefined ? { itemKind: parsed.data.itemKind ?? null } : {}),
+        ...(parsed.data.modules !== undefined ? { modules: parsed.data.modules } : {}),
+      },
+    )
+  ) {
+    return retiredLegacyGameListResponse(c);
+  }
 
   const warnings: ConfigWarning[] = [];
   if (parsed.data.modules !== undefined) {
@@ -1130,6 +1185,9 @@ listRoutes.post(
       parsed.data.itemKind !== undefined
         ? parsed.data.itemKind
         : (source.itemKind as ItemKind | null);
+    if (isRetiredLegacyGameListConfig({ itemKind: nextItemKind, modules: nextModules })) {
+      return retiredLegacyGameListResponse(c);
+    }
 
     const dup = await db.transaction(async (tx) => {
       let createdDup: DbList | undefined;

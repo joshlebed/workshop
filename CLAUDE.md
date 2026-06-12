@@ -102,9 +102,9 @@ small products — first feature is **watchlist** (movie tracker). New features 
 - **Share extension payloads can include both URL and text.** Preserve both when handling
   `useShareIntent()` in `_layout.tsx`; score shares often need `shareIntent.text` even when
   `shareIntent.webUrl` is also present. `/share` owns the top-level choice, `/share/pick-list`
-  handles normal item adds, `/share/pick-game` posts scores to the Games surface (the
-  primary path post-Games-tab), and `/share/pick-leaderboard` posts to legacy leaderboard
-  lists.
+  handles normal item adds, and `/share/pick-game` posts scores to the Games surface
+  (find-or-creating the catalog game when needed). `/share/pick-leaderboard` is only a
+  compatibility redirect to Games; do not add new leaderboard-list posting UI there.
 - **Leaderboard lists render games as `GameLeaderboardCard` (the status-card view), and a
   leaderboard's games are an ordered, reorderable list.** On `isGameKind`, `ItemList` swaps
   `ItemRow` for a card showing today's full standings (top 5 — every scores endpoint

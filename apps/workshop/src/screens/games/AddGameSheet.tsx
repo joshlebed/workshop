@@ -57,7 +57,7 @@ export function AddGameSheet({
         <Text variant="heading">Add a game</Text>
         <Text variant="caption" tone="muted">
           {hasSuggestions
-            ? "Add a game your friends play, or paste any game's URL."
+            ? "Games your friends play, most popular first — add one, or paste any game's URL."
             : "Paste the game's URL — known dailies are recognized automatically."}
         </Text>
       </View>
