@@ -16,6 +16,7 @@ import {
   normalizeScoreDirection,
   parseScoreValue,
 } from "../../lib/gameCatalog.js";
+import { logLegacyGameListAccess } from "../../lib/legacyGameLists.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule } from "../../lib/moduleGate.js";
 import {
@@ -205,6 +206,15 @@ itemScoreRoutes.put(
       if (!row) return err(c, "INTERNAL", "score upsert returned no row");
       await addToMyGames(userId, mapping.game.id, db);
       if (isFirstScore) await notifyFirstScore(userId, ctx?.title ?? mapping.game.title);
+      if (ctx) {
+        logLegacyGameListAccess(c, {
+          operation: "item_score_upsert",
+          listId: ctx.listId,
+          itemId,
+          periodKey: parsed.data.periodKey,
+          scoreBackend: "game_scores",
+        });
+      }
       return ok(c, { score: toScoreShape(itemId, row) });
     }
 
@@ -229,6 +239,15 @@ itemScoreRoutes.put(
       .returning();
     if (!row) return err(c, "INTERNAL", "score upsert returned no row");
     if (isFirstScore) await notifyFirstScore(userId, ctx?.title ?? "a game");
+    if (ctx) {
+      logLegacyGameListAccess(c, {
+        operation: "item_score_upsert",
+        listId: ctx.listId,
+        itemId,
+        periodKey: parsed.data.periodKey,
+        scoreBackend: "item_scores",
+      });
+    }
     return ok(c, { score: toScoreShape(itemId, row) });
   },
 );
@@ -256,6 +275,15 @@ itemScoreRoutes.delete("/:id/scores", requireItemMember, async (c) => {
           eq(gameScores.periodKey, parsed.data),
         ),
       );
+    if (ctx) {
+      logLegacyGameListAccess(c, {
+        operation: "item_score_delete",
+        listId: ctx.listId,
+        itemId,
+        periodKey: parsed.data,
+        scoreBackend: "game_scores",
+      });
+    }
     return ok(c, { ok: true });
   }
 
@@ -268,6 +296,15 @@ itemScoreRoutes.delete("/:id/scores", requireItemMember, async (c) => {
         eq(itemScores.periodKey, parsed.data),
       ),
     );
+  if (ctx) {
+    logLegacyGameListAccess(c, {
+      operation: "item_score_delete",
+      listId: ctx.listId,
+      itemId,
+      periodKey: parsed.data,
+      scoreBackend: "item_scores",
+    });
+  }
   return ok(c, { ok: true });
 });
 
@@ -345,6 +382,13 @@ itemScoreRoutes.get("/:id/scores", requireItemMember, async (c) => {
     periodKey: parsed.data,
     entries,
   };
+  logLegacyGameListAccess(c, {
+    operation: "item_score_read",
+    listId: ctx.listId,
+    itemId,
+    periodKey: parsed.data,
+    scoreBackend: mapping ? "game_scores" : "item_scores",
+  });
   return ok(c, response);
 });
 
@@ -359,7 +403,7 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
 
   const db = getDb();
   const [parent] = await db
-    .select({ modules: lists.modules })
+    .select({ itemKind: lists.itemKind, modules: lists.modules })
     .from(lists)
     .where(eq(lists.id, listId))
     .limit(1);
@@ -468,5 +512,10 @@ listScoresRoutes.get("/:id/scores", requireListMember, async (c) => {
     periodKey: parsed.data,
     scoresByItem,
   };
+  logLegacyGameListAccess(c, {
+    operation: "list_scores",
+    listId,
+    periodKey: parsed.data,
+  });
   return ok(c, response);
 });
