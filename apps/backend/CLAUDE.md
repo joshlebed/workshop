@@ -85,6 +85,9 @@ self-heals on item create/edit + score upsert (`routes/v1/items.ts`, `routes/v1/
 Mapped items keep the old list/item URLs but read/write `game_scores`, so the
 `(game_id,user_id,period_key)` primary key enforces one score per player per game per day
 across both the list and Games tab. Unmapped legacy items still fall back to `item_scores`.
+New leaderboard-list creation is retired: list create/duplicate/config changes must not
+introduce `leaderboard` or old `item_kind='game'`; keep existing legacy direct reads working
+until usage is zero and the backend bridge can be removed.
 **Changing a game's scoring rule only fixes new posts** unless you also run
 `scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first)
 — it replays the current parser over stored `score_raw` in both `game_scores` and legacy

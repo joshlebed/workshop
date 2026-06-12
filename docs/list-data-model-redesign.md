@@ -1166,7 +1166,7 @@ Shipped with the redesign:
 | `date_ideas`           | Date Ideas           | `link`          | `voting`, `todo`, `ranking`            | emoji ✨, color rose                                                  |
 | `trip_plan`            | Trip Plan            | `link`          | `voting`, `todo`, `ranking`            | emoji ✈️, color sand                                                  |
 | `album_shelf`          | Album Shelf          | `spotify_album` | `voting`, `ranking`, `sources`         | requires Spotify playlist URL (`requiresSource`)                      |
-| `daily_games`          | Daily Game Tracker   | `link`          | `voting`, `leaderboard`, `ranking`     | emoji 🎮, color slate                                                 |
+| `daily_games`          | Daily Game Tracker   | `link`          | `voting`, `leaderboard`, `ranking`     | retired after the Games tab migration; use `/games` instead           |
 | `letterboxd_watchlist` | Letterboxd Watchlist | `movie`         | `voting`, `todo`, `ranking`, `sources` | requires Letterboxd public list URL (`requiresSource`); ships in PR-F |
 | `voting_poll`          | Voting Poll          | `plain`         | `voting`                               | new — flagship example of the redesign's flexibility                  |
 | `shared_todo`          | Shared To-Do List    | `plain`         | `todo`, `ranking`                      | new                                                                   |

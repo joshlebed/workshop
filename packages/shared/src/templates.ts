@@ -110,17 +110,6 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     },
   },
   {
-    id: "daily_games",
-    displayName: "Daily Game Tracker",
-    description: "Daily puzzles with shared leaderboards.",
-    defaults: {
-      itemKind: "link",
-      modules: ["leaderboard", "ranking"],
-      emoji: "🎮",
-      color: "slate",
-    },
-  },
-  {
     id: "letterboxd_watchlist",
     displayName: "Letterboxd Watchlist",
     description: "Mirrors a public Letterboxd list. Films arrive with details from TMDB.",
