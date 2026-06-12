@@ -210,9 +210,14 @@ gameRoutes.get("/", async (c) => {
 });
 
 /**
- * GET /v1/games/discovery (G2a) — games my friends play that I haven't
- * added, each with which friends play it. `?friend=<userId>` narrows to one
- * friend and 404s for anyone who isn't a friend (a non-friend must not be
+ * GET /v1/games/discovery (G2a) — games my friends play, each with which
+ * friends play it, ranked by how many friends play each. By default the feed
+ * omits games I already added (it's the "what could I add" list). `?includeOwned=1`
+ * keeps owned games in the ranked list (tagged `inMyGames`) so the + add-game
+ * sheet can show the *full* picture of what my friends play, not just the
+ * addable remainder — the common case (you already play everything your friends
+ * do) otherwise renders an empty suggestions section. `?friend=<userId>` narrows
+ * to one friend and 404s for anyone who isn't a friend (a non-friend must not be
  * able to probe whether the id plays anything). Registered before the
  * `/:id` routes so the literal path isn't shadowed.
  */
@@ -231,6 +236,9 @@ gameRoutes.get("/discovery", async (c) => {
     scopedFriendIds = [parsed.data];
     scopedFriendId = parsed.data;
   }
+
+  const includeOwnedFlag = c.req.query("includeOwned");
+  const includeOwned = includeOwnedFlag === "1" || includeOwnedFlag === "true";
 
   const db = getDb();
 
@@ -254,10 +262,27 @@ gameRoutes.get("/discovery", async (c) => {
     const response: GameDiscoveryResponse = { games: [], ...countField };
     return ok(c, response);
   }
-  const myGameIds = db
-    .select({ gameId: userGames.gameId })
-    .from(userGames)
-    .where(eq(userGames.userId, userId));
+
+  // For the includeOwned feed we need the viewer's owned game-id set in hand to
+  // tag each row; the default feed keeps the SQL subquery filter (byte-identical
+  // to before, and sidesteps any empty-array edge case).
+  let ownedIds: Set<string> | null = null;
+  let friendGamesWhere = and(
+    inArray(userGames.userId, scopedFriendIds),
+    notInArray(
+      userGames.gameId,
+      db.select({ gameId: userGames.gameId }).from(userGames).where(eq(userGames.userId, userId)),
+    ),
+  );
+  if (includeOwned) {
+    const owned = await db
+      .select({ gameId: userGames.gameId })
+      .from(userGames)
+      .where(eq(userGames.userId, userId));
+    ownedIds = new Set(owned.map((r) => r.gameId));
+    friendGamesWhere = inArray(userGames.userId, scopedFriendIds);
+  }
+
   const rows = await db
     .select({
       game: games,
@@ -268,12 +293,16 @@ gameRoutes.get("/discovery", async (c) => {
     .from(userGames)
     .innerJoin(games, eq(games.id, userGames.gameId))
     .leftJoin(users, eq(users.id, userGames.userId))
-    .where(and(inArray(userGames.userId, scopedFriendIds), notInArray(userGames.gameId, myGameIds)))
+    .where(friendGamesWhere)
     .orderBy(asc(userGames.addedAt), asc(userGames.gameId));
 
   const byGame = new Map<string, DiscoveryGame>();
   for (const r of rows) {
-    const entry = byGame.get(r.game.id) ?? { game: toGameShape(r.game), friends: [] };
+    const entry = byGame.get(r.game.id) ?? {
+      game: toGameShape(r.game),
+      friends: [],
+      inMyGames: ownedIds?.has(r.game.id) ?? false,
+    };
     entry.friends.push({ userId: r.friendId, displayName: r.displayName });
     byGame.set(r.game.id, entry);
   }

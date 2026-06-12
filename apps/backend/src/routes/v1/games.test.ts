@@ -550,6 +550,80 @@ describe("GET /v1/games/discovery — friend's games + friendGameCount", () => {
   });
 });
 
+describe("GET /v1/games/discovery?includeOwned — full ranked friend feed", () => {
+  // user_low < user_high keeps each inserted friendship row canonical.
+  const v = "00000000-0000-4000-8000-0000000000e1";
+  const f1 = "00000000-0000-4000-8000-0000000000e2";
+  const f2 = "00000000-0000-4000-8000-0000000000e3";
+  // Arbitrary unknown hosts → fresh catalog rows that can't collide with the
+  // registry-game fixtures above (same global row when added by several users).
+  const alphaUrl = "https://e2e-disc-alpha.example.com";
+  const betaUrl = "https://e2e-disc-beta.example.com";
+  let alphaId = "";
+  let betaId = "";
+
+  beforeAll(async () => {
+    for (const [id, email] of [
+      [v, "disc-v@example.com"],
+      [f1, "disc-f1@example.com"],
+      [f2, "disc-f2@example.com"],
+    ]) {
+      await rows(`INSERT INTO users (id, email) VALUES ($1, $2)`, [id, email]);
+    }
+    await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2), ($1, $3)`, [
+      v,
+      f1,
+      f2,
+    ]);
+    // f1 plays alpha + beta; f2 plays alpha; the viewer already owns alpha.
+    alphaId = (await addGame(alphaUrl, f1)).game.id;
+    betaId = (await addGame(betaUrl, f1)).game.id;
+    await addGame(alphaUrl, f2);
+    await addGame(alphaUrl, v);
+  });
+
+  it("keeps owned games, ranks by friend count, and tags inMyGames", async () => {
+    const res = await gameRoutes.request("/discovery?includeOwned=1", {
+      headers: authHeaders(v),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      games: { game: { id: string }; friends: unknown[]; inMyGames: boolean }[];
+    };
+    // alpha (2 friends, owned) ranks above beta (1 friend, not owned).
+    expect(
+      body.games.map((g) => ({
+        id: g.game.id,
+        friends: g.friends.length,
+        inMyGames: g.inMyGames,
+      })),
+    ).toEqual([
+      { id: alphaId, friends: 2, inMyGames: true },
+      { id: betaId, friends: 1, inMyGames: false },
+    ]);
+  });
+
+  it("accepts includeOwned=true as well as =1", async () => {
+    const res = await gameRoutes.request("/discovery?includeOwned=true", {
+      headers: authHeaders(v),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { games: { game: { id: string } }[] };
+    expect(body.games.map((g) => g.game.id)).toEqual([alphaId, betaId]);
+  });
+
+  it("default feed (no includeOwned) still drops owned games, inMyGames false", async () => {
+    const res = await gameRoutes.request("/discovery", { headers: authHeaders(v) });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      games: { game: { id: string }; inMyGames: boolean }[];
+    };
+    // alpha is owned → filtered out; only beta remains, untagged.
+    expect(body.games.map((g) => g.game.id)).toEqual([betaId]);
+    expect(body.games[0]?.inMyGames).toBe(false);
+  });
+});
+
 describe("requires auth", () => {
   it("401s without a bearer token", async () => {
     const res = await gameRoutes.request("/");
