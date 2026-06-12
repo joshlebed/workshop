@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -535,6 +536,43 @@ export const gameScores = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.gameId, t.userId, t.periodKey] }),
     gamePeriodIdx: index("game_scores_game_period_idx").on(t.gameId, t.periodKey),
+  }),
+);
+
+/**
+ * Emoji reactions on a daily-game score (G2c). A reaction targets one score —
+ * identified by `(game_id, score_user_id, period_key)`, the `game_scores` PK —
+ * and carries the `reactor_user_id` plus their chosen `emoji`. The composite PK
+ * enforces the tapback model: at most one reaction per reactor per score
+ * (re-reacting replaces the emoji via upsert). The composite FK to
+ * `game_scores` keeps reactions from outliving the score they decorate (and
+ * cascades when the score's game or owner is deleted); a separate FK cascades
+ * on reactor deletion. Reads are gated to the viewer's friend graph in the
+ * route layer, not here.
+ */
+export const gameScoreReactions = pgTable(
+  "game_score_reactions",
+  {
+    gameId: uuid("game_id").notNull(),
+    periodKey: text("period_key").notNull(),
+    scoreUserId: uuid("score_user_id").notNull(),
+    reactorUserId: uuid("reactor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    emoji: text("emoji").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({
+      columns: [t.gameId, t.periodKey, t.scoreUserId, t.reactorUserId],
+    }),
+    scoreFk: foreignKey({
+      columns: [t.gameId, t.scoreUserId, t.periodKey],
+      foreignColumns: [gameScores.gameId, gameScores.userId, gameScores.periodKey],
+      name: "game_score_reactions_score_fk",
+    }).onDelete("cascade"),
+    scoreIdx: index("game_score_reactions_score_idx").on(t.gameId, t.periodKey, t.scoreUserId),
   }),
 );
 

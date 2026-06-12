@@ -218,6 +218,19 @@ non-friends so the endpoint can't be used to probe a stranger's games. `games.te
 (`@electric-sql/pglite`) with `getDb` mocked — copy that pattern when a route's acceptance
 criteria are DB behaviors, not just schema validation.
 
+**Emoji reactions on scores (G2c)** live in `game_score_reactions`
+(`(game_id, period_key, score_user_id, reactor_user_id)` PK — one reaction per reactor per
+score, tapback-style; re-reacting upserts the emoji). A composite FK to `game_scores` keeps a
+reaction from outliving the score it decorates. `PUT /v1/games/:id/reactions/:periodKey/:scoreUserId`
+sets/replaces, `DELETE` clears — both echo the score's full reaction summary. The setter gates
+on `friendsOf(viewer)` (a non-friend / missing score both 404, so it can't probe a stranger)
+and rejects reacting to your own score. **Reactions are attached to every standings entry by
+`loadStandingsByGame`** (so both `GET /v1/games` and `/leaderboard` carry them), and the
+reactor set is gated to `visibleUserIds(viewer)` exactly like the scores — a non-mutual
+friend's reaction on a shared friend's score never reveals who they are. The emoji string is
+validated by `isReactionEmoji` (`@workshop/shared/games`). When you add a new code path that
+builds `GameStandingsEntry`, populate `reactions` (it's a required field now).
+
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's

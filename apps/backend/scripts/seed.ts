@@ -28,6 +28,7 @@ import {
   activityEvents,
   friendRequests,
   friendships,
+  gameScoreReactions,
   gameScores,
   itemAcceptances,
   itemScores,
@@ -667,13 +668,45 @@ async function seedFriendGraph(previewId: string, friendId: string) {
   const todayKey = new Date().toISOString().slice(0, 10);
   await db
     .insert(gameScores)
-    .values({
-      gameId: globle.id,
-      userId: friendId,
-      periodKey: todayKey,
-      scoreRaw: "🌎 Jun 11, 2026 🔥 2 | Avg. Guesses: 5\n🟨🟧🟥🟩 = 4\nhttps://globle-game.com",
-      scoreValue: "4",
-    })
+    .values([
+      {
+        gameId: globle.id,
+        userId: friendId,
+        periodKey: todayKey,
+        scoreRaw: "🌎 Jun 11, 2026 🔥 2 | Avg. Guesses: 5\n🟨🟧🟥🟩 = 4\nhttps://globle-game.com",
+        scoreValue: "4",
+      },
+      {
+        gameId: globle.id,
+        userId: previewId,
+        periodKey: todayKey,
+        scoreRaw: "🌎 Jun 11, 2026 🔥 5 | Avg. Guesses: 3\n🟨🟩 = 2\nhttps://globle-game.com",
+        scoreValue: "2",
+      },
+    ])
+    .onConflictDoNothing();
+
+  // Reactions both ways so the Games card shows a chip the viewer gave (on
+  // Alex's row) and one they received (on their own row). Both are mutual-friend
+  // reactions, so they pass the friend-graph visibility gate from either side.
+  await db
+    .insert(gameScoreReactions)
+    .values([
+      {
+        gameId: globle.id,
+        periodKey: todayKey,
+        scoreUserId: friendId,
+        reactorUserId: previewId,
+        emoji: "🔥",
+      },
+      {
+        gameId: globle.id,
+        periodKey: todayKey,
+        scoreUserId: previewId,
+        reactorUserId: friendId,
+        emoji: "🎉",
+      },
+    ])
     .onConflictDoNothing();
 }
 

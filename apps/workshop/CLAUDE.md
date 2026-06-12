@@ -105,6 +105,23 @@ count > 0 → you already have them all, nothing looks missing, so it shows no c
 "hasn't added any games yet".
 Don't render a "no games" message off `games.length === 0` alone.
 
+## Emoji reactions on friends' scores (G2c)
+
+Each standings entry carries `reactions: ScoreReactionSummary[]` (one chip per emoji, with a
+count + `viewerReacted`). The presentational `ScoreReactions` (`src/components/ScoreReactions.tsx`)
+renders the chips + an add affordance; `ReactionPickerSheet` is the quick-emoji bar plus a
+"more" text field that taps the **OS emoji keyboard** (no emoji-picker dependency, so nothing
+native is added — keeps `app.json` `version` still). The shared `useScoreReactions` hook owns
+the set/replace/remove mutations with optimistic cache patching (`applyViewerReaction` in
+`src/lib/scoreReactions.ts`, mirroring the server's one-per-reactor rule) plus picker state;
+each call site passes `readReactions`/`writeReactions` to locate a score inside its own cache
+shape (`GamesResponse` for the home, `GameLeaderboardResponse` for the per-game board). **This
+is Games-surface only**: `StandingsCard` renders reactions solely when its optional
+`onReact`/`onOpenReactionPicker` props are passed — the Lists `GameLeaderboardCard` adapter
+doesn't pass them, so the legacy leaderboard surface stays reaction-free. The add/toggle
+affordances are gated to friends' rows (`!isMe`); your own row shows reactions others left
+read-only, since you can't react to your own score.
+
 ## Profile avatar circles
 
 Use the shared `Avatar` component for any user identity circle. For the signed-in user, pass

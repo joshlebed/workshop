@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GameStandingsEntry } from "@workshop/shared/games";
+import type { GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
@@ -15,7 +15,10 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../../../src/api/games";
 import { DayRail } from "../../../src/components/DayRail";
+import { ReactionPickerSheet } from "../../../src/components/ReactionPickerSheet";
+import { ScoreReactions } from "../../../src/components/ScoreReactions";
 import { useAuth } from "../../../src/hooks/useAuth";
+import { useScoreReactions } from "../../../src/hooks/useScoreReactions";
 import { errorMessage } from "../../../src/lib/api";
 import { userAvatarImageUrl } from "../../../src/lib/avatar";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
@@ -90,6 +93,20 @@ export default function GameBoard() {
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" });
     },
+  });
+
+  // Emoji reactions on friends' scores for the day being viewed (G2c).
+  const reactionCtl = useScoreReactions<GameLeaderboardResponse>({
+    periodKey: date,
+    token,
+    viewer: user ? { userId: user.id, displayName: user.displayName ?? null } : null,
+    queryKey: queryKeys.games.leaderboard(gameId ?? "", date),
+    readReactions: (data, _gameId, scoreUserId) =>
+      data.entries.find((e) => e.userId === scoreUserId)?.reactions ?? [],
+    writeReactions: (data, _gameId, scoreUserId, next) => ({
+      ...data,
+      entries: data.entries.map((e) => (e.userId === scoreUserId ? { ...e, reactions: next } : e)),
+    }),
   });
 
   if (!GAMES_TAB_ENABLED) {
@@ -319,11 +336,31 @@ export default function GameBoard() {
               )}
 
               {otherEntries.map((entry) => (
-                <EntryRow key={entry.userId} entry={entry} game={game} isMe={false} />
+                <EntryRow
+                  key={entry.userId}
+                  entry={entry}
+                  game={game}
+                  isMe={false}
+                  onReact={(userId, emoji, currentlyReacted) =>
+                    reactionCtl.react(gameId, userId, emoji, currentlyReacted)
+                  }
+                  onOpenReactionPicker={(userId) =>
+                    reactionCtl.openPicker(gameId, userId, entry.displayName ?? null)
+                  }
+                />
               ))}
             </View>
           )}
         </ScrollView>
+
+        <ReactionPickerSheet
+          visible={!!reactionCtl.target}
+          targetName={reactionCtl.target?.name ?? null}
+          current={reactionCtl.currentEmoji}
+          onPick={reactionCtl.pick}
+          onRemove={reactionCtl.removeReaction}
+          onClose={reactionCtl.closePicker}
+        />
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -334,13 +371,19 @@ interface EntryRowProps {
   game: { title: string; url: string | null };
   isMe: boolean;
   onEdit?: () => void;
+  onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
+  onOpenReactionPicker?: (userId: string) => void;
 }
 
-function EntryRow({ entry, game, isMe, onEdit }: EntryRowProps) {
+function EntryRow({ entry, game, isMe, onEdit, onReact, onOpenReactionPicker }: EntryRowProps) {
   const name = entry.displayName ?? "Someone";
   // Same distillation as the home card (and the Lists clipboard recap): a
   // URL-only share formats to nothing → show "Played" rather than the link.
   const body = summarizeGameScoreBody(game, entry);
+  // You react to friends' scores, not your own — so the controls only wire up
+  // on other people's rows; your own row shows others' reactions read-only.
+  const canReact = !isMe && !!onOpenReactionPicker;
+  const showReactions = entry.reactions.length > 0 || canReact;
   return (
     <View style={[styles.entry, isMe && styles.entryMe]} testID={`game-board-row-${entry.userId}`}>
       <View style={styles.entryHeader}>
@@ -390,6 +433,18 @@ function EntryRow({ entry, game, isMe, onEdit }: EntryRowProps) {
           {body ?? "Played"}
         </Text>
       </View>
+      {showReactions ? (
+        <ScoreReactions
+          reactions={entry.reactions}
+          testIDPrefix={`game-board-react-${entry.userId}`}
+          {...(canReact && onReact
+            ? { onToggle: (emoji, cur) => onReact(entry.userId, emoji, cur) }
+            : {})}
+          {...(canReact && onOpenReactionPicker
+            ? { onAdd: () => onOpenReactionPicker(entry.userId) }
+            : {})}
+        />
+      ) : null}
     </View>
   );
 }

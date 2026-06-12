@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { CATALOG_GAME_DEFINITIONS } from "@workshop/shared/gameRegistry";
+import type { GameStandingsEntry } from "@workshop/shared/games";
 import { normalizeGameUrl } from "@workshop/shared/games";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
@@ -547,6 +548,166 @@ describe("GET /v1/games/discovery — friend's games + friendGameCount", () => {
   it("404s for a non-friend (can't probe a stranger's games)", async () => {
     const res = await discover(viewer, otherUserId);
     expect(res.status).toBe(404);
+  });
+});
+
+describe("PUT/DELETE /v1/games/:id/reactions — emoji reactions on a friend's score", () => {
+  const viewer = "00000000-0000-4000-8000-0000000000e1";
+  const friendA = "00000000-0000-4000-8000-0000000000e2";
+  const stranger = "00000000-0000-4000-8000-0000000000e3";
+  const mutual = "00000000-0000-4000-8000-0000000000e4"; // friend of both viewer + friendA
+  const outsider = "00000000-0000-4000-8000-0000000000e5"; // friend of friendA only
+  const period = "2026-06-15";
+  let globleId: string;
+
+  async function friend(a: string, b: string) {
+    const [low, high] = a < b ? [a, b] : [b, a];
+    await rows(
+      `INSERT INTO friendships (user_low, user_high) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [low, high],
+    );
+  }
+  function react(asUser: string, scoreUserId: string, emoji: string, p = period) {
+    return gameRoutes.request(`/${globleId}/reactions/${p}/${scoreUserId}`, {
+      method: "PUT",
+      headers: authHeaders(asUser),
+      body: JSON.stringify({ emoji }),
+    });
+  }
+  function unreact(asUser: string, scoreUserId: string, p = period) {
+    return gameRoutes.request(`/${globleId}/reactions/${p}/${scoreUserId}`, {
+      method: "DELETE",
+      headers: authHeaders(asUser),
+    });
+  }
+  async function leaderboardEntry(asUser: string, scoreUserId: string) {
+    const res = await gameRoutes.request(`/${globleId}/leaderboard?period=${period}`, {
+      headers: authHeaders(asUser),
+    });
+    const body = (await res.json()) as { entries: GameStandingsEntry[] };
+    return body.entries.find((e) => e.userId === scoreUserId);
+  }
+
+  beforeAll(async () => {
+    for (const [id, email] of [
+      [viewer, "rx-viewer@example.com"],
+      [friendA, "rx-frienda@example.com"],
+      [stranger, "rx-stranger@example.com"],
+      [mutual, "rx-mutual@example.com"],
+      [outsider, "rx-outsider@example.com"],
+    ]) {
+      await rows(`INSERT INTO users (id, email) VALUES ($1, $2)`, [id, email]);
+    }
+    await friend(viewer, friendA);
+    await friend(viewer, mutual);
+    await friend(friendA, mutual);
+    await friend(friendA, outsider); // NOT a friend of viewer
+
+    const globle = await rows<{ id: string }>(`SELECT id FROM games WHERE game_key = 'globle'`);
+    globleId = globle[0]?.id as string;
+    await rows(
+      `INSERT INTO game_scores (game_id, user_id, period_key, score_value, score_raw)
+       VALUES ($1, $2, $5, 3, 'viewer'), ($1, $3, $5, 4, 'friendA'), ($1, $4, $5, 5, 'stranger')`,
+      [globleId, viewer, friendA, stranger, period],
+    );
+  });
+
+  it("lets a friend react and echoes the score's reactions back", async () => {
+    const res = await react(viewer, friendA, "👍");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reactions: GameStandingsEntry["reactions"] };
+    expect(body.reactions).toEqual([
+      expect.objectContaining({ emoji: "👍", count: 1, viewerReacted: true }),
+    ]);
+    expect(body.reactions[0]?.reactors).toEqual([expect.objectContaining({ userId: viewer })]);
+  });
+
+  it("replaces the reactor's prior emoji (tapback: one per reactor)", async () => {
+    const res = await react(viewer, friendA, "🔥");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reactions: GameStandingsEntry["reactions"] };
+    expect(body.reactions).toEqual([
+      expect.objectContaining({ emoji: "🔥", count: 1, viewerReacted: true }),
+    ]);
+    const dbRows = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM game_score_reactions
+       WHERE game_id = $1 AND period_key = $2 AND score_user_id = $3 AND reactor_user_id = $4`,
+      [globleId, period, friendA, viewer],
+    );
+    expect(dbRows[0]?.n).toBe(1);
+  });
+
+  it("rejects reacting to your own score", async () => {
+    const res = await react(viewer, viewer, "👍");
+    expect(res.status).toBe(400);
+  });
+
+  it("404s reacting to a non-friend's score (can't probe a stranger)", async () => {
+    const res = await react(viewer, stranger, "👍");
+    expect(res.status).toBe(404);
+    const leaked = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM game_score_reactions WHERE score_user_id = $1`,
+      [stranger],
+    );
+    expect(leaked[0]?.n).toBe(0);
+  });
+
+  it("404s reacting when the friend has no score that day", async () => {
+    const res = await react(viewer, friendA, "👍", "2026-06-16");
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects a non-emoji reaction body", async () => {
+    const res = await react(viewer, friendA, "lol");
+    expect(res.status).toBe(400);
+  });
+
+  it("aggregates by emoji and hides reactors outside the viewer's friend graph", async () => {
+    await react(mutual, friendA, "🔥"); // mutual friend — visible, same emoji as viewer
+    const outsiderRes = await react(outsider, friendA, "😮"); // friendA's friend, not viewer's
+    expect(outsiderRes.status).toBe(200);
+
+    const entry = await leaderboardEntry(viewer, friendA);
+    expect(entry?.reactions).toEqual([
+      expect.objectContaining({ emoji: "🔥", count: 2, viewerReacted: true }),
+    ]);
+    const reactorIds = entry?.reactions[0]?.reactors.map((r) => r.userId) ?? [];
+    expect(new Set(reactorIds)).toEqual(new Set([viewer, mutual]));
+    // The outsider's 😮 exists in the DB but never reaches the viewer.
+    const all = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM game_score_reactions WHERE score_user_id = $1 AND emoji = '😮'`,
+      [friendA],
+    );
+    expect(all[0]?.n).toBe(1);
+
+    // The outsider, however, DOES see their own 😮 on friendA's score.
+    const outsiderView = await leaderboardEntry(outsider, friendA);
+    const outsiderEmojis = outsiderView?.reactions.map((r) => r.emoji) ?? [];
+    expect(outsiderEmojis).toContain("😮");
+  });
+
+  it("shows a friend's reaction on the viewer's own score (viewerReacted false)", async () => {
+    await react(friendA, viewer, "🎉");
+    const myEntry = await leaderboardEntry(viewer, viewer);
+    expect(myEntry?.reactions).toEqual([
+      expect.objectContaining({ emoji: "🎉", count: 1, viewerReacted: false }),
+    ]);
+  });
+
+  it("clears only the caller's reaction on DELETE", async () => {
+    const res = await unreact(viewer, friendA);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reactions: GameStandingsEntry["reactions"] };
+    // The mutual friend's 🔥 stays; the viewer's is gone.
+    expect(body.reactions).toEqual([
+      expect.objectContaining({ emoji: "🔥", count: 1, viewerReacted: false }),
+    ]);
+    const mine = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM game_score_reactions
+       WHERE score_user_id = $1 AND reactor_user_id = $2`,
+      [friendA, viewer],
+    );
+    expect(mine[0]?.n).toBe(0);
   });
 });
 

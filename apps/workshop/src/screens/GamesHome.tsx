@@ -39,9 +39,11 @@ import { fetchLists } from "../api/lists";
 import { DayRail } from "../components/DayRail";
 import { HeaderActivityButton } from "../components/HeaderActivityButton";
 import { ProfileMenu } from "../components/ProfileMenu";
+import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
+import { useScoreReactions } from "../hooks/useScoreReactions";
 import { neighborsForOrderedReorder } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { userAvatarImageUrl } from "../lib/avatar";
@@ -139,6 +141,35 @@ export function GamesHome() {
     for (const g of viewQuery.data?.games ?? []) byGameId.set(g.gameId, g.standings);
     return byGameId;
   }, [viewQuery.data]);
+
+  // Emoji reactions on friends' scores (G2c). Targets the displayed day's
+  // standings cache (`viewDate`), which equals `gamesKey` while viewing today.
+  const reactionCtl = useScoreReactions<GamesResponse>({
+    periodKey: viewDate,
+    token,
+    viewer: user ? { userId: user.id, displayName: user.displayName ?? null } : null,
+    queryKey: queryKeys.games.mine(viewDate),
+    readReactions: (data, gameId, scoreUserId) =>
+      data.games
+        .find((g) => g.gameId === gameId)
+        ?.standings.entries.find((e) => e.userId === scoreUserId)?.reactions ?? [],
+    writeReactions: (data, gameId, scoreUserId, next) => ({
+      ...data,
+      games: data.games.map((g) =>
+        g.gameId === gameId
+          ? {
+              ...g,
+              standings: {
+                ...g.standings,
+                entries: g.standings.entries.map((e) =>
+                  e.userId === scoreUserId ? { ...e, reactions: next } : e,
+                ),
+              },
+            }
+          : g,
+      ),
+    }),
+  });
 
   const listsQuery = useQuery({
     queryKey: queryKeys.lists.all,
@@ -434,6 +465,7 @@ export function GamesHome() {
         avatarUrl: userAvatarImageUrl(entry.userId),
         rank: entry.rank,
         body: summarizeGameScoreBody(mg.game, entry),
+        reactions: entry.reactions,
       }));
       return (
         <StandingsCard
@@ -457,10 +489,30 @@ export function GamesHome() {
           onMenu={() => setMenuGame(mg)}
           onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
           onPaste={() => openPasteFor({ id: mg.gameId, url: mg.game.url })}
+          onReact={(userId, emoji, currentlyReacted) =>
+            reactionCtl.react(mg.gameId, userId, emoji, currentlyReacted)
+          }
+          onOpenReactionPicker={(userId) =>
+            reactionCtl.openPicker(
+              mg.gameId,
+              userId,
+              entries.find((e) => e.userId === userId)?.displayName ?? null,
+            )
+          }
         />
       );
     },
-    [user?.id, router, markPlaying, openPasteFor, viewStandings, viewingToday, viewQuery.isPending],
+    [
+      user?.id,
+      router,
+      markPlaying,
+      openPasteFor,
+      viewStandings,
+      viewingToday,
+      viewQuery.isPending,
+      reactionCtl.react,
+      reactionCtl.openPicker,
+    ],
   );
 
   return (
@@ -593,6 +645,15 @@ export function GamesHome() {
         onTeach={(game, scoreRaw, taught) => upsertMutation.mutate({ game, scoreRaw, taught })}
         onSubmit={(game, scoreRaw) => upsertMutation.mutate({ game, scoreRaw })}
         onClose={dismiss}
+      />
+
+      <ReactionPickerSheet
+        visible={!!reactionCtl.target}
+        targetName={reactionCtl.target?.name ?? null}
+        current={reactionCtl.currentEmoji}
+        onPick={reactionCtl.pick}
+        onRemove={reactionCtl.removeReaction}
+        onClose={reactionCtl.closePicker}
       />
 
       {/* Card menu — Open game / Remove. */}
