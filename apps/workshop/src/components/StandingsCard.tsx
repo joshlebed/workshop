@@ -504,19 +504,24 @@ const styles = StyleSheet.create({
   },
   standings: { gap: tokens.space.sm },
   playerRow: {
-    flexDirection: "column",
-    gap: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
     paddingVertical: 4,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
     borderRadius: tokens.radius.sm,
   },
   playerLine: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
   },
-  reactionsWrap: { paddingLeft: SCORE_INDENT },
+  // Reactions ride to the right of the score on the same line — no extra row
+  // height. They keep their natural width; the score line flexes to fill.
+  reactionsWrap: { flexShrink: 0 },
   playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
   rankSlot: {
     width: RANK_SLOT,

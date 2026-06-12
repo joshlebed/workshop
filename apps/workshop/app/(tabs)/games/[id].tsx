@@ -425,26 +425,28 @@ function EntryRow({ entry, game, isMe, onEdit, onReact, onOpenReactionPicker }: 
           </Pressable>
         ) : null}
       </View>
-      <View style={styles.scoreFrame}>
-        <Text
-          style={[styles.scoreText, body ? null : styles.scoreTextMuted]}
-          testID={`game-board-score-${entry.userId}`}
-        >
-          {body ?? "Played"}
-        </Text>
+      <View style={styles.scoreRow}>
+        <View style={styles.scoreFrame}>
+          <Text
+            style={[styles.scoreText, body ? null : styles.scoreTextMuted]}
+            testID={`game-board-score-${entry.userId}`}
+          >
+            {body ?? "Played"}
+          </Text>
+        </View>
+        {showReactions ? (
+          <ScoreReactions
+            reactions={entry.reactions}
+            testIDPrefix={`game-board-react-${entry.userId}`}
+            {...(canReact && onReact
+              ? { onToggle: (emoji, cur) => onReact(entry.userId, emoji, cur) }
+              : {})}
+            {...(canReact && onOpenReactionPicker
+              ? { onAdd: () => onOpenReactionPicker(entry.userId) }
+              : {})}
+          />
+        ) : null}
       </View>
-      {showReactions ? (
-        <ScoreReactions
-          reactions={entry.reactions}
-          testIDPrefix={`game-board-react-${entry.userId}`}
-          {...(canReact && onReact
-            ? { onToggle: (emoji, cur) => onReact(entry.userId, emoji, cur) }
-            : {})}
-          {...(canReact && onOpenReactionPicker
-            ? { onAdd: () => onOpenReactionPicker(entry.userId) }
-            : {})}
-        />
-      ) : null}
     </View>
   );
 }
@@ -667,7 +669,16 @@ const styles = StyleSheet.create({
     color: tokens.accent.default,
     textTransform: "uppercase",
   },
+  // Score box + reactions share one row so reactions sit to the right of the
+  // score instead of below it (no extra row height).
+  scoreRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+  },
   scoreFrame: {
+    flex: 1,
+    minWidth: 0,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
     borderRadius: tokens.radius.md,

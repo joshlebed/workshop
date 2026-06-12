@@ -114,7 +114,10 @@ Don't render a "no games" message off `games.length === 0` alone.
 
 Each standings entry carries `reactions: ScoreReactionSummary[]` (one chip per emoji, with a
 count + `viewerReacted`). The presentational `ScoreReactions` (`src/components/ScoreReactions.tsx`)
-renders the chips + an add affordance; `ReactionPickerSheet` is the quick-emoji bar plus a
+renders the chips + an add affordance **inline to the right of the score** (a sibling of the
+tappable score line, not below it — so it adds no row height, and isn't nested inside the
+score's `Pressable`, which would be invalid DOM on web + bubble a chip tap into "open game").
+`ReactionPickerSheet` is the quick-emoji bar plus a
 "more" text field that taps the **OS emoji keyboard** (no emoji-picker dependency, so nothing
 native is added — keeps `app.json` `version` still). The shared `useScoreReactions` hook owns
 the set/replace/remove mutations with optimistic cache patching (`applyViewerReaction` in
