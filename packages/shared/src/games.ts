@@ -211,13 +211,14 @@ export function normalizeGameUrl(input: string): string | null {
 export const REACTION_QUICK_EMOJIS = ["👍", "🔥", "😂", "😮", "👏", "🎉"] as const;
 
 // A reaction must be a short emoji string. We allow ZWJ sequences (👨‍👩‍👧),
-// skin-tone modifiers (👍🏽), regional-indicator flags (🇺🇸) and variation
-// selectors, but require at least one pictographic/flag codepoint so the field
-// can't be smuggled plain text or bare digits (Emoji_Component alone matches
-// "5"). Keycap sequences (5️⃣) are intentionally out of scope.
+// skin-tone modifiers (👍🏽), regional-indicator flags (🇺🇸), keycaps (5️⃣)
+// and variation selectors, but require at least one pictographic / flag / keycap
+// codepoint so the field can't be smuggled plain text or bare digits
+// (Emoji_Component alone matches "5"; the enclosing-keycap mark U+20E3 is what
+// separates the emoji "5️⃣" from the digit "5").
 const REACTION_EMOJI_ALLOWED =
   /^(?:\p{Extended_Pictographic}|\p{Emoji_Component}|\p{Regional_Indicator}|\u200d|\ufe0f)+$/u;
-const REACTION_EMOJI_REQUIRED = /(?:\p{Extended_Pictographic}|\p{Regional_Indicator})/u;
+const REACTION_EMOJI_REQUIRED = /(?:\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3)/u;
 
 /** True when `value` is a single, short emoji usable as a score reaction. */
 export function isReactionEmoji(value: string): boolean {
