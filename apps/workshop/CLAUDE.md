@@ -238,8 +238,9 @@ checks URL before text, so it captures only the `?ref=<id>` link and drops the �
 — we then post a bare link that renders as a "Played" row with no score. The share
 screens guard against this with `isResultlessShare()` (`src/lib/shareScoreDetection.ts`):
 if the payload strips to nothing (URL-only / hashtag-only), `/share` offers a "Paste"
-affordance instead of one-tap posting, and `/share/pick-leaderboard` blocks the post and
-asks the user to paste their result. This is a band-aid for the symptom; the root-cause
+affordance instead of one-tap posting (routing to `/share/pick-game`, or
+`/share/pick-leaderboard` when the Games flag is off), and both pickers block the post and
+ask the user to paste their result. This is a band-aid for the symptom; the root-cause
 fix lives in the share extension's url-before-text precedence.
 
 ## Don't override `ios.infoPlist.CFBundleURLTypes` without re-listing the scheme
@@ -252,8 +253,10 @@ catches it before EAS does.
 
 Preserve both when handling `useShareIntent()` in `_layout.tsx`; score shares often need
 `shareIntent.text` even when `shareIntent.webUrl` is also present. `/share` owns the
-top-level choice, `/share/pick-list` handles normal item adds, and
-`/share/pick-leaderboard` handles score posting.
+top-level choice (incl. the one-tap post of a detected score — Games surface first, legacy
+leaderboard item as fallback), `/share/pick-list` handles normal item adds,
+`/share/pick-game` posts to the Games surface (find-or-creates the catalog game when it
+isn't in My Games yet), and `/share/pick-leaderboard` posts to legacy leaderboard lists.
 
 ## A cross-navigator `router.replace` collapses the target stack — pass `withAnchor`
 

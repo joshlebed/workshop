@@ -7,11 +7,13 @@ import type { Item, ListItemsResponse, ListSummary } from "@workshop/shared";
 import {
   type GameDefinition,
   type GameKey,
+  gameDefinitionForKey,
   gameLabelFor,
   identifyGame,
   isResultlessShare,
   matchShareText,
 } from "@workshop/shared/gameRegistry";
+import type { MyGame } from "@workshop/shared/games";
 
 export type DetectedSharedScoreKind = GameKey;
 
@@ -25,6 +27,17 @@ export interface DetectedSharedScore {
 export interface ShareScoreTarget {
   list: ListSummary;
   item: Item;
+}
+
+/**
+ * A Games-surface destination for a detected score. `gameId` is set when the
+ * game is already in My Games; when null, post by find-or-creating the game
+ * from `url` (`POST /v1/games` — the score upsert auto-adds it to My Games).
+ */
+export interface ShareGameTarget {
+  gameId: string | null;
+  title: string;
+  url: string;
 }
 
 export { isResultlessShare };
@@ -86,6 +99,29 @@ export function pickSuggestedScoreTarget(
   }
 
   return best?.target ?? null;
+}
+
+/**
+ * Pick the Games-surface target for a detected score: the matching My Games
+ * entry when the user already plays the game there, otherwise the registry's
+ * canonical URL (so the post can find-or-create the catalog row). Non-null
+ * whenever `detection` is non-null — every detection comes from the registry.
+ */
+export function pickSuggestedGameTarget(
+  detection: DetectedSharedScore | null,
+  myGames: readonly MyGame[],
+): ShareGameTarget | null {
+  if (!detection) return null;
+  const mine = myGames.find((mg) => myGameKind(mg) === detection.kind);
+  if (mine) return { gameId: mine.gameId, title: mine.game.title, url: mine.game.url };
+  const def = gameDefinitionForKey(detection.kind);
+  if (!def) return null;
+  return { gameId: null, title: def.title, url: def.canonicalUrl };
+}
+
+function myGameKind(mg: MyGame): GameKey | null {
+  if (mg.game.gameKey) return gameDefinitionForKey(mg.game.gameKey)?.key ?? null;
+  return identifyGame([mg.game.title, mg.game.url])?.key ?? null;
 }
 
 function itemGameKind(item: Item): GameDefinition["key"] | null {
