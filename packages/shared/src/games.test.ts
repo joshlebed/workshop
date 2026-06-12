@@ -110,6 +110,70 @@ describe("isReactionEmoji", () => {
     expect(isReactionEmoji("❤️")).toBe(true);
   });
 
+  it("accepts keycap emoji (digit + enclosing keycap) the OS picker offers", () => {
+    for (const e of ["0️⃣", "5️⃣", "9️⃣", "#️⃣", "*️⃣", "🔟"]) {
+      expect(isReactionEmoji(e), e).toBe(true);
+    }
+  });
+
+  it("accepts a broad sample across every emoji-keyboard category", () => {
+    const sample = [
+      "😀",
+      "🥹",
+      "🤣",
+      "🫠",
+      "😎",
+      "🤔",
+      "😴", // smileys
+      "👍",
+      "🙏",
+      "💪",
+      "✌️",
+      "🫶",
+      "🤷‍♂️",
+      "🙆‍♀️", // gestures / people
+      "❤️",
+      "💯",
+      "✨",
+      "⭐",
+      "✅",
+      "❌",
+      "♻️", // symbols
+      "🐉",
+      "🦄",
+      "🦋",
+      "🐙",
+      "🍕",
+      "🌮",
+      "🥑", // animals / food
+      "🎮",
+      "🚀",
+      "🏆",
+      "🎉",
+      "🎲",
+      "💻",
+      "🔑", // objects / activities
+      "🇯🇵",
+      "🇬🇧",
+      "🏴‍☠️",
+      "🏳️‍🌈",
+      "🏳️‍⚧️",
+      "🏴󠁧󠁢󠁳󠁣󠁴󠁿", // flags
+      "👨‍💻",
+      "🦸‍♀️",
+      "🧑‍🤝‍🧑",
+      "👨‍👩‍👧‍👦",
+      "❤️‍🔥", // ZWJ sequences
+      "🫨",
+      "🩷",
+      "🪿",
+      "🐦‍🔥", // newer (Unicode 15/15.1)
+    ];
+    for (const e of sample) {
+      expect(isReactionEmoji(e), e).toBe(true);
+    }
+  });
+
   it("trims surrounding whitespace", () => {
     expect(isReactionEmoji("  🔥 ")).toBe(true);
   });
