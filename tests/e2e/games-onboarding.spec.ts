@@ -8,8 +8,9 @@ import { signInAsDevUser } from "./helpers";
 //   • A adds two games and mints a friend invite. B accepts → the post-accept
 //     picker lists A's games → B adds one → it renders on B's home with today's
 //     standings (A's score shows through the social board).
-//   • With the friendship formed and one game still unadded, B's + sheet lists
-//     that game as a suggestion above the URL field.
+//   • With the friendship formed, B's + sheet lists ALL the games A plays
+//     (ranked by popularity): the still-unadded one is addable; the one B
+//     already added stays in the list, marked "In your games" (non-addable).
 //
 // Unique hostnames + fresh emails per run, so a dirty dev DB never collides.
 
@@ -88,14 +89,18 @@ test("games onboarding: empty state → accept → picker add → + sheet discov
     .toBeGreaterThan(0);
   await expect(bPage.getByTestId(`game-card-score-${aAuth.user.id}`)).toContainText("Score: 9");
 
-  // With ≥1 friend, the + sheet lists the still-unadded friend game above the
-  // URL field.
+  // With ≥1 friend, the + sheet lists every game A plays, ranked by popularity.
   await bPage.getByTestId("fab-add-game").click();
   await expect(bPage.getByTestId("add-game-sheet")).toBeVisible();
-  await expect(bPage.getByTestId(`add-game-suggestion-row-${gameId2}`)).toBeVisible();
   await expect(bPage.getByTestId("add-game-url-input")).toBeVisible();
-  // The already-added game is NOT re-suggested.
-  await expect(bPage.getByTestId(`add-game-suggestion-row-${gameId1}`)).toHaveCount(0);
+  // The still-unadded friend game is addable.
+  await expect(bPage.getByTestId(`add-game-suggestion-row-${gameId2}`)).toBeVisible();
+  await expect(bPage.getByTestId(`add-game-suggestion-add-${gameId2}`)).toBeVisible();
+  // The already-added game stays in the list for context, marked "In your
+  // games" — present but not re-addable.
+  await expect(bPage.getByTestId(`add-game-suggestion-row-${gameId1}`)).toBeVisible();
+  await expect(bPage.getByTestId(`add-game-suggestion-owned-${gameId1}`)).toBeVisible();
+  await expect(bPage.getByTestId(`add-game-suggestion-add-${gameId1}`)).toHaveCount(0);
 
   // Reference bAuth so the lint/types treat it as used even if assertions shift.
   expect(bAuth.user.id).toBeTruthy();
