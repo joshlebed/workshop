@@ -30,6 +30,11 @@ import {
 import { toIsoString } from "../../lib/dates.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
+import {
+  isLegacyGameListConfig,
+  logLegacyGameListAccess,
+  logLegacyGameListRetiredRejected,
+} from "../../lib/legacyGameLists.js";
 import { inspectModuleChange } from "../../lib/moduleManifests.js";
 import { notifyListArchived, notifyListJoined } from "../../lib/opsNotifications.js";
 import { requireCapability } from "../../lib/permissions.js";
@@ -175,17 +180,14 @@ function isLegacyGameListSummaryRow(list: {
   item_kind: string | null;
   modules: readonly string[] | null;
 }): boolean {
-  return list.item_kind === "game" || (list.modules ?? []).includes("leaderboard");
+  return isLegacyGameListConfig({ itemKind: list.item_kind, modules: list.modules });
 }
 
 function isRetiredLegacyGameListConfig(list: {
   itemKind: string | null | undefined;
   modules: readonly string[] | null | undefined;
 }): boolean {
-  return isLegacyGameListSummaryRow({
-    item_kind: list.itemKind ?? null,
-    modules: list.modules ?? null,
-  });
+  return isLegacyGameListConfig(list);
 }
 
 function wouldCreateRetiredLegacyGameList(
@@ -200,10 +202,26 @@ function wouldCreateRetiredLegacyGameList(
   return nextIsLegacy && !currentIsLegacy;
 }
 
-function retiredLegacyGameListResponse(c: Parameters<typeof err>[0]) {
+function retiredLegacyGameListResponse(
+  c: Parameters<typeof err>[0],
+  details: Parameters<typeof logLegacyGameListRetiredRejected>[1],
+) {
+  logLegacyGameListRetiredRejected(c, details);
   return err(c, "VALIDATION", "Game leaderboards now live in the Games tab.", {
     code: "legacy_game_lists_retired",
   });
+}
+
+async function legacyListConfigForId(
+  listId: string,
+): Promise<{ itemKind: string | null; modules: string[] } | null> {
+  const [row] = await getDb()
+    .select({ itemKind: lists.itemKind, modules: lists.modules })
+    .from(lists)
+    .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
+    .limit(1);
+  if (!row) return null;
+  return { itemKind: row.itemKind, modules: row.modules ?? [] };
 }
 
 function toListShape(l: DbList): List {
@@ -374,6 +392,13 @@ publicListRoutes.get("/lists/:id/preview", async (c) => {
   }
 
   const preview = await buildListPreview(list);
+  if (isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
+    logLegacyGameListAccess(c, {
+      operation: "preview_by_id",
+      listId: list.id,
+      userId: viewerUserId,
+    });
+  }
   return ok(c, {
     preview,
     viewer: { authenticated: viewerUserId !== null, isMember },
@@ -423,6 +448,13 @@ publicListRoutes.get("/lists/by-slug/:slug/items", async (c) => {
     return err(c, "NOT_FOUND", "list not found");
   }
 
+  if (isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
+    logLegacyGameListAccess(c, {
+      operation: "public_items_by_slug",
+      listId: list.id,
+      userId: viewerUserId,
+    });
+  }
   const split = await fetchItemsForList(list.id);
   return ok(c, split);
 });
@@ -472,6 +504,13 @@ publicListRoutes.get("/lists/by-slug/:slug/preview", async (c) => {
   }
 
   const preview = await buildListPreview(list);
+  if (isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
+    logLegacyGameListAccess(c, {
+      operation: "preview_by_slug",
+      listId: list.id,
+      userId: viewerUserId,
+    });
+  }
   return ok(c, {
     preview,
     viewer: { authenticated: viewerUserId !== null, isMember },
@@ -586,7 +625,11 @@ listRoutes.post("/", async (c) => {
   const db = getDb();
   const data = parsed.data;
   if (isRetiredLegacyGameListConfig({ itemKind: data.itemKind, modules: data.modules })) {
-    return retiredLegacyGameListResponse(c);
+    return retiredLegacyGameListResponse(c, {
+      operation: "create",
+      proposed: { itemKind: data.itemKind, modules: data.modules },
+      userId,
+    });
   }
 
   // Validate any sources up-front so we don't create an orphan list. The
@@ -702,6 +745,9 @@ listRoutes.get("/:id", requireListMember, async (c) => {
     .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
     .limit(1);
   if (!list) return err(c, "NOT_FOUND", "list not found");
+  if (isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
+    logLegacyGameListAccess(c, { operation: "detail", listId: list.id });
+  }
 
   const memberRows = await db
     .select({
@@ -925,7 +971,16 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
       },
     )
   ) {
-    return retiredLegacyGameListResponse(c);
+    return retiredLegacyGameListResponse(c, {
+      operation: "update_config",
+      listId,
+      existing: { itemKind: existing.itemKind, modules: existing.modules ?? [] },
+      proposed: {
+        itemKind: wantsItemKind ? data.itemKind : existing.itemKind,
+        modules: wantsModules ? data.modules : (existing.modules ?? []),
+      },
+      userId,
+    });
   }
 
   // item_kind tightening: must not violate the homogeneity invariant.
@@ -1032,7 +1087,15 @@ listRoutes.post("/:id/config-preview", requireListMember, async (c) => {
       },
     )
   ) {
-    return retiredLegacyGameListResponse(c);
+    return retiredLegacyGameListResponse(c, {
+      operation: "config_preview",
+      listId,
+      existing: { itemKind: existing.itemKind, modules: existing.modules ?? [] },
+      proposed: {
+        itemKind: parsed.data.itemKind !== undefined ? parsed.data.itemKind : existing.itemKind,
+        modules: parsed.data.modules !== undefined ? parsed.data.modules : (existing.modules ?? []),
+      },
+    });
   }
 
   const warnings: ConfigWarning[] = [];
@@ -1095,6 +1158,10 @@ listRoutes.post("/:id/read", requireListMember, async (c) => {
     VALUES (${userId}::uuid, ${listId}::uuid, now())
     ON CONFLICT (user_id, list_id) DO UPDATE SET last_read_at = EXCLUDED.last_read_at
   `);
+  const legacy = await legacyListConfigForId(listId);
+  if (legacy && isLegacyGameListConfig(legacy)) {
+    logLegacyGameListAccess(c, { operation: "read", listId });
+  }
   return ok(c, { ok: true });
 });
 
@@ -1186,7 +1253,13 @@ listRoutes.post(
         ? parsed.data.itemKind
         : (source.itemKind as ItemKind | null);
     if (isRetiredLegacyGameListConfig({ itemKind: nextItemKind, modules: nextModules })) {
-      return retiredLegacyGameListResponse(c);
+      return retiredLegacyGameListResponse(c, {
+        operation: "duplicate",
+        listId: sourceListId,
+        existing: { itemKind: source.itemKind, modules: source.modules ?? [] },
+        proposed: { itemKind: nextItemKind, modules: nextModules },
+        userId,
+      });
     }
 
     const dup = await db.transaction(async (tx) => {
@@ -1310,6 +1383,10 @@ listRoutes.post(
 
 listRoutes.get("/:id/items", requireListMember, async (c) => {
   const listId = c.req.param("id");
+  const legacy = await legacyListConfigForId(listId);
+  if (legacy && isLegacyGameListConfig(legacy)) {
+    logLegacyGameListAccess(c, { operation: "items", listId });
+  }
   const split = await fetchItemsForList(listId);
   return ok(c, split);
 });

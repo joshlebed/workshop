@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { signSession } from "../../lib/session.js";
 import { __test, listRoutes, publicListRoutes } from "./lists.js";
 
@@ -6,6 +6,10 @@ beforeAll(() => {
   process.env.STAGE = "local";
   process.env.DATABASE_URL = "postgres://test";
   process.env.SESSION_SECRET = "x".repeat(32);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 const validUuid = "00000000-0000-4000-8000-000000000001";
@@ -225,6 +229,49 @@ describe("createListSchema", () => {
       .fill(0)
       .map(() => ({ kind: "spotify_playlist", config: {} }));
     expect(createListSchema.safeParse({ ...base(), sources: five }).success).toBe(false);
+  });
+});
+
+describe("retired legacy game-list writes", () => {
+  it("logs and rejects attempts to create a leaderboard list before DB access", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const res = await listRoutes.request("/", {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "X-Workshop-Platform": "ios",
+        "X-Workshop-App-Version": "0.4.1",
+      },
+      body: JSON.stringify({
+        name: "Geo games",
+        emoji: "🎮",
+        color: "slate",
+        itemKind: "link",
+        modules: ["leaderboard"],
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      code: "VALIDATION",
+      details: { code: "legacy_game_lists_retired" },
+    });
+    const entry = logSpy.mock.calls
+      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+      .find((row) => row.msg === "legacy_game_list_retired_rejected");
+    expect(entry).toMatchObject({
+      kind: "legacy_game_list_retired_rejected",
+      event: "legacy_game_list_retired_rejected",
+      operation: "create",
+      method: "POST",
+      route: "/",
+      status: 400,
+      user_id: validUuid,
+      platform: "ios",
+      app_version: "0.4.1",
+      proposed_item_kind: "link",
+      proposed_modules: ["leaderboard"],
+    });
   });
 });
 

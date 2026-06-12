@@ -87,7 +87,10 @@ Mapped items keep the old list/item URLs but read/write `game_scores`, so the
 across both the list and Games tab. Unmapped legacy items still fall back to `item_scores`.
 New leaderboard-list creation is retired: list create/duplicate/config changes must not
 introduce `leaderboard` or old `item_kind='game'`; keep existing legacy direct reads working
-until usage is zero and the backend bridge can be removed.
+until usage is zero and the backend bridge can be removed. Cleanup monitoring should query
+structured logs for `legacy_game_list_access` (authorized legacy detail/items/views/read/score
+routes and public previews) and `legacy_game_list_retired_rejected` (stale clients attempting
+to create or enable retired configs).
 **Changing a game's scoring rule only fixes new posts** unless you also run
 `scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first)
 — it replays the current parser over stored `score_raw` in both `game_scores` and legacy
