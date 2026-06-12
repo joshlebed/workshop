@@ -63,7 +63,11 @@ describe("buildNewListNotification", () => {
 });
 
 describe("legacy game list filtering", () => {
-  const { isLegacyGameListSummaryRow } = __test;
+  const {
+    isLegacyGameListSummaryRow,
+    isRetiredLegacyGameListConfig,
+    wouldCreateRetiredLegacyGameList,
+  } = __test;
 
   it("hides leaderboard-module lists from the list summary surface", () => {
     expect(isLegacyGameListSummaryRow({ item_kind: "link", modules: ["leaderboard"] })).toBe(true);
@@ -80,6 +84,37 @@ describe("legacy game list filtering", () => {
   it("treats null modules as a normal non-game list unless the old kind is game", () => {
     expect(isLegacyGameListSummaryRow({ item_kind: "plain", modules: null })).toBe(false);
     expect(isLegacyGameListSummaryRow({ item_kind: "game", modules: null })).toBe(true);
+  });
+
+  it("flags retired configs for new list writes", () => {
+    expect(isRetiredLegacyGameListConfig({ itemKind: "link", modules: ["leaderboard"] })).toBe(
+      true,
+    );
+    expect(isRetiredLegacyGameListConfig({ itemKind: "game", modules: ["ranking"] })).toBe(true);
+    expect(isRetiredLegacyGameListConfig({ itemKind: "link", modules: ["todo", "ranking"] })).toBe(
+      false,
+    );
+  });
+
+  it("blocks only transitions that introduce a retired legacy game-list config", () => {
+    expect(
+      wouldCreateRetiredLegacyGameList(
+        { itemKind: "link", modules: ["todo"] },
+        { modules: ["todo", "leaderboard"] },
+      ),
+    ).toBe(true);
+    expect(
+      wouldCreateRetiredLegacyGameList(
+        { itemKind: "link", modules: ["leaderboard"] },
+        { modules: ["leaderboard", "ranking"] },
+      ),
+    ).toBe(false);
+    expect(
+      wouldCreateRetiredLegacyGameList(
+        { itemKind: "link", modules: ["leaderboard"] },
+        { modules: ["ranking"] },
+      ),
+    ).toBe(false);
   });
 });
 
