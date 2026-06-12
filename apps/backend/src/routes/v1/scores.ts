@@ -18,7 +18,11 @@ import {
 } from "../../lib/gameCatalog.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule } from "../../lib/moduleGate.js";
-import { notifyFirstScore, userHasAnyScore } from "../../lib/opsNotifications.js";
+import {
+  notifyFirstScore,
+  opsNotificationsEnabled,
+  userHasAnyScore,
+} from "../../lib/opsNotifications.js";
 import { rankEntries } from "../../lib/ranking.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -142,8 +146,10 @@ itemScoreRoutes.put(
     const db = getDb();
     // Capture activation state BEFORE the upsert so the row we're about to
     // write doesn't count — a false here means this post is the user's first
-    // score ever (across canonical game_scores + legacy item_scores).
-    const isFirstScore = !(await userHasAnyScore(userId, db));
+    // score ever (across canonical game_scores + legacy item_scores). The `&&`
+    // short-circuits the existence query entirely when no operator webhook is
+    // configured, so the steady-state hot path pays nothing extra.
+    const isFirstScore = opsNotificationsEnabled() && !(await userHasAnyScore(userId, db));
     const now = new Date();
     const mapping = ctx ? await resolveItemGameMapping(itemId, ctx) : null;
     const spec = mapping?.spec ?? specFromStoredRule(ctx?.scoreRegex);

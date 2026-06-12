@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { resetConfigForTesting } from "./config.js";
 import {
   buildFirstScoreNotification,
   buildFriendRequestSentNotification,
@@ -10,6 +11,7 @@ import {
   buildOwnershipTransferredNotification,
   buildSessionsRevokedNotification,
   buildSourceWebhookNotification,
+  opsNotificationsEnabled,
 } from "./opsNotifications.js";
 
 describe("ops notification builders", () => {
@@ -83,5 +85,31 @@ describe("ops notification builders", () => {
       content: ':satellite: source webhook — "rss" fired (slug abc12345, +3 items)',
       kind: "source_webhook",
     });
+  });
+});
+
+describe("opsNotificationsEnabled", () => {
+  const ORIGINAL_ENV = { ...process.env };
+
+  beforeEach(() => {
+    resetConfigForTesting();
+    process.env.STAGE = "local";
+    process.env.DATABASE_URL = "postgres://test";
+    process.env.SESSION_SECRET = "x".repeat(48);
+  });
+
+  afterEach(() => {
+    process.env = { ...ORIGINAL_ENV };
+    resetConfigForTesting();
+  });
+
+  it("is false when the webhook is unset (skips notify-only DB work)", () => {
+    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "";
+    expect(opsNotificationsEnabled()).toBe(false);
+  });
+
+  it("is true when the webhook is configured", () => {
+    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
+    expect(opsNotificationsEnabled()).toBe(true);
   });
 });
