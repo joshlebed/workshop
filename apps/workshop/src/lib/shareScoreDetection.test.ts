@@ -1,10 +1,12 @@
 import type { Item, ListSummary } from "@workshop/shared";
+import type { MyGame } from "@workshop/shared/games";
 import { describe, expect, it } from "vitest";
 import {
   type DetectedSharedScoreKind,
   detectSharedScore,
   flattenListItems,
   isResultlessShare,
+  pickSuggestedGameTarget,
   pickSuggestedScoreTarget,
 } from "./shareScoreDetection";
 
@@ -195,6 +197,52 @@ describe("pickSuggestedScoreTarget", () => {
   });
 });
 
+describe("pickSuggestedGameTarget", () => {
+  const globleShare =
+    "🌎 May 19, 2026 🌍\n🔥 1 | Avg. Guesses: 6.04\n⬜⬜🟧🟥🟩 = 5\n\nhttps://globle-game.com\n#globle";
+
+  it("returns the My Games entry when the detected game is already added", () => {
+    const target = pickSuggestedGameTarget(detectSharedScore(globleShare), [
+      makeMyGame("game-globle", "Globle", "https://globle-game.com", "globle"),
+    ]);
+    expect(target).toEqual({
+      gameId: "game-globle",
+      title: "Globle",
+      url: "https://globle-game.com",
+    });
+  });
+
+  it("matches a gameKey-less My Games row by its title/url", () => {
+    const target = pickSuggestedGameTarget(detectSharedScore(globleShare), [
+      makeMyGame("game-globle", "Globle", "https://globle-game.com", null),
+    ]);
+    expect(target?.gameId).toBe("game-globle");
+  });
+
+  it("falls back to the registry's canonical game when not in My Games", () => {
+    const target = pickSuggestedGameTarget(detectSharedScore(globleShare), [
+      makeMyGame("game-wordle", "Wordle", "https://www.nytimes.com/games/wordle", "wordle"),
+    ]);
+    expect(target).toEqual({
+      gameId: null,
+      title: "Globle",
+      url: "https://globle-game.com",
+    });
+  });
+
+  it("returns a canonical target even with no games added (the dead-end fix)", () => {
+    expect(pickSuggestedGameTarget(detectSharedScore(globleShare), [])).toEqual({
+      gameId: null,
+      title: "Globle",
+      url: "https://globle-game.com",
+    });
+  });
+
+  it("returns null without a detection", () => {
+    expect(pickSuggestedGameTarget(null, [])).toBeNull();
+  });
+});
+
 describe("flattenListItems", () => {
   it("preserves ordered, unordered, completed section order", () => {
     const a = makeItem("a", "list", "A", "2026-05-12T12:00:00.000Z");
@@ -236,6 +284,26 @@ function makeList(
     pinnedAt: null,
     archivedAt: null,
     mutedAt: null,
+  };
+}
+
+function makeMyGame(gameId: string, title: string, url: string, gameKey: string | null): MyGame {
+  return {
+    gameId,
+    position: 1,
+    addedAt: "2026-05-01T12:00:00.000Z",
+    game: {
+      id: gameId,
+      url,
+      normalizedUrl: url.replace(/^https?:\/\/(www\.)?/, ""),
+      title,
+      iconUrl: null,
+      gameKey,
+      scoreDirection: "asc",
+      scoreSpec: null,
+      createdAt: "2026-05-01T12:00:00.000Z",
+    },
+    standings: { periodKey: "2026-05-19", entries: [], viewerHasPlayed: false },
   };
 }
 
