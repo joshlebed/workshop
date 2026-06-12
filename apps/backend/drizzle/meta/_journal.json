@@ -232,6 +232,13 @@
       "when": 1781211358756,
       "tag": "0032_game_score_specs",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1781290745483,
+      "tag": "0033_game_score_reactions",
+      "breakpoints": true
     }
   ]
 }

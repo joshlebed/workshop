@@ -20,9 +20,11 @@
 // paste controls are their own Pressables so a tap on them never starts a
 // drag or a body-tap.
 
+import type { ScoreReactionSummary } from "@workshop/shared/games";
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
 import { Avatar, Text, tokens } from "../ui/index";
+import { ScoreReactions } from "./ScoreReactions";
 
 const TOP_N = 5;
 const RANK_SLOT = 20;
@@ -39,6 +41,8 @@ export interface StandingsRow {
   /** Standard competition rank (1, 2, 2, 4); null when no numeric score. */
   rank: number | null;
   body: string | null;
+  /** Emoji reactions on this score (Games surface only). Undefined → none rendered. */
+  reactions?: ScoreReactionSummary[];
 }
 
 export interface StandingsFace {
@@ -79,6 +83,17 @@ export interface StandingsCardProps {
   onPlay: () => void;
   /** Manual paste fallback — opens the paste sheet without leaving the page. */
   onPaste: () => void;
+  /**
+   * Tap an existing reaction chip on a friend's row (Games surface only). When
+   * omitted, chips render but aren't interactive.
+   */
+  onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
+  /**
+   * Open the reaction picker for a friend's row. When omitted, no add
+   * affordance shows (and the whole reaction row is hidden on rows with no
+   * reactions) — this is what keeps the Lists surface reaction-free.
+   */
+  onOpenReactionPicker?: (userId: string) => void;
 }
 
 export const StandingsCard = memo(function StandingsCard({
@@ -99,6 +114,8 @@ export const StandingsCard = memo(function StandingsCard({
   onMenu,
   onPlay,
   onPaste,
+  onReact,
+  onOpenReactionPicker,
 }: StandingsCardProps) {
   const scored = rows;
   const playedCount = scored.length;
@@ -227,7 +244,10 @@ export const StandingsCard = memo(function StandingsCard({
 
       {/* Standings — only when there's something to show. The turnout line
           already carries the nobody-played story; an empty game stays one
-          header row tall. Long-press here also activates reorder on native. */}
+          header row tall. Each score line is its own tap/long-press target
+          (open detail / reorder on native) so the reaction controls beneath it
+          aren't nested inside a button — that both avoids invalid DOM on web
+          and keeps a reaction tap from bubbling into "open game". */}
       {loading ? (
         <SkeletonRows />
       ) : emptyShown ? (
@@ -235,29 +255,45 @@ export const StandingsCard = memo(function StandingsCard({
           <EmptyFacepile faces={emptyFaces} />
         ) : null
       ) : (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`${title}: ${turnout}`}
-          onPress={onPressBody}
-          onLongPress={onLongPressBody}
-          delayLongPress={250}
-          style={styles.standings}
-        >
+        <View style={styles.standings}>
           {topRows.map((row) => (
-            <PlayerRow key={row.userId} row={row} isMe={row.userId === selfId} />
+            <PlayerRow
+              key={row.userId}
+              row={row}
+              isMe={row.userId === selfId}
+              onPressBody={onPressBody}
+              onLongPressBody={onLongPressBody}
+              onReact={onReact}
+              onOpenReactionPicker={onOpenReactionPicker}
+            />
           ))}
           {pinnedSelf ? (
             <>
               <View style={styles.pinnedDivider} />
-              <PlayerRow row={pinnedSelf} isMe />
+              <PlayerRow
+                row={pinnedSelf}
+                isMe
+                onPressBody={onPressBody}
+                onLongPressBody={onLongPressBody}
+                onReact={onReact}
+                onOpenReactionPicker={onOpenReactionPicker}
+              />
             </>
           ) : null}
           {overflow > 0 ? (
-            <Text variant="caption" tone="muted" style={styles.moreLine}>
-              +{overflow} more
-            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${title} leaderboard`}
+              onPress={onPressBody}
+              onLongPress={onLongPressBody}
+              delayLongPress={250}
+            >
+              <Text variant="caption" tone="muted" style={styles.moreLine}>
+                +{overflow} more
+              </Text>
+            </Pressable>
           ) : null}
-        </Pressable>
+        </View>
       )}
     </View>
   );
@@ -266,10 +302,27 @@ export const StandingsCard = memo(function StandingsCard({
 interface PlayerRowProps {
   row: StandingsRow;
   isMe: boolean;
+  onPressBody?: () => void;
+  onLongPressBody?: () => void;
+  onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
+  onOpenReactionPicker?: (userId: string) => void;
 }
 
-function PlayerRow({ row, isMe }: PlayerRowProps) {
+function PlayerRow({
+  row,
+  isMe,
+  onPressBody,
+  onLongPressBody,
+  onReact,
+  onOpenReactionPicker,
+}: PlayerRowProps) {
   const name = row.displayName ?? "Someone";
+  const reactions = row.reactions ?? [];
+  // The viewer reacts to friends' scores, never their own — so the add
+  // affordance + chip toggles are wired only on other people's rows. The
+  // viewer's own row still shows reactions others left, read-only.
+  const canReact = !isMe && !!onOpenReactionPicker;
+  const showReactions = reactions.length > 0 || canReact;
   // Names are dropped from the row to save vertical space — the score sits
   // inline next to the avatar so each player is one line, not two. Identity
   // rides on the avatar circle; the full name stays in the accessibility
@@ -278,20 +331,41 @@ function PlayerRow({ row, isMe }: PlayerRowProps) {
     <View
       style={[styles.playerRow, isMe && styles.playerRowMe]}
       testID={`game-card-row-${row.userId}`}
-      accessible
-      accessibilityLabel={`${name}${isMe ? " (you)" : ""}: ${row.body ?? "played"}`}
     >
-      <RankMark rank={row.rank} />
-      <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
-      <Text
-        style={[styles.scoreBody, row.body ? null : styles.scoreBodyMuted]}
-        testID={`game-card-score-${row.userId}`}
+      <Pressable
+        style={styles.playerLine}
+        accessibilityRole="button"
+        accessibilityLabel={`${name}${isMe ? " (you)" : ""}: ${row.body ?? "played"}`}
+        onPress={onPressBody}
+        onLongPress={onLongPressBody}
+        delayLongPress={250}
       >
-        {row.body ?? "Played"}
-      </Text>
-      {isMe ? (
-        <View style={styles.youPill}>
-          <Text style={styles.youPillText}>you</Text>
+        <RankMark rank={row.rank} />
+        <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
+        <Text
+          style={[styles.scoreBody, row.body ? null : styles.scoreBodyMuted]}
+          testID={`game-card-score-${row.userId}`}
+        >
+          {row.body ?? "Played"}
+        </Text>
+        {isMe ? (
+          <View style={styles.youPill}>
+            <Text style={styles.youPillText}>you</Text>
+          </View>
+        ) : null}
+      </Pressable>
+      {showReactions ? (
+        <View style={styles.reactionsWrap}>
+          <ScoreReactions
+            reactions={reactions}
+            testIDPrefix={`game-card-react-${row.userId}`}
+            {...(canReact && onReact
+              ? { onToggle: (emoji, cur) => onReact(row.userId, emoji, cur) }
+              : {})}
+            {...(canReact && onOpenReactionPicker
+              ? { onAdd: () => onOpenReactionPicker(row.userId) }
+              : {})}
+          />
         </View>
       ) : null}
     </View>
@@ -438,6 +512,16 @@ const styles = StyleSheet.create({
     marginHorizontal: -tokens.space.xs,
     borderRadius: tokens.radius.sm,
   },
+  playerLine: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+  },
+  // Reactions ride to the right of the score on the same line — no extra row
+  // height. They keep their natural width; the score line flexes to fill.
+  reactionsWrap: { flexShrink: 0 },
   playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
   rankSlot: {
     width: RANK_SLOT,

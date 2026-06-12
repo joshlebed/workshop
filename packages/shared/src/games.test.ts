@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeGameUrl } from "./games.js";
+import { isReactionEmoji, normalizeGameUrl, REACTION_QUICK_EMOJIS } from "./games.js";
 
 describe("normalizeGameUrl", () => {
   it("strips the referral query string (the dailytens.com/?ref= junk case)", () => {
@@ -93,5 +93,36 @@ describe("normalizeGameUrl", () => {
   it("rejects undotted hosts and unparseable input", () => {
     expect(normalizeGameUrl("wordle")).toBeNull();
     expect(normalizeGameUrl("not a url")).toBeNull();
+  });
+});
+
+describe("isReactionEmoji", () => {
+  it("accepts every quick-bar emoji", () => {
+    for (const emoji of REACTION_QUICK_EMOJIS) {
+      expect(isReactionEmoji(emoji)).toBe(true);
+    }
+  });
+
+  it("accepts skin-tone modifiers, flags, and ZWJ sequences", () => {
+    expect(isReactionEmoji("👍🏽")).toBe(true);
+    expect(isReactionEmoji("🇺🇸")).toBe(true);
+    expect(isReactionEmoji("👨‍👩‍👧")).toBe(true);
+    expect(isReactionEmoji("❤️")).toBe(true);
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(isReactionEmoji("  🔥 ")).toBe(true);
+  });
+
+  it("rejects plain text, digits, and empty input", () => {
+    expect(isReactionEmoji("nice")).toBe(false);
+    expect(isReactionEmoji("5")).toBe(false);
+    expect(isReactionEmoji("")).toBe(false);
+    expect(isReactionEmoji("   ")).toBe(false);
+    expect(isReactionEmoji("🔥 lol")).toBe(false);
+  });
+
+  it("rejects an over-long string (no essays in the emoji field)", () => {
+    expect(isReactionEmoji("🔥".repeat(20))).toBe(false);
   });
 });

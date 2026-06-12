@@ -46,6 +46,25 @@ export interface GameScore {
   updatedAt: string;
 }
 
+/** One friend who reacted to a score (identity stays inside the friend graph). */
+export interface ScoreReactionReactor {
+  userId: string;
+  displayName: string | null;
+}
+
+/**
+ * One emoji's worth of reactions on a single score, aggregated for display.
+ * Reactions are one-per-reactor (tapback model), so a given reactor appears in
+ * at most one summary per score, and `viewerReacted` flags the summary holding
+ * the viewer's own current reaction.
+ */
+export interface ScoreReactionSummary {
+  emoji: string;
+  count: number;
+  reactors: ScoreReactionReactor[];
+  viewerReacted: boolean;
+}
+
 /**
  * One row of a game's standings for a period. Covers the viewer and their
  * friends (G2a); the entry shape is the same either way.
@@ -58,6 +77,11 @@ export interface GameStandingsEntry {
   /** Standard competition rank (1, 2, 2, 4); null when no numeric score. */
   rank: number | null;
   updatedAt: string | null;
+  /**
+   * Emoji reactions on this score from people inside the viewer's friend
+   * graph (G2c). Always present; empty when nobody has reacted.
+   */
+  reactions: ScoreReactionSummary[];
 }
 
 /** A period's standings block for one game — drives the leaderboard card. */
@@ -98,6 +122,16 @@ export interface UpsertGameScoreResponse {
 /** `PUT /v1/games/:id/score-spec` — teach a non-registry game its parser. */
 export interface SetGameScoreSpecResponse {
   game: Game;
+}
+
+/**
+ * `PUT` / `DELETE /v1/games/:id/reactions/:periodKey/:scoreUserId` — set,
+ * replace, or clear the viewer's emoji reaction on a friend's score. Returns
+ * the affected score's full reaction summary (viewer-relative) so the client
+ * can reconcile without a refetch.
+ */
+export interface SetScoreReactionResponse {
+  reactions: ScoreReactionSummary[];
 }
 
 /**
@@ -167,4 +201,27 @@ export function normalizeGameUrl(input: string): string | null {
   if (!host.includes(".")) return null;
   const path = url.pathname.replace(/\/+$/, "");
   return `${host}${path}`;
+}
+
+/**
+ * The quick-reaction bar shown first in the picker (G2c). The full OS emoji
+ * keyboard is reachable behind a "more" affordance, so this is just the
+ * fast-path set, not an allowlist — `isReactionEmoji` is the real gate.
+ */
+export const REACTION_QUICK_EMOJIS = ["👍", "🔥", "😂", "😮", "👏", "🎉"] as const;
+
+// A reaction must be a short emoji string. We allow ZWJ sequences (👨‍👩‍👧),
+// skin-tone modifiers (👍🏽), regional-indicator flags (🇺🇸) and variation
+// selectors, but require at least one pictographic/flag codepoint so the field
+// can't be smuggled plain text or bare digits (Emoji_Component alone matches
+// "5"). Keycap sequences (5️⃣) are intentionally out of scope.
+const REACTION_EMOJI_ALLOWED =
+  /^(?:\p{Extended_Pictographic}|\p{Emoji_Component}|\p{Regional_Indicator}|\u200d|\ufe0f)+$/u;
+const REACTION_EMOJI_REQUIRED = /(?:\p{Extended_Pictographic}|\p{Regional_Indicator})/u;
+
+/** True when `value` is a single, short emoji usable as a score reaction. */
+export function isReactionEmoji(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 32) return false;
+  return REACTION_EMOJI_ALLOWED.test(trimmed) && REACTION_EMOJI_REQUIRED.test(trimmed);
 }

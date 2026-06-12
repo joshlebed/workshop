@@ -9,6 +9,7 @@ import type {
   GameScoreDirection,
   GamesResponse,
   SetGameScoreSpecResponse,
+  SetScoreReactionResponse,
   UpsertGameScoreResponse,
 } from "@workshop/shared/games";
 import type { ScoreSpec } from "@workshop/shared/scoreParsing";
@@ -121,6 +122,40 @@ export function fetchGameLeaderboard(
   return apiRequest<GameLeaderboardResponse>({
     method: "GET",
     path: `/v1/games/${gameId}/leaderboard?${params.toString()}`,
+    token,
+  });
+}
+
+/**
+ * `PUT /v1/games/:id/reactions/:periodKey/:scoreUserId` — set or replace the
+ * viewer's emoji reaction on a friend's score (tapback: one per reactor).
+ * Returns the affected score's full reaction summary.
+ */
+export function setScoreReaction(
+  gameId: string,
+  periodKey: string,
+  scoreUserId: string,
+  emoji: string,
+  token: string | null,
+): Promise<SetScoreReactionResponse> {
+  return apiRequest<SetScoreReactionResponse>({
+    method: "PUT",
+    path: `/v1/games/${gameId}/reactions/${periodKey}/${scoreUserId}`,
+    body: { emoji },
+    token,
+  });
+}
+
+/** `DELETE /v1/games/:id/reactions/:periodKey/:scoreUserId` — clear the viewer's reaction. */
+export function removeScoreReaction(
+  gameId: string,
+  periodKey: string,
+  scoreUserId: string,
+  token: string | null,
+): Promise<SetScoreReactionResponse> {
+  return apiRequest<SetScoreReactionResponse>({
+    method: "DELETE",
+    path: `/v1/games/${gameId}/reactions/${periodKey}/${scoreUserId}`,
     token,
   });
 }

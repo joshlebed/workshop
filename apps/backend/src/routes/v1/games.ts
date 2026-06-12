@@ -13,16 +13,18 @@ import type {
   GameStandingsEntry,
   GamesResponse,
   MyGame,
+  ScoreReactionSummary,
   SetGameScoreSpecResponse,
+  SetScoreReactionResponse,
   UpsertGameScoreResponse,
 } from "@workshop/shared/games";
-import { normalizeGameUrl } from "@workshop/shared/games";
+import { isReactionEmoji, normalizeGameUrl } from "@workshop/shared/games";
 import { parseScoreWithSpec, scoreSpecSchema } from "@workshop/shared/scoreParsing";
 import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { gameScores, games, userGames, users } from "../../db/schema.js";
+import { gameScoreReactions, gameScores, games, userGames, users } from "../../db/schema.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { friendsOf } from "../../lib/friends.js";
@@ -72,6 +74,10 @@ const moveGameSchema = z.object({
   afterGameId: z.union([z.string().uuid(), z.null()]).optional(),
 });
 
+const reactionEmojiSchema = z.object({
+  emoji: z.string().trim().min(1).max(32).refine(isReactionEmoji, "invalid reaction emoji"),
+});
+
 const uuidSchema = z.string().uuid();
 
 function toScoreShape(row: {
@@ -104,6 +110,64 @@ async function visibleUserIds(viewerId: string): Promise<string[]> {
   return [viewerId, ...(await friendsOf(viewerId))];
 }
 
+/** Map key for a single score `(gameId, scoreUserId)` within a period. */
+function reactionKey(gameId: string, scoreUserId: string): string {
+  return `${gameId} ${scoreUserId}`;
+}
+
+/**
+ * Reaction summaries for every score in `gameIds` on `periodKey`, keyed by
+ * `reactionKey(gameId, scoreUserId)`. Reactor identity is gated to `visibleIds`
+ * (the viewer's friend graph) so a non-mutual friend's reaction on a shared
+ * friend's score never reveals who they are — the same boundary the scores
+ * themselves use. Oldest reaction first, so chip order is stable; `viewerReacted`
+ * flags the emoji holding the viewer's own current reaction.
+ */
+async function loadReactionsForScores(
+  viewerId: string,
+  gameIds: string[],
+  periodKey: string,
+  visibleIds: string[],
+): Promise<Map<string, ScoreReactionSummary[]>> {
+  const byScore = new Map<string, ScoreReactionSummary[]>();
+  if (gameIds.length === 0) return byScore;
+  const db = getDb();
+  const rows = await db
+    .select({
+      gameId: gameScoreReactions.gameId,
+      scoreUserId: gameScoreReactions.scoreUserId,
+      reactorUserId: gameScoreReactions.reactorUserId,
+      emoji: gameScoreReactions.emoji,
+      displayName: users.displayName,
+    })
+    .from(gameScoreReactions)
+    .leftJoin(users, eq(users.id, gameScoreReactions.reactorUserId))
+    .where(
+      and(
+        inArray(gameScoreReactions.gameId, gameIds),
+        eq(gameScoreReactions.periodKey, periodKey),
+        inArray(gameScoreReactions.scoreUserId, visibleIds),
+        inArray(gameScoreReactions.reactorUserId, visibleIds),
+      ),
+    )
+    .orderBy(asc(gameScoreReactions.createdAt));
+
+  for (const r of rows) {
+    const key = reactionKey(r.gameId, r.scoreUserId);
+    const summaries = byScore.get(key) ?? [];
+    let summary = summaries.find((s) => s.emoji === r.emoji);
+    if (!summary) {
+      summary = { emoji: r.emoji, count: 0, reactors: [], viewerReacted: false };
+      summaries.push(summary);
+    }
+    summary.count += 1;
+    summary.reactors.push({ userId: r.reactorUserId, displayName: r.displayName });
+    if (r.reactorUserId === viewerId) summary.viewerReacted = true;
+    byScore.set(key, summaries);
+  }
+  return byScore;
+}
+
 async function loadStandingsByGame(
   viewerId: string,
   gameIds: string[],
@@ -112,6 +176,7 @@ async function loadStandingsByGame(
   const byGame = new Map<string, GameStandingsEntry[]>();
   if (gameIds.length === 0) return byGame;
   const db = getDb();
+  const visibleIds = await visibleUserIds(viewerId);
   const rows = await db
     .select({
       gameId: gameScores.gameId,
@@ -127,7 +192,7 @@ async function loadStandingsByGame(
       and(
         inArray(gameScores.gameId, gameIds),
         eq(gameScores.periodKey, periodKey),
-        inArray(gameScores.userId, await visibleUserIds(viewerId)),
+        inArray(gameScores.userId, visibleIds),
       ),
     );
   for (const r of rows) {
@@ -139,8 +204,19 @@ async function loadStandingsByGame(
       scoreValue: r.scoreValue === null ? null : Number(r.scoreValue),
       rank: null,
       updatedAt: toIsoOrNull(r.updatedAt),
+      reactions: [],
     });
     byGame.set(r.gameId, entries);
+  }
+
+  // Decorate each score with its reactions (G2c). One batched read for the
+  // whole period, joined back in-memory by `(gameId, scoreUserId)`. `rankEntries`
+  // downstream spreads each entry, so the array survives ranking.
+  const reactionsByScore = await loadReactionsForScores(viewerId, gameIds, periodKey, visibleIds);
+  for (const [gameId, entries] of byGame) {
+    for (const entry of entries) {
+      entry.reactions = reactionsByScore.get(reactionKey(gameId, entry.userId)) ?? [];
+    }
   }
   return byGame;
 }
@@ -505,6 +581,137 @@ gameRoutes.get("/:id/leaderboard", async (c) => {
   );
 
   const response: GameLeaderboardResponse = { gameId: game.id, periodKey, entries };
+  return ok(c, response);
+});
+
+/** Viewer-relative reaction summary for one score (drives the PUT/DELETE echo). */
+async function reactionsForOneScore(
+  viewerId: string,
+  gameId: string,
+  scoreUserId: string,
+  periodKey: string,
+): Promise<ScoreReactionSummary[]> {
+  const visibleIds = await visibleUserIds(viewerId);
+  const byScore = await loadReactionsForScores(viewerId, [gameId], periodKey, visibleIds);
+  return byScore.get(reactionKey(gameId, scoreUserId)) ?? [];
+}
+
+/**
+ * PUT /v1/games/:id/reactions/:periodKey/:scoreUserId (G2c) — set or replace
+ * the viewer's emoji reaction on a friend's score. One reaction per reactor per
+ * score (tapback): re-reacting upserts the emoji. Gated to the friend graph and
+ * to a real score — a stranger or a missing score both 404 so the endpoint
+ * can't probe. Reacting to your own score is rejected outright.
+ */
+gameRoutes.put(
+  "/:id/reactions/:periodKey/:scoreUserId",
+  rateLimit({
+    family: "v1.games.reactions.set",
+    limit: 120,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const userId = c.get("userId");
+    const gameId = uuidSchema.safeParse(c.req.param("id"));
+    if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+    const scoreUserId = uuidSchema.safeParse(c.req.param("scoreUserId"));
+    if (!scoreUserId.success) return err(c, "NOT_FOUND", "score not found");
+    const periodKey = periodKeySchema.safeParse(c.req.param("periodKey"));
+    if (!periodKey.success) return err(c, "VALIDATION", "invalid period");
+
+    const parsed = await parseJsonBody(c, reactionEmojiSchema);
+    if (!parsed.ok) return parsed.response;
+
+    if (scoreUserId.data === userId) {
+      return err(c, "VALIDATION", "you can't react to your own score");
+    }
+    // Friend-graph gate — a non-friend 404s, indistinguishable from a missing
+    // score, so reactions can't be used to probe a stranger.
+    const friendIds = await friendsOf(userId);
+    if (!friendIds.includes(scoreUserId.data)) {
+      return err(c, "NOT_FOUND", "score not found");
+    }
+
+    const db = getDb();
+    const [score] = await db
+      .select({ userId: gameScores.userId })
+      .from(gameScores)
+      .where(
+        and(
+          eq(gameScores.gameId, gameId.data),
+          eq(gameScores.userId, scoreUserId.data),
+          eq(gameScores.periodKey, periodKey.data),
+        ),
+      )
+      .limit(1);
+    if (!score) return err(c, "NOT_FOUND", "score not found");
+
+    const now = new Date();
+    await db
+      .insert(gameScoreReactions)
+      .values({
+        gameId: gameId.data,
+        periodKey: periodKey.data,
+        scoreUserId: scoreUserId.data,
+        reactorUserId: userId,
+        emoji: parsed.data.emoji,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          gameScoreReactions.gameId,
+          gameScoreReactions.periodKey,
+          gameScoreReactions.scoreUserId,
+          gameScoreReactions.reactorUserId,
+        ],
+        set: { emoji: parsed.data.emoji, updatedAt: now },
+      });
+
+    const reactions = await reactionsForOneScore(
+      userId,
+      gameId.data,
+      scoreUserId.data,
+      periodKey.data,
+    );
+    const response: SetScoreReactionResponse = { reactions };
+    return ok(c, response);
+  },
+);
+
+/**
+ * DELETE /v1/games/:id/reactions/:periodKey/:scoreUserId — clear the viewer's
+ * reaction on a score. Only ever touches the caller's own row, so it needs no
+ * friendship/score checks; a no-op when nothing was reacted.
+ */
+gameRoutes.delete("/:id/reactions/:periodKey/:scoreUserId", async (c) => {
+  const userId = c.get("userId");
+  const gameId = uuidSchema.safeParse(c.req.param("id"));
+  if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+  const scoreUserId = uuidSchema.safeParse(c.req.param("scoreUserId"));
+  if (!scoreUserId.success) return err(c, "NOT_FOUND", "score not found");
+  const periodKey = periodKeySchema.safeParse(c.req.param("periodKey"));
+  if (!periodKey.success) return err(c, "VALIDATION", "invalid period");
+
+  const db = getDb();
+  await db
+    .delete(gameScoreReactions)
+    .where(
+      and(
+        eq(gameScoreReactions.gameId, gameId.data),
+        eq(gameScoreReactions.periodKey, periodKey.data),
+        eq(gameScoreReactions.scoreUserId, scoreUserId.data),
+        eq(gameScoreReactions.reactorUserId, userId),
+      ),
+    );
+
+  const reactions = await reactionsForOneScore(
+    userId,
+    gameId.data,
+    scoreUserId.data,
+    periodKey.data,
+  );
+  const response: SetScoreReactionResponse = { reactions };
   return ok(c, response);
 });
 

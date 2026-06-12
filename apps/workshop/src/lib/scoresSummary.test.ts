@@ -1,4 +1,4 @@
-import type { Item, LeaderboardEntry } from "@workshop/shared";
+import type { Item } from "@workshop/shared";
 import type { Game, GameStandingsEntry, MyGame } from "@workshop/shared/games";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -31,7 +31,7 @@ function entry(
   userId: string,
   scoreRaw: string | null,
   scoreValue: number | null = null,
-): LeaderboardEntry {
+): GameStandingsEntry {
   return {
     userId,
     displayName: null,
@@ -39,6 +39,7 @@ function entry(
     scoreValue,
     updatedAt: "2026-05-22T12:00:00Z",
     rank: null,
+    reactions: [],
   };
 }
 
