@@ -152,8 +152,9 @@ export interface DiscoveryGame {
    * Whether the viewer already has this game in My Games. Always `false` in the
    * default feed (which omits games you already added); only ever `true` in the
    * `?includeOwned=1` feed that powers the + add-game sheet, where owned games
-   * stay in the ranked list — rendered non-addable — so the viewer sees the
-   * full "what my friends play" picture, not just the addable remainder.
+   * stay in the list — rendered non-addable, sorted after every addable game —
+   * so the viewer sees the full "what my friends play" picture, not just the
+   * addable remainder.
    */
   inMyGames: boolean;
 }

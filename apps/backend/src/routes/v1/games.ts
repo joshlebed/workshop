@@ -289,10 +289,11 @@ gameRoutes.get("/", async (c) => {
  * GET /v1/games/discovery (G2a) — games my friends play, each with which
  * friends play it, ranked by how many friends play each. By default the feed
  * omits games I already added (it's the "what could I add" list). `?includeOwned=1`
- * keeps owned games in the ranked list (tagged `inMyGames`) so the + add-game
- * sheet can show the *full* picture of what my friends play, not just the
- * addable remainder — the common case (you already play everything your friends
- * do) otherwise renders an empty suggestions section. `?friend=<userId>` narrows
+ * keeps owned games in the ranked list (tagged `inMyGames`, sorted after every
+ * addable game) so the + add-game sheet can show the *full* picture of what my
+ * friends play, not just the addable remainder — the common case (you already
+ * play everything your friends do) otherwise renders an empty suggestions
+ * section. `?friend=<userId>` narrows
  * to one friend and 404s for anyone who isn't a friend (a non-friend must not be
  * able to probe whether the id plays anything). Registered before the
  * `/:id` routes so the literal path isn't shadowed.
@@ -382,9 +383,14 @@ gameRoutes.get("/discovery", async (c) => {
     entry.friends.push({ userId: r.friendId, displayName: r.displayName });
     byGame.set(r.game.id, entry);
   }
-  // Most-played-among-friends first; stable tiebreak on title.
+  // Addable games first — owned rows (includeOwned feed only) sink to the
+  // bottom so the add-game sheet leads with what the user can actually add.
+  // Within each group: most-played-among-friends first; stable tiebreak on title.
   const discovered = [...byGame.values()].sort(
-    (a, b) => b.friends.length - a.friends.length || a.game.title.localeCompare(b.game.title),
+    (a, b) =>
+      Number(a.inMyGames) - Number(b.inMyGames) ||
+      b.friends.length - a.friends.length ||
+      a.game.title.localeCompare(b.game.title),
   );
 
   const response: GameDiscoveryResponse = { games: discovered, ...countField };

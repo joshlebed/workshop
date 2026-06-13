@@ -220,10 +220,10 @@ it attaches the target's games + period scores only for friends/self.
 `GET /v1/games/discovery` (friends' games, ranked by how many friends play each) is
 registered **before** the `/:id` routes so the literal path isn't shadowed; its `?friend=`
 filter 404s for non-friends so the endpoint can't be used to probe a stranger's games. The
-default feed omits games I already added; `?includeOwned=1` keeps them in the ranked list
-(tagged `inMyGames`, rendered non-addable client-side) so the + add-game sheet shows the full
-"what my friends play" picture instead of an empty section when I already play everything my
-friends do. All ranking reads `user_games` (people's lists), never scores. `games.test.ts` and
+default feed omits games I already added; `?includeOwned=1` keeps them in the list (tagged
+`inMyGames`, rendered non-addable client-side, sorted after every addable game) so the +
+add-game sheet shows the full "what my friends play" picture instead of an empty section
+when I already play everything my friends do. All ranking reads `user_games` (people's lists), never scores. `games.test.ts` and
 `scores.integration.test.ts` run actual `drizzle/` migrations against in-memory PGlite
 (`@electric-sql/pglite`) with `getDb` mocked — copy that pattern when a route's acceptance
 criteria are DB behaviors, not just schema validation.
