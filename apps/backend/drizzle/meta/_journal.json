@@ -246,6 +246,13 @@
       "when": 1781308877252,
       "tag": "0034_game_summary_spec",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1781311585173,
+      "tag": "0035_game_spec_revisions",
+      "breakpoints": true
     }
   ]
 }

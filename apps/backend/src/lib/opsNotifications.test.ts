@@ -9,6 +9,7 @@ import {
   buildListArchivedNotification,
   buildListJoinedNotification,
   buildOwnershipTransferredNotification,
+  buildScoreSpecTaughtNotification,
   buildSessionsRevokedNotification,
   buildSourceWebhookNotification,
   opsNotificationsEnabled,
@@ -56,6 +57,33 @@ describe("ops notification builders", () => {
     expect(buildGameAddedNotification("Josh", "Connections")).toEqual({
       content: ':video_game: game added — Josh added "Connections" to My Games',
       kind: "game_added",
+    });
+  });
+
+  it("score spec taught (first teach)", () => {
+    expect(
+      buildScoreSpecTaughtNotification("Josh", "Squardle", {
+        replacedExisting: false,
+        scoreDirection: "asc",
+        hasSummarySpec: true,
+      }),
+    ).toEqual({
+      content:
+        ':teacher: score spec taught — Josh taught "Squardle" (lower is better, with recap trim)',
+      kind: "score_spec_taught",
+    });
+  });
+
+  it("score spec re-taught (replacing an existing config)", () => {
+    expect(
+      buildScoreSpecTaughtNotification("Alex", "Squardle", {
+        replacedExisting: true,
+        scoreDirection: "desc",
+        hasSummarySpec: false,
+      }),
+    ).toEqual({
+      content: ':teacher: score spec re-taught — Alex re-taught "Squardle" (higher is better)',
+      kind: "score_spec_taught",
     });
   });
 

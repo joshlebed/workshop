@@ -90,6 +90,26 @@ export function buildGameAddedNotification(user: string, gameTitle: string): Not
   };
 }
 
+/**
+ * Tier 3: someone (re-)taught a game's scoring config — the one write surface
+ * where any signed-in user changes a *global* catalog row. Every teach pings
+ * so a poisoned spec is visible in #workshop-admin the moment it lands, not
+ * when a user complains; `game_spec_revisions` holds the matching audit row.
+ */
+export function buildScoreSpecTaughtNotification(
+  user: string,
+  gameTitle: string,
+  opts: { replacedExisting: boolean; scoreDirection: "asc" | "desc"; hasSummarySpec: boolean },
+): Notification {
+  const verb = opts.replacedExisting ? "re-taught" : "taught";
+  const direction = opts.scoreDirection === "asc" ? "lower is better" : "higher is better";
+  const summary = opts.hasSummarySpec ? ", with recap trim" : "";
+  return {
+    content: `:teacher: score spec ${verb} — ${user} ${verb} "${gameTitle}" (${direction}${summary})`,
+    kind: "score_spec_taught",
+  };
+}
+
 /** Tier 3: a user signed out of every device (session revocation). */
 export function buildSessionsRevokedNotification(user: string): Notification {
   return {
@@ -242,6 +262,16 @@ export async function notifyLetterboxdConnected(
 
 export async function notifyGameAdded(userId: string, gameTitle: string): Promise<void> {
   await safeNotify(async () => buildGameAddedNotification(await loadUserLabel(userId), gameTitle));
+}
+
+export async function notifyScoreSpecTaught(
+  userId: string,
+  gameTitle: string,
+  opts: { replacedExisting: boolean; scoreDirection: "asc" | "desc"; hasSummarySpec: boolean },
+): Promise<void> {
+  await safeNotify(async () =>
+    buildScoreSpecTaughtNotification(await loadUserLabel(userId), gameTitle, opts),
+  );
 }
 
 export async function notifySessionsRevoked(userId: string): Promise<void> {

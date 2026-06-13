@@ -447,6 +447,37 @@ export const games = pgTable("games", {
 });
 
 /**
+ * Append-only audit log of the teach flow: one row per successful
+ * `PUT /v1/games/:id/score-spec`, written in the same transaction as the
+ * `games` update. The catalog row holds only the *current* config; this
+ * table answers "who taught what, when" and makes a bad teach a
+ * one-UPDATE-revert (copy the previous revision's values back onto `games`,
+ * then `scripts/rescore-game.ts`). `taught_by` is SET NULL on user delete so
+ * the history outlives the teacher.
+ */
+export const gameSpecRevisions = pgTable(
+  "game_spec_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    taughtBy: uuid("taught_by").references(() => users.id, { onDelete: "set null" }),
+    /** The ScoreSpec stored on the catalog row by this teach. */
+    scoreSpec: jsonb("score_spec").notNull(),
+    scoreDirection: text("score_direction").notNull(),
+    /** The SummarySpec stored by this teach; NULL when none was taught. */
+    summarySpec: jsonb("summary_spec"),
+    /** The share the teacher taught from — forensic context for the spec. */
+    exampleRaw: text("example_raw").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    gameCreatedIdx: index("game_spec_revisions_game_created_idx").on(t.gameId, t.createdAt),
+  }),
+);
+
+/**
  * "My Games" — a per-user ordered selection of catalog games. Same sparse
  * `position` scheme as `items.position` (see `lib/positions.ts` /
  * `lib/gamePositions.ts`); NULL positions sort last until first dragged.
