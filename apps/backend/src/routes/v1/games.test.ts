@@ -743,7 +743,7 @@ describe("GET /v1/games/discovery?includeOwned — full ranked friend feed", () 
     await addGame(alphaUrl, v);
   });
 
-  it("keeps owned games, ranks by friend count, and tags inMyGames", async () => {
+  it("keeps owned games, tags inMyGames, and sorts owned after addable", async () => {
     const res = await gameRoutes.request("/discovery?includeOwned=1", {
       headers: authHeaders(v),
     });
@@ -751,7 +751,8 @@ describe("GET /v1/games/discovery?includeOwned — full ranked friend feed", () 
     const body = (await res.json()) as {
       games: { game: { id: string }; friends: unknown[]; inMyGames: boolean }[];
     };
-    // alpha (2 friends, owned) ranks above beta (1 friend, not owned).
+    // beta (1 friend, addable) sorts above alpha (2 friends, already owned) —
+    // owned games sink to the bottom regardless of popularity.
     expect(
       body.games.map((g) => ({
         id: g.game.id,
@@ -759,8 +760,8 @@ describe("GET /v1/games/discovery?includeOwned — full ranked friend feed", () 
         inMyGames: g.inMyGames,
       })),
     ).toEqual([
-      { id: alphaId, friends: 2, inMyGames: true },
       { id: betaId, friends: 1, inMyGames: false },
+      { id: alphaId, friends: 2, inMyGames: true },
     ]);
   });
 
@@ -770,7 +771,7 @@ describe("GET /v1/games/discovery?includeOwned — full ranked friend feed", () 
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { games: { game: { id: string } }[] };
-    expect(body.games.map((g) => g.game.id)).toEqual([alphaId, betaId]);
+    expect(body.games.map((g) => g.game.id)).toEqual([betaId, alphaId]);
   });
 
   it("default feed (no includeOwned) still drops owned games, inMyGames false", async () => {

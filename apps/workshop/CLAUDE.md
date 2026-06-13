@@ -84,7 +84,8 @@ catalog row); there is **no** add-by-id endpoint. Three surfaces render the same
    (capped-height scroll); URL field's `autoFocus` is suppressed when suggestions exist so the
    keyboard doesn't shove them offscreen. The sheet fetches with `includeOwned: true` so it
    shows **all** the games friends play (ranked by friend count), including ones already in My
-   Games — those render as a non-addable "✓ In your games" row (testID `…-owned-<id>`). Without
+   Games — those sort to the bottom (server-side, below every addable suggestion) and render as
+   a non-addable "✓ In your games" row (testID `…-owned-<id>`). Without
    this, a user who already plays everything their friends do sees an empty section.
 3. **Post-accept picker** — `app/friends/accept/[token].tsx` no longer bounces to `/friends`
    on Accept; it sets `acceptedFriend` and renders an inline `PostAcceptPicker` (the new
