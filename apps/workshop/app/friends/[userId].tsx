@@ -338,10 +338,10 @@ export default function FriendProfileScreen() {
                 {profile.games.map((pg) => {
                   const adding = addingGameIds.includes(pg.game.id);
                   const scoreBody = pg.score
-                    ? summarizeGameScoreBody(
-                        { title: pg.game.title, url: pg.game.url },
-                        { scoreValue: pg.score.scoreValue, scoreRaw: pg.score.scoreRaw },
-                      )
+                    ? summarizeGameScoreBody(pg.game, {
+                        scoreValue: pg.score.scoreValue,
+                        scoreRaw: pg.score.scoreRaw,
+                      })
                     : null;
                   const scoreLine = scoreBody
                     ? `Today: ${scoreBody.split("\n")[0]}`

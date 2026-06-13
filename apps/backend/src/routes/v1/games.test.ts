@@ -785,6 +785,78 @@ describe("GET /v1/games/discovery?includeOwned — full ranked friend feed", () 
   });
 });
 
+describe("PUT /v1/games/:id/score-spec — the teach flow", () => {
+  const exampleRaw = "Squardle #512\nStreak: 14 🔥\n🟩🟩🟨⬜⬜\n🟩🟩🟩🟩🟩\n3/6";
+  const teachBody = {
+    spec: { rules: [{ kind: "capture", pattern: "(\\d+)\\s*\\/\\s*6\\b" }] },
+    exampleRaw,
+    expectedValue: 3,
+    scoreDirection: "asc" as const,
+  };
+
+  async function teach(gameId: string, body: unknown) {
+    return gameRoutes.request(`/${gameId}/score-spec`, {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("stores the parser + summary spec and returns both on the game shape", async () => {
+    const { game } = await addGame("https://squardle.example.com");
+    const summarySpec = {
+      rules: [{ kind: "matchLines", pattern: "^[^A-Za-z]+$" }],
+    };
+    const res = await teach(game.id, { ...teachBody, summarySpec });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      game: { scoreSpec: unknown; summarySpec: unknown; scoreDirection: string };
+    };
+    expect(body.game.scoreSpec).toEqual(teachBody.spec);
+    expect(body.game.summarySpec).toEqual(summarySpec);
+    expect(body.game.scoreDirection).toBe("asc");
+  });
+
+  it("rejects a summary spec that renders the teaching example to nothing", async () => {
+    const { game } = await addGame("https://squardle2.example.com");
+    const res = await teach(game.id, {
+      ...teachBody,
+      summarySpec: { rules: [{ kind: "matchLines", pattern: "^never matches$" }] },
+    });
+    expect(res.status).toBe(400);
+    const stored = await rows<{ summary_spec: unknown }>(
+      `SELECT summary_spec FROM games WHERE id = $1`,
+      [game.id],
+    );
+    expect(stored[0]?.summary_spec).toBeNull();
+  });
+
+  it("re-teaching without a summary spec clears the previously taught one", async () => {
+    const { game } = await addGame("https://squardle3.example.com");
+    const withSummary = await teach(game.id, {
+      ...teachBody,
+      summarySpec: { rules: [{ kind: "matchLines", pattern: "^[^A-Za-z]+$" }] },
+    });
+    expect(withSummary.status).toBe(200);
+    const res = await teach(game.id, teachBody);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { game: { summarySpec: unknown } };
+    expect(body.game.summarySpec).toBeNull();
+  });
+
+  it("rejects teaching a registry game", async () => {
+    const seeded = await rows<{ id: string }>(`SELECT id FROM games WHERE game_key = 'wordle'`);
+    const res = await teach(seeded[0]!.id, teachBody);
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a spec that doesn't reproduce the expected score on the example", async () => {
+    const { game } = await addGame("https://squardle4.example.com");
+    const res = await teach(game.id, { ...teachBody, expectedValue: 99 });
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("requires auth", () => {
   it("401s without a bearer token", async () => {
     const res = await gameRoutes.request("/");

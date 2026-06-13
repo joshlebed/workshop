@@ -20,6 +20,7 @@ import type {
 } from "@workshop/shared/games";
 import { isReactionEmoji, normalizeGameUrl } from "@workshop/shared/games";
 import { parseScoreWithSpec, scoreSpecSchema } from "@workshop/shared/scoreParsing";
+import { evaluateSummarySpec, summarySpecSchema } from "@workshop/shared/summarySpec";
 import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -67,6 +68,13 @@ const setScoreSpecSchema = z.object({
   exampleRaw: scoreRawSchema,
   expectedValue: z.number().finite(),
   scoreDirection: z.enum(["asc", "desc"]),
+  /**
+   * Optional taught recap formatter (the display-side twin of `spec`) — see
+   * `@workshop/shared/summarySpec`. Must produce a non-empty summary on
+   * `exampleRaw`; absent/null clears any previously taught one, so a re-teach
+   * never leaves a stale formatter behind a fresh parser.
+   */
+  summarySpec: summarySpecSchema.nullish(),
 });
 
 const moveGameSchema = z.object({
@@ -719,8 +727,10 @@ gameRoutes.delete("/:id/reactions/:periodKey/:scoreUserId", async (c) => {
  * PUT /v1/games/:id/score-spec — the self-serve "teach us your game" flow.
  * The client tokenizes the user's share, the user taps their score, the
  * client synthesizes a ScoreSpec (`@workshop/shared/scoreParsing`) and sends
- * it here with the example it learned from. Two gates before anything is
- * stored:
+ * it here with the example it learned from — optionally alongside a
+ * SummarySpec (`@workshop/shared/summarySpec`), the taught recap formatter
+ * built from the lines the user kept in the recap preview. Two gates before
+ * anything is stored:
  *
  * 1. Registry games are read-only — their specs live in code, so a user
  *    can't (accidentally or otherwise) re-teach Wordle.
@@ -760,9 +770,20 @@ gameRoutes.put(
       return err(c, "VALIDATION", "spec does not reproduce the expected score on the example");
     }
 
+    // Same gate for the recap formatter: one that renders its own teaching
+    // example to nothing would blank every recap row, so it's never stored.
+    const summarySpec = parsed.data.summarySpec ?? null;
+    if (summarySpec && evaluateSummarySpec(summarySpec, parsed.data.exampleRaw) === null) {
+      return err(c, "VALIDATION", "summary spec produces nothing on the example");
+    }
+
     const [updated] = await db
       .update(games)
-      .set({ scoreSpec: parsed.data.spec, scoreDirection: parsed.data.scoreDirection })
+      .set({
+        scoreSpec: parsed.data.spec,
+        scoreDirection: parsed.data.scoreDirection,
+        summarySpec,
+      })
       .where(eq(games.id, game.id))
       .returning();
     if (!updated) return err(c, "INTERNAL", "score spec update returned no row");

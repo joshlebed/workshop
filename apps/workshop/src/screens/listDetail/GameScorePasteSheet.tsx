@@ -20,7 +20,12 @@
 //   share into candidate scores and let the user tap theirs. A spec is
 //   synthesized from that one example (`synthesizeScoreSpec`), the user
 //   confirms the direction, and the caller stores it server-side before
-//   posting — no regex, no code.
+//   posting — no regex, no code. Once a score is learned, the sheet also
+//   shows an editable recap preview: the share's lines with grid + score
+//   lines pre-kept, each tappable to include/exclude. The selection is
+//   synthesized into a SummarySpec (`@workshop/shared/summarySpec`) — the
+//   taught equivalent of a registry `formatShareBody` — and stored alongside
+//   the parser.
 
 import type { GameScoreDirection } from "@workshop/shared/games";
 import {
@@ -30,17 +35,25 @@ import {
   synthesizeScoreSpec,
   tokenizeScoreCandidates,
 } from "@workshop/shared/scoreParsing";
+import {
+  type SummarySpec,
+  suggestSummaryLineIndexes,
+  summaryShareLines,
+  synthesizeSummarySpec,
+} from "@workshop/shared/summarySpec";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, StyleSheet, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { previewScore } from "../../lib/scoreSpecs";
 import { Avatar, Button, Chip, Sheet, Text, tokens } from "../../ui/index";
 
-/** A learned parser, ready for `PUT /v1/games/:id/score-spec`. */
+/** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
 export interface TaughtScoreSpec {
   spec: ScoreSpec;
   exampleRaw: string;
   expectedValue: number;
   scoreDirection: GameScoreDirection;
+  /** Null = no trim learned; recaps show the cleaned full text. */
+  summarySpec: SummarySpec | null;
 }
 
 interface GameScorePasteSheetProps<T extends { title: string }> {
@@ -80,12 +93,17 @@ export function GameScorePasteSheet<T extends { title: string }>({
   const [draft, setDraft] = useState("");
   const [chosen, setChosen] = useState<ScoreCandidate | null>(null);
   const [direction, setDirection] = useState<GameScoreDirection>("desc");
+  // The user's include/exclude taps on recap-preview lines, keyed by raw line
+  // index, layered over the suggested default. Reset whenever the underlying
+  // lines can shift (draft edit, different candidate).
+  const [lineOverrides, setLineOverrides] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     if (item) {
       setSnapshot(item);
       setDraft("");
       setChosen(null);
+      setLineOverrides({});
     }
   }, [item]);
 
@@ -105,26 +123,66 @@ export function GameScorePasteSheet<T extends { title: string }>({
   );
   // A draft edit invalidates the previous tap (offsets moved) — see
   // `editDraft` on the TextInput.
+  const learnedSpec = useMemo(
+    () => (chosen ? synthesizeScoreSpec(draft, chosen) : null),
+    [chosen, draft],
+  );
+
+  // Recap-preview state: the share's displayable lines, the suggested keep
+  // set (grids + the tapped score's line), and the user's selection on top.
+  const summaryLines = useMemo(
+    () => (learnedSpec ? summaryShareLines(draft) : []),
+    [learnedSpec, draft],
+  );
+  const suggestedLines = useMemo(
+    () => new Set(learnedSpec && chosen ? suggestSummaryLineIndexes(draft, chosen.start) : []),
+    [learnedSpec, chosen, draft],
+  );
+  const selectedLines = useMemo(() => {
+    const picked = new Set<number>();
+    for (const line of summaryLines) {
+      if (lineOverrides[line.index] ?? suggestedLines.has(line.index)) picked.add(line.index);
+    }
+    return picked;
+  }, [summaryLines, suggestedLines, lineOverrides]);
+  // Null when the selection can't be learned (everything kept, nothing kept,
+  // or no generalizable pattern) — the recap then shows the cleaned full text.
+  const summarySpec = useMemo(
+    () => (learnedSpec ? synthesizeSummarySpec(draft, [...selectedLines]) : null),
+    [learnedSpec, draft, selectedLines],
+  );
+  // Only offer trimming when there's something to trim, and reflect what the
+  // recap will ACTUALLY show: with no learned trim, every line renders.
+  const summaryEditable = summaryLines.length > 1;
+  const allLinesSelected = selectedLines.size === summaryLines.length;
+  const summaryTrimFailed = summaryEditable && !summarySpec && !allLinesSelected;
+
   const taught = useMemo((): TaughtScoreSpec | null => {
-    if (!chosen) return null;
-    const synthesized = synthesizeScoreSpec(draft, chosen);
-    if (!synthesized) return null;
+    if (!chosen || !learnedSpec) return null;
     return {
-      spec: synthesized,
+      spec: learnedSpec,
       exampleRaw: draft,
       expectedValue: chosen.value,
       scoreDirection: direction,
+      summarySpec,
     };
-  }, [chosen, draft, direction]);
+  }, [chosen, learnedSpec, draft, direction, summarySpec]);
 
   const pickCandidate = (candidate: ScoreCandidate) => {
     setChosen(candidate);
     setDirection(suggestScoreDirection(candidate));
+    setLineOverrides({});
+  };
+
+  const toggleLine = (index: number) => {
+    const current = lineOverrides[index] ?? suggestedLines.has(index);
+    setLineOverrides((prev) => ({ ...prev, [index]: !current }));
   };
 
   const editDraft = (text: string) => {
     setDraft(text);
     setChosen(null);
+    setLineOverrides({});
   };
 
   const submit = () => {
@@ -217,6 +275,40 @@ export function GameScorePasteSheet<T extends { title: string }>({
                   ))}
                 </View>
               ) : null}
+              {taught && summaryEditable ? (
+                <View style={styles.summary} testID="game-paste-summary">
+                  <Text variant="caption" tone="muted">
+                    Recaps will show this — tap a line to leave it out:
+                  </Text>
+                  <View style={styles.summaryBox}>
+                    {summaryLines.map((line) => {
+                      // Reflect what will actually render: with no learned
+                      // trim, the recap falls back to the full text.
+                      const included = summarySpec ? selectedLines.has(line.index) : true;
+                      return (
+                        <Pressable
+                          key={line.index}
+                          onPress={() => toggleLine(line.index)}
+                          hitSlop={4}
+                          testID={`game-paste-summary-line-${line.index}`}
+                        >
+                          <Text
+                            style={[styles.summaryLine, !included && styles.summaryLineExcluded]}
+                            numberOfLines={1}
+                          >
+                            {line.text}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {summaryTrimFailed ? (
+                    <Text variant="caption" tone="muted" testID="game-paste-summary-fallback">
+                      Couldn't trim it that way — the full result will show.
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
             </View>
           ) : null}
           <View style={styles.actions}>
@@ -261,6 +353,26 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: tokens.space.sm,
+  },
+  summary: { gap: tokens.space.sm },
+  summaryBox: {
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    backgroundColor: tokens.bg.canvas,
+    gap: 2,
+  },
+  summaryLine: {
+    color: tokens.text.primary,
+    fontSize: tokens.font.size.sm,
+    lineHeight: tokens.font.size.sm + 6,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  summaryLineExcluded: {
+    color: tokens.text.muted,
+    textDecorationLine: "line-through",
   },
   actions: {
     flexDirection: "row",

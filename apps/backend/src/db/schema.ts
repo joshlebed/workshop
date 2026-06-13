@@ -436,6 +436,13 @@ export const games = pgTable("games", {
    * their specs in code and ignore this column.
    */
   scoreSpec: jsonb("score_spec"),
+  /**
+   * User-taught recap formatter (SummarySpec jsonb) — the display-side twin
+   * of `score_spec`; see `@workshop/shared/summarySpec`. Written alongside it
+   * by the teach flow. NULL when unset; registry games keep their formatters
+   * in code and ignore this column.
+   */
+  summarySpec: jsonb("summary_spec"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
 });
 

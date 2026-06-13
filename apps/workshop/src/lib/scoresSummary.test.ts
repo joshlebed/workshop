@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildTodaysGameScoresSummary,
   buildTodaysScoresSummary,
+  summarizeGameScoreBody,
   summarizeScoreBody,
 } from "./scoresSummary";
 
@@ -52,6 +53,7 @@ function game(id: string, title: string, url: string): Game {
     iconUrl: null,
     gameKey: null,
     scoreSpec: null,
+    summarySpec: null,
     scoreDirection: "desc",
     createdAt: "2026-05-22T00:00:00Z",
   };
@@ -383,6 +385,58 @@ describe("buildTodaysScoresSummary", () => {
     });
     expect(summary?.startsWith("My scores in Geo games — May 25\n")).toBe(true);
     expect(summary?.endsWith(`\n${LIST_URL}`)).toBe(true);
+  });
+});
+
+describe("summarizeGameScoreBody with a taught summarySpec", () => {
+  const SQUARDLE_RAW = "Squardle #512\nStreak: 14 🔥\n🟩🟩🟨⬜⬜\n🟩🟩🟩🟩🟩\n3/6";
+  const taughtSummary = {
+    rules: [{ kind: "matchLines" as const, pattern: "^[^A-Za-z]+$" }],
+  };
+
+  function taughtGame(): Game {
+    return {
+      ...game("g1", "Squardle", "https://squardle.example.com"),
+      summarySpec: taughtSummary,
+    };
+  }
+
+  it("renders only the lines the taught spec keeps", () => {
+    expect(summarizeGameScoreBody(taughtGame(), entry("me", SQUARDLE_RAW))).toBe(
+      "🟩🟩🟨⬜⬜\n🟩🟩🟩🟩🟩\n3/6",
+    );
+  });
+
+  it("falls back to the cleaned full text when the spec matches nothing", () => {
+    const raw = "Squardle changed its share format entirely";
+    expect(summarizeGameScoreBody(taughtGame(), entry("me", raw))).toBe(raw);
+  });
+
+  it("never outranks a registry formatter when the raw text identifies a known game", () => {
+    // MapTap has a hand-written registry formatter; the share text identifies
+    // it regardless of which catalog row the score hangs off.
+    const maptapRaw = "www.maptap.gg May 27\n100🎯 95🏆 94🏅 52😔 77😂\nFinal score: 770";
+    expect(summarizeGameScoreBody(taughtGame(), entry("me", maptapRaw))).toBe(
+      "100🎯 95🏆 94🏅 52😔 77😂\nFinal score: 770",
+    );
+  });
+
+  it("feeds the trimmed body into the clipboard recap", () => {
+    const mg = myGame("g1", "Squardle", "https://squardle.example.com", [
+      entry("me", SQUARDLE_RAW),
+    ]);
+    mg.game.summarySpec = taughtSummary;
+    const summary = buildTodaysGameScoresSummary({
+      friendUrl: FRIEND_URL,
+      games: [mg],
+      selfId: "me",
+      dateKey: "2026-05-27",
+    });
+    expect(summary).toBe(
+      ["My game scores — May 27", "• Squardle", "🟩🟩🟨⬜⬜", "🟩🟩🟩🟩🟩", "3/6", FRIEND_URL].join(
+        "\n",
+      ),
+    );
   });
 });
 

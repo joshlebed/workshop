@@ -252,7 +252,12 @@ to the sign-in screen.
 (mirrors the backend's parser chain: registry spec → `game.scoreSpec` → first-number) and,
 for spec-less non-registry games on the Games surface, runs the **tap-the-score teach
 flow**: `tokenizeScoreCandidates` chips → `synthesizeScoreSpec` → direction confirm →
+an editable **recap preview** (the share's lines, grid + score lines pre-kept, tap to
+include/exclude — synthesized into a `SummarySpec` via `@workshop/shared/summarySpec`) →
 `PUT /v1/games/:id/score-spec` then the normal score post (see `onTeach` in `GamesHome`).
+The taught summary spec is the user-built equivalent of a registry `formatShareBody`:
+`summarizeGameScoreBody` applies it (registry formatter → `game.summarySpec` → full-text
+fallback) wherever the full `Game` row is passed.
 Standings arrive rank-sorted from every endpoint — render entries as-is, never re-sort.
 
 ## A game share can reach us as just its referral URL (grid dropped)

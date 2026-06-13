@@ -5,6 +5,7 @@
 // `import { normalizeGameUrl } from "@workshop/shared/games"`.
 
 import type { ScoreSpec } from "./scoreParsing.js";
+import type { SummarySpec } from "./summarySpec.js";
 
 export type GameScoreDirection = "asc" | "desc";
 
@@ -25,6 +26,13 @@ export interface Game {
    * unset — and always null for registry games, whose specs live in code.
    */
   scoreSpec: ScoreSpec | null;
+  /**
+   * User-taught recap formatter (the display-side twin of `scoreSpec`) —
+   * which share lines the leaderboard rows / clipboard recaps keep. Null when
+   * unset (full-text fallback); always null for registry games, whose
+   * `formatShareBody` formatters live in code.
+   */
+  summarySpec: SummarySpec | null;
   createdAt: string;
 }
 

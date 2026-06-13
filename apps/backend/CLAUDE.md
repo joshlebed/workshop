@@ -76,7 +76,11 @@ interpreter if a share shape doesn't fit.
 Parser resolution at post time (`lib/gameCatalog.ts`): registry spec by `games.game_key` →
 user-taught `games.score_spec` jsonb (written by `PUT /v1/games/:id/score-spec`, the
 tap-the-score teach flow — server re-runs the spec against the teaching example and rejects
-non-reproducing specs; registry games are read-only) → the item's stored rule string
+non-reproducing specs; registry games are read-only. The same endpoint optionally stores a
+**`games.summary_spec`** — a `SummarySpec` from `@workshop/shared/summarySpec`, the taught
+recap formatter built in the teach flow's line-picking preview; it must render the teaching
+example to something, and an absent `summarySpec` on a re-teach clears the stored one) →
+the item's stored rule string
 `items.score_regex` (three generations decode: bare regex, `count:<token>`, `spec:<json>`)
 → first-number-anywhere fallback only when no parser exists at all.
 

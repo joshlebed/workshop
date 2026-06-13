@@ -6,6 +6,7 @@
 import type { Item, LeaderboardEntry } from "@workshop/shared";
 import { formatShareBodyFallback, gameDefinitionForKey } from "@workshop/shared/gameRegistry";
 import type { MyGame } from "@workshop/shared/games";
+import { evaluateSummarySpec, type SummarySpec } from "@workshop/shared/summarySpec";
 import {
   type DetectedSharedScoreKind,
   detectGameKindForItem,
@@ -52,22 +53,26 @@ export function summarizeScoreBody(
  * Games-surface twin of `summarizeScoreBody`: identical distillation, but the
  * game-kind inference runs over the catalog row's title + URL instead of an
  * `Item`. Keeps a Games card's score block byte-identical to what the same
- * raw result renders as on the Lists surface.
+ * raw result renders as on the Lists surface. When the catalog row carries a
+ * user-taught `summarySpec` (built in the teach flow's recap preview), it
+ * stands in for the registry's hand-written `formatShareBody`.
  */
 export function summarizeGameScoreBody(
-  game: { title: string; url: string | null },
+  game: { title: string; url: string | null; summarySpec?: SummarySpec | null },
   entry: { scoreValue: number | null; scoreRaw: string | null },
 ): string | null {
   return summarizeBody(
     (raw) =>
       detectSharedScore(raw)?.kind ?? detectGameKindForText(`${game.title} ${game.url ?? ""}`),
     entry,
+    game.summarySpec ?? null,
   );
 }
 
 function summarizeBody(
   detect: (raw: string) => DetectedSharedScoreKind | null,
   entry: { scoreValue: number | null; scoreRaw: string | null },
+  summarySpec: SummarySpec | null = null,
 ): string | null {
   const raw = entry.scoreRaw ?? "";
   if (raw.trim()) {
@@ -75,6 +80,11 @@ function summarizeBody(
     const formatter = gameDefinitionForKey(kind)?.formatShareBody;
     const formatted = formatter?.(raw);
     if (formatted && formatted.trim().length > 0) return formatted;
+    // Taught recap formatter — the user-built equivalent of a registry
+    // formatter. A spec that matches nothing on this share (changed format,
+    // URL-only payload) yields null and defers to the fallback below.
+    const taught = summarySpec ? evaluateSummarySpec(summarySpec, raw) : null;
+    if (taught && taught.trim().length > 0) return taught;
     const fallback = formatShareBodyFallback(raw);
     if (fallback && fallback.trim().length > 0) return fallback;
     // Raw was non-empty but stripped to nothing — almost always a URL-only

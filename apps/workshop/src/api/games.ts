@@ -13,6 +13,7 @@ import type {
   UpsertGameScoreResponse,
 } from "@workshop/shared/games";
 import type { ScoreSpec } from "@workshop/shared/scoreParsing";
+import type { SummarySpec } from "@workshop/shared/summarySpec";
 import { apiRequest } from "../lib/api";
 
 export function fetchMyGames(periodKey: string, token: string | null): Promise<GamesResponse> {
@@ -69,8 +70,10 @@ export function upsertGameScore(
 
 /**
  * `PUT /v1/games/:id/score-spec` — teach a non-registry game its parser (the
- * tap-the-score flow). The server re-runs `spec` against `exampleRaw` and
- * rejects the write unless it reproduces `expectedValue`.
+ * tap-the-score flow) and, optionally, its recap formatter (`summarySpec`,
+ * built from the lines kept in the recap preview). The server re-runs `spec`
+ * against `exampleRaw` and rejects the write unless it reproduces
+ * `expectedValue`; a `summarySpec` must render the example to something.
  */
 export function setGameScoreSpec(
   gameId: string,
@@ -79,6 +82,7 @@ export function setGameScoreSpec(
     exampleRaw: string;
     expectedValue: number;
     scoreDirection: GameScoreDirection;
+    summarySpec: SummarySpec | null;
   },
   token: string | null,
 ): Promise<SetGameScoreSpecResponse> {

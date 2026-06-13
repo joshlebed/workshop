@@ -3,6 +3,7 @@
 
 import type { Game } from "@workshop/shared/games";
 import { safeParseScoreSpec } from "@workshop/shared/scoreParsing";
+import { safeParseSummarySpec } from "@workshop/shared/summarySpec";
 import type { DbGame } from "../db/schema.js";
 import { toIsoString } from "./dates.js";
 import { normalizeScoreDirection } from "./gameCatalog.js";
@@ -21,9 +22,10 @@ export function toGameShape(row: DbGame): Game {
     iconUrl: row.iconUrl,
     gameKey: row.gameKey,
     scoreDirection: normalizeScoreDirection(row.scoreDirection),
-    // Validated on the way out: the column is jsonb written through the
+    // Validated on the way out: the columns are jsonb written through the
     // score-spec endpoint, but old/hand-edited rows must not crash the shape.
     scoreSpec: safeParseScoreSpec(row.scoreSpec),
+    summarySpec: safeParseSummarySpec(row.summarySpec),
     createdAt: toIsoString(row.createdAt),
   };
 }
