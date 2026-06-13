@@ -856,6 +856,49 @@ describe("PUT /v1/games/:id/score-spec — the teach flow", () => {
     const res = await teach(game.id, { ...teachBody, expectedValue: 99 });
     expect(res.status).toBe(400);
   });
+
+  it("audits every successful teach in game_spec_revisions (who, what, from which example)", async () => {
+    const { game } = await addGame("https://squardle5.example.com");
+    const summarySpec = { rules: [{ kind: "matchLines", pattern: "^[^A-Za-z]+$" }] };
+    expect((await teach(game.id, { ...teachBody, summarySpec })).status).toBe(200);
+    expect((await teach(game.id, { ...teachBody, scoreDirection: "desc" })).status).toBe(200);
+
+    const revisions = await rows<{
+      taught_by: string;
+      score_spec: unknown;
+      score_direction: string;
+      summary_spec: unknown;
+      example_raw: string;
+    }>(
+      `SELECT taught_by, score_spec, score_direction, summary_spec, example_raw
+       FROM game_spec_revisions WHERE game_id = $1 ORDER BY created_at`,
+      [game.id],
+    );
+    expect(revisions).toHaveLength(2);
+    expect(revisions[0]).toEqual({
+      taught_by: userId,
+      score_spec: teachBody.spec,
+      score_direction: "asc",
+      summary_spec: summarySpec,
+      example_raw: exampleRaw,
+    });
+    // The re-teach appends (never rewrites) and records its own values — the
+    // first revision stays intact as the revert target.
+    expect(revisions[1]).toMatchObject({
+      taught_by: userId,
+      score_direction: "desc",
+      summary_spec: null,
+    });
+  });
+
+  it("writes no revision row for a rejected teach", async () => {
+    const { game } = await addGame("https://squardle6.example.com");
+    expect((await teach(game.id, { ...teachBody, expectedValue: 99 })).status).toBe(400);
+    const revisions = await rows(`SELECT id FROM game_spec_revisions WHERE game_id = $1`, [
+      game.id,
+    ]);
+    expect(revisions).toHaveLength(0);
+  });
 });
 
 describe("requires auth", () => {

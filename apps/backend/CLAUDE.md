@@ -84,6 +84,14 @@ the item's stored rule string
 `items.score_regex` (three generations decode: bare regex, `count:<token>`, `spec:<json>`)
 → first-number-anywhere fallback only when no parser exists at all.
 
+**Teaching is wiki-trust but audited.** Any signed-in user can (re-)teach any non-registry
+game — it's the one write surface that mutates a global catalog row. Every successful teach
+appends a `game_spec_revisions` row (same transaction: `taught_by`, both specs, direction,
+`example_raw`) and pings `#workshop-admin` (`score_spec_taught` in `opsNotifications.ts`).
+Revert a poisoned config by copying the prior revision's values back onto `games`, then
+`scripts/rescore-game.ts`. If you add another path that writes `games.score_spec` /
+`summary_spec` / `score_direction`, write the revision row there too.
+
 A leaderboard item's `game_id` is set by migrations 0027/0029 for historical rows **and**
 self-heals on item create/edit + score upsert (`routes/v1/items.ts`, `routes/v1/scores.ts`).
 Mapped items keep the old list/item URLs but read/write `game_scores`, so the

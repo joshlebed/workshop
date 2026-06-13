@@ -25,7 +25,14 @@ import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { gameScoreReactions, gameScores, games, userGames, users } from "../../db/schema.js";
+import {
+  gameScoreReactions,
+  gameScores,
+  gameSpecRevisions,
+  games,
+  userGames,
+  users,
+} from "../../db/schema.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { friendsOf } from "../../lib/friends.js";
@@ -42,6 +49,7 @@ import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import {
   notifyFirstScore,
   notifyGameAdded,
+  notifyScoreSpecTaught,
   opsNotificationsEnabled,
   userHasAnyScore,
 } from "../../lib/opsNotifications.js";
@@ -748,6 +756,14 @@ gameRoutes.delete("/:id/reactions/:periodKey/:scoreUserId", async (c) => {
  * applies; `score_raw` history makes a bad spec one rescore away from fixed).
  * The caller's own score for the example is re-posted by the client via the
  * normal upsert, so no rescore happens here.
+ *
+ * Because this is the one write surface where any signed-in user mutates a
+ * GLOBAL row, every successful teach is audited (an append-only
+ * `game_spec_revisions` row, written in the same transaction — who, when,
+ * what spec, from which example) and pinged to #workshop-admin
+ * (`notifyScoreSpecTaught`), so a poisoned config is attributable and
+ * visible immediately. Revert = copy the prior revision's values back onto
+ * `games`, then `scripts/rescore-game.ts`.
  */
 gameRoutes.put(
   "/:id/score-spec",
@@ -783,16 +799,35 @@ gameRoutes.put(
       return err(c, "VALIDATION", "summary spec produces nothing on the example");
     }
 
-    const [updated] = await db
-      .update(games)
-      .set({
+    const userId = c.get("userId");
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(games)
+        .set({
+          scoreSpec: parsed.data.spec,
+          scoreDirection: parsed.data.scoreDirection,
+          summarySpec,
+        })
+        .where(eq(games.id, game.id))
+        .returning();
+      if (!row) return undefined;
+      await tx.insert(gameSpecRevisions).values({
+        gameId: game.id,
+        taughtBy: userId,
         scoreSpec: parsed.data.spec,
         scoreDirection: parsed.data.scoreDirection,
         summarySpec,
-      })
-      .where(eq(games.id, game.id))
-      .returning();
+        exampleRaw: parsed.data.exampleRaw,
+      });
+      return row;
+    });
     if (!updated) return err(c, "INTERNAL", "score spec update returned no row");
+
+    await notifyScoreSpecTaught(userId, game.title, {
+      replacedExisting: game.scoreSpec !== null,
+      scoreDirection: parsed.data.scoreDirection,
+      hasSummarySpec: summarySpec !== null,
+    });
 
     const response: SetGameScoreSpecResponse = { game: toGameShape(updated) };
     return ok(c, response);
