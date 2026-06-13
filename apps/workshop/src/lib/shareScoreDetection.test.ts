@@ -301,6 +301,7 @@ function makeMyGame(gameId: string, title: string, url: string, gameKey: string 
       gameKey,
       scoreDirection: "asc",
       scoreSpec: null,
+      summarySpec: null,
       createdAt: "2026-05-01T12:00:00.000Z",
     },
     standings: { periodKey: "2026-05-19", entries: [], viewerHasPlayed: false },

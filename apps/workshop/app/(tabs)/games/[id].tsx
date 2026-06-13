@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
+import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
@@ -368,7 +368,7 @@ export default function GameBoard() {
 
 interface EntryRowProps {
   entry: GameStandingsEntry;
-  game: { title: string; url: string | null };
+  game: Pick<Game, "title" | "url" | "summarySpec">;
   isMe: boolean;
   onEdit?: () => void;
   onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
