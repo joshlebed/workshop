@@ -43,6 +43,15 @@ describe("registry shape", () => {
 // Share texts below are real prod shapes (sampled from game_scores.score_raw)
 // unless noted.
 describe("score parsing per game", () => {
+  it("anthropeum captures the points before the `·`, not the date in the header", () => {
+    expect(
+      parse(
+        "anthropeum",
+        "Anthropeum.com · Jun 14 2026\n🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩\n62,090 · top 38% of players today!",
+      ),
+    ).toBe(62090);
+  });
+
   it("maptap", () => {
     expect(
       parse("maptap", "www.maptap.gg June 11\n94🎉 96🔥 95🏅 91👑 95🏆\nFinal score: 938"),
@@ -144,6 +153,10 @@ describe("score parsing per game", () => {
 
 describe("share-text detection", () => {
   const cases: [string, string][] = [
+    [
+      "anthropeum",
+      "Anthropeum.com · Jun 14 2026\n🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩\n62,090 · top 38% of players today!",
+    ],
     ["maptap", "www.maptap.gg June 11\nFinal score: 938"],
     ["dailytens", "DailyTens #766\n🏆 ❌"],
     ["satle", "🛰Satle #369 4/6"],
@@ -214,6 +227,15 @@ describe("isResultlessShare", () => {
 });
 
 describe("formatShareBody", () => {
+  it("anthropeum drops the url/date header, joins grid + score into one clean line", () => {
+    const def = gameDefinitionForKey("anthropeum")!;
+    expect(
+      def.formatShareBody!(
+        "Anthropeum.com · Jun 14 2026\n🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩\n62,090 · top 38% of players today!",
+      ),
+    ).toBe("🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩 62,090 · top 38% of players today!");
+  });
+
   it("maptap drops the URL/date header, keeps rounds + final score", () => {
     const def = gameDefinitionForKey("maptap")!;
     expect(
