@@ -49,7 +49,7 @@ export interface GameLeaderboardCardProps {
   loading?: boolean;
   /** Tap the title or standings → game detail. */
   onPressBody?: () => void;
-  /** Long-press the body → reorder (native only; web drags via the wrapper). */
+  /** Long-press anywhere on the card → reorder (native; web drags via wrapper). */
   onLongPressBody?: () => void;
   onMenu: () => void;
   /** Open the game externally + arm the paste-on-return prompt. */
