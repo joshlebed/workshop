@@ -20,7 +20,7 @@
 import type { Item, LeaderboardEntry, ListMemberSummary } from "@workshop/shared";
 import * as Haptics from "expo-haptics";
 import { memo, type ReactNode, useCallback, useState } from "react";
-import { type ListRenderItemInfo, StyleSheet, View } from "react-native";
+import { type ListRenderItemInfo, Pressable, StyleSheet, View } from "react-native";
 import {
   NestedReorderableList,
   type ReorderableListReorderEvent,
@@ -361,8 +361,13 @@ interface DraggableGameCardProps {
   ) => ReactNode;
 }
 
-// Ordered leaderboard cards: long-press the card body activates reorder, same
-// as DraggableOrderedRow does for plain rows.
+// Ordered leaderboard cards: long-press anywhere on the card activates reorder.
+// The card's own Pressables (cover / Play / paste / title / standings) each
+// take `onLongPressBody`; this transparent wrapper catches a long-press on the
+// gaps between them (turnout line, facepile, padding) so the whole card is the
+// drag handle — only the kebab menu opts out (it owns its touch, so a press
+// there opens the menu). `accessible={false}` keeps the inner buttons
+// individually reachable by VoiceOver.
 const DraggableGameCard = memo(function DraggableGameCard({
   item,
   render,
@@ -375,7 +380,11 @@ const DraggableGameCard = memo(function DraggableGameCard({
     });
     drag();
   }, [drag]);
-  return <>{render(item, "ordered", isActive, onLongPressBody)}</>;
+  return (
+    <Pressable onLongPress={onLongPressBody} delayLongPress={250} accessible={false}>
+      {render(item, "ordered", isActive, onLongPressBody)}
+    </Pressable>
+  );
 });
 
 const styles = StyleSheet.create({

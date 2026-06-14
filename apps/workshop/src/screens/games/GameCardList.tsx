@@ -1,14 +1,14 @@
 // Native (iOS / Android) Games-home card container.
 //
 // Mirrors `ItemList.tsx`'s ordered-section wiring for a single flat ordered
-// list: long-press anywhere on a card's body activates reorder via
-// `useReorderableDrag()` (250ms, matched to the web TouchSensor delay).
+// list: long-press anywhere on a card (except the kebab menu) activates reorder
+// via `useReorderableDrag()` (250ms, matched to the web TouchSensor delay).
 
 import type { MyGame } from "@workshop/shared/games";
 import * as Haptics from "expo-haptics";
 import { memo } from "react";
 import type { ListRenderItemInfo } from "react-native";
-import { StyleSheet } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
 import {
   NestedReorderableList,
   type ReorderableListReorderEvent,
@@ -58,6 +58,11 @@ interface DraggableCardProps {
   render: GameCardListProps["renderCard"];
 }
 
+// Whole-card reorder target — see ItemList.tsx's DraggableGameCard. The card's
+// own Pressables (cover / Play / paste / title / standings) take
+// `onLongPressBody`; this transparent wrapper catches a long-press on the gaps
+// between them. The kebab menu stays out so a press there opens the menu, not a
+// drag. `accessible={false}` keeps the inner buttons reachable by VoiceOver.
 const DraggableCard = memo(function DraggableCard({ game, render }: DraggableCardProps) {
   const drag = useReorderableDrag();
   const isActive = useIsActive();
@@ -67,7 +72,11 @@ const DraggableCard = memo(function DraggableCard({ game, render }: DraggableCar
     });
     drag();
   };
-  return <>{render(game, isActive, onLongPressBody)}</>;
+  return (
+    <Pressable onLongPress={onLongPressBody} delayLongPress={250} accessible={false}>
+      {render(game, isActive, onLongPressBody)}
+    </Pressable>
+  );
 });
 
 const styles = StyleSheet.create({

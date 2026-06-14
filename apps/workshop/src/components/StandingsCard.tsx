@@ -14,11 +14,13 @@
 // "you" row, the dimmed empty facepile, skeletons, and the Play / paste
 // affordances.
 //
-// Both drag stacks compose this inside their own drag-aware wrappers:
-// long-press the title or standings to reorder on native (`onLongPressBody`);
-// web drags via the wrapper's pointer listeners. The cover, menu, Play and
-// paste controls are their own Pressables so a tap on them never starts a
-// drag or a body-tap.
+// Both drag stacks compose this inside their own drag-aware wrappers. On
+// native the whole card is the reorder handle: the cover, title, Play, paste
+// and standings Pressables each take `onLongPressBody`, and the wrapper
+// catches a long-press on the gaps between them — only the kebab menu opts out
+// (a press there opens the menu instead of starting a drag). Web drags via the
+// wrapper's pointer listeners. A short tap on any control still runs that
+// control's own action.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
 import { memo } from "react";
@@ -76,7 +78,11 @@ export interface StandingsCardProps {
   showCta: boolean;
   /** Tap the title or standings → detail. */
   onPressBody?: () => void;
-  /** Long-press the body → reorder (native only; web drags via the wrapper). */
+  /**
+   * Long-press to reorder (native only; web drags via the wrapper). Wired onto
+   * the cover, title, Play, paste and standings rows so the whole card is a
+   * drag handle; the kebab menu deliberately omits it.
+   */
   onLongPressBody?: () => void;
   onMenu: () => void;
   /** Open the game externally + arm the paste-on-return prompt. */
@@ -141,6 +147,8 @@ export const StandingsCard = memo(function StandingsCard({
           accessibilityRole="link"
           accessibilityLabel={`Play ${title}`}
           onPress={onPlay}
+          onLongPress={onLongPressBody}
+          delayLongPress={250}
           hitSlop={6}
           testID={`game-card-cover-${cardId}`}
           style={({ pressed }) => [styles.cover, pressed && styles.coverPressed]}
@@ -195,6 +203,8 @@ export const StandingsCard = memo(function StandingsCard({
                   accessibilityRole="button"
                   accessibilityLabel={`Paste your ${title} result`}
                   onPress={onPaste}
+                  onLongPress={onLongPressBody}
+                  delayLongPress={250}
                   hitSlop={8}
                   testID={`game-card-paste-${cardId}`}
                   style={({ pressed, hovered }) => [
@@ -216,6 +226,8 @@ export const StandingsCard = memo(function StandingsCard({
             accessibilityRole="link"
             accessibilityLabel={`Play ${title}`}
             onPress={onPlay}
+            onLongPress={onLongPressBody}
+            delayLongPress={250}
             hitSlop={8}
             testID={`game-card-play-${cardId}`}
             style={({ pressed, hovered }) => [
