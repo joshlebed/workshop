@@ -84,6 +84,14 @@ describe("summarizeScoreBody", () => {
     );
   });
 
+  it("formats anthropeum as one clean line: grid + score, header dropped", () => {
+    const raw =
+      "Anthropeum.com · Jun 14 2026\n🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩\n62,090 · top 38% of players today!";
+    expect(
+      summarizeScoreBody(item("a", "Anthropeum", "https://anthropeum.com"), entry("u", raw)),
+    ).toBe("🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩 62,090 · top 38% of players today!");
+  });
+
   it("formats Globle as the grid line ending in `= N`", () => {
     const raw = [
       "🌎 May 27, 2026 🌍",

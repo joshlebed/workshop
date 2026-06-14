@@ -253,6 +253,13 @@
       "when": 1781311585173,
       "tag": "0035_game_spec_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1781466211137,
+      "tag": "0036_add_anthropeum_game",
+      "breakpoints": true
     }
   ]
 }

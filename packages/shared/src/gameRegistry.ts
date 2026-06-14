@@ -22,6 +22,7 @@ import type { ScoreSpec } from "./scoreParsing.js";
 // Detection order matters: more specific games come first so e.g. "Worldle"
 // doesn't fall through to a looser Wordle match — keep "wordle" last.
 export const GAME_KEYS = [
+  "anthropeum",
   "maptap",
   "dailytens",
   "satle",
@@ -146,6 +147,26 @@ export function isResultlessShare(raw: string | null | undefined): boolean {
 // ---------------------------------------------------------------------------
 
 export const GAME_REGISTRY: GameDefinition[] = [
+  {
+    key: "anthropeum",
+    title: "Anthropeum",
+    canonicalUrl: "https://anthropeum.com",
+    catalog: true,
+    scoreDirection: "desc",
+    // "62,090 · top 38% of players today!" → 62090 (points; higher is better).
+    // The header line's `·` ("Anthropeum.com · Jun 14 2026") has no digits in
+    // front of it, so the first `[\d,]+ ·` the capture lands on is the score.
+    spec: { rules: [{ kind: "capture", pattern: "([\\d,]+(?:\\.\\d+)?)\\s*·" }] },
+    identifyPatterns: [/\banthropeum\b/i, /anthropeum\.com/i],
+    shareTextPatterns: [/\banthropeum\.com\b/i, /\banthropeum\b/i],
+    // Shape: `Anthropeum.com · Jun 14 2026\n🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩\n62,090 · top 38% of players today!`
+    // Drop the url/date header line (it also catches a trailing `anthropeum.com`
+    // link) and collapse the emoji grid + score line into one clean line.
+    formatShareBody(raw) {
+      const lines = nonEmptyLines(raw).filter((l) => !/anthropeum\.com/i.test(l));
+      return lines.length ? lines.join(" ") : null;
+    },
+  },
   {
     key: "maptap",
     title: "MapTap",
