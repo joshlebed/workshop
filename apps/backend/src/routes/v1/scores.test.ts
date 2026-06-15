@@ -1,35 +1,16 @@
 import { specFromStoredRule } from "@workshop/shared/scoreParsing";
-import { Hono } from "hono";
-import { beforeAll, describe, expect, it } from "vitest";
-import { requireModule } from "../../lib/moduleGate.js";
-import { scoreRawSchema } from "../../lib/scoreSchemas.js";
-import { signSession } from "../../lib/session.js";
-import { __test, itemScoreRoutes, listScoresRoutes } from "./scores.js";
+import { describe, expect, it } from "vitest";
+import { parseScoreValue } from "../../lib/gameCatalog.js";
+import { rankEntries } from "../../lib/ranking.js";
+import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 
-beforeAll(() => {
-  process.env.STAGE = "local";
-  process.env.DATABASE_URL = "postgres://test";
-  process.env.SESSION_SECRET = "x".repeat(32);
-});
-
-const validUuid = "00000000-0000-4000-8000-000000000001";
-
-function authHeaders(): { Authorization: string; "Content-Type": string } {
-  return {
-    Authorization: `Bearer ${signSession(validUuid)}`,
-    "Content-Type": "application/json",
-  };
-}
-
-// Score routes expose the legacy leaderboard-list shape keyed by item id. Some
-// items are now backed by canonical `game_scores`, but the client contract still
-// accepts an item id plus a free-form period key (YYYY-MM-DD, YYYY-WNN,
-// all-time, etc.). These tests lock the schema shape, the helper that parses a
-// numeric out of the raw input, and auth + uuid gating on the exposed endpoints.
+// Score helpers shared by the Games surface (`PUT /v1/games/:id/scores`,
+// `GET /v1/games/:id/leaderboard`). The legacy Lists-side leaderboard bridge
+// (`/v1/items/:id/scores`, `/v1/lists/:id/scores`) was removed after the Games
+// migration; these tests still lock the request schemas, the numeric parser,
+// and the ranking helper that the live Games routes rely on.
 
 describe("periodKeySchema", () => {
-  const { periodKeySchema } = __test;
-
   it("accepts a YYYY-MM-DD date", () => {
     expect(periodKeySchema.safeParse("2026-05-18").success).toBe(true);
   });
@@ -91,8 +72,6 @@ describe("scoreRawSchema", () => {
 });
 
 describe("upsertScoreSchema", () => {
-  const { upsertScoreSchema } = __test;
-
   it("accepts a typical (periodKey, scoreRaw) pair", () => {
     expect(upsertScoreSchema.safeParse({ periodKey: "2026-05-18", scoreRaw: "42" }).success).toBe(
       true,
@@ -121,7 +100,6 @@ describe("upsertScoreSchema", () => {
 });
 
 describe("parseScoreValue over stored rule strings (helper)", () => {
-  const { parseScoreValue } = __test;
   // Items store their parser as a rule string (bare regex / count: / spec:);
   // the route decodes it with specFromStoredRule before parsing.
   const parse = (raw: string, stored?: string) =>
@@ -235,8 +213,6 @@ describe("parseScoreValue over stored rule strings (helper)", () => {
 });
 
 describe("rankEntries (helper)", () => {
-  const { rankEntries } = __test;
-
   it("ranks descending (higher is better) — MapTap-style", () => {
     const ranked = rankEntries(
       [
@@ -316,166 +292,5 @@ describe("rankEntries (helper)", () => {
       "asc",
     );
     expect(ranked.map((r) => r.userId)).toEqual(["newer", "older"]);
-  });
-});
-
-// --- itemScoreRoutes auth + uuid gating ---
-
-describe("itemScoreRoutes auth gating", () => {
-  it("PUT /:id/scores requires a bearer token", async () => {
-    const res = await itemScoreRoutes.request(`/${validUuid}/scores`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ periodKey: "2026-05-18", scoreRaw: "42" }),
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("DELETE /:id/scores requires a bearer token", async () => {
-    const res = await itemScoreRoutes.request(`/${validUuid}/scores?periodKey=2026-05-18`, {
-      method: "DELETE",
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("GET /:id/scores requires a bearer token", async () => {
-    const res = await itemScoreRoutes.request(`/${validUuid}/scores?periodKey=2026-05-18`);
-    expect(res.status).toBe(401);
-  });
-
-  it("rejects an invalid bearer token", async () => {
-    const res = await itemScoreRoutes.request(`/${validUuid}/scores?periodKey=x`, {
-      headers: { Authorization: "Bearer junk" },
-    });
-    expect(res.status).toBe(401);
-  });
-});
-
-describe("itemScoreRoutes input validation (bails before DB)", () => {
-  it("PUT /:id/scores 404s when id isn't a uuid", async () => {
-    const res = await itemScoreRoutes.request(`/not-a-uuid/scores`, {
-      method: "PUT",
-      headers: authHeaders(),
-      body: JSON.stringify({ periodKey: "2026-05-18", scoreRaw: "42" }),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  it("DELETE /:id/scores 404s when id isn't a uuid", async () => {
-    const res = await itemScoreRoutes.request(`/not-a-uuid/scores?periodKey=x`, {
-      method: "DELETE",
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  it("GET /:id/scores 404s when id isn't a uuid", async () => {
-    const res = await itemScoreRoutes.request(`/not-a-uuid/scores?periodKey=x`, {
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-  });
-});
-
-// --- listScoresRoutes auth + uuid gating ---
-
-describe("listScoresRoutes auth gating", () => {
-  it("GET /:id/scores requires a bearer token", async () => {
-    const res = await listScoresRoutes.request(`/${validUuid}/scores?periodKey=2026-05-18`);
-    expect(res.status).toBe(401);
-  });
-
-  it("rejects an invalid bearer token", async () => {
-    const res = await listScoresRoutes.request(`/${validUuid}/scores?periodKey=x`, {
-      headers: { Authorization: "Bearer junk" },
-    });
-    expect(res.status).toBe(401);
-  });
-
-  it("GET /:id/scores 404s when list id isn't a uuid", async () => {
-    const res = await listScoresRoutes.request(`/not-a-uuid/scores?periodKey=x`, {
-      headers: authHeaders(),
-    });
-    expect(res.status).toBe(404);
-  });
-});
-
-// --- Module gate (§5.1): leaderboard.disabled ---
-//
-// Score endpoints all flow through `requireModule(c, modules, "leaderboard")`.
-// The 409 envelope is the contract — 3+ assertions per gated surface.
-
-async function runGate(modules: string[]): Promise<{ status: number; body: unknown }> {
-  const app = new Hono();
-  app.get("/x", (c) => {
-    const r = requireModule(c, modules, "leaderboard");
-    if (r) return r;
-    return c.text("ok");
-  });
-  const res = await app.request("/x");
-  return { status: res.status, body: await res.json().catch(() => null) };
-}
-
-describe("score endpoints — leaderboard module gate", () => {
-  it("returns 409 when leaderboard is off (per-item PUT)", async () => {
-    const r = await runGate([]);
-    expect(r.status).toBe(409);
-    const b = r.body as {
-      error: string;
-      code: string;
-      details: { code: string; module: string; message: string };
-    };
-    expect(b.error).toBe("module_disabled");
-    expect(b.details.code).toBe("leaderboard.disabled");
-    expect(b.details.module).toBe("leaderboard");
-    expect(b.details.message.length).toBeGreaterThan(0);
-  });
-
-  it("returns 409 when leaderboard is off (per-item GET)", async () => {
-    const r = await runGate(["sources", "ranking"]);
-    expect(r.status).toBe(409);
-    const b = r.body as { details: { code: string } };
-    expect(b.details.code).toBe("leaderboard.disabled");
-  });
-
-  it("returns 409 when leaderboard is off (per-item DELETE)", async () => {
-    const r = await runGate(["todo"]);
-    expect(r.status).toBe(409);
-    const b = r.body as { details: { code: string } };
-    expect(b.details.code).toBe("leaderboard.disabled");
-  });
-
-  it("passes through when leaderboard is on", async () => {
-    const r = await runGate(["leaderboard"]);
-    expect(r.status).toBe(200);
-  });
-
-  it("passes through when leaderboard is on alongside other modules", async () => {
-    const r = await runGate(["sources", "leaderboard", "ranking"]);
-    expect(r.status).toBe(200);
-  });
-});
-
-// --- Query-string contract (periodKey is required for read/delete) ---
-
-describe("scores: periodKey query-string contract", () => {
-  // Each test uses a valid uuid in the path so requireItemMember + auth pass,
-  // then asserts on the periodKey query-string parsing. The middleware will
-  // 404 in this environment (no live DB membership lookup), so we use a
-  // fully-valid path and a missing/invalid `periodKey` to assert the route
-  // would 400 if the membership lookup succeeded. The point of these is to
-  // lock the schema, not exercise the route.
-  const { periodKeySchema } = __test;
-
-  it("blanks the query → schema reports invalid (server returns 400 'periodKey query param required')", () => {
-    expect(periodKeySchema.safeParse("").success).toBe(false);
-  });
-
-  it("invalid characters are rejected even when present", () => {
-    expect(periodKeySchema.safeParse("2026/05/18").success).toBe(false);
-  });
-
-  it("the `date=` legacy alias is accepted at the route level (still YYYY-MM-DD)", () => {
-    expect(periodKeySchema.safeParse("2026-05-18").success).toBe(true);
   });
 });

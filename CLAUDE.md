@@ -103,34 +103,17 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `useShareIntent()` in `_layout.tsx`; score shares often need `shareIntent.text` even when
   `shareIntent.webUrl` is also present. `/share` owns the top-level choice, `/share/pick-list`
   handles normal item adds, and `/share/pick-game` posts scores to the Games surface
-  (find-or-creating the catalog game when needed). `/share/pick-leaderboard` is only a
-  compatibility redirect to Games; do not add new leaderboard-list posting UI there.
-- **Leaderboard lists render games as `GameLeaderboardCard` (the status-card view), and a
-  leaderboard's games are an ordered, reorderable list.** On `isGameKind`, `ItemList` swaps
-  `ItemRow` for a card showing today's full standings (top 5 — every scores endpoint
-  returns entries rank-sorted server-side; render them as-is), a turnout tagline, and — when the viewer hasn't played — a
-  Play CTA that opens the game and arms a paste-on-return prompt (`useReturnToPaste`,
-  AppState-driven, web + native; it takes a `scope` — `"list"` default vs `"games"` — so a
-  pending play armed on one surface never pops the other's paste sheet). Per-row scores render
-  through `summarizeScoreBody` (byte-identical to the clipboard recap). The card chrome itself
-  is the presentational `StandingsCard` (`src/components/StandingsCard.tsx`), shared with the
-  Games tab home (G1b) — `GameLeaderboardCard` is now a thin Lists-side adapter that maps
-  `Item`/`LeaderboardEntry`/members onto it; the Games side maps `MyGame` standings through
-  `summarizeGameScoreBody` (same distiller, kind inferred from title+URL instead of an `Item`).
-  The card drops into the existing drag wrappers
-  (`SortableGameCard`/`DraggableGameCard` mirror the row variants), so reorder uses the same
-  `moveItem` machinery — which works because **`leaderboard` now implies `ordered` bucketing**
-  even without the `ranking` module (see `apps/backend/CLAUDE.md`).
-- **The shared `DayRail` (`src/components/DayRail.tsx`) re-dates leaderboards on both the
-  per-game detail screen and the list-level status-card view.** `ListDetail` keeps two
-  list-scores queries: one pinned to `todayKey` (drives the play→paste loop's "have I played
-  today" + the clipboard recap) and one keyed off the selected `viewDate` (drives the card
-  standings). When viewing today they share a queryKey, so it's **one fetch** — the second
-  query only does work on a past day. Pass `viewingToday` down through `ItemList` to
-  `GameLeaderboardCard`: a past day drops the "…today" turnout wording and hides the Play /
-  paste CTA (scores can only be _posted_ to today's bucket — switch back to Today to play).
-  The copy-scores button follows the viewed day. If you add a new today-coupled behavior to a
-  leaderboard card, gate it on `viewingToday` too.
+  (find-or-creating the catalog game when needed).
+- **Daily-game scores live ONLY in the Games tab — the Lists-side leaderboard surface is
+  gone.** Removing it retired `GameLeaderboardCard`, the per-game board route
+  (`/list/:id/game/:itemId`), `/share/pick-leaderboard`, the list-side copy-scores / DayRail /
+  paste loop, `ItemList`'s `isGameKind` branch, and the `/v1/items/:id/scores` +
+  `/v1/lists/:id/scores` backend bridge. A list can no longer be created or updated with the
+  `leaderboard` module or `item_kind='game'` (400 `legacy_game_lists_retired`); the lone
+  legacy "Geo games" row stays in the DB but is hidden from `GET /v1/lists`. Per-game score
+  distillation now goes through `summarizeGameScoreBody` (Games-only; `summarizeScoreBody` was
+  removed); the shared `StandingsCard` + `DayRail` are Games-tab-only. `useReturnToPaste` /
+  `GameScorePasteSheet` survive (the Games paste loop uses them, scope `"games"`).
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:

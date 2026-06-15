@@ -10,7 +10,7 @@ import type {
 } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -22,30 +22,23 @@ import {
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { archiveItem, completeItem, fetchItems, moveItem, uncompleteItem } from "../api/items";
-import { fetchListScores, upsertItemScore } from "../api/scores";
 import { syncSource } from "../api/sources";
 import { createSavedView, deleteSavedView, fetchSavedViews } from "../api/views";
-import { DayRail } from "../components/DayRail";
 import { useAuth } from "../hooks/useAuth";
 import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { applyOptimisticMove, neighborsForOrderedReorder } from "../lib/albumShelfPositions";
 import { errorMessage } from "../lib/api";
 import { userAvatarImageUrl } from "../lib/avatar";
 import { confirm } from "../lib/confirm";
-import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/goBack";
 import { haptics } from "../lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
 import { formatRelative } from "../lib/relativeTime";
-import { specForItem } from "../lib/scoreSpecs";
-import { buildTodaysScoresSummary } from "../lib/scoresSummary";
-import { buildListShareUrl, copyToClipboard } from "../lib/share";
 import { sourceErrorMessage } from "../lib/sourceErrors";
 import {
   Avatar,
   Button,
-  CopyIcon,
   EmptyState,
   type ListColorKey,
   Screen,
@@ -54,14 +47,12 @@ import {
   tokens,
   useToast,
 } from "../ui/index";
-import { GameScorePasteSheet } from "./listDetail/GameScorePasteSheet";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import { LetterboxdPanel } from "./listDetail/LetterboxdPanel";
 import type { ReorderEvent } from "./listDetail/listProps";
 import { SavedViewsBar } from "./listDetail/SavedViewsBar";
 import type { Section } from "./listDetail/types";
-import { useReturnToPaste } from "./listDetail/useReturnToPaste";
 
 interface Props {
   list: List;
@@ -100,7 +91,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const itemKind = list.itemKind;
   const isSpotifyShelf = itemKind === "spotify_album";
   const hasSources = sources.length > 0 && hasModule(list.modules, "sources");
-  const isGameKind = list.modules.includes("leaderboard");
   const rankingOn = hasModule(list.modules, "ranking");
   const todoOn = hasModule(list.modules, "todo");
   const letterboxdOn = hasModule(list.modules, "letterboxd");
@@ -120,45 +110,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
     enabled: !!token,
   });
   const savedViews = viewsQuery.data?.views ?? [];
-
-  // Which day's standings the leaderboard cards show. Defaults to today; the
-  // day rail re-dates every card at once. Scores can only ever be *posted* to
-  // today's bucket, so the play→paste loop below stays pinned to `todayKey`
-  // regardless of which day is on screen.
-  const todayKey = localDateKey();
-  const [viewDate, setViewDate] = useState(todayKey);
-  const viewingToday = viewDate === todayKey;
-
-  // Today's scores drive the play→paste loop ("have I played today") and the
-  // clipboard recap — always today, independent of the viewed day.
-  const todayScoresQuery = useQuery({
-    queryKey: queryKeys.gameScores.forList(list.id, todayKey),
-    queryFn: () => fetchListScores(list.id, todayKey, token),
-    enabled: !!token && isGameKind,
-    refetchInterval: livePoll,
-  });
-  // The viewed day's scores drive the card standings. When viewing today this
-  // resolves to the exact same queryKey as `todayScoresQuery`, so react-query
-  // serves both from one fetch + cache entry — the second query is free on the
-  // common path and only does real work when browsing a past day (which is
-  // immutable, hence no polling).
-  const viewScoresQuery = useQuery({
-    queryKey: queryKeys.gameScores.forList(list.id, viewDate),
-    queryFn: () => fetchListScores(list.id, viewDate, token),
-    enabled: !!token && isGameKind,
-    refetchInterval: viewingToday ? livePoll : false,
-  });
-  const todayScoresByItem = todayScoresQuery.data?.scoresByItem;
-  const playedByItem = useMemo(() => {
-    const map = new Map<string, number>();
-    if (!todayScoresByItem) return map;
-    for (const itemId of Object.keys(todayScoresByItem)) {
-      const entries = todayScoresByItem[itemId] ?? [];
-      const played = entries.filter((e) => e.scoreRaw != null && e.scoreRaw.length > 0).length;
-      map.set(itemId, played);
-    }
-    return map;
-  }, [todayScoresByItem]);
 
   const [newItemIds, setNewItemIds] = useState<Set<string>>(() => new Set());
   const beforeRefreshIdsRef = useRef<Set<string> | null>(null);
@@ -479,34 +430,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
     });
   };
 
-  const onCopyScores = async () => {
-    const summary = buildTodaysScoresSummary({
-      listName: list.name,
-      listUrl: buildListShareUrl(list.shareSlug),
-      items: [...orderedRaw, ...unorderedRaw, ...completedRaw],
-      scoresByItem: viewScoresQuery.data?.scoresByItem ?? {},
-      selfId,
-      dateKey: viewDate,
-    });
-    if (!summary) {
-      showToast({
-        message: viewingToday
-          ? "No scores from you today yet. Post one to share a recap."
-          : "You posted no scores that day.",
-        tone: "default",
-      });
-      return;
-    }
-    const ok = await copyToClipboard(summary);
-    if (ok) haptics.light();
-    showToast({
-      message: ok
-        ? `${viewingToday ? "Today's" : "That day's"} scores copied to clipboard`
-        : "Couldn't copy to clipboard",
-      tone: ok ? "success" : "danger",
-    });
-  };
-
   const [menuItem, setMenuItem] = useState<Item | null>(null);
   const [menuActions, setMenuActions] = useState<ItemRowMenuActions | null>(null);
   const closeMenu = () => {
@@ -560,12 +483,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
         : {}),
       ...(!isSpotifyShelf
         ? {
-            onEdit: () =>
-              router.push(
-                isGameKind
-                  ? `/list/${list.id}/game/${item.id}`
-                  : `/list/${list.id}/item/${item.id}`,
-              ),
+            onEdit: () => router.push(`/list/${list.id}/item/${item.id}`),
           }
         : {}),
       onDelete: confirmDelete,
@@ -576,10 +494,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
     if (isSpotifyShelf) {
       const c = item.content as { spotifyAlbumUrl?: string };
       openExternalUrl(c.spotifyAlbumUrl);
-      return;
-    }
-    if (isGameKind) {
-      router.push(`/list/${list.id}/game/${item.id}`);
       return;
     }
     router.push(`/list/${list.id}/item/${item.id}`);
@@ -594,57 +508,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
     const url = normalizeExternalUrl(item.url);
     return url ? () => openExternalUrl(url) : null;
   };
-
-  // Leaderboard "status card" plumbing. The cards render the *viewed* day's
-  // standings out of `scoresByItem`; the play loop — tap Play, then paste your
-  // result when you return to the page — is owned by `useReturnToPaste` + a
-  // paste sheet, and keys off *today's* scores (`hasMyScore`) so browsing a
-  // past day never confuses "have I played today".
-  const scoresByItem = viewScoresQuery.data?.scoresByItem;
-  const hasMyScore = useCallback(
-    (itemId: string): boolean => {
-      if (!selfId) return false;
-      const entries = todayScoresByItem?.[itemId];
-      return !!entries?.some(
-        (e) => e.userId === selfId && e.scoreRaw != null && e.scoreRaw.length > 0,
-      );
-    },
-    [todayScoresByItem, selfId],
-  );
-  const {
-    promptItemId,
-    markPlaying,
-    openPasteFor,
-    dismiss: dismissPaste,
-  } = useReturnToPaste({ todayKey, hasScoreForItem: hasMyScore });
-
-  const pasteScoreMutation = useMutation({
-    mutationFn: ({ item, scoreRaw }: { item: Item; scoreRaw: string }) =>
-      upsertItemScore(item.id, { periodKey: todayKey, scoreRaw }, token),
-    onSuccess: async (_data, { item }) => {
-      haptics.medium();
-      dismissPaste();
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.gameScores.forItem(item.id, todayKey),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.gameScores.forList(list.id, todayKey),
-        }),
-      ]);
-      showToast({ message: "Score posted", tone: "success" });
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" });
-    },
-  });
-
-  const promptItem = useMemo(() => {
-    if (!promptItemId) return null;
-    return (
-      [...orderedRaw, ...unorderedRaw, ...completedRaw].find((i) => i.id === promptItemId) ?? null
-    );
-  }, [promptItemId, orderedRaw, unorderedRaw, completedRaw]);
 
   const headerSubline = useMemo(() => {
     const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
@@ -738,22 +601,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
                 )}
               </Pressable>
             ) : null}
-            {isGameKind ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  viewingToday
-                    ? "Copy today's scores to clipboard"
-                    : "Copy the selected day's scores to clipboard"
-                }
-                onPress={onCopyScores}
-                testID="list-detail-copy-scores"
-                hitSlop={10}
-                style={styles.navButton}
-              >
-                <CopyIcon size={20} color={tokens.text.primary} />
-              </Pressable>
-            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Open list settings"
@@ -842,17 +689,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
             ) : null}
           </View>
         </View>
-
-        {isGameKind && !itemsQuery.isPending && !itemsQuery.isError && totalRowsUnfiltered > 0 ? (
-          <View style={styles.dayRailWrap}>
-            <DayRail
-              selectedDate={viewDate}
-              today={todayKey}
-              onSelectDate={setViewDate}
-              testIDPrefix="list-detail-day"
-            />
-          </View>
-        ) : null}
 
         {!itemsQuery.isPending && !itemsQuery.isError && (savedViews.length > 0 || canSaveView) ? (
           <View style={styles.savedViewsWrap}>
@@ -1058,15 +894,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
               memberNameById={memberNameById}
               showProvenance={members.length > 1}
               selfId={selfId}
-              playedByItem={isGameKind ? playedByItem : undefined}
-              totalPlayers={isGameKind ? members.length : undefined}
-              isGameKind={isGameKind}
-              viewingToday={viewingToday}
-              scoresByItem={scoresByItem}
-              members={members}
-              scoresLoading={isGameKind && viewScoresQuery.isPending}
-              onPlayGame={markPlaying}
-              onPasteScore={openPasteFor}
               accent={accent}
               onReorderOrdered={onReorderOrdered}
               onPromoteToOrdered={onPromoteToOrdered}
@@ -1102,16 +929,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
         ) : null}
 
         <ItemRowMenu item={menuItem} actions={menuActions} onClose={closeMenu} />
-
-        <GameScorePasteSheet
-          item={promptItem}
-          userName={user?.displayName ?? null}
-          userAvatarUrl={user?.avatarUrl ?? null}
-          pending={pasteScoreMutation.isPending}
-          spec={promptItem ? specForItem(promptItem) : null}
-          onSubmit={(item, scoreRaw) => pasteScoreMutation.mutate({ item, scoreRaw })}
-          onClose={dismissPaste}
-        />
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -1299,12 +1116,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xs,
-  },
-  // Day rail sits pinned between the search toolbar and the scrolling card
-  // list, so the selected day stays put while the games scroll.
-  dayRailWrap: {
-    paddingTop: tokens.space.xs,
-    paddingBottom: tokens.space.sm,
   },
   // Saved-views strip sits directly above the tag chips — the presets, then
   // the granular tags they're built from.

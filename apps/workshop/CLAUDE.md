@@ -164,12 +164,11 @@ native is added — keeps `app.json` `version` still). The shared `useScoreReact
 the set/replace/remove mutations with optimistic cache patching (`applyViewerReaction` in
 `src/lib/scoreReactions.ts`, mirroring the server's one-per-reactor rule) plus picker state;
 each call site passes `readReactions`/`writeReactions` to locate a score inside its own cache
-shape (`GamesResponse` for the home, `GameLeaderboardResponse` for the per-game board). **This
-is Games-surface only**: `StandingsCard` renders reactions solely when its optional
-`onReact`/`onOpenReactionPicker` props are passed — the Lists `GameLeaderboardCard` adapter
-doesn't pass them, so the legacy leaderboard surface stays reaction-free. The add/toggle
-affordances are gated to friends' rows (`!isMe`); your own row shows reactions others left
-read-only, since you can't react to your own score.
+shape (`GamesResponse` for the home, `GameLeaderboardResponse` for the per-game board). `StandingsCard`
+renders reactions only when its optional `onReact`/`onOpenReactionPicker` props are passed
+(the Games surfaces pass them). The add/toggle affordances are gated to friends' rows
+(`!isMe`); your own row shows reactions others left read-only, since you can't react to your
+own score.
 
 ## Profile avatar circles
 
@@ -325,8 +324,8 @@ Preserve both when handling `useShareIntent()` in `_layout.tsx`; score shares of
 `shareIntent.text` even when `shareIntent.webUrl` is also present. `/share` owns the
 top-level choice (incl. the one-tap post of a detected score to Games), `/share/pick-list`
 handles normal item adds, and `/share/pick-game` posts to the Games surface
-(find-or-creates the catalog game when it isn't in My Games yet). `/share/pick-leaderboard`
-is only a compatibility redirect to Games.
+(find-or-creates the catalog game when it isn't in My Games yet). (The old
+`/share/pick-leaderboard` redirect was removed with the Lists-side leaderboard surface.)
 
 ## A cross-navigator `router.replace` collapses the target stack — pass `withAnchor`
 
@@ -342,10 +341,9 @@ flow hit this on every destination it reached. Fix: `(lists)/_layout.tsx` declar
 (`initialRouteName` alone only applies to cold deep-link state, **not** runtime `replace`). Net:
 `canGoBack()` is true → `goBack()` uses a real `router.back()` (a proper pop). Two corollaries:
 keep the `/share/*` forward moves as `router.replace` (a clean linear chain — a stray `push`
-leaves a phantom `/share` screen beneath `(tabs)` that a home swipe-back can surface), but
-`pick-leaderboard`'s "add a game" stays `router.push` so the picker (and its in-progress score
-draft) survives the round-trip. Any new cross-navigator `replace` into `(lists)` needs
-`withAnchor` too (e.g. the invite-accept / public-landing → list paths share this shape).
+leaves a phantom `/share` screen beneath `(tabs)` that a home swipe-back can surface). Any new
+cross-navigator `replace` into `(lists)` needs `withAnchor` too (e.g. the invite-accept /
+public-landing → list paths share this shape).
 
 ## Web HTML shell lives in `public/index.html`
 
@@ -382,7 +380,8 @@ Each Sheet wraps an RN `Modal` that stays mounted for ~220ms while its exit anim
 runs. Flipping the second sheet open during that window briefly stacks two `Modal`s — on
 iOS the new one registers as visible but never actually presents, leaving the screen
 non-interactable until you navigate away. Chain through Sheet's `onClosed` prop instead.
-Reference: `app/list/[id]/game/[itemId].tsx`.
+Reference: the Games paste/teach flow in `src/screens/GamesHome.tsx` +
+`src/screens/listDetail/GameScorePasteSheet.tsx`.
 
 ## Sheet keyboard handling is centralized in `src/ui/Sheet.tsx`
 

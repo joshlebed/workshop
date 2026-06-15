@@ -66,55 +66,36 @@ describe("buildNewListNotification", () => {
   });
 });
 
-describe("legacy game list filtering", () => {
-  const {
-    isLegacyGameListSummaryRow,
-    isRetiredLegacyGameListConfig,
-    wouldCreateRetiredLegacyGameList,
-  } = __test;
+describe("retired game-list write guard", () => {
+  const { isRetiredGameListConfig, wouldIntroduceRetiredGameList } = __test;
 
-  it("hides leaderboard-module lists from the list summary surface", () => {
-    expect(isLegacyGameListSummaryRow({ item_kind: "link", modules: ["leaderboard"] })).toBe(true);
-    expect(isLegacyGameListSummaryRow({ item_kind: "link", modules: ["todo", "ranking"] })).toBe(
-      false,
-    );
+  it("flags retired configs (leaderboard module or old item_kind=game)", () => {
+    expect(isRetiredGameListConfig({ itemKind: "link", modules: ["leaderboard"] })).toBe(true);
+    expect(isRetiredGameListConfig({ itemKind: "game", modules: ["ranking"] })).toBe(true);
+    expect(isRetiredGameListConfig({ itemKind: "link", modules: ["todo", "ranking"] })).toBe(false);
   });
 
-  it("hides old item_kind=game rows even without the leaderboard module", () => {
-    expect(isLegacyGameListSummaryRow({ item_kind: "game", modules: [] })).toBe(true);
-    expect(isLegacyGameListSummaryRow({ item_kind: null, modules: [] })).toBe(false);
+  it("treats missing itemKind/modules as a normal non-game config", () => {
+    expect(isRetiredGameListConfig({ itemKind: "plain", modules: null })).toBe(false);
+    expect(isRetiredGameListConfig({ itemKind: "game", modules: null })).toBe(true);
+    expect(isRetiredGameListConfig({})).toBe(false);
   });
 
-  it("treats null modules as a normal non-game list unless the old kind is game", () => {
-    expect(isLegacyGameListSummaryRow({ item_kind: "plain", modules: null })).toBe(false);
-    expect(isLegacyGameListSummaryRow({ item_kind: "game", modules: null })).toBe(true);
-  });
-
-  it("flags retired configs for new list writes", () => {
-    expect(isRetiredLegacyGameListConfig({ itemKind: "link", modules: ["leaderboard"] })).toBe(
-      true,
-    );
-    expect(isRetiredLegacyGameListConfig({ itemKind: "game", modules: ["ranking"] })).toBe(true);
-    expect(isRetiredLegacyGameListConfig({ itemKind: "link", modules: ["todo", "ranking"] })).toBe(
-      false,
-    );
-  });
-
-  it("blocks only transitions that introduce a retired legacy game-list config", () => {
+  it("blocks only transitions that introduce a retired game-list config", () => {
     expect(
-      wouldCreateRetiredLegacyGameList(
+      wouldIntroduceRetiredGameList(
         { itemKind: "link", modules: ["todo"] },
         { modules: ["todo", "leaderboard"] },
       ),
     ).toBe(true);
     expect(
-      wouldCreateRetiredLegacyGameList(
+      wouldIntroduceRetiredGameList(
         { itemKind: "link", modules: ["leaderboard"] },
         { modules: ["leaderboard", "ranking"] },
       ),
     ).toBe(false);
     expect(
-      wouldCreateRetiredLegacyGameList(
+      wouldIntroduceRetiredGameList(
         { itemKind: "link", modules: ["leaderboard"] },
         { modules: ["ranking"] },
       ),
@@ -232,16 +213,11 @@ describe("createListSchema", () => {
   });
 });
 
-describe("retired legacy game-list writes", () => {
-  it("logs and rejects attempts to create a leaderboard list before DB access", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+describe("retired game-list writes", () => {
+  it("rejects attempts to create a leaderboard list before DB access", async () => {
     const res = await listRoutes.request("/", {
       method: "POST",
-      headers: {
-        ...authHeaders(),
-        "X-Workshop-Platform": "ios",
-        "X-Workshop-App-Version": "0.4.1",
-      },
+      headers: authHeaders(),
       body: JSON.stringify({
         name: "Geo games",
         emoji: "🎮",
@@ -255,22 +231,6 @@ describe("retired legacy game-list writes", () => {
     expect(await res.json()).toMatchObject({
       code: "VALIDATION",
       details: { code: "legacy_game_lists_retired" },
-    });
-    const entry = logSpy.mock.calls
-      .map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
-      .find((row) => row.msg === "legacy_game_list_retired_rejected");
-    expect(entry).toMatchObject({
-      kind: "legacy_game_list_retired_rejected",
-      event: "legacy_game_list_retired_rejected",
-      operation: "create",
-      method: "POST",
-      route: "/",
-      status: 400,
-      user_id: validUuid,
-      platform: "ios",
-      app_version: "0.4.1",
-      proposed_item_kind: "link",
-      proposed_modules: ["leaderboard"],
     });
   });
 });

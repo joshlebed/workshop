@@ -3,8 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { type DbListSavedView, listSavedViews, lists } from "../../db/schema.js";
-import { isLegacyGameListConfig, logLegacyGameListAccess } from "../../lib/legacyGameLists.js";
+import { type DbListSavedView, listSavedViews } from "../../db/schema.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
@@ -128,14 +127,6 @@ listViewRoutes.get("/:id/views", requireListMember, async (c) => {
     // Display order: explicit position first (creation order today), then
     // created_at as a stable tiebreaker for any null-position legacy rows.
     .orderBy(sql`${listSavedViews.position} ASC NULLS LAST`, sql`${listSavedViews.createdAt} ASC`);
-  const [list] = await db
-    .select({ itemKind: lists.itemKind, modules: lists.modules })
-    .from(lists)
-    .where(eq(lists.id, listId))
-    .limit(1);
-  if (list && isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
-    logLegacyGameListAccess(c, { operation: "views", listId });
-  }
   return ok(c, { views: rows.map(toViewShape) });
 });
 

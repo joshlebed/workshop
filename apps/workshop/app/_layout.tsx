@@ -255,7 +255,6 @@ function AuthGate() {
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="share/pick-leaderboard" options={{ animation: "slide_from_right" }} />
       </Stack>
     </SafeAreaView>
   );

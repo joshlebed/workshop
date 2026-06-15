@@ -704,51 +704,8 @@ export interface MarkActivityReadResponse {
   ok: true;
 }
 
-// --- Scores (leaderboard-list response shape; mapped games may be backed by game_scores) ---
-
-export interface ItemScore {
-  itemId: string;
-  userId: string;
-  /** YYYY-MM-DD calendar day, week key, or "all-time" — kind-agnostic bucket. */
-  periodKey: string;
-  scoreValue: number | null;
-  scoreRaw: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface UpsertItemScoreRequest {
-  periodKey: string;
-  scoreRaw: string;
-}
-
-export interface ItemScoreResponse {
-  score: ItemScore;
-}
-
-export interface LeaderboardEntry {
-  userId: string;
-  displayName: string | null;
-  scoreRaw: string | null;
-  scoreValue: number | null;
-  updatedAt: string | null;
-  /**
-   * Server-computed ranking among players who posted a score for this period
-   * (1 = best). Null for unplayed slots. Uses standard ("1224") rank with
-   * ties getting the same rank; direction is per-item (`items.scoreDirection`,
-   * 'desc' = higher is better, 'asc' = lower is better). Null when the
-   * item has no `score_regex` configured (no reliable score parse).
-   */
-  rank: number | null;
-}
-
-export interface LeaderboardResponse {
-  itemId: string;
-  periodKey: string;
-  entries: LeaderboardEntry[];
-}
-
-export interface ListScoresResponse {
-  periodKey: string;
-  scoresByItem: Record<string, LeaderboardEntry[]>;
-}
+// Daily-game score types live in `./games` (`GameStandingsEntry`,
+// `GameLeaderboardResponse`, etc.) now that the Games tab is the canonical
+// surface. The legacy Lists-side leaderboard score shapes (`ItemScore`,
+// `LeaderboardEntry`, `ListScoresResponse`, …) were removed with the
+// `/v1/items/:id/scores` + `/v1/lists/:id/scores` bridge.

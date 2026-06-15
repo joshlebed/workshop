@@ -21,7 +21,7 @@
 
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { gameScores, itemScores, lists, users } from "../db/schema.js";
+import { gameScores, lists, users } from "../db/schema.js";
 import { userLabel } from "./admin.js";
 import { getConfig } from "./config.js";
 import { notifyDiscord } from "./discord.js";
@@ -173,10 +173,11 @@ async function loadListName(listId: string, db: DbClient = getDb()): Promise<str
 }
 
 /**
- * True if the user already has at least one score (in either the canonical
- * `game_scores` table or the legacy `item_scores` fallback). Call this BEFORE
- * the upsert so the row being written doesn't count — a `false` result means
- * the post in flight is the user's first ever.
+ * True if the user already has at least one score in the canonical
+ * `game_scores` table. Call this BEFORE the upsert so the row being written
+ * doesn't count — a `false` result means the post in flight is the user's
+ * first ever. (Daily-game scores are now Games-only; the retired leaderboard
+ * `item_scores` fallback was dropped after the migration.)
  */
 export async function userHasAnyScore(userId: string, db: DbClient = getDb()): Promise<boolean> {
   const [game] = await db
@@ -184,13 +185,7 @@ export async function userHasAnyScore(userId: string, db: DbClient = getDb()): P
     .from(gameScores)
     .where(eq(gameScores.userId, userId))
     .limit(1);
-  if (game) return true;
-  const [item] = await db
-    .select({ userId: itemScores.userId })
-    .from(itemScores)
-    .where(eq(itemScores.userId, userId))
-    .limit(1);
-  return Boolean(item);
+  return Boolean(game);
 }
 
 // --- Async wrappers (best-effort; never throw to the caller) ----------------

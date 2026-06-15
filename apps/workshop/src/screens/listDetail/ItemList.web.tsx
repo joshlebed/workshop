@@ -31,22 +31,17 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { Item, LeaderboardEntry, ListMemberSummary } from "@workshop/shared";
+import type { Item } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { PullToRefresh } from "../../components/PullToRefresh";
 import { Text, tokens } from "../../ui/index";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
-import { GameLeaderboardCard } from "./GameLeaderboardCard";
 import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
 
 const ORDERED_DROP_END_ID = "ordered-drop-end";
-
-// Stable empty refs so leaderboard cards without scores still hit the memo.
-const EMPTY_ENTRIES: LeaderboardEntry[] = [];
-const EMPTY_MEMBERS: ListMemberSummary[] = [];
 
 export function ItemList({
   ordered,
@@ -60,16 +55,7 @@ export function ItemList({
   memberNameById,
   showProvenance,
   selfId,
-  playedByItem,
   letterboxdBadgeByItem,
-  totalPlayers,
-  isGameKind,
-  viewingToday,
-  scoresByItem,
-  members,
-  scoresLoading,
-  onPlayGame,
-  onPasteScore,
   accent,
   onReorderOrdered,
   onPromoteToOrdered,
@@ -101,51 +87,10 @@ export function ItemList({
     if (selfId && item.addedBy === selfId) return null;
     return memberNameById.get(item.addedBy) ?? null;
   };
-  // Leaderboard lists swap the "Added by …" line for "X of Y played today",
-  // the actual social signal on a daily-games shelf. Returns `undefined` to
-  // leave the default provenance untouched.
-  const resolveProvenanceOverride = (item: Item): string | undefined => {
-    const letterboxdBadge = letterboxdBadgeByItem?.get(item.id);
-    if (letterboxdBadge) return letterboxdBadge;
-    if (!playedByItem || totalPlayers == null) return undefined;
-    const played = playedByItem.get(item.id) ?? 0;
-    return `${played} of ${totalPlayers} played today`;
-  };
-  // Leaderboard lists swap the plain row for a rich standings card. The card
-  // is the same on web and native; web drags via the wrapper's pointer
-  // listeners, so there's no `onLongPressBody` here.
-  const renderGameCard = useCallback(
-    (item: Item, section: "ordered" | "unordered" | "completed", isDragging: boolean) => (
-      <GameLeaderboardCard
-        key={item.id}
-        item={item}
-        section={section}
-        isDragging={isDragging}
-        accent={accent}
-        entries={scoresByItem?.[item.id] ?? EMPTY_ENTRIES}
-        members={members ?? EMPTY_MEMBERS}
-        selfId={selfId}
-        viewingToday={viewingToday ?? true}
-        loading={scoresLoading}
-        onPressBody={() => onRowPressBody(item, section)}
-        onMenu={() => onRowMenu(item, section)}
-        onPlay={() => onPlayGame?.(item)}
-        onPaste={() => onPasteScore?.(item)}
-      />
-    ),
-    [
-      accent,
-      scoresByItem,
-      members,
-      selfId,
-      viewingToday,
-      scoresLoading,
-      onRowPressBody,
-      onRowMenu,
-      onPlayGame,
-      onPasteScore,
-    ],
-  );
+  // Letterboxd-match lists swap the "Added by …" line for the overlap badge.
+  // Returns `undefined` to leave the default provenance untouched.
+  const resolveProvenanceOverride = (item: Item): string | undefined =>
+    letterboxdBadgeByItem?.get(item.id);
   // Two sensors, never one with mixed activation:
   //   - MouseSensor with `distance: 4`  → desktop stays snappy (no delay).
   //   - TouchSensor with `delay: 250, tolerance: 8` → mobile web uses
@@ -231,23 +176,19 @@ export function ItemList({
             <SectionHeader kind="ordered" count={ordered.length} listItemKind={listItemKind} />
           ) : null}
           <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
-            {ordered.map((item, index) =>
-              isGameKind ? (
-                <SortableGameCard key={item.id} item={item} render={renderGameCard} />
-              ) : (
-                <SortableOrderedRow
-                  key={item.id}
-                  item={item}
-                  rank={index + 1}
-                  addedByName={resolveAddedByName(item)}
-                  provenanceOverride={resolveProvenanceOverride(item)}
-                  accent={accent}
-                  onMenu={() => onRowMenu(item, "ordered")}
-                  onPressBody={() => onRowPressBody(item, "ordered")}
-                  onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
-                />
-              ),
-            )}
+            {ordered.map((item, index) => (
+              <SortableOrderedRow
+                key={item.id}
+                item={item}
+                rank={index + 1}
+                addedByName={resolveAddedByName(item)}
+                provenanceOverride={resolveProvenanceOverride(item)}
+                accent={accent}
+                onMenu={() => onRowMenu(item, "ordered")}
+                onPressBody={() => onRowPressBody(item, "ordered")}
+                onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
+              />
+            ))}
           </SortableContext>
 
           {showOrderedDropEnd ? <OrderedDropEndZone highlighted={draggingFromUnordered} /> : null}
@@ -263,24 +204,20 @@ export function ItemList({
                   listItemKind={listItemKind}
                 />
               ) : null}
-              {unordered.map((item) =>
-                isGameKind ? (
-                  renderGameCard(item, "unordered", false)
-                ) : (
-                  <UnorderedRow
-                    key={item.id}
-                    draggable={rankingOn}
-                    item={item}
-                    isNew={newItemIds.has(item.id)}
-                    addedByName={resolveAddedByName(item)}
-                    provenanceOverride={resolveProvenanceOverride(item)}
-                    accent={accent}
-                    onMenu={() => onRowMenu(item, "unordered")}
-                    onPressBody={() => onRowPressBody(item, "unordered")}
-                    onPressCover={resolveRowPressCover?.(item, "unordered") ?? undefined}
-                  />
-                ),
-              )}
+              {unordered.map((item) => (
+                <UnorderedRow
+                  key={item.id}
+                  draggable={rankingOn}
+                  item={item}
+                  isNew={newItemIds.has(item.id)}
+                  addedByName={resolveAddedByName(item)}
+                  provenanceOverride={resolveProvenanceOverride(item)}
+                  accent={accent}
+                  onMenu={() => onRowMenu(item, "unordered")}
+                  onPressBody={() => onRowPressBody(item, "unordered")}
+                  onPressCover={resolveRowPressCover?.(item, "unordered") ?? undefined}
+                />
+              ))}
             </>
           ) : null}
 
@@ -301,28 +238,24 @@ export function ItemList({
                   }
                 />
               ) : null}
-              {completedToRender.map((item) =>
-                isGameKind ? (
-                  renderGameCard(item, "completed", false)
-                ) : (
-                  <ItemRow
-                    key={item.id}
-                    item={item}
-                    section="completed"
-                    isNew={false}
-                    isDragging={false}
-                    addedByName={resolveAddedByName(item)}
-                    provenanceOverride={resolveProvenanceOverride(item)}
-                    accent={accent}
-                    onMenu={() => onRowMenu(item, "completed")}
-                    onPressBody={() => onRowPressBody(item, "completed")}
-                    onTapCompleted={
-                      item.kind !== "spotify_album" ? () => onUncompleteItem(item) : undefined
-                    }
-                    onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
-                  />
-                ),
-              )}
+              {completedToRender.map((item) => (
+                <ItemRow
+                  key={item.id}
+                  item={item}
+                  section="completed"
+                  isNew={false}
+                  isDragging={false}
+                  addedByName={resolveAddedByName(item)}
+                  provenanceOverride={resolveProvenanceOverride(item)}
+                  accent={accent}
+                  onMenu={() => onRowMenu(item, "completed")}
+                  onPressBody={() => onRowPressBody(item, "completed")}
+                  onTapCompleted={
+                    item.kind !== "spotify_album" ? () => onUncompleteItem(item) : undefined
+                  }
+                  onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
+                />
+              ))}
             </>
           ) : null}
         </ScrollView>
@@ -408,46 +341,6 @@ function stripButtonRole(attributes: unknown): Record<string, unknown> {
   if (!attributes || typeof attributes !== "object") return {};
   const { role: _role, tabIndex: _tabIndex, ...rest } = attributes as Record<string, unknown>;
   return rest;
-}
-
-interface SortableGameCardProps {
-  item: Item;
-  render: (
-    item: Item,
-    section: "ordered" | "unordered" | "completed",
-    isDragging: boolean,
-  ) => ReactNode;
-}
-
-// Ordered leaderboard cards: same @dnd-kit wiring as SortableOrderedRow, but
-// renders the rich card. The whole card is the drag target (listeners on the
-// wrapper); a press-and-hold reorders, a tap falls through to the card's own
-// Pressables.
-function SortableGameCard({ item, render }: SortableGameCardProps) {
-  const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
-    id: item.id,
-    data: { section: "ordered" },
-  });
-
-  const webStyle = {
-    transform: CSS.Transform.toString(transform) ?? undefined,
-    transition: transition ?? undefined,
-    touchAction: "pan-y",
-    userSelect: "none",
-  } as unknown as object;
-
-  const wrapperAttributes = stripButtonRole(attributes);
-
-  return (
-    <View
-      ref={setNodeRef as unknown as React.Ref<View>}
-      style={webStyle}
-      {...((listeners ?? {}) as unknown as Record<string, unknown>)}
-      {...(wrapperAttributes as unknown as Record<string, unknown>)}
-    >
-      {render(item, "ordered", isDragging)}
-    </View>
-  );
 }
 
 interface UnorderedRowProps {

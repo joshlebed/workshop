@@ -92,26 +92,27 @@ Revert a poisoned config by copying the prior revision's values back onto `games
 `scripts/rescore-game.ts`. If you add another path that writes `games.score_spec` /
 `summary_spec` / `score_direction`, write the revision row there too.
 
-A leaderboard item's `game_id` is set by migrations 0027/0029 for historical rows **and**
-self-heals on item create/edit + score upsert (`routes/v1/items.ts`, `routes/v1/scores.ts`).
-Mapped items keep the old list/item URLs but read/write `game_scores`, so the
-`(game_id,user_id,period_key)` primary key enforces one score per player per game per day
-across both the list and Games tab. Unmapped legacy items still fall back to `item_scores`.
-New leaderboard-list creation is retired: list create/duplicate/config changes must not
-introduce `leaderboard` or old `item_kind='game'`; keep existing legacy direct reads working
-until usage is zero and the backend bridge can be removed. Cleanup monitoring should query
-structured logs for `legacy_game_list_access` (authorized legacy detail/items/views/read/score
-routes and public previews) and `legacy_game_list_retired_rejected` (stale clients attempting
-to create or enable retired configs).
+A leaderboard item's `game_id` was set by migrations 0027/0029 for historical rows and
+still self-heals on item create/edit (`routes/v1/items.ts`). Daily-game scores are now
+**Games-only** (`/v1/games/:id/scores`): the legacy Lists-side score bridge
+(`/v1/items/:id/scores` + `/v1/lists/:id/scores`, the old `routes/v1/scores.ts`) and its
+structured-log monitoring (`lib/legacyGameLists.ts`, the `legacy_game_list_access` /
+`legacy_game_list_retired_rejected` events) were **removed** once prod usage hit zero — see
+`docs/legacy-games-cleanup-audit.md`. New leaderboard-list creation stays blocked: list
+create/duplicate/config changes that introduce `leaderboard` or old `item_kind='game'` get a
+400 `legacy_game_lists_retired` (`isRetiredGameListConfig` in `routes/v1/lists.ts`), and the
+lone legacy "Geo games" row is hidden from `GET /v1/lists`. The `item_scores` table still
+holds frozen historical rows (no route reads or writes it anymore; `scripts/rescore-game.ts`
+is the last code touching it) and is slated to be dropped in a follow-up migration.
 **Changing a game's scoring rule only fixes new posts** unless you also run
 `scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first)
 — it replays the current parser over stored `score_raw` in both `game_scores` and legacy
 `item_scores`, importing the real parser so it can't drift. The client mirrors the same
-distillation for _display_: leaderboard rows and the list/Games clipboard recaps render
-through `apps/workshop/src/lib/scoresSummary.ts` (formatters live on the registry), which
-strips URLs/headers so a URL-only share shows "Played", never the raw link; Games recaps
-append a **play link** (`/g/:token`, see `game_share_links` below), not a friend-invite or
-list link. The paste sheet previews the parse client-side
+distillation for _display_: Games standings rows and the Games clipboard recap render through
+`summarizeGameScoreBody` in `apps/workshop/src/lib/scoresSummary.ts` (formatters live on the
+registry), which strips URLs/headers so a URL-only share shows "Played", never the raw link;
+Games recaps append a **play link** (`/g/:token`, see `game_share_links` below), not a
+friend-invite or list link. The paste sheet previews the parse client-side
 (`src/lib/scoreSpecs.ts` mirrors the backend chain) — keep the two chains in sync.
 
 ## Migration journal `when` values must be monotonic
@@ -124,11 +125,15 @@ corrected and `src/db/migrate.ts` carries a one-time fixup that rewrites the rec
 (delete it once prod has run it). If you ever hand-edit `drizzle/meta/_journal.json`, keep
 `when` strictly increasing and never in the future.
 
-## `leaderboard` implies an ordered, reorderable game list (even without `ranking`)
+## `leaderboard` implies `ordered` bucketing in `items.ts` (even without `ranking`)
 
-A leaderboard's games are an ordered list the user can drag-reorder in the status-card view
-(`GameLeaderboardCard`). Three spots in `routes/v1/items.ts` enforce this so it doesn't
-depend on the `ranking` module being present:
+> Note: the Lists-side reorderable game card (`GameLeaderboardCard`) was removed with the
+> Games migration, so no live client surface drives this anymore — only the hidden legacy
+> "Geo games" row still carries the `leaderboard` module. The `items.ts` bucketing below is
+> kept so that row stays coherent; don't build new behavior on it.
+
+A leaderboard's games bucket as an ordered list. Three spots in `routes/v1/items.ts` enforce
+this so it doesn't depend on the `ranking` module being present:
 
 - **`fetchItemsForList`** buckets a leaderboard's games into `ordered` (not `unordered`),
   in the SQL's position-ASC order. A null-position game (added before this rule) sorts last

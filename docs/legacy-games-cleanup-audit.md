@@ -1,8 +1,10 @@
 # Legacy game-list → Games migration: pre-cleanup audit
 
-**Status: ✅ cleared to begin cleanup (in the staged order below).** Run date
-2026-06-14. This is the objective "safe to delete" signal — prod evidence, not
-code intent — gathered before retiring the legacy leaderboard-list surfaces.
+**Status: ✅ cleanup in progress.** Audit run 2026-06-14; owner chose **proceed**
+2026-06-15. PR 1 (remove all the Lists-side leaderboard code + the read/write
+bridge) is done — see §7. PR 2 (drop the `item_scores` table) follows once PR 1
+deploys. Original audit below is the objective "safe to delete" signal — prod
+evidence, not code intent.
 
 Re-run any time with the two committed, **read-only** tools:
 
@@ -264,3 +266,44 @@ dormant, not gone.
 
 No destructive change was made in this session — the bridge still guards the three
 stale clients, so removal awaits an explicit go-ahead or the window closing.
+
+---
+
+## 7. Execution — "proceed" chosen 2026-06-15
+
+The owner chose **proceed now**, accepting that the three dormant pre-Games iOS
+apps (Renata / Paloma / Roman) show broken `Geo games` scores if reopened before
+they update TestFlight. Done in the production-safe order (code first, table drop
+second) so the irreversible `item_scores` drop lands against prod that no longer
+reads the table.
+
+**PR 1 — remove all the code (this PR).** Reversible, non-destructive; `item_scores`
+table kept.
+
+- **Backend:** deleted `lib/legacyGameLists.ts` + `routes/v1/scores.ts` (the
+  `itemScoreRoutes` / `listScoresRoutes` bridge) and its mounts; removed every
+  `legacy_game_list_access` / `legacy_game_list_retired_rejected` log site
+  (`lists.ts`, `views.ts`); replaced the detector with a minimal local
+  `isRetiredGameListConfig` guard (still 400s new leaderboard/`item_kind=game`
+  writes, no logging); `opsNotifications.userHasAnyScore` and the `leaderboard`
+  module-removal manifest now read `game_scores` only; deleted the bridge
+  integration test + trimmed `scores.test.ts` to the still-live helpers
+  (`parseScoreValue` / `rankEntries` / schemas used by Games).
+- **Client:** deleted `GameLeaderboardCard`, the per-game board route
+  (`app/.../game/[itemId].tsx`), `/share/pick-leaderboard`, `api/scores.ts`;
+  stripped every `isGameKind` branch from `ListDetail` + both `ItemList` variants;
+  removed `summarizeScoreBody` / `buildTodaysScoresSummary` (Games keeps the
+  `…Game…` twins) and the orphaned `gameScores` query keys. `GameScorePasteSheet`
+  / `useReturnToPaste` / `StandingsCard` / `DayRail` stay (Games-tab users).
+- **Shared:** removed the orphaned `ItemScore` / `LeaderboardEntry` /
+  `ListScoresResponse` (+ siblings) types.
+- Deleted `scripts/cleanup-invalid-scores.ts` (one-off `item_scores`-only cleanup
+  that depended on the removed `summarizeScoreBody`).
+- Verified: typecheck + lint + knip clean; backend 824 / workshop 148 / shared 203
+  tests pass; `expo export --platform ios` bundles; browser smoke test confirmed
+  Games intact, `Geo games` hidden, and empty + populated list details render.
+
+**PR 2 — drop `item_scores` (follow-up).** After PR 1 deploys to prod: take a Neon
+restore point, then a Drizzle migration `DROP`s `item_scores`, removing the schema
+export, `DbItemScore` type, and the remaining `rescore-game.ts` / `seed.ts`
+references. Re-run the DB audit immediately before to re-confirm `0` unmapped rows.
