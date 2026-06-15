@@ -606,9 +606,9 @@ This is where the iOS Safari URL-bar/home-indicator tint (`<meta name="theme-col
 ## Share-link Open Graph previews
 
 Every URL on the production domain renders an Open Graph + Twitter Card preview so iMessage,
-Slack, Facebook, etc. show a thumbnail instead of a dead link. Five routes — four layered
+Slack, Facebook, etc. show a thumbnail instead of a dead link. Six routes — four layered
 around the per-list `share_slug` / `share_visibility` model owned by the backend `lists`
-table, plus the friend-invite card:
+table, plus the friend-invite card and the play-link card:
 
 1. **Default** — `apps/workshop/public/index.html` ships a static set of OG tags pointing at
    `/og/default.png`. Applied to every URL with no more specific override (home, sign-in,
@@ -632,6 +632,15 @@ table, plus the friend-invite card:
    the list routes it never falls through to the default card on a missing preview — a
    friend link always reads as a friend invite, so a null preview (API down / games flag
    off / bad token) still emits the generic "Add a friend" 👋 card.
+6. **Play link** — `functions/g/[token].ts` intercepts the Games copy-scores CTA
+   (`/g/:token`, minted by `POST /v1/game-share`). Calls the public `GET /v1/game-share/:token`
+   resolve and emits a play card inviting the recipient to "play games with `<name>`"
+   ("Join me and play games on Workshop.dev"), image via `functions/og/g/[token].ts`. Like
+   the friend route it never falls through to the default card — a null preview (API down /
+   flag off / bad token) still emits the generic 🎮 "Play daily games" card. The link itself
+   is a per-(user, day) token that the in-app `/g/:token` resolver routes:
+   already-friends/self → Games home, everyone else → the sharer's profile. It is **not** an
+   accept surface — opening it never forms a friend edge (that's the `/friends/accept` link).
 
 ```
 GET /l/:slug                → preview API → HTMLRewriter swaps defaults for per-list tags
@@ -642,6 +651,8 @@ GET /invite/:token          → legacy preview API (back-compat) → per-list ta
 GET /og/invite/:token.png   → legacy PNG renderer (back-compat)
 GET /friends/accept/:token  → friends preview API → inviter-named friend tags
 GET /og/friend/:token.png   → workers-og  → 1200×630 friend PNG (inviter named, 👋 card)
+GET /g/:token               → game-share resolve API → sharer-named play tags
+GET /og/g/:token.png        → workers-og  → 1200×630 play PNG (sharer named, 🎮 card)
 GET /og/:name.png           → workers-og  → 1200×630 static PNG (default, locked-list)
 ```
 

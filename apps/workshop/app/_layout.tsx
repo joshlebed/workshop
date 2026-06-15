@@ -15,7 +15,11 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
-import { PENDING_FRIEND_INVITE_TOKEN_KEY, PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
+import {
+  PENDING_FRIEND_INVITE_TOKEN_KEY,
+  PENDING_GAME_SHARE_TOKEN_KEY,
+  PENDING_INVITE_TOKEN_KEY,
+} from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
 import { getItem, removeItem } from "../src/lib/storage";
@@ -131,6 +135,9 @@ function AuthGate() {
     // invite, it must mount while signed-out so it can stash its token before
     // forwarding to /sign-in.
     const onFriendAccept = first === "friends" && segments[1] === "accept";
+    // Play link (`/g/:token`, Games copy-scores CTA). Same deal — mount
+    // signed-out so it can stash before /sign-in, then resolve + route.
+    const onGameShare = first === "g";
 
     if (status !== "signed-in") {
       postSignInResolvedRef.current = false;
@@ -146,7 +153,14 @@ function AuthGate() {
       // Let `/invite/:token`, `/onboarding/accept-invite`, and the public
       // list landing mount briefly so they can stash a return target
       // before AuthGate forwards to /sign-in.
-      if (!onSignIn && !onInvite && !onAcceptInvite && !onListLanding && !onFriendAccept) {
+      if (
+        !onSignIn &&
+        !onInvite &&
+        !onAcceptInvite &&
+        !onListLanding &&
+        !onFriendAccept &&
+        !onGameShare
+      ) {
         router.replace("/sign-in");
       }
       return;
@@ -178,6 +192,13 @@ function AuthGate() {
       const stashedFriend = await getItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => null);
       if (stashedFriend) {
         router.replace(`/friends/accept/${encodeURIComponent(stashedFriend)}`);
+        return;
+      }
+      // Same round-trip for a play link (`/g/:token`) — land back on the
+      // resolver, which forwards to Games home or the sharer's profile.
+      const stashedGameShare = await getItem(PENDING_GAME_SHARE_TOKEN_KEY).catch(() => null);
+      if (stashedGameShare) {
+        router.replace({ pathname: "/g/[token]", params: { token: stashedGameShare } });
         return;
       }
       const returnPath = await getItem(PENDING_RETURN_PATH_KEY).catch(() => null);
@@ -230,6 +251,7 @@ function AuthGate() {
         <Stack.Screen name="invite/[token]" />
         <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="friends/accept/[token]" />
+        <Stack.Screen name="g/[token]" />
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />

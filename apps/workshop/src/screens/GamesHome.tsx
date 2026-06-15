@@ -28,6 +28,7 @@ import { fetchActivity } from "../api/activity";
 import { createFriendInvite, fetchFriends } from "../api/friends";
 import {
   addGame,
+  createGameShareLink,
   fetchGameDiscovery,
   fetchMyGames,
   moveGame,
@@ -112,6 +113,9 @@ export function GamesHome() {
   const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  // The copy-scores recap appends a per-day "play with me" link (`/g/:token`),
+  // distinct from the friend-invite link the empty-state "Add friends" CTA uses.
+  const [scoreShareUrl, setScoreShareUrl] = useState<string | null>(null);
   const [copyingScores, setCopyingScores] = useState(false);
   // Track in-flight + completed one-tap discovery adds by game id so each row
   // can show its own spinner / "✓ Added" pill (one mutation, many rows).
@@ -284,7 +288,7 @@ export function GamesHome() {
   const onCopyScores = async () => {
     const selfId = user?.id ?? null;
     const preview = buildTodaysGameScoresSummary({
-      friendUrl: "",
+      shareUrl: "",
       games: myGames,
       selfId,
       dateKey: todayKey,
@@ -299,14 +303,14 @@ export function GamesHome() {
 
     try {
       setCopyingScores(true);
-      let url = inviteUrl;
+      let url = scoreShareUrl;
       if (!url) {
-        const invite = await createFriendInvite(token);
-        url = invite.url;
-        setInviteUrl(url);
+        const link = await createGameShareLink(token);
+        url = link.url;
+        setScoreShareUrl(url);
       }
       const summary = buildTodaysGameScoresSummary({
-        friendUrl: url,
+        shareUrl: url,
         games: myGames,
         selfId,
         dateKey: todayKey,
@@ -319,7 +323,7 @@ export function GamesHome() {
         tone: ok ? "success" : "danger",
       });
     } catch (e) {
-      showToast({ message: errorMessage(e, "Couldn't create an invite link."), tone: "danger" });
+      showToast({ message: errorMessage(e, "Couldn't create a share link."), tone: "danger" });
     } finally {
       setCopyingScores(false);
     }

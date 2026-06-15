@@ -222,15 +222,23 @@ export async function fetchMutuals(token: string | null): Promise<MutualsRespons
   return mutualsResponseSchema.parse(raw);
 }
 
-/** `GET /v1/friends/users/:userId?period=` — viewer-relative profile. */
+/**
+ * `GET /v1/friends/users/:userId?period=` — viewer-relative profile. `via` is
+ * an optional play-link token (`/g/:token`): when the viewer has no relationship
+ * and no mutuals, a valid token for this user vouches them past the anti-probe
+ * 404 so a play-link recipient can still see who they are and add them.
+ */
 export async function fetchFriendProfile(
   userId: string,
   periodKey: string,
   token: string | null,
+  via?: string,
 ): Promise<FriendProfileResponse> {
+  const params = new URLSearchParams({ period: periodKey });
+  if (via) params.set("via", via);
   const raw = await apiRequest<unknown>({
     method: "GET",
-    path: `/v1/friends/users/${encodeURIComponent(userId)}?period=${encodeURIComponent(periodKey)}`,
+    path: `/v1/friends/users/${encodeURIComponent(userId)}?${params.toString()}`,
     token,
   });
   return friendProfileResponseSchema.parse(raw);

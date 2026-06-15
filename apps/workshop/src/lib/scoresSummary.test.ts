@@ -74,7 +74,7 @@ function myGame(id: string, title: string, url: string, entries: GameStandingsEn
 }
 
 const LIST_URL = "https://workshop-a2v.pages.dev/list/list-1";
-const FRIEND_URL = "https://workshop-a2v.pages.dev/friends/accept/invite123";
+const SHARE_URL = "https://workshop-a2v.pages.dev/g/play123";
 
 describe("summarizeScoreBody", () => {
   it("formats maptap by dropping the URL/date header", () => {
@@ -435,13 +435,13 @@ describe("summarizeGameScoreBody with a taught summarySpec", () => {
     ]);
     mg.game.summarySpec = taughtSummary;
     const summary = buildTodaysGameScoresSummary({
-      friendUrl: FRIEND_URL,
+      shareUrl: SHARE_URL,
       games: [mg],
       selfId: "me",
       dateKey: "2026-05-27",
     });
     expect(summary).toBe(
-      ["My game scores — May 27", "• Squardle", "🟩🟩🟨⬜⬜", "🟩🟩🟩🟩🟩", "3/6", FRIEND_URL].join(
+      ["My game scores — May 27", "• Squardle", "🟩🟩🟨⬜⬜", "🟩🟩🟩🟩🟩", "3/6", SHARE_URL].join(
         "\n",
       ),
     );
@@ -452,7 +452,7 @@ describe("buildTodaysGameScoresSummary", () => {
   it("returns null with no signed-in user", () => {
     expect(
       buildTodaysGameScoresSummary({
-        friendUrl: FRIEND_URL,
+        shareUrl: SHARE_URL,
         games: [
           myGame("a", "Wordle", "https://www.nytimes.com/games/wordle", [entry("me", "4/6")]),
         ],
@@ -465,7 +465,7 @@ describe("buildTodaysGameScoresSummary", () => {
   it("returns null when the viewer hasn't posted any game scores", () => {
     expect(
       buildTodaysGameScoresSummary({
-        friendUrl: FRIEND_URL,
+        shareUrl: SHARE_URL,
         games: [
           myGame("a", "Wordle", "https://www.nytimes.com/games/wordle", [entry("friend", "5/6")]),
         ],
@@ -475,9 +475,9 @@ describe("buildTodaysGameScoresSummary", () => {
     ).toBeNull();
   });
 
-  it("copies the viewer's Games-tab scores with a friend invite link", () => {
+  it("copies the viewer's Games-tab scores with a play link", () => {
     const summary = buildTodaysGameScoresSummary({
-      friendUrl: FRIEND_URL,
+      shareUrl: SHARE_URL,
       games: [
         myGame("a", "MapTap", "https://maptap.gg/", [
           entry("me", "www.maptap.gg May 27\n100🎯 95🏆 94🏅 52😔 77😂\nFinal score: 770"),
@@ -502,7 +502,7 @@ describe("buildTodaysGameScoresSummary", () => {
         "Final score: 770",
         "• Globle",
         "⬜🟨⬜🟧🟩 = 5",
-        FRIEND_URL,
+        SHARE_URL,
       ].join("\n"),
     );
   });

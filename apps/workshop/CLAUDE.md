@@ -63,6 +63,24 @@ render ranks/ties/"you" highlighting straight from the entries. After accept/unf
 invalidate both `queryKeys.friends.all` and the `["games"]` prefix (friendship gates score
 visibility); cross-client propagation otherwise waits on the 15s `useLivePollingInterval`.
 
+## Play links — the Games copy-scores CTA (`/g/:token`)
+
+`GamesHome`'s copy-scores recap (`buildTodaysGameScoresSummary`) appends a **play link**, not
+a friend-invite link — `onCopyScores` mints it via `createGameShareLink` (`POST /v1/game-share`,
+per-(user, day), cached in a separate `scoreShareUrl` state from the empty-state "Add friends"
+invite). The empty-state "Add friends" CTA still uses the friend-invite link
+(`createFriendInvite`); only the recap changed. The landing screen `app/g/[token].tsx` (root
+stack, NOT `(tabs)`) is a pure resolver: it resolves the token (`fetchGameShareLink`) and
+**redirects** — `viewer.isSelf || viewer.isFriend` → `/games`, else →
+`/friends/:userId?via=<token>` (the sharer's profile, where the `?via=` token vouches the
+viewer past the profile's anti-probe 404 so a stranger can add them). It reuses the friend
+accept deep-link round-trip: stashes `PENDING_GAME_SHARE_TOKEN_KEY`, AuthGate allows `/g/*`
+signed-out (`onGameShare`) + bounces back post-sign-in. **The resolve query must be fresh**
+(`staleTime: 0, gcTime: 0`) — it drives a one-shot redirect off the _current_ friendship, so a
+persisted/30s-cached resolve would route a re-opened link stale. The OG card + Pages function
+live in `functions/g/` + `functions/og/g/` (🎮 "play with me" card, distinct from the friend
+👋 card); AASA allowlists `/g/*`.
+
 ## Friends-first onboarding + game discovery (G3, issue #293)
 
 Games are discovered **through friends** — `GET /v1/games/discovery` (G2a) returns friends'

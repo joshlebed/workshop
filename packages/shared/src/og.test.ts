@@ -5,6 +5,11 @@ import {
   buildFriendOgDescription,
   buildFriendOgImageHtml,
   buildFriendOgTitle,
+  buildGameShareMetaTags,
+  buildGameShareOgDescription,
+  buildGameShareOgImageHtml,
+  buildGameShareOgTitle,
+  buildGameShareThumbnailSubtitle,
   buildLockedListMetaTags,
   buildMetaTags,
   buildMetaTagsRaw,
@@ -21,6 +26,9 @@ import {
   extractListIdFromPath,
   FRIEND_OG_EMOJI,
   FRIEND_OG_FALLBACK_TITLE,
+  GAME_SHARE_OG_EMOJI,
+  GAME_SHARE_OG_FALLBACK_TITLE,
+  GAME_SHARE_OG_GRADIENT,
   type InvitePreview,
   LOCKED_LIST_OG_SUBTITLE,
   OG_IMAGE_HEIGHT,
@@ -465,6 +473,116 @@ describe("friend invite previews", () => {
 
     it("truncates a very long inviter name", () => {
       const html = buildFriendOgImageHtml({ inviterName: "x".repeat(40) });
+      expect(html).toMatch(/x{27}…/);
+    });
+  });
+});
+
+describe("play link previews", () => {
+  describe("buildGameShareOgTitle", () => {
+    it("names the sharer when present", () => {
+      expect(buildGameShareOgTitle({ sharerName: "Natalie" })).toBe(
+        "Play games with Natalie on Workshop.dev",
+      );
+    });
+
+    it("falls back to a generic title with no name", () => {
+      expect(buildGameShareOgTitle({ sharerName: null })).toBe(GAME_SHARE_OG_FALLBACK_TITLE);
+      expect(buildGameShareOgTitle({ sharerName: "   " })).toBe(GAME_SHARE_OG_FALLBACK_TITLE);
+      expect(buildGameShareOgTitle(null)).toBe(GAME_SHARE_OG_FALLBACK_TITLE);
+    });
+  });
+
+  describe("buildGameShareOgDescription", () => {
+    it("names the sharer when present and never renders 'undefined'", () => {
+      const out = buildGameShareOgDescription({ sharerName: "Natalie" });
+      expect(out).toContain("Natalie");
+      expect(out).not.toContain("undefined");
+    });
+
+    it("falls back to a generic description with no name", () => {
+      const out = buildGameShareOgDescription(null);
+      expect(out).not.toContain("undefined");
+      expect(out).toContain("Workshop.dev");
+    });
+  });
+
+  describe("buildGameShareThumbnailSubtitle", () => {
+    it("renders the 'join me' call to action when the sharer is named", () => {
+      expect(buildGameShareThumbnailSubtitle({ sharerName: "Natalie" })).toBe(
+        "Join me and play games on Workshop.dev",
+      );
+    });
+
+    it("renders a generic CTA with no name", () => {
+      expect(buildGameShareThumbnailSubtitle(null)).toContain("Workshop.dev");
+    });
+  });
+
+  describe("buildGameShareMetaTags", () => {
+    const tags = buildGameShareMetaTags(
+      { sharerName: "Natalie" },
+      {
+        pageUrl: "https://workshop-a2v.pages.dev/g/abc12345",
+        imageUrl: "https://workshop-a2v.pages.dev/og/g/abc12345.png",
+      },
+    );
+
+    it("points og:image at the co-located play-link PNG", () => {
+      expect(tags).toContain(
+        `<meta property="og:image" content="https://workshop-a2v.pages.dev/og/g/abc12345.png" />`,
+      );
+    });
+
+    it("uses the named title and a summary_large_image card", () => {
+      expect(tags).toContain(`content="Play games with Natalie on Workshop.dev"`);
+      expect(tags).toContain(`<meta name="twitter:card" content="summary_large_image" />`);
+    });
+
+    it("emits exactly one tag per OG_META_SELECTORS entry", () => {
+      for (const selector of OG_META_SELECTORS) {
+        const attr = selector.match(/\[(.+?)="(.+?)"\]/);
+        if (!attr) continue;
+        const [, name, value] = attr;
+        expect(tags, `tags contain ${name}="${value}"`).toContain(`${name}="${value}"`);
+      }
+    });
+
+    it("escapes XML-unsafe characters in the sharer name", () => {
+      const unsafe = buildGameShareMetaTags(
+        { sharerName: 'A<b>"c"' },
+        { pageUrl: "https://x.test/g/a", imageUrl: "https://x.test/og/g/a.png" },
+      );
+      expect(unsafe).toContain("A&lt;b&gt;");
+      expect(unsafe).toContain("&quot;c&quot;");
+      expect(unsafe).not.toContain('"c"');
+    });
+  });
+
+  describe("buildGameShareOgImageHtml", () => {
+    it("renders the game emoji, the sharer name, the CTA, and the warm gradient", () => {
+      const [start, end] = GAME_SHARE_OG_GRADIENT;
+      const html = buildGameShareOgImageHtml({ sharerName: "Natalie" });
+      expect(html).toContain(GAME_SHARE_OG_EMOJI);
+      expect(html).toContain("Natalie");
+      expect(html).toContain("Join me and play games on Workshop.dev");
+      expect(html).toContain(`linear-gradient(135deg, ${start} 0%, ${end} 100%)`);
+    });
+
+    it("renders a generic card when no name is available", () => {
+      const html = buildGameShareOgImageHtml(null);
+      expect(html).toContain(GAME_SHARE_OG_EMOJI);
+      expect(html).toContain("Play daily games");
+    });
+
+    it("sets the exact pixel dimensions the meta tags advertise", () => {
+      const html = buildGameShareOgImageHtml({ sharerName: "Natalie" });
+      expect(html).toContain(`width: ${OG_IMAGE_WIDTH}px`);
+      expect(html).toContain(`height: ${OG_IMAGE_HEIGHT}px`);
+    });
+
+    it("truncates a very long sharer name", () => {
+      const html = buildGameShareOgImageHtml({ sharerName: "x".repeat(40) });
       expect(html).toMatch(/x{27}…/);
     });
   });

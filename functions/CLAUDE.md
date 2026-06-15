@@ -1,8 +1,8 @@
 # functions — Cloudflare Pages Functions
 
 Open Graph + Twitter Card preview machinery for every URL on the production domain
-(`workshop-a2v.pages.dev`). Four routes, layered around the `share_slug` / `share_visibility`
-model owned by the backend `lists` table:
+(`workshop-a2v.pages.dev`). Five routes, layered around the `share_slug` / `share_visibility`
+model owned by the backend `lists` table, plus the play-link card:
 
 1. **Default** — `apps/workshop/public/index.html` ships a static set of OG tags
    pointing at `/og/default.png`. Applied to every URL with no more specific override
@@ -30,6 +30,14 @@ model owned by the backend `lists` table:
    flag-off environment degrades to that generic card. Pure helpers (`buildFriendMetaTags`,
    `buildFriendOgImageHtml`, `fetchFriendInvitePreview`) live in `_lib/og.ts` + the
    `packages/shared/src/og.ts` mirror.
+6. **Play link** — `g/[token].ts` intercepts the Games copy-scores CTA (`/g/:token`, minted
+   by `POST /v1/game-share`). Calls the public `GET /v1/game-share/:token` resolve and emits a
+   play card ("Play games with `<name>`" / "Join me and play games on Workshop.dev"), image
+   via `og/g/[token].ts`. Same never-fall-through contract as the friend route — a null
+   preview emits the generic 🎮 "Play daily games" card. Pure helpers (`buildGameShareMetaTags`,
+   `buildGameShareOgImageHtml`, `fetchGameSharePreview`) live in `_lib/og.ts` + the
+   `packages/shared/src/og.ts` mirror. The flag-gated resolve endpoint is distinct from the
+   friend one, and the card shape + CTA differ so the two link types read differently.
 
 ```
 GET /l/:slug                  → preview API → HTMLRewriter swaps defaults for per-list tags
@@ -40,6 +48,8 @@ GET /invite/:token            → legacy preview API → per-list tags (back-com
 GET /og/invite/:token.png     → legacy PNG renderer (back-compat)
 GET /friends/accept/:token    → friends preview API → inviter-named friend tags
 GET /og/friend/:token.png     → workers-og  → 1200×630 friend PNG (inviter named, 👋 card)
+GET /g/:token                 → game-share resolve API → sharer-named play tags
+GET /og/g/:token.png          → workers-og  → 1200×630 play PNG (sharer named, 🎮 card)
 GET /og/:name.png             → workers-og  → 1200×630 static PNG (default, locked-list)
 ```
 

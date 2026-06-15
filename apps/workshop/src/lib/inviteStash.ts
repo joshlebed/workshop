@@ -16,3 +16,13 @@ export const PENDING_INVITE_TOKEN_KEY = "workshop.pending-invite-token";
  * resolves (success or hard failure).
  */
 export const PENDING_FRIEND_INVITE_TOKEN_KEY = "workshop.pending-friend-invite-token";
+
+/**
+ * Storage key for the most-recent *play link* token a user clicked through
+ * (`/g/:token`, the Games-tab copy-scores CTA). Mirrors the friend-invite stash
+ * so a signed-out recipient who signs in mid-flow lands back on the play-link
+ * resolver, which then routes them (already-friends → Games home, otherwise →
+ * the sharer's profile). Set by `app/g/[token].tsx` on mount, consulted by
+ * AuthGate's post-sign-in bounce, cleared once the link resolves.
+ */
+export const PENDING_GAME_SHARE_TOKEN_KEY = "workshop.pending-game-share-token";

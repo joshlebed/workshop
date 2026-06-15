@@ -74,6 +74,8 @@ export const queryKeys = {
       friendUserId
         ? (["games", "discovery", friendUserId] as const)
         : (["games", "discovery"] as const),
+    /** `GET /v1/game-share/:token` — resolve a play link to its sharer + viewer state. */
+    shareLink: (token: string) => ["games", "shareLink", token] as const,
   },
   friends: {
     /**
