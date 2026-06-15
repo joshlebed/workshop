@@ -1,10 +1,10 @@
 # Legacy game-list → Games migration: pre-cleanup audit
 
-**Status: ✅ cleanup in progress.** Audit run 2026-06-14; owner chose **proceed**
-2026-06-15. PR 1 (remove all the Lists-side leaderboard code + the read/write
-bridge) is done — see §7. PR 2 (drop the `item_scores` table) follows once PR 1
-deploys. Original audit below is the objective "safe to delete" signal — prod
-evidence, not code intent.
+**Status: ✅ migration complete.** Audit run 2026-06-14; owner chose **proceed**
+2026-06-15. PR 1 (#356 — remove all the Lists-side leaderboard code + the
+read/write bridge) and PR 2 (#357 — drop the `item_scores` table, migration 0038)
+are both merged and deployed to prod. See §7. Original audit below is the
+objective "safe to delete" signal — prod evidence, not code intent.
 
 Re-run any time with the two committed, **read-only** tools:
 
@@ -303,7 +303,17 @@ table kept.
   tests pass; `expo export --platform ios` bundles; browser smoke test confirmed
   Games intact, `Geo games` hidden, and empty + populated list details render.
 
-**PR 2 — drop `item_scores` (follow-up).** After PR 1 deploys to prod: take a Neon
-restore point, then a Drizzle migration `DROP`s `item_scores`, removing the schema
-export, `DbItemScore` type, and the remaining `rescore-game.ts` / `seed.ts`
-references. Re-run the DB audit immediately before to re-confirm `0` unmapped rows.
+**PR 2 — drop `item_scores` (#357, done).** Sequenced after PR 1 deployed to prod
+(lambda updated 23:01 UTC, so no live code read the table). Re-ran the drop-safety
+audit immediately before: still **257 rows, 0 unmapped, 0 unmirrored**. Took a Neon
+restore point (branch `pre-drop-item-scores-20260615`, a full prod snapshot), then
+migration `0038_drop_item_scores.sql` (`DROP TABLE item_scores CASCADE`) — also
+removed the schema export, `DbItemScore` type, and the `rescore-game.ts` / `seed.ts`
+references, and the migration tests that seeded the table. Merged after the
+Migrate-smoke check validated the drop applies cleanly + idempotently; the deploy's
+migrate job applied it to prod and `/health` passed. `game_scores` (the canonical
+table) is untouched. **Migration complete.**
+
+The restore-point Neon branch can be deleted once you're comfortable
+(`neonctl branches delete pre-drop-item-scores-20260615 --project-id curly-cell-22929804`);
+it's kept for now as the safety net.
