@@ -210,3 +210,57 @@ hold-for-a-longer-window:
 
 When a cleanup PR removes one of these surfaces, delete the matching row from §3/§4
 here and the corresponding gotcha in `apps/backend/CLAUDE.md`.
+
+---
+
+## 6. Remaining-work decision point (re-checked 2026-06-15)
+
+Steps 1–3 of §5 are effectively **already shipped** (before this audit): legacy
+lists are hidden from every client (#324), new leaderboard-list creation is
+rejected (#341), and the monitoring is live (#343). So **customers already only
+see Games.** What's left is §5 steps 3(hold)→4: the **read bridge + Lists-side
+client surfaces** (one coupled unit per §4), then the **`item_scores` drop**.
+
+Re-ran the audit at **55 h** post-retirement: `legacy_game_list_access` /
+`legacy_game_list_retired_rejected` still **zero**; the only score traffic is the
+canonical `/v1/games/:id/scores` (53 PUTs / 7 users). Unchanged conclusion.
+
+### Why the read bridge can't come out yet — the gate is a _named_ stale tail
+
+The app is still runtime version **`0.5.0`**, and the **entire Games migration
+shipped as an OTA inside `0.5.0`** (#305–#320 all landed after the 0.5.0 bump on
+2026-06-02). Runtime-version policy is `appVersion`, so clients on **`0.3.0` /
+`0.4.0` can't receive the Games OTA** — they still render the old Lists UI where
+`Geo games` is a leaderboard list that calls the legacy `/v1/lists/:id/scores` and
+`/v1/items/:id/scores` endpoints. **That is the only thing the read bridge
+protects**, and it's real people, not test accounts:
+
+| User             | Build       | Platform  | Last seen   | Risk on bridge removal          |
+| ---------------- | ----------- | --------- | ----------- | ------------------------------- |
+| **Josh** (owner) | 0.3.0/0.4.0 | iOS + web | 2026-06-02  | own device — knowable           |
+| **Renata Hoh**   | 0.3.0       | iOS       | 2026-06-03  | old app breaks on `Geo games`   |
+| **Paloma**       | 0.4.0       | iOS       | ~2026-06-01 | old app breaks on `Geo games`   |
+| **Roman Zinnes** | 0.4.0       | iOS       | ~2026-05-29 | old app breaks on `Geo games`   |
+| Dagmawi Dereje   | 0.3.0       | web only  | 2026-06-05  | none — web self-heals on reload |
+
+Web stale versions self-heal (next page load serves the latest deploy). The
+**three stale-build native iOS friends** are stuck on their runtime version until
+they install a newer TestFlight build; OTA can't move them. Zero legacy traffic
+for 55 h, but none of the three has opened _any_ endpoint in 10–17 days — they're
+dormant, not gone.
+
+### The call (owner's to make)
+
+- **Wait for the window (recommended):** re-run `legacy-games-audit.sh all --since
+14d` around **2026-06-26**; if still zero and the three have updated or stayed
+  dormant, remove the whole legacy surface in §4 order, then drop `item_scores`
+  behind a Neon restore point.
+- **Unblock sooner:** nudge Renata / Paloma / Roman to update to the latest
+  TestFlight build (gets them onto `0.5.0` + the Games OTA, off the legacy path) —
+  then the bridge can come out immediately.
+- **Proceed now anyway:** accept that those three iOS apps show broken `Geo games`
+  scores if reopened before updating. Reversible in code (revert + redeploy), but
+  user-facing in the gap.
+
+No destructive change was made in this session — the bridge still guards the three
+stale clients, so removal awaits an explicit go-ahead or the window closing.
