@@ -59,8 +59,11 @@ function mutualsLine(profile: FriendProfileResponse): string | null {
 }
 
 export default function FriendProfileScreen() {
-  const params = useLocalSearchParams<{ userId?: string }>();
+  const params = useLocalSearchParams<{ userId?: string; via?: string }>();
   const userId = typeof params.userId === "string" ? params.userId : "";
+  // Play-link vouch token (`/g/:token` → here for a not-yet-friend sharer). Lets
+  // the backend show this profile past the anti-probe 404 so we can add them.
+  const via = typeof params.via === "string" ? params.via : undefined;
   const { token, user } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -72,7 +75,7 @@ export default function FriendProfileScreen() {
 
   const profileQuery = useQuery({
     queryKey: queryKeys.friends.profile(userId, todayKey),
-    queryFn: () => fetchFriendProfile(userId, todayKey, token),
+    queryFn: () => fetchFriendProfile(userId, todayKey, token, via),
     enabled: !!token && !!userId && GAMES_TAB_ENABLED,
     refetchInterval: livePoll,
   });

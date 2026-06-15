@@ -110,7 +110,8 @@ to create or enable retired configs).
 distillation for _display_: leaderboard rows and the list/Games clipboard recaps render
 through `apps/workshop/src/lib/scoresSummary.ts` (formatters live on the registry), which
 strips URLs/headers so a URL-only share shows "Played", never the raw link; Games recaps
-append a friend-invite link, not a list link. The paste sheet previews the parse client-side
+append a **play link** (`/g/:token`, see `game_share_links` below), not a friend-invite or
+list link. The paste sheet previews the parse client-side
 (`src/lib/scoreSpecs.ts` mirrors the backend chain) — keep the two chains in sync.
 
 ## Migration journal `when` values must be monotonic
@@ -227,7 +228,9 @@ cross-request via `POST /v1/friends/requests`) forms the edge and deletes the ro
 A partial unique index keeps one pending row per (inviter, invitee); the legacy `status` /
 `responded_at` columns stay at defaults. `GET /v1/friends/mutuals` is a two-hop walk over
 `friendships` computed in app code, and `GET /v1/friends/users/:userId` 404s when the viewer
-has no relationship AND no mutual friends with the target (profiles can't probe strangers);
+has no relationship AND no mutual friends with the target (profiles can't probe strangers) —
+**unless** the request carries `?via=<token>`, a valid play link (`game_share_links`) for the
+target, which vouches the viewer in so a play-link recipient can see who they are and add them;
 it attaches the target's games + period scores only for friends/self.
 `GET /v1/games/discovery` (friends' games, ranked by how many friends play each) is
 registered **before** the `/:id` routes so the literal path isn't shadowed; its `?friend=`
@@ -239,6 +242,20 @@ when I already play everything my friends do. All ranking reads `user_games` (pe
 `scores.integration.test.ts` run actual `drizzle/` migrations against in-memory PGlite
 (`@electric-sql/pglite`) with `getDb` mocked — copy that pattern when a route's acceptance
 criteria are DB behaviors, not just schema validation.
+
+**Play links (`game_share_links`, `routes/v1/gameShare.ts`)** are the Games-tab copy-scores
+CTA — a per-(user, UTC-day) short link (`/g/:token`). Mounted at `/v1/game-share` (a
+**distinct** path, not `/v1/games/...`, so it doesn't inherit `gameRoutes`' blanket
+`requireAuth` — the resolve must serve link crawlers). `POST /v1/game-share` mints/reuses my
+link for today (idempotent via the `(user_id, date_key)` unique index; old days' tokens keep
+resolving). `GET /v1/game-share/:token` is **optional-auth** (`optionalAuth` in
+`middleware/auth.ts`): a crawler / signed-out request gets just `{ user }` for the OG card; a
+signed-in request also gets `{ viewer: { isSelf, isFriend } }`, which the in-app `/g/:token`
+resolver uses to route (already-connected → Games home, else → the sharer's profile via the
+`?via=` vouch above). Unlike `friend_requests` share links this is **not** an accept surface —
+opening a play link never forms an edge. Helpers: `lib/gameShareLinks.ts`
+(`findOrCreateGameShareLink` / `resolveGameShareLink`); same games flag gate; OG card +
+`/g/:token` Pages function live in `functions/`. Tests: `gameShare.test.ts` (PGlite).
 
 **Emoji reactions on scores (G2c)** live in `game_score_reactions`
 (`(game_id, period_key, score_user_id, reactor_user_id)` PK — one reaction per reactor per

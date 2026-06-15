@@ -266,6 +266,73 @@ export function buildFriendOgImageHtml(preview: FriendInvitePreview | null): str
   });
 }
 
+// --- Game-share "play with me" link previews (`/g/:token`) -----------------
+// The Games-tab copy-scores CTA. No list, no accept surface — just the sharer's
+// name and an invitation to play. Distinct 🎮 emoji + warm gradient from the
+// 👋 friend card so the two link types read differently in a chat.
+
+export const GAME_SHARE_OG_EMOJI = "🎮";
+export const GAME_SHARE_OG_GRADIENT = COLOR_GRADIENTS.sunset;
+export const GAME_SHARE_OG_FALLBACK_TITLE = "Play daily games on Workshop.dev";
+
+/** Minimal preview derived from `GET /v1/game-share/:token`. */
+export interface GameSharePreview {
+  /** Sharer's display name, or null if they haven't set one. */
+  sharerName: string | null;
+}
+
+function gameSharerName(preview: GameSharePreview | null): string | null {
+  const name = preview?.sharerName?.trim();
+  return name && name.length > 0 ? name : null;
+}
+
+export function buildGameShareOgTitle(preview: GameSharePreview | null): string {
+  const name = gameSharerName(preview);
+  return name ? `Play games with ${name} on Workshop.dev` : GAME_SHARE_OG_FALLBACK_TITLE;
+}
+
+export function buildGameShareOgDescription(preview: GameSharePreview | null): string {
+  const name = gameSharerName(preview);
+  return name
+    ? `${name} is playing daily games on Workshop.dev. Join to compare your scores.`
+    : "Join Workshop.dev to play daily games and compare scores with friends.";
+}
+
+/** Big title rendered inside the thumbnail image. */
+export function buildGameShareThumbnailTitle(preview: GameSharePreview | null): string {
+  return gameSharerName(preview) ?? "Play daily games";
+}
+
+/** Subtitle rendered inside the thumbnail image — the call to action. */
+export function buildGameShareThumbnailSubtitle(preview: GameSharePreview | null): string {
+  return gameSharerName(preview)
+    ? "Join me and play games on Workshop.dev"
+    : "Play daily games together on Workshop.dev";
+}
+
+/** Per-play-link preview meta tags (same belt-and-suspenders set). */
+export function buildGameShareMetaTags(
+  preview: GameSharePreview | null,
+  opts: { pageUrl: string; imageUrl: string },
+): string {
+  return buildMetaTagsRaw({
+    title: buildGameShareOgTitle(preview),
+    description: buildGameShareOgDescription(preview),
+    url: opts.pageUrl,
+    image: opts.imageUrl,
+  });
+}
+
+/** The play-link thumbnail HTML passed to `workers-og`. */
+export function buildGameShareOgImageHtml(preview: GameSharePreview | null): string {
+  return renderImageHtml({
+    gradient: GAME_SHARE_OG_GRADIENT,
+    emoji: GAME_SHARE_OG_EMOJI,
+    title: buildGameShareThumbnailTitle(preview),
+    subtitle: buildGameShareThumbnailSubtitle(preview),
+  });
+}
+
 export interface StaticImageVariant {
   emoji: string;
   title: string;
@@ -422,6 +489,33 @@ export async function fetchFriendInvitePreview(
     const body = (await res.json()) as { inviter?: { displayName?: unknown } };
     const displayName = body.inviter?.displayName;
     return { inviterName: typeof displayName === "string" ? displayName : null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the sharer's name for a play link (`/g/:token`). Hits the public
+ * `GET /v1/game-share/:token` resolve endpoint (anonymous — we only read the
+ * `user` block; `viewer` is omitted without a session). Same null-on-failure
+ * contract as the other fetchers — a flaky API or flag-off games surface
+ * degrades to the generic play card, never a broken share link.
+ */
+export async function fetchGameSharePreview(
+  token: string,
+  env: PagesEnv,
+): Promise<GameSharePreview | null> {
+  const apiUrl = env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) return null;
+  try {
+    const res = await fetch(
+      `${apiUrl.replace(/\/$/, "")}/v1/game-share/${encodeURIComponent(token)}`,
+      { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as { user?: { displayName?: unknown } };
+    const displayName = body.user?.displayName;
+    return { sharerName: typeof displayName === "string" ? displayName : null };
   } catch {
     return null;
   }

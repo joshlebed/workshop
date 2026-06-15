@@ -615,6 +615,32 @@ export const gameScoreReactions = pgTable(
 );
 
 /**
+ * Per-user, per-day "play with me" share links — the Games-tab copy-scores
+ * CTA (`/g/:token`). One row per (user, UTC day): minting is idempotent within
+ * a day and rotates to a fresh token the next day. The token resolves to the
+ * sharer; the `/g/:token` landing routes a viewer who's already friends (or the
+ * sharer themselves) straight to the Games home, and everyone else to the
+ * sharer's profile (where they can add them). Unlike a `friend_requests` share
+ * link this is **not** an accept surface — opening one never forms an edge on
+ * its own. Old days' tokens keep resolving so already-shared links never break.
+ */
+export const gameShareLinks = pgTable(
+  "game_share_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    dateKey: text("date_key").notNull(),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    userDateUniq: uniqueIndex("game_share_links_user_date_idx").on(t.userId, t.dateKey),
+  }),
+);
+
+/**
  * Symmetric friend graph (spec §3.6, G2a). One row per unordered pair,
  * stored canonically as `user_low < user_high` (enforced in
  * `lib/friends.ts`, the only writer). Lookups for either side stay indexed:
@@ -707,5 +733,6 @@ export type DbFriendship = typeof friendships.$inferSelect;
 export type DbFriendRequest = typeof friendRequests.$inferSelect;
 export type DbUserGame = typeof userGames.$inferSelect;
 export type DbGameScore = typeof gameScores.$inferSelect;
+export type DbGameShareLink = typeof gameShareLinks.$inferSelect;
 export type DbLetterboxdWatchlistFilm = typeof letterboxdWatchlistFilms.$inferSelect;
 export type DbItemAcceptance = typeof itemAcceptances.$inferSelect;

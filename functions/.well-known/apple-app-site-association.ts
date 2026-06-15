@@ -44,6 +44,8 @@ const AASA = {
           { "/": "/list/*" },
           // Friend invite links — open the accept screen in app, not Safari.
           { "/": "/friends/accept/*" },
+          // Play links (Games copy-scores CTA) — open the resolver in app.
+          { "/": "/g/*" },
         ],
       },
     ],

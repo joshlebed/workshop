@@ -7,6 +7,8 @@ import type {
   GameDiscoveryResponse,
   GameLeaderboardResponse,
   GameScoreDirection,
+  GameShareLinkPreview,
+  GameShareLinkResponse,
   GamesResponse,
   SetGameScoreSpecResponse,
   SetScoreReactionResponse,
@@ -14,7 +16,43 @@ import type {
 } from "@workshop/shared/games";
 import type { ScoreSpec } from "@workshop/shared/scoreParsing";
 import type { SummarySpec } from "@workshop/shared/summarySpec";
+import { z } from "zod";
 import { apiRequest } from "../lib/api";
+
+const gameShareLinkResponseSchema = z.object({ token: z.string(), url: z.string() });
+
+const gameShareLinkPreviewSchema = z.object({
+  user: z.object({ userId: z.string(), displayName: z.string().nullable() }),
+  viewer: z.object({ isSelf: z.boolean(), isFriend: z.boolean() }).optional(),
+});
+
+/**
+ * `POST /v1/game-share` — mint/reuse my per-day "play with me" link (`/g/:token`),
+ * the call-to-action appended to the Games-tab copy-scores recap. Idempotent
+ * per day on the server, so re-copying returns the same link.
+ */
+export async function createGameShareLink(token: string | null): Promise<GameShareLinkResponse> {
+  const raw = await apiRequest<unknown>({ method: "POST", path: "/v1/game-share", token });
+  return gameShareLinkResponseSchema.parse(raw);
+}
+
+/**
+ * `GET /v1/game-share/:token` — resolve a play link to its sharer + (for a
+ * signed-in request) the viewer's relationship, which drives the `/g/:token`
+ * landing's routing. Zod-validated: the response steers navigation, so a
+ * malformed body should surface as a clean error, not a crash.
+ */
+export async function fetchGameShareLink(
+  linkToken: string,
+  token: string | null,
+): Promise<GameShareLinkPreview> {
+  const raw = await apiRequest<unknown>({
+    method: "GET",
+    path: `/v1/game-share/${encodeURIComponent(linkToken)}`,
+    token,
+  });
+  return gameShareLinkPreviewSchema.parse(raw);
+}
 
 export function fetchMyGames(periodKey: string, token: string | null): Promise<GamesResponse> {
   const params = new URLSearchParams({ period: periodKey });

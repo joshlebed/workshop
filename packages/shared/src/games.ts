@@ -181,6 +181,27 @@ export interface GameDiscoveryResponse {
 }
 
 /**
+ * `POST /v1/game-share` — my per-(user, day) "play with me" link. Surfaced by
+ * the Games-tab copy-scores recap; `url` is the short `/g/:token` form.
+ */
+export interface GameShareLinkResponse {
+  token: string;
+  url: string;
+}
+
+/**
+ * `GET /v1/game-share/:token` — resolve a play link. `user` is the sharer
+ * (public — drives the OG card and the not-friends profile redirect). `viewer`
+ * is attached **only** for an authenticated request, and drives the `/g/:token`
+ * landing's routing: already connected (`isSelf || isFriend`) → Games home;
+ * otherwise → the sharer's profile to add them.
+ */
+export interface GameShareLinkPreview {
+  user: { userId: string; displayName: string | null };
+  viewer?: { isSelf: boolean; isFriend: boolean };
+}
+
+/**
  * Normalize a game URL into the global catalog's dedup key: lowercase host,
  * strip `www.`, drop query + fragment (the `dailytens.com/?ref=<id>` junk),
  * trim trailing slash(es), keep the path (and any non-default port). The

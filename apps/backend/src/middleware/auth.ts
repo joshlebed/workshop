@@ -43,3 +43,30 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   c.set("userId", payload.userId);
   await next();
 };
+
+/**
+ * Like `requireAuth`, but never rejects: a valid bearer token sets `userId`
+ * (and `impersonatorUserId`); anything missing/invalid is silently ignored and
+ * the request proceeds anonymously. For endpoints served to both link crawlers
+ * / signed-out visitors (no user) and signed-in users (viewer-relative extras).
+ * Read the resulting id as `c.get("userId")` typed `string | undefined`.
+ */
+export const optionalAuth: MiddlewareHandler = async (c, next) => {
+  const header = c.req.header("Authorization");
+  const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
+  if (token.length > 0) {
+    const payload = verifySession(token);
+    if (payload && !(await isSessionRevoked(payload.userId, payload.iat ?? 0))) {
+      const impersonator = payload.impersonatorUserId;
+      const impersonatorOk =
+        !impersonator ||
+        (impersonator !== payload.userId &&
+          !(await isSessionRevoked(impersonator, payload.iat ?? 0)));
+      if (impersonatorOk) {
+        if (impersonator) c.set("impersonatorUserId", impersonator);
+        c.set("userId", payload.userId);
+      }
+    }
+  }
+  await next();
+};

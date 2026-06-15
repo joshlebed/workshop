@@ -37,6 +37,7 @@ import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
+import { resolveGameShareLink } from "../../lib/gameShareLinks.js";
 import { notifyFriendRequestSent, notifyFriendshipFormed } from "../../lib/opsNotifications.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
@@ -715,7 +716,16 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
   }
 
   if (relationship === "none" && mutualFriends.length === 0) {
-    return err(c, "NOT_FOUND", "user not found");
+    // A valid game-share link (`/g/:token`) for this target vouches the viewer
+    // in: the sharer handed out the link, so showing their minimal profile (so
+    // the recipient can add them) is exactly the intended flow. Without this a
+    // stranger who opens a play link would 404 here and couldn't add the sharer.
+    const via = c.req.query("via");
+    const vouched =
+      via !== undefined &&
+      isValidShareSlug(via) &&
+      (await resolveGameShareLink(via))?.userId === targetId;
+    if (!vouched) return err(c, "NOT_FOUND", "user not found");
   }
 
   let profileGames: FriendProfileGame[] | null = null;

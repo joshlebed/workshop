@@ -24,7 +24,7 @@ interface BuildSummaryParams {
 }
 
 interface BuildGameSummaryParams {
-  friendUrl: string;
+  shareUrl: string;
   games: MyGame[];
   selfId: string | null;
   dateKey: string;
@@ -145,10 +145,12 @@ export function buildTodaysScoresSummary({
 
 /**
  * Games-tab recap: same score distillation as the list copy action, but over
- * My Games and with a personal friend-invite link as the call to action.
+ * My Games and with a personal play link (`/g/:token`) as the call to action —
+ * opening it routes an existing friend to the Games home and everyone else to
+ * the sharer's profile (NOT a friend-accept flow, even between existing friends).
  */
 export function buildTodaysGameScoresSummary({
-  friendUrl,
+  shareUrl,
   games,
   selfId,
   dateKey,
@@ -167,5 +169,5 @@ export function buildTodaysGameScoresSummary({
   if (blocks.length === 0) return null;
 
   const header = `My game scores — ${formatShortDate(dateKey)}`;
-  return `${header}\n${blocks.join("\n")}\n${friendUrl}`;
+  return `${header}\n${blocks.join("\n")}\n${shareUrl}`;
 }
