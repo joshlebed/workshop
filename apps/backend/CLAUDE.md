@@ -101,9 +101,9 @@ structured-log monitoring (`lib/legacyGameLists.ts`, the `legacy_game_list_acces
 `docs/legacy-games-cleanup-audit.md`. New leaderboard-list creation stays blocked: list
 create/duplicate/config changes that introduce `leaderboard` or old `item_kind='game'` get a
 400 `legacy_game_lists_retired` (`isRetiredGameListConfig` in `routes/v1/lists.ts`), and the
-lone legacy "Geo games" row is hidden from `GET /v1/lists`. The `item_scores` table still
-holds frozen historical rows (no route reads or writes it anymore; `scripts/rescore-game.ts`
-is the last code touching it) and is slated to be dropped in a follow-up migration.
+lone legacy "Geo games" row is hidden from `GET /v1/lists`. The legacy `item_scores` table
+was **dropped** (migration `0038`, applied to prod) once it was proven 100% mirrored into
+`game_scores`; `rescore-game.ts` now operates on `game_scores` only.
 **Changing a game's scoring rule only fixes new posts** unless you also run
 `scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first)
 — it replays the current parser over stored `score_raw` in both `game_scores` and legacy
