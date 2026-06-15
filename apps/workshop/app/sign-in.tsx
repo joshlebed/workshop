@@ -63,9 +63,6 @@ export default function SignIn() {
           <View style={styles.dot} />
           <Text style={styles.wordmarkAccent}>dev</Text>
         </View>
-        <Text tone="secondary" style={styles.tagline}>
-          A calm home for the lists you keep together.
-        </Text>
       </View>
 
       <View style={styles.actions}>
@@ -170,12 +167,6 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: tokens.accent.default,
     transform: [{ translateY: -3 }],
-  },
-  tagline: {
-    fontSize: tokens.font.size.md,
-    lineHeight: 22,
-    letterSpacing: -0.1,
-    maxWidth: 360,
   },
   actions: {
     gap: tokens.space.sm,
