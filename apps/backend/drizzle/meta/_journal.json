@@ -267,6 +267,13 @@
       "when": 1781534524327,
       "tag": "0037_game_share_links",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1781564635430,
+      "tag": "0038_drop_item_scores",
+      "breakpoints": true
     }
   ]
 }

@@ -31,7 +31,6 @@ import {
   gameScoreReactions,
   gameScores,
   itemAcceptances,
-  itemScores,
   items,
   itemTags,
   letterboxdWatchlistFilms,
@@ -339,9 +338,6 @@ async function main() {
     },
   ];
 
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-
   for (const fixture of fixtures) {
     const [list] = await db
       .insert(lists)
@@ -428,50 +424,6 @@ async function main() {
           itemId: item.id,
           payload: { title: item.title },
         });
-      }
-
-      if (fixture.modules.includes("leaderboard")) {
-        const sharedScores: Record<string, { today: string; yesterday: string }> = {
-          Globle: {
-            today: "🌎 May 15, 2026 🔥 1 | Avg. Guesses: 4\n🟨🟧🟥🟩\nhttps://globle-game.com",
-            yesterday:
-              "🌎 May 14, 2026 🔥 0 | Avg. Guesses: 6\n🟨🟨🟧🟧🟥🟩\nhttps://globle-game.com",
-          },
-          travle: {
-            today: "#travle #1066 +0 (100%)\n✅✅✅✅✅\nhttps://travle.earth",
-            yesterday: "#travle #1065 +1 (83%)\n✅✅🟧✅✅✅\nhttps://travle.earth",
-          },
-          Tradle: {
-            today: "#Tradle #1547 1/6\n🟩🟩🟩🟩🟩\nhttps://tradle.net/",
-            yesterday: "#Tradle #1546 3/6\n🟩🟩🟥⬜⬜\n🟩🟩🟩🟨⬜\n🟩🟩🟩🟩🟩\nhttps://tradle.net/",
-          },
-        };
-        const scores = sharedScores[seedItem.title];
-        if (scores) {
-          await db.insert(itemScores).values([
-            {
-              itemId: item.id,
-              userId: previewId,
-              periodKey: today,
-              scoreRaw: scores.today,
-              scoreValue: null,
-            },
-            {
-              itemId: item.id,
-              userId: previewId,
-              periodKey: yesterday,
-              scoreRaw: scores.yesterday,
-              scoreValue: null,
-            },
-            {
-              itemId: item.id,
-              userId: friendId,
-              periodKey: today,
-              scoreRaw: scores.today,
-              scoreValue: null,
-            },
-          ]);
-        }
       }
     }
 
