@@ -1,0 +1,1 @@
+DROP TABLE "item_scores" CASCADE;

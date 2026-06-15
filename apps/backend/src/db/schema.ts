@@ -205,8 +205,8 @@ export const items = pgTable(
      * the raw score to compute `score_value`. `scoreDirection` controls
      * leaderboard sort: 'desc' = higher is better (default), 'asc' = lower is
      * better (Wordle / Satle / etc.). `gameId` links migrated daily-game list
-     * items to the canonical Games surface row; mapped items read/write
-     * `game_scores`, while unmapped legacy items keep using `item_scores`.
+     * items to the canonical Games surface row; daily-game scores live solely in
+     * `game_scores` now (the legacy per-item `item_scores` table was dropped).
      */
     scoreRegex: text("score_regex"),
     scoreDirection: text("score_direction"),
@@ -380,35 +380,6 @@ export const listSources = pgTable(
     webhookSlugIdx: uniqueIndex("list_sources_webhook_slug_idx")
       .on(t.webhookSlug)
       .where(sql`webhook_slug IS NOT NULL`),
-  }),
-);
-
-/**
- * Generalizes the legacy `game_scores` table. One row per (item, user,
- * period_key); `period_key` is opaque ("YYYY-MM-DD" for daily games,
- * "YYYY-WNN" for weekly, "all-time" for one-off). `score_value` is the
- * parsed numeric when available so the leaderboard can sort; `score_raw`
- * preserves the original input (emojis, line breaks, etc.).
- */
-export const itemScores = pgTable(
-  "item_scores",
-  {
-    itemId: uuid("item_id")
-      .notNull()
-      .references(() => items.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
-    periodKey: text("period_key").notNull(),
-    scoreValue: numeric("score_value"),
-    scoreRaw: text("score_raw").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
-  },
-  (t) => ({
-    pk: primaryKey({ columns: [t.itemId, t.userId, t.periodKey] }),
-    itemPeriodIdx: index("item_scores_item_period_idx").on(t.itemId, t.periodKey),
-    userPeriodIdx: index("item_scores_user_period_idx").on(t.userId, t.periodKey),
   }),
 );
 
@@ -727,7 +698,6 @@ export type DbUserActivityRead = typeof userActivityReads.$inferSelect;
 export type DbMetadataCache = typeof metadataCache.$inferSelect;
 export type DbRateLimit = typeof rateLimits.$inferSelect;
 export type DbListSource = typeof listSources.$inferSelect;
-export type DbItemScore = typeof itemScores.$inferSelect;
 export type DbGame = typeof games.$inferSelect;
 export type DbFriendship = typeof friendships.$inferSelect;
 export type DbFriendRequest = typeof friendRequests.$inferSelect;

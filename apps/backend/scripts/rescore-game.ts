@@ -5,14 +5,10 @@
  * `games.score_spec` otherwise. Run this whenever a game's scoring rule
  * changes: parsing fixes only apply to new posts until history is replayed.
  *
- * Covers both stores:
- *  - `game_scores` (canonical) — every game with a usable spec.
- *  - `item_scores` (legacy, unmapped items) — parsed via the item's stored
- *    `score_regex` rule string (any generation: bare regex / count: / spec:).
- *
- * Replaces the old `backfill-score-regex.ts`, which only handled
- * `item_scores` and carried its own (drifted) copy of the parser. This one
- * imports the real parser, so it cannot drift.
+ * Operates on the canonical `game_scores` table (the legacy `item_scores`
+ * store was dropped with the Lists-side leaderboard surface). Replaces the
+ * old `backfill-score-regex.ts`, which carried its own (drifted) copy of the
+ * parser; this one imports the real parser, so it cannot drift.
  *
  * Idempotent — re-running won't double-write. Safe to point at prod.
  *
@@ -22,14 +18,13 @@
  * Flags:
  *   --game-key=<key>   one registry game (e.g. framed, nyt-mini)
  *   --game-id=<uuid>   one games row by id (user-taught games)
- *   --all              every game with a parser + legacy item_scores
+ *   --all              every game with a parser
  *   --dry              log changes without applying them
  */
 
-import { specFromStoredRule } from "@workshop/shared/scoreParsing";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
-import { gameScores, games, itemScores, items } from "../src/db/schema.js";
+import { gameScores, games } from "../src/db/schema.js";
 import { parseScoreValue, specForGame } from "../src/lib/gameCatalog.js";
 import type { DbClient } from "../src/lib/sql.js";
 
@@ -89,52 +84,6 @@ async function rescoreGame(
   }
 }
 
-async function rescoreLegacyItemScores(db: DbClient, dryRun: boolean, tally: Tally) {
-  // Unmapped leaderboard items still read/write item_scores; their parser is
-  // whatever stored-rule string the item carries.
-  const legacyItems = await db
-    .select({ id: items.id, title: items.title, scoreRegex: items.scoreRegex })
-    .from(items)
-    .where(sql`${items.gameId} IS NULL AND ${items.scoreRegex} IS NOT NULL`);
-  for (const item of legacyItems) {
-    const spec = specFromStoredRule(item.scoreRegex);
-    if (!spec) continue;
-    const rows = await db
-      .select({
-        userId: itemScores.userId,
-        periodKey: itemScores.periodKey,
-        scoreRaw: itemScores.scoreRaw,
-        scoreValue: itemScores.scoreValue,
-      })
-      .from(itemScores)
-      .where(eq(itemScores.itemId, item.id));
-    if (rows.length > 0) {
-      console.log(`[rescore] legacy item "${item.title}": ${rows.length} item_scores rows`);
-    }
-    for (const row of rows) {
-      const parsed = parseScoreValue(row.scoreRaw, spec);
-      const existing = row.scoreValue === null ? null : Number(row.scoreValue);
-      if (parsed === existing) {
-        tally.unchanged++;
-        continue;
-      }
-      if (!dryRun) {
-        await db
-          .update(itemScores)
-          .set({ scoreValue: parsed === null ? null : String(parsed) })
-          .where(
-            sql`${itemScores.itemId} = ${item.id} AND ${itemScores.userId} = ${row.userId} AND ${itemScores.periodKey} = ${row.periodKey}`,
-          );
-      }
-      if (parsed === null) tally.cleared++;
-      else tally.updated++;
-      console.log(
-        `[rescore]   ${row.periodKey} user ${row.userId.slice(0, 8)}…: ${existing ?? "∅"} → ${parsed ?? "∅"}`,
-      );
-    }
-  }
-}
-
 async function main() {
   const dryRun = process.argv.includes("--dry");
   const all = process.argv.includes("--all");
@@ -164,9 +113,6 @@ async function main() {
 
   for (const game of targets) {
     await rescoreGame(db, game, dryRun, tally);
-  }
-  if (all) {
-    await rescoreLegacyItemScores(db, dryRun, tally);
   }
 
   console.log(

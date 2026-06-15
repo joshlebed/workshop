@@ -2,8 +2,7 @@
 // route suites (schema-only — see views.test.ts), these run the real SQL
 // against an in-memory PGlite Postgres with the actual drizzle/ migrations
 // applied, because the acceptance criteria are DB behaviors: URL-variant
-// dedup, idempotent score upsert, /move reordering, and `item_scores`
-// provably untouched.
+// dedup, idempotent score upsert, and /move reordering.
 
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
@@ -95,26 +94,6 @@ beforeAll(async () => {
        ($1, 'games-tester@example.com', 'Games Tester'),
        ($2, 'other@example.com', 'Other User')`,
     [userId, otherUserId],
-  );
-
-  // Sentinel rows on the OLD leaderboard surface. The last test asserts they
-  // are byte-identical after every games endpoint has been exercised.
-  await rows(
-    `INSERT INTO lists (id, name, emoji, color, owner_id, modules, share_slug)
-     VALUES ('00000000-0000-4000-8000-00000000000a', 'Old games', '🎮', '#fff', $1,
-             '{leaderboard}', 'sentinel1')`,
-    [userId],
-  );
-  await rows(
-    `INSERT INTO items (id, list_id, title, added_by, kind)
-     VALUES ('00000000-0000-4000-8000-00000000000b',
-             '00000000-0000-4000-8000-00000000000a', 'Wordle (old)', $1, 'game')`,
-    [userId],
-  );
-  await rows(
-    `INSERT INTO item_scores (item_id, user_id, period_key, score_value, score_raw)
-     VALUES ('00000000-0000-4000-8000-00000000000b', $1, '2026-06-01', 3, 'Wordle 1,440 3/6')`,
-    [userId],
   );
 }, 60_000);
 
@@ -908,22 +887,11 @@ describe("requires auth", () => {
   });
 });
 
-describe("item_scores is provably untouched", () => {
-  it("the sentinel old-surface rows are byte-identical after exercising every endpoint", async () => {
-    const sentinel = await rows(
-      `SELECT item_id, user_id, period_key, score_value, score_raw FROM item_scores`,
-    );
-    expect(sentinel).toEqual([
-      {
-        item_id: "00000000-0000-4000-8000-00000000000b",
-        user_id: userId,
-        period_key: "2026-06-01",
-        score_value: "3",
-        score_raw: "Wordle 1,440 3/6",
-      },
-    ]);
-  });
-
+describe("the dropped item_scores table stays gone", () => {
+  // item_scores was dropped (migration 0038) after the Lists-side leaderboard
+  // surface was retired. Guard against any code path resurrecting a reference
+  // to it — a reference would now fail at runtime against a table that no
+  // longer exists.
   it("the games modules never reference the old leaderboard tables", () => {
     for (const file of ["src/routes/v1/games.ts", "src/lib/gamePositions.ts"]) {
       const source = readFileSync(file, "utf8");
