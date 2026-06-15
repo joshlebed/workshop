@@ -81,6 +81,23 @@ persisted/30s-cached resolve would route a re-opened link stale. The OG card + P
 live in `functions/g/` + `functions/og/g/` (🎮 "play with me" card, distinct from the friend
 👋 card); AASA allowlists `/g/*`.
 
+**Opened inside a third-party in-app browser (Messenger / Instagram), the landing shows an
+"Open in app" card instead of resolving.** This is unavoidable on iOS: Apple does **not** fire
+Universal Links when a WKWebView (which is what Meta's in-app browser is) _loads_ a URL — only a
+genuine **user tap** on a link inside the WebView routes to the app ([Apple's App Search guide](https://developer.apple.com/library/archive/documentation/General/Conceptual/AppSearch/UniversalLinks.html);
+there is no zero-tap escape, and a programmatic `window.location`/`Linking.openURL` does nothing
+there). So `isInAppBrowser()` (`src/lib/inAppBrowser.ts`, UA sniff for `FBAN`/`FBAV`/`FB_IAB`/
+`FBIOS`/`Messenger`/`Instagram`, web-only) gates `app/g/[token].tsx`: when true it holds the
+resolve/redirect and renders `OpenInAppCard` (`src/components/OpenInAppCard.web.tsx` — a real
+`<a href>` is **required** so the tap is a true user gesture; the href is the **https** Universal
+Link, never `workshop://`, so a missing app just reloads the page instead of throwing "Cannot Open
+Page"). The card pairs the button with a "⋯ → Open in Safari" hint (Universal Links fire reliably
+from real Safari) and a "Continue here instead" escape (`continuedOnWeb`). Caveat to verify on a
+real device: Meta's WebView is sometimes engineered to suppress even the tap, so the card is
+best-effort. Not wired into `/l`/`/friends/accept` yet (scoped to play links); the component is
+generic if you want to widen it. A server-rendered variant in the Pages Function would appear
+before the SPA loads — a possible future upgrade.
+
 ## Friends-first onboarding + game discovery (G3, issue #293)
 
 Games are discovered **through friends** — `GET /v1/games/discovery` (G2a) returns friends'
