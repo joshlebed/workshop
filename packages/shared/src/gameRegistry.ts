@@ -160,10 +160,14 @@ export const GAME_REGISTRY: GameDefinition[] = [
     identifyPatterns: [/\banthropeum\b/i, /anthropeum\.com/i],
     shareTextPatterns: [/\banthropeum\.com\b/i, /\banthropeum\b/i],
     // Shape: `Anthropeum.com · Jun 14 2026\n🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩\n62,090 · top 38% of players today!`
-    // Drop the url/date header line (it also catches a trailing `anthropeum.com`
-    // link) and collapse the emoji grid + score line into one clean line.
+    // Drop the url/date header line (the filter also catches a trailing
+    // `anthropeum.com` link) and trim the `· top N% of players today!` brag off
+    // the score line, then collapse the emoji grid + bare score into one clean
+    // line. The grid carries no `·`, so the trim leaves it untouched.
     formatShareBody(raw) {
-      const lines = nonEmptyLines(raw).filter((l) => !/anthropeum\.com/i.test(l));
+      const lines = nonEmptyLines(raw)
+        .filter((l) => !/anthropeum\.com/i.test(l))
+        .map((l) => l.replace(/\s*·.*$/, "").trim());
       return lines.length ? lines.join(" ") : null;
     },
   },

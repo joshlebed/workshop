@@ -227,13 +227,13 @@ describe("isResultlessShare", () => {
 });
 
 describe("formatShareBody", () => {
-  it("anthropeum drops the url/date header, joins grid + score into one clean line", () => {
+  it("anthropeum drops the header + the `top N%` brag, keeping grid + bare score", () => {
     const def = gameDefinitionForKey("anthropeum")!;
     expect(
       def.formatShareBody!(
         "Anthropeum.com · Jun 14 2026\n🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩\n62,090 · top 38% of players today!",
       ),
-    ).toBe("🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩 62,090 · top 38% of players today!");
+    ).toBe("🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩 62,090");
   });
 
   it("maptap drops the URL/date header, keeps rounds + final score", () => {
