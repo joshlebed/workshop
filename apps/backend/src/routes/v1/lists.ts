@@ -30,11 +30,6 @@ import {
 import { toIsoString } from "../../lib/dates.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
-import {
-  isLegacyGameListConfig,
-  logLegacyGameListAccess,
-  logLegacyGameListRetiredRejected,
-} from "../../lib/legacyGameLists.js";
 import { inspectModuleChange } from "../../lib/moduleManifests.js";
 import { notifyListArchived, notifyListJoined } from "../../lib/opsNotifications.js";
 import { requireCapability } from "../../lib/permissions.js";
@@ -171,57 +166,40 @@ export const __test = {
   duplicateListSchema,
   createSourceSchema,
   buildNewListNotification,
-  isLegacyGameListSummaryRow,
-  isRetiredLegacyGameListConfig,
-  wouldCreateRetiredLegacyGameList,
+  isRetiredGameListConfig,
+  wouldIntroduceRetiredGameList,
 };
 
-function isLegacyGameListSummaryRow(list: {
-  item_kind: string | null;
-  modules: readonly string[] | null;
+// Daily-game leaderboard lists are retired — the Games tab is the only surface
+// for game scores. New list writes must not (re)introduce a `leaderboard`
+// module or the old `item_kind='game'`, so customers can't create more. The
+// pre-existing "Geo games" rows stay readable but are hidden from list
+// summaries by the SQL filter in `GET /v1/lists`.
+function isRetiredGameListConfig(config: {
+  itemKind?: string | null | undefined;
+  modules?: readonly string[] | null | undefined;
 }): boolean {
-  return isLegacyGameListConfig({ itemKind: list.item_kind, modules: list.modules });
+  return config.itemKind === "game" || (config.modules ?? []).includes("leaderboard");
 }
 
-function isRetiredLegacyGameListConfig(list: {
-  itemKind: string | null | undefined;
-  modules: readonly string[] | null | undefined;
-}): boolean {
-  return isLegacyGameListConfig(list);
-}
-
-function wouldCreateRetiredLegacyGameList(
+function wouldIntroduceRetiredGameList(
   existing: { itemKind: string | null; modules: readonly string[] | null },
-  proposed: { itemKind?: string | null; modules?: readonly string[] | null },
+  proposed: {
+    itemKind?: string | null | undefined;
+    modules?: readonly string[] | null | undefined;
+  },
 ): boolean {
-  const currentIsLegacy = isRetiredLegacyGameListConfig(existing);
-  const nextIsLegacy = isRetiredLegacyGameListConfig({
+  const nextIsRetired = isRetiredGameListConfig({
     itemKind: proposed.itemKind !== undefined ? proposed.itemKind : existing.itemKind,
     modules: proposed.modules !== undefined ? proposed.modules : existing.modules,
   });
-  return nextIsLegacy && !currentIsLegacy;
+  return nextIsRetired && !isRetiredGameListConfig(existing);
 }
 
-function retiredLegacyGameListResponse(
-  c: Parameters<typeof err>[0],
-  details: Parameters<typeof logLegacyGameListRetiredRejected>[1],
-) {
-  logLegacyGameListRetiredRejected(c, details);
+function retiredGameListResponse(c: Parameters<typeof err>[0]) {
   return err(c, "VALIDATION", "Game leaderboards now live in the Games tab.", {
     code: "legacy_game_lists_retired",
   });
-}
-
-async function legacyListConfigForId(
-  listId: string,
-): Promise<{ itemKind: string | null; modules: string[] } | null> {
-  const [row] = await getDb()
-    .select({ itemKind: lists.itemKind, modules: lists.modules })
-    .from(lists)
-    .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
-    .limit(1);
-  if (!row) return null;
-  return { itemKind: row.itemKind, modules: row.modules ?? [] };
 }
 
 function toListShape(l: DbList): List {
@@ -392,13 +370,6 @@ publicListRoutes.get("/lists/:id/preview", async (c) => {
   }
 
   const preview = await buildListPreview(list);
-  if (isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
-    logLegacyGameListAccess(c, {
-      operation: "preview_by_id",
-      listId: list.id,
-      userId: viewerUserId,
-    });
-  }
   return ok(c, {
     preview,
     viewer: { authenticated: viewerUserId !== null, isMember },
@@ -448,13 +419,6 @@ publicListRoutes.get("/lists/by-slug/:slug/items", async (c) => {
     return err(c, "NOT_FOUND", "list not found");
   }
 
-  if (isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
-    logLegacyGameListAccess(c, {
-      operation: "public_items_by_slug",
-      listId: list.id,
-      userId: viewerUserId,
-    });
-  }
   const split = await fetchItemsForList(list.id);
   return ok(c, split);
 });
@@ -504,13 +468,6 @@ publicListRoutes.get("/lists/by-slug/:slug/preview", async (c) => {
   }
 
   const preview = await buildListPreview(list);
-  if (isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
-    logLegacyGameListAccess(c, {
-      operation: "preview_by_slug",
-      listId: list.id,
-      userId: viewerUserId,
-    });
-  }
   return ok(c, {
     preview,
     viewer: { authenticated: viewerUserId !== null, isMember },
@@ -590,30 +547,28 @@ listRoutes.get("/", async (c) => {
     `,
   );
 
-  const summaries: ListSummary[] = rows
-    .filter((r) => !isLegacyGameListSummaryRow(r))
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      emoji: r.emoji,
-      color: r.color as ListColor,
-      description: r.description,
-      coverPhotoUrl: r.cover_photo_url,
-      ownerId: r.owner_id,
-      itemKind: (r.item_kind && isItemKind(r.item_kind) ? r.item_kind : null) as ItemKind | null,
-      modules: (r.modules ?? []) as ModuleName[],
-      shareSlug: r.share_slug,
-      shareVisibility: r.share_visibility as ShareVisibility,
-      createdAt: toIsoString(r.created_at),
-      updatedAt: toIsoString(r.updated_at),
-      role: r.my_role as MemberRole,
-      memberCount: Number(r.member_count),
-      itemCount: Number(r.item_count),
-      pinnedAt: r.pinned_at ? toIsoString(r.pinned_at) : null,
-      archivedAt: r.archived_at ? toIsoString(r.archived_at) : null,
-      mutedAt: r.muted_at ? toIsoString(r.muted_at) : null,
-      unreadCount: Number(r.unread_count),
-    }));
+  const summaries: ListSummary[] = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    emoji: r.emoji,
+    color: r.color as ListColor,
+    description: r.description,
+    coverPhotoUrl: r.cover_photo_url,
+    ownerId: r.owner_id,
+    itemKind: (r.item_kind && isItemKind(r.item_kind) ? r.item_kind : null) as ItemKind | null,
+    modules: (r.modules ?? []) as ModuleName[],
+    shareSlug: r.share_slug,
+    shareVisibility: r.share_visibility as ShareVisibility,
+    createdAt: toIsoString(r.created_at),
+    updatedAt: toIsoString(r.updated_at),
+    role: r.my_role as MemberRole,
+    memberCount: Number(r.member_count),
+    itemCount: Number(r.item_count),
+    pinnedAt: r.pinned_at ? toIsoString(r.pinned_at) : null,
+    archivedAt: r.archived_at ? toIsoString(r.archived_at) : null,
+    mutedAt: r.muted_at ? toIsoString(r.muted_at) : null,
+    unreadCount: Number(r.unread_count),
+  }));
 
   return ok(c, { lists: summaries });
 });
@@ -624,12 +579,8 @@ listRoutes.post("/", async (c) => {
   const userId = c.get("userId");
   const db = getDb();
   const data = parsed.data;
-  if (isRetiredLegacyGameListConfig({ itemKind: data.itemKind, modules: data.modules })) {
-    return retiredLegacyGameListResponse(c, {
-      operation: "create",
-      proposed: { itemKind: data.itemKind, modules: data.modules },
-      userId,
-    });
+  if (isRetiredGameListConfig({ itemKind: data.itemKind, modules: data.modules })) {
+    return retiredGameListResponse(c);
   }
 
   // Validate any sources up-front so we don't create an orphan list. The
@@ -745,9 +696,6 @@ listRoutes.get("/:id", requireListMember, async (c) => {
     .where(and(eq(lists.id, listId), isNull(lists.archivedAt)))
     .limit(1);
   if (!list) return err(c, "NOT_FOUND", "list not found");
-  if (isLegacyGameListConfig({ itemKind: list.itemKind, modules: list.modules })) {
-    logLegacyGameListAccess(c, { operation: "detail", listId: list.id });
-  }
 
   const memberRows = await db
     .select({
@@ -963,7 +911,7 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   const [existing] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
   if (!existing) return err(c, "NOT_FOUND", "list not found");
   if (
-    wouldCreateRetiredLegacyGameList(
+    wouldIntroduceRetiredGameList(
       { itemKind: existing.itemKind, modules: existing.modules ?? [] },
       {
         ...(wantsItemKind ? { itemKind: data.itemKind ?? null } : {}),
@@ -971,16 +919,7 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
       },
     )
   ) {
-    return retiredLegacyGameListResponse(c, {
-      operation: "update_config",
-      listId,
-      existing: { itemKind: existing.itemKind, modules: existing.modules ?? [] },
-      proposed: {
-        itemKind: wantsItemKind ? data.itemKind : existing.itemKind,
-        modules: wantsModules ? data.modules : (existing.modules ?? []),
-      },
-      userId,
-    });
+    return retiredGameListResponse(c);
   }
 
   // item_kind tightening: must not violate the homogeneity invariant.
@@ -1079,7 +1018,7 @@ listRoutes.post("/:id/config-preview", requireListMember, async (c) => {
   const [existing] = await db.select().from(lists).where(eq(lists.id, listId)).limit(1);
   if (!existing) return err(c, "NOT_FOUND", "list not found");
   if (
-    wouldCreateRetiredLegacyGameList(
+    wouldIntroduceRetiredGameList(
       { itemKind: existing.itemKind, modules: existing.modules ?? [] },
       {
         ...(parsed.data.itemKind !== undefined ? { itemKind: parsed.data.itemKind ?? null } : {}),
@@ -1087,15 +1026,7 @@ listRoutes.post("/:id/config-preview", requireListMember, async (c) => {
       },
     )
   ) {
-    return retiredLegacyGameListResponse(c, {
-      operation: "config_preview",
-      listId,
-      existing: { itemKind: existing.itemKind, modules: existing.modules ?? [] },
-      proposed: {
-        itemKind: parsed.data.itemKind !== undefined ? parsed.data.itemKind : existing.itemKind,
-        modules: parsed.data.modules !== undefined ? parsed.data.modules : (existing.modules ?? []),
-      },
-    });
+    return retiredGameListResponse(c);
   }
 
   const warnings: ConfigWarning[] = [];
@@ -1158,10 +1089,6 @@ listRoutes.post("/:id/read", requireListMember, async (c) => {
     VALUES (${userId}::uuid, ${listId}::uuid, now())
     ON CONFLICT (user_id, list_id) DO UPDATE SET last_read_at = EXCLUDED.last_read_at
   `);
-  const legacy = await legacyListConfigForId(listId);
-  if (legacy && isLegacyGameListConfig(legacy)) {
-    logLegacyGameListAccess(c, { operation: "read", listId });
-  }
   return ok(c, { ok: true });
 });
 
@@ -1252,14 +1179,8 @@ listRoutes.post(
       parsed.data.itemKind !== undefined
         ? parsed.data.itemKind
         : (source.itemKind as ItemKind | null);
-    if (isRetiredLegacyGameListConfig({ itemKind: nextItemKind, modules: nextModules })) {
-      return retiredLegacyGameListResponse(c, {
-        operation: "duplicate",
-        listId: sourceListId,
-        existing: { itemKind: source.itemKind, modules: source.modules ?? [] },
-        proposed: { itemKind: nextItemKind, modules: nextModules },
-        userId,
-      });
+    if (isRetiredGameListConfig({ itemKind: nextItemKind, modules: nextModules })) {
+      return retiredGameListResponse(c);
     }
 
     const dup = await db.transaction(async (tx) => {
@@ -1383,10 +1304,6 @@ listRoutes.post(
 
 listRoutes.get("/:id/items", requireListMember, async (c) => {
   const listId = c.req.param("id");
-  const legacy = await legacyListConfigForId(listId);
-  if (legacy && isLegacyGameListConfig(legacy)) {
-    logLegacyGameListAccess(c, { operation: "items", listId });
-  }
   const split = await fetchItemsForList(listId);
   return ok(c, split);
 });

@@ -9,7 +9,7 @@ import {
   type ModuleName,
 } from "@workshop/shared/modules";
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { itemScores, items, listSources } from "../db/schema.js";
+import { gameScores, items, listSources } from "../db/schema.js";
 import type { DbClient } from "./sql.js";
 
 interface ModuleManifest {
@@ -61,10 +61,13 @@ const MODULE_MANIFESTS: Record<ModuleName, ModuleManifest> = {
   leaderboard: {
     name: "leaderboard",
     inspectRemoval: async (listId, db) => {
+      // Legacy leaderboard lists now read scores from the canonical
+      // `game_scores` table via each item's `game_id` mapping (the old
+      // per-item `item_scores` fallback was retired with the Games migration).
       const [row] = await db
         .select({ count: sql<number>`COUNT(*)::int` })
-        .from(itemScores)
-        .innerJoin(items, eq(items.id, itemScores.itemId))
+        .from(gameScores)
+        .innerJoin(items, eq(items.gameId, gameScores.gameId))
         .where(and(eq(items.listId, listId), isNull(items.archivedAt)));
       const count = Number(row?.count ?? 0);
       if (count === 0) return [];

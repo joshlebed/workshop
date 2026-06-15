@@ -18,7 +18,6 @@ import { itemAcceptRoutes, listLetterboxdRoutes } from "./routes/v1/letterboxd.j
 import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
 import { listRoutes, publicListRoutes } from "./routes/v1/lists.js";
 import { memberRoutes } from "./routes/v1/members.js";
-import { itemScoreRoutes, listScoresRoutes } from "./routes/v1/scores.js";
 import { searchRoutes } from "./routes/v1/search.js";
 import { sourcePreviewRoutes } from "./routes/v1/sources.js";
 import { telemetryRoutes } from "./routes/v1/telemetry.js";
@@ -120,11 +119,9 @@ export function buildApp() {
   app.route("/v1", publicListRoutes);
   app.route("/v1/lists", listRoutes);
   app.route("/v1/lists", memberRoutes);
-  app.route("/v1/lists", listScoresRoutes);
   app.route("/v1/lists", listViewRoutes);
   app.route("/v1/lists", listLetterboxdRoutes);
   app.route("/v1/items", itemRoutes);
-  app.route("/v1/items", itemScoreRoutes);
   app.route("/v1/items", itemAcceptRoutes);
   // Games surface (spec §3) — flag-gated inside the router (404 when off).
   app.route("/v1/games", gameRoutes);

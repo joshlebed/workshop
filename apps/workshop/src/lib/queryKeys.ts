@@ -44,14 +44,6 @@ export const queryKeys = {
      */
     forKind: (kind: string, input: string) => ["sourcePreview", kind, input] as const,
   },
-  gameScores: {
-    /** Per-item leaderboard for one period. */
-    forItem: (itemId: string, periodKey: string) =>
-      ["scores", "forItem", itemId, periodKey] as const,
-    /** Aggregated scores for every item on a list for one period. */
-    forList: (listId: string, periodKey: string) =>
-      ["scores", "forList", listId, periodKey] as const,
-  },
   sources: {
     forList: (listId: string) => ["sources", "forList", listId] as const,
   },

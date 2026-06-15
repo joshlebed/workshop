@@ -17,10 +17,10 @@
 // `TouchSensor` `delay`), so the activation feel is the same on both
 // platforms even though the underlying libraries are different.
 
-import type { Item, LeaderboardEntry, ListMemberSummary } from "@workshop/shared";
+import type { Item } from "@workshop/shared";
 import * as Haptics from "expo-haptics";
 import { memo, type ReactNode, useCallback, useState } from "react";
-import { type ListRenderItemInfo, Pressable, StyleSheet, View } from "react-native";
+import { type ListRenderItemInfo, StyleSheet, View } from "react-native";
 import {
   NestedReorderableList,
   type ReorderableListReorderEvent,
@@ -31,13 +31,8 @@ import {
 import { PullToRefresh } from "../../components/PullToRefresh";
 import { tokens } from "../../ui/index";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
-import { GameLeaderboardCard } from "./GameLeaderboardCard";
 import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
-
-// Stable empty refs so leaderboard cards without scores still hit the memo.
-const EMPTY_ENTRIES: LeaderboardEntry[] = [];
-const EMPTY_MEMBERS: ListMemberSummary[] = [];
 
 export function ItemList({
   ordered,
@@ -50,16 +45,7 @@ export function ItemList({
   memberNameById,
   showProvenance,
   selfId,
-  playedByItem,
   letterboxdBadgeByItem,
-  totalPlayers,
-  isGameKind,
-  viewingToday,
-  scoresByItem,
-  members,
-  scoresLoading,
-  onPlayGame,
-  onPasteScore,
   accent,
   onReorderOrdered,
   onRowMenu,
@@ -98,19 +84,12 @@ export function ItemList({
     [showProvenance, selfId, memberNameById],
   );
 
-  // Leaderboard lists: replace the per-row "Added by …" line with the
-  // social signal that actually matters on a daily-games shelf — how many
-  // of the group played today. `undefined` lets the row fall back to the
-  // default provenance.
+  // Letterboxd-match lists replace the per-row "Added by …" line with the
+  // overlap badge ("On 3 watchlists · …"). `undefined` lets the row fall back
+  // to the default provenance.
   const resolveProvenanceOverride = useCallback(
-    (item: Item): string | undefined => {
-      const letterboxdBadge = letterboxdBadgeByItem?.get(item.id);
-      if (letterboxdBadge) return letterboxdBadge;
-      if (!playedByItem || totalPlayers == null) return undefined;
-      const played = playedByItem.get(item.id) ?? 0;
-      return `${played} of ${totalPlayers} played today`;
-    },
-    [playedByItem, totalPlayers, letterboxdBadgeByItem],
+    (item: Item): string | undefined => letterboxdBadgeByItem?.get(item.id),
+    [letterboxdBadgeByItem],
   );
 
   const handleOrderedReorder = useCallback(
@@ -120,68 +99,20 @@ export function ItemList({
     [onReorderOrdered],
   );
 
-  // Leaderboard lists swap the plain row for a rich standings card. The card
-  // mirrors ItemRow's press/menu/long-press contract so it drops into the same
-  // drag wrappers below. `onLongPressBody` is supplied only by the ordered drag
-  // wrapper (native reorder activation); unordered/completed cards pass none.
-  const renderGameCard = useCallback(
-    (
-      item: Item,
-      section: "ordered" | "unordered" | "completed",
-      isDragging: boolean,
-      onLongPressBody?: () => void,
-    ) => (
-      <GameLeaderboardCard
-        key={item.id}
+  const renderOrderedItem = useCallback(
+    ({ item, index }: ListRenderItemInfo<Item>) => (
+      <DraggableOrderedRow
         item={item}
-        section={section}
-        isDragging={isDragging}
+        rank={index + 1}
+        addedByName={resolveAddedByName(item)}
+        provenanceOverride={resolveProvenanceOverride(item)}
         accent={accent}
-        entries={scoresByItem?.[item.id] ?? EMPTY_ENTRIES}
-        members={members ?? EMPTY_MEMBERS}
-        selfId={selfId}
-        viewingToday={viewingToday ?? true}
-        loading={scoresLoading}
-        onPressBody={() => onRowPressBody(item, section)}
-        {...(onLongPressBody ? { onLongPressBody } : {})}
-        onMenu={() => onRowMenu(item, section)}
-        onPlay={() => onPlayGame?.(item)}
-        onPaste={() => onPasteScore?.(item)}
+        onMenu={() => onRowMenu(item, "ordered")}
+        onPressBody={() => onRowPressBody(item, "ordered")}
+        onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
       />
     ),
     [
-      accent,
-      scoresByItem,
-      members,
-      selfId,
-      viewingToday,
-      scoresLoading,
-      onRowPressBody,
-      onRowMenu,
-      onPlayGame,
-      onPasteScore,
-    ],
-  );
-
-  const renderOrderedItem = useCallback(
-    ({ item, index }: ListRenderItemInfo<Item>) =>
-      isGameKind ? (
-        <DraggableGameCard render={renderGameCard} item={item} />
-      ) : (
-        <DraggableOrderedRow
-          item={item}
-          rank={index + 1}
-          addedByName={resolveAddedByName(item)}
-          provenanceOverride={resolveProvenanceOverride(item)}
-          accent={accent}
-          onMenu={() => onRowMenu(item, "ordered")}
-          onPressBody={() => onRowPressBody(item, "ordered")}
-          onPressCover={resolveRowPressCover?.(item, "ordered") ?? undefined}
-        />
-      ),
-    [
-      isGameKind,
-      renderGameCard,
       resolveAddedByName,
       resolveProvenanceOverride,
       accent,
@@ -223,25 +154,21 @@ export function ItemList({
                 listItemKind={listItemKind}
               />
             ) : null}
-            {unordered.map((item) =>
-              isGameKind ? (
-                renderGameCard(item, "unordered", false)
-              ) : (
-                <ItemRow
-                  key={item.id}
-                  item={item}
-                  section="unordered"
-                  isNew={newItemIds.has(item.id)}
-                  isDragging={false}
-                  addedByName={resolveAddedByName(item)}
-                  provenanceOverride={resolveProvenanceOverride(item)}
-                  accent={accent}
-                  onMenu={() => onRowMenu(item, "unordered")}
-                  onPressBody={() => onRowPressBody(item, "unordered")}
-                  onPressCover={resolveRowPressCover?.(item, "unordered") ?? undefined}
-                />
-              ),
-            )}
+            {unordered.map((item) => (
+              <ItemRow
+                key={item.id}
+                item={item}
+                section="unordered"
+                isNew={newItemIds.has(item.id)}
+                isDragging={false}
+                addedByName={resolveAddedByName(item)}
+                provenanceOverride={resolveProvenanceOverride(item)}
+                accent={accent}
+                onMenu={() => onRowMenu(item, "unordered")}
+                onPressBody={() => onRowPressBody(item, "unordered")}
+                onPressCover={resolveRowPressCover?.(item, "unordered") ?? undefined}
+              />
+            ))}
           </>
         ) : null}
 
@@ -262,28 +189,24 @@ export function ItemList({
                 }
               />
             ) : null}
-            {completedToRender.map((item) =>
-              isGameKind ? (
-                renderGameCard(item, "completed", false)
-              ) : (
-                <ItemRow
-                  key={item.id}
-                  item={item}
-                  section="completed"
-                  isNew={false}
-                  isDragging={false}
-                  addedByName={resolveAddedByName(item)}
-                  provenanceOverride={resolveProvenanceOverride(item)}
-                  accent={accent}
-                  onMenu={() => onRowMenu(item, "completed")}
-                  onPressBody={() => onRowPressBody(item, "completed")}
-                  onTapCompleted={
-                    item.kind !== "spotify_album" ? () => onUncompleteItem(item) : undefined
-                  }
-                  onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
-                />
-              ),
-            )}
+            {completedToRender.map((item) => (
+              <ItemRow
+                key={item.id}
+                item={item}
+                section="completed"
+                isNew={false}
+                isDragging={false}
+                addedByName={resolveAddedByName(item)}
+                provenanceOverride={resolveProvenanceOverride(item)}
+                accent={accent}
+                onMenu={() => onRowMenu(item, "completed")}
+                onPressBody={() => onRowPressBody(item, "completed")}
+                onTapCompleted={
+                  item.kind !== "spotify_album" ? () => onUncompleteItem(item) : undefined
+                }
+                onPressCover={resolveRowPressCover?.(item, "completed") ?? undefined}
+              />
+            ))}
           </>
         ) : null}
       </ScrollViewContainer>
@@ -348,42 +271,6 @@ const DraggableOrderedRow = memo(function DraggableOrderedRow({
       onLongPressBody={onLongPressBody}
       dragHandle={dragHandle}
     />
-  );
-});
-
-interface DraggableGameCardProps {
-  item: Item;
-  render: (
-    item: Item,
-    section: "ordered" | "unordered" | "completed",
-    isDragging: boolean,
-    onLongPressBody?: () => void,
-  ) => ReactNode;
-}
-
-// Ordered leaderboard cards: long-press anywhere on the card activates reorder.
-// The card's own Pressables (cover / Play / paste / title / standings) each
-// take `onLongPressBody`; this transparent wrapper catches a long-press on the
-// gaps between them (turnout line, facepile, padding) so the whole card is the
-// drag handle — only the kebab menu opts out (it owns its touch, so a press
-// there opens the menu). `accessible={false}` keeps the inner buttons
-// individually reachable by VoiceOver.
-const DraggableGameCard = memo(function DraggableGameCard({
-  item,
-  render,
-}: DraggableGameCardProps) {
-  const drag = useReorderableDrag();
-  const isActive = useIsActive();
-  const onLongPressBody = useCallback(() => {
-    Haptics.selectionAsync().catch(() => {
-      /* haptics unavailable on simulator — non-fatal */
-    });
-    drag();
-  }, [drag]);
-  return (
-    <Pressable onLongPress={onLongPressBody} delayLongPress={250} accessible={false}>
-      {render(item, "ordered", isActive, onLongPressBody)}
-    </Pressable>
   );
 });
 

@@ -3,25 +3,14 @@
 // `formatShareBody`); this module owns the recap composition and the
 // Item/Game adapters that pick which registry entry formats a given row.
 
-import type { Item, LeaderboardEntry } from "@workshop/shared";
 import { formatShareBodyFallback, gameDefinitionForKey } from "@workshop/shared/gameRegistry";
 import type { MyGame } from "@workshop/shared/games";
 import { evaluateSummarySpec, type SummarySpec } from "@workshop/shared/summarySpec";
 import {
   type DetectedSharedScoreKind,
-  detectGameKindForItem,
   detectGameKindForText,
   detectSharedScore,
 } from "./shareScoreDetection";
-
-interface BuildSummaryParams {
-  listName: string;
-  listUrl: string;
-  items: Item[];
-  scoresByItem: Record<string, LeaderboardEntry[]>;
-  selfId: string | null;
-  dateKey: string;
-}
 
 interface BuildGameSummaryParams {
   shareUrl: string;
@@ -30,32 +19,15 @@ interface BuildGameSummaryParams {
   dateKey: string;
 }
 
-function detectKind(item: Item, scoreRaw: string): DetectedSharedScoreKind | null {
-  return detectSharedScore(scoreRaw)?.kind ?? detectGameKindForItem(item);
-}
-
 /**
  * Render `scoreRaw` (and `scoreValue` as a last resort) into the body shown
- * under a `• <title>` bullet in the clipboard recap (and per-row scores on
- * the leaderboard surfaces — byte-identical by construction). Registry
- * formatters handle the games we explicitly support; everything else falls
- * back to a cleaned copy of the raw text, and finally to the numeric
- * scoreValue if even that yields nothing.
- */
-export function summarizeScoreBody(
-  item: Item,
-  entry: { scoreValue: number | null; scoreRaw: string | null },
-): string | null {
-  return summarizeBody((raw) => detectKind(item, raw), entry);
-}
-
-/**
- * Games-surface twin of `summarizeScoreBody`: identical distillation, but the
- * game-kind inference runs over the catalog row's title + URL instead of an
- * `Item`. Keeps a Games card's score block byte-identical to what the same
- * raw result renders as on the Lists surface. When the catalog row carries a
- * user-taught `summarySpec` (built in the teach flow's recap preview), it
- * stands in for the registry's hand-written `formatShareBody`.
+ * under a `• <title>` bullet in the Games clipboard recap and the per-row
+ * score on a Games standings card. The game-kind inference runs over the
+ * catalog row's title + URL. Registry formatters handle the games we
+ * explicitly support; a user-taught `summarySpec` (built in the teach flow's
+ * recap preview) stands in for a hand-written `formatShareBody`; everything
+ * else falls back to a cleaned copy of the raw text, and finally to the
+ * numeric scoreValue if even that yields nothing.
  */
 export function summarizeGameScoreBody(
   game: { title: string; url: string | null; summarySpec?: SummarySpec | null },
@@ -110,44 +82,12 @@ function formatShortDate(date: string): string {
 }
 
 /**
- * Compose a clipboard-friendly recap of the viewer's own scores on `dateKey`.
- * One bullet per game with a per-game-distilled body underneath; a single
- * trailing link back to the list. Returns `null` when the viewer has
- * nothing to share — caller surfaces a "no scores" toast instead of
- * copying an empty string.
- */
-export function buildTodaysScoresSummary({
-  listName,
-  listUrl,
-  items,
-  scoresByItem,
-  selfId,
-  dateKey,
-}: BuildSummaryParams): string | null {
-  if (!selfId) return null;
-
-  const blocks: string[] = [];
-  for (const item of items) {
-    const entries = scoresByItem[item.id];
-    if (!entries) continue;
-    const mine = entries.find((e) => e.userId === selfId);
-    if (!mine) continue;
-    const body = summarizeScoreBody(item, mine);
-    if (!body) continue;
-    blocks.push(`• ${item.title}\n${body}`);
-  }
-
-  if (blocks.length === 0) return null;
-
-  const header = `My scores in ${listName} — ${formatShortDate(dateKey)}`;
-  return `${header}\n${blocks.join("\n")}\n${listUrl}`;
-}
-
-/**
- * Games-tab recap: same score distillation as the list copy action, but over
- * My Games and with a personal play link (`/g/:token`) as the call to action —
+ * Games-tab recap: one bullet per game with a per-game-distilled body
+ * underneath, and a personal play link (`/g/:token`) as the call to action —
  * opening it routes an existing friend to the Games home and everyone else to
  * the sharer's profile (NOT a friend-accept flow, even between existing friends).
+ * Returns `null` when the viewer has nothing to share — the caller surfaces a
+ * "no scores" toast instead of copying an empty string.
  */
 export function buildTodaysGameScoresSummary({
   shareUrl,
