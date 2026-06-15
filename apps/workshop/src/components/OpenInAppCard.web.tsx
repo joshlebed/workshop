@@ -1,17 +1,24 @@
 // Web-only "Open in app" card for the play-link landing, shown when the page is
-// opened inside a third-party in-app browser (Messenger / Instagram), where iOS
-// can't auto-open the native app from a Universal Link.
+// opened inside a third-party in-app browser (Messenger / Instagram).
 //
-// The CTA is a REAL `<a href>` on purpose: iOS only routes a Universal Link to
-// the installed app on a genuine *user tap* on a link element — a programmatic
-// `window.location = …` / `Linking.openURL(…)` inside the WebView does nothing
-// (Apple's documented behavior). `url` must be the https Universal Link
-// (`…/g/<token>`), never `workshop://`: tapping the https link opens the app if
-// installed and just loads the web page if not — no "Cannot Open Page" dialog.
+// The CTA is a REAL `<a href>` (a genuine user tap, not a programmatic
+// navigation) pointing at the app's **custom scheme** `workshop://…`, NOT the
+// https Universal Link. Why the scheme and not the Universal Link:
+//   - The Universal Link is the *same* https URL the page is already on, so a
+//     tap just reloads it (Apple won't fire a Universal Link to the same domain
+//     you're already viewing) → an endless in-app-browser loop. The custom
+//     scheme is not an http navigation, so it never reloads the page.
+//   - The scheme is registered by the app's Info.plist (`CFBundleURLSchemes`),
+//     so iOS routes it to the installed app regardless of AASA / Universal Link
+//     association state — which, for this app, is exactly what's failing (links
+//     don't reliably open the app even from iMessage).
+// Tradeoff: tapping a custom scheme with the app NOT installed shows iOS's
+// "Cannot Open Page" alert — acceptable for a TestFlight app, and "Continue
+// here instead" is the web fallback for anyone without it.
 //
-// Meta's in-app browser is sometimes engineered to suppress even the tap, so the
-// card always pairs the button with a "⋯ → Open in Safari" hint (Universal Links
-// fire reliably from real Safari) and a "continue here" escape.
+// The `<a>` also needs an explicit `fontFamily`: a raw DOM element doesn't
+// inherit RN-Web's injected text font, so without this it renders in the UA
+// serif (Times). The value mirrors RN-Web's default `Text` stack exactly.
 
 import type { CSSProperties } from "react";
 import { StyleSheet, View } from "react-native";
@@ -19,6 +26,10 @@ import { Button, Card, Text, tokens } from "../ui/index";
 import type { OpenInAppCardProps } from "./OpenInAppCard";
 
 export type { OpenInAppCardProps } from "./OpenInAppCard";
+
+// RN-Web's default Text font stack — keep in sync so the anchor matches the card.
+const SYSTEM_FONT =
+  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 const anchorStyle: CSSProperties = {
   display: "block",
@@ -28,6 +39,7 @@ const anchorStyle: CSSProperties = {
   color: tokens.text.onAccent,
   textDecoration: "none",
   textAlign: "center",
+  fontFamily: SYSTEM_FONT,
   fontSize: tokens.font.size.md,
   fontWeight: tokens.font.weight.semibold,
   paddingTop: tokens.space.md,
@@ -44,20 +56,15 @@ export function OpenInAppCard({ url, onContinue }: OpenInAppCardProps) {
           Open in the Workshop app
         </Text>
         <Text tone="secondary" style={styles.body}>
-          This link opened in an in-app browser, which can't hand off to the app on its own. Tap to
-          continue in Workshop.
+          Tap below to jump to the app — or keep going here in your browser.
         </Text>
       </View>
 
-      {/* Real anchor — a user tap on this https Universal Link is the only thing
-          iOS will route to the installed app from inside an in-app browser. */}
+      {/* Real anchor → the app's custom scheme. A user tap opens the installed
+          app directly (no Universal Link / reload loop). */}
       <a href={url} style={anchorStyle} data-testid="open-in-app-link">
         Open Workshop
       </a>
-
-      <Text tone="muted" variant="caption" style={styles.hint}>
-        Nothing happened? Tap the ⋯ menu and choose “Open in Safari,” then reopen the link.
-      </Text>
 
       <Button
         label="Continue here instead"
@@ -80,5 +87,4 @@ const styles = StyleSheet.create({
   glyph: { fontSize: 40, lineHeight: 46 },
   title: { textAlign: "center" },
   body: { textAlign: "center" },
-  hint: { textAlign: "center" },
 });

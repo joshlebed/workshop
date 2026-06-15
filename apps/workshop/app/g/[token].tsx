@@ -25,9 +25,10 @@ import { Button, Card, Text, tokens } from "../../src/ui/index";
  * the stash in its post-sign-in bounce, and lets `/g/*` mount signed-out).
  *
  * In a third-party in-app browser (Messenger / Instagram) we don't resolve at
- * all — iOS can't auto-open the app from a Universal Link there, only a user tap
- * can — so we surface an "Open in app" card (`OpenInAppCard`) with a tappable
- * Universal Link, and only proceed on web if the user opts out.
+ * all — iOS can't auto-open the app from a Universal Link there — so we surface
+ * an "Open in app" card (`OpenInAppCard`) whose button is the app's custom
+ * scheme (`workshop://…`, which routes to the installed app on a tap regardless
+ * of Universal Link state), and only proceed on web if the user opts out.
  */
 export default function GameShareLanding() {
   const params = useLocalSearchParams<{ token?: string }>();
@@ -90,13 +91,15 @@ export default function GameShareLanding() {
   }
 
   // In-app browser: offer the app before doing anything web-side. The button
-  // targets the https Universal Link for THIS link (an AASA-allowlisted path),
-  // which a user tap can route to the installed app.
+  // targets the app's custom scheme (`workshop:///g/<token>`), which a tap routes
+  // straight to the installed app — unlike the https Universal Link, which (being
+  // the same URL this page is on) just reloads into a loop and, per reports,
+  // doesn't reliably open the app even from native contexts like iMessage.
   if (showAppPrompt) {
     return (
       <Centered testID="game-share-open-in-app">
         <OpenInAppCard
-          url={`${window.location.origin}/g/${encodeURIComponent(linkToken ?? "")}`}
+          url={`workshop:///g/${encodeURIComponent(linkToken ?? "")}`}
           onContinue={() => setContinuedOnWeb(true)}
         />
       </Centered>

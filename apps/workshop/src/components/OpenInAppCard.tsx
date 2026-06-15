@@ -4,7 +4,7 @@
 // shared import resolves. The real card is `OpenInAppCard.web.tsx`.
 
 export interface OpenInAppCardProps {
-  /** The https Universal Link to open in the native app (NOT a custom scheme). */
+  /** The app's custom-scheme deep link (`workshop://…`) to open in the native app. */
   url: string;
   /** Proceed on the web instead. */
   onContinue: () => void;
