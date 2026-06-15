@@ -97,9 +97,14 @@ non-obvious requirements on the `<a>`: it must be a **real DOM anchor** (a progr
 `window.location`/`Linking.openURL` does nothing in the WebView — only a user gesture works), and
 it needs an explicit `fontFamily` (a raw `<a>` doesn't inherit RN-Web's injected text font and
 otherwise renders in the UA serif — `SYSTEM_FONT` mirrors RN-Web's default stack). Tradeoff: a
-custom scheme with the app **not** installed pops iOS's "Cannot Open Page" alert, so the card pairs
-the button with a "Continue here instead" web escape (`continuedOnWeb`). **Verify on a real device**
-— whether Meta's WebView honors the scheme tap is empirical. Scoped to play links (not
+custom scheme has no graceful no-app fallback (tapped without the app it pops iOS's "Cannot Open
+Page" alert / nothing), so tapping arms a **timed fallback**: if the page is still foregrounded
+`FALLBACK_MS` (~2s) after the tap, the app didn't take over and we auto-`onContinue()` to the web.
+A real app-open backgrounds the WebView and pauses JS timers, so the callback fires only after a
+big wall-clock gap, which we detect (`Date.now()` diff) and skip — don't replace this with a plain
+`setTimeout` that ignores elapsed time, or returning to Messenger after using the app would yank the
+user to the web. There's also a manual "Continue here instead" escape (`continuedOnWeb`). **Verify
+on a real device** — whether Meta's WebView honors the scheme tap is empirical. Scoped to play links (not
 `/l`/`/friends/accept`); the component is generic if you widen it. A server-rendered variant in the
 Pages Function would appear before the SPA loads — a possible future upgrade.
 
