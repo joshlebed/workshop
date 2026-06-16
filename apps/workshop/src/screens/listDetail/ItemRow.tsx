@@ -570,7 +570,14 @@ const styles = StyleSheet.create({
   coverPressed: { opacity: 0.7 },
   coverCompleted: { opacity: 0.5 },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
-  coverPlaceholderGlyph: { fontSize: 24 },
+  // Emoji glyph (🔗 / 📀 / 🎬 …) shown when a row has no thumbnail. `Text`
+  // defaults to the `body` variant (lineHeight 22); at fontSize 24 the glyph
+  // overflows that 22px line box and iOS clips it — the emoji renders cut off
+  // and shifted low. Pin an explicit lineHeight so the line box contains the
+  // glyph and it centers in the 52px cover (matches the 24/28 emoji convention
+  // used by `titleEmoji` and the list header emoji). RN-Web never clipped, so
+  // this is an iOS-only fix that's a no-op on web.
+  coverPlaceholderGlyph: { fontSize: 24, lineHeight: 28 },
   rowBody: { flex: 1, gap: 2 },
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   rowTitle: {
