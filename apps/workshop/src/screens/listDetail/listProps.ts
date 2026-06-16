@@ -34,6 +34,18 @@ export interface ItemListProps {
   accent: string;
   onReorderOrdered: (event: ReorderEvent) => void;
   onPromoteToOrdered: (event: { item: Item; toIndex: number }) => void;
+  /**
+   * Neighbor-relative move used by the native combined list, which drags across
+   * the Ranked ↔ unranked boundary in one reorderable list. `beforeItemId` /
+   * `afterItemId` follow `POST /v1/items/:id/move`: both set → ranked between
+   * those rows, both `null` → unranked (demote). Web reorders within sections
+   * via the two handlers above and never calls this.
+   */
+  onMoveItemRelative: (event: {
+    item: Item;
+    beforeItemId: string | null;
+    afterItemId: string | null;
+  }) => void;
   onRowMenu: (item: Item, section: Section) => void;
   onRowPressBody: (item: Item, section: Section) => void;
   onUncompleteItem: (item: Item) => void;

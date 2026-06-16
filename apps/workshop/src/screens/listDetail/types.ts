@@ -2,10 +2,11 @@ import type { Item } from "@workshop/shared";
 
 /**
  * The unified list-detail screen renders three visually distinct sections.
- * Drag-to-reorder is scoped to the ordered section only — cross-section
- * transitions go through the kebab menu (Promote / Demote / Mark complete /
- * Mark incomplete). Headers + the ordered hint are plain markup outside
- * any sortable container.
+ * Drag-to-reorder works within the ordered section and across the Ranked ↔
+ * unranked boundary (promote/demote) on both platforms — web via
+ * `@dnd-kit`, native via one combined `react-native-reorderable-list`. Moving
+ * to/from the completed section still goes through the kebab menu (Mark
+ * complete / Mark incomplete).
  */
 export type Section = "ordered" | "unordered" | "completed";
 

@@ -246,6 +246,22 @@ version bump and it OTAs to existing builds. If you bump the library, re-verify 
 fixed this (drag start must validate gesture liveness on the UI thread) before dropping the
 patch.
 
+## Native list-detail drag crosses the Ranked ↔ unranked boundary via ONE combined list
+
+`react-native-reorderable-list` can only reorder within a single list's `data`, so promote/
+demote-by-drag on native (`ItemList.tsx`) renders `[...ordered, ...unordered]` in ONE
+`NestedReorderableList` (enabled when ranking is on and the ranked block is non-empty;
+empty-ranked falls back to the hint + kebab "Move to ordered"). `resolveCombinedReorder`
+(`combinedReorder.ts`, unit-tested) maps the library's `{from,to}` to the neighbor-relative
+`POST /v1/items/:id/move` (`beforeItemId`/`afterItemId` set → ranked between those rows; both
+`null` → unranked). For a move that stays within the ranked block it returns the exact same
+neighbors as `neighborsForOrderedReorder`, so existing ranked reorder is unchanged. Section
+headers stay OUT of the reorderable **data** — a header _row_ inside the list desyncs the
+library's per-cell layout (it can render below its rows). "Ranked" is plain markup above the
+list; "Ideas" is decoration on the first unranked **cell** (a real row, not a data row). Web
+(`ItemList.web.tsx`, dnd-kit) keeps its own separate-sections + drop-zone implementation and
+never calls `onMoveItemRelative`.
+
 ## `expo-share-intent` is patched: capture `attributedContentText`
 
 A Web Share (`navigator.share({ text, url })` — Daily Tens, etc.) reaches the iOS share

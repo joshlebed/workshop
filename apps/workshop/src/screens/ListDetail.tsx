@@ -430,6 +430,21 @@ export function ListDetail({ list, members, sources, token }: Props) {
     });
   };
 
+  // Native combined list (drag across the Ranked ↔ unranked boundary) hands us
+  // the resolved neighbors directly; the same `moveMutation` handles promote,
+  // demote, and reorder.
+  const onMoveItemRelative = ({
+    item,
+    beforeItemId,
+    afterItemId,
+  }: {
+    item: Item;
+    beforeItemId: string | null;
+    afterItemId: string | null;
+  }) => {
+    moveMutation.mutate({ item, beforeItemId, afterItemId });
+  };
+
   const [menuItem, setMenuItem] = useState<Item | null>(null);
   const [menuActions, setMenuActions] = useState<ItemRowMenuActions | null>(null);
   const closeMenu = () => {
@@ -897,6 +912,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
               accent={accent}
               onReorderOrdered={onReorderOrdered}
               onPromoteToOrdered={onPromoteToOrdered}
+              onMoveItemRelative={onMoveItemRelative}
               onRowMenu={onRowMenu}
               onRowPressBody={onRowPressBody}
               onUncompleteItem={(item) => completeMutation.mutate({ item, nextCompleted: false })}
