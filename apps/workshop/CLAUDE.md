@@ -425,10 +425,14 @@ Raw `<Animated.Text>` strips our `variant`/`tone` props.
 `Text` defaults to `variant="body"`, which carries a fixed `lineHeight: 22` (each variant
 sets its own line-height for vertical rhythm — see `variantStyle` in `src/ui/Text.tsx`).
 A local style that overrides only `fontSize` (e.g. a 34px wordmark) keeps the 22px line
-box, and **iOS clips the tops of the glyphs** (web/RN-Web doesn't — the overflow just
+box, and **iOS clips the glyphs to that line box** (web/RN-Web doesn't — the overflow just
 renders, so this is invisible until you look on device). Always set a matching `lineHeight`
 (~1.2× the font size) alongside any custom `fontSize`. The sign-in wordmark
-(`app/sign-in.tsx`) regressed this way; emoji/icon glyphs are exempt (no ascenders to clip).
+(`app/sign-in.tsx`) regressed this way. **This includes emoji/symbol glyphs** — any
+`fontSize` > the inherited `lineHeight` clips, so a `🔗`/`📀` cover placeholder or list emoji
+at fontSize 24/28/40 in a `body` (22) line box renders cut off and shifted low on iOS
+(`ItemRow` `coverPlaceholderGlyph`, the item-detail hero, list settings/empty-state emoji all
+hit this). Pin a `lineHeight` on **every** emoji/glyph `<Text>` style (e.g. `24/28`, `40/48`).
 
 ## Wrap top-level screens in `Screen` from `src/ui/Layout.tsx`
 
