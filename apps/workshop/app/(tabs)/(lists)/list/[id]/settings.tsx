@@ -1093,7 +1093,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  coverPreviewEmoji: { fontSize: 28 },
+  // lineHeight pinned so the 28px list emoji isn't clipped to the shared Text
+  // body line box (22) on iOS.
+  coverPreviewEmoji: { fontSize: 28, lineHeight: 32 },
   colorCellSelected: { borderColor: tokens.text.primary },
   colorCellPressed: { opacity: 0.8 },
   memberList: { gap: tokens.space.sm },

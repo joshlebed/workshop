@@ -33,6 +33,7 @@ import {
   useReorderableDrag,
 } from "react-native-reorderable-list";
 import { PullToRefresh } from "../../components/PullToRefresh";
+import { REORDER_AUTOSCROLL } from "../../lib/reorderAutoscroll";
 import { tokens } from "../../ui/index";
 import { resolveCombinedReorder } from "./combinedReorder";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
@@ -174,8 +175,8 @@ export function ItemList({
               renderItem={renderCombinedItem}
               onReorder={handleCombinedReorder}
               scrollable={false}
-              autoscrollThreshold={0.15}
-              autoscrollSpeedScale={1}
+              autoscrollThreshold={REORDER_AUTOSCROLL.threshold}
+              autoscrollSpeedScale={REORDER_AUTOSCROLL.speedScale}
               shouldUpdateActiveItem
             />
           </>

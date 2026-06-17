@@ -17,6 +17,7 @@ import {
   useReorderableDrag,
 } from "react-native-reorderable-list";
 import { PullToRefresh } from "../../components/PullToRefresh";
+import { REORDER_AUTOSCROLL } from "../../lib/reorderAutoscroll";
 import { homeLayout } from "../../ui/index";
 import type { GameCardListProps } from "./gameCardListProps";
 
@@ -40,8 +41,8 @@ export function GameCardList({
             onReorder({ fromIndex: from, toIndex: to })
           }
           scrollable={false}
-          autoscrollThreshold={0.15}
-          autoscrollSpeedScale={1}
+          autoscrollThreshold={REORDER_AUTOSCROLL.threshold}
+          autoscrollSpeedScale={REORDER_AUTOSCROLL.speedScale}
           shouldUpdateActiveItem
         />
       </ScrollViewContainer>

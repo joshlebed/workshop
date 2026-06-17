@@ -940,7 +940,9 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.elevated,
   },
   heroPlaceholder: { alignItems: "center", justifyContent: "center" },
-  heroPlaceholderGlyph: { fontSize: 40 },
+  // Pin lineHeight (≈1.2×) so the 40px hero emoji isn't clipped to the shared
+  // Text body line box (22) — iOS clips glyphs taller than their line box.
+  heroPlaceholderGlyph: { fontSize: 40, lineHeight: 48 },
   heroMeta: { flex: 1, gap: tokens.space.xs, paddingTop: 2 },
   eyebrow: {
     textTransform: "uppercase",
@@ -973,7 +975,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  heroPlainGlyph: { fontSize: 22 },
+  heroPlainGlyph: { fontSize: 22, lineHeight: 26 },
 
   // Title — typographic, no chrome
   titleInput: {

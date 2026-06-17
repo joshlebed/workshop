@@ -464,7 +464,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
   },
-  emptyGlyph: { fontSize: 28, color: tokens.accent.default },
+  emptyGlyph: { fontSize: 28, lineHeight: 32, color: tokens.accent.default },
   listContent: {
     paddingTop: homeLayout.contentTopGap,
     paddingBottom: homeLayout.bottomInset,
