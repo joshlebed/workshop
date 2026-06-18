@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isReactionEmoji, normalizeGameUrl, REACTION_QUICK_EMOJIS } from "./games.js";
+import {
+  computeGameStreak,
+  isReactionEmoji,
+  normalizeGameUrl,
+  REACTION_QUICK_EMOJIS,
+  shiftPeriodKey,
+} from "./games.js";
 
 describe("normalizeGameUrl", () => {
   it("strips the referral query string (the dailytens.com/?ref= junk case)", () => {
@@ -188,5 +194,69 @@ describe("isReactionEmoji", () => {
 
   it("rejects an over-long string (no essays in the emoji field)", () => {
     expect(isReactionEmoji("🔥".repeat(20))).toBe(false);
+  });
+});
+
+describe("shiftPeriodKey", () => {
+  it("steps forward and backward by whole days", () => {
+    expect(shiftPeriodKey("2026-06-18", -1)).toBe("2026-06-17");
+    expect(shiftPeriodKey("2026-06-18", 1)).toBe("2026-06-19");
+    expect(shiftPeriodKey("2026-06-18", 0)).toBe("2026-06-18");
+  });
+
+  it("crosses month and year boundaries (UTC, no DST drift)", () => {
+    expect(shiftPeriodKey("2026-03-01", -1)).toBe("2026-02-28");
+    expect(shiftPeriodKey("2024-03-01", -1)).toBe("2024-02-29"); // leap year
+    expect(shiftPeriodKey("2026-01-01", -1)).toBe("2025-12-31");
+    expect(shiftPeriodKey("2026-12-31", 1)).toBe("2027-01-01");
+  });
+
+  it("leaves an unparseable key untouched", () => {
+    expect(shiftPeriodKey("not-a-date", -1)).toBe("not-a-date");
+  });
+});
+
+describe("computeGameStreak", () => {
+  const today = "2026-06-18";
+
+  it("is 0 when the viewer has never played", () => {
+    expect(computeGameStreak([], today)).toBe(0);
+  });
+
+  it("counts a run that includes today", () => {
+    expect(computeGameStreak(["2026-06-16", "2026-06-17", "2026-06-18"], today)).toBe(3);
+  });
+
+  it("counts a single play today as 1 (UI thresholds at STREAK_MIN_DAYS)", () => {
+    expect(computeGameStreak(["2026-06-18"], today)).toBe(1);
+  });
+
+  it("stays live when the run reached yesterday but today isn't played yet", () => {
+    // The "play today to keep your streak" case — anchored on yesterday.
+    expect(computeGameStreak(["2026-06-16", "2026-06-17"], today)).toBe(2);
+  });
+
+  it("lapses to 0 once the last play is older than yesterday", () => {
+    expect(computeGameStreak(["2026-06-15", "2026-06-16"], today)).toBe(0);
+  });
+
+  it("only counts the consecutive run ending at the most recent play", () => {
+    // The 06-10/06-11 island is severed by the 06-13 gap.
+    expect(
+      computeGameStreak(
+        ["2026-06-10", "2026-06-11", "2026-06-16", "2026-06-17", "2026-06-18"],
+        today,
+      ),
+    ).toBe(3);
+  });
+
+  it("ignores order and duplicate days", () => {
+    expect(computeGameStreak(["2026-06-18", "2026-06-16", "2026-06-18", "2026-06-17"], today)).toBe(
+      3,
+    );
+  });
+
+  it("accepts a Set as well as an array", () => {
+    expect(computeGameStreak(new Set(["2026-06-17", "2026-06-18"]), today)).toBe(2);
   });
 });

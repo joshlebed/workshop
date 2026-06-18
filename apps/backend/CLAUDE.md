@@ -275,6 +275,20 @@ friend's reaction on a shared friend's score never reveals who they are. The emo
 validated by `isReactionEmoji` (`@workshop/shared/games`). When you add a new code path that
 builds `GameStandingsEntry`, populate `reactions` (it's a required field now).
 
+## `GameStandings.viewerStreak` — the Games-home streak flame
+
+`GameStandings` carries `viewerStreak` (required): the viewer's consecutive-day play streak
+for that game **as of `periodKey`**, computed by `loadViewerStreaksByGame` in `routes/v1/games.ts`
+and only populated by `GET /v1/games` (the per-game `/leaderboard` doesn't build a
+`GameStandings`, so it doesn't carry one). The math is the pure `computeGameStreak` in
+`@workshop/shared/games`: a run only counts as "live" when the latest play is `periodKey` or
+the day before — so a streak that reached yesterday but isn't continued today still counts
+(that's the "play today to keep it" nudge), but a full-day gap resets it to 0. The query is
+bounded by `STREAK_LOOKBACK_DAYS` (a longer real streak reports as the window length — fine for
+a nudge). The client shows a 🔥 flame next to the title once it hits `STREAK_MIN_DAYS` (2). When
+you add a new path that builds `GameStandings`, set `viewerStreak` (it's required) — usually
+`loadViewerStreaksByGame(...).get(gameId) ?? 0`.
+
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's

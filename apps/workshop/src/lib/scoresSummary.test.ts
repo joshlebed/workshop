@@ -43,6 +43,7 @@ function myGame(id: string, title: string, url: string, entries: GameStandingsEn
       periodKey: "2026-05-27",
       entries,
       viewerHasPlayed: entries.some((e) => e.userId === "me"),
+      viewerStreak: 0,
     },
   };
 }

@@ -18,10 +18,15 @@ import type {
   SetScoreReactionResponse,
   UpsertGameScoreResponse,
 } from "@workshop/shared/games";
-import { isReactionEmoji, normalizeGameUrl } from "@workshop/shared/games";
+import {
+  computeGameStreak,
+  isReactionEmoji,
+  normalizeGameUrl,
+  shiftPeriodKey,
+} from "@workshop/shared/games";
 import { parseScoreWithSpec, scoreSpecSchema } from "@workshop/shared/scoreParsing";
 import { evaluateSummarySpec, summarySpecSchema } from "@workshop/shared/summarySpec";
-import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -237,6 +242,53 @@ async function loadStandingsByGame(
   return byGame;
 }
 
+/**
+ * How far back the streak query looks. A daily-game run longer than this is
+ * exceptional; a streak that does exceed it is reported as the window length,
+ * which is fine for what's ultimately a "keep playing" nudge. The bound keeps
+ * the per-request read small (one viewer's own score-days across their games).
+ */
+const STREAK_LOOKBACK_DAYS = 400;
+
+/**
+ * The viewer's consecutive-day play streak per game, as of `today` (see
+ * `computeGameStreak`). One batched read of the viewer's own recent score-days
+ * across `gameIds`, then the pure day-walk per game. Keyed by gameId; games
+ * with no live streak are omitted (the caller defaults them to 0).
+ */
+async function loadViewerStreaksByGame(
+  viewerId: string,
+  gameIds: string[],
+  today: string,
+): Promise<Map<string, number>> {
+  const byGame = new Map<string, number>();
+  if (gameIds.length === 0) return byGame;
+  const since = shiftPeriodKey(today, -STREAK_LOOKBACK_DAYS);
+  const db = getDb();
+  const rows = await db
+    .select({ gameId: gameScores.gameId, periodKey: gameScores.periodKey })
+    .from(gameScores)
+    .where(
+      and(
+        inArray(gameScores.gameId, gameIds),
+        eq(gameScores.userId, viewerId),
+        gte(gameScores.periodKey, since),
+        lte(gameScores.periodKey, today),
+      ),
+    );
+  const daysByGame = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const set = daysByGame.get(r.gameId) ?? new Set<string>();
+    set.add(r.periodKey);
+    daysByGame.set(r.gameId, set);
+  }
+  for (const gameId of gameIds) {
+    const streak = computeGameStreak(daysByGame.get(gameId) ?? new Set<string>(), today);
+    if (streak > 0) byGame.set(gameId, streak);
+  }
+  return byGame;
+}
+
 export const gameRoutes = new Hono();
 
 // Flag gate (spec §3: "flag-gated; never touches the old surface"). 404 —
@@ -272,11 +324,11 @@ gameRoutes.get("/", async (c) => {
       asc(userGames.gameId),
     );
 
-  const standingsByGame = await loadStandingsByGame(
-    userId,
-    rows.map((r) => r.game.id),
-    periodKey,
-  );
+  const gameIds = rows.map((r) => r.game.id);
+  const [standingsByGame, streaksByGame] = await Promise.all([
+    loadStandingsByGame(userId, gameIds, periodKey),
+    loadViewerStreaksByGame(userId, gameIds, periodKey),
+  ]);
 
   const myGames: MyGame[] = rows.map((r) => {
     const entries = rankEntries(
@@ -287,6 +339,7 @@ gameRoutes.get("/", async (c) => {
       periodKey,
       entries,
       viewerHasPlayed: entries.some((e) => e.userId === userId),
+      viewerStreak: streaksByGame.get(r.game.id) ?? 0,
     };
     return {
       gameId: r.game.id,

@@ -22,7 +22,7 @@
 // wrapper's pointer listeners. A short tap on any control still runs that
 // control's own action.
 
-import type { ScoreReactionSummary } from "@workshop/shared/games";
+import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
 import { Avatar, Text, tokens } from "../ui/index";
@@ -64,6 +64,13 @@ export interface StandingsCardProps {
   isDragging: boolean;
   /** One-line social signal under the title ("3 of 5 played today"). */
   turnout: string;
+  /**
+   * The viewer's consecutive-day play streak for this game (0 = none). Once it
+   * reaches `STREAK_MIN_DAYS` a flame badge shows next to the title — a "play
+   * today to keep your streak" CTA. Tapping it plays the game (calls `onPlay`),
+   * so it stays useful whether or not today's already logged.
+   */
+  streak?: number;
   /**
    * Players with a score for the displayed day, in server display order
    * (rank-sorted, rankless rows last) — rendered as-is.
@@ -110,6 +117,7 @@ export const StandingsCard = memo(function StandingsCard({
   accent,
   isDragging,
   turnout,
+  streak,
   rows,
   selfId,
   loading,
@@ -125,6 +133,7 @@ export const StandingsCard = memo(function StandingsCard({
 }: StandingsCardProps) {
   const scored = rows;
   const playedCount = scored.length;
+  const showStreak = (streak ?? 0) >= STREAK_MIN_DAYS;
 
   const myRow = selfId ? scored.find((r) => r.userId === selfId) : undefined;
 
@@ -173,23 +182,43 @@ export const StandingsCard = memo(function StandingsCard({
         </Pressable>
 
         <View style={styles.headerText}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Open ${title} leaderboard`}
-            onPress={onPressBody}
-            onLongPress={onLongPressBody}
-            delayLongPress={250}
-            hitSlop={{ top: 6, bottom: 2 }}
-            testID={`game-card-body-${cardId}`}
-            style={({ pressed, hovered }) => [
-              styles.titlePress,
-              (pressed || hovered) && styles.bodyPressed,
-            ]}
-          >
-            <Text variant="heading" numberOfLines={1} style={styles.title}>
-              {title}
-            </Text>
-          </Pressable>
+          <View style={styles.titleRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${title} leaderboard`}
+              onPress={onPressBody}
+              onLongPress={onLongPressBody}
+              delayLongPress={250}
+              hitSlop={{ top: 6, bottom: 2 }}
+              testID={`game-card-body-${cardId}`}
+              style={({ pressed, hovered }) => [
+                styles.titlePress,
+                (pressed || hovered) && styles.bodyPressed,
+              ]}
+            >
+              <Text variant="heading" numberOfLines={1} style={styles.title}>
+                {title}
+              </Text>
+            </Pressable>
+            {showStreak ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${streak} day streak — play ${title} today to keep it going`}
+                onPress={onPlay}
+                onLongPress={onLongPressBody}
+                delayLongPress={250}
+                hitSlop={6}
+                testID={`game-card-streak-${cardId}`}
+                style={({ pressed, hovered }) => [
+                  styles.streak,
+                  (pressed || hovered) && styles.streakHover,
+                ]}
+              >
+                <Text style={styles.streakFlame}>🔥</Text>
+                <Text style={styles.streakCount}>{streak}</Text>
+              </Pressable>
+            ) : null}
+          </View>
           <View style={styles.metaRow}>
             <Text variant="caption" tone="muted" numberOfLines={1} style={styles.turnout}>
               {turnout}
@@ -469,8 +498,14 @@ const styles = StyleSheet.create({
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
   coverGlyph: { fontSize: 18 },
   headerText: { flex: 1, minWidth: 0 },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+  },
   titlePress: {
-    alignSelf: "flex-start",
+    flexShrink: 1,
+    minWidth: 0,
     maxWidth: "100%",
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
@@ -478,6 +513,29 @@ const styles = StyleSheet.create({
   },
   bodyPressed: { backgroundColor: tokens.bg.elevated },
   title: { fontSize: tokens.font.size.md, lineHeight: 21, letterSpacing: 0 },
+  // The streak flame mirrors the Play pill's warm CTA treatment (amber-muted
+  // fill, accent count) so it reads as "tap to keep your run going", not decor.
+  streak: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.accent.muted,
+  },
+  streakHover: { backgroundColor: `${tokens.accent.default}33` },
+  // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
+  // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
+  streakFlame: { fontSize: 12, lineHeight: 16 },
+  streakCount: {
+    fontSize: tokens.font.size.xs,
+    lineHeight: 16,
+    fontWeight: tokens.font.weight.bold,
+    color: tokens.accent.default,
+    fontVariant: ["tabular-nums"],
+  },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",

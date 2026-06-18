@@ -484,6 +484,9 @@ export function GamesHome() {
           accent={tokens.accent.default}
           isDragging={isDragging}
           turnout={turnoutLine(rows.length, standings?.viewerHasPlayed ?? false, viewingToday)}
+          // Streak rides on the today-pinned `mg` (not the rail's viewed day) so
+          // the flame always reflects today's run — a stable "play today" nudge.
+          streak={mg.standings.viewerStreak}
           rows={rows}
           selfId={user?.id ?? null}
           loading={!viewingToday && viewQuery.isPending}

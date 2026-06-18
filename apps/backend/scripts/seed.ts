@@ -618,6 +618,11 @@ async function seedFriendGraph(previewId: string, friendId: string) {
   await addToMyGames(friendId, globle.id, db);
   await addToMyGames(friendId, wordle.id, db);
   const todayKey = new Date().toISOString().slice(0, 10);
+  const dayKey = (daysAgo: number) =>
+    new Date(Date.now() - daysAgo * 86_400_000).toISOString().slice(0, 10);
+  // Josh has played Globle the last five days running, so the Games-home card
+  // shows the "🔥 5" streak flame next to the title (a "play today" CTA).
+  const joshStreakDays = [todayKey, dayKey(1), dayKey(2), dayKey(3), dayKey(4)];
   await db
     .insert(gameScores)
     .values([
@@ -628,13 +633,13 @@ async function seedFriendGraph(previewId: string, friendId: string) {
         scoreRaw: "🌎 Jun 11, 2026 🔥 2 | Avg. Guesses: 5\n🟨🟧🟥🟩 = 4\nhttps://globle-game.com",
         scoreValue: "4",
       },
-      {
+      ...joshStreakDays.map((periodKey, i) => ({
         gameId: globle.id,
         userId: previewId,
-        periodKey: todayKey,
-        scoreRaw: "🌎 Jun 11, 2026 🔥 5 | Avg. Guesses: 3\n🟨🟩 = 2\nhttps://globle-game.com",
-        scoreValue: "2",
-      },
+        periodKey,
+        scoreRaw: `🌎 Globle 🔥 ${joshStreakDays.length - i} | Avg. Guesses: 3\n🟨🟩 = ${2 + i}\nhttps://globle-game.com`,
+        scoreValue: String(2 + i),
+      })),
     ])
     .onConflictDoNothing();
 
