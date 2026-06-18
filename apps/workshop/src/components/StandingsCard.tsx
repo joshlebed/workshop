@@ -216,6 +216,7 @@ export const StandingsCard = memo(function StandingsCard({
               >
                 <Text style={styles.streakFlame}>🔥</Text>
                 <Text style={styles.streakCount}>{streak}</Text>
+                <Text style={styles.streakLabel}>day streak</Text>
               </Pressable>
             ) : null}
           </View>
@@ -535,6 +536,14 @@ const styles = StyleSheet.create({
     fontWeight: tokens.font.weight.bold,
     color: tokens.accent.default,
     fontVariant: ["tabular-nums"],
+  },
+  // The unit lives next to the bold count: "🔥 4 day streak". Lighter weight
+  // than the number so the count stays the focal point; same accent + lineHeight.
+  streakLabel: {
+    fontSize: tokens.font.size.xs,
+    lineHeight: 16,
+    fontWeight: tokens.font.weight.medium,
+    color: tokens.accent.default,
   },
   metaRow: {
     flexDirection: "row",
