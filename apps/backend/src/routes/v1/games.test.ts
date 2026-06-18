@@ -74,6 +74,7 @@ async function myGames(asUser = userId, period?: string) {
       standings: {
         periodKey: string;
         viewerHasPlayed: boolean;
+        viewerStreak: number;
         entries: { userId: string; scoreValue: number | null; rank: number | null }[];
       };
     }[];
@@ -358,6 +359,78 @@ describe("GET /v1/games — ordered list + standings block per game", () => {
 
     const after = await myGames(reordered, "2026-06-11");
     expect(after.games.map((g) => g.game.gameKey)).toEqual(["maptap", "globle", "wordle"]);
+  });
+});
+
+describe("GET /v1/games — viewer streak (consecutive-day plays)", () => {
+  const streakUser = "00000000-0000-4000-8000-000000000020";
+
+  // Fresh user + two games seeded with explicit period keys so the streak is
+  // asserted relative to a `?period=` anchor, not the real wall-clock today.
+  let wordleId: string;
+  let globleId: string;
+
+  beforeAll(async () => {
+    await rows(
+      `INSERT INTO users (id, email, display_name) VALUES ($1, 'streak@example.com', 'Streak')`,
+      [streakUser],
+    );
+    const catalog = await rows<{ id: string; game_key: string }>(
+      `SELECT id, game_key FROM games WHERE game_key IN ('wordle', 'globle')`,
+    );
+    wordleId = catalog.find((g) => g.game_key === "wordle")?.id as string;
+    globleId = catalog.find((g) => g.game_key === "globle")?.id as string;
+    expect({ wordleId, globleId }).toEqual({
+      wordleId: expect.any(String),
+      globleId: expect.any(String),
+    });
+
+    await rows(
+      `INSERT INTO user_games (user_id, game_id, position, added_at) VALUES
+         ($1, $2, 1024, '2026-03-01T00:00:00Z'),
+         ($1, $3, 2048, '2026-03-01T00:00:00Z')`,
+      [streakUser, wordleId, globleId],
+    );
+    // Wordle: a 3-day run (03-08..03-10) plus an older island (03-05/03-06)
+    // severed by the 03-07 gap. Globle: a single play on 03-10.
+    await rows(
+      `INSERT INTO game_scores (game_id, user_id, period_key, score_value, score_raw) VALUES
+         ($1, $3, '2026-03-05', 4, 'Wordle 4/6'),
+         ($1, $3, '2026-03-06', 3, 'Wordle 3/6'),
+         ($1, $3, '2026-03-08', 4, 'Wordle 4/6'),
+         ($1, $3, '2026-03-09', 5, 'Wordle 5/6'),
+         ($1, $3, '2026-03-10', 3, 'Wordle 3/6'),
+         ($2, $3, '2026-03-10', 2, 'Globle 2')`,
+      [wordleId, globleId, streakUser],
+    );
+  });
+
+  async function streakFor(gameId: string, period: string): Promise<number> {
+    const body = await myGames(streakUser, period);
+    const game = body.games.find((g) => g.gameId === gameId);
+    expect(game, `game ${gameId} missing from My Games`).toBeDefined();
+    return game?.standings.viewerStreak ?? -1;
+  }
+
+  it("counts the run ending today, ignoring an older gap-severed island", async () => {
+    expect(await streakFor(wordleId, "2026-03-10")).toBe(3);
+  });
+
+  it("stays live (and keeps its full count) when the run reached yesterday but not today", async () => {
+    // Anchored on yesterday (03-10) — the "play today to keep your streak" case.
+    expect(await streakFor(wordleId, "2026-03-11")).toBe(3);
+  });
+
+  it("lapses to 0 once the last play is older than yesterday", async () => {
+    expect(await streakFor(wordleId, "2026-03-12")).toBe(0);
+  });
+
+  it("reports a lone play as 1 (the UI thresholds the flame at >= 2)", async () => {
+    expect(await streakFor(globleId, "2026-03-10")).toBe(1);
+  });
+
+  it("is 0 for a game the viewer has never played on the asked-for day", async () => {
+    expect(await streakFor(globleId, "2026-03-09")).toBe(0);
   });
 });
 

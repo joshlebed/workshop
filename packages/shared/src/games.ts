@@ -97,6 +97,13 @@ export interface GameStandings {
   periodKey: string;
   entries: GameStandingsEntry[];
   viewerHasPlayed: boolean;
+  /**
+   * The viewer's current consecutive-day play streak for this game, as of
+   * `periodKey` (see `computeGameStreak`). 0 when the run has lapsed (last play
+   * older than the day before `periodKey`) or they've never played. Drives the
+   * Games-home streak flame next to the title — a "play today to keep it" CTA.
+   */
+  viewerStreak: number;
 }
 
 /** `GET /v1/games` — one element per game in My Games, in my order. */
@@ -255,4 +262,53 @@ export function isReactionEmoji(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > 32) return false;
   return REACTION_EMOJI_ALLOWED.test(trimmed) && REACTION_EMOJI_REQUIRED.test(trimmed);
+}
+
+/**
+ * Minimum consecutive days before the Games UI surfaces a streak flame next to
+ * a game's title. Colloquially "a streak" is ≥2 days in a row — a single play
+ * is just "played today", not yet a streak worth nudging to protect.
+ */
+export const STREAK_MIN_DAYS = 2;
+
+/**
+ * Step a `YYYY-MM-DD` period key by `delta` days, in UTC so it's DST-proof
+ * (period keys are calendar dates, never wall-clock instants). Returns the key
+ * unchanged when it isn't a parseable date.
+ */
+export function shiftPeriodKey(periodKey: string, delta: number): string {
+  const [y, m, d] = periodKey.split("-").map(Number);
+  if (!y || !m || !d) return periodKey;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return dt.toISOString().slice(0, 10);
+}
+
+/**
+ * The viewer's current consecutive-day play streak for one game, as of `today`.
+ *
+ * A streak only counts as "live" when the most recent play is `today` or the
+ * day before it — so a run that reached yesterday but hasn't been continued
+ * today still counts (that's exactly the "play today to keep your streak"
+ * nudge), but a gap of a full day or more resets it to 0. When live, the value
+ * is the number of consecutive calendar days ending at that most-recent play.
+ *
+ * `playedPeriodKeys` is the set of days the viewer has a score on; order and
+ * duplicates don't matter, and keys after `today` are simply never reached.
+ */
+export function computeGameStreak(playedPeriodKeys: Iterable<string>, today: string): number {
+  const played = new Set(playedPeriodKeys);
+  if (played.size === 0) return 0;
+  // Anchor on the most recent of today / yesterday the viewer actually played;
+  // anything older means the run already lapsed.
+  let cursor: string;
+  if (played.has(today)) cursor = today;
+  else if (played.has(shiftPeriodKey(today, -1))) cursor = shiftPeriodKey(today, -1);
+  else return 0;
+  let streak = 0;
+  while (played.has(cursor)) {
+    streak += 1;
+    cursor = shiftPeriodKey(cursor, -1);
+  }
+  return streak;
 }
