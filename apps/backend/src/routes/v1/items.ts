@@ -14,6 +14,7 @@ import {
   UnknownItemKindError,
   validateContent,
 } from "@workshop/shared/itemKinds";
+import { linkPreviewToItemContent } from "@workshop/shared/linkContent";
 import { hasModule } from "@workshop/shared/modules";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -172,18 +173,7 @@ function clearLinkPreviewContent(content: ItemContent | null | undefined): ItemC
 }
 
 function linkPreviewToContent(preview: LinkPreview): ItemContent {
-  const content: Record<string, unknown> = {
-    source: "link_preview",
-    sourceId: preview.finalUrl,
-  };
-  if (preview.image) content.image = preview.image;
-  if (preview.imageProxy) content.imageProxy = preview.imageProxy;
-  const thumbnail = preview.imageProxy ?? preview.image ?? preview.favicon;
-  if (thumbnail) content.thumbnailUrl = thumbnail;
-  if (preview.siteName) content.siteName = preview.siteName;
-  if (preview.title) content.title = preview.title;
-  if (preview.description) content.description = preview.description;
-  return content;
+  return linkPreviewToItemContent(preview);
 }
 
 function mergeLinkPreviewContent(

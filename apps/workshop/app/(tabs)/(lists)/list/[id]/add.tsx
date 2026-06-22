@@ -11,6 +11,7 @@ import type {
   MediaSearchResponse,
   MediaSearchType,
 } from "@workshop/shared";
+import { linkPreviewToItemContent } from "@workshop/shared/linkContent";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-native";
@@ -275,21 +276,16 @@ function buildBookContent(r: BookResult): ItemContent {
 }
 
 function buildLinkContent(p: LinkPreview, isGame: boolean): ItemContent {
-  const c: Record<string, unknown> = { source: "link_preview", sourceId: p.finalUrl };
+  const c = linkPreviewToItemContent(p);
   if (isGame) {
     // Game tiles render via `thumbnailUrl`; prefer the proxied variant so the
     // tile is reachable even if the upstream CDN goes dark. Fall back to the
     // upstream image, then to the (Google-s2-backed) favicon.
-    const thumbnail = p.imageProxy ?? p.image ?? p.favicon;
-    if (thumbnail) c.thumbnailUrl = thumbnail;
-    if (p.siteName) c.siteName = p.siteName;
-    return c;
+    delete c.image;
+    delete c.imageProxy;
+    delete c.title;
+    delete c.description;
   }
-  if (p.image) c.image = p.image;
-  if (p.imageProxy) c.imageProxy = p.imageProxy;
-  if (p.siteName) c.siteName = p.siteName;
-  if (p.title) c.title = p.title;
-  if (p.description) c.description = p.description;
   return c;
 }
 

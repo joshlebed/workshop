@@ -193,6 +193,19 @@ describe("link-preview content refresh helpers", () => {
     expect(() => validateContent("link", content)).not.toThrow();
   });
 
+  it("produces valid link content when preview text exceeds write limits", () => {
+    const content = __test.linkPreviewToContent({
+      ...preview,
+      title: "t".repeat(833),
+      description: "d".repeat(2500),
+      siteName: "s".repeat(250),
+    });
+    expect(() => validateContent("link", content)).not.toThrow();
+    expect(content.title).toBe("t".repeat(500));
+    expect(content.description).toBe("d".repeat(2000));
+    expect(content.siteName).toBe("s".repeat(200));
+  });
+
   it("clears preview-owned fields when a URL is cleared or preview refresh fails", () => {
     expect(
       __test.clearLinkPreviewContent({
