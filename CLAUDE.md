@@ -104,6 +104,11 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `shareIntent.webUrl` is also present. `/share` owns the top-level choice, `/share/pick-list`
   handles normal item adds, and `/share/pick-game` posts scores to the Games surface
   (find-or-creating the catalog game when needed).
+- **Link-preview item content must pass the item-kind schema before write.** Social previews can
+  return huge titles/descriptions (Instagram produced an 833-char title), so use
+  `linkPreviewToItemContent` from `@workshop/shared/linkContent` when converting a
+  `LinkPreview` into item `content`. Hand-rolled copies can 400 on `POST /v1/lists/:id/items`
+  with `invalid content for item kind`, which looks like a dead Add button in the share flow.
 - **Daily-game scores live ONLY in the Games tab — the Lists-side leaderboard surface is
   gone.** Removing it retired `GameLeaderboardCard`, the per-game board route
   (`/list/:id/game/:itemId`), `/share/pick-leaderboard`, the list-side copy-scores / DayRail /
