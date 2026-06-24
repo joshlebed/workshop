@@ -36,6 +36,9 @@ import { gameRoutes } from "./games.js";
 
 const userId = "00000000-0000-4000-8000-000000000001";
 const otherUserId = "00000000-0000-4000-8000-000000000002";
+// Seeded with an ADMIN_EMAILS address so isAdminUser() is true — used to
+// exercise the admin-only re-teach gate on PUT /:id/score-spec.
+const adminUserId = "00000000-0000-4000-8000-0000000000ad";
 
 function authHeaders(asUser = userId): Record<string, string> {
   return {
@@ -93,8 +96,9 @@ beforeAll(async () => {
   await rows(
     `INSERT INTO users (id, email, display_name) VALUES
        ($1, 'games-tester@example.com', 'Games Tester'),
-       ($2, 'other@example.com', 'Other User')`,
-    [userId, otherUserId],
+       ($2, 'other@example.com', 'Other User'),
+       ($3, 'joshlebed@gmail.com', 'Admin User')`,
+    [userId, otherUserId, adminUserId],
   );
 }, 60_000);
 
@@ -847,10 +851,10 @@ describe("PUT /v1/games/:id/score-spec — the teach flow", () => {
     scoreDirection: "asc" as const,
   };
 
-  async function teach(gameId: string, body: unknown) {
+  async function teach(gameId: string, body: unknown, asUser = userId) {
     return gameRoutes.request(`/${gameId}/score-spec`, {
       method: "PUT",
-      headers: authHeaders(),
+      headers: authHeaders(asUser),
       body: JSON.stringify(body),
     });
   }
@@ -891,7 +895,8 @@ describe("PUT /v1/games/:id/score-spec — the teach flow", () => {
       summarySpec: { rules: [{ kind: "matchLines", pattern: "^[^A-Za-z]+$" }] },
     });
     expect(withSummary.status).toBe(200);
-    const res = await teach(game.id, teachBody);
+    // Re-teach is admin-only now (the game already has a spec).
+    const res = await teach(game.id, teachBody, adminUserId);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { game: { summarySpec: unknown } };
     expect(body.game.summarySpec).toBeNull();
@@ -912,8 +917,11 @@ describe("PUT /v1/games/:id/score-spec — the teach flow", () => {
   it("audits every successful teach in game_spec_revisions (who, what, from which example)", async () => {
     const { game } = await addGame("https://squardle5.example.com");
     const summarySpec = { rules: [{ kind: "matchLines", pattern: "^[^A-Za-z]+$" }] };
+    // First teach is open (no spec yet); the re-teach must be an admin.
     expect((await teach(game.id, { ...teachBody, summarySpec })).status).toBe(200);
-    expect((await teach(game.id, { ...teachBody, scoreDirection: "desc" })).status).toBe(200);
+    expect(
+      (await teach(game.id, { ...teachBody, scoreDirection: "desc" }, adminUserId)).status,
+    ).toBe(200);
 
     const revisions = await rows<{
       taught_by: string;
@@ -937,7 +945,7 @@ describe("PUT /v1/games/:id/score-spec — the teach flow", () => {
     // The re-teach appends (never rewrites) and records its own values — the
     // first revision stays intact as the revert target.
     expect(revisions[1]).toMatchObject({
-      taught_by: userId,
+      taught_by: adminUserId,
       score_direction: "desc",
       summary_spec: null,
     });
@@ -950,6 +958,38 @@ describe("PUT /v1/games/:id/score-spec — the teach flow", () => {
       game.id,
     ]);
     expect(revisions).toHaveLength(0);
+  });
+
+  it("lets any member teach a game's FIRST spec (no spec yet, non-admin)", async () => {
+    const { game } = await addGame("https://squardle-first.example.com");
+    // userId is a non-admin; the game has no spec, so the first teach is open.
+    expect((await teach(game.id, teachBody, userId)).status).toBe(200);
+  });
+
+  it("blocks a non-admin from re-teaching an already-taught game (spec intact)", async () => {
+    const { game } = await addGame("https://squardle-reteach.example.com");
+    expect((await teach(game.id, teachBody, userId)).status).toBe(200);
+    // The game now has a spec; a non-admin — even the original teacher — is 403.
+    const res = await teach(game.id, { ...teachBody, scoreDirection: "desc" }, userId);
+    expect(res.status).toBe(403);
+    const stored = await rows<{ score_direction: string }>(
+      `SELECT score_direction FROM games WHERE id = $1`,
+      [game.id],
+    );
+    expect(stored[0]?.score_direction).toBe("asc");
+    const revisions = await rows(`SELECT id FROM game_spec_revisions WHERE game_id = $1`, [
+      game.id,
+    ]);
+    expect(revisions).toHaveLength(1);
+  });
+
+  it("lets an admin re-teach an already-taught game", async () => {
+    const { game } = await addGame("https://squardle-admin-reteach.example.com");
+    expect((await teach(game.id, teachBody, userId)).status).toBe(200);
+    const res = await teach(game.id, { ...teachBody, scoreDirection: "desc" }, adminUserId);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { game: { scoreDirection: string } };
+    expect(body.game.scoreDirection).toBe("desc");
   });
 });
 

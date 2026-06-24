@@ -54,7 +54,7 @@ import { localDateKey } from "../lib/gameDate";
 import { haptics } from "../lib/haptics";
 import { openExternalUrl } from "../lib/openUrl";
 import { queryKeys } from "../lib/queryKeys";
-import { specForGame } from "../lib/scoreSpecs";
+import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
 import { CopyIcon } from "../ui/CopyIcon";
@@ -112,6 +112,10 @@ export function GamesHome() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
+  // Admin "Re-teach scoring": remembered while the kebab menu sheet animates
+  // out, then handed to the paste sheet in the menu's `onClosed` — never open
+  // the second Sheet in the same tick (two stacked Modals wedge iOS).
+  const [reteachAfterMenu, setReteachAfterMenu] = useState<MyGame | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   // The copy-scores recap appends a per-day "play with me" link (`/g/:token`),
   // distinct from the friend-invite link the empty-state "Add friends" CTA uses.
@@ -652,6 +656,10 @@ export function GamesHome() {
         userAvatarUrl={user?.avatarUrl ?? null}
         pending={upsertMutation.isPending}
         spec={pasteTarget ? specForGame(pasteTarget) : null}
+        // Admins can re-teach a game that already parses; everyone else only
+        // gets the teach chips on a game's first paste (no spec yet). Registry
+        // games are read-only for all (mirrors the backend score-spec gate).
+        canReteach={!!user?.isAdmin && pasteTarget != null && isGameReteachable(pasteTarget)}
         onTeach={(game, scoreRaw, taught) => upsertMutation.mutate({ game, scoreRaw, taught })}
         onSubmit={(game, scoreRaw) => upsertMutation.mutate({ game, scoreRaw })}
         onClose={dismiss}
@@ -666,8 +674,20 @@ export function GamesHome() {
         onClose={reactionCtl.closePicker}
       />
 
-      {/* Card menu — Open game / Remove. */}
-      <Sheet visible={!!menuGame} onRequestClose={() => setMenuGame(null)} testID="game-menu-sheet">
+      {/* Card menu — Open game / (admin) Re-teach scoring / Remove. */}
+      <Sheet
+        visible={!!menuGame}
+        onRequestClose={() => setMenuGame(null)}
+        onClosed={() => {
+          // Chain the paste/teach sheet open only after this one is fully
+          // closed — see `reteachAfterMenu`.
+          if (reteachAfterMenu) {
+            openPasteFor({ id: reteachAfterMenu.gameId, url: reteachAfterMenu.game.url });
+            setReteachAfterMenu(null);
+          }
+        }}
+        testID="game-menu-sheet"
+      >
         {menuGame ? (
           <>
             <View style={styles.sheetHeader}>
@@ -684,6 +704,22 @@ export function GamesHome() {
                   openExternalUrl(menuGame.game.url);
                 }}
               />
+              {user?.isAdmin && isGameReteachable(menuGame.game) ? (
+                <>
+                  <View style={styles.sheetDivider} />
+                  <Button
+                    testID="game-menu-reteach"
+                    variant="ghost"
+                    label="Re-teach scoring"
+                    onPress={() => {
+                      // Remember the target, close this sheet; `onClosed` opens
+                      // the paste sheet once the modal has animated away.
+                      setReteachAfterMenu(menuGame);
+                      setMenuGame(null);
+                    }}
+                  />
+                </>
+              ) : null}
               <View style={styles.sheetDivider} />
               <Pressable
                 accessibilityRole="button"

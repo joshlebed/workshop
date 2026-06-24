@@ -84,13 +84,20 @@ the item's stored rule string
 `items.score_regex` (three generations decode: bare regex, `count:<token>`, `spec:<json>`)
 → first-number-anywhere fallback only when no parser exists at all.
 
-**Teaching is wiki-trust but audited.** Any signed-in user can (re-)teach any non-registry
-game — it's the one write surface that mutates a global catalog row. Every successful teach
-appends a `game_spec_revisions` row (same transaction: `taught_by`, both specs, direction,
-`example_raw`) and pings `#workshop-admin` (`score_spec_taught` in `opsNotifications.ts`).
-Revert a poisoned config by copying the prior revision's values back onto `games`, then
-`scripts/rescore-game.ts`. If you add another path that writes `games.score_spec` /
-`summary_spec` / `score_direction`, write the revision row there too.
+**First-teach is open; re-teach is admin-only; both are audited.** Any signed-in user can
+teach a non-registry game's FIRST spec (the tap-the-score flow the client surfaces on a
+game's first paste, when `games.score_spec IS NULL`). Once a spec exists, only an admin
+(`isAdminUser`) may overwrite it — `PUT /:id/score-spec` 403s a non-admin re-teach — so a
+stranger can't silently repoison a shared rule a teammate already fixed (it's the one write
+surface that mutates a global catalog row). Registry games stay read-only for everyone. Every
+successful teach appends a `game_spec_revisions` row (same transaction: `taught_by`, both
+specs, direction, `example_raw`) and pings `#workshop-admin` (`score_spec_taught` in
+`opsNotifications.ts`). Revert a poisoned config by copying the prior revision's values back
+onto `games`, then `scripts/rescore-game.ts`. If you add another path that writes
+`games.score_spec` / `summary_spec` / `score_direction`, write the revision row there too and
+apply the same first-teach-vs-admin-reteach gate. The client mirrors the gate: admins get a
+"Re-teach scoring" entry in a game's kebab menu (`GamesHome`) + the teach chips even when a
+spec exists (`canReteach` on `GameScorePasteSheet`); non-admins only see chips on first paste.
 
 A leaderboard item's `game_id` was set by migrations 0027/0029 for historical rows and
 still self-heals on item create/edit (`routes/v1/items.ts`). Daily-game scores are now

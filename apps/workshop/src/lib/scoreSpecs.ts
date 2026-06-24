@@ -25,6 +25,18 @@ export function specForGame(game: {
 }
 
 /**
+ * Whether a game's scoring can be (re-)taught at all. Mirrors the backend's
+ * `catalogEntryForKey` gate on `PUT /v1/games/:id/score-spec`: registry catalog
+ * games are read-only (their specs live in code — you can't re-teach Wordle),
+ * everything else (user-taught or first-number-fallback games) is teachable.
+ * Whether a *re*-teach is allowed is a separate, admin-gated concern; this only
+ * answers "is this game eligible for the teach UI at all".
+ */
+export function isGameReteachable(game: { gameKey: string | null }): boolean {
+  return !gameDefinitionForKey(game.gameKey)?.catalog;
+}
+
+/**
  * Best-effort spec for a Lists-surface item: the registry entry its
  * title/url/metadata identify. Items don't carry their stored rule over the
  * API, so non-registry games preview through the first-number fallback.
