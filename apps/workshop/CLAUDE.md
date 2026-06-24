@@ -321,6 +321,18 @@ The taught summary spec is the user-built equivalent of a registry `formatShareB
 fallback) wherever the full `Game` row is passed.
 Standings arrive rank-sorted from every endpoint — render entries as-is, never re-sort.
 
+**Re-teaching is admin-only.** The first-paste teach above only appears while a game has no
+spec, and a card's paste affordance hides once you've logged today's score — so a non-admin
+gets exactly one shot, on first add. Admins can re-teach anytime: a game's kebab menu
+(`GamesHome`) shows a "Re-teach scoring" item for non-registry games that opens
+`GameScorePasteSheet` (chained through the menu Sheet's `onClosed` — never open the paste
+Sheet in the same tick that closes the menu, or two stacked Modals wedge iOS), and the sheet
+takes a `canReteach` prop (`!!user.isAdmin && isGameReteachable(game)`) that surfaces the
+teach chips even when a spec already exists (and drops the live score preview while they're
+up). The backend gates `PUT …/score-spec` the same way (first teach open, re-teach admin-only,
+registry read-only) — keep the two in sync. `isGameReteachable` (`src/lib/scoreSpecs.ts`)
+mirrors the backend's `catalogEntryForKey` read-only check.
+
 ## A game share can reach us as just its referral URL (grid dropped)
 
 Some games (Daily Tens) share via the iOS share sheet with a single item provider

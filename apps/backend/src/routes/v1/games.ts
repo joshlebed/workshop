@@ -38,6 +38,7 @@ import {
   userGames,
   users,
 } from "../../db/schema.js";
+import { isAdminUser } from "../../lib/admin.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { friendsOf } from "../../lib/friends.js";
@@ -801,14 +802,19 @@ gameRoutes.delete("/:id/reactions/:periodKey/:scoreUserId", async (c) => {
  *
  * 1. Registry games are read-only — their specs live in code, so a user
  *    can't (accidentally or otherwise) re-teach Wordle.
- * 2. The spec must reproduce `expectedValue` on `exampleRaw`. A spec that
+ * 2. Re-teaching is admin-only. The FIRST teach of a game (no `score_spec`
+ *    yet) is open to any member — that's the tap-the-score flow the client
+ *    surfaces on a game's first paste. Once a spec exists, only an admin may
+ *    overwrite it, so a stranger can't silently repoison a shared rule a
+ *    teammate already fixed.
+ * 3. The spec must reproduce `expectedValue` on `exampleRaw`. A spec that
  *    can't parse its own teaching example is rejected outright.
  *
  * Specs live on the shared catalog row, so the first person to teach a game
- * fixes it for everyone — and anyone can re-teach (the same validation
- * applies; `score_raw` history makes a bad spec one rescore away from fixed).
- * The caller's own score for the example is re-posted by the client via the
- * normal upsert, so no rescore happens here.
+ * fixes it for everyone, and an admin re-teach fixes a bad spec (the same
+ * validation applies; `score_raw` history makes it one rescore away from
+ * fixed). The caller's own score for the example is re-posted by the client
+ * via the normal upsert, so no rescore happens here.
  *
  * Because this is the one write surface where any signed-in user mutates a
  * GLOBAL row, every successful teach is audited (an append-only
@@ -840,6 +846,23 @@ gameRoutes.put(
       return err(c, "VALIDATION", "this game's scoring is built in and can't be changed");
     }
 
+    const userId = c.get("userId");
+    // Re-teaching a game that ALREADY has a learned spec is admin-only; the
+    // first teach (no spec yet) stays open to any member — that's the
+    // tap-the-score flow surfaced on a game's first paste. Registry games are
+    // read-only for everyone (handled just above). A non-admin who pasted a
+    // bad first spec can't silently re-teach over it; an admin fixes it.
+    if (game.scoreSpec !== null) {
+      const [actor] = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (!actor || !isAdminUser(actor)) {
+        return err(c, "FORBIDDEN", "re-teaching a game's scoring is limited to admins");
+      }
+    }
+
     const reproduced = parseScoreWithSpec(parsed.data.spec, parsed.data.exampleRaw);
     if (reproduced !== parsed.data.expectedValue) {
       return err(c, "VALIDATION", "spec does not reproduce the expected score on the example");
@@ -852,7 +875,6 @@ gameRoutes.put(
       return err(c, "VALIDATION", "summary spec produces nothing on the example");
     }
 
-    const userId = c.get("userId");
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(games)

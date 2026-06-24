@@ -16,9 +16,10 @@
 // - **Preview** (`spec` prop): as the user pastes, show what the server will
 //   record ("Recording score: 7") — or that it can't read one — so a silent
 //   parse failure is no longer silent.
-// - **Teach** (`onTeach` prop): for games with no parser, tokenize the pasted
-//   share into candidate scores and let the user tap theirs. A spec is
-//   synthesized from that one example (`synthesizeScoreSpec`), the user
+// - **Teach** (`onTeach` prop): for games with no parser — or, when
+//   `canReteach` is set (admin re-teach), one that already parses — tokenize
+//   the pasted share into candidate scores and let the user tap theirs. A spec
+//   is synthesized from that one example (`synthesizeScoreSpec`), the user
 //   confirms the direction, and the caller stores it server-side before
 //   posting — no regex, no code. Once a score is learned, the sheet also
 //   shows an editable recap preview: the share's lines with grid + score
@@ -68,11 +69,19 @@ interface GameScorePasteSheetProps<T extends { title: string }> {
    */
   spec?: ScoreSpec | null;
   /**
-   * When set (and there's no `spec`), the sheet offers the tap-the-score
-   * teach flow and calls this instead of `onSubmit` once the user confirms a
-   * learned parser. The caller stores the spec, then posts the score.
+   * When set, the sheet can offer the tap-the-score teach flow and calls this
+   * instead of `onSubmit` once the user confirms a learned parser. The caller
+   * stores the spec, then posts the score. Offered automatically when there's
+   * no `spec` (a game's first teach); see `canReteach` for re-teaching one.
    */
   onTeach?: (item: T, scoreRaw: string, taught: TaughtScoreSpec) => void;
+  /**
+   * Allow the teach flow even when a `spec` already exists — i.e. re-teach an
+   * already-parsed game. Admin-only on the Games surface (the backend gates
+   * the matching `PUT …/score-spec` the same way); leave false/undefined for
+   * the default "first teach only" behavior.
+   */
+  canReteach?: boolean;
   onSubmit: (item: T, scoreRaw: string) => void;
   onClose: () => void;
 }
@@ -86,6 +95,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
   pending,
   spec,
   onTeach,
+  canReteach,
   onSubmit,
   onClose,
 }: GameScorePasteSheetProps<T>) {
@@ -110,16 +120,24 @@ export function GameScorePasteSheet<T extends { title: string }>({
   const visible = !!item;
   const empty = draft.trim().length === 0;
 
-  const preview = useMemo(
-    () => (empty || !spec ? null : previewScore(draft, spec)),
-    [draft, empty, spec],
-  );
-
-  // Teach mode only when the game has no parser and the caller can store one.
-  const teachable = !spec && !!onTeach && !empty;
+  // Teach mode: a game with no parser (first teach — open to everyone) OR an
+  // admin re-teaching an existing one (`canReteach`). The caller must also be
+  // able to store the result (`onTeach`).
+  const teachable = (!spec || !!canReteach) && !!onTeach && !empty;
   const candidates = useMemo(
     () => (teachable ? tokenizeScoreCandidates(draft).slice(0, MAX_CANDIDATES) : []),
     [teachable, draft],
+  );
+  const showTeach = teachable && candidates.length > 0;
+  // True when the chips are re-teaching a game that already parses — used to
+  // swap the "New game!" copy and to drop the live preview below.
+  const reteaching = showTeach && !!spec;
+
+  // Skip the live "Recording score: N" preview while the teach chips are up:
+  // the old spec's read would fight the score you're tapping to (re)learn.
+  const preview = useMemo(
+    () => (empty || !spec || showTeach ? null : previewScore(draft, spec)),
+    [draft, empty, spec, showTeach],
   );
   // A draft edit invalidates the previous tap (offsets moved) — see
   // `editDraft` on the TextInput.
@@ -242,14 +260,16 @@ export function GameScorePasteSheet<T extends { title: string }>({
                 : "Couldn't read a score in this — it'll post as “Played”."}
             </Text>
           ) : null}
-          {teachable && candidates.length > 0 ? (
+          {showTeach ? (
             <View style={styles.teach} testID="game-paste-teach">
               <Text variant="caption" tone="muted">
                 {chosen
                   ? taught
                     ? `Got it — we'll record ${taught.expectedValue} and score this game the same way from now on.`
                     : "Couldn't learn that one — this post will keep the raw text."
-                  : "New game! Tap your score so we can rank it:"}
+                  : reteaching
+                    ? "Re-teach scoring — tap the score in your result:"
+                    : "New game! Tap your score so we can rank it:"}
               </Text>
               <View style={styles.chips}>
                 {candidates.map((c) => (
