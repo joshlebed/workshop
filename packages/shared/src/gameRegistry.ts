@@ -31,6 +31,7 @@ export const GAME_KEYS = [
   "worldle",
   "tradle",
   "geosports",
+  "ethnoguessr",
   "framed",
   "heardle",
   "connections",
@@ -361,6 +362,31 @@ export const GAME_REGISTRY: GameDefinition[] = [
       const score = lines.find((l) => /[\d,]+\s*\/\s*[\d,]+/.test(l));
       if (!grid || !score) return null;
       return `${grid}\n${score}`;
+    },
+  },
+  {
+    key: "ethnoguessr",
+    title: "EthnoGuessr",
+    canonicalUrl: "https://hbd.gg/play",
+    // Detection + display only (no seed row). The daily share leads with the
+    // headline score, so the backend's first-number parser already lands on it
+    // — what was missing was a clean display, which `formatShareBody` provides.
+    catalog: false,
+    scoreDirection: "desc",
+    spec: null,
+    identifyPatterns: [/\bethnoguessr\b/i, /\bhbd\.gg\b/i],
+    shareTextPatterns: [
+      /\bethnoguessr\b/i,
+      /\bhbd\.gg\b/i,
+      /average of\s*[\d,]+\s*over\s*\d+\s*rounds/i,
+    ],
+    // Shape: `I scored an average of 3197 over 10 rounds in today's EthnoGuessr!
+    // Can you beat my score of 5000 points on round 2? Play now at https://hbd.gg/play/…`
+    // The headline score is the average over the 10 rounds; the "5000 points on
+    // round 2" is a per-round brag. Show just that average number, nothing else.
+    formatShareBody(raw) {
+      const avg = raw.match(/average of\s*([\d,]+)/i)?.[1];
+      return avg ? avg.replace(/,/g, "") : null;
     },
   },
   {

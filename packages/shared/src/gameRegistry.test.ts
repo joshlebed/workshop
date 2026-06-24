@@ -165,6 +165,7 @@ describe("share-text detection", () => {
     ["worldle", "#Worldle #842 3/6 (100%)"],
     ["tradle", "#Tradle #1558 4/6"],
     ["geosports", "GeoSports · June 11th\n711 / 1,000"],
+    ["ethnoguessr", "I scored an average of 3197 over 10 rounds in today's EthnoGuessr!"],
     ["framed", "Framed #1234\n🎥 🟥 🟩"],
     ["heardle", "#Heardle #123"],
     ["connections", "Connections\nPuzzle #745\n🟨🟨🟨🟨"],
@@ -199,6 +200,11 @@ describe("identifyGame", () => {
     expect(identifyGame(["NYT Mini", "https://www.nytimes.com/crosswords/game/mini"])?.key).toBe(
       "nyt-mini",
     );
+  });
+
+  it("identifies ethnoguessr from its title or hbd.gg url", () => {
+    expect(identifyGame(["EthnoGuessr", "https://hbd.gg/play"])?.key).toBe("ethnoguessr");
+    expect(identifyGame([null, null, "hbd.gg"])?.key).toBe("ethnoguessr");
   });
 
   it("returns null for unknown identity and empty input", () => {
@@ -264,5 +270,16 @@ describe("formatShareBody", () => {
         "GeoSports — Daily sports geography game\nGeoSports · June 11th\n🟡🟡🔴🟡🟢\n711 / 1,000\nwww.geosports.app",
       ),
     ).toBe("🟡🟡🔴🟡🟢\n711 / 1,000");
+  });
+
+  it("ethnoguessr shows just the average score, dropping the per-round brag", () => {
+    const def = gameDefinitionForKey("ethnoguessr")!;
+    expect(
+      def.formatShareBody!(
+        "I scored an average of 3197 over 10 rounds in today's EthnoGuessr! Can you beat my score of 5000 points on round 2? Play now at https://hbd.gg/play/",
+      ),
+    ).toBe("3197");
+    // Unknown variant (no "average of") defers to the cleaned-text fallback.
+    expect(def.formatShareBody!("EthnoGuessr — no score here")).toBe(null);
   });
 });
