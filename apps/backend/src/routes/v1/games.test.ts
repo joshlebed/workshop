@@ -267,6 +267,74 @@ describe("PUT /v1/games/:id/scores", () => {
   });
 });
 
+describe("DELETE /v1/games/:id/scores/:periodKey — clear your score for a day", () => {
+  // A dedicated game so posting scores (which auto-adds to My Games) doesn't
+  // pollute another suite's membership assumptions (e.g. the /move 404 test).
+  let gameId: string;
+  beforeAll(async () => {
+    const { game } = await addGame("https://clear-score-test.example.com");
+    gameId = game.id;
+  });
+
+  async function postScore(periodKey: string, asUser = userId) {
+    const res = await gameRoutes.request(`/${gameId}/scores`, {
+      method: "PUT",
+      headers: authHeaders(asUser),
+      body: JSON.stringify({ periodKey, scoreRaw: "got it in 3" }),
+    });
+    expect(res.status).toBe(200);
+  }
+  function clearScore(periodKey: string, asUser = userId) {
+    return gameRoutes.request(`/${gameId}/scores/${periodKey}`, {
+      method: "DELETE",
+      headers: authHeaders(asUser),
+    });
+  }
+  async function scoreCount(periodKey: string, uid: string) {
+    const r = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM game_scores
+       WHERE game_id = $1 AND user_id = $2 AND period_key = $3`,
+      [gameId, uid, periodKey],
+    );
+    return r[0]?.n ?? 0;
+  }
+
+  it("clears the caller's own score for that day", async () => {
+    await postScore("2026-05-01");
+    expect(await scoreCount("2026-05-01", userId)).toBe(1);
+    expect((await clearScore("2026-05-01")).status).toBe(200);
+    expect(await scoreCount("2026-05-01", userId)).toBe(0);
+  });
+
+  it("is idempotent: clearing an absent score still succeeds", async () => {
+    expect((await clearScore("2030-01-01")).status).toBe(200);
+  });
+
+  it("only clears the caller's score, never another user's same-day row", async () => {
+    await postScore("2026-05-02", userId);
+    await postScore("2026-05-02", otherUserId);
+    expect((await clearScore("2026-05-02", userId)).status).toBe(200);
+    expect(await scoreCount("2026-05-02", userId)).toBe(0);
+    expect(await scoreCount("2026-05-02", otherUserId)).toBe(1);
+  });
+
+  it("cascades reactions on the cleared score away", async () => {
+    await postScore("2026-05-03", userId);
+    await rows(
+      `INSERT INTO game_score_reactions (game_id, period_key, score_user_id, reactor_user_id, emoji)
+       VALUES ($1, '2026-05-03', $2, $3, '🔥')`,
+      [gameId, userId, otherUserId],
+    );
+    expect((await clearScore("2026-05-03")).status).toBe(200);
+    const reacts = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM game_score_reactions
+       WHERE game_id = $1 AND period_key = '2026-05-03'`,
+      [gameId],
+    );
+    expect(reacts[0]?.n).toBe(0);
+  });
+});
+
 describe("GET /v1/games — ordered list + standings block per game", () => {
   it("returns my games in position order with a per-game standings block", async () => {
     const body = await myGames(userId, "2026-06-10");

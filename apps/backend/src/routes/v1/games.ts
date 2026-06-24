@@ -633,6 +633,43 @@ gameRoutes.put(
   },
 );
 
+/**
+ * DELETE /v1/games/:id/scores/:periodKey — clear the caller's own score for one
+ * game on one day. Idempotent (clearing an absent score still 200s) and scoped
+ * to the caller, so it can't touch anyone else's row. Reactions on the score
+ * cascade away via the composite FK. The game stays in My Games and other days'
+ * scores are untouched — removing the game itself is the separate DELETE /:id.
+ */
+gameRoutes.delete(
+  "/:id/scores/:periodKey",
+  rateLimit({
+    family: "v1.games.scores.delete",
+    limit: 60,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const userId = c.get("userId");
+    const gameId = uuidSchema.safeParse(c.req.param("id"));
+    if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+    const periodKey = periodKeySchema.safeParse(c.req.param("periodKey"));
+    if (!periodKey.success) return err(c, "VALIDATION", "invalid period");
+
+    const db = getDb();
+    await db
+      .delete(gameScores)
+      .where(
+        and(
+          eq(gameScores.gameId, gameId.data),
+          eq(gameScores.userId, userId),
+          eq(gameScores.periodKey, periodKey.data),
+        ),
+      );
+
+    return ok(c, { ok: true });
+  },
+);
+
 gameRoutes.get("/:id/leaderboard", async (c) => {
   const userId = c.get("userId");
   const gameId = uuidSchema.safeParse(c.req.param("id"));

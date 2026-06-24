@@ -257,7 +257,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
             <Text variant="caption" tone="muted" testID="game-paste-preview">
               {preview.value !== null
                 ? `Recording score: ${preview.value}`
-                : "Couldn't read a score in this — it'll post as “Played”."}
+                : "Couldn't read a score in this. It'll post as “Played”."}
             </Text>
           ) : null}
           {showTeach ? (
@@ -265,10 +265,10 @@ export function GameScorePasteSheet<T extends { title: string }>({
               <Text variant="caption" tone="muted">
                 {chosen
                   ? taught
-                    ? `Got it — we'll record ${taught.expectedValue} and score this game the same way from now on.`
-                    : "Couldn't learn that one — this post will keep the raw text."
+                    ? `Got it. We'll record ${taught.expectedValue} and score this game the same way from now on.`
+                    : "Couldn't learn that one. This post will keep the raw text."
                   : reteaching
-                    ? "Re-teach scoring — tap the score in your result:"
+                    ? "Tap the score to re-teach this game:"
                     : "New game! Tap your score so we can rank it:"}
               </Text>
               <View style={styles.chips}>
@@ -298,7 +298,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
               {taught && summaryEditable ? (
                 <View style={styles.summary} testID="game-paste-summary">
                   <Text variant="caption" tone="muted">
-                    Recaps will show this — tap a line to leave it out:
+                    Tap a line to leave it out of recaps:
                   </Text>
                   <View style={styles.summaryBox}>
                     {summaryLines.map((line) => {
@@ -324,7 +324,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
                   </View>
                   {summaryTrimFailed ? (
                     <Text variant="caption" tone="muted" testID="game-paste-summary-fallback">
-                      Couldn't trim it that way — the full result will show.
+                      Couldn't trim it that way. The full result will show.
                     </Text>
                   ) : null}
                 </View>

@@ -13,7 +13,12 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../../../src/api/games";
+import {
+  clearGameScore,
+  fetchGameLeaderboard,
+  fetchMyGames,
+  upsertGameScore,
+} from "../../../src/api/games";
 import { DayRail } from "../../../src/components/DayRail";
 import { ReactionPickerSheet } from "../../../src/components/ReactionPickerSheet";
 import { ScoreReactions } from "../../../src/components/ScoreReactions";
@@ -21,6 +26,7 @@ import { useAuth } from "../../../src/hooks/useAuth";
 import { useScoreReactions } from "../../../src/hooks/useScoreReactions";
 import { errorMessage } from "../../../src/lib/api";
 import { userAvatarImageUrl } from "../../../src/lib/avatar";
+import { confirm } from "../../../src/lib/confirm";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 import { formatGameDateLabel, localDateKey } from "../../../src/lib/gameDate";
 import { goBack } from "../../../src/lib/goBack";
@@ -92,6 +98,28 @@ export default function GameBoard() {
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" });
+    },
+  });
+
+  const clearMutation = useMutation({
+    mutationFn: () => {
+      if (!gameId) throw new Error("missing game id");
+      return clearGameScore(gameId, today, token);
+    },
+    onSuccess: async () => {
+      haptics.medium();
+      setDraft("");
+      setEditingScore(false);
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.games.leaderboard(gameId ?? "", today),
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) }),
+      ]);
+      showToast({ message: "Score cleared", tone: "success" });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't clear score"), tone: "danger" });
     },
   });
 
@@ -320,6 +348,19 @@ export default function GameBoard() {
                         }
                       : undefined
                   }
+                  onClear={
+                    isToday
+                      ? async () => {
+                          const ok = await confirm({
+                            title: "Clear your score for today?",
+                            message: "Your result is removed. Scores on other days are kept.",
+                            confirmLabel: "Clear",
+                            destructive: true,
+                          });
+                          if (ok) clearMutation.mutate();
+                        }
+                      : undefined
+                  }
                 />
               ) : (
                 <View style={styles.unplayedRow} testID="game-board-my-unplayed">
@@ -371,11 +412,20 @@ interface EntryRowProps {
   game: Pick<Game, "title" | "url" | "summarySpec">;
   isMe: boolean;
   onEdit?: () => void;
+  onClear?: () => void;
   onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
   onOpenReactionPicker?: (userId: string) => void;
 }
 
-function EntryRow({ entry, game, isMe, onEdit, onReact, onOpenReactionPicker }: EntryRowProps) {
+function EntryRow({
+  entry,
+  game,
+  isMe,
+  onEdit,
+  onClear,
+  onReact,
+  onOpenReactionPicker,
+}: EntryRowProps) {
   const name = entry.displayName ?? "Someone";
   // Same distillation as the home card (and the Lists clipboard recap): a
   // URL-only share formats to nothing → show "Played" rather than the link.
@@ -412,17 +462,39 @@ function EntryRow({ entry, game, isMe, onEdit, onReact, onOpenReactionPicker }: 
             </Text>
           ) : null}
         </View>
-        {onEdit ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Edit your score"
-            onPress={onEdit}
-            testID="game-board-edit-score"
-            hitSlop={8}
-            style={({ pressed }) => [styles.editScoreButton, pressed && styles.editScorePressed]}
-          >
-            <Text style={styles.editScoreLabel}>Edit</Text>
-          </Pressable>
+        {onEdit || onClear ? (
+          <View style={styles.scoreActions}>
+            {onEdit ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Edit your score"
+                onPress={onEdit}
+                testID="game-board-edit-score"
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.scoreActionButton,
+                  pressed && styles.editScorePressed,
+                ]}
+              >
+                <Text style={styles.editScoreLabel}>Edit</Text>
+              </Pressable>
+            ) : null}
+            {onClear ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Clear your score for today"
+                onPress={onClear}
+                testID="game-board-clear-score"
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.scoreActionButton,
+                  pressed && styles.clearScorePressed,
+                ]}
+              >
+                <Text style={styles.clearScoreLabel}>Clear</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
       </View>
       <View style={styles.scoreRow}>
@@ -465,8 +537,8 @@ interface ScoreComposerProps {
 
 // The my-slot in compose mode — posting a first result ("new") or fixing a
 // botched paste in place ("edit"). Edit pre-fills the field and disables Save
-// until the text actually changes. (No clear-score here: the Games API has no
-// score delete in v1 — re-paste to fix.)
+// until the text actually changes. Clearing a posted score lives on the row's
+// Edit/Clear pair (DELETE /v1/games/:id/scores/:periodKey), not in here.
 function ScoreComposer({
   mode,
   draft,
@@ -645,7 +717,8 @@ const styles = StyleSheet.create({
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  editScoreButton: {
+  scoreActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  scoreActionButton: {
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 4,
     borderRadius: tokens.radius.sm,
@@ -655,6 +728,15 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
     color: tokens.accent.default,
+  },
+  // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
+  // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
+  // the control itself stays calm rather than a loud red on a daily screen.
+  clearScorePressed: { backgroundColor: tokens.bg.elevated },
+  clearScoreLabel: {
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.semibold,
+    color: tokens.text.secondary,
   },
   youPill: {
     paddingHorizontal: 6,

@@ -106,6 +106,19 @@ export function upsertGameScore(
   });
 }
 
+/** `DELETE /v1/games/:id/scores/:periodKey` — clear your score for that day. */
+export function clearGameScore(
+  gameId: string,
+  periodKey: string,
+  token: string | null,
+): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({
+    method: "DELETE",
+    path: `/v1/games/${gameId}/scores/${periodKey}`,
+    token,
+  });
+}
+
 /**
  * `PUT /v1/games/:id/score-spec` — teach a non-registry game its parser (the
  * tap-the-score flow) and, optionally, its recap formatter (`summarySpec`,
