@@ -84,16 +84,26 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
 
 ### CI / deploy
 
+- **A truncated `node_modules` cache save silently breaks every job that restores it.**
+  `.github/actions/setup-pnpm` skips `pnpm install` on a cache hit, so a partial save under
+  `nm-<os>-<lockfile-hash>` hands every later job an incomplete tree. Seen on PR #371: a
+  65.65 MiB entry (a healthy save is ~248 MiB) was missing `@types/node`, so `Quality` failed
+  with `error TS2688: Cannot find type definition file for 'node'` on a markdown-only commit
+  — while the same code passed on the run that populated the cache. Re-running does NOT help
+  (it restores the same bad entry); `gh cache delete <id>` then re-run does. **Fix:** make the
+  restore self-validating — after a cache hit, assert a canary path exists (e.g.
+  `node_modules/@types/node/package.json`) and fall through to the install step when it
+  doesn't, instead of trusting `cache-hit`. ~20min in the composite action.
+
 - **`Mobile Metro bundle` fails on every mobile PR — Expo's version map moved past the
   lockfile.** Its `Verify RN deps match Expo SDK` step runs `expo install --check` and now
   reports `react-native@0.83.6 - expected version: 0.83.10`, exit 1. Reproduces on a clean
   tree (`cd apps/workshop && pnpm exec expo install --check react-native`), so it's Expo's
-  remote SDK version map drifting, not any PR's diff — but the check is required by branch
-  protection, so it blocks anything touching `apps/workshop/**`, `packages/shared/**`, or
-  `pnpm-lock.yaml`. **Fix:** land the RN patch bump (the open expo-group Dependabot PR #265
-  is the natural home) together with an `apps/workshop/app.json` `version` bump, since a
-  native dep change moves the iOS fingerprint. Until then mobile PRs merge only with the
-  check manually overridden.
+  remote SDK version map drifting, not any PR's diff. It does **not** block merge — PR #371
+  auto-merged with this check red — so the practical damage is a permanently red check that
+  trains everyone to ignore CI. **Fix:** land the RN patch bump (the open expo-group
+  Dependabot PR #265 is the natural home) together with an `apps/workshop/app.json`
+  `version` bump, since a native dep change moves the iOS fingerprint.
 
 - **No CI check enforces `app.json` `version` bump when native deps change.** PR #160
   switched the iOS runtime-version policy from `fingerprint` to `appVersion`, so the
