@@ -84,6 +84,17 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
 
 ### CI / deploy
 
+- **`Mobile Metro bundle` fails on every mobile PR — Expo's version map moved past the
+  lockfile.** Its `Verify RN deps match Expo SDK` step runs `expo install --check` and now
+  reports `react-native@0.83.6 - expected version: 0.83.10`, exit 1. Reproduces on a clean
+  tree (`cd apps/workshop && pnpm exec expo install --check react-native`), so it's Expo's
+  remote SDK version map drifting, not any PR's diff — but the check is required by branch
+  protection, so it blocks anything touching `apps/workshop/**`, `packages/shared/**`, or
+  `pnpm-lock.yaml`. **Fix:** land the RN patch bump (the open expo-group Dependabot PR #265
+  is the natural home) together with an `apps/workshop/app.json` `version` bump, since a
+  native dep change moves the iOS fingerprint. Until then mobile PRs merge only with the
+  check manually overridden.
+
 - **No CI check enforces `app.json` `version` bump when native deps change.** PR #160
   switched the iOS runtime-version policy from `fingerprint` to `appVersion`, so the
   human-readable `version` field in `app.json` is now what `eas build` and `eas update`
