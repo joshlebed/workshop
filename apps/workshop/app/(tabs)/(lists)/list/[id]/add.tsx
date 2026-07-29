@@ -18,7 +18,7 @@ import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-nat
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { createItem } from "../../../../../src/api/items";
 import { fetchLinkPreview } from "../../../../../src/api/linkPreview";
-import { fetchListDetail } from "../../../../../src/api/lists";
+import { fetchListDetail, fetchListTags } from "../../../../../src/api/lists";
 import { searchBooks, searchMedia } from "../../../../../src/api/search";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { useDebouncedQuery } from "../../../../../src/hooks/useDebouncedQuery";
@@ -33,6 +33,7 @@ import {
   IconButton,
   Screen,
   SearchResultRow,
+  TagEditor,
   Text,
   tokens,
   useToast,
@@ -67,6 +68,14 @@ export default function AddItem() {
     queryFn: () => fetchListDetail(id ?? "", token),
     enabled: !!token && !!id,
   });
+  // The list's in-use tags drive the suggested chips, so tagging on add is a
+  // one-tap pick from the list's existing vocabulary (spec §2.1).
+  const listTagsQuery = useQuery({
+    queryKey: queryKeys.tags.byList(id ?? ""),
+    queryFn: () => fetchListTags(id ?? "", token),
+    enabled: !!token && !!id,
+  });
+
   const list = listQuery.data?.list;
   const itemKind = list?.itemKind ?? null;
   const isSearchKind = !!itemKind && (SEARCH_KINDS as readonly string[]).includes(itemKind);
@@ -80,6 +89,9 @@ export default function AddItem() {
   const [title, setTitle] = useState(() => titleFromSharedText(prefillText));
   const [url, setUrl] = useState(prefillUrlParam ?? "");
   const [note, setNote] = useState(() => noteFromSharedText(prefillText));
+  // Tags are picked before the item exists, so they ride along on the create
+  // request rather than through `PUT /v1/items/:id/tags`.
+  const [tags, setTags] = useState<string[]>([]);
   const trimmedTitle = title.trim();
   const canSubmitFreeForm = trimmedTitle.length >= 1 && trimmedTitle.length <= 500;
 
@@ -129,6 +141,9 @@ export default function AddItem() {
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
           queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
+          // A brand-new tag has to show up in the list's filter bar + the
+          // next add form's suggestions.
+          queryClient.invalidateQueries({ queryKey: queryKeys.tags.byList(id) }),
         ]);
       }
       goBack(id ? `/list/${id}` : "/");
@@ -199,6 +214,7 @@ export default function AddItem() {
       ...(persistedUrl ? { url: persistedUrl } : {}),
       ...(trimmedNote.length > 0 ? { note: trimmedNote } : {}),
       ...(content ? { content } : {}),
+      ...(tags.length > 0 ? { tags } : {}),
     };
     addMutation.mutate({ resultId: "free-form", body });
   };
@@ -243,6 +259,9 @@ export default function AddItem() {
           onChangeUrl={setUrl}
           note={note}
           onChangeNote={setNote}
+          tags={tags}
+          onChangeTags={setTags}
+          listTags={(listTagsQuery.data?.tags ?? []).map((t) => t.tag)}
           canSubmit={canSubmitFreeForm}
           loading={addMutation.isPending}
           onSubmit={submitFreeForm}
@@ -437,6 +456,10 @@ interface FreeFormFlowProps {
   onChangeUrl: (v: string) => void;
   note: string;
   onChangeNote: (v: string) => void;
+  tags: string[];
+  onChangeTags: (next: string[]) => void;
+  /** Every in-use tag on the list — drives the suggested chips. */
+  listTags: string[];
   canSubmit: boolean;
   loading: boolean;
   onSubmit: () => void;
@@ -455,6 +478,9 @@ function FreeFormFlow({
   onChangeUrl,
   note,
   onChangeNote,
+  tags,
+  onChangeTags,
+  listTags,
   canSubmit,
   loading,
   onSubmit,
@@ -468,6 +494,9 @@ function FreeFormFlow({
   const urlPlaceholder = isGame ? "https://globle-game.com" : "https://";
   const notePlaceholder = isGame ? "Anything to remember?" : "Anything to remember?";
   const showNote = !isGame;
+  // Legacy leaderboard lists have no tag surface anywhere else — keep the
+  // game add form to just name + URL.
+  const showTags = !isGame;
   return (
     <KeyboardAwareScrollView
       contentContainerStyle={styles.body}
@@ -529,6 +558,20 @@ function FreeFormFlow({
               multiline
               maxLength={1000}
               style={[styles.input, styles.inputMultiline]}
+            />
+          </View>
+        ) : null}
+
+        {showTags ? (
+          <View style={styles.field}>
+            <Text variant="label" tone="secondary">
+              Tags (optional)
+            </Text>
+            <TagEditor
+              tags={tags}
+              listTags={listTags}
+              onChange={onChangeTags}
+              testIDPrefix="add-item-tag"
             />
           </View>
         ) : null}

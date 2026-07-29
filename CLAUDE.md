@@ -199,6 +199,15 @@ small products — first feature is **watchlist** (movie tracker). New features 
   also `<button>`s — DOM nesting warning. We only use Mouse/Touch sensors (no KeyboardSensor),
   so strip `role`/`tabIndex` before spreading. See `stripButtonRole` in
   `apps/workshop/src/screens/listDetail/ItemList.web.tsx`.
+- **Item tags have two write paths — pick the one that matches the surface.** The add-item
+  form tags an item as it's created: `POST /v1/lists/:id/items` accepts an optional `tags`
+  array (same normalization + 20-tag cap as `PUT /v1/items/:id/tags`, applied inside the
+  insert transaction). The item-detail screen edits an existing item's set through the PUT.
+  Both render the shared `TagEditor` (`apps/workshop/src/ui/TagEditor.tsx`) — a presentational
+  chips-plus-inline-input picker; the add form holds a draft set until submit, item detail
+  writes through on every change. Any new item-create surface (bulk paste, share flow) should
+  pass `tags` on create rather than firing a second request, and must invalidate
+  `queryKeys.tags.byList(listId)` so a brand-new tag reaches the filter bar.
 - **Per-(list, viewer) presentation state lives on `list_members`.** `pinned_at`,
   `archived_at`, `muted_at` columns (NULL = not set). `last_read_at` for unread-count
   derivation lives in the older `user_activity_reads` table — don't duplicate it.

@@ -86,11 +86,17 @@ export async function mockGoogleAuthEndpoint(page: Page, authResponse: unknown):
 }
 
 /**
- * Drive the dev sign-in flow from the sign-in screen to the home greeting.
+ * Drive the dev sign-in flow from the sign-in screen to the Lists home.
  * Caller is responsible for `disableAutoDevSignIn` + `page.goto("/")` and any
  * `page.route(...)` mocks (so route setup can run before navigation). The
  * helper handles the post-click branch where a fresh user lands on the
- * display-name screen vs an already-onboarded one lands on home directly.
+ * display-name screen vs an already-onboarded one lands on home directly, and
+ * the branch where a context with no stored tab preference lands on Games
+ * (`getPreferredHomeTab()` defaults to "games", and `/` redirects there).
+ *
+ * Landing is asserted on the create-list FAB, not the old `home-greeting`
+ * testID — the greeting was dropped when the tab home headers were simplified
+ * (#314). Specs still asserting `home-greeting` need the same swap.
  *
  * For tests that specifically exercise the display-name onboarding step
  * (e.g. `sign-in.spec.ts`), inline the assertions rather than using this
@@ -106,7 +112,9 @@ export async function signInAsDev(
 
   await Promise.race([
     page.getByTestId("display-name-input").waitFor({ state: "visible" }),
-    page.getByTestId("home-greeting").waitFor({ state: "visible" }),
+    // Both tab stacks stay mounted, so the switch matches twice — `.first()`
+    // is the visible (foreground) one.
+    page.getByTestId("tab-switch-lists").first().waitFor({ state: "visible" }),
   ]);
 
   if (
@@ -119,7 +127,21 @@ export async function signInAsDev(
     await page.getByTestId("display-name-save").click();
   }
 
-  await expect(page.getByTestId("home-greeting")).toBeVisible();
+  await goToListsHome(page);
+}
+
+/**
+ * Land on the Lists home, hopping off the Games tab when that's where we are.
+ * The branch keys off the URL, not visibility: both tab stacks stay mounted,
+ * so the Lists FAB reports visible even while the Games screen is layered on
+ * top of it (and the Games FAB then swallows the click).
+ */
+async function goToListsHome(page: Page): Promise<void> {
+  if (new URL(page.url()).pathname.startsWith("/games")) {
+    await page.getByTestId("tab-switch-lists").first().click();
+    await page.waitForURL((url) => !url.pathname.startsWith("/games"));
+  }
+  await expect(page.getByTestId("fab-create-list")).toBeVisible();
 }
 
 interface DevAuthResponse {
