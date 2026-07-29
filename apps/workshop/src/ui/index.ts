@@ -21,6 +21,8 @@ export type { SearchResultRowProps } from "./SearchResultRow";
 export { SearchResultRow } from "./SearchResultRow";
 export type { SheetProps } from "./Sheet";
 export { Sheet } from "./Sheet";
+export type { TagEditorProps } from "./TagEditor";
+export { MAX_TAGS_PER_ITEM, normalizeTag, TagEditor } from "./TagEditor";
 export type { TagFilterBarProps } from "./TagFilterBar";
 export { TagFilterBar } from "./TagFilterBar";
 export type { UITextProps } from "./Text";

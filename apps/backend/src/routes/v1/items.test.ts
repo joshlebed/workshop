@@ -86,6 +86,33 @@ describe("createItemSchema", () => {
     expect(createItemSchema.safeParse({ title: "x", content: ["a", "b"] }).success).toBe(false);
     expect(createItemSchema.safeParse({ title: "x", content: "blob" }).success).toBe(false);
   });
+
+  it("omits tags when absent", () => {
+    const r = createItemSchema.safeParse({ title: "x" });
+    expect(r.success && r.data.tags).toBeUndefined();
+  });
+
+  it("normalizes, dedupes and sorts tags like the tag-update route", () => {
+    const r = createItemSchema.safeParse({
+      title: "x",
+      tags: ["  Burgers ", "Date   Night", "BURGERS"],
+    });
+    expect(r.success && r.data.tags).toEqual(["burgers", "date night"]);
+  });
+
+  it("accepts an empty tag array", () => {
+    const r = createItemSchema.safeParse({ title: "x", tags: [] });
+    expect(r.success && r.data.tags).toEqual([]);
+  });
+
+  it("enforces the same tag bounds as the tag-update route", () => {
+    expect(createItemSchema.safeParse({ title: "x", tags: ["   "] }).success).toBe(false);
+    expect(createItemSchema.safeParse({ title: "x", tags: ["a".repeat(40)] }).success).toBe(true);
+    expect(createItemSchema.safeParse({ title: "x", tags: ["a".repeat(41)] }).success).toBe(false);
+    const tooMany = Array.from({ length: 21 }, (_, i) => `t${i}`);
+    expect(createItemSchema.safeParse({ title: "x", tags: tooMany }).success).toBe(false);
+    expect(createItemSchema.safeParse({ title: "x", tags: [42] }).success).toBe(false);
+  });
 });
 
 describe("updateItemSchema", () => {

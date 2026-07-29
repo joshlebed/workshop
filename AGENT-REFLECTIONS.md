@@ -57,6 +57,22 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
   in `apps/workshop/CLAUDE.md` listing the three modes × two vars. The sandbox already
   bakes the flags; this is purely a "make the contract discoverable" doc edit.
 
+- **Six e2e specs assert the removed `home-greeting` testID.** The greeting was dropped
+  when the tab home headers were simplified (#314), so `getByTestId("home-greeting")`
+  matches nothing. `signInAsDev` in `tests/e2e/helpers.ts` was moved onto the create-list
+  FAB, but `sign-in`, `sign-in-google`, `activity-feed`, `share-link-accept`,
+  `games-onboarding`, and `games-social` still assert the greeting inline and time out.
+  **Fix:** swap those assertions for `fab-create-list`, or export the module-local
+  `goToListsHome` from the same helpers file (it also handles the Games-tab landing).
+  ~20min, mechanical.
+
+- **Specs interfere when run as a batch.** `tags-filter`, `saved-views` and
+  `add-item-tags` each pass alone but fail when run in one `playwright test` invocation
+  (the second spec onward lands on a stale screen / never sees `list-detail-empty-add`).
+  Suspected cause is the shared `dev@workshop.local` account accumulating lists plus the
+  sticky-state entry above. **Fix:** per-spec dev user (or the `POST /v1/auth/dev/reset`
+  route already proposed above), then re-verify a full-suite run.
+
 - **Six e2e specs reference a stale `create-list-type-*` testID.** The create-list
   template picker now renders `create-list-template-${tpl.id}` (`app/create-list/type.tsx`),
   but `list-flow`, `add-search`, `add-link-preview`, `activity-feed`, `share-link-accept`,
@@ -67,6 +83,17 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
   — note `date_ideas` not `date_idea`). ~30min, mechanical.
 
 ### CI / deploy
+
+- **`Mobile Metro bundle` fails on every mobile PR — Expo's version map moved past the
+  lockfile.** Its `Verify RN deps match Expo SDK` step runs `expo install --check` and now
+  reports `react-native@0.83.6 - expected version: 0.83.10`, exit 1. Reproduces on a clean
+  tree (`cd apps/workshop && pnpm exec expo install --check react-native`), so it's Expo's
+  remote SDK version map drifting, not any PR's diff — but the check is required by branch
+  protection, so it blocks anything touching `apps/workshop/**`, `packages/shared/**`, or
+  `pnpm-lock.yaml`. **Fix:** land the RN patch bump (the open expo-group Dependabot PR #265
+  is the natural home) together with an `apps/workshop/app.json` `version` bump, since a
+  native dep change moves the iOS fingerprint. Until then mobile PRs merge only with the
+  check manually overridden.
 
 - **No CI check enforces `app.json` `version` bump when native deps change.** PR #160
   switched the iOS runtime-version policy from `fingerprint` to `appVersion`, so the

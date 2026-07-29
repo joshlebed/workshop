@@ -363,6 +363,11 @@ export interface CreateItemRequest {
   url?: string;
   note?: string;
   content?: ItemContent;
+  /**
+   * Optional tags applied at create time (same normalization as
+   * `PUT /v1/items/:id/tags`: trimmed, lowercased, deduped, max 20).
+   */
+  tags?: string[];
 }
 
 export interface UpdateItemRequest {

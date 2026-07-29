@@ -63,12 +63,27 @@ const contentSchema = z.record(z.string(), z.unknown());
 
 const kindSchema = z.enum(ITEM_KIND_NAMES);
 
+// Declared before `createItemSchema` so item create can seed tags in the same
+// transaction as the insert (see `tagSchema` below for the normalization).
+const tagListSchema = z
+  .array(
+    z
+      .string()
+      .transform((s) => s.trim().toLowerCase().replace(/\s+/g, " "))
+      .pipe(z.string().min(1, "tag required").max(40, "tag too long")),
+  )
+  .max(20, "too many tags")
+  .transform((tags) => [...new Set(tags)].sort());
+
 export const createItemSchema = z.object({
   kind: kindSchema.optional(),
   title: titleSchema,
   url: urlSchema.optional(),
   note: noteSchema.optional(),
   content: contentSchema.optional(),
+  // Optional at create so the add form can tag an item in one round trip;
+  // afterwards `PUT /v1/items/:id/tags` owns the set.
+  tags: tagListSchema.optional(),
 });
 
 const updateItemSchema = z
@@ -89,17 +104,8 @@ const moveItemSchema = z.object({
 // Tags are manual lowercase labels (spec §2.1): trim, lowercase, collapse
 // internal whitespace, then require 1–40 chars. The set is replaced
 // wholesale per request, deduped after normalization so "Burgers" and
-// " burgers " collapse into one row.
-const tagSchema = z
-  .string()
-  .transform((s) => s.trim().toLowerCase().replace(/\s+/g, " "))
-  .pipe(z.string().min(1, "tag required").max(40, "tag too long"));
-
-const updateItemTagsSchema = z
-  .object({
-    tags: z.array(tagSchema).max(20, "too many tags"),
-  })
-  .transform((v) => ({ tags: [...new Set(v.tags)].sort() }));
+// " burgers " collapse into one row (`tagListSchema`, shared with create).
+const updateItemTagsSchema = z.object({ tags: tagListSchema });
 
 export const __test = {
   updateItemSchema,
@@ -470,6 +476,13 @@ export async function createItem(
       })
       .returning();
     if (!row) throw new Error("item insert returned no row");
+
+    // Tags are already normalized + deduped by `tagListSchema`, so this can't
+    // trip the (item_id, tag) uniqueness constraint.
+    const tags = data.tags ?? [];
+    if (tags.length > 0) {
+      await tx.insert(itemTags).values(tags.map((tag) => ({ itemId: row.id, tag })));
+    }
 
     if (hasModule(modules, "leaderboard")) {
       const c = content as Record<string, unknown>;
