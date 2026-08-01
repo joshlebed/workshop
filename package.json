@@ -33,13 +33,13 @@
     "prepare": "lefthook install || true"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.13",
-    "@playwright/test": "^1.59.1",
+    "@biomejs/biome": "2.5.6",
+    "@playwright/test": "^1.62.0",
     "@total-typescript/ts-reset": "0.6.1",
-    "concurrently": "^9.2.1",
-    "knip": "6.6.3",
-    "lefthook": "2.1.6",
-    "prettier": "^3.8.3",
+    "concurrently": "^10.0.4",
+    "knip": "6.29.0",
+    "lefthook": "2.1.10",
+    "prettier": "^3.9.6",
     "typescript": "5.9.3"
   },
   "dependencies": {
