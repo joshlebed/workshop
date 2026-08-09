@@ -7,7 +7,21 @@ declare module "hono" {
   interface ContextVariableMap {
     userId: string;
     impersonatorUserId?: string;
+    sessionId?: string;
   }
+}
+
+function isPayloadRevoked(input: {
+  ownerUserId: string;
+  subjectUserId: string;
+  iatSeconds: number;
+  sessionId?: string;
+}): Promise<boolean> {
+  if (!input.sessionId) return isSessionRevoked(input.ownerUserId, input.iatSeconds);
+  return isSessionRevoked(input.ownerUserId, input.iatSeconds, {
+    sessionId: input.sessionId,
+    subjectUserId: input.subjectUserId,
+  });
 }
 
 /**
@@ -28,18 +42,35 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   if (!payload) {
     return err(c, "UNAUTHORIZED", "invalid or expired session");
   }
-  if (await isSessionRevoked(payload.userId, payload.iat ?? 0)) {
-    return err(c, "UNAUTHORIZED", "invalid or expired session");
-  }
   if (payload.impersonatorUserId) {
     if (payload.impersonatorUserId === payload.userId) {
       return err(c, "UNAUTHORIZED", "invalid or expired session");
     }
-    if (await isSessionRevoked(payload.impersonatorUserId, payload.iat ?? 0)) {
+    if (await isSessionRevoked(payload.userId, payload.iat ?? 0)) {
+      return err(c, "UNAUTHORIZED", "invalid or expired session");
+    }
+    if (
+      await isPayloadRevoked({
+        ownerUserId: payload.impersonatorUserId,
+        subjectUserId: payload.userId,
+        iatSeconds: payload.iat ?? 0,
+        ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+      })
+    ) {
       return err(c, "UNAUTHORIZED", "invalid or expired session");
     }
     c.set("impersonatorUserId", payload.impersonatorUserId);
+  } else if (
+    await isPayloadRevoked({
+      ownerUserId: payload.userId,
+      subjectUserId: payload.userId,
+      iatSeconds: payload.iat ?? 0,
+      ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+    })
+  ) {
+    return err(c, "UNAUTHORIZED", "invalid or expired session");
   }
+  if (payload.sessionId) c.set("sessionId", payload.sessionId);
   c.set("userId", payload.userId);
   await next();
 };
@@ -56,14 +87,21 @@ export const optionalAuth: MiddlewareHandler = async (c, next) => {
   const token = header?.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
   if (token.length > 0) {
     const payload = verifySession(token);
-    if (payload && !(await isSessionRevoked(payload.userId, payload.iat ?? 0))) {
+    if (payload) {
       const impersonator = payload.impersonatorUserId;
-      const impersonatorOk =
-        !impersonator ||
-        (impersonator !== payload.userId &&
-          !(await isSessionRevoked(impersonator, payload.iat ?? 0)));
-      if (impersonatorOk) {
+      const impersonatorOk = !impersonator || impersonator !== payload.userId;
+      const subjectOk =
+        !impersonator || !(await isSessionRevoked(payload.userId, payload.iat ?? 0));
+      const ownerUserId = impersonator ?? payload.userId;
+      const ownerOk = !(await isPayloadRevoked({
+        ownerUserId,
+        subjectUserId: payload.userId,
+        iatSeconds: payload.iat ?? 0,
+        ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+      }));
+      if (impersonatorOk && subjectOk && ownerOk) {
         if (impersonator) c.set("impersonatorUserId", impersonator);
+        if (payload.sessionId) c.set("sessionId", payload.sessionId);
         c.set("userId", payload.userId);
       }
     }

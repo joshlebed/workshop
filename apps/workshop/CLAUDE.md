@@ -197,6 +197,19 @@ Web-compatible by default: `expo-router`, `expo-linking`, `expo-constants`,
 `react-native-screens`, `react-native-gesture-handler`, `@react-navigation/native`.
 Re-check when adding a new native module.
 
+## Managed auth credentials
+
+All API calls advertise session protocol v2 and include cookies. `api.ts` owns a single-flight 401
+refresh + one-shot retry, while `useAuth.tsx` owns bootstrap and installs the refresh handler. Keep
+platform storage behind `sessionCredentials.ts` / `.web.ts`: native persists access + rotating refresh
+tokens in SecureStore; web persists neither managed bearer nor refresh token (the refresh token is an
+HttpOnly cookie) and keeps only non-sensitive managed-session-presence / explicit-signed-out markers
+so a new visitor does not probe refresh and an offline signout cannot be undone by a stale cookie on
+reload. Existing `workshop.session.v1` bearer tokens upgrade through `POST /v1/auth/session`.
+If that endpoint 404s during a rolling deploy, verify via legacy `/v1/auth/me` and retry the upgrade on
+the next launch. A 401 from refresh clears auth; network, 5xx, 429, and missing-new-endpoint failures
+must preserve credentials and render AuthGate's retry state.
+
 ## iOS capabilities are config-as-code
 
 Declare iOS capabilities (App Groups, Push, Associated Domains, etc.) in `app.json`

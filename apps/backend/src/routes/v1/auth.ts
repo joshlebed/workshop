@@ -1,11 +1,19 @@
 import type { AuthImpersonation, AuthProvider } from "@workshop/shared";
 import { and, eq, sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
+import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbUser, userIdentities, users } from "../../db/schema.js";
 import { auditUserLabel, isAdminUser, userLabel } from "../../lib/admin.js";
 import { getConfig } from "../../lib/config.js";
+import {
+  createDeviceSession,
+  DeviceSessionError,
+  revokeDeviceSession,
+  rotateDeviceSession,
+  setDeviceSessionImpersonation,
+} from "../../lib/deviceSessions.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { logger } from "../../lib/logger.js";
 import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
@@ -33,6 +41,16 @@ const impersonateBodySchema = z.object({
   target: z.string().trim().min(1, "target required").max(320, "target too long"),
 });
 
+const refreshBodySchema = z
+  .object({
+    refreshToken: z.string().min(1),
+  })
+  .optional();
+
+const MANAGED_SESSION_VERSION = "2";
+const REFRESH_COOKIE = "workshop_refresh_v1";
+const REFRESH_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
+
 const targetEmailSchema = z.string().email();
 const targetUuidSchema = z.string().uuid();
 
@@ -55,6 +73,91 @@ function toImpersonationShape(admin: DbUser): AuthImpersonation {
     adminEmail: admin.email,
     adminDisplayName: admin.displayName,
   };
+}
+
+function wantsManagedSession(c: Context): boolean {
+  return c.req.header("X-Workshop-Session-Version") === MANAGED_SESSION_VERSION;
+}
+
+function isBrowserRequest(c: Context): boolean {
+  return Boolean(c.req.header("Origin")) || c.req.header("X-Workshop-Platform") === "web";
+}
+
+function deviceMetadata(c: Context) {
+  return {
+    platform: c.req.header("X-Workshop-Platform") ?? null,
+    appVersion: c.req.header("X-Workshop-App-Version") ?? null,
+    userAgent: c.req.header("User-Agent") ?? null,
+  };
+}
+
+function setRefreshCredential(c: Context, refreshToken: string): void {
+  if (!isBrowserRequest(c)) return;
+  setCookie(c, REFRESH_COOKIE, refreshToken, {
+    httpOnly: true,
+    secure: !getConfig().isLocal,
+    sameSite: "Lax",
+    path: "/",
+    maxAge: REFRESH_COOKIE_MAX_AGE_SECONDS,
+  });
+}
+
+function clearRefreshCredential(c: Context): void {
+  if (!isBrowserRequest(c)) return;
+  deleteCookie(c, REFRESH_COOKIE, {
+    secure: !getConfig().isLocal,
+    sameSite: "Lax",
+    path: "/",
+  });
+}
+
+function authBody(input: {
+  user: DbUser;
+  token: string;
+  impersonation: AuthImpersonation | null;
+  sessionMode: "legacy" | "managed";
+  refreshToken?: string | undefined;
+}) {
+  return {
+    user: toUserShape(input.user),
+    token: input.token,
+    refreshToken: input.refreshToken,
+    sessionMode: input.sessionMode,
+    needsDisplayName: !input.user.displayName,
+    impersonation: input.impersonation,
+  };
+}
+
+function authOk(c: Context, body: ReturnType<typeof authBody>) {
+  c.header("Cache-Control", "no-store");
+  return ok(c, body);
+}
+
+async function issueSignIn(c: Context, user: DbUser) {
+  if (!wantsManagedSession(c)) {
+    return authOk(
+      c,
+      authBody({
+        user,
+        token: signSession(user.id),
+        impersonation: null,
+        sessionMode: "legacy",
+      }),
+    );
+  }
+
+  const created = await createDeviceSession({ userId: user.id, metadata: deviceMetadata(c) });
+  setRefreshCredential(c, created.refreshToken);
+  return authOk(
+    c,
+    authBody({
+      user,
+      token: signSession(user.id, { sessionId: created.session.id }),
+      refreshToken: isBrowserRequest(c) ? undefined : created.refreshToken,
+      impersonation: null,
+      sessionMode: "managed",
+    }),
+  );
 }
 
 interface UpsertInput {
@@ -236,13 +339,7 @@ authRoutes.post("/apple", async (c) => {
   });
   await notifySignIn(user, "apple", createdUser);
 
-  const token = signSession(user.id);
-  return ok(c, {
-    user: toUserShape(user),
-    token,
-    needsDisplayName: !user.displayName,
-    impersonation: null,
-  });
+  return issueSignIn(c, user);
 });
 
 authRoutes.post("/google", async (c) => {
@@ -271,13 +368,7 @@ authRoutes.post("/google", async (c) => {
   });
   await notifySignIn(user, "google", createdUser);
 
-  const token = signSession(user.id);
-  return ok(c, {
-    user: toUserShape(user),
-    token,
-    needsDisplayName: !user.displayName,
-    impersonation: null,
-  });
+  return issueSignIn(c, user);
 });
 
 const devBodySchema = z.object({
@@ -314,17 +405,108 @@ authRoutes.post("/dev", async (c) => {
     displayName: displayName ?? null,
   });
 
-  const token = signSession(user.id);
   logger.info("dev sign-in issued", { userId: user.id, email });
-  return ok(c, {
-    user: toUserShape(user),
-    token,
-    needsDisplayName: !user.displayName,
-    impersonation: null,
-  });
+  return issueSignIn(c, user);
 });
 
-authRoutes.post("/signout", requireAuth, (c) => ok(c, { ok: true }));
+// Upgrade a still-valid legacy HMAC session in place. This lets existing
+// installations adopt managed sessions on their next launch without asking
+// the user to authenticate again. A managed access token cannot mint a new
+// refresh credential if its original refresh token has been lost or revoked.
+authRoutes.post("/session", requireAuth, async (c) => {
+  if (c.get("sessionId")) {
+    clearRefreshCredential(c);
+    return err(c, "UNAUTHORIZED", "invalid or expired session");
+  }
+
+  const subjectUserId = c.get("userId");
+  const ownerUserId = c.get("impersonatorUserId") ?? subjectUserId;
+  const subject = await userById(subjectUserId);
+  const owner = ownerUserId === subjectUserId ? subject : await userById(ownerUserId);
+  if (!subject || !owner) return err(c, "UNAUTHORIZED", "invalid or expired session");
+
+  const created = await createDeviceSession({
+    userId: owner.id,
+    impersonatedUserId: owner.id === subject.id ? null : subject.id,
+    metadata: deviceMetadata(c),
+  });
+  const impersonation = owner.id === subject.id ? null : toImpersonationShape(owner);
+  setRefreshCredential(c, created.refreshToken);
+  return authOk(
+    c,
+    authBody({
+      user: subject,
+      token: signSession(subject.id, {
+        impersonatorUserId: impersonation ? owner.id : null,
+        sessionId: created.session.id,
+      }),
+      refreshToken: isBrowserRequest(c) ? undefined : created.refreshToken,
+      impersonation,
+      sessionMode: "managed",
+    }),
+  );
+});
+
+authRoutes.post("/refresh", async (c) => {
+  const parsed = await parseJsonBody(c, refreshBodySchema, { allowEmpty: true });
+  if (!parsed.ok) return parsed.response;
+  const browser = isBrowserRequest(c);
+  const refreshToken = browser ? getCookie(c, REFRESH_COOKIE) : parsed.data?.refreshToken;
+  if (!refreshToken) {
+    clearRefreshCredential(c);
+    return err(c, "UNAUTHORIZED", "invalid or expired session");
+  }
+
+  let rotated: Awaited<ReturnType<typeof rotateDeviceSession>>;
+  try {
+    rotated = await rotateDeviceSession(refreshToken);
+  } catch (error) {
+    if (!(error instanceof DeviceSessionError)) throw error;
+    if (error.reason === "reused") {
+      logger.warn("refresh token replay revoked device session", {
+        platform: c.req.header("X-Workshop-Platform"),
+      });
+    }
+    clearRefreshCredential(c);
+    return err(c, "UNAUTHORIZED", "invalid or expired session");
+  }
+
+  const owner = await userById(rotated.session.userId);
+  const subject = rotated.session.impersonatedUserId
+    ? await userById(rotated.session.impersonatedUserId)
+    : owner;
+  if (!owner || !subject) {
+    await revokeDeviceSession(rotated.session.id, rotated.session.userId);
+    clearRefreshCredential(c);
+    return err(c, "UNAUTHORIZED", "invalid or expired session");
+  }
+
+  const impersonation = owner.id === subject.id ? null : toImpersonationShape(owner);
+  setRefreshCredential(c, rotated.refreshToken);
+  return authOk(
+    c,
+    authBody({
+      user: subject,
+      token: signSession(subject.id, {
+        impersonatorUserId: impersonation ? owner.id : null,
+        sessionId: rotated.session.id,
+      }),
+      refreshToken: browser ? undefined : rotated.refreshToken,
+      impersonation,
+      sessionMode: "managed",
+    }),
+  );
+});
+
+authRoutes.post("/signout", requireAuth, async (c) => {
+  const sessionId = c.get("sessionId");
+  if (sessionId) {
+    const ownerUserId = c.get("impersonatorUserId") ?? c.get("userId");
+    await revokeDeviceSession(sessionId, ownerUserId);
+  }
+  clearRefreshCredential(c);
+  return ok(c, { ok: true });
+});
 
 authRoutes.post("/impersonate", requireAuth, async (c) => {
   const parsed = await parseJsonBody(c, impersonateBodySchema);
@@ -362,13 +544,19 @@ authRoutes.post("/impersonate", requireAuth, async (c) => {
   const notification = buildImpersonationNotification(admin, target);
   await notifyDiscord(notification.content, { kind: notification.kind });
 
-  const token = signSession(target.id, { impersonatorUserId: admin.id });
-  return ok(c, {
-    user: toUserShape(target),
-    token,
-    needsDisplayName: !target.displayName,
-    impersonation: toImpersonationShape(admin),
-  });
+  const sessionId = c.get("sessionId");
+  if (sessionId && !(await setDeviceSessionImpersonation(sessionId, admin.id, target.id))) {
+    return err(c, "UNAUTHORIZED", "invalid or expired session");
+  }
+  return authOk(
+    c,
+    authBody({
+      user: target,
+      token: signSession(target.id, { impersonatorUserId: admin.id, sessionId }),
+      impersonation: toImpersonationShape(admin),
+      sessionMode: sessionId ? "managed" : "legacy",
+    }),
+  );
 });
 
 authRoutes.post("/impersonation/stop", requireAuth, async (c) => {
@@ -384,13 +572,19 @@ authRoutes.post("/impersonation/stop", requireAuth, async (c) => {
     adminUserId: admin.id,
     targetUserId: c.get("userId"),
   });
-  const token = signSession(admin.id);
-  return ok(c, {
-    user: toUserShape(admin),
-    token,
-    needsDisplayName: !admin.displayName,
-    impersonation: null,
-  });
+  const sessionId = c.get("sessionId");
+  if (sessionId && !(await setDeviceSessionImpersonation(sessionId, admin.id, null))) {
+    return err(c, "UNAUTHORIZED", "invalid or expired session");
+  }
+  return authOk(
+    c,
+    authBody({
+      user: admin,
+      token: signSession(admin.id, { sessionId }),
+      impersonation: null,
+      sessionMode: sessionId ? "managed" : "legacy",
+    }),
+  );
 });
 
 authRoutes.get("/me", requireAuth, async (c) => {

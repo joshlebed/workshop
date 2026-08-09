@@ -87,7 +87,7 @@ One fewer AWS resource to babysit. Free for up to 5 users.
 **Migration**: `terraform state push` to an S3 backend config is a documented one-shot if we ever
 outgrow HCP free tier.
 
-## 2026-04 — Email magic codes (not magic links)
+## 2026-04 — Email magic codes (superseded)
 
 **Context**: MVP needs passwordless auth. Magic _links_ require universal-link configuration on
 iOS, which is finicky in Expo Go (dev) and requires Apple App Site Association files.
@@ -98,6 +98,34 @@ iOS, which is finicky in Expo Go (dev) and requires Apple App Site Association f
 UX (SMS codes, bank OTPs).
 
 **Tradeoff**: One extra tap (type code) vs. one tap (click link). Worth it for simplicity.
+
+**Superseded**: The 2026 redesign replaced email/SES with Sign in with Apple + Google OAuth.
+The section remains as decision history, not current implementation guidance.
+
+## 2026-08 — Managed device sessions
+
+**Context**: The single HMAC bearer token had a hard 14-day expiry and no refresh path. Production
+logs showed otherwise healthy users reaching that boundary and being sent back to sign-in. Making
+the bearer token itself last longer would increase the impact of a stolen token and still leave no
+per-device revocation mechanism.
+
+**Decision**: New clients use database-backed device sessions. Access tokens last one hour; rotating
+refresh credentials extend a 180-day inactivity window up to a one-year absolute cap. Native stores
+both credentials in SecureStore. Web stores only the access token in memory and receives the refresh
+credential as a first-party HttpOnly, Secure, SameSite=Lax cookie through the Cloudflare Pages
+`/api/*` proxy. Reuse of an old refresh credential outside a short concurrency grace window revokes
+that device session. Normal signout revokes the current device; the existing sign-out-all cutoff also
+revokes every managed session owned by the user.
+
+**Rollout**: Requests advertise managed-session support with `X-Workshop-Session-Version: 2`.
+Clients without it continue receiving legacy 14-day tokens. An updated client exchanges a still-valid
+legacy token at `POST /v1/auth/session`; a temporary old-API response falls back to `/v1/auth/me`
+without deleting the token. Network and server errors show a retry state and never become evidence
+that the user signed out.
+
+**Tradeoff**: Authenticated requests now verify a session row and refresh requires mutable database
+state. In return, sessions survive normal app usage for months without turning long-lived bearer
+tokens into permanent credentials.
 
 ## 2026-04 — No TMDB integration for MVP
 

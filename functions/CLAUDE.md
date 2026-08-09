@@ -4,6 +4,14 @@ Open Graph + Twitter Card preview machinery for every URL on the production doma
 (`workshop-a2v.pages.dev`). Five routes, layered around the `share_slug` / `share_visibility`
 model owned by the backend `lists` table, plus the play-link card:
 
+The directory also owns `api/[[path]].ts`, a fixed-upstream same-origin proxy for browser API
+traffic. Its primary purpose is keeping the managed-session refresh cookie first-party and HttpOnly;
+it must forward `Set-Cookie`, never derive the upstream host from request input, and mark responses
+`no-store`. It rejects requests whose `Origin` differs from the destination Pages origin; removing
+that check lets one branch-preview subdomain read another subdomain's refresh response. The proxy
+overwrites the forwarded `Origin` after the check. `apps/workshop/src/config.ts` routes every
+`*.pages.dev` web build through `/api`.
+
 1. **Default** — `apps/workshop/public/index.html` ships a static set of OG tags
    pointing at `/og/default.png`. Applied to every URL with no more specific override
    (home, sign-in, activity, settings, …). PNG generated on demand by `og/[name].ts`.
@@ -51,6 +59,7 @@ GET /og/friend/:token.png     → workers-og  → 1200×630 friend PNG (inviter 
 GET /g/:token                 → game-share resolve API → sharer-named play tags
 GET /og/g/:token.png          → workers-og  → 1200×630 play PNG (sharer named, 🎮 card)
 GET /og/:name.png             → workers-og  → 1200×630 static PNG (default, locked-list)
+ANY /api/*                    → fixed EXPO_PUBLIC_API_URL upstream (auth cookie bridge)
 ```
 
 ## Don't import from workspace packages

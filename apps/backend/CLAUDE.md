@@ -25,6 +25,18 @@ pnpm run db:migrate                                # apply locally
 Commit the SQL file **and** the `drizzle/meta/` snapshot **and** `_journal.json`.
 Migrations run automatically in CI on merge to `main` (`deploy-backend.yml` → `migrate`).
 
+## Managed device sessions
+
+`auth_sessions` owns refresh rotation and device revocation. Managed access tokens carry `sessionId`
+and last one hour; refreshes rotate a deterministic HMAC credential, extend the 180-day idle window,
+and stop at the one-year absolute expiry. A previous version is accepted for 10 seconds only to absorb
+parallel tabs/requests; later reuse revokes the row. Never store a raw refresh token. Browser callers
+are identified by `Origin` (with the platform header as a compatibility fallback), receive the token
+only as an HttpOnly cookie, and reach the API through the Pages `/api/*` proxy. Preserve the
+`X-Workshop-Session-Version: 2` negotiation and legacy sign-in path: removing it logs out older native
+builds that cannot consume refresh credentials. `/v1/auth/session` upgrades a valid legacy token;
+managed access tokens must never be allowed to mint a replacement refresh session.
+
 ## Postgres pool: `postgres({ max: 1 })`
 
 Correct for Lambda — each container has its own client. Don't raise it.

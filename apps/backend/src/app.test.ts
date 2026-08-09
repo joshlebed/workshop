@@ -50,10 +50,12 @@ describe("CORS middleware", () => {
       headers: {
         Origin: "https://workshop-a2v.pages.dev",
         "Access-Control-Request-Method": "GET",
+        "Access-Control-Request-Headers": "X-Workshop-Session-Version",
       },
     });
     expect(res.headers.get("access-control-allow-origin")).toBe("https://workshop-a2v.pages.dev");
     expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    expect(res.headers.get("access-control-allow-headers")).toContain("X-Workshop-Session-Version");
   });
 
   it("does not echo a disallowed origin on preflight", async () => {

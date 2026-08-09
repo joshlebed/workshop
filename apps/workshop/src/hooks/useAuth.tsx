@@ -1,12 +1,30 @@
-import type { AuthImpersonation, AuthResponse, Me, UpdateMeRequest, User } from "@workshop/shared";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { ApiError, apiRequest } from "../lib/api";
-import { getItem, removeItem, setItem } from "../lib/storage";
+import type { AuthImpersonation, AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ApiError, apiRequest, registerSessionRefreshHandler } from "../lib/api";
+import { resolveBootstrapSession } from "../lib/authBootstrap";
+import {
+  clearSessionCredentials,
+  persistSessionCredentials,
+  readSessionCredentials,
+} from "../lib/sessionCredentials";
+import { getItem } from "../lib/storage";
 
-const TOKEN_KEY = "workshop.session.v1";
 const AUTO_DEV_OPT_OUT_KEY = "workshop.disable-auto-dev";
 
-export type AuthStatus = "loading" | "signed-out" | "needs-display-name" | "signed-in";
+export type AuthStatus =
+  | "loading"
+  | "unavailable"
+  | "signed-out"
+  | "needs-display-name"
+  | "signed-in";
 
 interface AuthState {
   status: AuthStatus;
@@ -47,6 +65,19 @@ function statusFor(user: User | null): AuthStatus {
   return user.displayName ? "signed-in" : "needs-display-name";
 }
 
+function hasApiStatus(error: unknown, ...statuses: number[]): boolean {
+  return error instanceof ApiError && statuses.includes(error.status);
+}
+
+async function requestManagedRefresh(refreshToken: string | null): Promise<AuthResponse> {
+  return apiRequest<AuthResponse>({
+    method: "POST",
+    path: "/v1/auth/refresh",
+    ...(refreshToken ? { body: { refreshToken } } : {}),
+    authRetry: false,
+  });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
     status: "loading",
@@ -54,9 +85,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     token: null,
     impersonation: null,
   });
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const applyAuth = useCallback(async (res: AuthResponse) => {
-    await setItem(TOKEN_KEY, res.token);
+    await persistSessionCredentials(res);
     setState({
       status: res.needsDisplayName ? "needs-display-name" : "signed-in",
       user: res.user,
@@ -64,6 +97,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       impersonation: res.impersonation ?? null,
     });
   }, []);
+
+  const refreshManagedSession = useCallback(async (): Promise<AuthResponse | null> => {
+    const credentials = await readSessionCredentials();
+    if (!credentials.canRefresh) return null;
+    const response = await requestManagedRefresh(credentials.refreshToken);
+    await applyAuth(response);
+    return response;
+  }, [applyAuth]);
+
+  const refreshAccessToken = useCallback(
+    async (failedToken: string): Promise<string | null> => {
+      const currentToken = stateRef.current.token;
+      if (currentToken && currentToken !== failedToken) return currentToken;
+      try {
+        return (await refreshManagedSession())?.token ?? null;
+      } catch (error) {
+        if (hasApiStatus(error, 401)) {
+          await clearSessionCredentials();
+          setState({ status: "signed-out", user: null, token: null, impersonation: null });
+          return null;
+        }
+        // A network/server failure is not evidence that the credential is bad.
+        // Preserve it and let the original request surface a retryable error.
+        throw error;
+      }
+    },
+    [refreshManagedSession],
+  );
+
+  useEffect(() => registerSessionRefreshHandler(refreshAccessToken), [refreshAccessToken]);
 
   const autoDevSignIn = useCallback(async (): Promise<boolean> => {
     if (process.env.EXPO_PUBLIC_DEV_AUTH !== "1") return false;
@@ -85,40 +148,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [applyAuth]);
 
   const bootstrap = useCallback(async () => {
-    const token = await getItem(TOKEN_KEY);
-    if (!token) {
-      if (await autoDevSignIn()) return;
-      setState({ status: "signed-out", user: null, token: null, impersonation: null });
-      return;
-    }
+    setState((current) => ({ ...current, status: "loading" }));
+    let credentials: Awaited<ReturnType<typeof readSessionCredentials>> = {
+      accessToken: null,
+      refreshToken: null,
+      canRefresh: false,
+    };
     try {
-      const me = await apiRequest<Me>({
-        method: "GET",
-        path: "/v1/auth/me",
-        token,
+      credentials = await readSessionCredentials();
+      const resolved = await resolveBootstrapSession(credentials, {
+        refresh: requestManagedRefresh,
+        upgrade: (accessToken) =>
+          apiRequest<AuthResponse>({
+            method: "POST",
+            path: "/v1/auth/session",
+            token: accessToken,
+            authRetry: false,
+          }),
+        readLegacyMe: (accessToken) =>
+          apiRequest({
+            method: "GET",
+            path: "/v1/auth/me",
+            token: accessToken,
+            authRetry: false,
+          }),
       });
-      setState({
-        status: statusFor(me.user),
-        user: me.user,
-        token,
-        impersonation: me.impersonation ?? null,
-      });
-    } catch (e) {
-      if (e instanceof ApiError && (e.status === 401 || e.status === 404)) {
-        await removeItem(TOKEN_KEY);
-        if (await autoDevSignIn()) return;
-        setState({ status: "signed-out", user: null, token: null, impersonation: null });
+      if (resolved.kind === "authenticated") {
+        await applyAuth(resolved.response);
         return;
       }
-      throw e;
+      if (resolved.kind === "legacy") {
+        setState({
+          status: statusFor(resolved.me.user),
+          user: resolved.me.user,
+          token: resolved.accessToken,
+          impersonation: resolved.me.impersonation ?? null,
+        });
+        return;
+      }
+
+      await clearSessionCredentials();
+      if (await autoDevSignIn()) return;
+      setState({ status: "signed-out", user: null, token: null, impersonation: null });
+    } catch (error) {
+      console.error("auth bootstrap failed", error);
+      setState({
+        status: "unavailable",
+        user: null,
+        token: credentials.accessToken,
+        impersonation: null,
+      });
     }
-  }, [autoDevSignIn]);
+  }, [applyAuth, autoDevSignIn]);
 
   useEffect(() => {
-    bootstrap().catch((e) => {
-      console.error("auth bootstrap failed", e);
-      setState({ status: "signed-out", user: null, token: null, impersonation: null });
-    });
+    void bootstrap();
   }, [bootstrap]);
 
   const signInWithApple = useCallback<AuthContextValue["signInWithApple"]>(
@@ -192,9 +276,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await apiRequest({ method: "POST", path: "/v1/auth/signout", token });
       }
     } catch {
-      // stateless HMAC session — local clear is sufficient even if the request fails
+      // Preserve the product action even when offline. Web records an explicit
+      // signed-out marker so an uncleared HttpOnly cookie cannot sign back in.
     }
-    await removeItem(TOKEN_KEY);
+    await clearSessionCredentials();
     setState({ status: "signed-out", user: null, token: null, impersonation: null });
   }, [state.token]);
 
@@ -211,7 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState((current) => ({
         status: statusFor(res.user),
         user: res.user,
-        token,
+        token: current.token,
         impersonation: current.impersonation,
       }));
     },
@@ -236,7 +321,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setState((current) => ({
         status: statusFor(res.user),
         user: res.user,
-        token,
+        token: current.token,
         impersonation: current.impersonation,
       }));
       return res.filmCount;
@@ -255,7 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState((current) => ({
       status: statusFor(res.user),
       user: res.user,
-      token,
+      token: current.token,
       impersonation: current.impersonation,
     }));
   }, [state.token]);

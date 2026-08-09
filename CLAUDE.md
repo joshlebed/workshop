@@ -157,6 +157,13 @@ small products — first feature is **watchlist** (movie tracker). New features 
   unless there's a specific reason (security fix, unblocking work).
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full errors:
   `logger.error("failed to x", { error })`, not `{ error: error.message }` (loses stack).
+- **Managed sessions are version-negotiated.** Updated clients send
+  `X-Workshop-Session-Version: 2`; only those clients receive one-hour access tokens backed by
+  rotating `auth_sessions` refresh credentials (180-day idle, one-year absolute). Keep the legacy
+  14-day token path for old OTA-ineligible installs. Native refresh tokens live in SecureStore; web
+  refresh tokens must remain in the HttpOnly cookie delivered through the Pages `/api/*` proxy.
+  Transient bootstrap errors preserve credentials and show retry UI; only an explicit auth rejection
+  may clear them. See `docs/decisions.md` and the app/backend CLAUDE files before changing auth.
 - **Postgres pool**: `postgres({ max: 1 })` — correct for Lambda. Each container has its own.
 - **Runtime imports from `@workshop/shared` go through a subpath, not the barrel.** The barrel
   re-exports `./types.js` for backend's NodeNext resolution; Metro can't resolve those `.js`
@@ -545,7 +552,6 @@ isn't working.**
 
 ```bash
 tail -f /tmp/workshop-dev.log
-grep "magic code" /tmp/workshop-dev.log         # local sign-in codes
 grep -iE "error|warn" /tmp/workshop-dev.log
 grep "<request_id>" /tmp/workshop-dev.log       # trace one request
 ```
@@ -558,20 +564,19 @@ Same prefixes, same grep patterns.
 
 The Niteshift preview proxy (`https://ns-<port>-<id>.preview.niteshift.dev`) rejects
 unauthenticated CORS OPTIONS preflights with `403`. `apps/workshop/src/config.ts` works
-around this by deriving the API URL from `window.location` on web (localhost stays;
-`ns-<port>-<id>` rewrites to the matching `ns-8787-<id>` host). Keep that derivation in
-place or browsers can't sign in.
+around this by sending Niteshift web traffic to same-origin `/api`; Metro's
+`dev-api-proxy.js` forwards it to `localhost:8787`. Keep that derivation and proxy in place
+or browsers can't sign in.
 
 ### Signing in locally (no email)
 
-`STAGE=local` logs the magic code to stdout instead of sending email
-(`apps/backend/src/lib/email.ts:17-20`). Submit the form, then:
+Auth is Apple/Google in normal builds. For a local browser session, enable the gated dev identity:
 
 ```bash
-grep "magic code" /tmp/workshop-dev.log | tail -1
+DEV_AUTH_ENABLED=1 EXPO_PUBLIC_DEV_AUTH=1 pnpm dev
 ```
 
-Codes expire in 15 minutes.
+The app signs in as the seeded `joshlebed@gmail.com` user. Never enable `DEV_AUTH_ENABLED` in prod.
 
 ### Sharing code between web and iOS
 

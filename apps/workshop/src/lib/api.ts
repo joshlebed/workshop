@@ -15,6 +15,30 @@ interface ApiRequest {
   body?: unknown;
   token?: string | null;
   signal?: AbortSignal;
+  /** Disable the one-shot managed-session refresh retry for auth bootstrap endpoints. */
+  authRetry?: boolean;
+}
+
+type SessionRefreshHandler = (failedToken: string) => Promise<string | null>;
+
+let sessionRefreshHandler: SessionRefreshHandler | null = null;
+let refreshInFlight: Promise<string | null> | null = null;
+
+export function registerSessionRefreshHandler(handler: SessionRefreshHandler): () => void {
+  sessionRefreshHandler = handler;
+  return () => {
+    if (sessionRefreshHandler === handler) sessionRefreshHandler = null;
+  };
+}
+
+async function refreshAccessToken(failedToken: string): Promise<string | null> {
+  if (!sessionRefreshHandler) return null;
+  if (!refreshInFlight) {
+    refreshInFlight = sessionRefreshHandler(failedToken).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
 }
 
 function isApiError(value: unknown): value is ApiErrorResponse {
@@ -23,15 +47,23 @@ function isApiError(value: unknown): value is ApiErrorResponse {
   return typeof v.error === "string" && typeof v.code === "string";
 }
 
-export async function apiRequest<T>({ method, path, body, token, signal }: ApiRequest): Promise<T> {
+export async function apiRequest<T>({
+  method,
+  path,
+  body,
+  token,
+  signal,
+  authRetry = true,
+}: ApiRequest): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "X-Workshop-Platform": PLATFORM,
     "X-Workshop-App-Version": APP_VERSION,
+    "X-Workshop-Session-Version": "2",
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const init: RequestInit = { method, headers };
+  const init: RequestInit = { method, headers, credentials: "include" };
   if (body !== undefined) init.body = JSON.stringify(body);
   if (signal) init.signal = signal;
 
@@ -40,6 +72,19 @@ export async function apiRequest<T>({ method, path, body, token, signal }: ApiRe
   const parsed: unknown = text.length > 0 ? JSON.parse(text) : null;
 
   if (!res.ok) {
+    if (res.status === 401 && token && authRetry) {
+      const refreshedToken = await refreshAccessToken(token);
+      if (refreshedToken) {
+        return apiRequest<T>({
+          method,
+          path,
+          body,
+          token: refreshedToken,
+          signal,
+          authRetry: false,
+        });
+      }
+    }
     if (isApiError(parsed)) {
       throw new ApiError(parsed.code, parsed.error, res.status, parsed.details);
     }

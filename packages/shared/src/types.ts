@@ -125,6 +125,10 @@ export interface GoogleAuthRequest {
 export interface AuthResponse {
   user: User;
   token: string;
+  /** Rotated refresh credential. Native only; browsers receive an HttpOnly cookie. */
+  refreshToken?: string;
+  /** Optional for rolling compatibility with servers predating managed sessions. */
+  sessionMode?: "legacy" | "managed";
   needsDisplayName: boolean;
   impersonation: AuthImpersonation | null;
 }

@@ -274,6 +274,13 @@
       "when": 1781564635430,
       "tag": "0038_drop_item_scores",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1786257270865,
+      "tag": "0039_managed_device_sessions",
+      "breakpoints": true
     }
   ]
 }

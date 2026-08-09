@@ -151,3 +151,124 @@ describe("admin impersonation routes", () => {
     expect(verifySession(stopped.token)?.impersonatorUserId).toBeUndefined();
   });
 });
+
+describe("managed auth routes", () => {
+  it("upgrades a legacy native session, rotates it, and revokes only that device on signout", async () => {
+    const upgradeRes = await authRoutes.request("/session", {
+      method: "POST",
+      headers: {
+        ...authHeaders(otherId),
+        "X-Workshop-Session-Version": "2",
+        "X-Workshop-Platform": "ios",
+        "X-Workshop-App-Version": "1.2.3",
+      },
+    });
+    expect(upgradeRes.status).toBe(200);
+    const upgraded = (await upgradeRes.json()) as AuthResponse;
+    expect(upgraded.sessionMode).toBe("managed");
+    expect(upgraded.refreshToken).toMatch(/^r1\./);
+    expect(verifySession(upgraded.token)?.sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f-]{27}$/);
+
+    const replacementAttempt = await authRoutes.request("/session", {
+      method: "POST",
+      headers: {
+        ...authHeaders(otherId, upgraded.token),
+        "X-Workshop-Session-Version": "2",
+        "X-Workshop-Platform": "ios",
+      },
+    });
+    expect(replacementAttempt.status).toBe(401);
+
+    const refreshRes = await authRoutes.request("/refresh", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Workshop-Platform": "ios",
+      },
+      body: JSON.stringify({ refreshToken: upgraded.refreshToken }),
+    });
+    expect(refreshRes.status).toBe(200);
+    const refreshed = (await refreshRes.json()) as AuthResponse;
+    expect(refreshed.refreshToken).toMatch(/^r1\./);
+    expect(refreshed.refreshToken).not.toBe(upgraded.refreshToken);
+
+    const signoutRes = await authRoutes.request("/signout", {
+      method: "POST",
+      headers: authHeaders(otherId, refreshed.token),
+    });
+    expect(signoutRes.status).toBe(200);
+
+    const rejected = await authRoutes.request("/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Workshop-Platform": "ios" },
+      body: JSON.stringify({ refreshToken: refreshed.refreshToken }),
+    });
+    expect(rejected.status).toBe(401);
+  });
+
+  it("keeps the browser refresh credential in an HttpOnly cookie", async () => {
+    const browserHeaders = {
+      ...authHeaders(otherId),
+      Origin: "https://workshop-a2v.pages.dev",
+      "X-Workshop-Session-Version": "2",
+      "X-Workshop-Platform": "web",
+    };
+    const upgradeRes = await authRoutes.request("/session", {
+      method: "POST",
+      headers: browserHeaders,
+    });
+    expect(upgradeRes.status).toBe(200);
+    const upgraded = (await upgradeRes.json()) as AuthResponse;
+    expect(upgraded.refreshToken).toBeUndefined();
+    const setCookie = upgradeRes.headers.get("set-cookie");
+    expect(setCookie).toContain("workshop_refresh_v1=r1.");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Lax");
+
+    const cookie = setCookie?.split(";")[0];
+    const refreshRes = await authRoutes.request("/refresh", {
+      method: "POST",
+      headers: {
+        Origin: browserHeaders.Origin,
+        "X-Workshop-Platform": "web",
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+    });
+    expect(refreshRes.status).toBe(200);
+    const refreshed = (await refreshRes.json()) as AuthResponse;
+    expect(refreshed.refreshToken).toBeUndefined();
+    expect(refreshRes.headers.get("set-cookie")).toContain("workshop_refresh_v1=r1.");
+  });
+
+  it("preserves managed impersonation through refresh", async () => {
+    const upgradeRes = await authRoutes.request("/session", {
+      method: "POST",
+      headers: {
+        ...authHeaders(adminId),
+        "X-Workshop-Session-Version": "2",
+        "X-Workshop-Platform": "ios",
+      },
+    });
+    const upgraded = (await upgradeRes.json()) as AuthResponse;
+
+    const startRes = await authRoutes.request("/impersonate", {
+      method: "POST",
+      headers: authHeaders(adminId, upgraded.token),
+      body: JSON.stringify({ target: targetId }),
+    });
+    expect(startRes.status).toBe(200);
+    const started = (await startRes.json()) as AuthResponse;
+    expect(started.sessionMode).toBe("managed");
+    expect(verifySession(started.token)?.sessionId).toBe(verifySession(upgraded.token)?.sessionId);
+
+    const refreshRes = await authRoutes.request("/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Workshop-Platform": "ios" },
+      body: JSON.stringify({ refreshToken: upgraded.refreshToken }),
+    });
+    expect(refreshRes.status).toBe(200);
+    const refreshed = (await refreshRes.json()) as AuthResponse;
+    expect(refreshed.user.id).toBe(targetId);
+    expect(refreshed.impersonation?.adminUserId).toBe(adminId);
+  });
+});
