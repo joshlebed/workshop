@@ -24,7 +24,7 @@ import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
 import { getItem, removeItem } from "../src/lib/storage";
 import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
-import { ThemeProvider, ToastProvider, tokens } from "../src/ui/index";
+import { Button, Text, ThemeProvider, ToastProvider, tokens } from "../src/ui/index";
 
 function useApplyOtaUpdatesOnArrival() {
   const { isUpdatePending } = Updates.useUpdates();
@@ -106,7 +106,7 @@ function useShareIntentRedirect(status: AuthStatus) {
 }
 
 function AuthGate() {
-  const { status } = useAuth();
+  const { status, refresh } = useAuth();
   useShareIntentRedirect(status);
   // Widen to `string[]` so segments[1] typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
@@ -126,6 +126,7 @@ function AuthGate() {
 
   useEffect(() => {
     if (status === "loading") return;
+    if (status === "unavailable") return;
     const first = segments[0];
     const onSignIn = first === "sign-in";
     const onOnboarding = first === "onboarding";
@@ -226,6 +227,34 @@ function AuthGate() {
       >
         <ActivityIndicator color={tokens.accent.default} />
       </View>
+    );
+  }
+
+  if (status === "unavailable") {
+    return (
+      <SafeAreaView
+        edges={["top", "bottom"]}
+        style={{ flex: 1, backgroundColor: tokens.bg.canvas }}
+      >
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: tokens.space.xl,
+          }}
+        >
+          <View style={{ width: "100%", maxWidth: 340, gap: tokens.space.md }}>
+            <Text variant="heading" style={{ textAlign: "center" }}>
+              Can’t connect
+            </Text>
+            <Text tone="secondary" style={{ textAlign: "center" }}>
+              Your session is still saved. Check your connection and try again.
+            </Text>
+            <Button label="Try again" size="lg" onPress={() => void refresh()} />
+          </View>
+        </View>
+      </SafeAreaView>
     );
   }
 

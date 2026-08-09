@@ -16,7 +16,11 @@ function buildAppForTest() {
   const app = new Hono();
   app.use("/protected", requireAuth);
   app.get("/protected", (c) =>
-    ok(c, { userId: c.get("userId"), impersonatorUserId: c.get("impersonatorUserId") }),
+    ok(c, {
+      userId: c.get("userId"),
+      impersonatorUserId: c.get("impersonatorUserId"),
+      sessionId: c.get("sessionId"),
+    }),
   );
   return app;
 }
@@ -92,6 +96,20 @@ describe("requireAuth middleware", () => {
     });
     expect(isSessionRevoked).toHaveBeenCalledWith("target-user", expect.any(Number));
     expect(isSessionRevoked).toHaveBeenCalledWith("admin-user", expect.any(Number));
+  });
+
+  it("checks a managed session row and exposes its id to the route", async () => {
+    const sessionId = "00000000-0000-4000-8000-000000000123";
+    const token = signSession("user-abc", { sessionId });
+    const res = await buildAppForTest().request("/protected", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ userId: "user-abc", sessionId });
+    expect(isSessionRevoked).toHaveBeenCalledWith("user-abc", expect.any(Number), {
+      sessionId,
+      subjectUserId: "user-abc",
+    });
   });
 
   it("rejects an impersonated token when the admin session is revoked", async () => {

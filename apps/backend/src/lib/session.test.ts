@@ -48,4 +48,16 @@ describe("session tokens", () => {
       impersonatorUserId: "admin-user",
     });
   });
+
+  it("uses a one-hour access token for a managed device session", () => {
+    const sessionId = "00000000-0000-4000-8000-000000000123";
+    const payload = verifySession(signSession("user-123", { sessionId }));
+    expect(payload).toMatchObject({ userId: "user-123", sessionId });
+    expect((payload?.exp ?? 0) - (payload?.iat ?? 0)).toBe(60 * 60);
+  });
+
+  it("keeps the legacy 14-day lifetime when no device session is attached", () => {
+    const payload = verifySession(signSession("user-123"));
+    expect((payload?.exp ?? 0) - (payload?.iat ?? 0)).toBe(14 * 24 * 60 * 60);
+  });
 });

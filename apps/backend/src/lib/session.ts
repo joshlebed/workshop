@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { getConfig } from "./config.js";
 
-const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
+const LEGACY_SESSION_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
+const MANAGED_ACCESS_TTL_SECONDS = 60 * 60; // 1 hour
 
 // `iat` is optional for backwards compatibility with tokens minted before
 // server-side revocation existed. The auth middleware treats a missing `iat`
@@ -12,12 +13,14 @@ const sessionPayloadSchema = z.object({
   exp: z.number(),
   iat: z.number().optional(),
   impersonatorUserId: z.string().optional(),
+  sessionId: z.string().uuid().optional(),
 });
 
 type SessionPayload = z.infer<typeof sessionPayloadSchema>;
 
 interface SignSessionOptions {
-  impersonatorUserId?: string | null;
+  impersonatorUserId?: string | null | undefined;
+  sessionId?: string | null | undefined;
 }
 
 function b64urlEncode(input: Buffer | string): string {
@@ -39,10 +42,11 @@ export function signSession(userId: string, opts: SignSessionOptions = {}): stri
   const now = Math.floor(Date.now() / 1000);
   const payload: SessionPayload = {
     userId,
-    exp: now + SESSION_TTL_SECONDS,
+    exp: now + (opts.sessionId ? MANAGED_ACCESS_TTL_SECONDS : LEGACY_SESSION_TTL_SECONDS),
     iat: now,
   };
   if (opts.impersonatorUserId) payload.impersonatorUserId = opts.impersonatorUserId;
+  if (opts.sessionId) payload.sessionId = opts.sessionId;
   const payloadB64 = b64urlEncode(JSON.stringify(payload));
   const sig = createHmac("sha256", sessionSecret).update(payloadB64).digest();
   return `${payloadB64}.${b64urlEncode(sig)}`;

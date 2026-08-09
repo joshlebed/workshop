@@ -70,6 +70,7 @@ export function buildApp() {
         "Authorization",
         "X-Workshop-Platform",
         "X-Workshop-App-Version",
+        "X-Workshop-Session-Version",
       ],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       credentials: true,

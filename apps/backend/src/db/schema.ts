@@ -73,6 +73,42 @@ export const userIdentities = pgTable(
   }),
 );
 
+/**
+ * Long-lived, independently revocable device sessions. Access tokens remain
+ * short-lived HMACs; this row owns refresh rotation, idle/absolute expiry, and
+ * the current impersonation target for one browser or native installation.
+ * Raw refresh tokens are never stored: the token is derived from `(id,
+ * refresh_version)` with `SESSION_SECRET`.
+ */
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    refreshVersion: integer("refresh_version").notNull().default(1),
+    impersonatedUserId: uuid("impersonated_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    platform: text("platform"),
+    appVersion: text("app_version"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }).notNull().default(sql`now()`),
+    idleExpiresAt: timestamp("idle_expires_at", { withTimezone: true }).notNull(),
+    absoluteExpiresAt: timestamp("absolute_expires_at", { withTimezone: true }).notNull(),
+    rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => ({
+    userIdx: index("auth_sessions_user_idx").on(t.userId),
+    activeExpiryIdx: index("auth_sessions_active_expiry_idx")
+      .on(t.absoluteExpiresAt)
+      .where(sql`revoked_at IS NULL`),
+  }),
+);
+
 export const lists = pgTable(
   "lists",
   {
@@ -687,6 +723,7 @@ export const rateLimits = pgTable(
 
 export type DbUser = typeof users.$inferSelect;
 export type DbUserIdentity = typeof userIdentities.$inferSelect;
+export type DbAuthSession = typeof authSessions.$inferSelect;
 export type DbList = typeof lists.$inferSelect;
 export type DbListMember = typeof listMembers.$inferSelect;
 export type DbListInvite = typeof listInvites.$inferSelect;

@@ -60,13 +60,18 @@ describe("isSessionRevoked", () => {
 });
 
 describe("revokeAllSessions", () => {
-  it("issues an UPDATE on the users row", async () => {
+  it("revokes legacy and managed sessions in one transaction", async () => {
     const where = vi.fn().mockResolvedValue(undefined);
     const set = vi.fn().mockReturnValue({ where });
     const update = vi.fn().mockReturnValue({ set });
-    vi.mocked(getDb).mockReturnValue({ update } as unknown as ReturnType<typeof getDb>);
+    const transaction = vi.fn(async (fn: (tx: { update: typeof update }) => Promise<void>) => {
+      await fn({ update });
+    });
+    vi.mocked(getDb).mockReturnValue({ transaction } as unknown as ReturnType<typeof getDb>);
     await revokeAllSessions("user-1");
-    expect(update).toHaveBeenCalled();
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenCalledTimes(2);
     expect(set).toHaveBeenCalledWith({ sessionsInvalidatedAt: expect.any(Date) });
+    expect(set).toHaveBeenCalledWith({ revokedAt: expect.any(Date) });
   });
 });

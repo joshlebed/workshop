@@ -18,6 +18,12 @@ function deriveFromWebLocation(): string | null {
     return "/api";
   }
 
+  // Cloudflare Pages owns the browser refresh cookie. Proxy API traffic
+  // through the page origin so it remains first-party and reliable in Safari.
+  if (hostname.endsWith(".pages.dev")) {
+    return "/api";
+  }
+
   if (port === "8081") {
     return `${window.location.protocol}//${hostname}:8787`;
   }
