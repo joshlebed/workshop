@@ -144,6 +144,7 @@ export const notificationPrefs = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     playReminderEnabled: boolean("play_reminder_enabled").notNull().default(false),
     playReminderHour: smallint("play_reminder_hour"),
+    lastRemindedAt: timestamp("last_reminded_at", { withTimezone: true }),
   },
   (t) => ({
     playReminderHourCheck: check(

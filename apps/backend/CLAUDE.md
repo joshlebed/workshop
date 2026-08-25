@@ -316,7 +316,11 @@ Push installations live in `push_tokens`; account-level settings live in `notifi
 single canonical timezone for both `suggestedHour` and the `{ "job": "play-reminders" }` Lambda
 invocation; delivery still targets all of that user's tokens. The job is Games-flag-gated, wraps its
 opening query in `withDbRetry`, skips any user with a `game_scores.created_at` on their current local
-date, sends Expo batches of at most 100, and prunes inline `DeviceNotRegistered` tickets.
+date, and excludes anyone with `notification_prefs.last_reminded_at` in the past 20 hours (including
+the repeated fall-back DST hour). Expo batches contain at most 100 tokens; each batch handles and
+logs failures independently, successful batches advance `last_reminded_at`, and all collected
+`DeviceNotRegistered` tickets are pruned after the loop. The spring-forward hour that does not exist
+is intentionally skipped in v1.
 
 ## Lists and items are soft-deleted via `archived_at`
 

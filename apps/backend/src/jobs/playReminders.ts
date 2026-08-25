@@ -12,6 +12,7 @@ const FALLBACK_REMINDER_HOUR = 11;
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const EXPO_CHUNK_SIZE = 100;
+const REMINDER_DEDUP_HOURS = 20;
 
 const expoTicketResponseSchema = z.object({
   data: z.array(
@@ -112,6 +113,14 @@ async function selectCandidateTokens(db: DbClient, now: Date): Promise<Candidate
         FROM ${notificationPrefs}
         INNER JOIN canonical_timezones canonical ON canonical.user_id = ${notificationPrefs.userId}
         WHERE ${notificationPrefs.playReminderEnabled} = true
+          AND (
+            ${notificationPrefs.lastRemindedAt} IS NULL
+            OR ${notificationPrefs.lastRemindedAt} <=
+              ${now.toISOString()}::timestamptz - (${REMINDER_DEDUP_HOURS} * INTERVAL '1 hour')
+          )
+          -- A fall-back day repeats hour 1, so the last-reminded guard above
+          -- deduplicates it. A spring-forward hour that never occurs is
+          -- intentionally skipped in v1.
           AND ${notificationPrefs.playReminderHour} = EXTRACT(
             HOUR FROM ${now.toISOString()}::timestamptz AT TIME ZONE canonical.timezone
           )::int
@@ -169,35 +178,50 @@ export async function runPlayReminderJob(
   let sent = 0;
   const tokensToPrune = new Set<string>();
 
-  for (const chunk of chunksOf(sendable, EXPO_CHUNK_SIZE)) {
-    const response = await fetchFn(EXPO_PUSH_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        chunk.map((candidate) => ({
-          to: candidate.expoPushToken,
-          title: "Time to play",
-          body: "Your daily games are waiting",
-          data: { url: "workshop:///games" },
-        })),
-      ),
-    });
-    if (!response.ok) {
-      throw new Error(`Expo push request failed with status ${response.status}`);
-    }
-
-    const parsed = expoTicketResponseSchema.safeParse(await response.json());
-    if (!parsed.success) throw new Error("Expo push response had an invalid ticket payload");
-    if (parsed.data.data.length !== chunk.length) {
-      throw new Error("Expo push response ticket count did not match the request");
-    }
-    sent += chunk.length;
-    for (const [index, ticket] of parsed.data.data.entries()) {
-      const candidate = chunk[index];
-      if (!candidate) continue;
-      if (ticket.status === "error" && ticket.details?.error === "DeviceNotRegistered") {
-        tokensToPrune.add(candidate.expoPushToken);
+  for (const [chunkIndex, chunk] of chunksOf(sendable, EXPO_CHUNK_SIZE).entries()) {
+    try {
+      const response = await fetchFn(EXPO_PUSH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          chunk.map((candidate) => ({
+            to: candidate.expoPushToken,
+            title: "Time to play",
+            body: "Your daily games are waiting",
+            data: { url: "workshop:///games" },
+          })),
+        ),
+      });
+      if (!response.ok) {
+        throw new Error(`Expo push request failed with status ${response.status}`);
       }
+
+      const parsed = expoTicketResponseSchema.safeParse(await response.json());
+      if (!parsed.success) throw new Error("Expo push response had an invalid ticket payload");
+      if (parsed.data.data.length !== chunk.length) {
+        throw new Error("Expo push response ticket count did not match the request");
+      }
+
+      sent += chunk.length;
+      for (const [index, ticket] of parsed.data.data.entries()) {
+        const candidate = chunk[index];
+        if (!candidate) continue;
+        if (ticket.status === "error" && ticket.details?.error === "DeviceNotRegistered") {
+          tokensToPrune.add(candidate.expoPushToken);
+        }
+      }
+
+      const remindedUserIds = [...new Set(chunk.map((candidate) => candidate.userId))];
+      await db
+        .update(notificationPrefs)
+        .set({ lastRemindedAt: now })
+        .where(inArray(notificationPrefs.userId, remindedUserIds));
+    } catch (error) {
+      logger.error("play reminder push chunk failed", {
+        error,
+        chunk_index: chunkIndex,
+        token_count: chunk.length,
+      });
     }
   }
 

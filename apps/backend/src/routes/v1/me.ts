@@ -45,10 +45,15 @@ const registerPushTokenSchema = z.object({
 
 const deletePushTokenSchema = z.object({ expoPushToken: expoPushTokenSchema });
 
-const updateNotificationPrefsSchema = z.object({
-  playReminderEnabled: z.boolean(),
-  playReminderHour: z.number().int().min(0).max(23).nullable(),
-});
+const updateNotificationPrefsSchema = z
+  .object({
+    playReminderEnabled: z.boolean(),
+    playReminderHour: z.number().int().min(0).max(23).nullable(),
+  })
+  .refine((prefs) => !prefs.playReminderEnabled || prefs.playReminderHour !== null, {
+    message: "play reminder hour required when enabled",
+    path: ["playReminderHour"],
+  });
 
 export const meRoutes = new Hono();
 

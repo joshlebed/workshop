@@ -152,7 +152,7 @@ describe("/v1/me notification preferences", () => {
     expect(await response.json()).toMatchObject({ suggestedHour: 11 });
   });
 
-  it("upserts valid preferences and rejects an out-of-range hour", async () => {
+  it("upserts valid preferences and rejects invalid enabled hours", async () => {
     const update = await meRoutes.request("/notification-prefs", {
       method: "PUT",
       headers: authHeaders(peakUserId),
@@ -167,6 +167,13 @@ describe("/v1/me notification preferences", () => {
       body: JSON.stringify({ playReminderEnabled: true, playReminderHour: 24 }),
     });
     expect(invalid.status).toBe(400);
+
+    const missingHour = await meRoutes.request("/notification-prefs", {
+      method: "PUT",
+      headers: authHeaders(peakUserId),
+      body: JSON.stringify({ playReminderEnabled: true, playReminderHour: null }),
+    });
+    expect(missingHour.status).toBe(400);
   });
 });
 
