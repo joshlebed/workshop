@@ -13,7 +13,7 @@ score-share flow. During migration, Workshop renders the same `@workshop/games` 
 | Scheme                       | `highscore`                                                     |
 | Apple Services ID (web auth) | `live.highscore.web`                                            |
 | EAS project                  | `@joshlebed/highscore` (`92a568f5-b0f0-4af1-bb9d-98181025691c`) |
-| Web domain (not live yet)    | `highscore.live` — Cloudflare Pages project lands in OP-7/PR-6  |
+| Web domain                   | `highscore.live` (Cloudflare Pages project `highscore`)         |
 
 It shares a backend, a Postgres, and a user identity with Workshop. Apple's `sub` is stable
 per developer team, so signing in here with the Apple ID you use on Workshop resolves to the
@@ -60,6 +60,7 @@ app/                     expo-router routes
 src/hooks/useAuth.tsx    auth context over @workshop/api-client
 src/components/          app-local components (wordmark)
 public/index.html        web HTML shell — OG tags, theme-color, canvas lock
+functions/               Pages API proxy, AASA, and OG metadata/PNG routes
 ```
 
 Shared code comes from `@workshop/games` (Games feature), `@workshop/ui` (design system and
@@ -70,20 +71,19 @@ Google sign-in button), `@workshop/api-client` (API, session, storage, OAuth hoo
 
 Handled by `@workshop/api-client/config` — the same module Workshop uses. On web it derives
 the base URL from `window.location`: `localhost` → `http://localhost:8787`, a Niteshift
-preview host or a `*.pages.dev` host → same-origin `/api`. `metro.config.js` +
+preview host, a `*.pages.dev` host, or `highscore.live` → same-origin `/api`. `metro.config.js` +
 `dev-api-proxy.js` forward that `/api` prefix to the backend so the web bundle never has to
 cross the Niteshift preview proxy's per-port auth wall.
 
-`highscore.live` is not in that derivation yet — it needs the `/api/*` Pages Function that
-lands with the Cloudflare Pages project in PR-6. Until then production web falls through to
-`EXPO_PUBLIC_API_URL` (the API Gateway origin), which the backend's CORS allowlist already
-accepts.
+In Cloudflare, the HighScore Pages project uses `root_dir=apps/highscore` and
+`destination_dir=dist`. Pages discovers `functions/` relative to that project root. Workshop
+keeps `root_dir=""` and continues to own the repo-root `functions/` directory.
 
 ## Shipping
 
-Not wired to CI yet. `testflight-highscore.yml`, the OTA channel, and the per-app
-fingerprint tag namespace (`hs-ios-fp-*`) land in PR-8; the Metro-bundle and
-runtime-version guards get matrixed over both apps in PR-5. Until then:
+Cloudflare Pages deploys web from the Git-integrated `highscore` project. Mobile deployment
+CI is not wired yet: `testflight-highscore.yml` and the OTA channel land in PR-8. The
+Metro-bundle and runtime-version guards already cover both apps. Until PR-8 lands:
 
 ```bash
 cd apps/highscore

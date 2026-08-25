@@ -20,7 +20,7 @@
       "ignoreDependencies": ["@react-navigation/native"]
     },
     "apps/highscore": {
-      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"]
+      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "functions/**/*.ts"]
     },
     "packages/*": {}
   }

@@ -18,12 +18,8 @@
       Default Open Graph + Twitter Card tags. Every URL on the domain that
       doesn't have a route-specific Pages Function override renders these for
       iMessage, Slack, Twitter, etc.
-      PLACEHOLDER ARTWORK: `/og/default.png` is not served yet — HighScore's
-      `functions/` directory (the `/api/*` proxy, the OG renderer, AASA) lands
-      in PR-6 together with the Cloudflare Pages project. Until then these tags
-      point at the future canonical URLs so the shape is already right; the
-      image 404s. Keep them in sync with `buildMetaTagsRaw` in
-      `packages/shared/src/og.ts` when PR-6 wires the renderer up.
+      Keep them in sync with `buildMetaTagsRaw` in
+      `apps/highscore/functions/_lib/og.ts`.
     -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="HighScore" />
@@ -47,13 +43,13 @@
       and Android Chrome tints the address bar the same way. Declare both
       light + dark media variants because Safari historically only honored
       theme-color when an explicit media match was present. The app shell
-      always paints the dark canvas (tokens.bg.canvas = #081325) regardless
+      always paints the dark canvas (tokens.bg.canvas = #0E0C0B) regardless
       of the system color scheme, so we hard-pin both modes to that value
       to avoid a white flash above/below the page in iOS light mode.
     -->
-    <meta name="theme-color" content="#081325" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#081325" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#081325" />
+    <meta name="theme-color" content="#0E0C0B" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0E0C0B" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0C0B" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -65,7 +61,7 @@
       html,
       body {
         height: 100%;
-        background-color: #081325;
+        background-color: #0E0C0B;
         color-scheme: dark;
       }
       body {
