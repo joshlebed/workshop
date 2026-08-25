@@ -1,9 +1,16 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import { getItem } from "@workshop/api-client/storage";
+import {
+  PENDING_FRIEND_INVITE_TOKEN_KEY,
+  PENDING_GAME_SHARE_TOKEN_KEY,
+} from "@workshop/games/lib/inviteStash";
+import { type GamesRoutes, GamesRuntimeProvider } from "@workshop/games/runtime";
 import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { type Href, Stack, useRouter, useSegments } from "expo-router";
+import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
-import { useEffect, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -18,13 +25,52 @@ function useApplyOtaUpdatesOnArrival() {
   }, [isUpdatePending]);
 }
 
-// Auth-routing shell. Deliberately simpler than Workshop's AuthGate: HighScore
-// has no public landing pages or invite-stash round-trips yet, so every route
-// outside `/sign-in` and `/onboarding` is member-only. PR-4 brings the play-link
-// (`/g/:token`) and friend-invite deep links over, and with them the
-// stash-then-forward behaviour Workshop's gate implements.
+const HIGHSCORE_GAMES_ROUTES: GamesRoutes = {
+  root: "/",
+  home: "/",
+  signIn: "/sign-in",
+  friends: "/friends",
+  game: (gameId) => `/games/${encodeURIComponent(gameId)}`,
+  friendProfile: (userId, via) =>
+    `/friends/${encodeURIComponent(userId)}${via ? `?via=${encodeURIComponent(via)}` : ""}`,
+};
+
+function GamesRuntimeBridge({ children }: { children: ReactNode }) {
+  const { token, user, status } = useAuth();
+  const value = useMemo(
+    () => ({
+      token,
+      user,
+      status,
+      appName: "HighScore",
+      appScheme: "highscore",
+      routes: HIGHSCORE_GAMES_ROUTES,
+    }),
+    [status, token, user],
+  );
+  return <GamesRuntimeProvider value={value}>{children}</GamesRuntimeProvider>;
+}
+
+function useShareIntentRedirect(status: ReturnType<typeof useAuth>["status"]) {
+  const router = useRouter();
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
+  useEffect(() => {
+    if (status !== "signed-in" || !hasShareIntent) return;
+    const params = new URLSearchParams();
+    const webUrl = shareIntent?.webUrl?.trim();
+    const text = shareIntent?.text?.trim();
+    if (webUrl) params.set("url", webUrl);
+    if (text) params.set("text", text);
+    const query = params.toString();
+    if (!query) return;
+    router.replace(`/share/pick-game?${query}` as Href);
+    resetShareIntent();
+  }, [hasShareIntent, resetShareIntent, router, shareIntent, status]);
+}
+
 function AuthGate() {
   const { status, refresh } = useAuth();
+  useShareIntentRedirect(status);
   // Widen to `string[]` so index access typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
   // generated in CI. Group segments (`(tabs)`) are stripped so the route
@@ -32,22 +78,41 @@ function AuthGate() {
   const rawSegments: string[] = useSegments();
   const segments = rawSegments.filter((segment) => !segment.startsWith("("));
   const router = useRouter();
+  const postSignInResolvedRef = useRef(false);
 
   useEffect(() => {
     if (status === "loading" || status === "unavailable") return;
     const first = segments[0];
     const onSignIn = first === "sign-in";
     const onOnboarding = first === "onboarding";
+    const onFriendAccept = first === "friends" && segments[1] === "accept";
+    const onGameShare = first === "g";
+
+    if (status !== "signed-in") postSignInResolvedRef.current = false;
 
     if (status === "signed-out") {
-      if (!onSignIn) router.replace("/sign-in");
+      if (!onSignIn && !onFriendAccept && !onGameShare) router.replace("/sign-in");
       return;
     }
     if (status === "needs-display-name") {
       if (!onOnboarding) router.replace("/onboarding/display-name");
       return;
     }
-    if (onSignIn || onOnboarding) router.replace("/");
+    if ((!onSignIn && !onOnboarding) || postSignInResolvedRef.current) return;
+    postSignInResolvedRef.current = true;
+    void (async () => {
+      const friendToken = await getItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => null);
+      if (friendToken) {
+        router.replace(`/friends/accept/${encodeURIComponent(friendToken)}` as Href);
+        return;
+      }
+      const gameToken = await getItem(PENDING_GAME_SHARE_TOKEN_KEY).catch(() => null);
+      if (gameToken) {
+        router.replace(`/g/${encodeURIComponent(gameToken)}` as Href);
+        return;
+      }
+      router.replace("/");
+    })();
   }, [status, segments, router]);
 
   if (status === "loading") {
@@ -90,6 +155,13 @@ function AuthGate() {
         }}
       >
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="games/[id]" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="friends/[userId]" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="friends/accept/[token]" />
+        <Stack.Screen name="g/[token]" />
+        <Stack.Screen name="share/index" />
+        <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="onboarding/display-name" />
       </Stack>
@@ -118,7 +190,9 @@ export default function RootLayout() {
             <QueryClientProvider client={queryClient}>
               <ToastProvider>
                 <AuthProvider>
-                  <AuthGate />
+                  <GamesRuntimeBridge>
+                    <AuthGate />
+                  </GamesRuntimeBridge>
                 </AuthProvider>
               </ToastProvider>
             </QueryClientProvider>

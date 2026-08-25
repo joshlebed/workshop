@@ -17,7 +17,9 @@ import { linkPreviewToItemContent } from "@workshop/shared/linkContent";
 import {
   Button,
   Card,
+  haptics,
   IconButton,
+  normalizeExternalUrl,
   Screen,
   SearchResultRow,
   TagEditor,
@@ -36,8 +38,6 @@ import { searchBooks, searchMedia } from "../../../../../src/api/search";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { useDebouncedQuery } from "../../../../../src/hooks/useDebouncedQuery";
 import { goBack } from "../../../../../src/lib/goBack";
-import { haptics } from "../../../../../src/lib/haptics";
-import { normalizeExternalUrl } from "../../../../../src/lib/openUrl";
 
 const SEARCH_KINDS: readonly ItemKind[] = ["movie", "tv", "book"];
 

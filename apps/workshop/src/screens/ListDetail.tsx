@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
+import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type {
@@ -15,8 +16,13 @@ import { hasModule } from "@workshop/shared/modules";
 import {
   Avatar,
   Button,
+  confirm,
   EmptyState,
+  formatRelative,
+  haptics,
   type ListColorKey,
+  normalizeExternalUrl,
+  openExternalUrl,
   Screen,
   TagFilterBar,
   Text,
@@ -40,12 +46,7 @@ import { syncSource } from "../api/sources";
 import { createSavedView, deleteSavedView, fetchSavedViews } from "../api/views";
 import { useAuth } from "../hooks/useAuth";
 import { applyOptimisticMove, neighborsForOrderedReorder } from "../lib/albumShelfPositions";
-import { userAvatarImageUrl } from "../lib/avatar";
-import { confirm } from "../lib/confirm";
 import { goBack } from "../lib/goBack";
-import { haptics } from "../lib/haptics";
-import { normalizeExternalUrl, openExternalUrl } from "../lib/openUrl";
-import { formatRelative } from "../lib/relativeTime";
 import { sourceErrorMessage } from "../lib/sourceErrors";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";

@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
+import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type {
   ConfigWarning,
@@ -13,6 +14,7 @@ import { formatConfigWarning, MODULE_NAMES } from "@workshop/shared/modules";
 import {
   Avatar,
   Button,
+  formatRelative,
   IconButton,
   type ListColorKey,
   Screen,
@@ -40,10 +42,8 @@ import {
 } from "../../../../../src/api/share";
 import { syncSource } from "../../../../../src/api/sources";
 import { useAuth } from "../../../../../src/hooks/useAuth";
-import { userAvatarImageUrl } from "../../../../../src/lib/avatar";
 import { pickCoverPhoto } from "../../../../../src/lib/coverPhoto";
 import { goBack } from "../../../../../src/lib/goBack";
-import { formatRelative } from "../../../../../src/lib/relativeTime";
 import { buildListShareUrl, copyToClipboard } from "../../../../../src/lib/share";
 import { sourceErrorMessage } from "../../../../../src/lib/sourceErrors";
 

@@ -1,10 +1,9 @@
-import { Button, Text, tokens } from "@workshop/ui";
+import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
+import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
-import { useAppleSignIn } from "../src/lib/oauth/apple";
-import { GoogleSignInButton } from "../src/lib/oauth/GoogleSignInButton";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(

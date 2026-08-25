@@ -20,8 +20,8 @@ delete what's no longer true.
 Personal monorepo. Two Expo apps on one backend: `apps/workshop` (published as
 **Workshop.dev**) is an umbrella for small products — lists, watchlist, sharing, friends —
 and `apps/highscore` (**HighScore**, `highscore.live`) owns daily games. Both build web + iOS
-from one component tree; shared code lives in `packages/*`. `apps/highscore` is a **scaffold**
-today (sign-in + placeholder home); the Games surfaces move over in PR-4. See
+from one component tree; shared code lives in `packages/*`. HighScore owns the Games routes;
+Workshop temporarily renders the same `@workshop/games` package behind its legacy flag. See
 `docs/highscore-migration-plan.md`.
 
 ## Stack at a glance
@@ -204,11 +204,13 @@ today (sign-in + placeholder home); the Games surfaces move over in PR-4. See
   to `constants.ts` (or another non-barrel subpath).
 - **Shared client code lives in `packages/ui` + `packages/api-client`, not `apps/workshop/src`.**
   `@workshop/ui` is the design system (theme tokens, `Text`/`AnimatedText`, `Sheet`, `Screen`,
-  `TagEditor`, `Toast`, `clipboard`) — barrel export, plus a `./clipboard` subpath.
+  `TagEditor`, `Toast`, `clipboard`) — barrel export, plus focused `./clipboard`, `./navigation`,
+  `./reorder`, and `./share` subpaths for helpers that must not load the full component barrel.
   `@workshop/api-client` is `apiRequest` + the method union, `queryKeys`, `storage`,
   `sessionCredentials`, `authBootstrap`, `useLivePollingInterval`, and the API-URL derivation
-  (`./config`); it is **subpath-only** (no barrel). Anything both Workshop and the future
-  HighScore app need belongs there — see `docs/highscore-migration-plan.md`.
+  (`./config`) plus OAuth hooks under `./oauth/*`; it is **subpath-only** (no barrel).
+  Transitional Games code used by both apps lives in subpath-only `@workshop/games`; app route
+  files supply product-specific paths via `GamesRuntimeProvider`. See `docs/highscore-migration-plan.md`.
 - **Metro does NOT apply `.web.ts` / `.native.ts` resolution to a package `exports` target.**
   `metro-resolver` does an exact `fileSystemLookup` on whatever the `exports` map points at, so
   `"./storage": "./src/storage.web.ts"`-style platform splitting silently ships the wrong

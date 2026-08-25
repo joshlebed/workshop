@@ -2,8 +2,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
+import { fetchFriendRequests } from "@workshop/games/api/friends";
 import type { ItemKind, ListSummary, ModuleName } from "@workshop/shared";
-import { Avatar, Button, type ListColorKey, Sheet, Text, tokens, useToast } from "@workshop/ui";
+import {
+  Avatar,
+  Button,
+  confirm,
+  type ListColorKey,
+  Sheet,
+  Text,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -16,11 +26,9 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { fetchFriendRequests } from "../api/friends";
 import { unarchiveList } from "../api/lists";
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
-import { confirm } from "../lib/confirm";
 import { GAMES_TAB_ENABLED } from "../lib/featureFlags";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {

@@ -22,7 +22,7 @@
 
 import type { Item, ItemKind } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
-import { tokens } from "@workshop/ui";
+import { PullToRefresh, REORDER_AUTOSCROLL, tokens } from "@workshop/ui";
 import * as Haptics from "expo-haptics";
 import { memo, type ReactNode, useCallback, useMemo, useState } from "react";
 import { type ListRenderItemInfo, StyleSheet, View } from "react-native";
@@ -33,8 +33,6 @@ import {
   useIsActive,
   useReorderableDrag,
 } from "react-native-reorderable-list";
-import { PullToRefresh } from "../../components/PullToRefresh";
-import { REORDER_AUTOSCROLL } from "../../lib/reorderAutoscroll";
 import { resolveCombinedReorder } from "./combinedReorder";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
 import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";

@@ -7,14 +7,19 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./clipboard": "./src/clipboard.ts"
+    "./clipboard": "./src/clipboard.ts",
+    "./navigation": "./src/navigation.ts",
+    "./reorder": "./src/reorder.ts",
+    "./share": "./src/share.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@workshop/api-client": "workspace:*",
     "expo-clipboard": "~55.0.13",
+    "expo-haptics": "~55.0.14",
     "expo-router": "55.0.14",
     "react": "19.2.0",
     "react-native": "0.83.6",

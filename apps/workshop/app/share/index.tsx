@@ -1,23 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import { Button, Screen, Text, tokens, useToast } from "@workshop/ui";
-import Constants from "expo-constants";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import * as Updates from "expo-updates";
-import { useMemo } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { addGame, fetchMyGames, upsertGameScore } from "../../src/api/games";
-import { useAuth } from "../../src/hooks/useAuth";
-import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
-import { localDateKey } from "../../src/lib/gameDate";
-import { haptics } from "../../src/lib/haptics";
+import { addGame, fetchMyGames, upsertGameScore } from "@workshop/games/api/games";
+import { localDateKey } from "@workshop/games/lib/gameDate";
 import {
   detectSharedScore,
   isResultlessShare,
   pickSuggestedGameTarget,
   type ShareGameTarget,
-} from "../../src/lib/shareScoreDetection";
+} from "@workshop/games/lib/shareScoreDetection";
+import { Button, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import Constants from "expo-constants";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import * as Updates from "expo-updates";
+import { useMemo } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useAuth } from "../../src/hooks/useAuth";
+import { LEGACY_GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 
 interface SharedPayload {
   url: string | null;
@@ -44,18 +43,24 @@ export default function ShareHome() {
   const myGamesQuery = useQuery({
     queryKey: queryKeys.games.mine(today),
     queryFn: () => fetchMyGames(today, token),
-    enabled: GAMES_TAB_ENABLED && !!token && !!detection,
+    enabled: LEGACY_GAMES_TAB_ENABLED && !!token && !!detection,
     staleTime: 30_000,
   });
 
   const suggestedGameTarget = useMemo(
     () =>
-      GAMES_TAB_ENABLED ? pickSuggestedGameTarget(detection, myGamesQuery.data?.games ?? []) : null,
+      LEGACY_GAMES_TAB_ENABLED
+        ? pickSuggestedGameTarget(detection, myGamesQuery.data?.games ?? [])
+        : null,
     [detection, myGamesQuery.data],
   );
 
   const suggestionLoading =
-    !!detection && GAMES_TAB_ENABLED && !!token && myGamesQuery.isPending && !suggestedGameTarget;
+    !!detection &&
+    LEGACY_GAMES_TAB_ENABLED &&
+    !!token &&
+    myGamesQuery.isPending &&
+    !suggestedGameTarget;
 
   const submitGameSuggestion = useMutation({
     // No My Games row yet → find-or-create the catalog game from its
@@ -96,7 +101,7 @@ export default function ShareHome() {
     : "/share/pick-game";
   // Resultless shares need a paste field — the Games picker has one and is the
   // only current score-posting surface.
-  const pasteTarget = GAMES_TAB_ENABLED ? gamesTarget : listTarget;
+  const pasteTarget = LEGACY_GAMES_TAB_ENABLED ? gamesTarget : listTarget;
 
   return (
     <Screen style={styles.root} testID="share-home">
@@ -137,7 +142,7 @@ export default function ShareHome() {
         ) : null}
 
         <View style={styles.optionGroup}>
-          {GAMES_TAB_ENABLED && detection ? (
+          {LEGACY_GAMES_TAB_ENABLED && detection ? (
             <GamesActionRow onPress={() => router.replace(gamesTarget)} />
           ) : null}
           <ActionRow
@@ -148,7 +153,7 @@ export default function ShareHome() {
             glyph="+"
             onPress={() => router.replace(listTarget)}
           />
-          {GAMES_TAB_ENABLED && !detection ? (
+          {LEGACY_GAMES_TAB_ENABLED && !detection ? (
             <GamesActionRow onPress={() => router.replace(gamesTarget)} />
           ) : null}
         </View>

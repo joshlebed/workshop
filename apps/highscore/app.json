@@ -2,7 +2,7 @@
   "expo": {
     "name": "HighScore",
     "slug": "highscore",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "scheme": "highscore",
     "userInterfaceStyle": "automatic",
@@ -10,6 +10,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "live.highscore.app",
       "associatedDomains": ["applinks:highscore.live"],
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.live.highscore.app"]
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleURLTypes": [
@@ -33,7 +36,21 @@
       "expo-router",
       "expo-secure-store",
       "expo-web-browser",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-share-intent",
+        {
+          "iosShareExtensionName": "HighScore Share",
+          "iosAppGroupIdentifier": "group.live.highscore.app",
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true
+          },
+          "iosHideView": true,
+          "disableAndroid": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

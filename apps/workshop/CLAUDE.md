@@ -11,7 +11,9 @@ The root is an expo-router `Tabs` shell: `app/(tabs)/(lists)/` holds the entire 
 stack (home, lists, activity, create-list) and `app/(tabs)/games/` the Games surface. Group
 segments never appear in URLs, so all deep links are unchanged — but they DO appear in
 `useSegments()`; AuthGate in `app/_layout.tsx` filters `(`-prefixed segments before matching.
-The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`: launched
+The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` and the transitional
+`EXPO_PUBLIC_ENABLE_LEGACY_GAMES_TAB` (`src/lib/featureFlags.ts`: both default ON;
+the latter is the Wave-4 cutover switch). `EXPO_PUBLIC_ENABLE_GAMES` launched
 2026-06-10 — production declares `"1"` in `.env.production`, EAS config, and OTA/TestFlight
 workflows; unset still means ON, and `"0"` is the kill switch). Flag off must look exactly like the
 pre-tabs app: tab bar hidden, `/games` redirects home, no top switch. Auth/onboarding/invite/share
@@ -21,10 +23,10 @@ one. Both web and native show the Lists/Games switch (`InlineTabSwitch`) inline 
 the screen header, immediately left of Activity on both Lists and Games; the expo-router
 bottom tab bar is hidden on every platform (`tabBarStyle: { display: "none" }` in
 `app/(tabs)/_layout.tsx`).
-The Games surface (G1b): `games/index` → `src/screens/GamesHome.tsx` (My Games as
-`StandingsCard`s, drag-reorder via `src/screens/games/GameCardList[.web].tsx`, add-by-URL
-sheet, paste → `PUT /v1/games/:id/scores`); `games/[id]` is the per-game history board
-(DayRail + today paste slot). Games API wrappers live in `src/api/games.ts`; query keys
+The Games surface (G1b): Workshop routes are thin legacy
+wrappers over subpath-only `@workshop/games` (My Games as `StandingsCard`s, drag-reorder,
+add-by-URL, paste → `PUT /v1/games/:id/scores`, and the per-game history board). Games API
+wrappers live in `packages/games/src/api`; query keys remain
 under `queryKeys.games.*`. Every flag-off route must `<Redirect href="/" />`. Use the static `tokens` (not
 `useTheme()`) for navigator backgrounds, matching the root layout, or light-preferring
 browsers get a light scene behind dark screen content. Metro does NOT invalidate its
@@ -55,7 +57,7 @@ action (add / cancel / accept-decline / remove) and, for friends only, their gam
 today's score (`summarizeGameScoreBody`) + quick-add (`POST /v1/games` by URL). Decline and
 unfriend `goBack("/friends")` after success — removing the relationship can 404 the profile
 on refetch (no relationship + no mutuals). API wrappers (zod-validated — the public preview
-endpoint is the least-trusted boundary) in `src/api/friends.ts`; keys under
+endpoint is the least-trusted boundary) in `packages/games/src/api/friends.ts`; keys under
 `queryKeys.friends.*`. The social board (home cards + per-game `[id]` board) needs no
 solo-vs-multi branch: the backend's `rankEntries` already returns rank-ordered standings
 (ties as 1,2,2,4) for `viewer ∪ friends`, and `StandingsCard` + the board's `EntryRow`
@@ -85,9 +87,9 @@ live in `functions/g/` + `functions/og/g/` (🎮 "play with me" card, distinct f
 "Open in app" card instead of resolving.** iOS does **not** fire Universal Links when a WKWebView
 (Meta's in-app browser) _loads_ a URL, and a tap on the **same-domain** https link just reloads it
 (Apple won't open the app for a Universal Link to the page you're already on) — that was the
-original endless loop. So `isInAppBrowser()` (`src/lib/inAppBrowser.ts`, UA sniff for `FBAN`/
+original endless loop. So `isInAppBrowser()` (`packages/games/src/lib/inAppBrowser.ts`, UA sniff for `FBAN`/
 `FBAV`/`FB_IAB`/`FBIOS`/`Messenger`/`Instagram`, web-only) gates `app/g/[token].tsx`: when true it
-holds the resolve/redirect and renders `OpenInAppCard` (`src/components/OpenInAppCard.web.tsx`)
+holds the resolve/redirect and renders `OpenInAppCard` (`packages/games/src/components/OpenInAppCard/impl.web.tsx`)
 whose button is a real `<a href>` pointing at the app's **custom scheme** (`workshop:///g/<token>`),
 **not** the https Universal Link. The scheme is registered via `CFBundleURLSchemes`, so a tap opens
 the installed app regardless of AASA / Universal Link association state — which for this app is
@@ -112,14 +114,14 @@ Pages Function would appear before the SPA loads — a possible future upgrade.
 
 Games are discovered **through friends** — `GET /v1/games/discovery` (G2a) returns friends'
 games you haven't added, each tagged with which friends play it; `?friend=<userId>` narrows
-to one friend (404s for non-friends). Wrapper: `fetchGameDiscovery` in `src/api/games.ts`;
+to one friend (404s for non-friends). Wrapper: `fetchGameDiscovery` in `packages/games/src/api/games.ts`;
 keys under `queryKeys.games.discovery(friendUserId?)` — the friend form nests under the
 all-friends key so invalidating `["games", "discovery"]` clears both. One-tap "add" reuses
 `POST /v1/games` with the discovery game's `url` (find-or-create collapses onto the existing
 catalog row); there is **no** add-by-id endpoint. Three surfaces render the same presentational
-`FriendGameSuggestions` (`src/screens/games/FriendGameSuggestions.tsx`):
+`FriendGameSuggestions` (`packages/games/src/screens/games/FriendGameSuggestions.tsx`):
 
-1. **`GamesHome` empty state** (`src/screens/games/GamesOnboarding.tsx`) — two variants gated
+1. **`GamesHome` empty state** (`packages/games/src/screens/games/GamesOnboarding.tsx`) — two variants gated
    on friend count (the home queries `queryKeys.friends.all`, enabled only while empty): **no
    friends** → primary "Add friends" (mints + shares an invite via the G2b `createFriendInvite`
    - `shareOrCopyLink` machinery, link revealed inline on web), secondary "Add a game by URL";
@@ -179,7 +181,7 @@ own score.
 
 Use the shared `Avatar` component for any user identity circle. For the signed-in user, pass
 `user.avatarUrl` directly so profile edits update immediately; for other user ids, use
-`userAvatarImageUrl(userId)` from `src/lib/avatar.ts`. That route returns the stored picture
+`userAvatarImageUrl(userId)` from `@workshop/api-client/avatar`. That route returns the stored picture
 as an image when one exists and 404s otherwise; `Avatar` handles image load failure by falling
 back to initials. Do not hand-roll initials-only circles for members, friends, or leaderboard
 rows.
@@ -326,9 +328,9 @@ to the sign-in screen.
 ## Game detection, parsing and share-body formatting come from the shared registry
 
 `@workshop/shared/gameRegistry` is the single source of per-game knowledge;
-`src/lib/shareScoreDetection.ts` and `src/lib/scoresSummary.ts` are thin adapters over it
+`packages/games/src/lib/shareScoreDetection.ts` and `packages/games/src/lib/scoresSummary.ts` are thin adapters over it
 (don't add per-game patterns/formatters locally — extend the registry). The paste sheet
-(`GameScorePasteSheet`) previews what the server will record via `src/lib/scoreSpecs.ts`
+(`GameScorePasteSheet`) previews what the server will record via `packages/games/src/lib/scoreSpecs.ts`
 (mirrors the backend's parser chain: registry spec → `game.scoreSpec` → first-number) and,
 for spec-less non-registry games on the Games surface, runs the **tap-the-score teach
 flow**: `tokenizeScoreCandidates` chips → `synthesizeScoreSpec` → direction confirm →
@@ -349,7 +351,7 @@ Sheet in the same tick that closes the menu, or two stacked Modals wedge iOS), a
 takes a `canReteach` prop (`!!user.isAdmin && isGameReteachable(game)`) that surfaces the
 teach chips even when a spec already exists (and drops the live score preview while they're
 up). The backend gates `PUT …/score-spec` the same way (first teach open, re-teach admin-only,
-registry read-only) — keep the two in sync. `isGameReteachable` (`src/lib/scoreSpecs.ts`)
+registry read-only) — keep the two in sync. `isGameReteachable` (`packages/games/src/lib/scoreSpecs.ts`)
 mirrors the backend's `catalogEntryForKey` read-only check.
 
 ## A game share can reach us as just its referral URL (grid dropped)
@@ -358,7 +360,7 @@ Some games (Daily Tens) share via the iOS share sheet with a single item provide
 conforming to **both** `public.url` and `public.text`. `expo-share-intent`'s extension
 checks URL before text, so it captures only the `?ref=<id>` link and drops the 🏆/❌ grid
 — we then post a bare link that renders as a "Played" row with no score. The share
-screens guard against this with `isResultlessShare()` (`src/lib/shareScoreDetection.ts`):
+screens guard against this with `isResultlessShare()` (`packages/games/src/lib/shareScoreDetection.ts`):
 if the payload strips to nothing (URL-only / hashtag-only), `/share` offers a "Paste"
 affordance instead of one-tap posting (routing to `/share/pick-game`), and the picker blocks
 the post and asks the user to paste their result. This is a band-aid for the symptom; the
@@ -432,8 +434,8 @@ Each Sheet wraps an RN `Modal` that stays mounted for ~220ms while its exit anim
 runs. Flipping the second sheet open during that window briefly stacks two `Modal`s — on
 iOS the new one registers as visible but never actually presents, leaving the screen
 non-interactable until you navigate away. Chain through Sheet's `onClosed` prop instead.
-Reference: the Games paste/teach flow in `src/screens/GamesHome.tsx` +
-`src/screens/listDetail/GameScorePasteSheet.tsx`.
+Reference: the Games paste/teach flow in `packages/games/src/screens/GamesHome.tsx` +
+`packages/games/src/screens/GameScorePasteSheet.tsx`.
 
 ## Sheet keyboard handling is centralized in `packages/ui/src/Sheet.tsx`
 

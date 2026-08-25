@@ -120,20 +120,6 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
 
 ### Tooling / scripts
 
-- **OAuth provider glue is duplicated between the two apps.**
-  `apps/highscore/src/lib/oauth/**` is a verbatim copy of
-  `apps/workshop/src/lib/oauth/**` (Apple native + web, Google native + web, the
-  `GoogleSignInButton` variants). PR-1 extracted `@workshop/ui` /
-  `@workshop/api-client` but left this layer behind, so an Apple/Google flow fix now
-  has to land twice. **Why it wasn't extracted in PR-3:** four of the five modules are
-  platform variants (`.web.ts(x)`), and Metro does not apply platform resolution to a
-  package `exports` target â€” extraction needs the `src/<name>/index.ts` -> `./impl` shim
-  shape (see CLAUDE.md) applied to five modules _and_ Workshop's imports flipped, which
-  is a bigger diff than the scaffold PR should carry. **Fix:** extract to
-  `@workshop/api-client/oauth/*` (or a new `@workshop/auth-ui`) using the shim shape,
-  flip both apps' imports, verify with a `platform=web` and a `platform=ios` Metro
-  bundle for each app. ~1h. Natural home: PR-4 or PR-5 of the HighScore migration.
-
 - **`scripts/dev-smoke.sh`** doesn't exist. A single script that hits home, list-detail,
   settings, activity, and sign-in on `localhost:8081`, reports non-200s + console
   errors, and exits non-zero on failure. Would shave ~90s per smoke iteration during UI

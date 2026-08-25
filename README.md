@@ -8,8 +8,8 @@ and one user account:
 
 - **Workshop.dev** (`apps/workshop`) — an umbrella for small products: lists, watchlist,
   sharing, friends.
-- **HighScore** (`apps/highscore`, `highscore.live`) — daily games. Currently a scaffold
-  (sign-in + placeholder home); the Games surfaces move over from Workshop next. See
+- **HighScore** (`apps/highscore`, `highscore.live`) — daily games. Its app owns the Games
+  home, standings, catalog, friends, play links, and score-share flow. See
   [`docs/highscore-migration-plan.md`](docs/highscore-migration-plan.md).
 
 Both build iOS + web from one component tree. Sign in with the same Apple ID on either and
@@ -17,7 +17,8 @@ you get the same account.
 
 - **Mobile + web**: Expo (React Native, TypeScript) — `apps/workshop`, `apps/highscore`
 - **Backend**: Hono on AWS Lambda + PostgreSQL on Neon — `apps/backend`
-- **Shared client code**: `packages/ui` (design system), `packages/api-client` (API + session)
+- **Shared client code**: `packages/ui` (design system), `packages/api-client` (API + session),
+  `packages/games` (transitional Games feature shared by both apps)
 - **Shared types**: `packages/shared`
 - **Cloudflare Pages Functions**: OG previews, AASA — `functions/`
 - **Infra**: Terraform on AWS, state in HCP Terraform — `infra/`
