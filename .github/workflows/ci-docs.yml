@@ -33,3 +33,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "Docs-only change set; real CI is skipped by paths-ignore. Reporting required check as success."
+
+  mobile-bundle:
+    name: Mobile Metro bundle
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Docs-only change set; Metro bundle checks are skipped by paths-ignore. Reporting required check as success."
+
+  mobile-bundle-highscore:
+    name: Mobile Metro bundle (highscore)
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Docs-only change set; Metro bundle checks are skipped by paths-ignore. Reporting required check as success."

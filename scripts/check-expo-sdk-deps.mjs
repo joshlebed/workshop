@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Verify apps/workshop's React Native stack matches the Expo SDK that is
+// Verify an app's React Native stack matches the Expo SDK that is
 // actually installed — i.e. the `expo/bundledNativeModules.json` shipped
 // inside the `expo` version the lockfile resolves. Deterministic by
 // construction: same commit + same lockfile => same verdict, forever.
@@ -20,13 +20,15 @@
 
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import semver from "semver";
 import subset from "semver/ranges/subset.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const appDir = join(__dirname, "..", "apps", "workshop");
+const repoRoot = join(__dirname, "..");
+const appDir = resolve(repoRoot, process.argv[2] ?? "apps/workshop");
+const appPath = relative(repoRoot, appDir);
 
 // Scoped on purpose — the SDK's bundled map also pins react/react-dom and
 // eslint-config-expo, which the monorepo intentionally pins above the
@@ -65,7 +67,7 @@ for (const name of PACKAGES) {
 
   const declared = declaredDeps[name];
   if (!declared) {
-    errors.push(`${name}: not declared in apps/workshop/package.json`);
+    errors.push(`${name}: not declared in ${appPath}/package.json`);
     continue;
   }
 
@@ -99,7 +101,7 @@ if (errors.length > 0) {
   console.error(`Expo SDK dependency check failed (expo@${expoPkg.version}):`);
   for (const err of errors) console.error(`  - ${err}`);
   console.error(
-    "\nFix by aligning apps/workshop/package.json with the installed SDK, or by " +
+    `\nFix by aligning ${appPath}/package.json with the installed SDK, or by ` +
       "bumping `expo` itself (which moves bundledNativeModules.json with it).",
   );
   process.exit(1);
