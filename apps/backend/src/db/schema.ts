@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   foreignKey,
   index,
   integer,
@@ -9,6 +10,7 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -106,6 +108,51 @@ export const authSessions = pgTable(
     activeExpiryIdx: index("auth_sessions_active_expiry_idx")
       .on(t.absoluteExpiresAt)
       .where(sql`revoked_at IS NULL`),
+  }),
+);
+
+/**
+ * Expo push destinations registered by native installations. A token is
+ * globally unique and moves to the currently authenticated user when it is
+ * re-registered (Expo can reuse the same installation token after sign-out).
+ * The most-recently-seen token supplies the user's canonical timezone for
+ * account-level reminder preferences and scheduled delivery.
+ */
+export const pushTokens = pgTable(
+  "push_tokens",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expoPushToken: text("expo_push_token").primaryKey(),
+    platform: text("platform").notNull(),
+    timezone: text("timezone").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    userLastSeenIdx: index("push_tokens_user_last_seen_idx").on(t.userId, t.lastSeenAt),
+  }),
+);
+
+/** Account-level notification settings. Missing rows use the same disabled defaults. */
+export const notificationPrefs = pgTable(
+  "notification_prefs",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    playReminderEnabled: boolean("play_reminder_enabled").notNull().default(false),
+    playReminderHour: smallint("play_reminder_hour"),
+  },
+  (t) => ({
+    playReminderHourCheck: check(
+      "notification_prefs_play_reminder_hour_check",
+      sql`${t.playReminderHour} BETWEEN 0 AND 23`,
+    ),
+    enabledHourIdx: index("notification_prefs_enabled_hour_idx")
+      .on(t.playReminderHour)
+      .where(sql`play_reminder_enabled = true`),
   }),
 );
 
@@ -581,6 +628,7 @@ export const gameScores = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.gameId, t.userId, t.periodKey] }),
     gamePeriodIdx: index("game_scores_game_period_idx").on(t.gameId, t.periodKey),
+    userCreatedIdx: index("game_scores_user_created_idx").on(t.userId, t.createdAt),
   }),
 );
 
@@ -724,6 +772,8 @@ export const rateLimits = pgTable(
 export type DbUser = typeof users.$inferSelect;
 export type DbUserIdentity = typeof userIdentities.$inferSelect;
 export type DbAuthSession = typeof authSessions.$inferSelect;
+export type DbPushToken = typeof pushTokens.$inferSelect;
+export type DbNotificationPrefs = typeof notificationPrefs.$inferSelect;
 export type DbList = typeof lists.$inferSelect;
 export type DbListMember = typeof listMembers.$inferSelect;
 export type DbListInvite = typeof listInvites.$inferSelect;

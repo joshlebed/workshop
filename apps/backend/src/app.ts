@@ -17,6 +17,7 @@ import { itemRoutes } from "./routes/v1/items.js";
 import { itemAcceptRoutes, listLetterboxdRoutes } from "./routes/v1/letterboxd.js";
 import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
 import { listRoutes, publicListRoutes } from "./routes/v1/lists.js";
+import { meRoutes } from "./routes/v1/me.js";
 import { memberRoutes } from "./routes/v1/members.js";
 import { searchRoutes } from "./routes/v1/search.js";
 import { sourcePreviewRoutes } from "./routes/v1/sources.js";
@@ -130,6 +131,7 @@ export function buildApp() {
   // blanket `requireAuth` — the resolve route is optional-auth (link crawlers).
   app.route("/v1/game-share", gameShareRoutes);
   app.route("/v1/friends", friendRoutes);
+  app.route("/v1/me", meRoutes);
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/activity", activityRoutes);

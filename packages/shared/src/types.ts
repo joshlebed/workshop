@@ -158,6 +158,41 @@ export interface UpdateMeRequest {
   avatarUrl?: string | null;
 }
 
+// --- Push notifications ---
+
+export type PushPlatform = "ios" | "android";
+
+/** `POST /v1/me/push-token` — register or refresh one native installation. */
+export interface RegisterPushTokenRequest {
+  expoPushToken: string;
+  platform: PushPlatform;
+  timezone: string;
+}
+
+/** `DELETE /v1/me/push-token` — unregister only the current user's token. */
+export interface DeletePushTokenRequest {
+  expoPushToken: string;
+}
+
+export interface PushTokenMutationResponse {
+  ok: true;
+}
+
+export interface NotificationPrefs {
+  playReminderEnabled: boolean;
+  playReminderHour: number | null;
+}
+
+/** `GET /v1/me/notification-prefs` — stored values plus the history-derived default. */
+export interface NotificationPrefsResponse extends NotificationPrefs {
+  suggestedHour: number;
+}
+
+/** `PUT /v1/me/notification-prefs` — replace the daily-play reminder settings. */
+export type UpdateNotificationPrefsRequest = NotificationPrefs;
+
+export type UpdateNotificationPrefsResponse = NotificationPrefs;
+
 // --- Lists ---
 
 export interface List {
