@@ -20,7 +20,7 @@ function deriveFromWebLocation(): string | null {
 
   // Cloudflare Pages owns the browser refresh cookie. Proxy API traffic
   // through the page origin so it remains first-party and reliable in Safari.
-  if (hostname.endsWith(".pages.dev")) {
+  if (hostname.endsWith(".pages.dev") || hostname === "highscore.live") {
     return "/api";
   }
 

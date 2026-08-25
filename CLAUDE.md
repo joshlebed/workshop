@@ -743,6 +743,13 @@ Three non-obvious things:
   edit one, update both in the same PR. Anything imported from `@workshop/shared/*` inside
   `functions/**` silently fails the CF Pages build.
 
+The two Pages projects have deliberately different roots because Cloudflare discovers
+`functions/` relative to the configured project root. Workshop keeps `root_dir=""`, output
+`apps/workshop/dist`, and owns repo-root `functions/`. HighScore uses
+`root_dir="apps/highscore"`, output `dist`, and owns `apps/highscore/functions/`. Changing
+HighScore back to the repo root silently deploys Workshop's proxy, AASA, and OG branding on
+`highscore.live`.
+
 ### Verifying a thumbnail after deploy
 
 Platforms cache aggressively (Facebook ~30 days per URL, iMessage per-conversation forever).

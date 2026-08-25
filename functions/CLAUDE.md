@@ -1,8 +1,13 @@
 # functions — Cloudflare Pages Functions
 
 Open Graph + Twitter Card preview machinery for every URL on the production domain
-(`workshop-a2v.pages.dev`). Five routes, layered around the `share_slug` / `share_visibility`
-model owned by the backend `lists` table, plus the play-link card:
+(`workshop-a2v.pages.dev`). Six routes: four layered around the `share_slug` /
+`share_visibility` model owned by the backend `lists` table, plus friend- and play-link cards:
+
+This repo-root directory is intentionally **Workshop-only**. Cloudflare discovers Pages
+Functions relative to each project's `root_dir`: Workshop keeps `root_dir=""`, while HighScore
+uses `root_dir="apps/highscore"` and owns `apps/highscore/functions/`. Do not put HighScore
+routes here or both Pages projects will deploy the same edge layer.
 
 The directory also owns `api/[[path]].ts`, a fixed-upstream same-origin proxy for browser API
 traffic. Its primary purpose is keeping the managed-session refresh cookie first-party and HttpOnly;
@@ -10,7 +15,7 @@ it must forward `Set-Cookie`, never derive the upstream host from request input,
 `no-store`. It rejects requests whose `Origin` differs from the destination Pages origin; removing
 that check lets one branch-preview subdomain read another subdomain's refresh response. The proxy
 overwrites the forwarded `Origin` after the check. `packages/api-client/src/config.ts` routes every
-`*.pages.dev` web build through `/api`.
+`*.pages.dev` web build plus `highscore.live` through `/api`.
 
 1. **Default** — `apps/workshop/public/index.html` ships a static set of OG tags
    pointing at `/og/default.png`. Applied to every URL with no more specific override
