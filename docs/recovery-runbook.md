@@ -10,6 +10,22 @@ day-to-day patterns, see `CLAUDE.md`.
 
 ## TestFlight / iOS
 
+### Symptom: First EAS build says "Distribution Certificate is not validated" and "Credentials are not set up"
+
+**Cause**: A new EAS project has no distribution certificate assigned. The ASC API key
+authenticates CI, but eas-cli will not create or choose a missing certificate while
+`--non-interactive` is set.
+
+**Fix**:
+
+```bash
+cd apps/highscore && npx eas-cli@18.8.1 credentials --platform ios
+# → production → Build Credentials → All
+# → reuse the valid team certificate; create HighScore + HighScoreShare profiles
+# → do NOT delete/revoke Workshop's certificate
+gh workflow run testflight-highscore.yml --ref main --field force=true
+```
+
 ### Symptom: TestFlight build fails with "Provisioning profile doesn't include the X capability"
 
 **Cause**: A capability got added/removed on the App ID in the Apple Developer Portal, which

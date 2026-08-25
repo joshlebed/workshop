@@ -371,11 +371,11 @@ Almost always the deploy pipeline, not per-platform code. Check in order:
    - Fails at the `Write ASC API key` step → the `ASC_API_KEY_*` GitHub Actions secrets are
      unset or stale. One-time fix via the website in `docs/manual-setup.md` §5.
    - Fails at `Build + auto-submit (await success)` with `Distribution Certificate is not
-validated for non-interactive builds` → the ASC API key the secrets point to was revoked
-     or doesn't have App Manager+. Rotate the key (same §5 flow) and re-fire. Before the ASC
-     API key was wired into the workflow, any new bundle id (share / widget / push extension
-     target) would also surface this error because EAS fell through to interactive Apple auth;
-     that's no longer a risk as long as the secrets are populated.
+validated for non-interactive builds` → inspect whether this is the app's first build. A new
+     EAS project needs one local `eas credentials --platform ios` run (production → Build
+     Credentials → All) to reuse/create the team certificate and create every target profile;
+     do not delete a valid certificate shared with another app. For an established project,
+     use the stale-certificate recovery in `docs/ios-deploy-pipeline.md`.
 
 ### Runtime-version policy: `appVersion` (not `fingerprint`)
 
@@ -426,8 +426,7 @@ read -s "ASP?Paste app-specific password: " && echo "" && \
 
 App-specific password: <https://appleid.apple.com> → Sign-In and Security. macOS only.
 
-ASC API key secret missing or revoked (build red at `Write ASC API key` or `Distribution
-Certificate is not validated for non-interactive builds`):
+ASC API key secret missing or revoked (build red at `Write ASC API key`):
 
 ```bash
 pnpm setup:asc-key
@@ -435,9 +434,9 @@ pnpm setup:asc-key
 
 Interactive script — generates the key in the browser, encodes the `.p8`, pushes the three
 GH secrets (`ASC_API_KEY_CONTENT`, `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`) via `gh secret set`,
-and re-fires `testflight.yml --field force=true`. With the secrets in place eas-cli auto-
-generates the cert + provisioning profile for any new bundle id (share/widget/push extension)
-on the next build with zero human-in-loop. Idempotent — run again to rotate.
+and re-fires `testflight.yml --field force=true`. The key lets CI rotate provisioning profiles
+and submit builds after a distribution certificate is assigned; it does not bootstrap a new
+EAS project's missing certificate in non-interactive mode. Idempotent — run again to rotate.
 
 A red `testflight.yml` run also pings `#workshop-admin` on Discord via the `notify` job
 (uses `DISCORD_NOTIFY_WEBHOOK_URL` secret; missing webhook degrades to a CI warning). The

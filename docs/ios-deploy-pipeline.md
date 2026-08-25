@@ -84,6 +84,21 @@ gh workflow run testflight.yml --ref main --field force=true
 
 For HighScore, substitute `hs-ios-fp-<hash>` and `testflight-highscore.yml`.
 
+### First build of a new EAS project has no assigned credentials
+
+If the log initializes build number 1, then reports `Distribution Certificate is not
+validated for non-interactive builds` and `Credentials are not set up`, the ASC key is not
+the problem. eas-cli will use an assigned certificate non-interactively, but will not create
+or choose a missing one. Bootstrap the affected app once from a local interactive session:
+
+```bash
+cd apps/highscore && npx eas-cli@18.8.1 credentials --platform ios
+# production → Build Credentials → All
+# Reuse the valid team certificate; create profiles for HighScore + HighScoreShare.
+# Do NOT delete or revoke Workshop's certificate.
+gh workflow run testflight-highscore.yml --ref main --field force=true
+```
+
 ### Provisioning profile out of sync after a capability toggle
 
 You added an entitlement, associated domain, app group, etc. and the cached PP doesn't
@@ -107,9 +122,10 @@ Build fails with `Distribution Certificate is not validated for non-interactive 
 followed by either `Failed to display prompt: Select your Apple Team Type` or
 `Credentials are not set up. Run this command again in interactive mode`.
 
-The cert in EAS was minted interactively pre-ASC-API-key, or got into a state the API
-key can't validate. **The ASC API key alone can't auto-generate a fresh cert
-non-interactively on an Individual Apple Developer account** — eas-cli needs to be told
+For an app that already had working build credentials, the cert in EAS was minted
+interactively pre-ASC-API-key, or got into a state the API key can't validate. **The ASC
+API key alone can't auto-generate a fresh cert non-interactively on an Individual Apple
+Developer account** — eas-cli needs to be told
 Individual vs Company, which the API key doesn't expose. Delete-and-re-fire alone won't
 recover; you have to mint the new cert in an interactive local session:
 
@@ -152,8 +168,8 @@ pnpm setup:asc-key
 Interactive script — generates the key in the browser, encodes the `.p8`, pushes the
 three GH secrets (`ASC_API_KEY_CONTENT`, `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`) via
 `gh secret set`, and re-fires `testflight.yml --field force=true`. With the secrets in
-place eas-cli auto-generates the cert + provisioning profile for any new bundle id
-(share / widget / push extension) on the next build with zero human-in-loop.
+place eas-cli can manage profiles and submissions after a distribution certificate is
+assigned. A brand-new EAS project still needs the one-time interactive bootstrap above.
 Idempotent — run again to rotate. **Note:** this does NOT fix
 `Distribution Certificate is not validated for non-interactive builds` — that's a
 stale-cert problem, not a key problem. See "Distribution certificate out of sync" above.
