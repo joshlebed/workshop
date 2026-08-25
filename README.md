@@ -1,5 +1,8 @@
 # workshop
 
+> [!WARNING]  
+> This app is basically completely vibe coded. Dive into the code and docs at your own risk.
+
 Josh's personal monorepo for apps, scripts, and experiments. Two products, one backend
 and one user account:
 
