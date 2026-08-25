@@ -6,8 +6,8 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
+import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
-import { Text, tokens } from "../../ui/index";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 export function friendsPlayLine(friends: DiscoveryGame["friends"]): string {

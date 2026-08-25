@@ -1,4 +1,4 @@
-import { API_URL } from "../config";
+import { API_URL } from "@workshop/api-client/config";
 
 export function userAvatarImageUrl(userId: string | null | undefined): string | null {
   if (!userId) return null;

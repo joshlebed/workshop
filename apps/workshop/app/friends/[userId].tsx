@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
+import { Avatar, Button, EmptyState, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -12,18 +16,14 @@ import {
 } from "../../src/api/friends";
 import { addGame } from "../../src/api/games";
 import { useAuth } from "../../src/hooks/useAuth";
-import { useLivePollingInterval } from "../../src/hooks/useLivePollingInterval";
-import { errorMessage } from "../../src/lib/api";
 import { userAvatarImageUrl } from "../../src/lib/avatar";
 import { confirm } from "../../src/lib/confirm";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 import { localDateKey } from "../../src/lib/gameDate";
 import { goBack } from "../../src/lib/goBack";
 import { haptics } from "../../src/lib/haptics";
-import { queryKeys } from "../../src/lib/queryKeys";
 import { formatRelative } from "../../src/lib/relativeTime";
 import { summarizeGameScoreBody } from "../../src/lib/scoresSummary";
-import { Avatar, Button, EmptyState, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
 /**
  * Friend profile page — `/friends/:userId`. Shows the relationship state with

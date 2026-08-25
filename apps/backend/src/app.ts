@@ -37,7 +37,7 @@ const clientIp: RateLimitKeyFn = (c) => {
 // CORS allowlist. Native clients send no Origin and are unaffected; this only
 // constrains browsers. Cloudflare Pages branch previews and localhost dev are
 // allowed. The Niteshift sandbox web app proxies through `/api` same-origin
-// (see apps/workshop/src/config.ts), so its preview host isn't listed here.
+// (see packages/api-client/src/config.ts), so its preview host isn't listed here.
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://workshop-a2v.pages.dev",
   "http://localhost:8081",

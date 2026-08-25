@@ -1,3 +1,11 @@
+import { ApiError, apiRequest, registerSessionRefreshHandler } from "@workshop/api-client/api";
+import { resolveBootstrapSession } from "@workshop/api-client/authBootstrap";
+import {
+  clearSessionCredentials,
+  persistSessionCredentials,
+  readSessionCredentials,
+} from "@workshop/api-client/sessionCredentials";
+import { getItem } from "@workshop/api-client/storage";
 import type { AuthImpersonation, AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
 import {
   createContext,
@@ -8,14 +16,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { ApiError, apiRequest, registerSessionRefreshHandler } from "../lib/api";
-import { resolveBootstrapSession } from "../lib/authBootstrap";
-import {
-  clearSessionCredentials,
-  persistSessionCredentials,
-  readSessionCredentials,
-} from "../lib/sessionCredentials";
-import { getItem } from "../lib/storage";
 
 const AUTO_DEV_OPT_OUT_KEY = "workshop.disable-auto-dev";
 

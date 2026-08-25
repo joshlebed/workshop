@@ -8,9 +8,9 @@
 // no Google session — so the iframe-overlay approach is the cleanest way
 // to keep a real GIS click without giving up the visual.
 
+import { Button, tokens } from "@workshop/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Button, tokens } from "../../ui/index";
 
 interface GoogleSignInResult {
   idToken: string;

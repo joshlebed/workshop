@@ -1,3 +1,4 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type {
   AcceptInviteResponse,
   ListItemsResponse,
@@ -7,7 +8,6 @@ import type {
   TransferOwnershipResponse,
   UpdateShareRequest,
 } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 /**
  * Public preview keyed by the short share slug. No bearer required — when

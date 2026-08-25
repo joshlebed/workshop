@@ -1,10 +1,10 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type {
   CreateSavedViewRequest,
   SavedViewResponse,
   SavedViewsResponse,
   UpdateSavedViewRequest,
 } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 /**
  * Saved views (spec §2.3) — named, shared tag filters on a list. CRUD against

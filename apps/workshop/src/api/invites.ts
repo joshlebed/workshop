@@ -1,5 +1,5 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type { AcceptInviteResponse } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 /**
  * Legacy invite-token acceptance. Kept around so URLs already in iMessage /

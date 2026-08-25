@@ -1,12 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError, errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { Button, EmptyState, tokens } from "@workshop/ui";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { fetchListItemsBySlug, fetchListPreviewBySlug, joinListBySlug } from "../../src/api/share";
 import { useAuth } from "../../src/hooks/useAuth";
-import { ApiError, errorMessage } from "../../src/lib/api";
-import { queryKeys } from "../../src/lib/queryKeys";
 import { ListPublicLanding } from "../../src/screens/ListPublicLanding";
-import { Button, EmptyState, tokens } from "../../src/ui/index";
 
 /**
  * `/l/:slug` — canonical short share URL for a list.

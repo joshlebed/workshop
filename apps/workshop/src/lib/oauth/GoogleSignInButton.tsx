@@ -1,7 +1,7 @@
 // Native variant: renders our styled Button and drives the
 // expo-auth-session Google flow via useGoogleSignIn().
 
-import { Button } from "../../ui/index";
+import { Button } from "@workshop/ui";
 import { type GoogleSignInResult, useGoogleSignIn } from "./google";
 
 export interface GoogleSignInButtonProps {

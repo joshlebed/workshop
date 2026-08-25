@@ -359,7 +359,7 @@ answers them — that's the only place dynamic origin matching (Cloudflare Pages
 previews) can happen.
 
 When adding a new HTTP verb, also update `apiRequest`'s `method` union in
-`apps/workshop/src/lib/api.ts`. When allowing a new web origin, add it to
+`packages/api-client/src/api.ts`. When allowing a new web origin, add it to
 `STATIC_ALLOWED_ORIGINS` (or `ALLOWED_ORIGIN_PATTERNS` for wildcards) in `src/app.ts`.
 **Never** widen to `*` with `credentials: true` — that reflects every origin and
 defeats CORS as a defense against cross-site reads.

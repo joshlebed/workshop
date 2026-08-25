@@ -1,5 +1,5 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type { ImpersonationTargetsResponse } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 export function fetchImpersonationTargets(
   token: string | null,

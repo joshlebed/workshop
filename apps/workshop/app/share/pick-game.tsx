@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
+import { Button, EmptyState, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -13,18 +16,15 @@ import {
 } from "react-native";
 import { addGame, fetchMyGames, upsertGameScore } from "../../src/api/games";
 import { useAuth } from "../../src/hooks/useAuth";
-import { errorMessage } from "../../src/lib/api";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 import { localDateKey } from "../../src/lib/gameDate";
 import { haptics } from "../../src/lib/haptics";
-import { queryKeys } from "../../src/lib/queryKeys";
 import {
   detectSharedScore,
   isResultlessShare,
   pickSuggestedGameTarget,
   type ShareGameTarget,
 } from "../../src/lib/shareScoreDetection";
-import { Button, EmptyState, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
 // The Games-surface score picker for the share flow (the leaderboard-list
 // picker's successor): paste box + My Games rows. When the detected game

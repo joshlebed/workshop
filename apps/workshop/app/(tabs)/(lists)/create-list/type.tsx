@@ -1,8 +1,8 @@
 import { LIST_TEMPLATES } from "@workshop/shared/templates";
+import { IconButton, type ListColorKey, Screen, Text, tokens } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { goBack } from "../../../../src/lib/goBack";
-import { IconButton, type ListColorKey, Screen, Text, tokens } from "../../../../src/ui/index";
 
 export default function CreateListType() {
   const router = useRouter();

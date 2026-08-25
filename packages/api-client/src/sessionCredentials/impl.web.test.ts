@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const values = new Map<string, string>();
 
-vi.mock("./storage", () => ({
+vi.mock("../storage", () => ({
   getItem: vi.fn(async (key: string) => values.get(key) ?? null),
   setItem: vi.fn(async (key: string, value: string) => {
     values.set(key, value);
@@ -14,7 +14,7 @@ vi.mock("./storage", () => ({
 }));
 
 const { clearSessionCredentials, persistSessionCredentials, readSessionCredentials } = await import(
-  "./sessionCredentials.web"
+  "./impl.web"
 );
 
 const managedResponse = {

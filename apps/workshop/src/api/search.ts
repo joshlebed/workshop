@@ -1,5 +1,5 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type { BookSearchResponse, MediaSearchResponse, MediaSearchType } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 export function searchMedia(
   type: MediaSearchType,

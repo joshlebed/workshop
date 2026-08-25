@@ -1,9 +1,9 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type {
   ActivityFeedResponse,
   MarkActivityReadRequest,
   MarkActivityReadResponse,
 } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 export interface FetchActivityArgs {
   cursor?: string;

@@ -1,4 +1,4 @@
-import { apiRequest } from "../lib/api";
+import { apiRequest } from "@workshop/api-client/api";
 
 /**
  * A structured snapshot of what `useShareIntent()` handed us, sent to the server

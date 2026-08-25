@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { homeTabForPathname } from "./navigationPreferences";
 
-vi.mock("./storage", () => ({
+vi.mock("@workshop/api-client/storage", () => ({
   getItem: vi.fn(),
   setItem: vi.fn(),
 }));

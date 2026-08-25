@@ -1,5 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { ActivityEvent, ItemKind, ListSummary, ModuleName } from "@workshop/shared";
+import {
+  Button,
+  EmptyState,
+  HomeHeader,
+  homeLayout,
+  InlineTabSwitch,
+  type ListColorKey,
+  Screen,
+  Sheet,
+  Text,
+  tokens,
+} from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -25,22 +40,7 @@ import { HeaderActivityButton } from "../../../src/components/HeaderActivityButt
 import { ProfileMenu } from "../../../src/components/ProfileMenu";
 import { PullToRefresh } from "../../../src/components/PullToRefresh";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { useLivePollingInterval } from "../../../src/hooks/useLivePollingInterval";
-import { errorMessage } from "../../../src/lib/api";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
-import { queryKeys } from "../../../src/lib/queryKeys";
-import {
-  Button,
-  EmptyState,
-  HomeHeader,
-  homeLayout,
-  InlineTabSwitch,
-  type ListColorKey,
-  Screen,
-  Sheet,
-  Text,
-  tokens,
-} from "../../../src/ui/index";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",

@@ -1,14 +1,14 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { removeItem, setItem } from "@workshop/api-client/storage";
+import { Button, Card, Text, tokens } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { acceptInvite } from "../../src/api/invites";
 import { useAuth } from "../../src/hooks/useAuth";
-import { ApiError } from "../../src/lib/api";
 import { PENDING_INVITE_TOKEN_KEY } from "../../src/lib/inviteStash";
-import { queryKeys } from "../../src/lib/queryKeys";
-import { removeItem, setItem } from "../../src/lib/storage";
-import { Button, Card, Text, tokens } from "../../src/ui/index";
 
 /**
  * Deep-link landing screen for `/invite/:token` and `workshop://invite/:token`.

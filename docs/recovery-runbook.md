@@ -271,7 +271,7 @@ pnpm dev
 **Cause**: The Niteshift preview proxy rejects unauthenticated CORS preflights from
 mismatched origins.
 
-**Fix**: This is handled by `apps/workshop/src/config.ts` — it derives the API URL from
+**Fix**: This is handled by `packages/api-client/src/config.ts` — it derives the API URL from
 `window.location` on web so the origin matches. If you've broken that derivation, restore
 the `ns-<port>-<id>` rewrite logic. See `CLAUDE.md` "Known sandbox gotcha".
 

@@ -1,14 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError, errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { Button, EmptyState, tokens } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { fetchListDetail, fetchListPreview, markListRead } from "../../../../../src/api/lists";
 import { useAuth } from "../../../../../src/hooks/useAuth";
-import { ApiError, errorMessage } from "../../../../../src/lib/api";
-import { queryKeys } from "../../../../../src/lib/queryKeys";
 import { ListDetail } from "../../../../../src/screens/ListDetail";
 import { ListPublicLanding } from "../../../../../src/screens/ListPublicLanding";
-import { Button, EmptyState, tokens } from "../../../../../src/ui/index";
 
 /**
  * Thin route wrapper around `ListDetail`. Loads the list metadata + members

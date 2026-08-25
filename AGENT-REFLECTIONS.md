@@ -127,7 +127,7 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
 
 - **`useScrollSticky({ threshold })` hook in `apps/workshop/src/lib/`.** The "ref
   scroll-Y + onScroll + threshold" pattern is already implemented in
-  `apps/workshop/src/ui/NewItemsPill.tsx`; the Phase 5d Sheet enter/exit and the Phase
+  `packages/ui/src/NewItemsPill.tsx`; the Phase 5d Sheet enter/exit and the Phase
   5e two-pane sticky pane will want the same shape. Extract to a hook + a vitest.
   ~30m.
 

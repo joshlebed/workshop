@@ -313,7 +313,8 @@ pane (web desktop). Sections:
 
 ### 5.3 Primitives library
 
-Located in `apps/workshop/src/ui/`. Each primitive owns its own styles via
+Located in `packages/ui/src/` (published to the apps as `@workshop/ui`). Each primitive owns
+its own styles via
 `StyleSheet.create` and consumes theme tokens:
 
 - `Text` — wraps RN `Text` with variant (`display | headline | title | body |

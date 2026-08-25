@@ -1,4 +1,4 @@
-import { getItem, removeItem, setItem } from "./storage";
+import { getItem, removeItem, setItem } from "@workshop/api-client/storage";
 
 const ACTIVITY_LAST_VIEWED_KEY = "workshop.activity.last-viewed-at";
 

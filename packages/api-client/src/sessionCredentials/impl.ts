@@ -1,5 +1,5 @@
 import type { AuthResponse } from "@workshop/shared";
-import { getItem, removeItem, setItem } from "./storage";
+import { getItem, removeItem, setItem } from "../storage";
 
 const ACCESS_TOKEN_KEY = "workshop.session.v1";
 const REFRESH_TOKEN_KEY = "workshop.refresh.v1";

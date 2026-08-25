@@ -1,6 +1,5 @@
+import { Text, tokens } from "@workshop/ui";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
-import { Text } from "../ui/Text";
-import { tokens } from "../ui/theme";
 
 export interface HeaderActivityButtonProps {
   unreadCount: number;

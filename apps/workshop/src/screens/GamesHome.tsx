@@ -14,6 +14,9 @@
 // above its URL field; the home card list itself stays purely your own games.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type {
   DiscoveryGame,
   Game,
@@ -21,6 +24,19 @@ import type {
   GamesResponse,
   MyGame,
 } from "@workshop/shared/games";
+import {
+  Button,
+  CopyIcon,
+  EmptyState,
+  HomeHeader,
+  homeLayout,
+  InlineTabSwitch,
+  Screen,
+  Sheet,
+  Text,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from "react-native";
@@ -43,33 +59,17 @@ import { ProfileMenu } from "../components/ProfileMenu";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useAuth } from "../hooks/useAuth";
-import { useLivePollingInterval } from "../hooks/useLivePollingInterval";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { neighborsForOrderedReorder } from "../lib/albumShelfPositions";
-import { errorMessage } from "../lib/api";
 import { userAvatarImageUrl } from "../lib/avatar";
 import { confirm } from "../lib/confirm";
 import { GAMES_TAB_ENABLED } from "../lib/featureFlags";
 import { localDateKey } from "../lib/gameDate";
 import { haptics } from "../lib/haptics";
 import { openExternalUrl } from "../lib/openUrl";
-import { queryKeys } from "../lib/queryKeys";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
-import { CopyIcon } from "../ui/CopyIcon";
-import {
-  Button,
-  EmptyState,
-  HomeHeader,
-  homeLayout,
-  InlineTabSwitch,
-  Screen,
-  Sheet,
-  Text,
-  tokens,
-  useToast,
-} from "../ui/index";
 import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
 import { GamesOnboarding } from "./games/GamesOnboarding";

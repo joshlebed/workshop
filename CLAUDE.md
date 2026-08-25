@@ -123,7 +123,7 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:
   update `cors()` in `apps/backend/src/app.ts` **and** the `apiRequest` `method` union
-  in `apps/workshop/src/lib/api.ts`. When allowing a new web origin: extend
+  in `packages/api-client/src/api.ts`. When allowing a new web origin: extend
   `STATIC_ALLOWED_ORIGINS` / `ALLOWED_ORIGIN_PATTERNS` in `apps/backend/src/app.ts`.
   Never widen to `*` with `credentials: true`.
 
@@ -184,17 +184,33 @@ small products — first feature is **watchlist** (movie tracker). New features 
   exported via `"./constants"`. Import with
   `import { SHARED_TYPES_VERSION } from "@workshop/shared/constants"`. Add new runtime exports
   to `constants.ts` (or another non-barrel subpath).
+- **Shared client code lives in `packages/ui` + `packages/api-client`, not `apps/workshop/src`.**
+  `@workshop/ui` is the design system (theme tokens, `Text`/`AnimatedText`, `Sheet`, `Screen`,
+  `TagEditor`, `Toast`, `clipboard`) — barrel export, plus a `./clipboard` subpath.
+  `@workshop/api-client` is `apiRequest` + the method union, `queryKeys`, `storage`,
+  `sessionCredentials`, `authBootstrap`, `useLivePollingInterval`, and the API-URL derivation
+  (`./config`); it is **subpath-only** (no barrel). Anything both Workshop and the future
+  HighScore app need belongs there — see `docs/highscore-migration-plan.md`.
+- **Metro does NOT apply `.web.ts` / `.native.ts` resolution to a package `exports` target.**
+  `metro-resolver` does an exact `fileSystemLookup` on whatever the `exports` map points at, so
+  `"./storage": "./src/storage.web.ts"`-style platform splitting silently ships the wrong
+  variant. Platform extensions still work for _relative_ imports, so a platform-variant module
+  exports a fixed shim (`src/storage/index.ts` → `export * from "./impl"`) with `impl.ts` /
+  `impl.web.ts` beside it. Copy that shape for any new platform-variant package export; verify
+  with `grep -oE "packages/.*impl[a-z.]*\.ts" <bundle>` on both a `platform=web` and a
+  `platform=ios` Metro bundle.
 - **`scripts/e2e.sh` collides with running dev servers** on `:8787` and `:8081`. Kill anything
   bound to those ports first; `--kill-others-on-fail` only cleans the e2e script's own children.
 - **`useColorScheme()` returns `null` on web during the first render** (before
   `prefers-color-scheme` hydrates). A naive `scheme === "dark" ? darkTokens : lightTokens`
   silently flips to light on first paint. Default to the baseline explicitly:
-  `scheme === "light" ? lightTokens : darkTokens`. See `apps/workshop/src/ui/ThemeProvider.tsx`.
-- **Vitest tests that import helpers using `src/lib/storage.ts` should mock storage first.**
-  Otherwise the test collector can follow the native `expo-secure-store` path and fail before
-  tests run with a Rollup parser error like `Expected 'from', got 'typeOf'`. For pure helper
-  tests, `vi.mock("./storage", () => ({ getItem: vi.fn(), setItem: vi.fn() }))` keeps collection
-  on the JS surface you actually mean to test.
+  `scheme === "light" ? lightTokens : darkTokens`. See `packages/ui/src/ThemeProvider.tsx`.
+- **Vitest tests that import helpers using `@workshop/api-client/storage` should mock storage
+  first.** Otherwise the test collector can follow the native `expo-secure-store` path and fail
+  before tests run with a Rollup parser error like `Expected 'from', got 'typeOf'`. For pure
+  helper tests, mock the module id the helper actually imports —
+  `vi.mock("@workshop/api-client/storage", () => ({ getItem: vi.fn(), setItem: vi.fn() }))` from
+  an app test, or the relative `vi.mock("../storage", …)` from inside the package.
 - **Reanimated press-feedback: wrap `Pressable`, don't replace it.**
   `Animated.createAnimatedComponent(Pressable)` looks tempting, but `Pressable`'s
   `style={({ pressed }) => [...]}` re-resolves on every render and clobbers transform
@@ -206,14 +222,14 @@ small products — first feature is **watchlist** (movie tracker). New features 
   but never actually presents, leaving the screen non-interactable until you navigate away.
   Chain through Sheet's `onClosed` prop instead. See `apps/workshop/app/list/[id]/game/[itemId].tsx`
   for the pattern.
-- **Sheet keyboard handling is centralized in `src/ui/Sheet.tsx`.** Keep the backdrop close
+- **Sheet keyboard handling is centralized in `packages/ui/src/Sheet.tsx`.** Keep the backdrop close
   target as a sibling behind the sheet content, not a parent wrapping it; iOS can otherwise
   treat taps inside a keyboard-moved form as backdrop taps and dismiss the modal. Don't wrap a
   whole sheet form in `KeyboardStickyView`; reserve sticky keyboard footers for full-screen
   forms that separate scroll content from the footer.
 - **`react-native-worklets` babel plugin is auto-wired by `babel-preset-expo`.** Don't add
   `react-native-worklets/plugin` to `babel.config.js` manually — it'll run twice.
-- **For animated text, use `AnimatedText` from `src/ui/Text.tsx`.** Raw `<Animated.Text>`
+- **For animated text, use `AnimatedText` from `@workshop/ui`.** Raw `<Animated.Text>`
   strips our `variant`/`tone` props.
 - **Don't spread dnd-kit's `attributes` onto a `View` wrapping a `Pressable`.** `useSortable`/
   `useDraggable` return `attributes` with `role: "button"` and `tabIndex: 0`; react-native-web
@@ -225,7 +241,7 @@ small products — first feature is **watchlist** (movie tracker). New features 
   form tags an item as it's created: `POST /v1/lists/:id/items` accepts an optional `tags`
   array (same normalization + 20-tag cap as `PUT /v1/items/:id/tags`, applied inside the
   insert transaction). The item-detail screen edits an existing item's set through the PUT.
-  Both render the shared `TagEditor` (`apps/workshop/src/ui/TagEditor.tsx`) — a presentational
+  Both render the shared `TagEditor` (`packages/ui/src/TagEditor.tsx`) — a presentational
   chips-plus-inline-input picker; the add form holds a draft set until submit, item detail
   writes through on every change. Any new item-create surface (bulk paste, share flow) should
   pass `tags` on create rather than firing a second request, and must invalidate
@@ -252,10 +268,11 @@ small products — first feature is **watchlist** (movie tracker). New features 
   client-side cutoff-against-`getActivityLastViewedAt` derivation — no per-list granularity,
   and a single `/activity` visit cleared everything.
 - **Real-time on web today is `useLivePollingInterval` (15s, visibility-gated).** No SSE/WS
-  yet. Hook at `src/hooks/useLivePollingInterval.ts`; pass into queries via `refetchInterval`.
+  yet. Hook at `@workshop/api-client/useLivePollingInterval`; pass into queries via
+  `refetchInterval`.
   Returns `false` on native — `refetchOnWindowFocus` + AppState integration handles foreground
   refresh, and a background timer would be a battery tax.
-- **Wrap top-level screens in `Screen` from `src/ui/Layout.tsx`** when adding a new route.
+- **Wrap top-level screens in `Screen` from `@workshop/ui`** when adding a new route.
   No-op on native; on web it constrains content to a ~560px reading column. Without it,
   RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on web.
 
@@ -575,7 +592,7 @@ Same prefixes, same grep patterns.
 ### Known sandbox gotcha: CORS preflight via the preview proxy
 
 The Niteshift preview proxy (`https://ns-<port>-<id>.preview.niteshift.dev`) rejects
-unauthenticated CORS OPTIONS preflights with `403`. `apps/workshop/src/config.ts` works
+unauthenticated CORS OPTIONS preflights with `403`. `packages/api-client/src/config.ts` works
 around this by sending Niteshift web traffic to same-origin `/api`; Metro's
 `dev-api-proxy.js` forwards it to `localhost:8787`. Keep that derivation and proxy in place
 or browsers can't sign in.
@@ -595,8 +612,8 @@ The app signs in as the seeded `joshlebed@gmail.com` user. Never enable `DEV_AUT
 Metro resolves `.web.ts(x)` before `.ts(x)` on web and `.native.ts(x)` before `.ts(x)` on
 iOS. Most UI is truly shared; only native-only modules need a platform variant:
 
-- `src/lib/storage.ts` → `expo-secure-store` (iOS keychain)
-- `src/lib/storage.web.ts` → `window.localStorage` shim
+- `packages/api-client/src/storage/impl.ts` → `expo-secure-store` (iOS keychain)
+- `packages/api-client/src/storage/impl.web.ts` → `window.localStorage` shim
 
 Add a `.web.ts(x)` beside a file when a feature imports a native-only module. Don't
 `Platform.OS === 'web'` branch inside shared files — the extension is cleaner and Metro

@@ -10,8 +10,8 @@
 // from Spotify and immutable; only position is mutable).
 
 import type { Item } from "@workshop/shared";
+import { Sheet, Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Sheet, Text, tokens } from "../../ui/index";
 
 export interface ItemRowMenuActions {
   section: "ordered" | "unordered" | "completed";
