@@ -142,10 +142,11 @@ today (sign-in + placeholder home); the Games surfaces move over in PR-4. See
 
   Verify: `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`.
 
-- **Auto-merge is on. `main` runs four gating-tier checks** (only `Quality` is confirmed to
-  actually block — PR #371 auto-merged with `Mobile Metro bundle` red, so treat the rest as
-  advisory until you've verified branch protection in Settings → Branches; agents get a 403
-  reading it via the API):
+- **Auto-merge is on. `main` runs four gating-tier checks.** Three are required in branch
+  protection (operator-verified 2026-08-25): `Quality`, `Mobile Metro bundle`, and
+  `Migrate smoke`. `terraform plan` is advisory (no docs-shim, so requiring it would block
+  non-infra PRs). Agents get a 403 reading branch protection via the API — ask the operator
+  to update this bullet if the required list changes.
   - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs.
   - `Mobile Metro bundle` — runs on `apps/workshop/**`, `packages/shared/**`, or
     `pnpm-lock.yaml` changes; skipped (treated passing) otherwise. Catches RN/Expo SDK drift.
