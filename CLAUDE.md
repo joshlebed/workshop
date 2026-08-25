@@ -204,7 +204,8 @@ Workshop temporarily renders the same `@workshop/games` package behind its legac
   to `constants.ts` (or another non-barrel subpath).
 - **Shared client code lives in `packages/ui` + `packages/api-client`, not `apps/workshop/src`.**
   `@workshop/ui` is the design system (theme tokens, `Text`/`AnimatedText`, `Sheet`, `Screen`,
-  `TagEditor`, `Toast`, `clipboard`) — barrel export, plus a `./clipboard` subpath.
+  `TagEditor`, `Toast`, `clipboard`) — barrel export, plus focused `./clipboard`, `./navigation`,
+  `./reorder`, and `./share` subpaths for helpers that must not load the full component barrel.
   `@workshop/api-client` is `apiRequest` + the method union, `queryKeys`, `storage`,
   `sessionCredentials`, `authBootstrap`, `useLivePollingInterval`, and the API-URL derivation
   (`./config`) plus OAuth hooks under `./oauth/*`; it is **subpath-only** (no barrel).

@@ -1,5 +1,3 @@
-import { type Href, router } from "expo-router";
-
 /**
  * Deterministic "breadcrumb-style" back button. On web, the user can land on
  * any deep route via a share link with no in-app history — `router.back()`
@@ -17,10 +15,4 @@ import { type Href, router } from "expo-router";
  * union doesn't accept arbitrary string templates. The string is cast to
  * `Href` at the boundary so consumers stay ergonomic.
  */
-export function goBack(fallbackHref: string) {
-  if (router.canGoBack()) {
-    router.back();
-    return;
-  }
-  router.replace(fallbackHref as Href);
-}
+export { goBack } from "@workshop/ui/navigation";

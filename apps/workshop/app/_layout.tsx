@@ -5,6 +5,10 @@ import {
 } from "@react-navigation/native";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { getItem, removeItem } from "@workshop/api-client/storage";
+import {
+  PENDING_FRIEND_INVITE_TOKEN_KEY,
+  PENDING_GAME_SHARE_TOKEN_KEY,
+} from "@workshop/games/lib/inviteStash";
 import { type GamesRoutes, GamesRuntimeProvider } from "@workshop/games/runtime";
 import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -18,11 +22,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
-import {
-  PENDING_FRIEND_INVITE_TOKEN_KEY,
-  PENDING_GAME_SHARE_TOKEN_KEY,
-  PENDING_INVITE_TOKEN_KEY,
-} from "../src/lib/inviteStash";
+import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
 import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
