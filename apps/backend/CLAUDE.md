@@ -364,6 +364,12 @@ When adding a new HTTP verb, also update `apiRequest`'s `method` union in
 **Never** widen to `*` with `credentials: true` — that reflects every origin and
 defeats CORS as a defense against cross-site reads.
 
+HighScore's entries (`https://highscore.live` + the `highscore(-<suffix>)?.pages.dev`
+patterns) are pre-landed and inert until the client exists. The Pages project name isn't
+chosen yet, so the pattern tolerates an optional suffix — **pin it to the exact project
+once OP-7 creates it**, since `*.pages.dev` names are globally unique across Cloudflare
+accounts and the tolerant form could match a stranger's similarly-named project.
+
 Verify:
 
 ```bash
@@ -381,6 +387,16 @@ prod, Terraform sets env vars on the Lambda function (`STAGE`, `DATABASE_URL`,
 `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`, `GOOGLE_BOOKS_API_KEY`, `LOG_LEVEL`). Locally,
 `scripts/dev.sh` seeds `.env` from `.env.example` and generates a random
 `SESSION_SECRET`.
+
+**The four OAuth audience vars are comma-separated lists.** `APPLE_BUNDLE_ID` /
+`APPLE_SERVICES_ID` / `GOOGLE_IOS_CLIENT_ID` / `GOOGLE_WEB_CLIENT_ID` all run through the
+`csv` transform (trim, drop empties, de-dupe), so one backend can verify sign-in tokens
+issued to more than one client app — Workshop (`dev.josh.workshop`) plus HighScore. A
+single value with no comma yields a one-element list, i.e. unchanged behavior. Consume
+them through `appleAudiences()` / `googleAudiences()` (never the raw config field) and
+pass the whole array to `verifyIdentityToken`, which accepts a token whose `aud` matches
+any entry. Adding an audience is an ops action — `aws ssm put-parameter --overwrite` +
+Lambda env refresh — not a code or Terraform change.
 
 ## Lambda bundling
 

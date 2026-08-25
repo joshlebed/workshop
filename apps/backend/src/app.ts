@@ -40,13 +40,36 @@ const clientIp: RateLimitKeyFn = (c) => {
 // (see apps/workshop/src/config.ts), so its preview host isn't listed here.
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://workshop-a2v.pages.dev",
+  // HighScore production web (Cloudflare Pages custom domain). Inert until the
+  // HighScore client exists — see docs/highscore-migration-plan.md phase 1.
+  "https://highscore.live",
   "http://localhost:8081",
   "http://localhost:8787",
   "http://127.0.0.1:8081",
 ]);
 
+// Cloudflare Pages gives each project a `<project>.pages.dev` apex plus a
+// `<branch>.<project>.pages.dev` per-branch preview. Workshop's project is
+// literally named `workshop-a2v`, so its pattern is pinned exactly.
+//
+// HighScore's Pages project doesn't exist yet (OP-7). `highscore.pages.dev`
+// may already be taken globally, in which case the project lands as
+// `highscore-<suffix>` — the same reason Workshop is `workshop-a2v`. The
+// pattern below tolerates an optional short suffix so branch previews work the
+// day the project is created, without a backend deploy.
+//
+// TODO(OP-7): once the project name is known, pin `HIGHSCORE_PAGES_PREVIEW` to
+// the exact project (e.g. /^https:\/\/[a-z0-9-]+\.highscore-abc\.pages\.dev$/)
+// and drop the optional-suffix group. `*.pages.dev` names are globally unique
+// across Cloudflare accounts, so the tolerant form could match a stranger's
+// project of a similar name.
+const HIGHSCORE_PAGES_PREVIEW = /^https:\/\/[a-z0-9-]+\.highscore(-[a-z0-9]{1,16})?\.pages\.dev$/;
+
 const ALLOWED_ORIGIN_PATTERNS: readonly RegExp[] = [
   /^https:\/\/[a-z0-9-]+\.workshop-a2v\.pages\.dev$/,
+  // HighScore Pages apex (`highscore.pages.dev` / `highscore-<suffix>.pages.dev`).
+  /^https:\/\/highscore(-[a-z0-9]{1,16})?\.pages\.dev$/,
+  HIGHSCORE_PAGES_PREVIEW,
 ];
 
 export function isAllowedOrigin(origin: string): boolean {

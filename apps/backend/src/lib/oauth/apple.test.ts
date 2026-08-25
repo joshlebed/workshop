@@ -97,6 +97,31 @@ describe("verifyAppleIdentityToken", () => {
     ).rejects.toBeInstanceOf(OAuthVerifyError);
   });
 
+  it("accepts a token from either app when two bundle ids are configured", async () => {
+    // Multi-audience: one backend verifying Workshop + HighScore sign-in tokens.
+    const audiences = [
+      "dev.josh.workshop",
+      "live.highscore.app",
+      "dev.josh.workshop.web",
+      "live.highscore.web",
+    ];
+    for (const audience of audiences) {
+      const { token, jwks } = await makeAppleToken({ audience });
+      const claims = await verifyAppleIdentityToken({ identityToken: token }, { jwks, audiences });
+      expect(claims.sub).toBe("apple-user-1");
+    }
+  });
+
+  it("still rejects an unconfigured audience when several are configured", async () => {
+    const { token, jwks } = await makeAppleToken({ audience: "live.highscore.app" });
+    await expect(
+      verifyAppleIdentityToken(
+        { identityToken: token },
+        { jwks, audiences: ["dev.josh.workshop", "dev.josh.workshop.web"] },
+      ),
+    ).rejects.toBeInstanceOf(OAuthVerifyError);
+  });
+
   it("throws when audiences are unconfigured", async () => {
     const { token, jwks } = await makeAppleToken({ audience: "dev.josh.workshop" });
     await expect(

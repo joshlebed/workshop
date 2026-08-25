@@ -25,25 +25,25 @@ variable "database_url" {
 variable "apple_bundle_id" {
   type        = string
   default     = ""
-  description = "Apple iOS bundle ID — used as the `aud` for native Sign in with Apple tokens. Empty string is allowed so `terraform apply` works before portal config; backend rejects verification until this is set."
+  description = "Apple iOS bundle ID(s) — the accepted `aud` values for native Sign in with Apple tokens. Comma-separated list; one entry per client app (e.g. \"dev.josh.workshop,live.highscore.app\"). A single value with no comma behaves exactly as before. Empty string is allowed so `terraform apply` works before portal config; backend rejects verification until this is set."
 }
 
 variable "apple_services_id" {
   type        = string
   default     = ""
-  description = "Apple Services ID — used as the `aud` for web Sign in with Apple tokens. Configured in the Apple Developer portal; paste the identifier here."
+  description = "Apple Services ID(s) — the accepted `aud` values for web Sign in with Apple tokens. Comma-separated list; one entry per web surface. Configured in the Apple Developer portal; paste the identifier(s) here."
 }
 
 variable "google_ios_client_id" {
   type        = string
   default     = ""
-  description = "Google OAuth iOS client ID — matches the `aud` claim on native Google sign-in tokens."
+  description = "Google OAuth iOS client ID(s) — the accepted `aud` values on native Google sign-in tokens. Comma-separated list; one entry per iOS client app."
 }
 
 variable "google_web_client_id" {
   type        = string
   default     = ""
-  description = "Google OAuth web client ID — matches the `aud` claim on web Google sign-in tokens."
+  description = "Google OAuth web client ID(s) — the accepted `aud` values on web Google sign-in tokens. Comma-separated list; a single web client shared by several origins stays one entry."
 }
 
 variable "tmdb_api_key" {

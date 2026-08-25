@@ -75,6 +75,25 @@ describe("verifyGoogleIdentityToken", () => {
     ).rejects.toBeInstanceOf(OAuthVerifyError);
   });
 
+  it("accepts a token from either app when two iOS client ids are configured", async () => {
+    const audiences = ["ios.client.id", "highscore.ios.client.id", "web.client.id"];
+    for (const audience of audiences) {
+      const { token, jwks } = await makeGoogleToken({ audience });
+      const claims = await verifyGoogleIdentityToken({ idToken: token }, { jwks, audiences });
+      expect(claims.sub).toBe("google-user-1");
+    }
+  });
+
+  it("still rejects an unconfigured audience when several are configured", async () => {
+    const { token, jwks } = await makeGoogleToken({ audience: "highscore.ios.client.id" });
+    await expect(
+      verifyGoogleIdentityToken(
+        { idToken: token },
+        { jwks, audiences: ["ios.client.id", "web.client.id"] },
+      ),
+    ).rejects.toBeInstanceOf(OAuthVerifyError);
+  });
+
   it("throws when audiences are unconfigured", async () => {
     const { token, jwks } = await makeGoogleToken({ audience: "ios.client.id" });
     await expect(
