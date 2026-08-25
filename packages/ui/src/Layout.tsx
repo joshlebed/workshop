@@ -1,4 +1,4 @@
-import { usePathname, useRouter } from "expo-router";
+import { type Href, usePathname, useRouter } from "expo-router";
 import type { ReactNode } from "react";
 import { Platform, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
 import { Text } from "./Text";
@@ -82,10 +82,16 @@ export function InlineTabSwitch() {
     </Pressable>
   );
 
+  // `Href` is generated per-app from that app's route tree (typedRoutes), so a
+  // literal in a shared package only typechecks against whichever app happens to
+  // declare the route. These two exist in `apps/workshop`; the cast keeps
+  // `@workshop/ui` compiling under every consumer's route map.
+  const href = (path: string) => path as Href;
+
   return (
     <View style={topTabStyles.track}>
-      {item("Games", onGames, () => router.navigate("/games"))}
-      {item("Lists", !onGames, () => router.navigate("/"))}
+      {item("Games", onGames, () => router.navigate(href("/games")))}
+      {item("Lists", !onGames, () => router.navigate(href("/")))}
     </View>
   );
 }

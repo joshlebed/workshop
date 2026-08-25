@@ -44,6 +44,7 @@
       "!**/*.generated.*",
       "!**/apps/backend/drizzle",
       "!**/apps/workshop/expo-env.d.ts",
+      "!**/apps/highscore/expo-env.d.ts",
       "!**/infra/.terraform",
       "!**/*.icon",
       "!**/test-results",

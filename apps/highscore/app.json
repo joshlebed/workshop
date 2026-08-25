@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "HighScore",
+    "slug": "highscore",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "highscore",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "live.highscore.app",
+      "associatedDomains": ["applinks:highscore.live"],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.267582241036-7vtcgkd594ldgimcu3dickj9u5ga951l",
+              "highscore"
+            ]
+          }
+        ]
+      }
+    },
+    "android": {
+      "package": "live.highscore.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-apple-authentication"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/92a568f5-b0f0-4af1-bb9d-98181025691c"
+    },
+    "extra": {
+      "apiUrl": "http://localhost:8787",
+      "router": {},
+      "eas": {
+        "projectId": "92a568f5-b0f0-4af1-bb9d-98181025691c"
+      }
+    },
+    "owner": "joshlebed"
+  }
+}

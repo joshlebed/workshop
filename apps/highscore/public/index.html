@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <!--
+      viewport-fit=cover lets the page paint under the iOS status bar and
+      home-indicator. interactive-widget=resizes-content makes Safari
+      shrink the layout viewport when the on-screen keyboard appears.
+    -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <title>%WEB_TITLE%</title>
+
+    <!--
+      Default Open Graph + Twitter Card tags. Every URL on the domain that
+      doesn't have a route-specific Pages Function override renders these for
+      iMessage, Slack, Twitter, etc.
+      PLACEHOLDER ARTWORK: `/og/default.png` is not served yet — HighScore's
+      `functions/` directory (the `/api/*` proxy, the OG renderer, AASA) lands
+      in PR-6 together with the Cloudflare Pages project. Until then these tags
+      point at the future canonical URLs so the shape is already right; the
+      image 404s. Keep them in sync with `buildMetaTagsRaw` in
+      `packages/shared/src/og.ts` when PR-6 wires the renderer up.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="HighScore" />
+    <meta property="og:url" content="https://highscore.live" />
+    <meta property="og:title" content="HighScore" />
+    <meta property="og:description" content="Daily games with your friends." />
+    <meta property="og:image" content="https://highscore.live/og/default.png" />
+    <meta property="og:image:secure_url" content="https://highscore.live/og/default.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="HighScore" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="HighScore" />
+    <meta name="twitter:description" content="Daily games with your friends." />
+    <meta name="twitter:image" content="https://highscore.live/og/default.png" />
+    <meta name="description" content="Daily games with your friends." />
+
+    <!--
+      iOS Safari 15+ tints the URL bar / bottom toolbar with theme-color,
+      and Android Chrome tints the address bar the same way. Declare both
+      light + dark media variants because Safari historically only honored
+      theme-color when an explicit media match was present. The app shell
+      always paints the dark canvas (tokens.bg.canvas = #081325) regardless
+      of the system color scheme, so we hard-pin both modes to that value
+      to avoid a white flash above/below the page in iOS light mode.
+    -->
+    <meta name="theme-color" content="#081325" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#081325" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#081325" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="HighScore" />
+
+    <!-- The `react-native-web` recommended style reset, plus a canvas-color
+         lock so the overscroll / safe-area regions don't render white. -->
+    <style id="expo-reset">
+      html,
+      body {
+        height: 100%;
+        background-color: #081325;
+        color-scheme: dark;
+      }
+      body {
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+  </head>
+
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
