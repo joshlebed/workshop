@@ -1,11 +1,11 @@
 name: iOS capabilities guard
 
-# Warn early when a PR changes iOS capabilities in `apps/workshop/app.json`
+# Warn early when a PR changes iOS capabilities in either app's `app.json`
 # (associatedDomains, entitlements, CFBundleURLTypes, infoPlist, usesAppleSignIn,
 # and the `expo-share-intent` / `expo-apple-authentication` plugin config). The
-# next TestFlight build after merge will fail at the eas-cli credentials step
-# because the cached provisioning profile doesn't carry the new capability —
-# this guard nudges the operator to delete the PP via
+# next TestFlight build after merge can fail at the eas-cli credentials step
+# when a cached provisioning profile doesn't carry the new capability — this
+# guard nudges the operator to delete that profile via
 # `eas credentials --platform ios` before / right after merge, so the first
 # build on `main` doesn't burn an EAS minute on a known-broken signing setup.
 #
@@ -23,6 +23,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "apps/workshop/app.json"
+      - "apps/highscore/app.json"
       - ".github/workflows/ios-capabilities-guard.yml"
 
 permissions:
@@ -51,8 +52,8 @@ jobs:
         run: |
           set -euo pipefail
           # Fields that, when changed, require the provisioning profile to
-          # be regenerated. Each lives in `apps/workshop/app.json`. We
-          # extract them via jq and diff the canonicalised JSON.
+          # be regenerated. Extract them from each app via jq and diff the
+          # canonicalised JSON.
           #
           # NB: jq's `|` binds looser than `,`, so the plugins element MUST be
           # fully parenthesised. Without the outer parens, `map(...)` distributes
@@ -73,56 +74,72 @@ jobs:
               )
             )))
           ]'
-          git show "origin/${BASE_REF}:apps/workshop/app.json" \
-            | jq -S "$FIELDS" > /tmp/base.json
-          jq -S "$FIELDS" apps/workshop/app.json > /tmp/head.json
+          CHANGED_APPS=()
+          for app in workshop highscore; do
+            git show "origin/${BASE_REF}:apps/$app/app.json" \
+              | jq -S "$FIELDS" > "/tmp/base-$app.json"
+            jq -S "$FIELDS" "apps/$app/app.json" > "/tmp/head-$app.json"
 
-          if diff -q /tmp/base.json /tmp/head.json > /dev/null; then
+            if diff -q "/tmp/base-$app.json" "/tmp/head-$app.json" > /dev/null; then
+              echo "No iOS capability changes for $app."
+              continue
+            fi
+
+            CHANGED_APPS+=("$app")
+            {
+              echo "## iOS capabilities changed for $app"
+              echo ""
+              echo "The next TestFlight build for this app may need a fresh provisioning profile."
+              echo ""
+              echo "<details><summary>Diff (base → head)</summary>"
+              echo ""
+              echo '```diff'
+              diff -u "/tmp/base-$app.json" "/tmp/head-$app.json" || true
+              echo '```'
+              echo ""
+              echo "</details>"
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          if [ ${#CHANGED_APPS[@]} -eq 0 ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No iOS capability changes."
             exit 0
           fi
+
           echo "changed=true" >> "$GITHUB_OUTPUT"
-          # Show the human-readable diff in the workflow summary too.
-          {
-            echo "## iOS capabilities changed in this PR"
-            echo ""
-            echo "The next TestFlight build after merge will need a fresh provisioning profile."
-            echo ""
-            echo "<details><summary>Diff (base → head)</summary>"
-            echo ""
-            echo '```diff'
-            diff -u /tmp/base.json /tmp/head.json || true
-            echo '```'
-            echo ""
-            echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
+          CHANGED_CSV=$(IFS=,; echo "${CHANGED_APPS[*]}")
+          echo "changed_apps=$CHANGED_CSV" >> "$GITHUB_OUTPUT"
 
       - name: Post / update sticky PR comment
         if: steps.diff.outputs.changed == 'true'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          CHANGED_APPS: ${{ steps.diff.outputs.changed_apps }}
         with:
           script: |
             const marker = '<!-- ios-cap-guard-comment -->';
+            const apps = (process.env.CHANGED_APPS ?? '').split(',').filter(Boolean);
+            const labels = { workshop: 'Workshop', highscore: 'HighScore' };
+            const paths = apps.map(app => `\`apps/${app}/app.json\``).join(' and ');
+            const commands = apps.map(app =>
+              `cd apps/${app} && npx eas-cli@latest credentials --platform ios`,
+            ).map(command => `\`\`\`bash\n${command}\n# production → Build Credentials → Provisioning Profile → Delete one\n\`\`\``).join('\n\n');
+            const appNames = apps.map(app => labels[app]).join(' and ');
             const body = `${marker}
-            ### iOS capabilities changed — provisioning profile regen needed after merge
+            ### ${appNames} iOS capabilities changed — provisioning profile check needed
 
-            This PR touches iOS capability fields in \`apps/workshop/app.json\`.
-            The provisioning profile currently in EAS doesn't carry the new
-            capability, so the first \`TestFlight (native iOS build)\` run on
-            \`main\` after merge will fail at the eas-cli credentials step.
+            This PR touches iOS capability fields in ${paths}. If EAS already has
+            a provisioning profile for the affected app, it may not carry the new
+            capability. A first build with no cached profile will create one.
 
             **Before or right after merging**, run locally:
 
-            \`\`\`bash
-            cd apps/workshop && npx eas-cli@latest credentials --platform ios
-            # production → Build Credentials → Provisioning Profile → Delete one
-            \`\`\`
+            ${commands}
 
-            Then \`gh workflow run testflight.yml --ref main --field force=true\`
-            (or wait for the post-merge run to fail and dispatch it manually).
-            EAS regenerates the PP against current capabilities on the next
-            build via the ASC API key.
+            Then run the affected app's TestFlight workflow after merge (Workshop:
+            \`testflight.yml\`; HighScore: \`testflight-highscore.yml\` once PR-8 lands).
+            EAS regenerates the profile against current capabilities on the next build.
 
             See \`CLAUDE.md\` → "Provisioning profile out of sync after a
             capability toggle".`;

@@ -142,14 +142,17 @@ today (sign-in + placeholder home); the Games surfaces move over in PR-4. See
 
   Verify: `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`.
 
-- **Auto-merge is on. `main` runs four gating-tier checks.** Three are required in branch
-  protection (operator-verified 2026-08-25): `Quality`, `Mobile Metro bundle`, and
-  `Migrate smoke`. `terraform plan` is advisory (no docs-shim, so requiring it would block
-  non-infra PRs). Agents get a 403 reading branch protection via the API — ask the operator
-  to update this bullet if the required list changes.
+- **Auto-merge is on. `main` runs five gating-tier checks.** Four should be required:
+  `Quality`, `Mobile Metro bundle`, `Mobile Metro bundle (highscore)`, and `Migrate smoke`.
+  The first, second, and fourth were operator-verified in branch protection on 2026-08-25;
+  add the HighScore check after its introducing PR merges. `terraform plan` is advisory (no
+  docs shim, so requiring it would block non-infra PRs). Agents get a 403 reading branch
+  protection via the API — ask the operator to update this bullet if the required list changes.
   - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs.
   - `Mobile Metro bundle` — runs on `apps/workshop/**`, `packages/shared/**`, or
     `pnpm-lock.yaml` changes; skipped (treated passing) otherwise. Catches RN/Expo SDK drift.
+  - `Mobile Metro bundle (highscore)` — runs on `apps/highscore/**`, `packages/**`, or
+    `pnpm-lock.yaml` changes; skipped (treated passing) otherwise. Bundles HighScore independently.
   - `Migrate smoke (fresh DB + idempotent re-run)` — runs on `apps/backend/drizzle/**`,
     `apps/backend/src/db/**`, or `pnpm-lock.yaml` changes; skipped (treated passing) otherwise.
     Catches Drizzle journal-vs-files drift before prod.
@@ -161,17 +164,6 @@ today (sign-in + placeholder home); the Games surfaces move over in PR-4. See
   Canonical merge: `gh pr merge <PR> --auto --squash --delete-branch`. Verify with
   `gh pr view <PR> --json state` — armed ≠ merged. Updating the required-check list is a
   GitHub admin action (Settings → Branches); keep the bullets above in sync.
-
-- **CI still only guards `apps/workshop`.** `Mobile Metro bundle` is path-filtered to
-  `apps/workshop/**` / `packages/shared/**` / `pnpm-lock.yaml` and bundles Workshop only;
-  `runtime-version-guard.yml` and `ios-capabilities-guard.yml` read `apps/workshop/app.json`
-  exclusively; `scripts/check-expo-sdk-deps.mjs` hardcodes `apps/workshop`. So a change that
-  touches **only** `apps/highscore/**` gets no Metro bundle, no runtime-version bump check,
-  and no capability-diff comment. Until PR-5 matrixes them, bundle HighScore by hand before
-  merging anything native-adjacent:
-  `cd apps/highscore && pnpm exec expo export --platform ios --output-dir dist-ci`. Note that
-  a lockfile change still fires the Workshop-scoped jobs, so adding a HighScore dep is
-  checked against Workshop, not HighScore.
 
 - **If your PR adds a new CI check that should block merge, flag it in the PR description.**
   Agents can't toggle branch protection (the Niteshift GH App token 403s on that endpoint).
@@ -188,8 +180,9 @@ today (sign-in + placeholder home); the Games surfaces move over in PR-4. See
   "fix" a red check with `EXPO_OFFLINE=1`: `validateDependenciesVersionsAsync` returns early
   in offline mode and validates nothing, so the guard silently disappears while still
   printing a pass. The script also enforces that each declared range is a `semver` subset of
-  the SDK's range. Add new SDK-tracking natives to `PACKAGES` in the script; `react` and
-  `typescript` stay out on purpose (pinned above SDK-preferred).
+  the SDK's range. Add new SDK-tracking natives to `PACKAGES` in the script; pass an app
+  directory to check HighScore (`node scripts/check-expo-sdk-deps.mjs apps/highscore`).
+  `react` and `typescript` stay out on purpose (pinned above SDK-preferred).
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
   unless there's a specific reason (security fix, unblocking work).
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full errors:

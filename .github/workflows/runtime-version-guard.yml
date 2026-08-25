@@ -1,7 +1,7 @@
 name: Runtime version guard
 
-# Enforce the "bump `apps/workshop/app.json` version when the native shape
-# changes" rule (runtime-version policy is `appVersion`). A native change cuts a
+# Enforce the "bump the affected app.json version when the native shape changes"
+# rule (runtime-version policy is `appVersion`). A native change cuts a
 # new TestFlight binary; without a version bump the OTA targeting the new build
 # can also land on the pre-change binary that lacks the native code — broken
 # behavior, or a `Native module … cannot be null` crash for JS↔native contracts.
@@ -9,10 +9,11 @@ name: Runtime version guard
 # Two independent signals, because they catch different things:
 #   1. iOS @expo/fingerprint — native deps (autolinking) + `patches/`. We don't
 #      diff base-vs-head fingerprints (needs two installs); instead we reuse the
-#      TestFlight pipeline's own bookkeeping: it writes an `ios-fp-<hash>` tag for
-#      every shape it builds. If THIS PR's fingerprint has no tag, merging will
-#      cut a new binary → a bump is required. (Same Linux-vs-Linux hash the
-#      pipeline tags, so they agree.)
+#      TestFlight pipelines' own bookkeeping: Workshop writes `ios-fp-<hash>`;
+#      HighScore writes `hs-ios-fp-<hash>`. Once an app has at least one tag, an
+#      untagged fingerprint means merging will cut a new binary → a bump is
+#      required. An empty namespace is the first-build bootstrap and fails open,
+#      matching Workshop's original 0.1.0 build semantics.
 #   2. app.json iOS native fields (entitlements, plugins, infoPlist, bundleId,
 #      scheme, associatedDomains). @expo/fingerprint does NOT track these (verified
 #      — an entitlements/bundleId edit doesn't move the hash), yet they change the
@@ -54,10 +55,27 @@ jobs:
           CHANGED=$(git diff --name-only "origin/$BASE_REF...HEAD")
           echo "Changed files:"
           echo "$CHANGED"
-          # Files that can change the native binary: patches, dependency graph,
-          # and the Expo app config. Plain JS/TS under apps/workshop ships via OTA
-          # and never needs a bump, so it is intentionally NOT in this set.
-          if echo "$CHANGED" | grep -qE '^(patches/|pnpm-lock\.yaml$|package\.json$|apps/[^/]+/package\.json$|apps/workshop/app\.(json|config\.[jt]s)$)'; then
+          WORKSHOP=false
+          HIGHSCORE=false
+
+          # Shared native inputs affect both apps.
+          if echo "$CHANGED" | grep -qE '^(patches/|pnpm-lock\.yaml$|package\.json$)'; then
+            WORKSHOP=true
+            HIGHSCORE=true
+          fi
+
+          # App package/config changes affect only that app. Plain JS/TS ships
+          # via OTA and intentionally does not require a runtime-version bump.
+          if echo "$CHANGED" | grep -qE '^apps/workshop/(package\.json|app\.(json|config\.[jt]s))$'; then
+            WORKSHOP=true
+          fi
+          if echo "$CHANGED" | grep -qE '^apps/highscore/(package\.json|app\.(json|config\.[jt]s))$'; then
+            HIGHSCORE=true
+          fi
+
+          echo "workshop=$WORKSHOP" >> "$GITHUB_OUTPUT"
+          echo "highscore=$HIGHSCORE" >> "$GITHUB_OUTPUT"
+          if [ "$WORKSHOP" = true ] || [ "$HIGHSCORE" = true ]; then
             echo "relevant=true" >> "$GITHUB_OUTPUT"
           else
             echo "relevant=false" >> "$GITHUB_OUTPUT"
@@ -71,29 +89,11 @@ jobs:
         if: steps.scope.outputs.relevant == 'true'
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
+          WORKSHOP_RELEVANT: ${{ steps.scope.outputs.workshop }}
+          HIGHSCORE_RELEVANT: ${{ steps.scope.outputs.highscore }}
         run: |
           set -euo pipefail
-          APPJSON=apps/workshop/app.json
-          V_HEAD=$(jq -r '.expo.version' "$APPJSON")
-          V_BASE=$(git show "origin/$BASE_REF:$APPJSON" | jq -r '.expo.version')
-          echo "version: base=$V_BASE head=$V_HEAD"
-
-          REASONS=()
-
-          # (1) New iOS fingerprint ⇒ TestFlight cuts a new binary on merge.
-          # Computed exactly like testflight.yml: from apps/workshop, post-install
-          # (so patched node_modules + autolinking are reflected).
-          FP=$(cd apps/workshop && node -e "require('@expo/fingerprint').createProjectHashAsync('.').then(h => process.stdout.write(h))")
-          echo "iOS fingerprint: $FP"
-          if git ls-remote --exit-code --tags origin "ios-fp-$FP" >/dev/null 2>&1; then
-            echo "Fingerprint already built (tag ios-fp-$FP exists) — no new binary from this PR."
-          else
-            REASONS+=("iOS fingerprint has no prior build (ios-fp-$FP) — native dependency or patches/ change")
-          fi
-
-          # (2) iOS app.json native fields that @expo/fingerprint does NOT track.
-          # NB jq's `|` binds looser than `,`, so the plugins element MUST be fully
-          # parenthesised or map() distributes across the array (see #257).
+          FAILED=0
           FIELDS='[
             .expo.ios.bundleIdentifier // null,
             .expo.ios.entitlements // null,
@@ -103,36 +103,92 @@ jobs:
             .expo.scheme // null,
             ((.expo.plugins // []) | map(select(type == "array")))
           ]'
-          if ! diff -q \
-            <(git show "origin/$BASE_REF:$APPJSON" | jq -S "$FIELDS") \
-            <(jq -S "$FIELDS" "$APPJSON") >/dev/null; then
-            REASONS+=("app.json iOS native fields changed (entitlements / plugins / infoPlist / bundleId / scheme / associatedDomains)")
-          fi
 
-          if [ ${#REASONS[@]} -eq 0 ]; then
-            echo "No native-shape change requiring a runtime-version bump."
-            exit 0
-          fi
+          check_app() {
+            local app="$1"
+            local display_name="$2"
+            local tag_prefix="$3"
+            local relevant="$4"
+            local app_json="apps/$app/app.json"
+            local fingerprint
+            local namespace_tags
+            local version_base
+            local version_head
+            local -a reasons=()
 
-          echo "Native change detected:"
-          for r in "${REASONS[@]}"; do echo "  - $r"; done
+            if [ "$relevant" != true ]; then
+              return
+            fi
 
-          if [ "$V_HEAD" != "$V_BASE" ]; then
-            echo "apps/workshop/app.json version bumped $V_BASE -> $V_HEAD — OK."
-            exit 0
-          fi
+            if ! git cat-file -e "origin/$BASE_REF:$app_json" 2>/dev/null; then
+              echo "$display_name is new on this branch — first-build bootstrap; version bump not required."
+              return
+            fi
 
-          {
-            echo "## ❌ Runtime version bump required"
-            echo ""
-            echo "This PR changes the native shape, but \`apps/workshop/app.json\` \`version\` is still \`$V_HEAD\`."
-            echo ""
-            echo "**Why:**"
-            for r in "${REASONS[@]}"; do echo "- $r"; done
-            echo ""
-            echo "Runtime-version policy is \`appVersion\`: the new TestFlight build needs a distinct"
-            echo "\`version\` so an OTA targeting it can't land on the old binary that lacks the native"
-            echo "change. Bump \`apps/workshop/app.json\` \`version\` in this PR."
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "::error file=apps/workshop/app.json::Native change detected but version not bumped (still $V_HEAD). Bump apps/workshop/app.json version."
-          exit 1
+            version_head=$(jq -r '.expo.version' "$app_json")
+            version_base=$(git show "origin/$BASE_REF:$app_json" | jq -r '.expo.version')
+            echo "$display_name version: base=$version_base head=$version_head"
+
+            # No tag in this app's namespace means no older binary exists for an
+            # OTA to break. Workshop bootstrapped its first 0.1.0 build this way.
+            if ! namespace_tags=$(git ls-remote --tags origin "$tag_prefix-*"); then
+              echo "::error::Could not inspect $display_name fingerprint tags."
+              FAILED=1
+              return
+            fi
+            if [ -z "$namespace_tags" ]; then
+              echo "$display_name has no prior $tag_prefix-* build tag — first-build bootstrap; version bump not required."
+              return
+            fi
+
+            # (1) New iOS fingerprint ⇒ the app's TestFlight workflow cuts a new
+            # binary on merge. Compute from the app directory post-install.
+            fingerprint=$(cd "apps/$app" && node -e "require('@expo/fingerprint').createProjectHashAsync('.').then(h => process.stdout.write(h))")
+            echo "$display_name iOS fingerprint: $fingerprint"
+            if git ls-remote --exit-code --tags origin "$tag_prefix-$fingerprint" >/dev/null 2>&1; then
+              echo "Fingerprint already built (tag $tag_prefix-$fingerprint exists) — no new binary from this PR."
+            else
+              reasons+=("iOS fingerprint has no prior build ($tag_prefix-$fingerprint) — native dependency or patches/ change")
+            fi
+
+            # (2) iOS app.json native fields that @expo/fingerprint does NOT
+            # track. Keep the plugins element parenthesised; jq's `|` binds
+            # looser than `,` (see #257).
+            if ! diff -q \
+              <(git show "origin/$BASE_REF:$app_json" | jq -S "$FIELDS") \
+              <(jq -S "$FIELDS" "$app_json") >/dev/null; then
+              reasons+=("app.json iOS native fields changed (entitlements / plugins / infoPlist / bundleId / scheme / associatedDomains)")
+            fi
+
+            if [ ${#reasons[@]} -eq 0 ]; then
+              echo "$display_name has no native-shape change requiring a runtime-version bump."
+              return
+            fi
+
+            echo "$display_name native change detected:"
+            for reason in "${reasons[@]}"; do echo "  - $reason"; done
+
+            if [ "$version_head" != "$version_base" ]; then
+              echo "$app_json version bumped $version_base -> $version_head — OK."
+              return
+            fi
+
+            {
+              echo "## ❌ $display_name runtime version bump required"
+              echo ""
+              echo "This PR changes the native shape, but \`$app_json\` \`version\` is still \`$version_head\`."
+              echo ""
+              echo "**Why:**"
+              for reason in "${reasons[@]}"; do echo "- $reason"; done
+              echo ""
+              echo "Runtime-version policy is \`appVersion\`: the new TestFlight build needs a distinct"
+              echo "\`version\` so an OTA targeting it can't land on the old binary that lacks the native"
+              echo "change. Bump \`$app_json\` \`version\` in this PR."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error file=$app_json::Native change detected but version not bumped (still $version_head). Bump $app_json version."
+            FAILED=1
+          }
+
+          check_app workshop Workshop ios-fp "$WORKSHOP_RELEVANT"
+          check_app highscore HighScore hs-ios-fp "$HIGHSCORE_RELEVANT"
+          exit "$FAILED"

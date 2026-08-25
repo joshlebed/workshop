@@ -6,8 +6,8 @@ name: CI
 #   - One `quality` job installs deps once and runs every node-based check
 #     sequentially: lint, typecheck, test, knip, prettier (md), redesign-plan
 #     consistency, actionlint, terraform fmt+validate.
-#   - `mobile-bundle` and `migrate-smoke` stay separate (heavier or different
-#     deps — Metro export and a Postgres service container).
+#   - The per-app mobile bundle jobs and `migrate-smoke` stay separate (heavier
+#     or different deps — Metro exports and a Postgres service container).
 #   - `gitleaks` only runs on push-to-main and a weekly schedule (pre-commit
 #     lefthook is the PR-time guard; CI is the safety net).
 #   - PRs own full validation; push-to-main only re-checks the canonical-branch
@@ -39,7 +39,7 @@ permissions:
   contents: read
 
 jobs:
-  # paths-filter outputs gate `mobile-bundle` and `migrate-smoke`. Runs on
+  # paths-filter outputs gate the mobile bundle jobs and `migrate-smoke`. Runs on
   # both pull_request and push so push-to-main can also skip migrate-smoke
   # when a deploy doesn't touch migrations.
   changes:
@@ -51,6 +51,7 @@ jobs:
       pull-requests: read # dorny/paths-filter needs this on PRs
     outputs:
       mobile: ${{ steps.filter.outputs.mobile }}
+      highscore_mobile: ${{ steps.filter.outputs.highscore_mobile }}
       migrations: ${{ steps.filter.outputs.migrations }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -61,6 +62,10 @@ jobs:
             mobile:
               - 'apps/workshop/**'
               - 'packages/shared/**'
+              - 'pnpm-lock.yaml'
+            highscore_mobile:
+              - 'apps/highscore/**'
+              - 'packages/**'
               - 'pnpm-lock.yaml'
             migrations:
               - 'apps/backend/drizzle/**'
@@ -154,6 +159,25 @@ jobs:
 
       - name: Bundle iOS (Metro codegen smoke)
         working-directory: apps/workshop
+        run: pnpm exec expo export --platform ios --output-dir dist-ci
+
+  # HighScore counterpart to the Workshop Metro smoke above. It has a distinct
+  # check name so each app can be independently required and path-filtered.
+  mobile-bundle-highscore:
+    name: Mobile Metro bundle (highscore)
+    needs: changes
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && needs.changes.outputs.highscore_mobile == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: ./.github/actions/setup-pnpm
+
+      - name: Verify RN deps match Expo SDK
+        run: node scripts/check-expo-sdk-deps.mjs apps/highscore
+
+      - name: Bundle iOS (Metro codegen smoke)
+        working-directory: apps/highscore
         run: pnpm exec expo export --platform ios --output-dir dist-ci
 
   # Guards against the migration-drift bug class. Spins up Postgres, applies,
