@@ -141,19 +141,16 @@ jobs:
 
       - uses: ./.github/actions/setup-pnpm
 
-      # Scoped on purpose — a full `expo install --check` also flags react/
-      # typescript, which the monorepo intentionally pins above the SDK-preferred
-      # versions. RN + its satellites are the ones that must track the SDK.
+      # Deliberately NOT `expo install --check`: that merges Expo's remote
+      # well-known-versions endpoint over the installed SDK's bundled map and
+      # prefers the remote value, so an untouched commit goes red whenever
+      # Expo publishes a new RN patch. The script pins the comparison to the
+      # `expo/bundledNativeModules.json` the lockfile resolves — deterministic
+      # per commit. `EXPO_OFFLINE=1` is not the fix; it skips validation
+      # entirely. Scoped list lives in the script (react/typescript are pinned
+      # above the SDK-preferred versions on purpose).
       - name: Verify RN deps match Expo SDK
-        working-directory: apps/workshop
-        run: |
-          pnpm exec expo install --check \
-            react-native \
-            react-native-gesture-handler \
-            react-native-reanimated \
-            react-native-safe-area-context \
-            react-native-screens \
-            react-native-worklets
+        run: node scripts/check-expo-sdk-deps.mjs
 
       - name: Bundle iOS (Metro codegen smoke)
         working-directory: apps/workshop
