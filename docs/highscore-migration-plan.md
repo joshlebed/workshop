@@ -1,8 +1,7 @@
 # HighScore migration plan
 
-> Decisions 1 and 2 in §1 are **locked** (Josh, 2026-08-25). Decision 3 explained and
-> pending explicit sign-off, but it's a mechanical config change with no alternative on
-> the table.
+> All three decisions in §1 are **locked** (Josh, 2026-08-25). Plan is **ratified** —
+> implementation can start with Phase 0.
 
 **Goal**: split the product into two brands on one backend. **HighScore**
 (`highscore.live`, new iOS app) owns all daily-game functionality; **Workshop**
@@ -10,11 +9,11 @@
 sharing, friends-for-lists). One backend, one Postgres, one shared user identity —
 sign in with Apple on either app and you get the same account/profile.
 
-Status: **draft for review** — decisions in §1 need sign-off before implementation starts.
+Status: **ratified** — see the phase list in §3 for current progress.
 
 ---
 
-## 1. Decisions to ratify first
+## 1. Decisions (all locked 2026-08-25)
 
 1. **Two Expo codebases, not four clients.** `apps/highscore` and `apps/workshop`, each
    building web + iOS from one component tree via react-native-web (exactly how
