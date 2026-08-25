@@ -197,15 +197,12 @@ jobs:
       - uses: ./.github/actions/setup-pnpm
 
       # Write the App Store Connect API key to disk so eas-cli can
-      # authenticate with Apple non-interactively. Required whenever a
-      # build needs to create or rotate credentials — most commonly the
-      # FIRST build of a new bundle id (share extension, widget, push
-      # extension target). Without this, eas-cli falls through to
-      # interactive Apple-ID prompts and fails the build at
-      # `Distribution Certificate is not validated for non-interactive
-      # builds` / `Credentials are not set up. Run this command again in
-      # interactive mode`. The .p8 lives in `runner.temp` so it's wiped
-      # at job teardown.
+      # authenticate with Apple non-interactively for profile rotation and
+      # submission. A brand-new EAS project still needs one local interactive
+      # `eas credentials` run to assign a distribution certificate and create
+      # its target profiles; eas-cli intentionally will not create a missing
+      # certificate in `--non-interactive` mode. The .p8 lives in
+      # `runner.temp` so it's wiped at job teardown.
       #
       # Provisioning the secrets is a one-time human step (Apple won't
       # mint an ASC API key without an interactive Apple-ID session).
@@ -294,6 +291,9 @@ jobs:
           if echo "$LOG" | grep -q "doesn't include the .* capability\|doesn't include the .* entitlement"; then
             REASON="Provisioning profile missing a capability declared in app.json"
             FIX="Delete the PP via \`eas credentials --platform ios\` (production → Build Credentials → Provisioning Profile → Delete one), then re-fire \`testflight-highscore.yml --field force=true\`. See CLAUDE.md → \"Provisioning profile out of sync after a capability toggle\"."
+          elif ! git ls-remote --exit-code --tags origin "hs-ios-fp-*" > /dev/null 2>&1 && echo "$LOG" | grep -q "Distribution Certificate is not validated for non-interactive builds"; then
+            REASON="First-build credentials are not assigned to the HighScore EAS project"
+            FIX="Run \`cd apps/highscore && npx eas-cli@18.8.1 credentials --platform ios\` locally, then production → Build Credentials → All. Reuse the valid team certificate and create profiles for HighScore + HighScoreShare; do NOT delete/revoke Workshop's certificate. Then re-fire \`testflight-highscore.yml --field force=true\`."
           elif echo "$LOG" | grep -q "Distribution Certificate is not validated for non-interactive builds"; then
             REASON="Distribution Certificate in EAS can't be validated non-interactively"
             FIX="Stale or pre-API-key cert. Run \`eas credentials --platform ios\` locally, delete + revoke the cert, then \"Build Credentials → All\" to regenerate. NOT a \`pnpm setup:asc-key\` issue. See CLAUDE.md → \"Distribution Certificate out of sync\"."
