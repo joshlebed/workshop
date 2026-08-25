@@ -1,6 +1,5 @@
 import {
   buildFriendMetaTags,
-  escapeXml,
   fetchFriendInvitePreview,
   OG_META_SELECTORS,
   type PagesEnv,
@@ -45,7 +44,7 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
   rewriter
     .on("title", {
       element(element) {
-        element.setInnerContent(escapeXml(title));
+        element.setInnerContent(title);
       },
     })
     .on("head", {
