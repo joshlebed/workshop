@@ -6,20 +6,23 @@ Per-symptom incident recovery for TestFlight / EAS lives in `docs/recovery-runbo
 
 ## How iOS code reaches phones
 
-- **JS-only changes** → `eas update` (EAS Update OTA) ~60s after merge to `main`. Phones
-  pick it up on next launch.
-- **Native changes** → `testflight.yml` runs `eas build --auto-submit` and **awaits the
-  build** so CI red/green matches the EAS outcome. Last-built fingerprint stored as
-  `ios-fp-<hash>` git tag, written only on success.
+- **JS-only changes** → `eas update` (EAS Update OTA) ~60s after merge to `main`. Workshop
+  publishes through `deploy-mobile.yml`; HighScore publishes independently through
+  `deploy-mobile-highscore.yml`. Phones pick the matching update up on next launch.
+- **Native changes** → `testflight.yml` (Workshop) and `testflight-highscore.yml`
+  (HighScore) run `eas build --auto-submit` and **await the build** so CI red/green matches
+  the EAS outcome. Last-built fingerprints use `ios-fp-<hash>` and `hs-ios-fp-<hash>`,
+  respectively, and are written only on success.
 
 ## First diagnostic: "feature shipped on web but missing on iOS"
 
 Almost always the deploy pipeline, not per-platform code. Check in order:
 
-1. **Did the OTA ship?** Look at the most recent `Deploy Mobile (OTA)` run on `main`:
+1. **Did the OTA ship?** Look at the affected app's most recent OTA run on `main`:
 
    ```bash
    gh run list --workflow=deploy-mobile.yml --branch=main --limit=3
+   gh run list --workflow=deploy-mobile-highscore.yml --branch=main --limit=3
    gh run view <run-id> --log | grep -E "Runtime version|Branch  *production"
    ```
 
@@ -27,8 +30,8 @@ Almost always the deploy pipeline, not per-platform code. Check in order:
    version is `app.json` `version` at build time. A `0.1.0` TestFlight build never
    applies a `0.2.0` OTA.
 
-3. **Has the latest TestFlight build landed?** `testflight.yml` awaits the EAS build —
-   a red run means no matching binary exists yet. Two common failure shapes:
+3. **Has the latest TestFlight build landed?** Both TestFlight workflows await EAS — a red
+   run means no matching binary exists yet. Two common failure shapes:
    - Fails at the `Write ASC API key` step → the `ASC_API_KEY_*` GitHub Actions secrets
      are unset or stale. Recovery: `pnpm setup:asc-key`.
    - Fails at `Build + auto-submit (await success)` with `Distribution Certificate is
@@ -53,8 +56,9 @@ usually names the right section already.
 Runtime version = `app.json` `version`. **You MUST bump `version` in the same PR that
 adds a native module or changes a config plugin.** Enforced by the `Runtime version
 guard` workflow (`.github/workflows/runtime-version-guard.yml`) — it fails a PR with a
-new iOS `@expo/fingerprint` (no prior `ios-fp-<hash>` tag) or changed app.json iOS
-native fields unless `apps/workshop/app.json` `version` is bumped. When in doubt, bump.
+new iOS `@expo/fingerprint` (no prior app-specific fingerprint tag) or changed app.json
+iOS native fields unless the affected app's `version` is bumped. Workshop uses
+`ios-fp-<hash>`; HighScore uses `hs-ios-fp-<hash>`. When in doubt, bump the affected app.
 
 Why this matters: if you add `react-native-foo` (native) at `version: 0.1.0` without
 bumping, the new OTA targets `0.1.0`, which the already-installed pre-PR `0.1.0`
@@ -77,6 +81,8 @@ git tag -d ios-fp-<hash>
 git push origin :refs/tags/ios-fp-<hash>
 gh workflow run testflight.yml --ref main --field force=true
 ```
+
+For HighScore, substitute `hs-ios-fp-<hash>` and `testflight-highscore.yml`.
 
 ### Provisioning profile out of sync after a capability toggle
 
@@ -152,17 +158,15 @@ Idempotent — run again to rotate. **Note:** this does NOT fix
 `Distribution Certificate is not validated for non-interactive builds` — that's a
 stale-cert problem, not a key problem. See "Distribution certificate out of sync" above.
 
-A red `testflight.yml` run also pings `#workshop-admin` on Discord via the `notify`
-job (uses `DISCORD_NOTIFY_WEBHOOK_URL` secret; missing webhook degrades to a CI
-warning). The `Diagnose failure` step pattern-matches the eas-cli stderr against known
-modes and emits a specific reason + recovery into the ping. If you see a `Build +
-auto-submit` failure that the diagnose step labels "unrecognised eas-cli failure", add
-a pattern to `.github/workflows/testflight.yml`'s `Diagnose failure` step in the same
-PR that fixes the underlying issue.
+A red run from either TestFlight workflow pings `#workshop-admin` on Discord via its
+`notify` job (uses `DISCORD_NOTIFY_WEBHOOK_URL`; a missing secret degrades to a warning).
+The `Diagnose failure` step pattern-matches eas-cli stderr and emits a specific recovery.
+If it labels a failure "unrecognised eas-cli failure", add a pattern to the affected
+workflow's `Diagnose failure` step in the same PR that fixes the underlying issue.
 
 ## Monthly canary
 
-`testflight.yml` runs a forced canary build on the 1st of each month at 14:00 UTC.
+Both TestFlight workflows run forced canary builds on the 1st of each month at 14:00 UTC.
 Personal-project cadence is ~5 native builds/month with quiet stretches; credential rot
 (cert expiry, ASC key role drift, EAS signing-bot infra changes) tends to surface only
 when a feature actually needs to ship. The canary takes ~1 EAS build minute and gives
@@ -172,18 +176,18 @@ finds the problem. Successful canary runs are silent — ignore the green checkm
 
 ## PR-time iOS capabilities guard
 
-`.github/workflows/ios-capabilities-guard.yml` posts a sticky PR comment whenever
-`apps/workshop/app.json` changes any iOS capability field (`associatedDomains`,
-`entitlements`, `usesAppleSignIn`, `infoPlist.CFBundleURLTypes`, `bundleIdentifier`, or
-the `expo-share-intent` / `expo-apple-authentication` / `expo-notifications` plugin
-configs). The comment reminds the operator to delete the provisioning profile in EAS
-before / after merge, so the next TestFlight build doesn't fail at the credentials step.
-Heads-up only, not a required check. If you add a new capability-relevant field, add it
-to the workflow's `FIELDS` jq expression.
+`.github/workflows/ios-capabilities-guard.yml` posts a sticky PR comment whenever either
+app's `app.json` changes an iOS capability field (`associatedDomains`, `entitlements`,
+`usesAppleSignIn`, `infoPlist.CFBundleURLTypes`, `bundleIdentifier`, or the
+`expo-share-intent` / `expo-apple-authentication` / `expo-notifications` plugin configs).
+The comment reminds the operator to delete the affected app's provisioning profile in
+EAS before / after merge, so its next TestFlight build doesn't fail at the credentials
+step. Heads-up only, not a required check. If you add a new capability-relevant field,
+add it to the workflow's `FIELDS` jq expression.
 
 ## GitHub Actions concurrency
 
-`testflight.yml` uses `concurrency: testflight, cancel-in-progress: false`. Right
-default — don't abandon EAS minutes for a new push. But if the in-flight run is stuck,
-new runs queue behind it. Cancel with `gh run cancel <run-id>`; the EAS build keeps
-running on EAS's servers.
+Workshop uses per-job `testflight-*` concurrency groups; HighScore uses the workflow-level
+`testflight-highscore` group with `cancel-in-progress: false`. In both cases, don't abandon
+EAS minutes for a new push. If an in-flight run is stuck, cancel it with
+`gh run cancel <run-id>`; the EAS build keeps running on EAS's servers.
