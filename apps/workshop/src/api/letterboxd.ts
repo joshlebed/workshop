@@ -1,5 +1,5 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type { ItemResponse, LetterboxdStatusResponse, SuggestFilmRequest } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 export function fetchLetterboxdStatus(
   listId: string,

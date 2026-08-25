@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { copyToClipboard } from "../lib/share";
 import { CopyIcon } from "./CopyIcon";
+import { copyToClipboard } from "./clipboard";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 

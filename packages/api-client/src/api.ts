@@ -1,8 +1,8 @@
 import type { ApiErrorResponse } from "@workshop/shared";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import { API_URL } from "../config";
 import { ApiError } from "./apiError";
+import { API_URL } from "./config";
 
 const PLATFORM = Platform.OS;
 const APP_VERSION = Constants.expoConfig?.version ?? "unknown";

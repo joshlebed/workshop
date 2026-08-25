@@ -9,12 +9,12 @@
 // cover from `metadata.posterUrl` or `metadata.coverUrl` / `image`.
 
 import type { Item, ItemKind } from "@workshop/shared";
+import { Text, tokens } from "@workshop/ui";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { formatRelative } from "../../lib/relativeTime";
-import { Text, tokens } from "../../ui/index";
 
 interface ItemRowProps {
   item: Item;

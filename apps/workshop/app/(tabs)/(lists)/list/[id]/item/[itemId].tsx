@@ -1,5 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Item, ListDetailResponse } from "@workshop/shared";
+import {
+  Button,
+  EmptyState,
+  IconButton,
+  Screen,
+  Sheet,
+  TagEditor,
+  Text,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
@@ -14,24 +27,11 @@ import {
 } from "../../../../../../src/api/items";
 import { fetchListTags } from "../../../../../../src/api/lists";
 import { useAuth } from "../../../../../../src/hooks/useAuth";
-import { ApiError } from "../../../../../../src/lib/api";
 import { confirm } from "../../../../../../src/lib/confirm";
 import { goBack } from "../../../../../../src/lib/goBack";
 import { haptics } from "../../../../../../src/lib/haptics";
 import { normalizeExternalUrl, openExternalUrl } from "../../../../../../src/lib/openUrl";
-import { queryKeys } from "../../../../../../src/lib/queryKeys";
 import { formatRelative } from "../../../../../../src/lib/relativeTime";
-import {
-  Button,
-  EmptyState,
-  IconButton,
-  Screen,
-  Sheet,
-  TagEditor,
-  Text,
-  tokens,
-  useToast,
-} from "../../../../../../src/ui/index";
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 

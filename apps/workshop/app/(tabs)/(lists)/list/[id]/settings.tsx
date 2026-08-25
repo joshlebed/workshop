@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
 import type {
   ConfigWarning,
   ListColor,
@@ -8,6 +10,16 @@ import type {
   ShareVisibility,
 } from "@workshop/shared";
 import { formatConfigWarning, MODULE_NAMES } from "@workshop/shared/modules";
+import {
+  Avatar,
+  Button,
+  IconButton,
+  type ListColorKey,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Image, Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
@@ -28,24 +40,12 @@ import {
 } from "../../../../../src/api/share";
 import { syncSource } from "../../../../../src/api/sources";
 import { useAuth } from "../../../../../src/hooks/useAuth";
-import { errorMessage } from "../../../../../src/lib/api";
 import { userAvatarImageUrl } from "../../../../../src/lib/avatar";
 import { pickCoverPhoto } from "../../../../../src/lib/coverPhoto";
 import { goBack } from "../../../../../src/lib/goBack";
-import { queryKeys } from "../../../../../src/lib/queryKeys";
 import { formatRelative } from "../../../../../src/lib/relativeTime";
 import { buildListShareUrl, copyToClipboard } from "../../../../../src/lib/share";
 import { sourceErrorMessage } from "../../../../../src/lib/sourceErrors";
-import {
-  Avatar,
-  Button,
-  IconButton,
-  type ListColorKey,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "../../../../../src/ui/index";
 
 const COLOR_KEYS: readonly ListColorKey[] = [
   "sunset",

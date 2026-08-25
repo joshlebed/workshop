@@ -9,7 +9,7 @@ traffic. Its primary purpose is keeping the managed-session refresh cookie first
 it must forward `Set-Cookie`, never derive the upstream host from request input, and mark responses
 `no-store`. It rejects requests whose `Origin` differs from the destination Pages origin; removing
 that check lets one branch-preview subdomain read another subdomain's refresh response. The proxy
-overwrites the forwarded `Origin` after the check. `apps/workshop/src/config.ts` routes every
+overwrites the forwarded `Origin` after the check. `packages/api-client/src/config.ts` routes every
 `*.pages.dev` web build through `/api`.
 
 1. **Default** — `apps/workshop/public/index.html` ships a static set of OG tags

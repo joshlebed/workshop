@@ -1,3 +1,4 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type {
   ConfigPreviewRequest,
   ConfigPreviewResponse,
@@ -10,7 +11,6 @@ import type {
   ListTagsResponse,
   UpdateListRequest,
 } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 export function fetchLists(token: string | null): Promise<ListListResponse> {
   return apiRequest<ListListResponse>({ method: "GET", path: "/v1/lists", token });

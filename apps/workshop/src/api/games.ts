@@ -2,6 +2,7 @@
 // routes. Entirely separate from the Lists leaderboard wrappers in
 // `scores.ts`; nothing here touches `/v1/items` or `/v1/lists`.
 
+import { apiRequest } from "@workshop/api-client/api";
 import type {
   AddGameResponse,
   GameDiscoveryResponse,
@@ -17,7 +18,6 @@ import type {
 import type { ScoreSpec } from "@workshop/shared/scoreParsing";
 import type { SummarySpec } from "@workshop/shared/summarySpec";
 import { z } from "zod";
-import { apiRequest } from "../lib/api";
 
 const gameShareLinkResponseSchema = z.object({ token: z.string(), url: z.string() });
 

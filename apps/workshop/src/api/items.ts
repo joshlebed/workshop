@@ -1,3 +1,4 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type {
   BulkCreateItemsRequest,
   BulkCreateItemsResponse,
@@ -8,7 +9,6 @@ import type {
   UpdateItemRequest,
   UpdateItemTagsRequest,
 } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 export function fetchItems(listId: string, token: string | null): Promise<ListItemsResponse> {
   return apiRequest<ListItemsResponse>({

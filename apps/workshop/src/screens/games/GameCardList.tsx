@@ -5,6 +5,7 @@
 // via `useReorderableDrag()` (250ms, matched to the web TouchSensor delay).
 
 import type { MyGame } from "@workshop/shared/games";
+import { homeLayout } from "@workshop/ui";
 import * as Haptics from "expo-haptics";
 import { memo } from "react";
 import type { ListRenderItemInfo } from "react-native";
@@ -18,7 +19,6 @@ import {
 } from "react-native-reorderable-list";
 import { PullToRefresh } from "../../components/PullToRefresh";
 import { REORDER_AUTOSCROLL } from "../../lib/reorderAutoscroll";
-import { homeLayout } from "../../ui/index";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({

@@ -1,4 +1,4 @@
-import { ApiError } from "./api";
+import { ApiError } from "@workshop/api-client/api";
 
 export function isOfflineError(error: unknown): boolean {
   if (!error) return false;

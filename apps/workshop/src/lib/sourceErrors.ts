@@ -1,4 +1,4 @@
-import { apiErrorCode, errorMessage } from "./apiError";
+import { apiErrorCode, errorMessage } from "@workshop/api-client/apiError";
 
 /**
  * Two contexts where source errors surface, with subtly different copy.

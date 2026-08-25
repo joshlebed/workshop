@@ -1,11 +1,11 @@
+import { errorMessage } from "@workshop/api-client/api";
+import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { errorMessage } from "../../../src/lib/api";
 import { goBack } from "../../../src/lib/goBack";
 import { pickProfilePhoto } from "../../../src/lib/profilePhoto";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "../../../src/ui/index";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();

@@ -5,13 +5,13 @@
 // (optimistic apply, server-echo reconcile, rollback, picker state) lives here.
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
 import type { ScoreReactionSummary, SetScoreReactionResponse } from "@workshop/shared/games";
+import { useToast } from "@workshop/ui";
 import { useCallback, useState } from "react";
 import { removeScoreReaction, setScoreReaction } from "../api/games";
-import { errorMessage } from "../lib/api";
 import { haptics } from "../lib/haptics";
 import { applyViewerReaction, type ReactionChange } from "../lib/scoreReactions";
-import { useToast } from "../ui/index";
 
 export interface ReactionTarget {
   gameId: string;

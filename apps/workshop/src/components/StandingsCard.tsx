@@ -23,9 +23,9 @@
 // control's own action.
 
 import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
+import { Avatar, Text, tokens } from "@workshop/ui";
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
-import { Avatar, Text, tokens } from "../ui/index";
 import { ScoreReactions } from "./ScoreReactions";
 
 const TOP_N = 5;

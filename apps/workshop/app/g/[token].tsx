@@ -1,4 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { removeItem, setItem } from "@workshop/api-client/storage";
+import { Button, Card, Text, tokens } from "@workshop/ui";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
@@ -8,9 +11,6 @@ import { useAuth } from "../../src/hooks/useAuth";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 import { isInAppBrowser } from "../../src/lib/inAppBrowser";
 import { PENDING_GAME_SHARE_TOKEN_KEY } from "../../src/lib/inviteStash";
-import { queryKeys } from "../../src/lib/queryKeys";
-import { removeItem, setItem } from "../../src/lib/storage";
-import { Button, Card, Text, tokens } from "../../src/ui/index";
 
 /**
  * Deep-link landing for a play link (`/g/:token`, the Games-tab copy-scores

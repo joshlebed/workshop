@@ -1,5 +1,5 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type { LinkPreviewResponse } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 export function fetchLinkPreview(
   url: string,

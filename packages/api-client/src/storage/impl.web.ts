@@ -1,4 +1,4 @@
-// Web implementation — Metro picks `.web.ts` over `.ts` on the web build.
+// Web implementation — Metro picks `impl.web.ts` over `impl.ts` on the web build.
 
 function ls(): Storage | null {
   if (typeof window === "undefined") return null;

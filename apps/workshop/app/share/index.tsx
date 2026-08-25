@@ -1,4 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { Button, Screen, Text, tokens, useToast } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Updates from "expo-updates";
@@ -6,18 +9,15 @@ import { useMemo } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { addGame, fetchMyGames, upsertGameScore } from "../../src/api/games";
 import { useAuth } from "../../src/hooks/useAuth";
-import { errorMessage } from "../../src/lib/api";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 import { localDateKey } from "../../src/lib/gameDate";
 import { haptics } from "../../src/lib/haptics";
-import { queryKeys } from "../../src/lib/queryKeys";
 import {
   detectSharedScore,
   isResultlessShare,
   pickSuggestedGameTarget,
   type ShareGameTarget,
 } from "../../src/lib/shareScoreDetection";
-import { Button, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
 interface SharedPayload {
   url: string | null;

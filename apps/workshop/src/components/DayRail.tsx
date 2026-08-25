@@ -7,9 +7,9 @@
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
+import { Text, tokens } from "@workshop/ui";
 import { Pressable, ScrollView, StyleSheet } from "react-native";
 import { shiftDateKey } from "../lib/gameDate";
-import { Text, tokens } from "../ui/index";
 
 const DEFAULT_LENGTH = 7;
 

@@ -1,5 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
+import { Avatar, Button, EmptyState, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -15,17 +19,13 @@ import {
   unfriend,
 } from "../../src/api/friends";
 import { useAuth } from "../../src/hooks/useAuth";
-import { useLivePollingInterval } from "../../src/hooks/useLivePollingInterval";
-import { errorMessage } from "../../src/lib/api";
 import { userAvatarImageUrl } from "../../src/lib/avatar";
 import { confirm } from "../../src/lib/confirm";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 import { goBack } from "../../src/lib/goBack";
 import { haptics } from "../../src/lib/haptics";
-import { queryKeys } from "../../src/lib/queryKeys";
 import { formatRelative } from "../../src/lib/relativeTime";
 import { shareOrCopyLink } from "../../src/lib/share";
-import { Avatar, Button, EmptyState, Screen, Text, tokens, useToast } from "../../src/ui/index";
 
 /**
  * Friends screen (G2b, issue #286; directed requests + mutuals added with the

@@ -11,9 +11,9 @@
 // clones that child to inject `refreshControl` + always-bounce, so callers
 // don't have to repeat the props.
 
+import { tokens } from "@workshop/ui";
 import { cloneElement, isValidElement, type ReactElement } from "react";
 import { RefreshControl } from "react-native";
-import { tokens } from "../ui/index";
 
 export interface PullToRefreshProps {
   refreshing: boolean;

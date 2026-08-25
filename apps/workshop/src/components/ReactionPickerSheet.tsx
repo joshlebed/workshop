@@ -5,9 +5,9 @@
 // current emoji is highlighted and a Remove row is offered.
 
 import { isReactionEmoji, REACTION_QUICK_EMOJIS } from "@workshop/shared/games";
+import { Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
-import { Button, Sheet, Text, tokens } from "../ui/index";
 
 export interface ReactionPickerSheetProps {
   visible: boolean;

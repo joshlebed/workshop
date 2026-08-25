@@ -6,9 +6,9 @@
 // everyone.
 
 import type { SavedView } from "@workshop/shared";
+import { Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { Platform, ScrollView, StyleSheet, TextInput, View } from "react-native";
-import { Button, Chip, Sheet, Text, tokens } from "../../ui/index";
 
 interface SavedViewsBarProps {
   views: SavedView[];

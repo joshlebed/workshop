@@ -1,4 +1,4 @@
-import * as Clipboard from "expo-clipboard";
+import { copyToClipboard } from "@workshop/ui/clipboard";
 import { Platform, Share } from "react-native";
 
 const PROD_WEB_BASE_URL = "https://workshop-a2v.pages.dev";
@@ -33,30 +33,7 @@ export function buildListByIdUrl(listId: string): string {
   return `${readShareBase()}/list/${encodeURIComponent(listId)}`;
 }
 
-/**
- * Best-effort clipboard copy. Returns whether the write actually succeeded so
- * callers can show "Copied" vs. "Copy manually".
- */
-export async function copyToClipboard(text: string): Promise<boolean> {
-  if (Platform.OS === "web" && typeof navigator !== "undefined") {
-    const clip = navigator.clipboard;
-    if (clip && typeof clip.writeText === "function") {
-      try {
-        await clip.writeText(text);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  }
-  try {
-    await Clipboard.setStringAsync(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
+export { copyToClipboard };
 
 /**
  * Hand a share URL to the system share sheet on native, or copy it to the

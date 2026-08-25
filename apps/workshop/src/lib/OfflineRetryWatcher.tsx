@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@workshop/ui";
 import { useEffect } from "react";
-import { useToast } from "../ui/Toast";
 import { isOfflineError } from "./offline";
 
 // Subscribes to the MutationCache and surfaces a "Retry?" toast whenever a

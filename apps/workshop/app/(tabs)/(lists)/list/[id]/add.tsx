@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
 import type {
   BookResult,
   BookSearchResponse,
@@ -12,21 +14,6 @@ import type {
   MediaSearchType,
 } from "@workshop/shared";
 import { linkPreviewToItemContent } from "@workshop/shared/linkContent";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-native";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { createItem } from "../../../../../src/api/items";
-import { fetchLinkPreview } from "../../../../../src/api/linkPreview";
-import { fetchListDetail, fetchListTags } from "../../../../../src/api/lists";
-import { searchBooks, searchMedia } from "../../../../../src/api/search";
-import { useAuth } from "../../../../../src/hooks/useAuth";
-import { useDebouncedQuery } from "../../../../../src/hooks/useDebouncedQuery";
-import { ApiError } from "../../../../../src/lib/api";
-import { goBack } from "../../../../../src/lib/goBack";
-import { haptics } from "../../../../../src/lib/haptics";
-import { normalizeExternalUrl } from "../../../../../src/lib/openUrl";
-import { queryKeys } from "../../../../../src/lib/queryKeys";
 import {
   Button,
   Card,
@@ -37,7 +24,20 @@ import {
   Text,
   tokens,
   useToast,
-} from "../../../../../src/ui/index";
+} from "@workshop/ui";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { createItem } from "../../../../../src/api/items";
+import { fetchLinkPreview } from "../../../../../src/api/linkPreview";
+import { fetchListDetail, fetchListTags } from "../../../../../src/api/lists";
+import { searchBooks, searchMedia } from "../../../../../src/api/search";
+import { useAuth } from "../../../../../src/hooks/useAuth";
+import { useDebouncedQuery } from "../../../../../src/hooks/useDebouncedQuery";
+import { goBack } from "../../../../../src/lib/goBack";
+import { haptics } from "../../../../../src/lib/haptics";
+import { normalizeExternalUrl } from "../../../../../src/lib/openUrl";
 
 const SEARCH_KINDS: readonly ItemKind[] = ["movie", "tv", "book"];
 

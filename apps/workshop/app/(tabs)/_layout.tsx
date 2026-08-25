@@ -1,3 +1,4 @@
+import { tokens } from "@workshop/ui";
 import { Tabs, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Text as RNText } from "react-native";
@@ -7,7 +8,6 @@ import {
   homeTabForPathname,
   setPreferredHomeTab,
 } from "../../src/lib/navigationPreferences";
-import { tokens } from "../../src/ui/index";
 
 // Top-level Lists / Games switch (spec §4). The Lists tab is the existing
 // app — the whole pre-Games stack nests under the `(lists)` group, so every

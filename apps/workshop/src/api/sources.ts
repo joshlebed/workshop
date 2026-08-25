@@ -1,3 +1,4 @@
+import { apiRequest } from "@workshop/api-client/api";
 import type {
   CreateListSourceRequest,
   ListSource,
@@ -7,7 +8,6 @@ import type {
   SourcePreviewResponse,
   SyncSourceResponse,
 } from "@workshop/shared";
-import { apiRequest } from "../lib/api";
 
 export function fetchSources(listId: string, token: string | null): Promise<ListSourcesResponse> {
   return apiRequest<ListSourcesResponse>({

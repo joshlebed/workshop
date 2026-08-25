@@ -1,5 +1,5 @@
+import { tokens } from "@workshop/ui";
 import { Stack } from "expo-router";
-import { tokens } from "../../../src/ui/index";
 
 // Anchor the stack on home. When a route deep in this stack is reached without
 // an in-app history beneath it — a cold deep link, a Universal Link, or the

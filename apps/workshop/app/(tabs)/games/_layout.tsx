@@ -1,5 +1,5 @@
+import { tokens } from "@workshop/ui";
 import { Stack } from "expo-router";
-import { tokens } from "../../../src/ui/index";
 
 // The Games tab's stack (G1b): home (leaderboard cards) + per-game board.
 // Mirrors the (lists) group's navigator options — static `tokens` for the

@@ -1,21 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
+import { removeItem, setItem } from "@workshop/api-client/storage";
 import type { DiscoveryGame } from "@workshop/shared/games";
+import { Avatar, Button, Card, Text, tokens } from "@workshop/ui";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import { acceptFriendRequest, fetchFriendRequestPreview } from "../../../src/api/friends";
 import { addGame, fetchGameDiscovery } from "../../../src/api/games";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { errorMessage } from "../../../src/lib/api";
 import { userAvatarImageUrl } from "../../../src/lib/avatar";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 import { localDateKey } from "../../../src/lib/gameDate";
 import { haptics } from "../../../src/lib/haptics";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../../../src/lib/inviteStash";
-import { queryKeys } from "../../../src/lib/queryKeys";
-import { removeItem, setItem } from "../../../src/lib/storage";
 import { FriendGameSuggestions } from "../../../src/screens/games/FriendGameSuggestions";
-import { Avatar, Button, Card, Text, tokens } from "../../../src/ui/index";
 
 /**
  * Deep-link landing for a friend invite (`/friends/accept/:token`, minted by

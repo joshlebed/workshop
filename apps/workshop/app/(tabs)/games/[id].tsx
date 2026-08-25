@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
+import { Avatar, Button, EmptyState, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
@@ -24,7 +27,6 @@ import { ReactionPickerSheet } from "../../../src/components/ReactionPickerSheet
 import { ScoreReactions } from "../../../src/components/ScoreReactions";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { useScoreReactions } from "../../../src/hooks/useScoreReactions";
-import { errorMessage } from "../../../src/lib/api";
 import { userAvatarImageUrl } from "../../../src/lib/avatar";
 import { confirm } from "../../../src/lib/confirm";
 import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
@@ -32,10 +34,8 @@ import { formatGameDateLabel, localDateKey } from "../../../src/lib/gameDate";
 import { goBack } from "../../../src/lib/goBack";
 import { haptics } from "../../../src/lib/haptics";
 import { openExternalUrl } from "../../../src/lib/openUrl";
-import { queryKeys } from "../../../src/lib/queryKeys";
 import { formatRelative } from "../../../src/lib/relativeTime";
 import { summarizeGameScoreBody } from "../../../src/lib/scoresSummary";
-import { Avatar, Button, EmptyState, Screen, Text, tokens, useToast } from "../../../src/ui/index";
 
 /**
  * Per-game board (G1b) — history for one game in My Games. The home card

@@ -14,6 +14,7 @@
 // "refreshing" position. Same API shape as `PullToRefresh.tsx` so callers
 // share a single import.
 
+import { tokens } from "@workshop/ui";
 import {
   cloneElement,
   isValidElement,
@@ -30,7 +31,6 @@ import {
   StyleSheet,
   View,
 } from "react-native";
-import { tokens } from "../ui/index";
 
 const PULL_THRESHOLD = 70;
 const MAX_PULL = 120;

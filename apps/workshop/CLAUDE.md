@@ -189,8 +189,14 @@ rows.
 Metro resolves `.web.ts(x)` before `.ts(x)` on web and `.native.ts(x)` before `.ts(x)` on
 iOS. Add a `.web.ts(x)` (or `.native.ts(x)`) **beside** a file when a feature imports a
 platform-only module. Don't `Platform.OS === "web"` branch inside shared files — the
-extension is cleaner and Metro strips the unused variant. Reference: `src/lib/storage.ts`
-(`expo-secure-store`) + `src/lib/storage.web.ts` (`window.localStorage` shim).
+extension is cleaner and Metro strips the unused variant. Reference:
+`packages/api-client/src/storage/impl.ts` (`expo-secure-store`) +
+`packages/api-client/src/storage/impl.web.ts` (`window.localStorage` shim).
+
+Inside a workspace package this only works for **relative** imports: Metro resolves a package
+`exports` target with an exact file lookup and skips platform extensions entirely. So a
+platform-variant package export is a fixed shim — `src/storage/index.ts` doing
+`export * from "./impl"` — with `impl.ts` / `impl.web.ts` beside it.
 
 Web-compatible by default: `expo-router`, `expo-linking`, `expo-constants`,
 `expo-status-bar`, `expo-updates` (stub), `react-native-safe-area-context`,
@@ -411,7 +417,7 @@ new OG `<meta>` to `index.html`, mirror the selector into `OG_META_SELECTORS` in
 Before `prefers-color-scheme` hydrates, `useColorScheme()` is `null`. A naive
 `scheme === "dark" ? darkTokens : lightTokens` silently flips to light on first paint.
 Default to the baseline explicitly: `scheme === "light" ? lightTokens : darkTokens`.
-See `src/ui/ThemeProvider.tsx`.
+See `packages/ui/src/ThemeProvider.tsx`.
 
 ## Reanimated press feedback: wrap `Pressable`, don't replace it
 
@@ -429,7 +435,7 @@ non-interactable until you navigate away. Chain through Sheet's `onClosed` prop 
 Reference: the Games paste/teach flow in `src/screens/GamesHome.tsx` +
 `src/screens/listDetail/GameScorePasteSheet.tsx`.
 
-## Sheet keyboard handling is centralized in `src/ui/Sheet.tsx`
+## Sheet keyboard handling is centralized in `packages/ui/src/Sheet.tsx`
 
 Keep the backdrop close target as a sibling **behind** the sheet content, not a parent
 wrapping it; iOS can otherwise treat taps inside a keyboard-moved form as backdrop taps
@@ -441,14 +447,15 @@ footer.
 
 `babel-preset-expo` auto-wires it. Adding it to `babel.config.js` runs it twice.
 
-## For animated text, use `AnimatedText` from `src/ui/Text.tsx`
+## For animated text, use `AnimatedText` from `@workshop/ui`
 
 Raw `<Animated.Text>` strips our `variant`/`tone` props.
 
 ## Override `lineHeight` whenever you bump `fontSize` on the shared `<Text>`
 
 `Text` defaults to `variant="body"`, which carries a fixed `lineHeight: 22` (each variant
-sets its own line-height for vertical rhythm — see `variantStyle` in `src/ui/Text.tsx`).
+sets its own line-height for vertical rhythm — see `variantStyle` in
+`packages/ui/src/Text.tsx`).
 A local style that overrides only `fontSize` (e.g. a 34px wordmark) keeps the 22px line
 box, and **iOS clips the glyphs to that line box** (web/RN-Web doesn't — the overflow just
 renders, so this is invisible until you look on device). Always set a matching `lineHeight`
@@ -459,7 +466,7 @@ at fontSize 24/28/40 in a `body` (22) line box renders cut off and shifted low o
 (`ItemRow` `coverPlaceholderGlyph`, the item-detail hero, list settings/empty-state emoji all
 hit this). Pin a `lineHeight` on **every** emoji/glyph `<Text>` style (e.g. `24/28`, `40/48`).
 
-## Wrap top-level screens in `Screen` from `src/ui/Layout.tsx`
+## Wrap top-level screens in `Screen` from `@workshop/ui`
 
 No-op on native; on web it constrains content to a ~560px reading column. Without it,
 RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on
@@ -475,7 +482,7 @@ spreading. See `stripButtonRole` in `src/screens/listDetail/ItemList.web.tsx`.
 
 ## Real-time on web is `useLivePollingInterval` (15s, visibility-gated)
 
-No SSE/WS yet. Hook at `src/hooks/useLivePollingInterval.ts`; pass into queries via
+No SSE/WS yet. Hook at `@workshop/api-client/useLivePollingInterval`; pass into queries via
 `refetchInterval`. Returns `false` on native — `refetchOnWindowFocus` + AppState
 integration handles foreground refresh, and a background timer would be a battery tax.
 
@@ -502,6 +509,7 @@ bump. Full deploy-pipeline context: `docs/ios-deploy-pipeline.md`.
 ## Niteshift preview proxy strips CORS preflight auth
 
 The proxy (`https://ns-<port>-<id>.preview.niteshift.dev`) rejects unauthenticated
-OPTIONS preflights with `403`. `src/config.ts` works around this by deriving the API
+OPTIONS preflights with `403`. `packages/api-client/src/config.ts` works around this by
+deriving the API
 URL from `window.location` on web (localhost stays; `ns-<port>-<id>` rewrites to the
 matching `ns-8787-<id>` host). Keep that derivation in place or browsers can't sign in.

@@ -1,4 +1,4 @@
-import { getItem, setItem } from "./storage";
+import { getItem, setItem } from "@workshop/api-client/storage";
 
 export type HomeTab = "lists" | "games";
 

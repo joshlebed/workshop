@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 
-// Native (iOS) implementation. Web uses `storage.web.ts`.
+// Native (iOS) implementation. Web uses `impl.web.ts`.
 // Metro resolves `.web.ts(x)` before `.ts(x)` on web so this file is
 // iOS/Android-only at runtime.
 

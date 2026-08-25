@@ -1,5 +1,5 @@
+import { ApiError } from "@workshop/api-client/apiError";
 import { describe, expect, it } from "vitest";
-import { ApiError } from "./apiError";
 import { sourceErrorMessage } from "./sourceErrors";
 
 function apiErr(code: string): ApiError {

@@ -4,6 +4,8 @@ import {
   ThemeProvider as NavigationThemeProvider,
 } from "@react-navigation/native";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { getItem, removeItem } from "@workshop/api-client/storage";
+import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
@@ -22,9 +24,7 @@ import {
 } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
-import { getItem, removeItem } from "../src/lib/storage";
 import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
-import { Button, Text, ThemeProvider, ToastProvider, tokens } from "../src/ui/index";
 
 function useApplyOtaUpdatesOnArrival() {
   const { isUpdatePending } = Updates.useUpdates();

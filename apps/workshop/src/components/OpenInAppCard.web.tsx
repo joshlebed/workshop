@@ -26,9 +26,9 @@
 // inherit RN-Web's injected text font, so without this it renders in the UA
 // serif (Times). The value mirrors RN-Web's default `Text` stack exactly.
 
+import { Button, Card, Text, tokens } from "@workshop/ui";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
-import { Button, Card, Text, tokens } from "../ui/index";
 import type { OpenInAppCardProps } from "./OpenInAppCard";
 
 export type { OpenInAppCardProps } from "./OpenInAppCard";
