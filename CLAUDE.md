@@ -23,7 +23,7 @@ small products — first feature is **watchlist** (movie tracker). New features 
 ## Stack at a glance
 
 - **pnpm workspaces** (`apps/*`, `packages/*`), hoisted node_modules for Expo (see `.npmrc`).
-  Expo SDK 55, RN 0.83.6 — `npx expo install --check` before bumping mobile deps.
+  Expo SDK 55, RN 0.83.6 — `node scripts/check-expo-sdk-deps.mjs` before bumping mobile deps.
 - **Expo (React Native) + expo-router + TypeScript**. Bundle id `dev.josh.workshop`,
   EAS project `@joshlebed/workshop`.
 - **Hono on AWS Lambda + API Gateway HTTP API**, PostgreSQL on **Neon**, Drizzle ORM with
@@ -153,6 +153,18 @@ small products — first feature is **watchlist** (movie tracker). New features 
   Without a human ticking the box, a "should-be-required" check is silently optional. End the
   PR description with an "After merge" section telling the user exactly what to add and why.
 
+- **The RN/Expo SDK compatibility check is `scripts/check-expo-sdk-deps.mjs`, not
+  `expo install --check`.** `expo install --check` fetches Expo's well-known-versions
+  endpoint and merges it _over_ the installed `expo/bundledNativeModules.json`, preferring
+  the remote value. That endpoint tracks Expo's release cadence, so a commit that was green
+  at merge goes red weeks later with no repo change (SDK 55 bundles RN 0.83.6; the endpoint
+  now says 0.83.10). Our script compares installed versions against the bundled map that the
+  lockfile resolves — same verdict for a given commit, forever, and no network. Do **not**
+  "fix" a red check with `EXPO_OFFLINE=1`: `validateDependenciesVersionsAsync` returns early
+  in offline mode and validates nothing, so the guard silently disappears while still
+  printing a pass. The script also enforces that each declared range is a `semver` subset of
+  the SDK's range. Add new SDK-tracking natives to `PACKAGES` in the script; `react` and
+  `typescript` stay out on purpose (pinned above SDK-preferred).
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
   unless there's a specific reason (security fix, unblocking work).
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full errors:

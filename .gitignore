@@ -4,6 +4,8 @@ node_modules/
 
 # Build outputs
 dist/
+# `expo export` output from the CI Metro smoke, when run locally
+dist-ci/
 build/
 *.tsbuildinfo
 .next/
