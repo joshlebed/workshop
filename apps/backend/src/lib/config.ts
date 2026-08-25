@@ -1,16 +1,25 @@
 import { z } from "zod";
 
+/**
+ * Comma-separated env value → trimmed, de-duplicated, non-empty list.
+ *
+ * Every OAuth audience var is parsed through this. A single value with no
+ * comma yields a one-element list, so existing SSM/Terraform wiring behaves
+ * exactly as it did before multi-audience support landed. Appending a second
+ * audience is an ops-only change (`aws ssm put-parameter --overwrite`), no
+ * code or env var rename required — see docs/highscore-migration-plan.md.
+ */
 const csv = z
   .string()
   .optional()
-  .transform((v) =>
-    v
-      ? v
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [],
-  );
+  .transform((v) => {
+    if (!v) return [];
+    const parts = v
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return [...new Set(parts)];
+  });
 
 const configSchema = z.object({
   stage: z.enum(["local", "prod"]).default("local"),
@@ -19,12 +28,15 @@ const configSchema = z.object({
   awsRegion: z.string().default("us-east-1"),
   logLevel: z.enum(["debug", "info", "warn", "error"]).default("info"),
   // Apple Sign in audiences. iOS uses the bundle id; web uses the Services ID.
+  // Both are comma-separated lists so one backend can verify tokens from more
+  // than one client app (Workshop `dev.josh.workshop` + HighScore, etc.).
   // Either or both may be empty in local dev — Apple sign-in 501s until populated.
-  appleBundleId: z.string().optional().default(""),
-  appleServicesId: z.string().optional().default(""),
-  // Google OAuth client IDs. Same shape as Apple — iOS + web are separate audiences.
-  googleIosClientId: z.string().optional().default(""),
-  googleWebClientId: z.string().optional().default(""),
+  appleBundleIds: csv,
+  appleServicesIds: csv,
+  // Google OAuth client IDs. Same shape as Apple — iOS + web are separate
+  // audiences, each a comma-separated list.
+  googleIosClientIds: csv,
+  googleWebClientIds: csv,
   // Comma-separated extra audiences (e.g. additional web origins). Optional.
   appleExtraAudiences: csv,
   googleExtraAudiences: csv,
@@ -69,10 +81,10 @@ export function getConfig(): Config {
     sessionSecret: process.env.SESSION_SECRET,
     awsRegion: process.env.AWS_REGION,
     logLevel: process.env.LOG_LEVEL,
-    appleBundleId: process.env.APPLE_BUNDLE_ID,
-    appleServicesId: process.env.APPLE_SERVICES_ID,
-    googleIosClientId: process.env.GOOGLE_IOS_CLIENT_ID,
-    googleWebClientId: process.env.GOOGLE_WEB_CLIENT_ID,
+    appleBundleIds: process.env.APPLE_BUNDLE_ID,
+    appleServicesIds: process.env.APPLE_SERVICES_ID,
+    googleIosClientIds: process.env.GOOGLE_IOS_CLIENT_ID,
+    googleWebClientIds: process.env.GOOGLE_WEB_CLIENT_ID,
     appleExtraAudiences: process.env.APPLE_EXTRA_AUDIENCES,
     googleExtraAudiences: process.env.GOOGLE_EXTRA_AUDIENCES,
     tmdbApiKey: process.env.TMDB_API_KEY,
@@ -87,14 +99,21 @@ export function getConfig(): Config {
   return cached;
 }
 
+/**
+ * Every audience an Apple identity token may legitimately be issued for.
+ * Order is irrelevant — `jose` accepts a token whose `aud` matches any entry.
+ */
 export function appleAudiences(): string[] {
   const c = getConfig();
-  return [c.appleBundleId, c.appleServicesId, ...c.appleExtraAudiences].filter(Boolean);
+  return [...new Set([...c.appleBundleIds, ...c.appleServicesIds, ...c.appleExtraAudiences])];
 }
 
+/** Same as {@link appleAudiences}, for Google id_tokens. */
 export function googleAudiences(): string[] {
   const c = getConfig();
-  return [c.googleIosClientId, c.googleWebClientId, ...c.googleExtraAudiences].filter(Boolean);
+  return [
+    ...new Set([...c.googleIosClientIds, ...c.googleWebClientIds, ...c.googleExtraAudiences]),
+  ];
 }
 
 export function resetConfigForTesting() {

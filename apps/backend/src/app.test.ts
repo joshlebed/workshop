@@ -21,6 +21,25 @@ describe("isAllowedOrigin", () => {
     expect(isAllowedOrigin("https://abc123.workshop-a2v.pages.dev")).toBe(true);
   });
 
+  it("allows the HighScore production web origin", () => {
+    expect(isAllowedOrigin("https://highscore.live")).toBe(true);
+  });
+
+  it("allows HighScore Cloudflare Pages previews with or without a project suffix", () => {
+    expect(isAllowedOrigin("https://highscore.pages.dev")).toBe(true);
+    expect(isAllowedOrigin("https://highscore-a2v.pages.dev")).toBe(true);
+    expect(isAllowedOrigin("https://feature-x.highscore.pages.dev")).toBe(true);
+    expect(isAllowedOrigin("https://feature-x.highscore-a2v.pages.dev")).toBe(true);
+  });
+
+  it("rejects HighScore lookalike origins", () => {
+    expect(isAllowedOrigin("http://highscore.live")).toBe(false);
+    expect(isAllowedOrigin("https://highscore.live.evil.com")).toBe(false);
+    expect(isAllowedOrigin("https://evil-highscore.pages.dev")).toBe(false);
+    expect(isAllowedOrigin("https://highscore.pages.dev.evil.com")).toBe(false);
+    expect(isAllowedOrigin("https://x.highscore.live")).toBe(false);
+  });
+
   it("allows localhost dev origins", () => {
     expect(isAllowedOrigin("http://localhost:8081")).toBe(true);
     expect(isAllowedOrigin("http://localhost:8787")).toBe(true);

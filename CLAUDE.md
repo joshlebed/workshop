@@ -119,6 +119,15 @@ small products — first feature is **watchlist** (movie tracker). New features 
   distillation now goes through `summarizeGameScoreBody` (Games-only; `summarizeScoreBody` was
   removed); the shared `StandingsCard` + `DayRail` are Games-tab-only. `useReturnToPaste` /
   `GameScorePasteSheet` survive (the Games paste loop uses them, scope `"games"`).
+- **OAuth audiences are comma-separated lists.** `APPLE_BUNDLE_ID`, `APPLE_SERVICES_ID`,
+  `GOOGLE_IOS_CLIENT_ID`, and `GOOGLE_WEB_CLIENT_ID` each parse as a CSV list in
+  `apps/backend/src/lib/config.ts` (trimmed, de-duped, empties dropped), so one backend
+  verifies sign-in tokens from several client apps (Workshop + HighScore). A single value
+  with no comma behaves exactly as it always did. Env var names, Terraform vars, and SSM
+  param names are unchanged — adding an audience is `aws ssm put-parameter --overwrite`
+  plus a Lambda env refresh, not a code change. Apple's `sub` is stable per developer
+  team, so the same Apple ID lands on the same `user_identities` row from either app.
+
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:

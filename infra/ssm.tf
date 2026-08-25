@@ -25,6 +25,12 @@ resource "aws_ssm_parameter" "db_url" {
 # ignore_changes on `value` lets ops rotate the secret via the CLI/Console
 # without Terraform reverting it back to the tfvars default.
 
+# The four OAuth audience params below hold a COMMA-SEPARATED LIST of accepted
+# `aud` values (one entry per client app). The backend parses them in
+# `apps/backend/src/lib/config.ts`; a single value with no comma is unchanged
+# behavior. Appending a HighScore audience is an ops-only `put-parameter
+# --overwrite` (migration plan OP-6) — no Terraform change needed, since
+# `ignore_changes = [value]` keeps the ops-set value.
 resource "aws_ssm_parameter" "apple_bundle_id" {
   name  = "/${local.prefix}/apple_bundle_id"
   type  = "SecureString"
