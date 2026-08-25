@@ -1,21 +1,19 @@
 name: Verify Pages Deploy
 
-# Production web (workshop-a2v.pages.dev) is deployed by Cloudflare Pages'
-# native Git integration — Pages project `workshop`, source.type=github,
-# production_branch=main, deployments_enabled=true. That build runs
-#   pnpm install --frozen-lockfile && pnpm --filter workshop-app exec expo export --platform web
-# (output apps/workshop/dist) and picks up the `functions/` Pages Functions
-# automatically — i.e. it already does everything `wrangler pages deploy`
-# would. CF also posts its build result back to the commit as the
-# "Cloudflare Pages" check (app: cloudflare-workers-and-pages), so a failed
-# build is visible on the PR/commit — not silent.
+# Production web is deployed by two Cloudflare Pages native Git integrations:
+# `workshop` builds apps/workshop with the repo-root functions/, while
+# `highscore` uses root_dir=apps/highscore and that app's functions/. Both
+# projects build main and post separate check runs (app:
+# cloudflare-workers-and-pages) back to the pushed commit, so a failed build
+# is visible on the PR/commit — not silent.
 #
 # This workflow therefore does NOT deploy. It waits for CF's deploy of the
-# pushed commit to finish, then verifies the *runtime* behaviour CF's
-# "build succeeded" status can't: that production still serves a raster OG
-# image and a valid AASA document. That's the regression class that bit us
-# before (a build succeeded but served an SVG og:image / dropped the AASA
-# dotfile route, with zero signal until someone noticed in the wild).
+# pushed commit to finish in both projects, then verifies the *runtime*
+# behaviour CF's "build succeeded" status can't: that both production domains
+# still serve a raster OG image and the expected AASA document. That's the
+# regression class that bit us before (a build succeeded but served an SVG
+# og:image / dropped the AASA dotfile route, with zero signal until someone
+# noticed in the wild).
 #
 # History: this used to run `wrangler pages deploy` from CI as a *second*
 # deployer. It was redundant with the Git integration above and failed on
@@ -32,10 +30,12 @@ on:
     branches: [main]
     paths:
       - "apps/workshop/**"
-      - "packages/shared/**"
+      - "apps/highscore/**"
+      - "packages/**"
       - "functions/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "scripts/check-og.mjs"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -64,79 +64,138 @@ jobs:
       - name: Wait for Cloudflare Pages deploy
         run: |
           set -euo pipefail
-          echo "Waiting for the Cloudflare Pages build of ${SHA} ..."
-          status=""; conclusion=""
+          PROJECTS=(workshop highscore)
+          declare -A STATUS_BY_PROJECT=(
+            [workshop]="missing"
+            [highscore]="missing"
+          )
+          declare -A CONCLUSION_BY_PROJECT=(
+            [workshop]=""
+            [highscore]=""
+          )
+
+          echo "Waiting for both Cloudflare Pages builds of ${SHA} ..."
           for i in $(seq 1 60); do
-            run="$(gh api "repos/${REPO}/commits/${SHA}/check-runs" \
-              --jq '[.check_runs[] | select(.app.slug=="cloudflare-workers-and-pages")] | sort_by(.completed_at // .started_at) | last' 2>/dev/null || true)"
-            [ -z "$run" ] && run='{}'
-            status="$(echo "$run" | jq -r '.status // "missing"')"
-            conclusion="$(echo "$run" | jq -r '.conclusion // ""')"
-            echo "attempt $i: status=$status conclusion=$conclusion"
-            if [ "$status" = "completed" ]; then
-              if [ "$conclusion" = "success" ]; then
-                echo "✓ Cloudflare Pages build succeeded"
-                exit 0
+            runs="$(gh api "repos/${REPO}/commits/${SHA}/check-runs?per_page=100" 2>/dev/null || true)"
+            [ -z "$runs" ] && runs='{"check_runs":[]}'
+            all_succeeded=1
+
+            for project in "${PROJECTS[@]}"; do
+              run="$(jq -c --arg project "$project" '
+                [.check_runs[]
+                  | select(.app.slug == "cloudflare-workers-and-pages")
+                  | select((.details_url // "") | contains("/pages/view/" + $project + "/"))]
+                | sort_by(.id)
+                | last // {}
+              ' <<<"$runs")"
+              status="$(jq -r '.status // "missing"' <<<"$run")"
+              conclusion="$(jq -r '.conclusion // ""' <<<"$run")"
+              STATUS_BY_PROJECT["$project"]="$status"
+              CONCLUSION_BY_PROJECT["$project"]="$conclusion"
+              echo "attempt $i: project=$project status=$status conclusion=$conclusion"
+
+              if [ "$status" != "completed" ]; then
+                all_succeeded=0
+                continue
               fi
-              echo "✗ Cloudflare Pages build concluded '$conclusion'"
-              echo "$run" | jq -r '"  details: " + (.details_url // "n/a")'
-              exit 1
+
+              if [ "$conclusion" != "success" ]; then
+                echo "✗ Cloudflare Pages project '$project' concluded '$conclusion'"
+                jq -r '"  details: " + (.details_url // "n/a")' <<<"$run"
+                exit 1
+              fi
+            done
+
+            if [ "$all_succeeded" -eq 1 ]; then
+              echo "✓ Both Cloudflare Pages builds succeeded"
+              exit 0
             fi
             sleep 10
           done
-          echo "✗ Timed out waiting for the Cloudflare Pages build of ${SHA}"
-          echo "  (last seen status=$status conclusion=$conclusion)"
-          echo "  Is the Pages Git integration still connected? dash.cloudflare.com → Pages → workshop"
+          echo "✗ Timed out waiting for both Cloudflare Pages builds of ${SHA}"
+          for project in "${PROJECTS[@]}"; do
+            echo "  $project: status=${STATUS_BY_PROJECT[$project]} conclusion=${CONCLUSION_BY_PROJECT[$project]}"
+          done
+          echo "  Are both Pages Git integrations still connected? dash.cloudflare.com → Pages"
           exit 1
+
+      - name: Checkout validator
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Verify production OG endpoint serves PNG
         run: |
           set -euo pipefail
-          URL="https://workshop-a2v.pages.dev/og/l/_smoke_check_slug.png"
-          # Assert the actual PNG magic bytes (89 50 4E 47 0D 0A 1A 0A), not just
-          # the content-type header — the regression we guard against was an SVG
-          # served with an image content-type. `od`/`head` beat `file` for
-          # portability. Short retry only to ride out CF edge-cache propagation.
-          PNG_SIG="89504e470d0a1a0a"
-          CT=""; SIG=""
-          for i in 1 2 3 4 5 6; do
-            CT="$(curl -sS -o /tmp/og.bin -w '%{content_type}' "$URL" || true)"
-            SIG="$(head -c8 /tmp/og.bin | od -An -tx1 | tr -d ' \n' || true)"
-            if [[ "$CT" == image/png* ]] && [[ "$SIG" == "$PNG_SIG" ]]; then
-              echo "✓ OG endpoint returns a real PNG ($CT)"
-              break
-            fi
-            echo "retry $i: ct=$CT sig=$SIG"
-            sleep 5
-          done
-          if [[ "$CT" != image/png* ]] || [[ "$SIG" != "$PNG_SIG" ]]; then
-            echo "✗ OG endpoint did not return a PNG after retries"
-            echo "  content-type: $CT"
-            echo "  first 8 bytes: $SIG (want $PNG_SIG)"
-            exit 1
-          fi
+          URLS=(
+            "https://workshop-a2v.pages.dev/"
+            "https://highscore.live/"
+          )
 
-      # AASA must be served with `Content-Type: application/json` and parse as
-      # valid JSON, or iOS silently rejects Universal Links. CF Pages routes
+          for url in "${URLS[@]}"; do
+            succeeded=0
+            for i in 1 2 3 4 5 6; do
+              if node scripts/check-og.mjs "$url"; then
+                succeeded=1
+                break
+              fi
+              echo "retry $i: $url"
+              sleep 5
+            done
+            if [ "$succeeded" -eq 1 ]; then
+              echo "✓ OG metadata and raster image verified for $url"
+            else
+              echo "✗ OG verification failed after retries for $url"
+              exit 1
+            fi
+          done
+
+      # AASA must be served with `Content-Type: application/json`, parse as
+      # valid JSON, and name the expected appID, or iOS silently rejects
+      # Universal Links. CF Pages routes each project's
       # functions/.well-known/apple-app-site-association.ts to
       # /.well-known/apple-app-site-association — verify the dotfile directory
-      # wasn't dropped by the function bundler.
+      # wasn't dropped by either function bundler.
       - name: Verify production AASA endpoint
         run: |
           set -euo pipefail
-          URL="https://workshop-a2v.pages.dev/.well-known/apple-app-site-association"
-          CT=""
-          for i in 1 2 3 4 5 6; do
-            CT="$(curl -sS -o /tmp/aasa.json -w '%{content_type}' "$URL" || true)"
-            if [[ "$CT" == application/json* ]] && jq -e '.applinks.details[0].appIDs[0]' /tmp/aasa.json >/dev/null 2>&1; then
-              APP_ID="$(jq -r '.applinks.details[0].appIDs[0]' /tmp/aasa.json)"
-              echo "✓ AASA serves valid JSON for appID $APP_ID"
-              exit 0
+          DOMAINS=(
+            "workshop-a2v.pages.dev"
+            "highscore.live"
+          )
+          APP_IDS=(
+            "Q65U6C65ZZ.dev.josh.workshop"
+            "Q65U6C65ZZ.live.highscore.app"
+          )
+
+          for index in "${!DOMAINS[@]}"; do
+            domain="${DOMAINS[$index]}"
+            expected_app_id="${APP_IDS[$index]}"
+            url="https://${domain}/.well-known/apple-app-site-association"
+            aasa_file="/tmp/aasa-${index}.json"
+            content_type=""
+            succeeded=0
+
+            for i in 1 2 3 4 5 6; do
+              : > "$aasa_file"
+              content_type="$(curl -sS -o "$aasa_file" -w '%{content_type}' "$url" || true)"
+              if [[ "$content_type" == application/json* ]] && \
+                jq -e --arg expected "$expected_app_id" \
+                  '.applinks.details[0].appIDs[0] == $expected' \
+                  "$aasa_file" >/dev/null 2>&1; then
+                echo "✓ AASA serves valid JSON for appID $expected_app_id on $domain"
+                succeeded=1
+                break
+              fi
+              echo "retry $i: domain=$domain ct=$content_type body=$(head -c200 "$aasa_file")"
+              sleep 5
+            done
+
+            if [ "$succeeded" -eq 1 ]; then
+              continue
             fi
-            echo "retry $i: ct=$CT body=$(head -c200 /tmp/aasa.json)"
-            sleep 5
+
+            echo "✗ AASA endpoint failed verification after retries for $domain"
+            echo "  expected appID: $expected_app_id"
+            echo "  content-type:   $content_type"
+            echo "  body:           $(head -c500 "$aasa_file")"
+            exit 1
           done
-          echo "✗ AASA endpoint did not serve valid JSON after retries"
-          echo "  content-type: $CT"
-          echo "  body:         $(head -c500 /tmp/aasa.json)"
-          exit 1
