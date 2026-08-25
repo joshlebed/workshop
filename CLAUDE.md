@@ -17,8 +17,12 @@ delete what's no longer true.
 
 ## What this repo is
 
-Personal monorepo. iOS app (`apps/workshop`, published as **Workshop.dev**) is an umbrella for
-small products — first feature is **watchlist** (movie tracker). New features land as routes.
+Personal monorepo. Two Expo apps on one backend: `apps/workshop` (published as
+**Workshop.dev**) is an umbrella for small products — lists, watchlist, sharing, friends —
+and `apps/highscore` (**HighScore**, `highscore.live`) owns daily games. Both build web + iOS
+from one component tree; shared code lives in `packages/*`. `apps/highscore` is a **scaffold**
+today (sign-in + placeholder home); the Games surfaces move over in PR-4. See
+`docs/highscore-migration-plan.md`.
 
 ## Stack at a glance
 
@@ -157,6 +161,17 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `gh pr view <PR> --json state` — armed ≠ merged. Updating the required-check list is a
   GitHub admin action (Settings → Branches); keep the bullets above in sync.
 
+- **CI still only guards `apps/workshop`.** `Mobile Metro bundle` is path-filtered to
+  `apps/workshop/**` / `packages/shared/**` / `pnpm-lock.yaml` and bundles Workshop only;
+  `runtime-version-guard.yml` and `ios-capabilities-guard.yml` read `apps/workshop/app.json`
+  exclusively; `scripts/check-expo-sdk-deps.mjs` hardcodes `apps/workshop`. So a change that
+  touches **only** `apps/highscore/**` gets no Metro bundle, no runtime-version bump check,
+  and no capability-diff comment. Until PR-5 matrixes them, bundle HighScore by hand before
+  merging anything native-adjacent:
+  `cd apps/highscore && pnpm exec expo export --platform ios --output-dir dist-ci`. Note that
+  a lockfile change still fires the Workshop-scoped jobs, so adding a HighScore dep is
+  checked against Workshop, not HighScore.
+
 - **If your PR adds a new CI check that should block merge, flag it in the PR description.**
   Agents can't toggle branch protection (the Niteshift GH App token 403s on that endpoint).
   Without a human ticking the box, a "should-be-required" check is silently optional. End the
@@ -281,6 +296,14 @@ small products — first feature is **watchlist** (movie tracker). New features 
   `refetchInterval`.
   Returns `false` on native — `refetchOnWindowFocus` + AppState integration handles foreground
   refresh, and a background timer would be a battery tax.
+- **Never write a route literal inside `packages/ui` / `packages/api-client`.** expo-router's
+  `typedRoutes` generates `Href` per app from _that app's_ route tree, so `router.navigate("/games")`
+  in a shared module typechecks under Workshop and fails under HighScore (`TS2345: Argument of
+type '"/games"' is not assignable…`). It only reproduces after `.expo/types/router.d.ts` has
+  been generated for the second app — i.e. after you've run its dev server once — so CI (where
+  the file is gitignored and absent) will not catch it. Take the destination as a prop, or cast
+  through `Href` with a comment. See `InlineTabSwitch` in `packages/ui/src/Layout.tsx`.
+
 - **Wrap top-level screens in `Screen` from `@workshop/ui`** when adding a new route.
   No-op on native; on web it constrains content to a ~560px reading column. Without it,
   RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on web.
@@ -540,15 +563,19 @@ pnpm dev   # first run creates apps/backend/.env, migrates the local DB
 ### Running it
 
 ```bash
-pnpm dev          # postgres (docker) + backend (:8787) + web app (:8081)
-pnpm dev:backend  # backend only
-pnpm dev:mobile   # iOS/Expo Go — separate terminal (QR/keybinds)
+pnpm dev              # postgres (docker) + backend (:8787) + workshop web (:8081)
+HIGHSCORE=1 pnpm dev  # …plus the HighScore web app on :8082
+pnpm dev:backend      # backend only
+pnpm dev:mobile       # Workshop iOS/Expo Go — separate terminal (QR/keybinds)
+pnpm dev:highscore    # HighScore web only (:8082), against a running backend
 ```
 
 `pnpm dev` runs `scripts/dev.sh`: starts `workshop-pg` postgres, seeds `apps/backend/.env`
 on first run (generates `SESSION_SECRET`), applies migrations, runs dev seed, then
 `concurrently` runs backend + `expo start --web` with `[backend]`/`[web]` prefixes. Ctrl-C
-stops both. `app.json` points `apiUrl` at `http://localhost:8787`; backend CORS allowlist already includes `http://localhost:8081`.
+stops both. `app.json` points `apiUrl` at `http://localhost:8787`; the backend CORS allowlist
+includes `http://localhost:8081` (Workshop) and `http://localhost:8082` (HighScore).
+`HIGHSCORE=1` is opt-in so the common Workshop loop doesn't pay for a third Metro server.
 
 ### Database in the Niteshift sandbox
 
@@ -644,6 +671,7 @@ This is where the iOS Safari URL-bar/home-indicator tint (`<meta name="theme-col
 
 - `apps/backend/CLAUDE.md` — Hono + Drizzle patterns, Lambda bundling
 - `apps/workshop/README.md` — Expo app structure
+- `apps/highscore/README.md` — HighScore app structure + local dev
 - `infra/README.md` — Terraform layout
 
 ## Share-link Open Graph previews

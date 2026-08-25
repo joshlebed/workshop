@@ -46,6 +46,10 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "http://localhost:8081",
   "http://localhost:8787",
   "http://127.0.0.1:8081",
+  // HighScore's Expo web dev server (`pnpm dev:highscore` / `HIGHSCORE=1 pnpm dev`).
+  // Workshop's runs on :8081; the two coexist so both apps can point at one backend.
+  "http://localhost:8082",
+  "http://127.0.0.1:8082",
 ]);
 
 // Cloudflare Pages gives each project a `<project>.pages.dev` apex plus a

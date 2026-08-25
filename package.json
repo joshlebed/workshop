@@ -18,6 +18,8 @@
     "knip": "knip",
     "dev:backend": "pnpm --filter @workshop/backend dev",
     "dev:mobile": "pnpm --filter workshop-app start",
+    "dev:highscore": "pnpm --filter highscore-app web",
+    "dev:highscore:mobile": "pnpm --filter highscore-app start",
     "dev": "./scripts/dev.sh",
     "e2e": "./scripts/e2e.sh",
     "e2e:ui": "playwright test --ui",

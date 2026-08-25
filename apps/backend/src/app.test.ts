@@ -44,6 +44,9 @@ describe("isAllowedOrigin", () => {
     expect(isAllowedOrigin("http://localhost:8081")).toBe(true);
     expect(isAllowedOrigin("http://localhost:8787")).toBe(true);
     expect(isAllowedOrigin("http://127.0.0.1:8081")).toBe(true);
+    // HighScore's Expo web dev server.
+    expect(isAllowedOrigin("http://localhost:8082")).toBe(true);
+    expect(isAllowedOrigin("http://127.0.0.1:8082")).toBe(true);
   });
 
   it("rejects arbitrary attacker origins", () => {

@@ -1,11 +1,20 @@
 # workshop
 
-Josh's personal monorepo for apps, scripts, and experiments. The first product is an
-iOS + web app called **Workshop.dev** (`apps/workshop`) — an umbrella for small
-products (currently lists, scores, leaderboards).
+Josh's personal monorepo for apps, scripts, and experiments. Two products, one backend
+and one user account:
 
-- **Mobile + web**: Expo (React Native, TypeScript) — `apps/workshop`
+- **Workshop.dev** (`apps/workshop`) — an umbrella for small products: lists, watchlist,
+  sharing, friends.
+- **HighScore** (`apps/highscore`, `highscore.live`) — daily games. Currently a scaffold
+  (sign-in + placeholder home); the Games surfaces move over from Workshop next. See
+  [`docs/highscore-migration-plan.md`](docs/highscore-migration-plan.md).
+
+Both build iOS + web from one component tree. Sign in with the same Apple ID on either and
+you get the same account.
+
+- **Mobile + web**: Expo (React Native, TypeScript) — `apps/workshop`, `apps/highscore`
 - **Backend**: Hono on AWS Lambda + PostgreSQL on Neon — `apps/backend`
+- **Shared client code**: `packages/ui` (design system), `packages/api-client` (API + session)
 - **Shared types**: `packages/shared`
 - **Cloudflare Pages Functions**: OG previews, AASA — `functions/`
 - **Infra**: Terraform on AWS, state in HCP Terraform — `infra/`
@@ -16,10 +25,11 @@ products (currently lists, scores, leaderboards).
 
 ```bash
 pnpm install
-pnpm dev    # postgres (docker) + backend (:8787) + web (:8081)
+pnpm dev                # postgres (docker) + backend (:8787) + workshop web (:8081)
+HIGHSCORE=1 pnpm dev    # …plus the HighScore web app on :8082
 ```
 
-Open <http://localhost:8081>. Web is the primary dev surface — fast iteration,
+Open <http://localhost:8081> (or <http://localhost:8082> for HighScore). Web is the primary dev surface — fast iteration,
 agent-browser can drive the real UI. The web app auto-signs in as a seeded dev user
 (`joshlebed@gmail.com`) with sample lists already populated, so it opens lived-in.
 
@@ -28,6 +38,7 @@ next to streaming backend logs):
 
 ```bash
 EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter workshop-app start
+EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter highscore-app start
 ```
 
 Scan the QR with Expo Go on a real phone, or press `i` for the iOS simulator.

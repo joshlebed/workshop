@@ -1,0 +1,52 @@
+{
+  "name": "highscore-app",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "web": "expo start --web --port 8082",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prebuild": "expo prebuild",
+    "eas:build:ios": "eas build --platform ios --profile production --non-interactive",
+    "eas:submit:ios": "eas submit --platform ios --latest --non-interactive"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~55.0.11",
+    "@tanstack/react-query": "^5.100.1",
+    "@workshop/api-client": "workspace:*",
+    "@workshop/shared": "workspace:*",
+    "@workshop/ui": "workspace:*",
+    "expo": "55.0.24",
+    "expo-apple-authentication": "~55.0.13",
+    "expo-auth-session": "~55.0.16",
+    "expo-constants": "55.0.16",
+    "expo-crypto": "~55.0.15",
+    "expo-router": "55.0.14",
+    "expo-secure-store": "55.0.14",
+    "expo-status-bar": "55.0.6",
+    "expo-system-ui": "55.0.18",
+    "expo-updates": "55.0.22",
+    "expo-web-browser": "~55.0.16",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.83.6",
+    "react-native-gesture-handler": "~2.30.1",
+    "react-native-keyboard-controller": "1.20.7",
+    "react-native-reanimated": "4.2.1",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
+    "react-native-web": "^0.21.2",
+    "react-native-worklets": "0.7.4"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.0",
+    "@types/react": "19.2.14",
+    "babel-preset-expo": "55.0.18",
+    "eas-cli": "18.8.1",
+    "typescript": "5.9.3",
+    "vitest": "2.1.9"
+  }
+}
