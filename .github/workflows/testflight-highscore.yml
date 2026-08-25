@@ -1,0 +1,519 @@
+name: HighScore TestFlight (native iOS build)
+
+# Runs on main. @expo/fingerprint hashes everything that affects the native
+# binary (native deps, config plugins, app.json, assets wired up as icons/
+# splash, etc.). If the hash differs from the last successful build, this
+# enqueues an EAS build and **waits** for it to finish before writing the
+# fingerprint tag — i.e. the tag now records what actually shipped, not
+# what got accepted into the queue.
+#
+#   fingerprint  →  build (await success) + auto-submit  →  tag
+#
+# Trade-off vs the old fire-and-forget model: ~30 min of GH Actions
+# runner-time per native build (vs ~1 min for `--no-wait`). On a personal
+# project we ship ~5 native builds/month, so the cost is ~150 GH Actions
+# minutes/month — well under the 2000-min free-tier ceiling. In exchange:
+#   - EAS build failures (signing drift, runtime-version mismatch, infra
+#     5xx) surface as red CI rather than silent green + a stalled
+#     TestFlight pipeline.
+#   - The fingerprint tag is only written on a real green build, so a
+#     subsequent push with the same fingerprint correctly skips instead of
+#     re-trying a known-failed enqueue.
+#
+# Recovery when something gets stuck:
+#
+#   git tag -d hs-ios-fp-<hash> && git push origin :refs/tags/hs-ios-fp-<hash>
+#   gh workflow run testflight-highscore.yml --ref main --field force=true
+#
+# The runtime-version policy is `appVersion` (see app.json) — not
+# `fingerprint`. This is deliberate: `@expo/fingerprint` produces different
+# hashes on the Linux GH Actions runner vs the macOS EAS Build worker (the
+# node_modules contents of several native packages — async-storage,
+# reanimated, screens, safe-area-context, worklets — diverge between
+# platforms because of postinstall artifacts, and the EAS-side prebuild
+# adds an `ios/` dir the Linux fingerprint never sees). With fingerprint
+# policy that mismatch killed every EAS build for ~24h because the
+# `Configure expo-updates` step rejects builds whose pre-submit runtime
+# version disagrees with the post-prebuild one. `appVersion` policy is
+# deterministic across OSes — the runtime version is just the `version`
+# field in app.json — and `eas update --auto` produces the same value, so
+# OTAs always target a runtime version that some real TestFlight build
+# actually has. Bump `version` in app.json when you add a native module so
+# OTAs aren't shipped to old installs that lack the new native code.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/highscore/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/testflight-highscore.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even if fingerprint is unchanged"
+        required: false
+        default: "false"
+        type: choice
+        options: ["true", "false"]
+  # Monthly canary build. Personal-project cadence is ~5 native builds/month;
+  # on a quiet month it's zero. A canary forces a real EAS build (~1 build
+  # minute) so credential rot — cert expiry, ASC key role downgrade, EAS
+  # signing-bot infra drift — surfaces as a triaged GH issue *before* a real
+  # feature deploy needs the pipeline working. 1st of the month, 14:00 UTC
+  # (an hour after the Monday infra-drift sweep). The notify job opens an
+  # `infra-drift` GH issue on canary failure in addition to the Discord ping.
+  schedule:
+    - cron: "0 14 1 * *"
+
+# HighScore builds have their own workflow-level queue so they never block or
+# cancel Workshop builds. Once EAS work starts, a newer push must not orphan it.
+concurrency:
+  group: testflight-highscore
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push fingerprint tag after successful build
+  issues: write # open infra-drift issue on canary failure
+
+# Pin eas-cli to a known-good version so EAS releases don't silently change
+# the JSON schema of `eas build --json` (which the build job parses) or the
+# behaviour of `--non-interactive`. Bump deliberately.
+env:
+  EAS_CLI_VERSION: "18.8.1"
+
+jobs:
+  fingerprint:
+    name: Check fingerprint
+    runs-on: ubuntu-latest
+    # Hard cap: a fingerprint job that hasn't completed in 4 minutes is
+    # almost certainly stuck (Expo registry / pnpm install hang). Kill it
+    # rather than letting it block enqueues for 10 minutes.
+    timeout-minutes: 4
+    outputs:
+      hash: ${{ steps.fp.outputs.hash }}
+      build_needed: ${{ steps.decide.outputs.build_needed }}
+      is_canary: ${{ steps.decide.outputs.is_canary }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0 # need tags for the compare
+
+      - uses: ./.github/actions/setup-pnpm
+
+      # The fingerprint is just a CI idempotency key — "have I already
+      # shipped a build for this exact native shape?". It is NOT the
+      # runtime version baked into the build artifact (that's `appVersion`
+      # from app.json). So the Linux-vs-macOS hash drift that breaks the
+      # `fingerprint` runtime-version policy doesn't matter here: we only
+      # compare Linux hash to Linux hash via the tag.
+      - name: Compute iOS fingerprint
+        id: fp
+        working-directory: apps/highscore
+        run: |
+          HASH=$(node -e "require('@expo/fingerprint').createProjectHashAsync('.').then(h => process.stdout.write(h))")
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          echo "iOS fingerprint: $HASH"
+
+      - name: Decide whether to build
+        id: decide
+        env:
+          FP_HASH: ${{ steps.fp.outputs.hash }}
+          FORCE: ${{ inputs.force }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          TAG="hs-ios-fp-$FP_HASH"
+          # Scheduled runs are the monthly canary — always build to exercise
+          # the full credential path.
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            echo "Scheduled canary — forcing build"
+            echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            echo "is_canary=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟢 Canary build"
+              echo ""
+              echo "**Reason**: monthly scheduled canary exercising the credential / EAS / TestFlight path."
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$FORCE" = "true" ]; then
+            echo "Force build requested"
+            echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟢 Build needed"
+              echo ""
+              echo "**Reason**: \`force=true\` workflow_dispatch input."
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          elif git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Fingerprint already built ($TAG) — skipping"
+            echo "build_needed=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟡 Skipped — no native change"
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+              echo ""
+              echo "Already built (tag \`$TAG\` exists). Did not consume an EAS Build minute."
+              echo "OTA changes ship via \`Deploy Mobile (OTA)\` instead. Force a rebuild via"
+              echo "\`gh workflow run testflight-highscore.yml --ref main --field force=true\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "New fingerprint — build needed"
+            echo "build_needed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟢 Build needed"
+              echo ""
+              echo "**Reason**: new iOS fingerprint."
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build:
+    name: Build + submit (await EAS)
+    needs: fingerprint
+    if: needs.fingerprint.outputs.build_needed == 'true'
+    runs-on: ubuntu-latest
+    # EAS iOS builds are ~25–30 min wall-clock plus a few minutes for
+    # auto-submit. 60 min gives slack for slow EAS queues / submit
+    # contention without burning runner time on a wedged build.
+    timeout-minutes: 60
+    outputs:
+      failure_reason: ${{ steps.diagnose.outputs.reason }}
+      failure_fix: ${{ steps.diagnose.outputs.fix }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      # `eas build` runs the actual build remotely on EAS infra, but the
+      # _local_ eas-cli still has to read `app.json` via `npx expo config
+      # --json` and resolve config plugins (`expo-router`, ...) against this
+      # repo's `node_modules`. Without an install the resolve fails with
+      # `Failed to resolve plugin for module "expo-router"` and the enqueue
+      # never happens. PR #97 dropped this install thinking it was unused;
+      # it's not — every TestFlight run since has been red. Cache hit is
+      # ~10s, miss is ~30s.
+      - uses: ./.github/actions/setup-pnpm
+
+      # Write the App Store Connect API key to disk so eas-cli can
+      # authenticate with Apple non-interactively. Required whenever a
+      # build needs to create or rotate credentials — most commonly the
+      # FIRST build of a new bundle id (share extension, widget, push
+      # extension target). Without this, eas-cli falls through to
+      # interactive Apple-ID prompts and fails the build at
+      # `Distribution Certificate is not validated for non-interactive
+      # builds` / `Credentials are not set up. Run this command again in
+      # interactive mode`. The .p8 lives in `runner.temp` so it's wiped
+      # at job teardown.
+      #
+      # Provisioning the secrets is a one-time human step (Apple won't
+      # mint an ASC API key without an interactive Apple-ID session).
+      # See `docs/manual-setup.md` §5 for the website-only flow.
+      - name: Write ASC API key
+        env:
+          ASC_API_KEY_CONTENT: ${{ secrets.ASC_API_KEY_CONTENT }}
+          ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+        run: |
+          set -euo pipefail
+          if [ -z "$ASC_API_KEY_CONTENT" ]; then
+            echo "::error::ASC_API_KEY_CONTENT secret is not set. See docs/manual-setup.md §5"
+            echo "::error::for the one-time setup: create an App Store Connect API key, then add"
+            echo "::error::ASC_API_KEY_CONTENT (.p8 contents), ASC_API_KEY_ID (10-char), and"
+            echo "::error::ASC_API_ISSUER_ID (UUID) as GitHub Actions secrets."
+            exit 1
+          fi
+          printf '%s' "$ASC_API_KEY_CONTENT" > "$ASC_API_KEY_PATH"
+          chmod 600 "$ASC_API_KEY_PATH"
+
+      # No `--no-wait`: we want this step to exit on the actual build
+      # outcome, not on enqueue acceptance. `--auto-submit` still chains
+      # the TestFlight submit on EAS's side after the build succeeds, so
+      # this step blocks on the build (~30 min) but not on the submit.
+      - name: Build + auto-submit (await success)
+        id: build
+        working-directory: apps/highscore
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EXPO_PUBLIC_API_URL: ${{ secrets.EXPO_PUBLIC_API_URL }}
+          EXPO_PUBLIC_ENABLE_GAMES: "1"
+          EXPO_PUBLIC_APPLE_SERVICES_ID: live.highscore.web
+          EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 267582241036-7vtcgkd594ldgimcu3dickj9u5ga951l.apps.googleusercontent.com
+          EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com
+          CLI_VERSION: ${{ env.EAS_CLI_VERSION }}
+          # ASC API key auth for both credentials management (cert/profile
+          # generation) and `--auto-submit`. Takes precedence over any
+          # ASC key registered server-side on EAS for this project.
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          BUILD_LOG: ${{ runner.temp }}/eas-build.log
+        run: |
+          set -euo pipefail
+          # Tee the full eas-cli output so the diagnose step can pattern-
+          # match known failure modes for the Discord ping. The log is
+          # wiped at job teardown along with the .p8 (no secrets in it,
+          # but staying tidy).
+          BUILD_JSON=$(npx "eas-cli@$CLI_VERSION" build \
+            --platform ios \
+            --profile production \
+            --non-interactive \
+            --auto-submit \
+            --json 2> >(tee -a "$BUILD_LOG" >&2))
+          # `eas build --json` returns an array; the [0]th element is this build.
+          BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id')
+          BUILD_STATUS=$(echo "$BUILD_JSON" | jq -r '.[0].status')
+          if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
+            echo "Failed to extract build ID from eas build output:"
+            echo "$BUILD_JSON" | tee -a "$BUILD_LOG"
+            exit 1
+          fi
+          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "build_status=$BUILD_STATUS" >> "$GITHUB_OUTPUT"
+
+      # Pattern-match the eas-cli stderr against known failure modes so
+      # the Discord ping can name the specific recovery instead of dumping
+      # the generic "check CLAUDE.md → iOS deploy pipeline" hint. Each
+      # branch sets `reason` (one-line summary) and `fix` (concrete next
+      # action). Catch-all leaves them empty; notify falls back to the
+      # generic hint.
+      - name: Diagnose failure
+        id: diagnose
+        if: failure() && steps.build.conclusion == 'failure'
+        env:
+          BUILD_LOG: ${{ runner.temp }}/eas-build.log
+        run: |
+          set -euo pipefail
+          if [ ! -s "$BUILD_LOG" ]; then
+            echo "reason=unknown (no eas-cli output captured)" >> "$GITHUB_OUTPUT"
+            echo "fix=Check the EAS build log linked in the summary." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LOG=$(cat "$BUILD_LOG")
+          # The order matters: more specific patterns first, broadest last.
+          if echo "$LOG" | grep -q "doesn't include the .* capability\|doesn't include the .* entitlement"; then
+            REASON="Provisioning profile missing a capability declared in app.json"
+            FIX="Delete the PP via \`eas credentials --platform ios\` (production → Build Credentials → Provisioning Profile → Delete one), then re-fire \`testflight-highscore.yml --field force=true\`. See CLAUDE.md → \"Provisioning profile out of sync after a capability toggle\"."
+          elif echo "$LOG" | grep -q "Distribution Certificate is not validated for non-interactive builds"; then
+            REASON="Distribution Certificate in EAS can't be validated non-interactively"
+            FIX="Stale or pre-API-key cert. Run \`eas credentials --platform ios\` locally, delete + revoke the cert, then \"Build Credentials → All\" to regenerate. NOT a \`pnpm setup:asc-key\` issue. See CLAUDE.md → \"Distribution Certificate out of sync\"."
+          elif echo "$LOG" | grep -q "ASC_API_KEY_CONTENT secret is not set"; then
+            REASON="ASC_API_KEY_CONTENT secret is missing"
+            FIX="Run \`pnpm setup:asc-key\` locally (interactive, ~3 min). See CLAUDE.md → \"ASC API key secret missing or revoked\"."
+          elif echo "$LOG" | grep -q "Configure expo-updates.*runtime version\|fingerprint.*mismatch"; then
+            REASON="Runtime-version / fingerprint mismatch between pre-submit and prebuild"
+            FIX="Should not happen under \`appVersion\` policy. If you switched policies recently, switch back. See CLAUDE.md → \"Runtime-version policy\"."
+          elif echo "$LOG" | grep -q "EAS_BUILD_TIMEOUT\|timed out waiting for build"; then
+            REASON="EAS queue / build timed out"
+            FIX="EAS infra issue, not ours. Wait, then re-fire. Check status.expo.dev."
+          else
+            REASON="unrecognised eas-cli failure"
+            FIX="Tail of eas-cli output is in the GH job log. Recovery patterns in CLAUDE.md → iOS deploy pipeline."
+          fi
+          # Pass through to notify job. Multi-line strings need delimiters.
+          {
+            echo "reason<<EOF"
+            echo "$REASON"
+            echo "EOF"
+            echo "fix<<EOF"
+            echo "$FIX"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "::error::$REASON"
+          echo "::error::$FIX"
+
+      - name: Summarize build outcome
+        if: always() && steps.build.outputs.build_id != ''
+        env:
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
+          BUILD_STATUS: ${{ steps.build.outputs.build_status }}
+          FP_HASH: ${{ needs.fingerprint.outputs.hash }}
+        run: |
+          ICON="🟢"
+          if [ "$BUILD_STATUS" != "FINISHED" ]; then
+            ICON="🔴"
+          fi
+          {
+            echo "## $ICON Build $BUILD_STATUS"
+            echo ""
+            echo "**Build ID**: \`$BUILD_ID\`"
+            echo ""
+            echo "**Fingerprint**: \`$FP_HASH\`"
+            echo ""
+            echo "[View build on EAS](https://expo.dev/accounts/joshlebed/projects/highscore/builds/$BUILD_ID)"
+            echo ""
+            if [ "$BUILD_STATUS" = "FINISHED" ]; then
+              echo "Auto-submit to TestFlight is queued on EAS (separate from this build)."
+              echo "Check [App Store Connect](https://appstoreconnect.apple.com) once the submission lands."
+            else
+              echo "Build did not finish cleanly. See the EAS build log linked above for the failing step."
+              echo "Recovery: fix the underlying issue, delete the fingerprint tag (\`hs-ios-fp-$FP_HASH\`),"
+              echo "and dispatch \`testflight-highscore.yml\` with \`force=true\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Tag the fingerprint only after the build is confirmed green. With
+      # `--no-wait` we used to tag on enqueue, which let an EAS-side failure
+      # poison subsequent pushes (they'd see the tag and skip). Waiting +
+      # tag-after-success removes that footgun.
+      - name: Tag successful fingerprint
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FP_HASH: ${{ needs.fingerprint.outputs.hash }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          TAG="hs-ios-fp-$FP_HASH"
+          # Create the lightweight tag ref directly against the build's commit
+          # (already on the remote) via the API — do NOT `git push` the tag.
+          # This job's checkout is shallow (fetch-depth 1), so `git push origin
+          # <tag>` re-sends the commit's tree, which includes .github/workflows/*
+          # blobs. The Actions GITHUB_TOKEN can't carry the `workflows`
+          # permission (not grantable via the permissions: block — only a PAT/App
+          # with the Workflows scope has it), so GitHub rejects the push with
+          # "refusing to allow a GitHub App to create or update workflow ...".
+          # Creating a ref to an existing SHA touches no blobs, so the
+          # contents:write permission above is sufficient.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — nothing to do."
+            exit 0
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f "ref=refs/tags/$TAG" \
+            -f "sha=$HEAD_SHA"
+          echo "Tagged $TAG -> $HEAD_SHA"
+
+  # Wake the operator when a TestFlight run fails. Native iOS builds happen
+  # ~5×/month on personal-project cadence, so a silent red run is easy to
+  # miss — and we just spent 2 days in that state with the share extension
+  # build broken. Ping `#workshop-admin` via Discord webhook with the run
+  # URL and a self-help hint pointing at `pnpm setup:asc-key`. The
+  # notification fires on `failure` only; a `skipped` build (fingerprint
+  # unchanged, no native diff) is not a problem and stays silent.
+  #
+  # Webhook URL lives in `DISCORD_NOTIFY_WEBHOOK_URL` GH Actions secret.
+  # Missing secret degrades to a CI warning rather than a hard failure —
+  # the notification is best-effort, the underlying build status is the
+  # source of truth.
+  notify:
+    name: Notify on failure
+    needs: [fingerprint, build]
+    if: always() && (needs.fingerprint.result == 'failure' || needs.build.result == 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_NOTIFY_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          FP_RESULT: ${{ needs.fingerprint.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          FAILURE_REASON: ${{ needs.build.outputs.failure_reason }}
+          FAILURE_FIX: ${{ needs.build.outputs.failure_fix }}
+          IS_CANARY: ${{ needs.fingerprint.outputs.is_canary }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::DISCORD_NOTIFY_WEBHOOK_URL not set — skipping Discord ping. See docs/manual-setup.md §5 for setup."
+            exit 0
+          fi
+          FIRST_LINE=$(printf '%s' "${COMMIT_MSG:-(no message)}" | head -n1)
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          FAILED_JOB="build"
+          if [ "$FP_RESULT" = "failure" ]; then FAILED_JOB="fingerprint"; fi
+          CANARY_PREFIX=""
+          if [ "$IS_CANARY" = "true" ]; then
+            CANARY_PREFIX="🐤 **Monthly canary** — "
+          fi
+
+          # Prefer the parsed diagnosis from the build job when present.
+          # It's only set when the build step itself failed (not on fingerprint
+          # failures, queue timeouts before eas-cli ran, etc.) — fall through
+          # to a static hint otherwise so the ping always carries SOMETHING
+          # actionable.
+          if [ -n "$FAILURE_REASON" ]; then
+            DESC="**Reason:** ${FAILURE_REASON}\n\n**Fix:** ${FAILURE_FIX}"
+          elif [ "$FAILED_JOB" = "fingerprint" ]; then
+            DESC="The fingerprint job failed before any EAS work happened — usually a flaky pnpm install or @expo/fingerprint hang. Re-run the workflow; if it fails twice in a row, check Expo registry status."
+          else
+            DESC="Check the run for \`::error::\` annotations.\n\n• If \`Write ASC API key\` failed → secret is missing or stale. Run \`pnpm setup:asc-key\` locally (interactive, ~3 min) to rotate.\n• If \`Build + auto-submit\` failed → check the EAS build log. Recovery patterns in \`CLAUDE.md\` → iOS deploy pipeline."
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg content "${CANARY_PREFIX}🔴 **HighScore TestFlight \`${FAILED_JOB}\` job failed** — a human is needed" \
+            --arg title "Action required" \
+            --arg url "$RUN_URL" \
+            --arg sha "$SHORT_SHA" \
+            --arg msg "$FIRST_LINE" \
+            --arg desc "$DESC" \
+            '{
+              content: $content,
+              embeds: [{
+                title: $title,
+                description: $desc,
+                url: $url,
+                color: 15158332,
+                fields: [
+                  {name: "Commit", value: ($sha + " — " + $msg), inline: false},
+                  {name: "Run",    value: $url, inline: false}
+                ]
+              }]
+            }')
+          curl -fsS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK"
+          echo "Posted failure notification to Discord."
+
+      # Canary failures get a tracked GH issue too — Discord pings scroll
+      # away, an open issue stays visible until someone closes it. Reuses
+      # the `infra-drift` label so the terraform-drift and testflight-drift
+      # signals show up in the same triage view. Dedup by label: update
+      # the existing open issue rather than spamming new ones.
+      - name: Open or update canary-failure issue
+        if: needs.fingerprint.outputs.is_canary == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          FAILURE_REASON: ${{ needs.build.outputs.failure_reason }}
+          FAILURE_FIX: ${{ needs.build.outputs.failure_fix }}
+        with:
+          script: |
+            const reason = process.env.FAILURE_REASON || 'unknown (see workflow log)';
+            const fix = process.env.FAILURE_FIX || 'Check CLAUDE.md → iOS deploy pipeline.';
+            const today = new Date().toISOString().slice(0, 10);
+            const title = `HighScore TestFlight canary failed (${today})`;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `The monthly TestFlight canary build failed before any feature work needed the pipeline.`,
+              `Fix this now so the next real deploy isn't blocked.`,
+              ``,
+              `**Reason:** ${reason}`,
+              ``,
+              `**Fix:** ${fix}`,
+              ``,
+              `**Workflow run:** ${runUrl}`,
+            ].join('\n');
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'infra-drift',
+              state: 'open',
+            });
+            const canary = existing.find(i => i.title.startsWith('HighScore TestFlight canary failed'));
+            if (canary) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: canary.number,
+                title,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['infra-drift'],
+              });
+            }

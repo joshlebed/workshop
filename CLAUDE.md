@@ -39,10 +39,12 @@ Workshop temporarily renders the same `@workshop/games` package behind its legac
   `ASC_API_KEY_CONTENT`/`ASC_API_KEY_ID`/`ASC_API_ISSUER_ID` (provision via
   `pnpm setup:asc-key`, see manual-setup.md §5), `DISCORD_NOTIFY_WEBHOOK_URL` (testflight
   failure pings to `#workshop-admin`).
-- **EAS Update** for JS-only OTA (~60s after merge). TestFlight builds trigger on native
-  change via `@expo/fingerprint`; `testflight.yml` runs `eas build --auto-submit` and
-  **awaits the build** so CI red/green matches EAS outcome. Last-built fingerprint stored
-  as `ios-fp-<hash>` git tag, written only on success — created via the GitHub **refs API**
+- **EAS Update** for JS-only OTA (~60s after merge), independently via `deploy-mobile.yml`
+  (Workshop) and `deploy-mobile-highscore.yml` (HighScore). TestFlight builds trigger on native
+  change via `@expo/fingerprint`; `testflight.yml` and `testflight-highscore.yml` run
+  `eas build --auto-submit` and **await the build** so CI red/green matches EAS outcome.
+  Last-built fingerprints use `ios-fp-<hash>` (Workshop) and `hs-ios-fp-<hash>` (HighScore),
+  written only on success via the GitHub **refs API**
   (`gh api .../git/refs`), not `git push`. The build job's checkout is shallow, so a
   `git push origin <tag>` re-sends the commit's tree (incl. `.github/workflows/*` blobs); if
   a workflow file changed on `main` after the build started, GitHub rejects the push
@@ -334,21 +336,22 @@ Most commands need admin credentials.
   Niteshift → Settings → Repositories → workshop → AWS → "Generate New ID", then update
   `var.niteshift_external_id` and apply.
 
-| Goal                                | Command                                                                                                                                                           |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ship an infra change                | Open PR; plan posts as comment. Merge → auto-applies.                                                                                                             |
-| Preview infra change locally        | `cd infra && AWS_PROFILE=workshop-prod terraform plan`                                                                                                            |
-| See what infra would change on main | `gh workflow run terraform.yml --ref main`                                                                                                                        |
-| Tail prod logs                      | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 10m --filter error`                                                                                          |
-| Trace one request                   | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --filter <reqid>`                                                                                                    |
-| psql into Neon prod                 | `AWS_PROFILE=workshop-prod ./scripts/db-connect.sh`                                                                                                               |
-| Neon branch for risky migration     | `neonctl branches create --name pre-<feature>` (needs `NEON_API_KEY`)                                                                                             |
-| Read SSM secret                     | `AWS_PROFILE=workshop-prod aws ssm get-parameter --name /workshop-prod/X --with-decryption --query 'Parameter.Value' --output text`                               |
-| Rotate SSM secret                   | `aws ssm put-parameter --name /workshop-prod/X --value … --overwrite --type SecureString` (SSM resources have `ignore_changes = [value]`)                         |
-| Deploy web to preview               | `pnpm deploy:pages:preview`                                                                                                                                       |
-| Deploy web to prod                  | `pnpm deploy:pages` (always-confirm)                                                                                                                              |
-| Force a fresh TestFlight build      | `gh workflow run testflight.yml --ref main --field force=true`                                                                                                    |
-| Bypass EAS submit (queue jammed)    | Download IPA from EAS dashboard, then `xcrun altool --upload-app --type ios -f ~/Downloads/workshop.ipa -u joshlebed@gmail.com -p "$APPLE_APP_SPECIFIC_PASSWORD"` |
+| Goal                                     | Command                                                                                                                                                           |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ship an infra change                     | Open PR; plan posts as comment. Merge → auto-applies.                                                                                                             |
+| Preview infra change locally             | `cd infra && AWS_PROFILE=workshop-prod terraform plan`                                                                                                            |
+| See what infra would change on main      | `gh workflow run terraform.yml --ref main`                                                                                                                        |
+| Tail prod logs                           | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 10m --filter error`                                                                                          |
+| Trace one request                        | `AWS_PROFILE=workshop-prod ./scripts/logs.sh --filter <reqid>`                                                                                                    |
+| psql into Neon prod                      | `AWS_PROFILE=workshop-prod ./scripts/db-connect.sh`                                                                                                               |
+| Neon branch for risky migration          | `neonctl branches create --name pre-<feature>` (needs `NEON_API_KEY`)                                                                                             |
+| Read SSM secret                          | `AWS_PROFILE=workshop-prod aws ssm get-parameter --name /workshop-prod/X --with-decryption --query 'Parameter.Value' --output text`                               |
+| Rotate SSM secret                        | `aws ssm put-parameter --name /workshop-prod/X --value … --overwrite --type SecureString` (SSM resources have `ignore_changes = [value]`)                         |
+| Deploy web to preview                    | `pnpm deploy:pages:preview`                                                                                                                                       |
+| Deploy web to prod                       | `pnpm deploy:pages` (always-confirm)                                                                                                                              |
+| Force a fresh Workshop TestFlight build  | `gh workflow run testflight.yml --ref main --field force=true`                                                                                                    |
+| Force a fresh HighScore TestFlight build | `gh workflow run testflight-highscore.yml --ref main --field force=true`                                                                                          |
+| Bypass EAS submit (queue jammed)         | Download IPA from EAS dashboard, then `xcrun altool --upload-app --type ios -f ~/Downloads/workshop.ipa -u joshlebed@gmail.com -p "$APPLE_APP_SPECIFIC_PASSWORD"` |
 
 ## iOS deploy pipeline
 
