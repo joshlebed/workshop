@@ -2,7 +2,7 @@ import { tokens } from "@workshop/ui";
 import { Tabs, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Text as RNText } from "react-native";
-import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
+import { LEGACY_GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 import {
   getPreferredHomeTab,
   homeTabForPathname,
@@ -25,10 +25,10 @@ import {
 export default function TabsLayout() {
   const router = useRouter();
   const pathname = usePathname();
-  const [preferenceReady, setPreferenceReady] = useState(!GAMES_TAB_ENABLED);
+  const [preferenceReady, setPreferenceReady] = useState(!LEGACY_GAMES_TAB_ENABLED);
 
   useEffect(() => {
-    if (!GAMES_TAB_ENABLED || preferenceReady) return;
+    if (!LEGACY_GAMES_TAB_ENABLED || preferenceReady) return;
     let cancelled = false;
 
     getPreferredHomeTab()
@@ -50,7 +50,7 @@ export default function TabsLayout() {
   }, [pathname, preferenceReady, router]);
 
   useEffect(() => {
-    if (!GAMES_TAB_ENABLED || !preferenceReady) return;
+    if (!LEGACY_GAMES_TAB_ENABLED || !preferenceReady) return;
     const tab = homeTabForPathname(pathname);
     if (!tab) return;
     setPreferredHomeTab(tab).catch(() => {});
@@ -71,7 +71,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="games"
         options={
-          GAMES_TAB_ENABLED
+          LEGACY_GAMES_TAB_ENABLED
             ? {
                 title: "Games",
                 tabBarIcon: ({ color }) => <RNText style={{ color, fontSize: 17 }}>◆</RNText>,

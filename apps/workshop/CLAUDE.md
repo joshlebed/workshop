@@ -11,7 +11,9 @@ The root is an expo-router `Tabs` shell: `app/(tabs)/(lists)/` holds the entire 
 stack (home, lists, activity, create-list) and `app/(tabs)/games/` the Games surface. Group
 segments never appear in URLs, so all deep links are unchanged — but they DO appear in
 `useSegments()`; AuthGate in `app/_layout.tsx` filters `(`-prefixed segments before matching.
-The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (`src/lib/featureFlags.ts`: launched
+The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` and the transitional
+`EXPO_PUBLIC_ENABLE_LEGACY_GAMES_TAB` (`src/lib/featureFlags.ts`: both default ON;
+the latter is the Wave-4 cutover switch). `EXPO_PUBLIC_ENABLE_GAMES` launched
 2026-06-10 — production declares `"1"` in `.env.production`, EAS config, and OTA/TestFlight
 workflows; unset still means ON, and `"0"` is the kill switch). Flag off must look exactly like the
 pre-tabs app: tab bar hidden, `/games` redirects home, no top switch. Auth/onboarding/invite/share
@@ -21,10 +23,10 @@ one. Both web and native show the Lists/Games switch (`InlineTabSwitch`) inline 
 the screen header, immediately left of Activity on both Lists and Games; the expo-router
 bottom tab bar is hidden on every platform (`tabBarStyle: { display: "none" }` in
 `app/(tabs)/_layout.tsx`).
-The Games surface (G1b): `games/index` → `src/screens/GamesHome.tsx` (My Games as
-`StandingsCard`s, drag-reorder via `src/screens/games/GameCardList[.web].tsx`, add-by-URL
-sheet, paste → `PUT /v1/games/:id/scores`); `games/[id]` is the per-game history board
-(DayRail + today paste slot). Games API wrappers live in `src/api/games.ts`; query keys
+The Games surface (G1b): Workshop routes and `src/screens/GamesHome.tsx` are thin legacy
+wrappers over subpath-only `@workshop/games` (My Games as `StandingsCard`s, drag-reorder,
+add-by-URL, paste → `PUT /v1/games/:id/scores`, and the per-game history board). Games API
+wrappers live in `packages/games/src/api`; query keys remain
 under `queryKeys.games.*`. Every flag-off route must `<Redirect href="/" />`. Use the static `tokens` (not
 `useTheme()`) for navigator backgrounds, matching the root layout, or light-preferring
 browsers get a light scene behind dark screen content. Metro does NOT invalidate its

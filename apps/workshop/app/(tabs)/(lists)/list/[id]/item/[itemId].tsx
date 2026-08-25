@@ -4,8 +4,13 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Item, ListDetailResponse } from "@workshop/shared";
 import {
   Button,
+  confirm,
   EmptyState,
+  formatRelative,
+  haptics,
   IconButton,
+  normalizeExternalUrl,
+  openExternalUrl,
   Screen,
   Sheet,
   TagEditor,
@@ -27,11 +32,7 @@ import {
 } from "../../../../../../src/api/items";
 import { fetchListTags } from "../../../../../../src/api/lists";
 import { useAuth } from "../../../../../../src/hooks/useAuth";
-import { confirm } from "../../../../../../src/lib/confirm";
 import { goBack } from "../../../../../../src/lib/goBack";
-import { haptics } from "../../../../../../src/lib/haptics";
-import { normalizeExternalUrl, openExternalUrl } from "../../../../../../src/lib/openUrl";
-import { formatRelative } from "../../../../../../src/lib/relativeTime";
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 

@@ -4,8 +4,8 @@ Expo app for **HighScore** (`highscore.live`) — the daily-games half of the sp
 in [`docs/highscore-migration-plan.md`](../../docs/highscore-migration-plan.md). Builds web
 and iOS from one component tree via `react-native-web`, exactly like `apps/workshop`.
 
-Today this is a **scaffold**: sign-in (Apple / Google / dev) plus a placeholder Games home.
-The Games surfaces themselves move over from Workshop in PR-4.
+This app owns the Games home, standings, catalog, friends, play-link resolver, and native
+score-share flow. During migration, Workshop renders the same `@workshop/games` package.
 
 |                              |                                                                 |
 | ---------------------------- | --------------------------------------------------------------- |
@@ -50,21 +50,21 @@ The Niteshift sandbox sets both by default.
 ```
 app/                     expo-router routes
   _layout.tsx            providers + auth gate
-  (tabs)/index.tsx       placeholder Games home
+  (tabs)/index.tsx       Games home
+  games/[id].tsx         per-game standings history
+  friends/               friends, profiles, invite acceptance
+  g/[token].tsx          in-app play-link resolver
+  share/                 native score-share picker
   sign-in.tsx            Apple / Google / dev sign-in
   onboarding/            display-name capture
 src/hooks/useAuth.tsx    auth context over @workshop/api-client
-src/lib/oauth/           Apple + Google provider glue (native/.web variants)
 src/components/          app-local components (wordmark)
 public/index.html        web HTML shell — OG tags, theme-color, canvas lock
 ```
 
-Shared code comes from `@workshop/ui` (design system), `@workshop/api-client`
-(`apiRequest`, session credentials, storage, API-URL derivation) and `@workshop/shared`
-(types). Anything both apps need belongs in a package, not here — see the root `CLAUDE.md`.
-
-`src/lib/oauth/**` is currently duplicated from `apps/workshop`; keep the two copies in sync
-until it's extracted (tracked in `AGENT-REFLECTIONS.md`).
+Shared code comes from `@workshop/games` (Games feature), `@workshop/ui` (design system and
+Google sign-in button), `@workshop/api-client` (API, session, storage, OAuth hooks), and
+`@workshop/shared` (types). Anything both apps need belongs in a package, not here.
 
 ## API URL derivation
 

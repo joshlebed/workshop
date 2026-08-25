@@ -5,12 +5,13 @@ import {
 } from "@react-navigation/native";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { getItem, removeItem } from "@workshop/api-client/storage";
+import { type GamesRoutes, GamesRuntimeProvider } from "@workshop/games/runtime";
 import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
-import { useEffect, useMemo, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -31,6 +32,32 @@ function useApplyOtaUpdatesOnArrival() {
   useEffect(() => {
     if (isUpdatePending) Updates.reloadAsync().catch(() => {});
   }, [isUpdatePending]);
+}
+
+const WORKSHOP_GAMES_ROUTES: GamesRoutes = {
+  root: "/",
+  home: "/games",
+  signIn: "/sign-in",
+  friends: "/friends",
+  game: (gameId) => `/games/${encodeURIComponent(gameId)}`,
+  friendProfile: (userId, via) =>
+    `/friends/${encodeURIComponent(userId)}${via ? `?via=${encodeURIComponent(via)}` : ""}`,
+};
+
+function GamesRuntimeBridge({ children }: { children: ReactNode }) {
+  const { token, user, status } = useAuth();
+  const value = useMemo(
+    () => ({
+      token,
+      user,
+      status,
+      appName: "Workshop",
+      appScheme: "workshop",
+      routes: WORKSHOP_GAMES_ROUTES,
+    }),
+    [status, token, user],
+  );
+  return <GamesRuntimeProvider value={value}>{children}</GamesRuntimeProvider>;
 }
 
 // iOS Share Extension hand-off. When the user taps Share → "Workshop" in
@@ -306,7 +333,9 @@ export default function RootLayout() {
                 <ToastProvider>
                   <OfflineRetryWatcher />
                   <AuthProvider>
-                    <AuthGate />
+                    <GamesRuntimeBridge>
+                      <AuthGate />
+                    </GamesRuntimeBridge>
                   </AuthProvider>
                 </ToastProvider>
               </PersistQueryClientProvider>

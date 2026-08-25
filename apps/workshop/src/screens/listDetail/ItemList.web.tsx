@@ -33,10 +33,9 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
-import { Text, tokens } from "@workshop/ui";
+import { PullToRefresh, Text, tokens } from "@workshop/ui";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { PullToRefresh } from "../../components/PullToRefresh";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
 import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";

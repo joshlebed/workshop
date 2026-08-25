@@ -10,6 +10,7 @@ import {
   homeLayout,
   InlineTabSwitch,
   type ListColorKey,
+  PullToRefresh,
   Screen,
   Sheet,
   Text,
@@ -38,9 +39,8 @@ import {
 } from "../../../src/api/lists";
 import { HeaderActivityButton } from "../../../src/components/HeaderActivityButton";
 import { ProfileMenu } from "../../../src/components/ProfileMenu";
-import { PullToRefresh } from "../../../src/components/PullToRefresh";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
+import { LEGACY_GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -252,7 +252,7 @@ export default function Home() {
   return (
     <Screen style={styles.root}>
       <HomeHeader
-        left={GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
+        left={LEGACY_GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
         right={
           <>
             <HeaderActivityButton

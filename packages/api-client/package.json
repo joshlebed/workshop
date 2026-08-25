@@ -6,8 +6,11 @@
   "exports": {
     "./api": "./src/api.ts",
     "./apiError": "./src/apiError.ts",
+    "./avatar": "./src/avatar.ts",
     "./authBootstrap": "./src/authBootstrap.ts",
     "./config": "./src/config.ts",
+    "./oauth/apple": "./src/oauth/apple/index.ts",
+    "./oauth/google": "./src/oauth/google/index.ts",
     "./queryKeys": "./src/queryKeys.ts",
     "./sessionCredentials": "./src/sessionCredentials/index.ts",
     "./storage": "./src/storage/index.ts",
@@ -19,8 +22,12 @@
   },
   "dependencies": {
     "@workshop/shared": "workspace:*",
+    "expo-apple-authentication": "~55.0.13",
+    "expo-auth-session": "~55.0.16",
     "expo-constants": "55.0.16",
+    "expo-crypto": "~55.0.15",
     "expo-secure-store": "55.0.14",
+    "expo-web-browser": "~55.0.16",
     "react": "19.2.0",
     "react-native": "0.83.6"
   },
