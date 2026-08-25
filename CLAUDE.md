@@ -774,14 +774,15 @@ Apple-shaped UA + a visual eyeball in `agent-browser`.
 
 ### How web ships, and the fast deploy loop
 
-Production web is deployed by **Cloudflare Pages' native Git integration** (Pages project
-`workshop`, connected to this repo, `production_branch=main`, `deployments_enabled=true`).
-Every push to `main` triggers a CF build (`pnpm install --frozen-lockfile && expo export
---platform web`, output `apps/workshop/dist`, `functions/` picked up automatically), and
-the result posts back to the commit as the **"Cloudflare Pages"** check (app
-`cloudflare-workers-and-pages`) — a failed build is visible on the PR/commit, not silent.
-**No GitHub Actions workflow deploys web.** CF auto-build is slow (~3–5min); for a fast
-manual deploy, run wrangler directly:
+Production web is deployed by **two Cloudflare Pages native Git integrations**, both connected
+to this repo with `production_branch=main` and `deployments_enabled=true`. Project `workshop`
+uses the repo root, outputs `apps/workshop/dist`, and discovers repo-root `functions/`; project
+`highscore` uses `root_dir=apps/highscore`, outputs `dist`, and discovers
+`apps/highscore/functions/`. Each posts its own **"Cloudflare Pages: <project>"** check (app
+`cloudflare-workers-and-pages`) to the commit; the details URL also contains
+`/pages/view/<project>/`, which is the stable CI discriminator. **No GitHub Actions workflow
+deploys web.** CF auto-build is slow (~3–5min); for a fast manual Workshop deploy, run wrangler
+directly:
 
 ```bash
 pnpm deploy:pages:preview   # builds web + deploys to <branch>.workshop-a2v.pages.dev (~30s)
@@ -793,13 +794,13 @@ Both wrap `scripts/deploy-pages.sh` (handles Node 22 switch for wrangler). Auth 
 `workshop` project** (`dd75c7bdd35289afb8b0a74f3610eba8`).
 
 CI's `.github/workflows/deploy-pages.yml` (**"Verify Pages Deploy"**) does _not_ deploy — it
-waits for CF's build of the pushed commit to complete (read via the GitHub check-runs API,
-no CF secret), then asserts production serves a raster OG image + a valid AASA document
-(the runtime regression class CF's "build succeeded" status can't catch). It needs **no
-Cloudflare secrets**. It previously ran a redundant second `wrangler pages deploy` from CI
+waits for both CF builds of the pushed commit to complete (read via the GitHub check-runs API,
+no CF secret), then asserts both production domains serve raster OG images and exact-appID AASA
+documents (the runtime regression class CF's "build succeeded" status can't catch). It needs
+**no Cloudflare secrets**. It previously ran a redundant second `wrangler pages deploy` from CI
 that failed every run with CF API error **7003** — the `CLOUDFLARE_*` Actions secrets had
-stopped resolving to the project's account. Since the CF Git integration (not that
-workflow) is what ships prod, dropping the wrangler step changed nothing about deploys.
+stopped resolving to the project's account. Since the CF Git integrations (not that workflow)
+ship prod, dropping the wrangler step changed nothing about deploys.
 
 ## Running commit-ready checks
 
