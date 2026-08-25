@@ -1,5 +1,9 @@
 # HighScore migration plan
 
+> Decisions 1 and 2 in §1 are **locked** (Josh, 2026-08-25). Decision 3 explained and
+> pending explicit sign-off, but it's a mechanical config change with no alternative on
+> the table.
+
 **Goal**: split the product into two brands on one backend. **HighScore**
 (`highscore.live`, new iOS app) owns all daily-game functionality; **Workshop**
 (`workshop-a2v.pages.dev`, existing iOS app) keeps everything else (lists, watchlist,
@@ -29,6 +33,9 @@ Status: **draft for review** — decisions in §1 need sign-off before implement
    `(provider, provider_user_id)` identity rows already match. Backend change is: accept
    a _set_ of valid audiences (both bundle ids + both Services IDs) instead of one.
    Same shape for Google (new iOS client ID + web client ID added to the accepted list).
+   In plain terms: Apple's sign-in token says _who you are_ (same ID across all our
+   apps) and _which app it was issued for_; accounts are keyed on the former, and the
+   backend's only change is accepting the new app in the latter check.
 
 Also to confirm: HighScore app display name, icon direction, and whether the backend gets
 a vanity domain (`api.highscore.live`). Recommendation: **skip the API domain for now** —
@@ -108,8 +115,10 @@ Workshop.dev iOS (exists) → EAS project workshop          → apps/workshop
 
 ### Phase 5 — Workshop cutover: remove games, point users at HighScore
 
-- Remove the Games tab + game share flows from Workshop; add a one-time in-app notice
-  ("Daily games moved to HighScore") deep-linking to the App Store listing / web app.
+- Existing Workshop users first learn about HighScore here: once the App Store listing
+  is live, the Workshop games tab is replaced (via OTA) with a **persistent** "Daily
+  games moved to HighScore" surface deep-linking to the App Store listing / web app —
+  not a dismissable one-time notice.
 - Bump `app.json` version (native-adjacent churn; runtime-version guard will demand it),
   ship TestFlight + OTA per the existing pipeline.
 - Web: Workshop Pages functions keep the `/g/*` redirects from Phase 3.
