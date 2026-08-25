@@ -40,6 +40,7 @@
     "knip": "6.6.3",
     "lefthook": "2.1.6",
     "prettier": "^3.8.3",
+    "semver": "^7.7.4",
     "typescript": "5.9.3"
   },
   "dependencies": {
