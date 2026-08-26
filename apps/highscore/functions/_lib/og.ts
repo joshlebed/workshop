@@ -11,7 +11,7 @@ export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
 
 export const HIGH_SCORE_OG_TITLE = "HighScore";
-export const HIGH_SCORE_OG_DESCRIPTION = "Daily games with your friends.";
+export const HIGH_SCORE_OG_DESCRIPTION = "Daily games. Friendly competition.";
 export const HIGH_SCORE_OG_EMOJI = "🎮";
 
 export const OG_META_SELECTORS = [
@@ -58,6 +58,7 @@ interface ImageVariant {
   emoji: string;
   title: string;
   subtitle: string;
+  brandMark?: boolean;
 }
 
 const DEFAULT_IMAGE_VARIANT: ImageVariant = {
@@ -65,6 +66,7 @@ const DEFAULT_IMAGE_VARIANT: ImageVariant = {
   emoji: HIGH_SCORE_OG_EMOJI,
   title: HIGH_SCORE_OG_TITLE,
   subtitle: HIGH_SCORE_OG_DESCRIPTION,
+  brandMark: true,
 };
 
 const FRIEND_OG_EMOJI = "👋";
@@ -187,19 +189,44 @@ function renderImageHtml(variant: ImageVariant): string {
   const emoji = escapeXml(variant.emoji);
   const title = escapeXml(truncate(variant.title, 28));
   const subtitle = escapeXml(variant.subtitle);
+  const leading = variant.brandMark
+    ? renderScoreGridHtml(200)
+    : `<div style="display: flex; width: 200px; height: 200px; border-radius: 44px; background: ${variant.accent}; align-items: center; justify-content: center; font-size: 132px; line-height: 1;">${emoji}</div>`;
 
   return `
-<div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: linear-gradient(135deg, #24221F 0%, #0E0C0B 100%); color: #F2F0ED; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box; position: relative;">
+<div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0E0C0B; color: #F2F0ED; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box; position: relative;">
   <div style="display: flex; flex-direction: column; justify-content: center; gap: 24px; flex: 1;">
-    <div style="display: flex; width: 200px; height: 200px; border-radius: 44px; background: ${variant.accent}; align-items: center; justify-content: center; font-size: 132px; line-height: 1;">${emoji}</div>
+    ${leading}
     <div style="display: flex; font-size: 84px; font-weight: 700; letter-spacing: -2px; line-height: 1.05;">${title}</div>
     <div style="display: flex; font-size: 36px; font-weight: 500; color: #A7A29E; line-height: 1.2;">${subtitle}</div>
   </div>
   <div style="display: flex; position: absolute; bottom: 60px; left: 80px; align-items: center; gap: 16px; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">
-    <div style="display: flex; width: 28px; height: 28px; border-radius: 14px; background: #F5A524;"></div>
+    ${renderScoreGridHtml(28)}
     <span>HighScore</span>
   </div>
 </div>`.trim();
+}
+
+function renderScoreGridHtml(size: number): string {
+  const gap = size >= 100 ? 10 : 2;
+  const cell = (size - gap * 2) / 3;
+  const radius = size >= 100 ? 13 : 2;
+  const rows = [
+    [false, true, true],
+    [false, true, true],
+    [true, true, false],
+  ];
+  return `<div data-score-grid="highscore" style="display: flex; width: ${size}px; height: ${size}px; flex-direction: column; gap: ${gap}px;">${rows
+    .map(
+      (row) =>
+        `<div style="display: flex; flex-direction: row; gap: ${gap}px;">${row
+          .map(
+            (active) =>
+              `<div style="display: flex; width: ${cell}px; height: ${cell}px; border-radius: ${radius}px; background: ${active ? "#F5A524" : "#3C3835"};"></div>`,
+          )
+          .join("")}</div>`,
+    )
+    .join("")}</div>`;
 }
 
 export function buildDefaultOgImageHtml(): string {

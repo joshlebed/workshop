@@ -14,15 +14,22 @@ interface UrlType {
 
 interface AppJson {
   expo: {
+    icon: string;
     name: string;
     slug: string;
     scheme: string;
     version: string;
+    splash: { image: string; resizeMode: string; backgroundColor: string };
     ios: {
       bundleIdentifier: string;
+      icon: string;
       associatedDomains: string[];
       infoPlist: { CFBundleURLTypes?: UrlType[] };
     };
+    android: {
+      adaptiveIcon: { foregroundImage: string; backgroundColor: string };
+    };
+    web: { favicon: string };
     plugins: (string | [string, unknown])[];
   };
 }
@@ -59,6 +66,73 @@ describe("apps/highscore app.json", () => {
   // Runtime-version policy is `appVersion`, so this string is what OTAs target.
   it("pins a runtime version that OTA updates can target", () => {
     expect(expo.version).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it("wires the Icon Composer bundle plus opaque, adaptive, splash, and web assets", () => {
+    expect(expo.icon).toBe("./assets/icon.png");
+    expect(expo.ios.icon).toBe("./assets/HighScore.icon");
+    expect(expo.splash).toEqual({
+      image: "./assets/splash-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#0E0C0B",
+    });
+    expect(expo.android.adaptiveIcon).toEqual({
+      foregroundImage: "./assets/adaptive-icon.png",
+      backgroundColor: "#0E0C0B",
+    });
+    expect(expo.web.favicon).toBe("./public/favicon.png");
+
+    const appDir = join(__dirname, "..", "..");
+    const pngInfo = (relativePath: string) => {
+      const png = readFileSync(join(appDir, relativePath), null);
+      expect([...png.subarray(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+      return {
+        width: png.readUInt32BE(16),
+        height: png.readUInt32BE(20),
+        colorType: png[25],
+      };
+    };
+
+    expect(pngInfo("assets/icon.png")).toEqual({ width: 1024, height: 1024, colorType: 2 });
+    expect(pngInfo("assets/adaptive-icon.png")).toEqual({
+      width: 1024,
+      height: 1024,
+      colorType: 6,
+    });
+    expect(pngInfo("assets/splash-icon.png")).toEqual({
+      width: 512,
+      height: 512,
+      colorType: 6,
+    });
+    expect(pngInfo("public/favicon.png")).toEqual({ width: 64, height: 64, colorType: 2 });
+
+    const iconManifest: unknown = JSON.parse(
+      readFileSync(join(appDir, "assets/HighScore.icon/icon.json"), "utf8"),
+    );
+    expect(iconManifest).toEqual({
+      fill: "system-dark",
+      groups: [
+        {
+          layers: [
+            {
+              fill: "none",
+              glass: false,
+              "image-name": "icon-source.png",
+              name: "icon-source",
+              position: { scale: 0.8, "translation-in-points": [0, 0] },
+            },
+          ],
+          shadow: { kind: "neutral", opacity: 0.5 },
+          translucency: { enabled: true, value: 0.5 },
+        },
+      ],
+      "supported-platforms": { circles: ["watchOS"], squares: "shared" },
+    });
+    expect(
+      readFileSync(join(appDir, "assets/HighScore.icon/Assets/icon-source.png")).equals(
+        readFileSync(join(appDir, "assets/icon-source.png")),
+      ),
+    ).toBe(true);
   });
 
   it("enables Sign in with Apple via the config plugin", () => {

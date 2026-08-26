@@ -2,6 +2,7 @@ import { Button, Text, tokens } from "@workshop/ui";
 import { useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { Wordmark } from "../../src/components/Wordmark";
 import { useAuth } from "../../src/hooks/useAuth";
 
 export default function DisplayName() {
@@ -31,6 +32,10 @@ export default function DisplayName() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.form}>
+        <View style={styles.brandBlock}>
+          <Wordmark />
+          <Text tone="secondary">Pick a name for the leaderboard.</Text>
+        </View>
         <Text variant="label" tone="secondary" style={styles.label}>
           Display name
         </Text>
@@ -80,6 +85,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
   },
+  brandBlock: { gap: tokens.space.sm, marginBottom: tokens.space.md },
   label: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   input: {
     borderWidth: 1,
