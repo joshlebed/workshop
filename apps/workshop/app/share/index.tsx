@@ -1,14 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import { addGame, fetchMyGames, upsertGameScore } from "@workshop/games/api/games";
-import { localDateKey } from "@workshop/games/lib/gameDate";
-import {
-  detectSharedScore,
-  isResultlessShare,
-  pickSuggestedGameTarget,
-  type ShareGameTarget,
-} from "@workshop/games/lib/shareScoreDetection";
 import { Button, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -16,6 +8,14 @@ import * as Updates from "expo-updates";
 import { useMemo } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useAuth } from "../../src/hooks/useAuth";
+import { addGame, fetchMyGames, upsertGameScore } from "../../src/legacyGames/api/games";
+import { localDateKey } from "../../src/legacyGames/lib/gameDate";
+import {
+  detectSharedScore,
+  isResultlessShare,
+  pickSuggestedGameTarget,
+  type ShareGameTarget,
+} from "../../src/legacyGames/lib/shareScoreDetection";
 import { LEGACY_GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
 
 interface SharedPayload {

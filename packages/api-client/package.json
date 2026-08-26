@@ -9,6 +9,7 @@
     "./avatar": "./src/avatar.ts",
     "./authBootstrap": "./src/authBootstrap.ts",
     "./config": "./src/config.ts",
+    "./friends": "./src/friends.ts",
     "./oauth/apple": "./src/oauth/apple/index.ts",
     "./oauth/google": "./src/oauth/google/index.ts",
     "./queryKeys": "./src/queryKeys.ts",
@@ -29,7 +30,8 @@
     "expo-secure-store": "55.0.14",
     "expo-web-browser": "~55.0.16",
     "react": "19.2.0",
-    "react-native": "0.83.6"
+    "react-native": "0.83.6",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/react": "19.2.14",

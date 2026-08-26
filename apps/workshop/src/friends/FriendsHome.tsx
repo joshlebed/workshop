@@ -1,6 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
+import {
+  acceptFriendRequestFrom,
+  createFriendInvite,
+  fetchFriendRequests,
+  fetchFriends,
+  fetchMutuals,
+  removeFriendRequest,
+  resetFriendInvite,
+  sendFriendRequest,
+  unfriend,
+} from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
@@ -19,20 +30,9 @@ import {
 import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import {
-  acceptFriendRequestFrom,
-  createFriendInvite,
-  fetchFriendRequests,
-  fetchFriends,
-  fetchMutuals,
-  removeFriendRequest,
-  resetFriendInvite,
-  sendFriendRequest,
-  unfriend,
-} from "../api/friends";
-import { goBack } from "../lib/navigation";
+import { useClientRuntime } from "../lib/clientRuntime";
+import { goBack } from "../lib/goBack";
 import { shareOrCopyLink } from "../lib/share";
-import { useGamesRuntime } from "../runtime";
 
 /**
  * Friends screen (G2b, issue #286; directed requests + mutuals added with the
@@ -56,7 +56,7 @@ export function mutualLine(m: MutualSummary): string {
 }
 
 export default function FriendsScreen() {
-  const { token, routes } = useGamesRuntime();
+  const { token, routes } = useClientRuntime();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();

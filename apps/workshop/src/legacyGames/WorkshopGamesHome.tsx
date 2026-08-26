@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { GamesHome as SharedGamesHome } from "@workshop/games/screens/GamesHome";
 import { InlineTabSwitch } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo } from "react";
@@ -11,8 +10,9 @@ import { fetchLists } from "../api/lists";
 import { HeaderActivityButton } from "../components/HeaderActivityButton";
 import { ProfileMenu } from "../components/ProfileMenu";
 import { useAuth } from "../hooks/useAuth";
+import { GamesHome as LegacyGamesHome } from "./screens/GamesHome";
 
-export function GamesHome() {
+export function WorkshopGamesHome() {
   const { token } = useAuth();
   const router = useRouter();
   const livePoll = useLivePollingInterval();
@@ -55,7 +55,7 @@ export function GamesHome() {
   }, [onActivity]);
 
   return (
-    <SharedGamesHome
+    <LegacyGamesHome
       headerLeft={<InlineTabSwitch />}
       headerTrailing={
         <>

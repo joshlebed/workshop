@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
+import { acceptFriendRequest, fetchFriendRequestPreview } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
 import type { DiscoveryGame } from "@workshop/shared/games";
@@ -8,12 +9,11 @@ import { Avatar, Button, Card, haptics, Text, tokens } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
-import { acceptFriendRequest, fetchFriendRequestPreview } from "../api/friends";
-import { addGame, fetchGameDiscovery } from "../api/games";
-import { localDateKey } from "../lib/gameDate";
+import { addGame, fetchGameDiscovery } from "../legacyGames/api/games";
+import { localDateKey } from "../legacyGames/lib/gameDate";
+import { FriendGameSuggestions } from "../legacyGames/screens/games/FriendGameSuggestions";
+import { useClientRuntime } from "../lib/clientRuntime";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../lib/inviteStash";
-import { useGamesRuntime } from "../runtime";
-import { FriendGameSuggestions } from "./games/FriendGameSuggestions";
 
 /**
  * Deep-link landing for a friend invite (`/friends/accept/:token`, minted by
@@ -37,7 +37,7 @@ import { FriendGameSuggestions } from "./games/FriendGameSuggestions";
 export default function AcceptFriendInvite() {
   const params = useLocalSearchParams<{ token?: string }>();
   const inviteToken = Array.isArray(params.token) ? params.token[0] : params.token;
-  const { status, token: authToken, user, routes } = useGamesRuntime();
+  const { status, token: authToken, user, routes } = useClientRuntime();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
