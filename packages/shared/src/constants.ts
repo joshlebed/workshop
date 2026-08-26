@@ -9,3 +9,8 @@
 // discards anything older on cold start. Pure addition (new optional field,
 // new endpoint type) doesn't require a bump.
 export const SHARED_TYPES_VERSION = "5";
+
+// Stable product identities sent by @workshop/api-client. The backend uses
+// the same tuple to validate X-Workshop-Client before choosing a branded URL.
+export const WORKSHOP_CLIENTS = ["workshop", "highscore"] as const;
+export type WorkshopClient = (typeof WORKSHOP_CLIENTS)[number];

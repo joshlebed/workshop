@@ -6,11 +6,13 @@ vi.mock("expo-constants", () => ({
 vi.mock("react-native", () => ({ Platform: { OS: "web" } }));
 
 let apiRequest: typeof import("./api").apiRequest;
+let configureApiClient: typeof import("./api").configureApiClient;
 let registerSessionRefreshHandler: typeof import("./api").registerSessionRefreshHandler;
 
 beforeAll(async () => {
   process.env.EXPO_PUBLIC_API_URL = "https://api.example.test";
-  ({ apiRequest, registerSessionRefreshHandler } = await import("./api"));
+  ({ apiRequest, configureApiClient, registerSessionRefreshHandler } = await import("./api"));
+  configureApiClient({ client: "workshop" });
 });
 
 afterEach(() => {
@@ -38,9 +40,24 @@ describe("apiRequest managed-session retry", () => {
     const firstInit = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const retryInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
     expect(firstInit.credentials).toBe("include");
+    expect((firstInit.headers as Record<string, string>)["X-Workshop-Client"]).toBe("workshop");
     expect((firstInit.headers as Record<string, string>)["X-Workshop-Session-Version"]).toBe("2");
     expect((retryInit.headers as Record<string, string>).Authorization).toBe("Bearer fresh-access");
     unregister();
+  });
+
+  it("sends the configured HighScore client identity", async () => {
+    configureApiClient({ client: "highscore" });
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiRequest({ method: "GET", path: "/v1/example" });
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect((init.headers as Record<string, string>)["X-Workshop-Client"]).toBe("highscore");
+    configureApiClient({ client: "workshop" });
   });
 
   it("does not recurse when auth retry is disabled", async () => {

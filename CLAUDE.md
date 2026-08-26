@@ -141,8 +141,13 @@ Workshop temporarily renders the same `@workshop/games` package behind its legac
   in `packages/api-client/src/api.ts`. When allowing a new web origin: extend
   `STATIC_ALLOWED_ORIGINS` / `ALLOWED_ORIGIN_PATTERNS` in `apps/backend/src/app.ts`.
   Never widen to `*` with `credentials: true`.
-
   Verify: `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`.
+
+- **Backend-minted app links carry a validated client identity.** Every request from
+  `@workshop/api-client` includes `X-Workshop-Client: workshop|highscore`, configured once in
+  each app's root layout; old clients omit it. Friend invites map the validated value to the
+  matching web origin (absent defaults to Workshop), while games-only `/g/:token` links always
+  use HighScore. Local links follow the web dev ports: Workshop `:8081`, HighScore `:8082`.
 
 - **Auto-merge is on. `main` runs five gating-tier checks.** Four should be required:
   `Quality`, `Mobile Metro bundle`, `Mobile Metro bundle (highscore)`, and `Migrate smoke`.

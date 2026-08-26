@@ -17,7 +17,7 @@ vi.mock("../../db/client.js", () => ({
 }));
 
 // Imported after the mock so both routers' `getDb` resolves to PGlite.
-import { friendRoutes } from "./friends.js";
+import { __internal, friendRoutes } from "./friends.js";
 import { gameRoutes } from "./games.js";
 
 const me = "00000000-0000-4000-8000-000000000011";
@@ -98,7 +98,7 @@ beforeAll(async () => {
 }, 60_000);
 
 describe("POST /v1/friends/invite", () => {
-  it("mints a token and a URL containing it", async () => {
+  it("defaults an absent client header to a Workshop invite URL", async () => {
     const res = await friendRoutes.request("/invite", {
       method: "POST",
       headers: authHeaders(me),
@@ -106,8 +106,33 @@ describe("POST /v1/friends/invite", () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { token: string; url: string };
     expect(body.token).toMatch(/^[A-Za-z0-9]{8}$/);
-    expect(body.url).toContain(body.token);
+    expect(body.url).toBe(`http://localhost:8081/friends/accept/${body.token}`);
     inviteToken = body.token;
+  });
+
+  it.each([
+    ["workshop", "http://localhost:8081", "https://workshop-a2v.pages.dev"],
+    ["highscore", "http://localhost:8082", "https://highscore.live"],
+  ] as const)("mints %s-branded invite URLs", async (client, localBase, productionBase) => {
+    const res = await friendRoutes.request("/invite", {
+      method: "POST",
+      headers: { ...authHeaders(me), "X-Workshop-Client": client },
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { token: string; url: string };
+    expect(body.url).toBe(`${localBase}/friends/accept/${body.token}`);
+    expect(__internal.friendInviteUrl(body.token, client, false)).toBe(
+      `${productionBase}/friends/accept/${body.token}`,
+    );
+  });
+
+  it("rejects an invalid client header", async () => {
+    const res = await friendRoutes.request("/invite", {
+      method: "POST",
+      headers: { ...authHeaders(me), "X-Workshop-Client": "https://evil.example" },
+    });
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ code: "VALIDATION" });
   });
 
   it("is idempotent — re-minting returns the same stable link", async () => {

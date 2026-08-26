@@ -3,6 +3,7 @@
 // Others' game scores are gated solely by `friendsOf(viewer)` (see
 // `routes/v1/games.ts`).
 
+import { WORKSHOP_CLIENTS, type WorkshopClient } from "@workshop/shared/constants";
 import type {
   AcceptFriendRequestResponse,
   FriendInviteResponse,
@@ -63,6 +64,18 @@ function normalizeStatus(value: string): FriendRequestStatus {
 }
 
 const sendRequestSchema = z.object({ userId: z.string().uuid() });
+const workshopClientHeaderSchema = z.enum(WORKSHOP_CLIENTS).default("workshop");
+
+const FRIEND_INVITE_BASE_URLS = {
+  workshop: {
+    local: "http://localhost:8081",
+    production: "https://workshop-a2v.pages.dev",
+  },
+  highscore: {
+    local: "http://localhost:8082",
+    production: "https://highscore.live",
+  },
+} as const satisfies Record<WorkshopClient, { local: string; production: string }>;
 
 /**
  * Drop every pending directed request between two users (both directions).
@@ -96,12 +109,25 @@ async function friendshipEdge(a: string, b: string): Promise<{ createdAt: Date }
 
 /**
  * Where the invite link lands. G2b owns the client accept route; the web
- * origin mirrors the CORS allowlist in `app.ts` (prod Pages domain).
+ * origin mirrors the CORS allowlist in `app.ts`. The validated client header
+ * picks the brand; absent headers belong to old Workshop clients.
  */
-function friendInviteUrl(token: string): string {
-  const base = getConfig().isLocal ? "http://localhost:8081" : "https://workshop-a2v.pages.dev";
+function friendInviteUrl(
+  token: string,
+  client: WorkshopClient,
+  isLocal = getConfig().isLocal,
+): string {
+  const bases = FRIEND_INVITE_BASE_URLS[client];
+  const base = isLocal ? bases.local : bases.production;
   return `${base}/friends/accept/${token}`;
 }
+
+function parseWorkshopClientHeader(value: string | undefined): WorkshopClient | null {
+  const parsed = workshopClientHeaderSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+export const __internal = { friendInviteUrl, parseWorkshopClientHeader };
 
 export const friendRoutes = new Hono();
 
@@ -169,6 +195,9 @@ friendRoutes.post(
     key: (c) => c.get("userId") ?? null,
   }),
   async (c) => {
+    const client = parseWorkshopClientHeader(c.req.header("X-Workshop-Client"));
+    if (!client) return err(c, "VALIDATION", "invalid X-Workshop-Client header");
+
     const userId = c.get("userId");
     const db = getDb();
 
@@ -183,7 +212,7 @@ friendRoutes.post(
     if (existing?.token) {
       const response: FriendInviteResponse = {
         token: existing.token,
-        url: friendInviteUrl(existing.token),
+        url: friendInviteUrl(existing.token, client),
       };
       return ok(c, response, 201);
     }
@@ -200,7 +229,7 @@ friendRoutes.post(
       if (inserted?.token) {
         const response: FriendInviteResponse = {
           token: inserted.token,
-          url: friendInviteUrl(inserted.token),
+          url: friendInviteUrl(inserted.token, client),
         };
         return ok(c, response, 201);
       }
@@ -227,6 +256,9 @@ friendRoutes.post(
     key: (c) => c.get("userId") ?? null,
   }),
   async (c) => {
+    const client = parseWorkshopClientHeader(c.req.header("X-Workshop-Client"));
+    if (!client) return err(c, "VALIDATION", "invalid X-Workshop-Client header");
+
     const userId = c.get("userId");
     const db = getDb();
 
@@ -254,7 +286,7 @@ friendRoutes.post(
           if (updated?.token) {
             const response: FriendInviteResponse = {
               token: updated.token,
-              url: friendInviteUrl(updated.token),
+              url: friendInviteUrl(updated.token, client),
             };
             return ok(c, response);
           }
@@ -267,7 +299,7 @@ friendRoutes.post(
           if (inserted?.token) {
             const response: FriendInviteResponse = {
               token: inserted.token,
-              url: friendInviteUrl(inserted.token),
+              url: friendInviteUrl(inserted.token, client),
             };
             return ok(c, response, 201);
           }
