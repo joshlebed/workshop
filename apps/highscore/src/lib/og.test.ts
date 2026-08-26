@@ -82,6 +82,9 @@ describe("HighScore Open Graph helpers", () => {
     expect(image).toContain(HIGH_SCORE_OG_DESCRIPTION);
     expect(image).toContain('data-brand-icon="highscore"');
     expect(image).toContain('src="https://highscore.live/icon-source.png"');
+    // One icon, one wordmark — no duplicated brand row under the subtitle.
+    expect(image.match(/data-brand-icon/g)).toHaveLength(1);
+    expect(image).not.toContain("<span>HighScore</span>");
     expect(image).not.toContain("data-score-grid");
     expect(image).toContain("#0E0C0B");
     expect(image).not.toContain("linear-gradient");
