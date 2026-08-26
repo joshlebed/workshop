@@ -11,7 +11,7 @@ export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
 
 export const HIGH_SCORE_OG_TITLE = "HighScore";
-export const HIGH_SCORE_OG_DESCRIPTION = "Daily games. Friendly competition.";
+export const HIGH_SCORE_OG_DESCRIPTION = "Compete in daily games";
 export const HIGH_SCORE_OG_EMOJI = "🎮";
 
 export const OG_META_SELECTORS = [
@@ -194,15 +194,11 @@ function renderImageHtml(variant: ImageVariant, iconUrl: string): string {
     : `<div style="display: flex; width: 200px; height: 200px; border-radius: 44px; background: ${variant.accent}; align-items: center; justify-content: center; font-size: 132px; line-height: 1;">${emoji}</div>`;
 
   return `
-<div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0E0C0B; color: #F2F0ED; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box; position: relative;">
+<div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0E0C0B; color: #F2F0ED; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box;">
   <div style="display: flex; flex-direction: column; justify-content: center; gap: 24px; flex: 1;">
     ${leading}
     <div style="display: flex; font-size: 84px; font-weight: 700; letter-spacing: -2px; line-height: 1.05;">${title}</div>
     <div style="display: flex; font-size: 36px; font-weight: 500; color: #A7A29E; line-height: 1.2;">${subtitle}</div>
-  </div>
-  <div style="display: flex; position: absolute; bottom: 60px; left: 80px; align-items: center; gap: 16px; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">
-    ${renderBrandIconHtml(iconUrl, 36)}
-    <span>HighScore</span>
   </div>
 </div>`.trim();
 }
