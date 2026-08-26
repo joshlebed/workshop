@@ -1,3 +1,3 @@
-import FriendProfile from "@workshop/games/screens/FriendProfile";
+import FriendProfile from "../../src/games/screens/FriendProfile";
 
 export default FriendProfile;

@@ -8,7 +8,6 @@
 // the response is the least-trusted boundary in the games surface — a malformed
 // body should surface as a clean error, not a render crash.
 
-import { apiRequest } from "@workshop/api-client/api";
 import type {
   AcceptFriendRequestResponse,
   FriendInviteResponse,
@@ -22,6 +21,7 @@ import type {
 import { safeParseScoreSpec } from "@workshop/shared/scoreParsing";
 import { safeParseSummarySpec } from "@workshop/shared/summarySpec";
 import { z } from "zod";
+import { apiRequest } from "./api";
 
 const friendSummarySchema = z.object({
   userId: z.string(),

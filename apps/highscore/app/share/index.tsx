@@ -1,3 +1,3 @@
-import PickGame from "@workshop/games/screens/PickGame";
+import PickGame from "../../src/games/screens/PickGame";
 
 export default PickGame;

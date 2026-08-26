@@ -1,3 +1,3 @@
-import FriendAccept from "@workshop/games/screens/FriendAccept";
+import FriendAccept from "../../../src/games/screens/FriendAccept";
 
 export default FriendAccept;

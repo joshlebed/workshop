@@ -16,6 +16,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
+import { createFriendInvite, fetchFriends } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type {
@@ -43,7 +44,7 @@ import {
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
-import { createFriendInvite, fetchFriends } from "../api/friends";
+import { useClientRuntime } from "../../lib/clientRuntime";
 import {
   addGame,
   createGameShareLink,
@@ -64,7 +65,6 @@ import { neighborsForOrderedReorder } from "../lib/reorder";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
-import { useGamesRuntime } from "../runtime";
 import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
 import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
@@ -94,7 +94,7 @@ export interface GamesHomeProps {
 }
 
 export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHomeProps) {
-  const { token, user, routes } = useGamesRuntime();
+  const { token, user, routes } = useClientRuntime();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();

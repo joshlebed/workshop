@@ -5,7 +5,8 @@ in [`docs/highscore-migration-plan.md`](../../docs/highscore-migration-plan.md).
 and iOS from one component tree via `react-native-web`, exactly like `apps/workshop`.
 
 This app owns the Games home, standings, catalog, friends, play-link resolver, and native
-score-share flow. During migration, Workshop renders the same `@workshop/games` package.
+score-share flow. Its live UI is app-owned under `src/games`; Workshop's pre-cutover UI is a
+separate frozen snapshot, so frontend iteration here cannot change Workshop users.
 
 |                              |                                                                 |
 | ---------------------------- | --------------------------------------------------------------- |
@@ -59,13 +60,16 @@ app/                     expo-router routes
   onboarding/            display-name capture
 src/hooks/useAuth.tsx    auth context over @workshop/api-client
 src/components/          app-local components (wordmark)
+src/games/               app-owned Games + friends UI, hooks, and client adapters
 public/index.html        web HTML shell — OG tags, theme-color, canvas lock
 functions/               Pages API proxy, AASA, and OG metadata/PNG routes
 ```
 
-Shared code comes from `@workshop/games` (Games feature), `@workshop/ui` (design system and
-Google sign-in button), `@workshop/api-client` (API, session, storage, OAuth hooks), and
-`@workshop/shared` (types). Anything both apps need belongs in a package, not here.
+Shared code comes from `@workshop/ui` (design system and Google sign-in button),
+`@workshop/api-client` (API, friends boundary, session, storage, OAuth hooks), and
+`@workshop/shared` (types, game registry, score parsing, summary specs). Presentation and
+games-specific client adapters stay here even when Workshop's frozen snapshot has a copy;
+only contract-level code belongs in a package.
 
 ## Brand assets
 

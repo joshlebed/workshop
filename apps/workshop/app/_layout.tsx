@@ -6,11 +6,6 @@ import {
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem, removeItem } from "@workshop/api-client/storage";
-import {
-  PENDING_FRIEND_INVITE_TOKEN_KEY,
-  PENDING_GAME_SHARE_TOKEN_KEY,
-} from "@workshop/games/lib/inviteStash";
-import { type GamesRoutes, GamesRuntimeProvider } from "@workshop/games/runtime";
 import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
@@ -23,7 +18,9 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
-import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
+import { PENDING_GAME_SHARE_TOKEN_KEY } from "../src/legacyGames/lib/inviteStash";
+import { type ClientRoutes, ClientRuntimeProvider } from "../src/lib/clientRuntime";
+import { PENDING_FRIEND_INVITE_TOKEN_KEY, PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
 import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
@@ -37,7 +34,7 @@ function useApplyOtaUpdatesOnArrival() {
   }, [isUpdatePending]);
 }
 
-const WORKSHOP_GAMES_ROUTES: GamesRoutes = {
+const WORKSHOP_CLIENT_ROUTES: ClientRoutes = {
   root: "/",
   home: "/games",
   signIn: "/sign-in",
@@ -56,11 +53,11 @@ function GamesRuntimeBridge({ children }: { children: ReactNode }) {
       status,
       appName: "Workshop",
       appScheme: "workshop",
-      routes: WORKSHOP_GAMES_ROUTES,
+      routes: WORKSHOP_CLIENT_ROUTES,
     }),
     [status, token, user],
   );
-  return <GamesRuntimeProvider value={value}>{children}</GamesRuntimeProvider>;
+  return <ClientRuntimeProvider value={value}>{children}</ClientRuntimeProvider>;
 }
 
 // iOS Share Extension hand-off. When the user taps Share → "Workshop" in

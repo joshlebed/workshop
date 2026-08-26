@@ -6,3 +6,6 @@
  * acceptance succeeds, errors, or the link is rejected.
  */
 export const PENDING_INVITE_TOKEN_KEY = "workshop.pending-invite-token";
+
+/** Recover a friend-invite route after a sign-in or onboarding round trip. */
+export const PENDING_FRIEND_INVITE_TOKEN_KEY = "workshop.pending-friend-invite-token";

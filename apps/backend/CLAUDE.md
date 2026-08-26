@@ -128,11 +128,12 @@ was **dropped** (migration `0038`, applied to prod) once it was proven 100% mirr
 — it replays the current parser over stored `score_raw` in both `game_scores` and legacy
 `item_scores`, importing the real parser so it can't drift. The client mirrors the same
 distillation for _display_: Games standings rows and the Games clipboard recap render through
-`summarizeGameScoreBody` in `packages/games/src/lib/scoresSummary.ts` (formatters live on the
+`summarizeGameScoreBody` in `apps/highscore/src/games/lib/scoresSummary.ts` (formatters live on the
 registry), which strips URLs/headers so a URL-only share shows "Played", never the raw link;
 Games recaps append a **play link** (`/g/:token`, see `game_share_links` below), not a
 friend-invite or list link. The paste sheet previews the parse client-side
-(`packages/games/src/lib/scoreSpecs.ts` mirrors the backend chain) — keep the two chains in sync.
+(`apps/highscore/src/games/lib/scoreSpecs.ts` mirrors the backend chain) — keep the two chains in
+sync. Workshop's `src/legacyGames` versions are frozen snapshots, not the live mirror.
 
 ## Migration journal `when` values must be monotonic
 

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
+import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { fetchFriendRequests } from "@workshop/games/api/friends";
 import { Avatar, Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useState } from "react";

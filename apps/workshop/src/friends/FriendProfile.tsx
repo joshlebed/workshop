@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
+import {
+  acceptFriendRequestFrom,
+  fetchFriendProfile,
+  removeFriendRequest,
+  sendFriendRequest,
+  unfriend,
+} from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
@@ -19,18 +26,11 @@ import {
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import {
-  acceptFriendRequestFrom,
-  fetchFriendProfile,
-  removeFriendRequest,
-  sendFriendRequest,
-  unfriend,
-} from "../api/friends";
-import { addGame } from "../api/games";
-import { localDateKey } from "../lib/gameDate";
-import { goBack } from "../lib/navigation";
-import { summarizeGameScoreBody } from "../lib/scoresSummary";
-import { useGamesRuntime } from "../runtime";
+import { addGame } from "../legacyGames/api/games";
+import { localDateKey } from "../legacyGames/lib/gameDate";
+import { summarizeGameScoreBody } from "../legacyGames/lib/scoresSummary";
+import { useClientRuntime } from "../lib/clientRuntime";
+import { goBack } from "../lib/goBack";
 
 /**
  * Friend profile page — `/friends/:userId`. Shows the relationship state with
@@ -71,7 +71,7 @@ export default function FriendProfileScreen() {
   // Play-link vouch token (`/g/:token` → here for a not-yet-friend sharer). Lets
   // the backend show this profile past the anti-probe 404 so we can add them.
   const via = typeof params.via === "string" ? params.via : undefined;
-  const { token, user, routes } = useGamesRuntime();
+  const { token, user, routes } = useClientRuntime();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
