@@ -78,11 +78,10 @@ pnpm --filter highscore-app run icon:build
 ```
 
 `scripts/build-icon.mjs` has no system dependencies: it validates and decodes the source, copies
-it into the generated `assets/HighScore.icon/` Apple Icon Composer bundle, and centers it at 80%
-scale over the dark app canvas for the opaque 1024×1024 `assets/icon.png`. It also produces the
-transparent adaptive/splash art and web favicon. `assets/highscore-icon.svg` records the geometric
-score-grid mark used beside the wordmark and on the default OG card; it is intentionally separate
-from the owner-provided app icon artwork.
+it into the generated `assets/HighScore.icon/` Apple Icon Composer bundle at 1.6× scale, and
+centers it at 80% scale over the dark app canvas for the uncropped opaque 1024×1024
+`assets/icon.png`. It also produces the transparent adaptive/splash art and web favicon.
+The exact transparent source is copied to `public/icon-source.png` for OG cards.
 
 The `.icon` manifest schema is copied from the known-good
 `apps/workshop/assets/Workshop.dev.icon/icon.json` Icon Composer export. It is plain JSON plus
