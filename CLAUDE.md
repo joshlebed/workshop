@@ -102,6 +102,11 @@ Workshop temporarily renders the same `@workshop/games` package behind its legac
   `expo-apple-authentication`); App Groups `group.dev.josh.workshop` (via `ios.entitlements`
   - `expo-share-intent` plugin — both are needed since the share extension also requires the
     entitlement).
+- **Apple Icon Composer `.icon` bundles are plain generated assets.** The known-good schema comes
+  from `apps/workshop/assets/Workshop.dev.icon/` (`icon.json` plus `Assets/<layer>.png`); HighScore's
+  `pnpm --filter highscore-app run icon:build` copies that shape without requiring a Mac or GUI and
+  keeps an opaque 1024 PNG beside it as the one-line `ios.icon` fallback. The format is undocumented,
+  so the first EAS/TestFlight build after a schema change is the authoritative Xcode validation.
 - **Don't override `ios.infoPlist.CFBundleURLTypes` without re-listing the app scheme.** Once
   declared, Expo stops auto-adding the `scheme:` value. Mirror the root `scheme` ("workshop")
   into `CFBundleURLSchemes` manually. `npx expo config --type public` catches it before EAS does.

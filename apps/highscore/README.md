@@ -67,6 +67,30 @@ Shared code comes from `@workshop/games` (Games feature), `@workshop/ui` (design
 Google sign-in button), `@workshop/api-client` (API, session, storage, OAuth hooks), and
 `@workshop/shared` (types). Anything both apps need belongs in a package, not here.
 
+## Brand assets
+
+The owner artwork lives in `assets/icon-source.png`: a square PNG with transparency that is
+used as the foreground layer everywhere. Replace that file, then regenerate every derived
+asset with one command:
+
+```bash
+pnpm --filter highscore-app run icon:build
+```
+
+`scripts/build-icon.mjs` has no system dependencies: it validates and decodes the source, copies
+it into the generated `assets/HighScore.icon/` Apple Icon Composer bundle, and centers it at 80%
+scale over the dark app canvas for the opaque 1024×1024 `assets/icon.png`. It also produces the
+transparent adaptive/splash art and web favicon. `assets/highscore-icon.svg` records the geometric
+score-grid mark used beside the wordmark and on the default OG card; it is intentionally separate
+from the owner-provided app icon artwork.
+
+The `.icon` manifest schema is copied from the known-good
+`apps/workshop/assets/Workshop.dev.icon/icon.json` Icon Composer export. It is plain JSON plus
+`Assets/icon-source.png`, so no Mac or GUI is required to regenerate it. Xcode validates this
+undocumented schema on the first EAS/TestFlight build; if it ever rejects the bundle, change
+`ios.icon` in `app.json` to `./assets/icon.png` as the one-line fallback. The fallback PNG is
+opaque and has no baked rounded corners because Apple applies the device mask.
+
 ## API URL derivation
 
 Handled by `@workshop/api-client/config` — the same module Workshop uses. On web it derives
@@ -81,9 +105,10 @@ keeps `root_dir=""` and continues to own the repo-root `functions/` directory.
 
 ## Shipping
 
-Cloudflare Pages deploys web from the Git-integrated `highscore` project. Mobile deployment
-CI is not wired yet: `testflight-highscore.yml` and the OTA channel land in PR-8. The
-Metro-bundle and runtime-version guards already cover both apps. Until PR-8 lands:
+Cloudflare Pages deploys web from the Git-integrated `highscore` project. HighScore mobile
+deploys independently through `deploy-mobile-highscore.yml` (OTA) and
+`testflight-highscore.yml` (fingerprint-triggered native builds). The Metro-bundle and
+runtime-version guards cover both apps. For a manual local bundle or EAS build:
 
 ```bash
 cd apps/highscore

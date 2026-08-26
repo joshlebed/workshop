@@ -74,6 +74,10 @@ describe("HighScore Open Graph helpers", () => {
     const image = buildDefaultOgImageHtml();
     expect(image).toContain(HIGH_SCORE_OG_TITLE);
     expect(image).toContain(HIGH_SCORE_OG_DESCRIPTION);
+    expect(image).toContain('data-score-grid="highscore"');
+    expect(image).toContain("#F5A524");
+    expect(image).toContain("#3C3835");
     expect(image).toContain("#0E0C0B");
+    expect(image).not.toContain("linear-gradient");
   });
 });

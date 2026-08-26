@@ -12,7 +12,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <title>%WEB_TITLE%</title>
+    <title>HighScore</title>
 
     <!--
       Default Open Graph + Twitter Card tags. Every URL on the domain that
@@ -25,7 +25,7 @@
     <meta property="og:site_name" content="HighScore" />
     <meta property="og:url" content="https://highscore.live" />
     <meta property="og:title" content="HighScore" />
-    <meta property="og:description" content="Daily games with your friends." />
+    <meta property="og:description" content="Daily games. Friendly competition." />
     <meta property="og:image" content="https://highscore.live/og/default.png" />
     <meta property="og:image:secure_url" content="https://highscore.live/og/default.png" />
     <meta property="og:image:type" content="image/png" />
@@ -34,22 +34,21 @@
     <meta property="og:image:alt" content="HighScore" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="HighScore" />
-    <meta name="twitter:description" content="Daily games with your friends." />
+    <meta name="twitter:description" content="Daily games. Friendly competition." />
     <meta name="twitter:image" content="https://highscore.live/og/default.png" />
-    <meta name="description" content="Daily games with your friends." />
+    <meta name="description" content="Daily games. Friendly competition." />
 
     <!--
       iOS Safari 15+ tints the URL bar / bottom toolbar with theme-color,
       and Android Chrome tints the address bar the same way. Declare both
       light + dark media variants because Safari historically only honored
-      theme-color when an explicit media match was present. The app shell
-      always paints the dark canvas (tokens.bg.canvas = #0E0C0B) regardless
-      of the system color scheme, so we hard-pin both modes to that value
-      to avoid a white flash above/below the page in iOS light mode.
+      theme-color when an explicit media match was present. Both modes use
+      the HighScore accent; the html/body canvas below stays pinned to the
+      dark background token so overscroll and safe-area regions never flash.
     -->
-    <meta name="theme-color" content="#0E0C0B" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#0E0C0B" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0C0B" />
+    <meta name="theme-color" content="#F5A524" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5A524" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#F5A524" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />

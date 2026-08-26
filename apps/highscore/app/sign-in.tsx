@@ -59,7 +59,7 @@ export default function SignIn() {
       <View style={styles.topSpacer} />
       <View style={styles.brandBlock}>
         <Wordmark size="lg" />
-        <Text tone="secondary">Daily games with your friends.</Text>
+        <Text tone="secondary">Daily games. Friendly competition.</Text>
       </View>
 
       <View style={styles.actions}>
