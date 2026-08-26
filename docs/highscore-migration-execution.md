@@ -88,10 +88,11 @@ unless an arrow says otherwise.
 
 ### Post-validation fixes
 
-| ID    | What                                                                                                                       | Depends on | Status                                                              |
-| ----- | -------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------------------------------------------------------------- |
-| FIX-1 | Play links minted on `highscore.live`; friend invites client-aware via `X-Workshop-Client` (TestFlight validation finding) | —          | done ✅ #390                                                        |
-| FIX-2 | Unified HighScore branding: wordmark, owner arcade icon via generated `.icon` bundle + `icon:build`, v0.3.0                | —          | done ✅ #391 — 0.3.0 TestFlight build green (icon schema validated) |
+| ID    | What                                                                                                                                                                                 | Depends on | Status                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------- |
+| FIX-1 | Play links minted on `highscore.live`; friend invites client-aware via `X-Workshop-Client` (TestFlight validation finding)                                                           | —          | done ✅ #390                                                        |
+| FIX-2 | Unified HighScore branding: wordmark, owner arcade icon via generated `.icon` bundle + `icon:build`, v0.3.0                                                                          | —          | done ✅ #391 — 0.3.0 TestFlight build green (icon schema validated) |
+| FIX-3 | HighScore owns games UI (`apps/highscore/src`); Workshop frozen snapshot `apps/workshop/src/legacyGames/`; `packages/games` deleted; games changes no longer trigger Workshop CI/OTA | —          | done ✅ #393                                                        |
 
 ## Wave 5 — cleanup
 
