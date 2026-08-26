@@ -86,6 +86,12 @@ unless an arrow says otherwise.
 | OP-10 | **User notification**: announce the move ahead of cutover (Discord + any in-app surface), with dates and the App Store link.                                                                                                                                                                                                                                                                                                                                              | OP-9 live         | todo   |
 | PR-9  | **Workshop cutover.** Flip `ENABLE_LEGACY_GAMES_TAB` off: games tab becomes the **persistent** "Daily games moved to HighScore" surface deep-linking to the App Store listing + `highscore.live`; `share/pick-game` routes to the same. Workshop Pages functions 301 `/g/*` (and game-share OG routes) to `highscore.live` equivalents — old iMessage links must never 404. Bump `app.json` version if the guard demands it; ships as OTA (+ TestFlight if native churn). | OP-9, OP-10, PR-6 | todo   |
 
+### Post-validation fixes
+
+| ID    | What                                                                                                                       | Depends on | Status       |
+| ----- | -------------------------------------------------------------------------------------------------------------------------- | ---------- | ------------ |
+| FIX-1 | Play links minted on `highscore.live`; friend invites client-aware via `X-Workshop-Client` (TestFlight validation finding) | —          | done ✅ #390 |
+
 ## Wave 5 — cleanup
 
 | ID    | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Depends on          | Status |
