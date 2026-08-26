@@ -1,0 +1,28 @@
+# HighScore App Store screenshots
+
+These are App Store Connect-ready starting assets composed from the HighScore web build.
+They are web-render approximations; native iPhone captures are the higher-fidelity option.
+
+## Output sets
+
+- `6.9-inch/`: 1320 × 2868 PNGs
+- `6.5-inch/`: 1284 × 2778 PNGs
+- `raw/`: unframed 440 × 956 source captures
+
+## Regenerate
+
+Replace the files in `raw/` without changing their names, then run:
+
+```bash
+node scripts/compose-highscore-appstore-screenshots.mjs
+```
+
+The script requires `ffmpeg` with SVG support and writes opaque RGB PNGs at both required
+App Store sizes.
+
+## Native replacement shot list
+
+1. Games home showing today's standings, streaks, and reactions.
+2. Paste sheet showing a parsed score before posting.
+3. Friends screen showing invite, requests, existing friends, and suggestions.
+4. Share Extension showing a detected game and score destination.
