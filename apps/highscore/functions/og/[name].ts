@@ -3,6 +3,7 @@ import { buildDefaultOgImageHtml, OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH } from "../_li
 
 interface PagesContext {
   params: { name?: string | string[] };
+  request: Request;
 }
 
 const TEXT_GLYPHS =
@@ -18,7 +19,8 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
     loadGoogleFont({ family: "Inter", weight: 600, text: TEXT_GLYPHS }),
   ]);
 
-  return new ImageResponse(buildDefaultOgImageHtml(), {
+  const iconUrl = new URL("/icon-source.png", context.request.url).toString();
+  return new ImageResponse(buildDefaultOgImageHtml(iconUrl), {
     width: OG_IMAGE_WIDTH,
     height: OG_IMAGE_HEIGHT,
     format: "png",

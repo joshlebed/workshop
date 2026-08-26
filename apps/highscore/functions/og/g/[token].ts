@@ -10,6 +10,7 @@ import {
 interface PagesContext {
   env: PagesEnv;
   params: { token?: string | string[] };
+  request: Request;
 }
 
 const BASE_GLYPHS =
@@ -22,7 +23,8 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
 
   const token = captured.replace(/\.(png|webp|jpg|jpeg)$/i, "");
   const preview = await fetchGameSharePreview(token, context.env);
-  const html = buildGameShareOgImageHtml(preview);
+  const iconUrl = new URL("/icon-source.png", context.request.url).toString();
+  const html = buildGameShareOgImageHtml(preview, iconUrl);
   const glyphs = `${BASE_GLYPHS}${preview?.sharerName ?? ""}`;
   const [bold, semibold] = await Promise.all([
     loadGoogleFont({ family: "Inter", weight: 700, text: glyphs }),

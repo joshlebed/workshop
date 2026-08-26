@@ -105,6 +105,16 @@ describe("apps/highscore app.json", () => {
       colorType: 6,
     });
     expect(pngInfo("public/favicon.png")).toEqual({ width: 64, height: 64, colorType: 2 });
+    expect(pngInfo("public/icon-source.png")).toEqual({
+      width: 512,
+      height: 512,
+      colorType: 6,
+    });
+    expect(
+      readFileSync(join(appDir, "public/icon-source.png")).equals(
+        readFileSync(join(appDir, "assets/icon-source.png")),
+      ),
+    ).toBe(true);
 
     const iconManifest: unknown = JSON.parse(
       readFileSync(join(appDir, "assets/HighScore.icon/icon.json"), "utf8"),
@@ -119,7 +129,7 @@ describe("apps/highscore app.json", () => {
               glass: false,
               "image-name": "icon-source.png",
               name: "icon-source",
-              position: { scale: 0.8, "translation-in-points": [0, 0] },
+              position: { scale: 1.6, "translation-in-points": [0, 0] },
             },
           ],
           shadow: { kind: "neutral", opacity: 0.5 },
