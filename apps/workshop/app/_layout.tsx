@@ -4,6 +4,7 @@ import {
   ThemeProvider as NavigationThemeProvider,
 } from "@react-navigation/native";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { configureApiClient } from "@workshop/api-client/api";
 import { getItem, removeItem } from "@workshop/api-client/storage";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
@@ -26,6 +27,8 @@ import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
 import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
+
+configureApiClient({ client: "workshop" });
 
 function useApplyOtaUpdatesOnArrival() {
   const { isUpdatePending } = Updates.useUpdates();

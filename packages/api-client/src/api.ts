@@ -1,4 +1,5 @@
 import type { ApiErrorResponse } from "@workshop/shared";
+import type { WorkshopClient } from "@workshop/shared/constants";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { ApiError } from "./apiError";
@@ -23,6 +24,12 @@ type SessionRefreshHandler = (failedToken: string) => Promise<string | null>;
 
 let sessionRefreshHandler: SessionRefreshHandler | null = null;
 let refreshInFlight: Promise<string | null> | null = null;
+let clientIdentity: WorkshopClient | null = null;
+
+/** Configure the product identity included with every API request. */
+export function configureApiClient({ client }: { client: WorkshopClient }): void {
+  clientIdentity = client;
+}
 
 export function registerSessionRefreshHandler(handler: SessionRefreshHandler): () => void {
   sessionRefreshHandler = handler;
@@ -61,6 +68,7 @@ export async function apiRequest<T>({
     "X-Workshop-App-Version": APP_VERSION,
     "X-Workshop-Session-Version": "2",
   };
+  if (clientIdentity) headers["X-Workshop-Client"] = clientIdentity;
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const init: RequestInit = { method, headers, credentials: "include" };

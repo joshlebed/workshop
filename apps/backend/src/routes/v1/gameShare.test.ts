@@ -18,7 +18,7 @@ vi.mock("../../db/client.js", () => ({
 
 // Imported after the mock so the routers' `getDb` resolves to PGlite.
 import { friendRoutes } from "./friends.js";
-import { gameShareRoutes } from "./gameShare.js";
+import { __internal, gameShareRoutes } from "./gameShare.js";
 
 const sharerId = "00000000-0000-4000-8000-000000000001";
 const friendId = "00000000-0000-4000-8000-000000000002";
@@ -78,7 +78,10 @@ describe("POST /v1/game-share (mint)", () => {
   it("mints a play link as a short /g/:token URL", async () => {
     const link = await mint(sharerId);
     expect(link.token).toMatch(/^[A-Za-z0-9]{8}$/);
-    expect(link.url).toBe(`http://localhost:8081/g/${link.token}`);
+    expect(link.url).toBe(`http://localhost:8082/g/${link.token}`);
+    expect(__internal.gameShareUrl(link.token, false)).toBe(
+      `https://highscore.live/g/${link.token}`,
+    );
   });
 
   it("is idempotent within a day — re-minting returns the same token", async () => {

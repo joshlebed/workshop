@@ -1,4 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
+import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
@@ -17,6 +18,8 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { createQueryClient } from "../src/lib/query";
+
+configureApiClient({ client: "highscore" });
 
 function useApplyOtaUpdatesOnArrival() {
   const { isUpdatePending } = Updates.useUpdates();
