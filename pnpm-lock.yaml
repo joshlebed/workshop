@@ -132,6 +132,9 @@ importers:
       expo-constants:
         specifier: 55.0.16
         version: 55.0.16(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.0))
+      expo-image-picker:
+        specifier: ~55.0.20
+        version: 55.0.20(expo@55.0.24)
       expo-router:
         specifier: 55.0.14
         version: 55.0.14(467a7c3efde5328f352c8abf2e1c3a7c)
