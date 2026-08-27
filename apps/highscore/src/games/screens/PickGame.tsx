@@ -25,9 +25,9 @@ import {
 import { useGamesRuntime } from "../runtime";
 
 // The Games-surface score picker for the share flow (the leaderboard-list
-// picker's successor): paste box + My Games rows. When the detected game
-// isn't in My Games yet it's offered as a suggested row on top — posting
-// find-or-creates the catalog game and the upsert auto-adds it to My Games.
+// picker's successor): a detected-score card with a one-tap Post button, a
+// paste box, and My Games rows. When the detected game isn't in My Games yet,
+// posting find-or-creates the catalog game and the upsert auto-adds it.
 export default function PickGame() {
   const params = useLocalSearchParams<{ url?: string; text?: string }>();
   const sharedPayload = readSharedPayload(params);
@@ -37,7 +37,15 @@ export default function PickGame() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
-  const detectedScore = useMemo(() => detectSharedScore(sharedPayload), [sharedPayload]);
+  // Detect against the live draft, not the frozen share payload: the paste box
+  // lives on this screen, so filling in a result the iOS share sheet dropped
+  // should light up the Post button without a trip through another surface.
+  const detectedScore = useMemo(() => detectSharedScore(scoreDraft), [scoreDraft]);
+  // A game share whose grid was dropped at the share-sheet boundary arrives as
+  // just the game's referral URL (e.g. `dailytens.com/?ref=<id>`). It still
+  // matches the game's text pattern, so `detectedScore` is non-null, but there
+  // is no result to post — one-tap posting would store a bare link.
+  const resultlessDraft = isResultlessShare(scoreDraft);
   const today = localDateKey();
 
   const myGamesQuery = useQuery({
@@ -47,11 +55,13 @@ export default function PickGame() {
   });
   const myGames = myGamesQuery.data?.games ?? [];
 
-  // The detected game, when it isn't already one of My Games rows.
-  const suggestedTarget = useMemo(() => {
-    const target = pickSuggestedGameTarget(detectedScore, myGames);
-    return target && target.gameId === null ? target : null;
-  }, [detectedScore, myGames]);
+  // Where a detected score posts: the matching My Games row when there is one,
+  // otherwise the registry's canonical URL (find-or-create on post).
+  const suggestion = useMemo(
+    () => pickSuggestedGameTarget(detectedScore, myGames),
+    [detectedScore, myGames],
+  );
+  const suggestionLoading = !!detectedScore && !!token && myGamesQuery.isPending && !suggestion;
 
   const submitScore = useMutation({
     mutationFn: async (target: ShareGameTarget) => {
@@ -115,7 +125,9 @@ export default function PickGame() {
           <View style={styles.payloadPill} testID="share-game-payload">
             <View style={styles.payloadDot} />
             <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
-              {detectedScore ? `${detectedScore.gameLabel} score detected` : "Score share"}
+              {detectedScore
+                ? `${detectedScore.gameLabel} ${resultlessDraft ? "link" : "score"} detected`
+                : "Score share"}
             </Text>
           </View>
         </View>
@@ -126,6 +138,19 @@ export default function PickGame() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
+        {detectedScore ? (
+          <DetectedScoreSuggestion
+            label={detectedScore.gameLabel}
+            suggestion={suggestion}
+            loading={suggestionLoading}
+            pending={submitScore.isPending}
+            resultless={resultlessDraft}
+            onPost={() => {
+              if (suggestion) postScore(suggestion);
+            }}
+          />
+        ) : null}
+
         <View style={styles.scoreBox}>
           <View style={styles.scoreHeader}>
             <Text variant="label">Score</Text>
@@ -150,7 +175,7 @@ export default function PickGame() {
             Your games
           </Text>
           <Text variant="caption" tone="muted">
-            Pick the game to update.
+            {suggestion ? "Or pick a different game." : "Pick the game to update."}
           </Text>
         </View>
 
@@ -166,27 +191,22 @@ export default function PickGame() {
               <Button label="Retry" variant="secondary" onPress={() => myGamesQuery.refetch()} />
             }
           />
-        ) : myGames.length === 0 && !suggestedTarget ? (
+        ) : myGames.length === 0 ? (
           <EmptyState
             title="No games yet"
-            description="Add games on the Games tab, then share a score to post it here."
+            description={
+              suggestion
+                ? `Post above and we'll add ${suggestion.title} to your games.`
+                : "Add games on the Games tab, then share a score to post it here."
+            }
             action={
-              <Button label="Open Games" onPress={() => router.replace(routes.home as Href)} />
+              suggestion ? undefined : (
+                <Button label="Open Games" onPress={() => router.replace(routes.home as Href)} />
+              )
             }
           />
         ) : (
           <View style={styles.gameList}>
-            {suggestedTarget ? (
-              <GameRow
-                key="suggested"
-                title={suggestedTarget.title}
-                subtitle="Adds to My Games"
-                iconUrl={null}
-                testID="share-game-suggested"
-                {...rowState(suggestedTarget)}
-                onPress={() => postScore(suggestedTarget)}
-              />
-            ) : null}
             {myGames.map((mg) => {
               const target = myGameTarget(mg);
               return (
@@ -205,6 +225,88 @@ export default function PickGame() {
         )}
       </ScrollView>
     </Screen>
+  );
+}
+
+// The one-tap post surface for an auto-detected score. Mirrors the Workshop
+// share sheet's affordance: a named destination plus a "Post" button, so the
+// common case never requires hunting for a row in the list below.
+function DetectedScoreSuggestion({
+  label,
+  suggestion,
+  loading,
+  pending,
+  resultless,
+  onPost,
+}: {
+  label: string;
+  suggestion: ShareGameTarget | null;
+  loading: boolean;
+  pending: boolean;
+  resultless: boolean;
+  onPost: () => void;
+}) {
+  // The share carried the game's link but not the result text. Don't offer
+  // one-tap post — the paste field is right below, so ask for the result.
+  if (resultless) {
+    return (
+      <View style={styles.suggestionBox} testID="share-game-detection-resultless">
+        <Text variant="label">{label} link detected</Text>
+        <Text variant="caption" tone="muted">
+          We got the link but not your result. Paste your result below to post a score.
+        </Text>
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.suggestionBox} testID="share-game-detection-loading">
+        <View style={styles.loadingRow}>
+          <ActivityIndicator color={tokens.accent.default} size="small" />
+          <Text variant="label">{label} score detected</Text>
+        </View>
+        <Text variant="caption" tone="muted">
+          Looking for a matching game.
+        </Text>
+      </View>
+    );
+  }
+
+  if (!suggestion) {
+    return (
+      <View style={styles.suggestionBox} testID="share-game-detection-empty">
+        <Text variant="label">{label} score detected</Text>
+        <Text variant="caption" tone="muted">
+          Pick where to post it below.
+        </Text>
+      </View>
+    );
+  }
+
+  const destination = suggestion.gameId
+    ? `Post to ${suggestion.title} in your games`
+    : `Post to ${suggestion.title} — we'll add it to your games`;
+
+  return (
+    <View style={styles.suggestionBox} testID="share-game-detection-suggestion">
+      <View style={styles.suggestionHeader}>
+        <View style={styles.suggestionText}>
+          <Text variant="label">{label} score detected</Text>
+          <Text variant="caption" tone="muted" numberOfLines={2}>
+            {destination}
+          </Text>
+        </View>
+        <Button
+          label="Post"
+          size="md"
+          disabled={pending}
+          loading={pending}
+          onPress={onPost}
+          testID="share-game-post-suggestion"
+        />
+      </View>
+    </View>
   );
 }
 
@@ -351,6 +453,21 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.lg,
   },
+  suggestionBox: {
+    gap: tokens.space.sm,
+    padding: tokens.space.md,
+    borderRadius: tokens.radius.lg,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+  },
+  suggestionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+  },
+  suggestionText: { flex: 1, minWidth: 0, gap: 2 },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   scoreBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
