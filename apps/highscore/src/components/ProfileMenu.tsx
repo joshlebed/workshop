@@ -1,16 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorMessage } from "@workshop/api-client/api";
 import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { Avatar, Button, Sheet, Text, tokens } from "@workshop/ui";
+import { Avatar, Button, Sheet, Text, tokens, useToast } from "@workshop/ui";
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useState } from "react";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const livePoll = useLivePollingInterval();
   const [open, setOpen] = useState(false);
   const requestsQuery = useQuery({
@@ -20,6 +24,22 @@ export function ProfileMenu() {
     refetchInterval: livePoll,
   });
   const pending = requestsQuery.data?.inbound.length ?? 0;
+
+  const onSendFeedback = () => {
+    const subject = encodeURIComponent("HighScore feedback");
+    const version = Constants.expoConfig?.version ?? "0.0.0";
+    const body = encodeURIComponent(
+      `\n\nFeedback context\nHighScore v${version} · ${Platform.OS}${user?.id ? ` · ${user.id.slice(0, 8)}` : ""}`,
+    );
+    Linking.openURL(`mailto:joshlebed@gmail.com?subject=${subject}&body=${body}`).catch(() => {});
+  };
+
+  // Impersonation swaps the whole session — close the sheet and drop every
+  // cached query so no other user's data leaks across accounts.
+  const onAuthSessionChanged = useCallback(() => {
+    setOpen(false);
+    queryClient.clear();
+  }, [queryClient]);
 
   return (
     <>
@@ -61,12 +81,28 @@ export function ProfileMenu() {
             </View>
           </View>
           <Button
+            label="Edit profile"
+            variant="secondary"
+            testID="open-edit-profile"
+            onPress={() => {
+              setOpen(false);
+              router.push("/profile");
+            }}
+          />
+          <Button
             label={pending > 0 ? `Friends (${pending})` : "Friends"}
             onPress={() => {
               setOpen(false);
               router.push("/friends");
             }}
           />
+          <Button
+            label="Send feedback"
+            variant="secondary"
+            testID="send-feedback"
+            onPress={onSendFeedback}
+          />
+          <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
           <Button
             label="Sign out"
             variant="ghost"
@@ -79,6 +115,210 @@ export function ProfileMenu() {
         </View>
       </Sheet>
     </>
+  );
+}
+
+// Adapted copy of Workshop's AdminImpersonationRow. Hidden unless the server
+// says the signed-in user is an admin (`user.isAdmin`); the backend enforces
+// the same gate on both the target list and the impersonate endpoint, so the
+// client check is presentation-only.
+function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => void }) {
+  const { user, token, impersonation, impersonateUser, stopImpersonating } = useAuth();
+  const { showToast } = useToast();
+  const [editing, setEditing] = useState(false);
+  const [target, setTarget] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const targetsQuery = useQuery({
+    queryKey: queryKeys.users.impersonationTargets,
+    queryFn: () => fetchImpersonationTargets(token),
+    enabled: Boolean(user?.isAdmin && editing && token && !impersonation),
+    staleTime: 60_000,
+  });
+
+  const labelFor = (u: { displayName: string | null; email: string | null }) =>
+    u.displayName?.trim() || u.email || "user";
+
+  const targets = targetsQuery.data?.users ?? [];
+  const selectedTarget = targets.find((u) => u.email === target) ?? null;
+  const loadingTargets = targetsQuery.isLoading || (targetsQuery.isFetching && !targetsQuery.data);
+  const selectDisabled = busy || loadingTargets || targetsQuery.isError || targets.length === 0;
+
+  const onImpersonate = async () => {
+    const trimmed = target.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    try {
+      const nextUser = await impersonateUser(trimmed);
+      showToast({ message: `Signed in as ${labelFor(nextUser)}`, tone: "success" });
+      setEditing(false);
+      setTarget("");
+      setDropdownOpen(false);
+      onSessionChanged();
+    } catch (e) {
+      showToast({ message: errorMessage(e, "Couldn't impersonate that user."), tone: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onStop = async () => {
+    setBusy(true);
+    try {
+      await stopImpersonating();
+      showToast({ message: "Back to your account", tone: "success" });
+      onSessionChanged();
+    } catch (e) {
+      showToast({ message: errorMessage(e, "Couldn't stop impersonating."), tone: "danger" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (impersonation) {
+    const adminLabel =
+      impersonation.adminDisplayName?.trim() || impersonation.adminEmail || "Admin";
+    return (
+      <View style={impersonationStyles.form} testID="admin-impersonation-status">
+        <Text variant="caption" tone="muted" style={impersonationStyles.note}>
+          Impersonating. Started by {adminLabel}.
+        </Text>
+        <Button
+          label="Stop impersonating"
+          variant="secondary"
+          loading={busy}
+          onPress={onStop}
+          testID="stop-impersonating"
+        />
+      </View>
+    );
+  }
+
+  if (!user?.isAdmin) return null;
+
+  if (!editing) {
+    return (
+      <Button
+        label="Admin: impersonate user"
+        variant="secondary"
+        onPress={() => setEditing(true)}
+        testID="open-admin-impersonation"
+      />
+    );
+  }
+
+  return (
+    <View style={impersonationStyles.form} testID="admin-impersonation-form">
+      <Pressable
+        testID="admin-impersonation-select"
+        accessibilityRole="button"
+        accessibilityLabel="User to impersonate"
+        accessibilityState={{ disabled: selectDisabled, expanded: dropdownOpen }}
+        onPress={selectDisabled ? undefined : () => setDropdownOpen((o) => !o)}
+        style={({ pressed }) => [
+          impersonationStyles.select,
+          pressed && !selectDisabled ? impersonationStyles.selectPressed : null,
+          selectDisabled ? impersonationStyles.selectDisabled : null,
+        ]}
+      >
+        <Text
+          variant="label"
+          numberOfLines={1}
+          style={[
+            impersonationStyles.selectText,
+            !selectedTarget ? impersonationStyles.selectPlaceholder : null,
+          ]}
+        >
+          {selectedTarget?.email ??
+            (loadingTargets
+              ? "Loading users..."
+              : targetsQuery.isError
+                ? "Couldn't load users"
+                : targets.length === 0
+                  ? "No users with email"
+                  : "Select a user")}
+        </Text>
+        <Text variant="label" tone="muted" style={impersonationStyles.selectChevron}>
+          {dropdownOpen ? "⌃" : "⌄"}
+        </Text>
+      </Pressable>
+      {dropdownOpen && !selectDisabled ? (
+        <ScrollView
+          style={impersonationStyles.optionList}
+          keyboardShouldPersistTaps="handled"
+          nestedScrollEnabled
+        >
+          {targets.map((targetUser) => {
+            const selected = targetUser.email === target;
+            const displayName = targetUser.displayName?.trim();
+            return (
+              <Pressable
+                key={targetUser.id}
+                testID={`admin-impersonation-option-${targetUser.email}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Impersonate ${targetUser.email}`}
+                accessibilityState={{ selected }}
+                onPress={() => {
+                  setTarget(targetUser.email);
+                  setDropdownOpen(false);
+                }}
+                style={({ pressed }) => [
+                  impersonationStyles.option,
+                  selected ? impersonationStyles.optionSelected : null,
+                  pressed ? impersonationStyles.optionPressed : null,
+                ]}
+              >
+                <Text variant="label" numberOfLines={1} style={impersonationStyles.optionEmail}>
+                  {targetUser.email}
+                </Text>
+                {displayName ? (
+                  <Text variant="caption" tone="muted" numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+      {targetsQuery.isError ? (
+        <View style={impersonationStyles.retryRow}>
+          <Text variant="caption" tone="muted" style={impersonationStyles.retryText}>
+            User emails could not be loaded.
+          </Text>
+          <Button
+            label="Retry"
+            size="md"
+            variant="secondary"
+            disabled={targetsQuery.isFetching}
+            loading={targetsQuery.isFetching}
+            onPress={() => targetsQuery.refetch()}
+          />
+        </View>
+      ) : null}
+      <View style={impersonationStyles.actions}>
+        <Button
+          label="Sign in"
+          size="md"
+          disabled={!target.trim() || busy}
+          loading={busy}
+          onPress={onImpersonate}
+          testID="admin-impersonation-submit"
+        />
+        <Button
+          label="Cancel"
+          size="md"
+          variant="ghost"
+          disabled={busy}
+          onPress={() => {
+            setEditing(false);
+            setTarget("");
+            setDropdownOpen(false);
+          }}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -109,4 +349,55 @@ const styles = StyleSheet.create({
   content: { gap: tokens.space.md },
   identity: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
   identityText: { flex: 1, minWidth: 0 },
+});
+
+const impersonationStyles = StyleSheet.create({
+  form: { gap: tokens.space.sm },
+  select: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    borderRadius: tokens.radius.md,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 10,
+    backgroundColor: tokens.bg.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+  },
+  selectPressed: { backgroundColor: tokens.bg.elevated },
+  selectDisabled: { borderColor: tokens.border.subtle },
+  selectText: { flex: 1, minWidth: 0, color: tokens.text.primary },
+  selectPlaceholder: { color: tokens.text.muted },
+  selectChevron: {
+    width: 18,
+    textAlign: "center",
+    color: tokens.text.muted,
+  },
+  optionList: {
+    maxHeight: 220,
+    borderWidth: 1,
+    borderColor: tokens.border.subtle,
+    borderRadius: tokens.radius.md,
+    backgroundColor: tokens.bg.surface,
+  },
+  option: {
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    gap: 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border.subtle,
+  },
+  optionPressed: { backgroundColor: tokens.bg.elevated },
+  optionSelected: { backgroundColor: tokens.accent.muted },
+  optionEmail: { color: tokens.text.primary },
+  retryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    flexWrap: "wrap",
+  },
+  retryText: { flex: 1, minWidth: 160 },
+  actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
+  note: { paddingHorizontal: tokens.space.xs },
 });
