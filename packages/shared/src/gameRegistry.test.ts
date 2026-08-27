@@ -256,6 +256,30 @@ describe("formatShareBody", () => {
     expect(def.formatShareBody!(raw)).toBe("🏆🏆🏆❌🏆\n🏆🏆❌❌🏆");
   });
 
+  it("tradle collapses the guess grid to a greens sparkline + fraction", () => {
+    const def = gameDefinitionForKey("tradle")!;
+    expect(
+      def.formatShareBody!(
+        "#Tradle #1558 4/6\n🟩🟩🟩⬜⬜\n🟩🟩🟩🟩🟨\n🟩🟩🟩🟩🟨\n🟩🟩🟩🟩🟩\nhttps://tradle.net/",
+      ),
+    ).toBe("🟩 3·4·4·5 4/6");
+    // URL-only share defers to the fallback.
+    expect(def.formatShareBody!("https://tradle.net/")).toBe(null);
+  });
+
+  it("worldle collapses like tradle, ignoring arrows and the bonus-star line", () => {
+    const def = gameDefinitionForKey("worldle")!;
+    expect(
+      def.formatShareBody!(
+        "#Worldle #1287 (27.08.2026) 4/6 (100%)\n🟩🟩🟩🟨⬜⬅️\n🟩🟩🟩🟩🟨↗️\n🟩🟩🟩🟩🟨➡️\n🟩🟩🟩🟩🟩🎉\n⭐🧭📍\nhttps://worldle.teuteuf.fr",
+      ),
+    ).toBe("🟩 3·4·4·5 4/6");
+    // A failed day keeps the X/6 fraction.
+    expect(
+      def.formatShareBody!("#Worldle #1287 X/6\n🟩🟨⬜⬜⬜⬆️\nhttps://worldle.teuteuf.fr"),
+    ).toBe("🟩 1 X/6");
+  });
+
   it("nyt-mini renders the time as keycap digits", () => {
     const def = gameDefinitionForKey("nyt-mini")!;
     expect(
