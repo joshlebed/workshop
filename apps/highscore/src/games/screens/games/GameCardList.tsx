@@ -3,16 +3,22 @@
 // Mirrors `ItemList.tsx`'s ordered-section wiring for a single flat ordered
 // list: long-press anywhere on a card (except the kebab menu) activates reorder
 // via `useReorderableDrag()` (250ms, matched to the web TouchSensor delay).
+//
+// The list owns its own scroll. It used to be a `NestedReorderableList` inside a
+// `ScrollViewContainer` — the library's nesting API — but Games home has no
+// sibling content to co-scroll (the DayRail is pinned above the list, outside
+// it), so the outer ScrollView bought nothing and cost two things: RN's
+// VirtualizedList dev check fired "VirtualizedLists should never be nested
+// inside plain ScrollViews with the same orientation" on every launch, and
+// `scrollable={false}` disabled windowing, mounting every card up front.
 
 import type { MyGame } from "@workshop/shared/games";
 import { haptics, homeLayout, PullToRefresh, REORDER_AUTOSCROLL } from "@workshop/ui";
 import { memo } from "react";
 import type { ListRenderItemInfo } from "react-native";
 import { Pressable, StyleSheet } from "react-native";
-import {
-  NestedReorderableList,
+import ReorderableList, {
   type ReorderableListReorderEvent,
-  ScrollViewContainer,
   useIsActive,
   useReorderableDrag,
 } from "react-native-reorderable-list";
@@ -27,22 +33,21 @@ export function GameCardList({
 }: GameCardListProps) {
   return (
     <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
-      <ScrollViewContainer contentContainerStyle={styles.listContent} testID="games-home-list">
-        <NestedReorderableList
-          data={games}
-          keyExtractor={keyExtractor}
-          renderItem={({ item }: ListRenderItemInfo<MyGame>) => (
-            <DraggableCard game={item} render={renderCard} />
-          )}
-          onReorder={({ from, to }: ReorderableListReorderEvent) =>
-            onReorder({ fromIndex: from, toIndex: to })
-          }
-          scrollable={false}
-          autoscrollThreshold={REORDER_AUTOSCROLL.threshold}
-          autoscrollSpeedScale={REORDER_AUTOSCROLL.speedScale}
-          shouldUpdateActiveItem
-        />
-      </ScrollViewContainer>
+      <ReorderableList
+        data={games}
+        keyExtractor={keyExtractor}
+        renderItem={({ item }: ListRenderItemInfo<MyGame>) => (
+          <DraggableCard game={item} render={renderCard} />
+        )}
+        onReorder={({ from, to }: ReorderableListReorderEvent) =>
+          onReorder({ fromIndex: from, toIndex: to })
+        }
+        contentContainerStyle={styles.listContent}
+        testID="games-home-list"
+        autoscrollThreshold={REORDER_AUTOSCROLL.threshold}
+        autoscrollSpeedScale={REORDER_AUTOSCROLL.speedScale}
+        shouldUpdateActiveItem
+      />
     </PullToRefresh>
   );
 }
