@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { DEV_AUTH_USER } from "../src/lib/devAuthUser";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -46,7 +47,7 @@ export default function SignIn() {
     try {
       setBusy("dev");
       setError(null);
-      await signInDev({ email: "joshlebed@gmail.com", displayName: "Josh" });
+      await signInDev(DEV_AUTH_USER);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign in failed");
     } finally {

@@ -22,9 +22,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { DEV_AUTH_USER } from "../lib/devAuthUser";
 
 const AUTO_DEV_OPT_OUT_KEY = "highscore.disable-auto-dev";
-const DEV_USER = { email: "joshlebed@gmail.com", displayName: "Josh" } as const;
 
 export type AuthStatus =
   | "loading"
@@ -141,7 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiRequest<AuthResponse>({
         method: "POST",
         path: "/v1/auth/dev",
-        body: DEV_USER,
+        body: DEV_AUTH_USER,
       });
       await applyAuth(res);
       return true;

@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "db:seed:highscore-appstore": "tsx scripts/seed-highscore-appstore.ts",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push"
   },
