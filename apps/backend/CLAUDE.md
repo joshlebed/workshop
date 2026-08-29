@@ -309,6 +309,20 @@ a nudge). The client shows a 🔥 flame next to the title once it hits `STREAK_M
 you add a new path that builds `GameStandings`, set `viewerStreak` (it's required) — usually
 `loadViewerStreaksByGame(...).get(gameId) ?? 0`.
 
+## Daily-play reminders use the latest token's timezone
+
+Push installations live in `push_tokens`; account-level settings live in `notification_prefs`.
+`POST /v1/me/push-token` moves an Expo token to the current user on re-registration and refreshes
+`last_seen_at`. When a user has multiple installations, the most recently seen token supplies the
+single canonical timezone for both `suggestedHour` and the `{ "job": "play-reminders" }` Lambda
+invocation; delivery still targets all of that user's tokens. The job is Games-flag-gated, wraps its
+opening query in `withDbRetry`, skips any user with a `game_scores.created_at` on their current local
+date, and excludes anyone with `notification_prefs.last_reminded_at` in the past 20 hours (including
+the repeated fall-back DST hour). Expo batches contain at most 100 tokens; each batch handles and
+logs failures independently, successful batches advance `last_reminded_at`, and all collected
+`DeviceNotRegistered` tickets are pruned after the loop. The spring-forward hour that does not exist
+is intentionally skipped in v1.
+
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's

@@ -1,0 +1,1 @@
+ALTER TABLE "notification_prefs" ADD COLUMN "last_reminded_at" timestamp with time zone;

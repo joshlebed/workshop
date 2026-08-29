@@ -281,6 +281,20 @@
       "when": 1786257270865,
       "tag": "0039_managed_device_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1787684376520,
+      "tag": "0040_push_reminders",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1787686133215,
+      "tag": "0041_push_reminder_dedup",
+      "breakpoints": true
     }
   ]
 }
