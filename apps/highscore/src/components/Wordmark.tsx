@@ -1,6 +1,6 @@
 import { Text, tokens } from "@workshop/ui";
 import { StyleSheet, View } from "react-native";
-import { BrandMark } from "./BrandMark";
+import { BrandIcon } from "./BrandIcon";
 
 interface WordmarkProps {
   /** Sign-in screen renders the oversized variant; headers use the default. */
@@ -11,7 +11,7 @@ export function Wordmark({ size = "md" }: WordmarkProps) {
   const large = size === "lg";
   return (
     <View accessible accessibilityRole="header" accessibilityLabel="HighScore" style={styles.row}>
-      <BrandMark size={large ? 42 : 24} />
+      <BrandIcon size={large ? 48 : 28} />
       <Text style={[styles.text, large ? styles.textLg : styles.textMd]}>HighScore</Text>
     </View>
   );

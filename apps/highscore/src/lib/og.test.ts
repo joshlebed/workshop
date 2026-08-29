@@ -48,7 +48,10 @@ describe("HighScore Open Graph helpers", () => {
         imageUrl: "https://highscore.live/og/g/example.png",
       },
     );
-    const image = buildGameShareOgImageHtml({ sharerName: "Alex" });
+    const image = buildGameShareOgImageHtml(
+      { sharerName: "Alex" },
+      "https://highscore.live/icon-source.png",
+    );
     expect(tags).toContain("Play games with Alex on HighScore");
     expect(tags).not.toContain("Workshop.dev");
     expect(image).toContain("Join me and play games on HighScore");
@@ -64,19 +67,25 @@ describe("HighScore Open Graph helpers", () => {
         imageUrl: "https://highscore.live/og/friend/example.png",
       },
     );
-    const image = buildFriendOgImageHtml({ inviterName: "Alex" });
+    const image = buildFriendOgImageHtml(
+      { inviterName: "Alex" },
+      "https://highscore.live/icon-source.png",
+    );
     expect(tags).toContain("Alex invited you to HighScore");
     expect(tags).not.toContain("Workshop.dev");
     expect(image).toContain("wants to be friends on HighScore");
   });
 
   it("renders a branded default PNG surface", () => {
-    const image = buildDefaultOgImageHtml();
+    const image = buildDefaultOgImageHtml("https://highscore.live/icon-source.png");
     expect(image).toContain(HIGH_SCORE_OG_TITLE);
     expect(image).toContain(HIGH_SCORE_OG_DESCRIPTION);
-    expect(image).toContain('data-score-grid="highscore"');
-    expect(image).toContain("#F5A524");
-    expect(image).toContain("#3C3835");
+    expect(image).toContain('data-brand-icon="highscore"');
+    expect(image).toContain('src="https://highscore.live/icon-source.png"');
+    // One icon, one wordmark — no duplicated brand row under the subtitle.
+    expect(image.match(/data-brand-icon/g)).toHaveLength(1);
+    expect(image).not.toContain("<span>HighScore</span>");
+    expect(image).not.toContain("data-score-grid");
     expect(image).toContain("#0E0C0B");
     expect(image).not.toContain("linear-gradient");
   });

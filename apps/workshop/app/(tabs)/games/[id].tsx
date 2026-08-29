@@ -1,5 +1,5 @@
-import GameBoard from "@workshop/games/screens/GameBoard";
 import { Redirect } from "expo-router";
+import GameBoard from "../../../src/legacyGames/screens/GameBoard";
 import { LEGACY_GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 
 export default function WorkshopGameBoard() {

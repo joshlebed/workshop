@@ -17,9 +17,10 @@ you get the same account.
 
 - **Mobile + web**: Expo (React Native, TypeScript) — `apps/workshop`, `apps/highscore`
 - **Backend**: Hono on AWS Lambda + PostgreSQL on Neon — `apps/backend`
-- **Shared client code**: `packages/ui` (design system), `packages/api-client` (API + session),
-  `packages/games` (transitional Games feature shared by both apps)
+- **Shared client code**: `packages/ui` (design system), `packages/api-client` (API + session)
 - **Shared types**: `packages/shared`
+- **Games UI**: app-owned in `apps/highscore/src/games`; Workshop's frozen pre-cutover snapshot
+  lives in `apps/workshop/src/legacyGames`
 - **Cloudflare Pages Functions**: OG previews, AASA — `functions/`
 - **Infra**: Terraform on AWS, state in HCP Terraform — `infra/`
 - **CI/CD**: GitHub Actions — merge to `main` deploys the API and ships a JS OTA via

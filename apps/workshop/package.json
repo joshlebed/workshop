@@ -26,7 +26,6 @@
     "@tanstack/react-query": "^5.100.1",
     "@tanstack/react-query-persist-client": "5.100.1",
     "@workshop/api-client": "workspace:*",
-    "@workshop/games": "workspace:*",
     "@workshop/shared": "workspace:*",
     "@workshop/ui": "workspace:*",
     "expo": "55.0.24",
@@ -52,7 +51,8 @@
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0",
     "react-native-web": "^0.21.2",
-    "react-native-worklets": "0.7.4"
+    "react-native-worklets": "0.7.4",
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@babel/core": "7.29.0",

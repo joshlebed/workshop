@@ -5,7 +5,8 @@ in [`docs/highscore-migration-plan.md`](../../docs/highscore-migration-plan.md).
 and iOS from one component tree via `react-native-web`, exactly like `apps/workshop`.
 
 This app owns the Games home, standings, catalog, friends, play-link resolver, and native
-score-share flow. During migration, Workshop renders the same `@workshop/games` package.
+score-share flow. Its live UI is app-owned under `src/games`; Workshop's pre-cutover UI is a
+separate frozen snapshot, so frontend iteration here cannot change Workshop users.
 
 |                              |                                                                 |
 | ---------------------------- | --------------------------------------------------------------- |
@@ -59,13 +60,16 @@ app/                     expo-router routes
   onboarding/            display-name capture
 src/hooks/useAuth.tsx    auth context over @workshop/api-client
 src/components/          app-local components (wordmark)
+src/games/               app-owned Games + friends UI, hooks, and client adapters
 public/index.html        web HTML shell — OG tags, theme-color, canvas lock
 functions/               Pages API proxy, AASA, and OG metadata/PNG routes
 ```
 
-Shared code comes from `@workshop/games` (Games feature), `@workshop/ui` (design system and
-Google sign-in button), `@workshop/api-client` (API, session, storage, OAuth hooks), and
-`@workshop/shared` (types). Anything both apps need belongs in a package, not here.
+Shared code comes from `@workshop/ui` (design system and Google sign-in button),
+`@workshop/api-client` (API, friends boundary, session, storage, OAuth hooks), and
+`@workshop/shared` (types, game registry, score parsing, summary specs). Presentation and
+games-specific client adapters stay here even when Workshop's frozen snapshot has a copy;
+only contract-level code belongs in a package.
 
 ## Brand assets
 
@@ -78,11 +82,10 @@ pnpm --filter highscore-app run icon:build
 ```
 
 `scripts/build-icon.mjs` has no system dependencies: it validates and decodes the source, copies
-it into the generated `assets/HighScore.icon/` Apple Icon Composer bundle, and centers it at 80%
-scale over the dark app canvas for the opaque 1024×1024 `assets/icon.png`. It also produces the
-transparent adaptive/splash art and web favicon. `assets/highscore-icon.svg` records the geometric
-score-grid mark used beside the wordmark and on the default OG card; it is intentionally separate
-from the owner-provided app icon artwork.
+it into the generated `assets/HighScore.icon/` Apple Icon Composer bundle at 1.6× scale, and
+centers it at 80% scale over the dark app canvas for the uncropped opaque 1024×1024
+`assets/icon.png`. It also produces the transparent adaptive/splash art and web favicon.
+The exact transparent source is copied to `public/icon-source.png` for OG cards.
 
 The `.icon` manifest schema is copied from the known-good
 `apps/workshop/assets/Workshop.dev.icon/icon.json` Icon Composer export. It is plain JSON plus

@@ -1,3 +1,3 @@
-import FriendsHome from "@workshop/games/screens/FriendsHome";
+import FriendsHome from "../../src/games/screens/FriendsHome";
 
 export default FriendsHome;

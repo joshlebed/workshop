@@ -9,7 +9,8 @@ const ICON_BUNDLE_DIR = join(APP_DIR, "assets", "HighScore.icon");
 const ICON_BUNDLE_ASSET_PATH = join(ICON_BUNDLE_DIR, "Assets", "icon-source.png");
 const BACKGROUND_HEX = "#0E0C0B";
 const BACKGROUND_RGB = [14, 12, 11];
-const ARTWORK_SCALE = 0.8;
+const ICON_COMPOSER_ARTWORK_SCALE = 1.6;
+const RASTER_ARTWORK_SCALE = 0.8;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
 function decodePng(buffer) {
@@ -132,7 +133,7 @@ function resizeRgba(source, size) {
   return output;
 }
 
-function compositeIcon(source, { path, size, alpha, scale = ARTWORK_SCALE }) {
+function compositeIcon(source, { path, size, alpha, scale = RASTER_ARTWORK_SCALE }) {
   const artworkSize = Math.round(size * scale);
   const artwork = resizeRgba(source, artworkSize);
   const offset = Math.round((size - artworkSize) / 2);
@@ -224,7 +225,7 @@ function buildIconComposerBundle() {
             "image-name": "icon-source.png",
             name: "icon-source",
             position: {
-              scale: ARTWORK_SCALE,
+              scale: ICON_COMPOSER_ARTWORK_SCALE,
               "translation-in-points": [0, 0],
             },
           },
@@ -241,8 +242,16 @@ function buildIconComposerBundle() {
   );
 }
 
+function copyWebBrandIcon() {
+  const path = join(APP_DIR, "public", "icon-source.png");
+  mkdirSync(dirname(path), { recursive: true });
+  copyFileSync(SOURCE_PATH, path);
+  console.log("generated public/icon-source.png (OG brand artwork)");
+}
+
 const source = decodePng(readFileSync(SOURCE_PATH));
 buildIconComposerBundle();
+copyWebBrandIcon();
 for (const output of [
   { path: join(APP_DIR, "assets", "icon.png"), size: 1024, alpha: false },
   { path: join(APP_DIR, "assets", "adaptive-icon.png"), size: 1024, alpha: true },

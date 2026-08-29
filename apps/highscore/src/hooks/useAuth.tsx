@@ -1,8 +1,8 @@
 // HighScore's auth context. Slimmed clone of apps/workshop's — same managed
 // session machinery (it all lives in @workshop/api-client), minus the
-// Workshop-only surfaces (impersonation, Letterboxd, avatar patching). Both
-// apps talk to the same backend and the same `user_identities` rows, so
-// signing in here with the Apple ID used on Workshop resolves to one account.
+// Workshop-only surfaces (Letterboxd). Both apps talk to the same backend and
+// the same `user_identities` rows, so signing in here with the Apple ID used
+// on Workshop resolves to one account.
 
 import { ApiError, apiRequest, registerSessionRefreshHandler } from "@workshop/api-client/api";
 import { resolveBootstrapSession } from "@workshop/api-client/authBootstrap";
@@ -12,7 +12,7 @@ import {
   readSessionCredentials,
 } from "@workshop/api-client/sessionCredentials";
 import { getItem } from "@workshop/api-client/storage";
-import type { AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
+import type { AuthImpersonation, AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
 import {
   createContext,
   useCallback,
@@ -37,12 +37,14 @@ interface AuthState {
   status: AuthStatus;
   user: User | null;
   token: string | null;
+  impersonation: AuthImpersonation | null;
 }
 
 export interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
   token: string | null;
+  impersonation: AuthImpersonation | null;
   signInWithApple: (req: {
     identityToken: string;
     nonce?: string;
@@ -51,8 +53,12 @@ export interface AuthContextValue {
   }) => Promise<void>;
   signInWithGoogle: (req: { idToken: string }) => Promise<void>;
   signInDev: (req: { email: string; displayName?: string | null }) => Promise<void>;
+  impersonateUser: (target: string) => Promise<User>;
+  stopImpersonating: () => Promise<User>;
   signOut: () => Promise<void>;
   setDisplayName: (name: string) => Promise<void>;
+  /** Patch the signed-in user's profile (display name and/or avatar). */
+  updateProfile: (patch: UpdateMeRequest) => Promise<void>;
   refresh: () => Promise<void>;
 }
 
@@ -81,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     status: "loading",
     user: null,
     token: null,
+    impersonation: null,
   });
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -91,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status: res.needsDisplayName ? "needs-display-name" : "signed-in",
       user: res.user,
       token: res.token,
+      impersonation: res.impersonation ?? null,
     });
   }, []);
 
@@ -111,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         if (hasApiStatus(error, 401)) {
           await clearSessionCredentials();
-          setState({ status: "signed-out", user: null, token: null });
+          setState({ status: "signed-out", user: null, token: null, impersonation: null });
           return null;
         }
         // A network/server failure is not evidence that the credential is bad.
@@ -178,18 +186,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           status: statusFor(resolved.me.user),
           user: resolved.me.user,
           token: resolved.accessToken,
+          impersonation: resolved.me.impersonation ?? null,
         });
         return;
       }
 
       await clearSessionCredentials();
       if (await autoDevSignIn()) return;
-      setState({ status: "signed-out", user: null, token: null });
+      setState({ status: "signed-out", user: null, token: null, impersonation: null });
     } catch (error) {
       console.error("auth bootstrap failed", error);
       // A transient bootstrap failure must NOT clear stored credentials — only
       // an explicit auth rejection may. See docs/decisions.md.
-      setState({ status: "unavailable", user: null, token: credentials.accessToken });
+      setState({
+        status: "unavailable",
+        user: null,
+        token: credentials.accessToken,
+        impersonation: null,
+      });
     }
   }, [applyAuth, autoDevSignIn]);
 
@@ -233,6 +247,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [applyAuth],
   );
 
+  const impersonateUser = useCallback<AuthContextValue["impersonateUser"]>(
+    async (target) => {
+      const token = state.token;
+      if (!token) throw new Error("not signed in");
+      const res = await apiRequest<AuthResponse>({
+        method: "POST",
+        path: "/v1/auth/impersonate",
+        body: { target },
+        token,
+      });
+      await applyAuth(res);
+      return res.user;
+    },
+    [applyAuth, state.token],
+  );
+
+  const stopImpersonating = useCallback<AuthContextValue["stopImpersonating"]>(async () => {
+    const token = state.token;
+    if (!token) throw new Error("not signed in");
+    const res = await apiRequest<AuthResponse>({
+      method: "POST",
+      path: "/v1/auth/impersonation/stop",
+      token,
+    });
+    await applyAuth(res);
+    return res.user;
+  }, [applyAuth, state.token]);
+
   const signOut = useCallback(async () => {
     const token = state.token;
     try {
@@ -244,14 +286,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // signed-out marker so an uncleared HttpOnly cookie cannot sign back in.
     }
     await clearSessionCredentials();
-    setState({ status: "signed-out", user: null, token: null });
+    setState({ status: "signed-out", user: null, token: null, impersonation: null });
   }, [state.token]);
 
-  const setDisplayName = useCallback<AuthContextValue["setDisplayName"]>(
-    async (name) => {
+  const updateProfile = useCallback<AuthContextValue["updateProfile"]>(
+    async (patch) => {
       const token = state.token;
       if (!token) throw new Error("not signed in");
-      const patch: UpdateMeRequest = { displayName: name };
       const res = await apiRequest<{ user: User }>({
         method: "PATCH",
         path: "/v1/users/me",
@@ -262,9 +303,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         status: statusFor(res.user),
         user: res.user,
         token: current.token,
+        impersonation: current.impersonation,
       }));
     },
     [state.token],
+  );
+
+  const setDisplayName = useCallback<AuthContextValue["setDisplayName"]>(
+    (name) => updateProfile({ displayName: name }),
+    [updateProfile],
   );
 
   const value = useMemo<AuthContextValue>(
@@ -272,14 +319,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       status: state.status,
       user: state.user,
       token: state.token,
+      impersonation: state.impersonation,
       signInWithApple,
       signInWithGoogle,
       signInDev,
+      impersonateUser,
+      stopImpersonating,
       signOut,
       setDisplayName,
+      updateProfile,
       refresh: bootstrap,
     }),
-    [state, signInWithApple, signInWithGoogle, signInDev, signOut, setDisplayName, bootstrap],
+    [
+      state,
+      signInWithApple,
+      signInWithGoogle,
+      signInDev,
+      impersonateUser,
+      stopImpersonating,
+      signOut,
+      setDisplayName,
+      updateProfile,
+      bootstrap,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

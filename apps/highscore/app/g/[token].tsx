@@ -1,3 +1,3 @@
-import GameShareLanding from "@workshop/games/screens/GameShareLanding";
+import GameShareLanding from "../../src/games/screens/GameShareLanding";
 
 export default GameShareLanding;

@@ -107,6 +107,26 @@ function isGridOnlyLine(line: string): boolean {
   return !/[A-Za-z0-9]/.test(line.replace(GRID_SCORE_TAIL, ""));
 }
 
+/**
+ * Wordle-family grid collapse shared by Tradle and Worldle: each guess row's
+ * signal is "how many greens until you nailed it", so collapse every colored
+ * grid row to its 🟩 count in a single sparkline and suffix the `N/6` (or
+ * `X/6`) fraction from the header line matching `headerPattern` —
+ * `🟩🟩⬜⬜⬜\n…\n🟩🟩🟩🟩🟩` → `🟩 2·…·5 6/6`. Rows carrying only non-square
+ * decorations (Worldle's `⭐🧭📍` bonus line) don't count as guesses. Requires
+ * at least one grid row so a URL-only share defers to the fallback.
+ */
+function greensSparkline(raw: string, headerPattern: RegExp): string | null {
+  const lines = nonEmptyLines(stripUrlSubstrings(raw));
+  const greens = lines
+    .filter((l) => isGridOnlyLine(l) && /[🟩🟨🟧🟥⬜⬛]/u.test(l))
+    .map((l) => (l.match(/🟩/gu) ?? []).length);
+  if (greens.length === 0) return null;
+  const fraction = lines.find((l) => headerPattern.test(l))?.match(/(?:\d+|X)\/\d+/i)?.[0];
+  const sparkline = `🟩 ${greens.join("·")}`;
+  return fraction ? `${sparkline} ${fraction}` : sparkline;
+}
+
 const KEYCAP_DIGITS = ["0️⃣", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"];
 
 function toKeycapDigits(text: string): string {
@@ -313,6 +333,12 @@ export const GAME_REGISTRY: GameDefinition[] = [
     spec: { rules: [{ kind: "capture", pattern: "Worldle\\s*#?\\d+\\s+(\\d+)/6" }] },
     identifyPatterns: [/\bworldle\b/i, /worldle\.teuteuf\.fr/i],
     shareTextPatterns: [/#?\bWorldle\b\s*#?\d+/i, /\bworldle\.teuteuf\.fr\b/i],
+    // Shape: `#Worldle #1287 (27.08.2026) 4/6 (100%)\n🟩🟩🟩🟨⬜⬅️\n…\n🟩🟩🟩🟩🟩🎉\n⭐🧭📍\nhttps://worldle.teuteuf.fr`
+    // Same Wordle-style grid as Tradle (rows carry a trailing direction arrow /
+    // 🎉, plus an optional bonus-star line) — collapse it the same way.
+    formatShareBody(raw) {
+      return greensSparkline(raw, /worldle/i);
+    },
   },
   {
     key: "tradle",
@@ -326,20 +352,9 @@ export const GAME_REGISTRY: GameDefinition[] = [
     identifyPatterns: [/\btradle\b/i, /tradle\.net/i, /oec\.world.*tradle/i],
     shareTextPatterns: [/#?\bTradle\b\s*#?\d+/i, /\btradle\.net\b/i, /\boec\.world\/.+\/tradle\b/i],
     // Shape: `#Tradle #1548 6/6\n🟩🟩⬜⬜⬜\n🟩🟩🟩⬜⬜\n…\n🟩🟩🟩🟩🟩\nhttps://tradle.net/`
-    // The grid's signal is "how many greens per guess until you nailed it", so
-    // collapse each guess row to its 🟩 count into a single sparkline and
-    // suffix the `N/6` (or `X/6`) fraction from the header —
-    // `🟩 2·3·4·4·4·5 6/6`. Six grid lines collapse to one. Require at least
-    // one grid line so a URL-only share defers to the fallback.
+    // Six grid lines collapse to `🟩 2·3·4·4·4·5 6/6` (see greensSparkline).
     formatShareBody(raw) {
-      const lines = nonEmptyLines(stripUrlSubstrings(raw));
-      const greens = lines
-        .filter((l) => isGridOnlyLine(l) && /[🟩🟨🟧🟥⬜]/u.test(l))
-        .map((l) => (l.match(/🟩/gu) ?? []).length);
-      if (greens.length === 0) return null;
-      const fraction = lines.find((l) => /tradle/i.test(l))?.match(/(?:\d+|X)\/\d+/i)?.[0];
-      const sparkline = `🟩 ${greens.join("·")}`;
-      return fraction ? `${sparkline} ${fraction}` : sparkline;
+      return greensSparkline(raw, /tradle/i);
     },
   },
   {

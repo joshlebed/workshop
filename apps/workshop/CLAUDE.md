@@ -5,6 +5,14 @@ the primary dev surface — faster iteration, browser-automation can drive the r
 
 Human onboarding (clone → run → deploy) lives in `apps/workshop/README.md`.
 
+## Frozen Games snapshot — Wave-4 deletion target
+
+`src/legacyGames/` is a frozen copy of the exact Games UI Workshop currently ships. It is
+deleted wholesale with `EXPO_PUBLIC_ENABLE_LEGACY_GAMES_TAB` at the Wave-4 cutover (PR-10).
+Only deliberate critical-fix backports may change it; all product, style, layout, branding,
+and client-behavior iteration belongs in `apps/highscore/src/games/` and must have zero effect
+on Workshop users.
+
 ## App shell: Lists/Games tabs via route groups (G0, epic #279)
 
 The root is an expo-router `Tabs` shell: `app/(tabs)/(lists)/` holds the entire pre-Games
@@ -23,10 +31,10 @@ one. Both web and native show the Lists/Games switch (`InlineTabSwitch`) inline 
 the screen header, immediately left of Activity on both Lists and Games; the expo-router
 bottom tab bar is hidden on every platform (`tabBarStyle: { display: "none" }` in
 `app/(tabs)/_layout.tsx`).
-The Games surface (G1b): Workshop routes are thin legacy
-wrappers over subpath-only `@workshop/games` (My Games as `StandingsCard`s, drag-reorder,
-add-by-URL, paste → `PUT /v1/games/:id/scores`, and the per-game history board). Games API
-wrappers live in `packages/games/src/api`; query keys remain
+The Games surface (G1b): Workshop routes are thin legacy wrappers over the frozen
+`src/legacyGames` snapshot (My Games as `StandingsCard`s, drag-reorder, add-by-URL, paste →
+`PUT /v1/games/:id/scores`, and the per-game history board). Games API wrappers live in
+`src/legacyGames/api`; query keys remain
 under `queryKeys.games.*`. Every flag-off route must `<Redirect href="/" />`. Use the static `tokens` (not
 `useTheme()`) for navigator backgrounds, matching the root layout, or light-preferring
 browsers get a light scene behind dark screen content. Metro does NOT invalidate its
@@ -35,6 +43,12 @@ cache when an `EXPO_PUBLIC_*` value changes — after flipping the flag, restart
 clears for this reason).
 
 ## Friends surface (G2b, issue #286)
+
+Friends are a core/shared product surface, not part of the Wave-4 deletion target. Workshop's
+screen implementations live in `src/friends/`, and both apps share the validated HTTP boundary
+at `@workshop/api-client/friends`. `FriendProfile` and `FriendAccept` temporarily import their
+game list/post-accept panels from `src/legacyGames`; PR-10 removes those integrations while
+retaining the friends graph, screens, and historic `/friends/accept/*` links.
 
 The friend graph lives at `app/friends/index.tsx` (requests + list + mutuals + invite),
 `app/friends/[userId].tsx` (per-user profile), and `app/friends/accept/[token].tsx` (preview
@@ -57,7 +71,7 @@ action (add / cancel / accept-decline / remove) and, for friends only, their gam
 today's score (`summarizeGameScoreBody`) + quick-add (`POST /v1/games` by URL). Decline and
 unfriend `goBack("/friends")` after success — removing the relationship can 404 the profile
 on refetch (no relationship + no mutuals). API wrappers (zod-validated — the public preview
-endpoint is the least-trusted boundary) in `packages/games/src/api/friends.ts`; keys under
+endpoint is the least-trusted boundary) live in `packages/api-client/src/friends.ts`; keys under
 `queryKeys.friends.*`. The social board (home cards + per-game `[id]` board) needs no
 solo-vs-multi branch: the backend's `rankEntries` already returns rank-ordered standings
 (ties as 1,2,2,4) for `viewer ∪ friends`, and `StandingsCard` + the board's `EntryRow`
@@ -87,9 +101,9 @@ live in `functions/g/` + `functions/og/g/` (🎮 "play with me" card, distinct f
 "Open in app" card instead of resolving.** iOS does **not** fire Universal Links when a WKWebView
 (Meta's in-app browser) _loads_ a URL, and a tap on the **same-domain** https link just reloads it
 (Apple won't open the app for a Universal Link to the page you're already on) — that was the
-original endless loop. So `isInAppBrowser()` (`packages/games/src/lib/inAppBrowser.ts`, UA sniff for `FBAN`/
+original endless loop. So `isInAppBrowser()` (`src/legacyGames/lib/inAppBrowser.ts`, UA sniff for `FBAN`/
 `FBAV`/`FB_IAB`/`FBIOS`/`Messenger`/`Instagram`, web-only) gates `app/g/[token].tsx`: when true it
-holds the resolve/redirect and renders `OpenInAppCard` (`packages/games/src/components/OpenInAppCard/impl.web.tsx`)
+holds the resolve/redirect and renders `OpenInAppCard` (`src/legacyGames/components/OpenInAppCard/impl.web.tsx`)
 whose button is a real `<a href>` pointing at the app's **custom scheme** (`workshop:///g/<token>`),
 **not** the https Universal Link. The scheme is registered via `CFBundleURLSchemes`, so a tap opens
 the installed app regardless of AASA / Universal Link association state — which for this app is
@@ -114,14 +128,14 @@ Pages Function would appear before the SPA loads — a possible future upgrade.
 
 Games are discovered **through friends** — `GET /v1/games/discovery` (G2a) returns friends'
 games you haven't added, each tagged with which friends play it; `?friend=<userId>` narrows
-to one friend (404s for non-friends). Wrapper: `fetchGameDiscovery` in `packages/games/src/api/games.ts`;
+to one friend (404s for non-friends). Wrapper: `fetchGameDiscovery` in `src/legacyGames/api/games.ts`;
 keys under `queryKeys.games.discovery(friendUserId?)` — the friend form nests under the
 all-friends key so invalidating `["games", "discovery"]` clears both. One-tap "add" reuses
 `POST /v1/games` with the discovery game's `url` (find-or-create collapses onto the existing
 catalog row); there is **no** add-by-id endpoint. Three surfaces render the same presentational
-`FriendGameSuggestions` (`packages/games/src/screens/games/FriendGameSuggestions.tsx`):
+`FriendGameSuggestions` (`src/legacyGames/screens/games/FriendGameSuggestions.tsx`):
 
-1. **`GamesHome` empty state** (`packages/games/src/screens/games/GamesOnboarding.tsx`) — two variants gated
+1. **`GamesHome` empty state** (`src/legacyGames/screens/games/GamesOnboarding.tsx`) — two variants gated
    on friend count (the home queries `queryKeys.friends.all`, enabled only while empty): **no
    friends** → primary "Add friends" (mints + shares an invite via the G2b `createFriendInvite`
    - `shareOrCopyLink` machinery, link revealed inline on web), secondary "Add a game by URL";
@@ -328,9 +342,11 @@ to the sign-in screen.
 ## Game detection, parsing and share-body formatting come from the shared registry
 
 `@workshop/shared/gameRegistry` is the single source of per-game knowledge;
-`packages/games/src/lib/shareScoreDetection.ts` and `packages/games/src/lib/scoresSummary.ts` are thin adapters over it
-(don't add per-game patterns/formatters locally — extend the registry). The paste sheet
-(`GameScorePasteSheet`) previews what the server will record via `packages/games/src/lib/scoreSpecs.ts`
+`src/legacyGames/lib/shareScoreDetection.ts` and `src/legacyGames/lib/scoresSummary.ts` are thin adapters over it
+(don't add per-game patterns/formatters locally — extend the registry). These adapters are
+presentation/client glue and intentionally duplicated; HighScore's live versions are under
+`apps/highscore/src/games/lib/`, while Workshop's copies stay frozen. The paste sheet
+(`GameScorePasteSheet`) previews what the server will record via `src/legacyGames/lib/scoreSpecs.ts`
 (mirrors the backend's parser chain: registry spec → `game.scoreSpec` → first-number) and,
 for spec-less non-registry games on the Games surface, runs the **tap-the-score teach
 flow**: `tokenizeScoreCandidates` chips → `synthesizeScoreSpec` → direction confirm →
@@ -351,7 +367,7 @@ Sheet in the same tick that closes the menu, or two stacked Modals wedge iOS), a
 takes a `canReteach` prop (`!!user.isAdmin && isGameReteachable(game)`) that surfaces the
 teach chips even when a spec already exists (and drops the live score preview while they're
 up). The backend gates `PUT …/score-spec` the same way (first teach open, re-teach admin-only,
-registry read-only) — keep the two in sync. `isGameReteachable` (`packages/games/src/lib/scoreSpecs.ts`)
+registry read-only) — keep the two in sync. `isGameReteachable` (`src/legacyGames/lib/scoreSpecs.ts`)
 mirrors the backend's `catalogEntryForKey` read-only check.
 
 ## A game share can reach us as just its referral URL (grid dropped)
@@ -360,7 +376,7 @@ Some games (Daily Tens) share via the iOS share sheet with a single item provide
 conforming to **both** `public.url` and `public.text`. `expo-share-intent`'s extension
 checks URL before text, so it captures only the `?ref=<id>` link and drops the 🏆/❌ grid
 — we then post a bare link that renders as a "Played" row with no score. The share
-screens guard against this with `isResultlessShare()` (`packages/games/src/lib/shareScoreDetection.ts`):
+screens guard against this with `isResultlessShare()` (`src/legacyGames/lib/shareScoreDetection.ts`):
 if the payload strips to nothing (URL-only / hashtag-only), `/share` offers a "Paste"
 affordance instead of one-tap posting (routing to `/share/pick-game`), and the picker blocks
 the post and asks the user to paste their result. This is a band-aid for the symptom; the
@@ -434,8 +450,8 @@ Each Sheet wraps an RN `Modal` that stays mounted for ~220ms while its exit anim
 runs. Flipping the second sheet open during that window briefly stacks two `Modal`s — on
 iOS the new one registers as visible but never actually presents, leaving the screen
 non-interactable until you navigate away. Chain through Sheet's `onClosed` prop instead.
-Reference: the Games paste/teach flow in `packages/games/src/screens/GamesHome.tsx` +
-`packages/games/src/screens/GameScorePasteSheet.tsx`.
+Reference: the Games paste/teach flow in `src/legacyGames/screens/GamesHome.tsx` +
+`src/legacyGames/screens/GameScorePasteSheet.tsx`.
 
 ## Sheet keyboard handling is centralized in `packages/ui/src/Sheet.tsx`
 

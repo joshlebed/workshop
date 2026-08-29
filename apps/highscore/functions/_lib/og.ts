@@ -11,7 +11,7 @@ export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
 
 export const HIGH_SCORE_OG_TITLE = "HighScore";
-export const HIGH_SCORE_OG_DESCRIPTION = "Daily games. Friendly competition.";
+export const HIGH_SCORE_OG_DESCRIPTION = "Compete in daily games";
 export const HIGH_SCORE_OG_EMOJI = "🎮";
 
 export const OG_META_SELECTORS = [
@@ -185,76 +185,66 @@ function gameSharerName(preview: GameSharePreview | null): string | null {
   return name && name.length > 0 ? name : null;
 }
 
-function renderImageHtml(variant: ImageVariant): string {
+function renderImageHtml(variant: ImageVariant, iconUrl: string): string {
   const emoji = escapeXml(variant.emoji);
   const title = escapeXml(truncate(variant.title, 28));
   const subtitle = escapeXml(variant.subtitle);
   const leading = variant.brandMark
-    ? renderScoreGridHtml(200)
+    ? renderBrandIconHtml(iconUrl, 220)
     : `<div style="display: flex; width: 200px; height: 200px; border-radius: 44px; background: ${variant.accent}; align-items: center; justify-content: center; font-size: 132px; line-height: 1;">${emoji}</div>`;
 
   return `
-<div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0E0C0B; color: #F2F0ED; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box; position: relative;">
+<div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0E0C0B; color: #F2F0ED; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box;">
   <div style="display: flex; flex-direction: column; justify-content: center; gap: 24px; flex: 1;">
     ${leading}
     <div style="display: flex; font-size: 84px; font-weight: 700; letter-spacing: -2px; line-height: 1.05;">${title}</div>
     <div style="display: flex; font-size: 36px; font-weight: 500; color: #A7A29E; line-height: 1.2;">${subtitle}</div>
   </div>
-  <div style="display: flex; position: absolute; bottom: 60px; left: 80px; align-items: center; gap: 16px; font-size: 28px; font-weight: 600; letter-spacing: -0.5px;">
-    ${renderScoreGridHtml(28)}
-    <span>HighScore</span>
-  </div>
 </div>`.trim();
 }
 
-function renderScoreGridHtml(size: number): string {
-  const gap = size >= 100 ? 10 : 2;
-  const cell = (size - gap * 2) / 3;
-  const radius = size >= 100 ? 13 : 2;
-  const rows = [
-    [false, true, true],
-    [false, true, true],
-    [true, true, false],
-  ];
-  return `<div data-score-grid="highscore" style="display: flex; width: ${size}px; height: ${size}px; flex-direction: column; gap: ${gap}px;">${rows
-    .map(
-      (row) =>
-        `<div style="display: flex; flex-direction: row; gap: ${gap}px;">${row
-          .map(
-            (active) =>
-              `<div style="display: flex; width: ${cell}px; height: ${cell}px; border-radius: ${radius}px; background: ${active ? "#F5A524" : "#3C3835"};"></div>`,
-          )
-          .join("")}</div>`,
-    )
-    .join("")}</div>`;
+function renderBrandIconHtml(iconUrl: string, size: number): string {
+  return `<img data-brand-icon="highscore" src="${escapeXml(iconUrl)}" width="${size}" height="${size}" style="width: ${size}px; height: ${size}px; object-fit: contain;" />`;
 }
 
-export function buildDefaultOgImageHtml(): string {
-  return renderImageHtml(DEFAULT_IMAGE_VARIANT);
+export function buildDefaultOgImageHtml(iconUrl: string): string {
+  return renderImageHtml(DEFAULT_IMAGE_VARIANT, iconUrl);
 }
 
-export function buildFriendOgImageHtml(preview: FriendInvitePreview | null): string {
+export function buildFriendOgImageHtml(
+  preview: FriendInvitePreview | null,
+  iconUrl: string,
+): string {
   const name = friendName(preview);
-  return renderImageHtml({
-    accent: FRIEND_OG_ACCENT,
-    emoji: FRIEND_OG_EMOJI,
-    title: name ?? "Add a friend",
-    subtitle: name
-      ? "wants to be friends on HighScore"
-      : "Compare your daily game scores on HighScore",
-  });
+  return renderImageHtml(
+    {
+      accent: FRIEND_OG_ACCENT,
+      emoji: FRIEND_OG_EMOJI,
+      title: name ?? "Add a friend",
+      subtitle: name
+        ? "wants to be friends on HighScore"
+        : "Compare your daily game scores on HighScore",
+    },
+    iconUrl,
+  );
 }
 
-export function buildGameShareOgImageHtml(preview: GameSharePreview | null): string {
+export function buildGameShareOgImageHtml(
+  preview: GameSharePreview | null,
+  iconUrl: string,
+): string {
   const name = gameSharerName(preview);
-  return renderImageHtml({
-    accent: GAME_SHARE_OG_ACCENT,
-    emoji: GAME_SHARE_OG_EMOJI,
-    title: name ?? "Play daily games",
-    subtitle: name
-      ? "Join me and play games on HighScore"
-      : "Play daily games together on HighScore",
-  });
+  return renderImageHtml(
+    {
+      accent: GAME_SHARE_OG_ACCENT,
+      emoji: GAME_SHARE_OG_EMOJI,
+      title: name ?? "Play daily games",
+      subtitle: name
+        ? "Join me and play games on HighScore"
+        : "Play daily games together on HighScore",
+    },
+    iconUrl,
+  );
 }
 
 export async function fetchFriendInvitePreview(
