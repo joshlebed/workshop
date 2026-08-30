@@ -162,9 +162,6 @@ importers:
       expo-web-browser:
         specifier: ~55.0.16
         version: 55.0.16(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.14)(react@19.2.0))
-      pixelarticons:
-        specifier: ^2.4.1
-        version: 2.4.1(react@19.2.0)
       react:
         specifier: 19.2.0
         version: 19.2.0
@@ -5510,12 +5507,6 @@ packages:
   pirates@4.0.7:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
-
-  pixelarticons@2.4.1:
-    resolution: {integrity: sha512-NIiwuEmBrFT6YG5PdMnOPRsGm0rbz4TiH0P5sgftjrQugxgdF+xtZPgGrgAOL76KUMJ04kk5Bq2lVLnmBg7IPw==}
-    hasBin: true
-    peerDependencies:
-      react: '>=16'
 
   pkg-dir@4.2.0:
     resolution: {integrity: sha512-HRDzbaKjC+AOWVXxAU/x54COGeIv9eb+6CkDSQoNTt4XyWoIJvuPsXizxu/Fr23EiekbtZwmh1IcIG/l/a10GQ==}
@@ -12208,10 +12199,6 @@ snapshots:
   picomatch@4.0.4: {}
 
   pirates@4.0.7: {}
-
-  pixelarticons@2.4.1(react@19.2.0):
-    dependencies:
-      react: 19.2.0
 
   pkg-dir@4.2.0:
     dependencies:
