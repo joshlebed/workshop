@@ -8,6 +8,15 @@
       "developmentClient": true,
       "distribution": "internal"
     },
+    "studio": {
+      "extends": "development",
+      "env": {
+        "HIGHSCORE_STUDIO": "1",
+        "EXPO_PUBLIC_DEV_AUTH": "1",
+        "EXPO_PUBLIC_DEV_AUTH_EMAIL": "maya@highscore-demo.local",
+        "EXPO_PUBLIC_DEV_AUTH_DISPLAY_NAME": "Maya Chen"
+      }
+    },
     "preview": {
       "distribution": "internal",
       "ios": {

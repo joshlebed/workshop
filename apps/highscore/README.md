@@ -31,7 +31,7 @@ HIGHSCORE=1 pnpm dev
 # 2. Just this app, against an already-running backend
 pnpm dev:highscore            # http://localhost:8082
 
-# 3. Native (Expo Go / dev client) — separate terminal, interactive QR UI
+# 3. Native development client — separate terminal, interactive QR UI
 pnpm dev:highscore:mobile
 ```
 
@@ -45,6 +45,39 @@ DEV_AUTH_ENABLED=1 EXPO_PUBLIC_DEV_AUTH=1 HIGHSCORE=1 pnpm dev
 ```
 
 The Niteshift sandbox sets both by default.
+
+### App Store screenshot studio
+
+SDK 55 is newer than the Expo Go binary currently available from Apple's App Store, and
+HighScore also uses native modules that Expo Go does not bundle. Use the side-by-side
+`HighScore Studio` development client for native screenshot work instead. It has its own
+bundle id (`live.highscore.app.studio`) and App Group, so installing it does not replace the
+production/TestFlight app.
+
+Register the physical iPhone once, then build the native shell:
+
+```bash
+cd apps/highscore
+pnpm exec eas device:create
+pnpm exec eas build --platform ios --profile studio
+```
+
+Start Metro with the isolated screenshot backend URL. The dev identity is fixed to the
+privacy-safe Maya fixture; changing `EXPO_PUBLIC_API_URL` only needs a Metro restart, never a
+new native build.
+
+```bash
+HIGHSCORE_STUDIO=1 \
+EXPO_PUBLIC_API_URL=https://<temporary-fake-backend> \
+EXPO_PUBLIC_DEV_AUTH=1 \
+EXPO_PUBLIC_DEV_AUTH_EMAIL=maya@highscore-demo.local \
+EXPO_PUBLIC_DEV_AUTH_DISPLAY_NAME='Maya Chen' \
+pnpm exec expo start --dev-client --tunnel --port 8082
+```
+
+Fixture data comes from `apps/backend/scripts/seed-highscore-appstore.ts`. Apply edits with
+`pnpm --filter backend run db:seed:highscore-appstore`, then reload Metro; the installed Studio
+shell only needs rebuilding after a native dependency or Expo config change.
 
 ## Layout
 
@@ -119,5 +152,4 @@ pnpm exec expo export --platform ios --output-dir dist-ci   # bundle smoke test
 pnpm eas:build:ios                                          # manual EAS build
 ```
 
-`eas.json` has no `submit.production` block yet — the App Store Connect app id gets filled
-in when PR-8 wires auto-submit.
+`eas.json` includes the App Store Connect app id for production submissions.

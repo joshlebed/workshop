@@ -1,42 +1,94 @@
-// Dynamic Expo config overlay on top of `app.json`.
-//
-// We only need one thing from a dynamic config: surfacing the Niteshift
-// preview origin to Expo CLI's `CorsMiddleware` so that POST/PATCH/DELETE
-// requests from the iframe-hosted preview aren't rejected with a 401 HTML
-// page. The middleware (`@expo/cli/.../middleware/CorsMiddleware.js`) reads
-// `exp.extra.router.origin` and whitelists that host in addition to
-// `localhost`. The Niteshift preview proxy forwards upstream with
-// `Host: localhost:8081` but preserves the iframe `Origin:
-// https://ns-8081-<task>.preview.niteshift.dev`, so without this whitelist
-// the same-origin check fails and the dev sign-in (and any other write)
-// POST gets bounced before our `dev-api-proxy.js` ever sees the request.
-//
-// Reads `NITESHIFT_WEB_APP_EXPO_REACT_NATIVE_WEB_URL` — exported by the
-// sandbox runtime in `/.env.setup` — or falls back to a manually-provided
-// `EXPO_DEV_SERVER_ALLOWED_ORIGIN` for local reproductions of this script.
-// Skipped silently when neither is set (a plain `pnpm dev` on a laptop
-// already has `localhost` in the default allow-list).
-
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
+const STUDIO_BUNDLE_ID = "live.highscore.app.studio";
+const STUDIO_APP_GROUP = "group.live.highscore.app.studio";
+const STUDIO_SCHEME = "highscore-studio";
+
+function withStudioConfig(config: ExpoConfig): ExpoConfig {
+  const plugins = (config.plugins ?? [])
+    .filter((plugin) => (Array.isArray(plugin) ? plugin[0] : plugin) !== "expo-dev-client")
+    .map((plugin) => {
+      if (!Array.isArray(plugin) || plugin[0] !== "expo-share-intent") return plugin;
+      return [
+        "expo-share-intent",
+        {
+          ...(plugin[1] ?? {}),
+          iosShareExtensionName: "HighScore Studio Share",
+          iosAppGroupIdentifier: STUDIO_APP_GROUP,
+        },
+      ] as [string, Record<string, unknown>];
+    });
+
+  plugins.push([
+    "expo-dev-client",
+    {
+      launchMode: "most-recent",
+      // Screenshot builds should never show the floating developer control.
+      toolsButton: false,
+    },
+  ]);
+
+  return {
+    ...config,
+    name: "HighScore Studio",
+    scheme: STUDIO_SCHEME,
+    ios: {
+      ...config.ios,
+      bundleIdentifier: STUDIO_BUNDLE_ID,
+      entitlements: {
+        ...config.ios?.entitlements,
+        "com.apple.security.application-groups": [STUDIO_APP_GROUP],
+      },
+      infoPlist: {
+        ...config.ios?.infoPlist,
+        CFBundleDisplayName: "HighScore Studio",
+        CFBundleURLTypes: [
+          {
+            CFBundleURLSchemes: [
+              "com.googleusercontent.apps.267582241036-7vtcgkd594ldgimcu3dickj9u5ga951l",
+              STUDIO_SCHEME,
+            ],
+          },
+        ],
+      },
+    },
+    android: {
+      ...config.android,
+      package: STUDIO_BUNDLE_ID,
+    },
+    plugins,
+    updates: {
+      ...config.updates,
+      // Studio always loads the JS bundle from its selected development server.
+      enabled: false,
+    },
+    extra: {
+      ...config.extra,
+      highScoreStudio: true,
+    },
+  };
+}
+
 export default ({ config }: ConfigContext): ExpoConfig => {
+  let resolved = config as ExpoConfig;
+  if (process.env.HIGHSCORE_STUDIO === "1") resolved = withStudioConfig(resolved);
+
+  // Surface the Niteshift preview origin to Expo CLI's CorsMiddleware. The
+  // proxy preserves the iframe Origin, so write requests are rejected before
+  // dev-api-proxy.js without this explicit allow-list.
   const previewOrigin =
     process.env.NITESHIFT_WEB_APP_EXPO_REACT_NATIVE_WEB_URL ??
     process.env.EXPO_DEV_SERVER_ALLOWED_ORIGIN ??
     null;
 
-  if (!previewOrigin) {
-    return config as ExpoConfig;
-  }
+  if (!previewOrigin) return resolved;
 
   return {
-    ...config,
-    name: config.name ?? "HighScore",
-    slug: config.slug ?? "highscore",
+    ...resolved,
     extra: {
-      ...config.extra,
+      ...resolved.extra,
       router: {
-        ...(config.extra?.router ?? {}),
+        ...(resolved.extra?.router ?? {}),
         // CorsMiddleware whitelists `new URL(origin).host`, so the value
         // needs to be the full URL (scheme + host).
         origin: previewOrigin,
