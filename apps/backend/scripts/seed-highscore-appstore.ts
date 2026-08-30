@@ -6,11 +6,11 @@
  * so a Niteshift database cloned from production keeps real accounts untouched.
  */
 
+import { readFile } from "node:fs/promises";
 import { type GameKey, gameDefinitionForKey } from "@workshop/shared/gameRegistry";
-import { like } from "drizzle-orm";
+import { eq, like } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
 import {
-  friendRequests,
   friendships,
   gameScoreReactions,
   gameScores,
@@ -24,123 +24,151 @@ import { findOrCreateGame } from "../src/lib/gameCatalog.js";
 const DEMO_DOMAIN = "highscore-demo.local";
 
 const personas = [
-  { key: "maya", email: `maya@${DEMO_DOMAIN}`, displayName: "Maya Chen" },
-  { key: "theo", email: `theo@${DEMO_DOMAIN}`, displayName: "Theo Brooks" },
-  { key: "nina", email: `nina@${DEMO_DOMAIN}`, displayName: "Nina Patel" },
-  { key: "omar", email: `omar@${DEMO_DOMAIN}`, displayName: "Omar Reyes" },
-  { key: "june", email: `june@${DEMO_DOMAIN}`, displayName: "June Park" },
-  { key: "avery", email: `avery@${DEMO_DOMAIN}`, displayName: "Avery Stone" },
+  { key: "josh", email: `josh@${DEMO_DOMAIN}`, displayName: "Josh Lebedinsky" },
+  {
+    key: "andrew",
+    email: `andrew@${DEMO_DOMAIN}`,
+    displayName: "Andrew Cho",
+    avatarFilename: "andrew-cho.jpg",
+  },
+  {
+    key: "maddie",
+    email: `maddie@${DEMO_DOMAIN}`,
+    displayName: "Maddie Smith",
+    avatarFilename: "maddie-smith.jpg",
+  },
+  {
+    key: "francisco",
+    email: `francisco@${DEMO_DOMAIN}`,
+    displayName: "Francisco Silva",
+    avatarFilename: "francisco-silva.jpg",
+  },
+  {
+    key: "jackie",
+    email: `jackie@${DEMO_DOMAIN}`,
+    displayName: "Jackie Williams",
+    avatarFilename: "jackie-williams.jpg",
+  },
 ] as const;
 
 type PersonaKey = (typeof personas)[number]["key"];
 
 const scoreFixtures: Record<
   "maptap" | "travle" | "satle",
-  Array<{ user: Exclude<PersonaKey, "avery">; value: number; raw: string; hoursAgo: number }>
+  Array<{ user: PersonaKey; value: number; raw: string; hoursAgo: number }>
 > = {
   maptap: [
     {
-      user: "maya",
+      user: "josh",
       value: 937,
-      raw: "www.maptap.gg\n100🎯 90👑 90👑 89👑 100🎯\nFinal score: 937",
+      raw: "www.maptap.gg August 28\n100🎯 90👑 90👑 89👑 100🎯\nFinal score: 937",
       hoursAgo: 5,
     },
     {
-      user: "theo",
+      user: "maddie",
       value: 916,
-      raw: "www.maptap.gg\n100🎯 95🥇 80✨ 94🥈 93🏆\nFinal score: 916",
-      hoursAgo: 8,
-    },
-    {
-      user: "nina",
-      value: 893,
-      raw: "www.maptap.gg\n100🎯 93🏆 92🏆 81🌟 91👑\nFinal score: 893",
-      hoursAgo: 9,
-    },
-    {
-      user: "omar",
-      value: 886,
-      raw: "www.maptap.gg\n100🎯 97🔥 79👏 91👑 86🎓\nFinal score: 886",
+      raw: "www.maptap.gg August 28\n100🎯 95🏅 80✨ 94🏅 93🏆\nFinal score: 916",
       hoursAgo: 10,
     },
     {
-      user: "june",
+      user: "jackie",
+      value: 893,
+      raw: "www.maptap.gg August 28\n100🎯 93🏆 92🏆 81🌟 91👑\nFinal score: 893",
+      hoursAgo: 11,
+    },
+    {
+      user: "francisco",
+      value: 886,
+      raw: "www.maptap.gg August 28\n100🎯 97🔥 79👏 91👑 86🎓\nFinal score: 886",
+      hoursAgo: 11,
+    },
+    {
+      user: "andrew",
       value: 839,
-      raw: "www.maptap.gg\n100🎯 89🎉 88🎉 78👏 80✨\nFinal score: 839",
-      hoursAgo: 12,
+      raw: "www.maptap.gg August 28\n100🎯 89🎉 88🎉 78👏 80✨\nFinal score: 839",
+      hoursAgo: 26,
     },
   ],
   travle: [
     {
-      user: "maya",
+      user: "jackie",
       value: 0,
-      raw: "#travle #1260 +0 (Perfect)\n✅✅✅✅\nhttps://travle.earth",
-      hoursAgo: 4,
-    },
-    {
-      user: "theo",
-      value: 0,
-      raw: "#travle #1260 +0\n🟩🟩🟩✅\nhttps://travle.earth",
-      hoursAgo: 6,
-    },
-    {
-      user: "nina",
-      value: 0,
-      raw: "#travle #1260 +0 (Perfect)\n✅✅✅✅\nhttps://travle.earth",
-      hoursAgo: 7,
-    },
-    {
-      user: "omar",
-      value: 1,
-      raw: "#travle #1260 +1\n✅🟧✅🟩✅\nhttps://travle.earth",
-      hoursAgo: 8,
-    },
-    {
-      user: "june",
-      value: 1,
-      raw: "#travle #1260 +1\n✅✅✅🟧✅\nhttps://travle.earth",
+      raw: "#travle #1353 +0 (Perfect)\n✅✅✅✅\nhttps://travle.earth",
       hoursAgo: 11,
+    },
+    {
+      user: "andrew",
+      value: 0,
+      raw: "#travle #1353 +0\n🟩🟩🟩✅\nhttps://travle.earth",
+      hoursAgo: 10,
+    },
+    {
+      user: "josh",
+      value: 0,
+      raw: "#travle #1353 +0 (Perfect)\n✅✅✅✅\nhttps://travle.earth",
+      hoursAgo: 5,
+    },
+    {
+      user: "francisco",
+      value: 1,
+      raw: "#travle #1353 +1\n✅🟧✅🟩✅\nhttps://travle.earth",
+      hoursAgo: 9,
+    },
+    {
+      user: "maddie",
+      value: 1,
+      raw: "#travle #1353 +1\n✅✅✅🟧✅\nhttps://travle.earth",
+      hoursAgo: 8,
     },
   ],
   satle: [
     {
-      user: "maya",
+      user: "josh",
       value: 2,
-      raw: "🛰 Satle #472 2/6\n🟥🟩⬜⬜⬜⬜\nhttps://satle.ca",
+      raw: "🛰Satle #379 2/6\n🟥🟩⬜⬜⬜⬜\nhttps://satle.ca",
       hoursAgo: 3,
     },
     {
-      user: "theo",
+      user: "andrew",
       value: 3,
-      raw: "🛰 Satle #472 3/6\n🟥🟥🟩⬜⬜⬜\nhttps://satle.ca",
+      raw: "🛰Satle #379 3/6\n🟥🟥🟩⬜⬜⬜\nhttps://satle.ca",
       hoursAgo: 5,
     },
     {
-      user: "nina",
+      user: "maddie",
       value: 3,
-      raw: "🛰 Satle #472 3/6\n🟥🟥🟩⬜⬜⬜\nhttps://satle.ca",
+      raw: "🛰Satle #379 3/6\n🟥🟥🟩⬜⬜⬜\nhttps://satle.ca",
       hoursAgo: 7,
     },
     {
-      user: "omar",
+      user: "jackie",
       value: 4,
-      raw: "🛰 Satle #472 4/6\n🟥🟥🟥🟩⬜⬜\nhttps://satle.ca",
+      raw: "🛰Satle #379 4/6\n🟥🟥🟥🟩⬜⬜\nhttps://satle.ca",
       hoursAgo: 9,
-    },
-    {
-      user: "june",
-      value: 5,
-      raw: "🛰 Satle #472 5/6\n🟥🟥🟥🟥🟩⬜\nhttps://satle.ca",
-      hoursAgo: 13,
     },
   ],
 };
 
-async function createPersona(persona: (typeof personas)[number]) {
+async function avatarDataUrl(filename: string): Promise<string> {
+  const bytes = await readFile(
+    new URL(`./fixtures/highscore-appstore/avatars/${filename}`, import.meta.url),
+  );
+  return `data:image/jpeg;base64,${bytes.toString("base64")}`;
+}
+
+async function createPersona(
+  persona: (typeof personas)[number],
+  preservedJoshAvatar: string | null,
+) {
   const db = getDb();
+  const avatarFilename = "avatarFilename" in persona ? persona.avatarFilename : null;
   const [user] = await db
     .insert(users)
-    .values({ email: persona.email, displayName: persona.displayName })
+    .values({
+      email: persona.email,
+      displayName: persona.displayName,
+      avatarUrl: avatarFilename ? await avatarDataUrl(avatarFilename) : preservedJoshAvatar,
+    })
     .returning();
   if (!user) throw new Error(`failed to create ${persona.displayName}`);
   await db.insert(userIdentities).values({
@@ -176,9 +204,16 @@ async function main() {
   }
 
   const db = getDb();
+  const [existingJosh] = await db
+    .select({ avatarUrl: users.avatarUrl })
+    .from(users)
+    .where(eq(users.email, `josh@${DEMO_DOMAIN}`))
+    .limit(1);
   await db.delete(users).where(like(users.email, `%@${DEMO_DOMAIN}`));
 
-  const created = await Promise.all(personas.map(createPersona));
+  const created = await Promise.all(
+    personas.map((persona) => createPersona(persona, existingJosh?.avatarUrl ?? null)),
+  );
   const people = Object.fromEntries(
     personas.map((persona, index) => [persona.key, created[index]!.id]),
   ) as Record<PersonaKey, string>;
@@ -186,17 +221,11 @@ async function main() {
   await db
     .insert(friendships)
     .values([
-      friendship(people.maya, people.theo),
-      friendship(people.maya, people.nina),
-      friendship(people.maya, people.omar),
-      friendship(people.maya, people.june),
-      friendship(people.theo, people.avery),
-      friendship(people.nina, people.avery),
+      friendship(people.josh, people.andrew),
+      friendship(people.josh, people.maddie),
+      friendship(people.josh, people.francisco),
+      friendship(people.josh, people.jackie),
     ]);
-  await db.insert(friendRequests).values({
-    inviterId: people.avery,
-    inviteeId: people.maya,
-  });
 
   const catalog = {
     maptap: await getCatalogGame("maptap"),
@@ -209,17 +238,17 @@ async function main() {
   const ownerGames = [catalog.maptap, catalog.travle, catalog.satle];
   await db.insert(userGames).values(
     ownerGames.map((game, index) => ({
-      userId: people.maya,
+      userId: people.josh,
       gameId: game.id,
       position: (index + 1) * 1024,
     })),
   );
 
-  const scoringFriends: Array<Exclude<PersonaKey, "maya" | "avery">> = [
-    "theo",
-    "nina",
-    "omar",
-    "june",
+  const scoringFriends: Array<Exclude<PersonaKey, "josh">> = [
+    "andrew",
+    "maddie",
+    "francisco",
+    "jackie",
   ];
   await db.insert(userGames).values(
     scoringFriends.flatMap((person, personIndex) => [
@@ -254,7 +283,7 @@ async function main() {
   await db.insert(gameScores).values(
     [1, 2, 3].map((daysAgo) => ({
       gameId: catalog.maptap.id,
-      userId: people.maya,
+      userId: people.josh,
       periodKey: dayKey(daysAgo),
       scoreValue: String(920 - daysAgo * 8),
       scoreRaw: `www.maptap.gg\n95🎯 90👑 88✨ 86🏆 80👏\nFinal score: ${920 - daysAgo * 8}`,
@@ -267,27 +296,27 @@ async function main() {
     {
       gameId: catalog.maptap.id,
       periodKey: today,
-      scoreUserId: people.maya,
-      reactorUserId: people.nina,
+      scoreUserId: people.josh,
+      reactorUserId: people.maddie,
       emoji: "🎉",
     },
     {
       gameId: catalog.maptap.id,
       periodKey: today,
-      scoreUserId: people.theo,
-      reactorUserId: people.maya,
+      scoreUserId: people.maddie,
+      reactorUserId: people.josh,
       emoji: "🔥",
     },
     {
       gameId: catalog.travle.id,
       periodKey: today,
-      scoreUserId: people.nina,
-      reactorUserId: people.maya,
+      scoreUserId: people.jackie,
+      reactorUserId: people.josh,
       emoji: "👏",
     },
   ]);
 
-  console.log(`seeded HighScore App Store fixtures for maya@${DEMO_DOMAIN}`);
+  console.log(`seeded HighScore App Store fixtures for josh@${DEMO_DOMAIN}`);
 }
 
 main()

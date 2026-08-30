@@ -13,8 +13,8 @@
       "env": {
         "HIGHSCORE_STUDIO": "1",
         "EXPO_PUBLIC_DEV_AUTH": "1",
-        "EXPO_PUBLIC_DEV_AUTH_EMAIL": "maya@highscore-demo.local",
-        "EXPO_PUBLIC_DEV_AUTH_DISPLAY_NAME": "Maya Chen"
+        "EXPO_PUBLIC_DEV_AUTH_EMAIL": "josh@highscore-demo.local",
+        "EXPO_PUBLIC_DEV_AUTH_DISPLAY_NAME": "Josh Lebedinsky"
       }
     },
     "preview": {

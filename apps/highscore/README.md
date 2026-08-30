@@ -63,15 +63,15 @@ pnpm exec eas build --platform ios --profile studio
 ```
 
 Start Metro with the isolated screenshot backend URL. The dev identity is fixed to the
-privacy-safe Maya fixture; changing `EXPO_PUBLIC_API_URL` only needs a Metro restart, never a
+privacy-safe Josh fixture; changing `EXPO_PUBLIC_API_URL` only needs a Metro restart, never a
 new native build.
 
 ```bash
 HIGHSCORE_STUDIO=1 \
 EXPO_PUBLIC_API_URL=https://<temporary-fake-backend> \
 EXPO_PUBLIC_DEV_AUTH=1 \
-EXPO_PUBLIC_DEV_AUTH_EMAIL=maya@highscore-demo.local \
-EXPO_PUBLIC_DEV_AUTH_DISPLAY_NAME='Maya Chen' \
+EXPO_PUBLIC_DEV_AUTH_EMAIL=josh@highscore-demo.local \
+EXPO_PUBLIC_DEV_AUTH_DISPLAY_NAME='Josh Lebedinsky' \
 pnpm exec expo start --dev-client --tunnel --port 8082
 ```
 
