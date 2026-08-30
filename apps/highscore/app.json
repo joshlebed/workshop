@@ -2,7 +2,7 @@
   "expo": {
     "name": "HighScore",
     "slug": "highscore",
-    "version": "0.5.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -13,7 +13,7 @@
     "scheme": "highscore",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "live.highscore.app",
       "icon": "./assets/HighScore.icon",
       "associatedDomains": ["applinks:highscore.live"],
