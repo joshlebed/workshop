@@ -43,6 +43,7 @@ export interface AuthContextValue {
     nonce?: string;
     email?: string;
     fullName?: string;
+    authorizationCode?: string;
   }) => Promise<void>;
   signInWithGoogle: (req: { idToken: string }) => Promise<void>;
   signInDev: (req: { email: string; displayName?: string | null }) => Promise<void>;

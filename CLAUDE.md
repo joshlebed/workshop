@@ -141,6 +141,24 @@ from one component tree; shared code lives in `packages/*`. HighScore owns its G
   plus a Lambda env refresh, not a code change. Apple's `sub` is stable per developer
   team, so the same Apple ID lands on the same `user_identities` row from either app.
 
+- **Account deletion is `DELETE /v1/users/me`, and it deletes the _shared_ account.**
+  Self-only (the subject is the bearer token's `userId`; there is no target parameter) and
+  403 `IMPERSONATION_ACTIVE` while an admin is impersonating. Because Workshop and HighScore
+  share one `users` row, deleting from HighScore deletes the Workshop side too — the client
+  confirmation says so out loud (`ACCOUNT_DELETION_CONSEQUENCES` in
+  `apps/highscore/src/lib/accountDeletion.ts`). `lib/accountDeletion.ts` handles the four
+  `ON DELETE restrict` edges (`lists.owner_id`, `items.added_by`, `list_invites.invited_by`,
+  `activity_events.actor_id`) plus `auth_sessions.impersonated_user_id` and the user's
+  `rate_limits` buckets, all in one transaction; everything else cascades. **If you add a new
+  table with a `restrict` FK to `users.id`, add a delete for it there** — otherwise the final
+  `DELETE FROM users` raises and the whole transaction rolls back (loud 500, not a
+  half-deleted account; that rollback is covered by a test). Provider revocation runs
+  _after_ the commit and never blocks it: `POST appleid.apple.com/auth/revoke` needs a
+  refresh token, which only exists because the Apple sign-in now forwards its one-time
+  `authorizationCode` for exchange (sealed by `lib/secretBox.ts` onto `user_identities`).
+  Every outcome is reported honestly — `revoked` / `nothing_to_revoke` / `unavailable` /
+  `failed` — never assumed. Operator setup for the `.p8` key: manual-setup.md §5.
+
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:
@@ -335,7 +353,8 @@ curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)
 ```
 
 The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
-`APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
+`APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`,
+`GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
 `GOOGLE_BOOKS_API_KEY`, `ENABLE_GAMES`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
 `DISCORD_NOTIFY_WEBHOOK_URL`, `LOG_LEVEL` from env vars set by Terraform.
 `aws lambda get-function-configuration` shows what's running.

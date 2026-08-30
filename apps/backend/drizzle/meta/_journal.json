@@ -281,6 +281,13 @@
       "when": 1786257270865,
       "tag": "0039_managed_device_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788124536873,
+      "tag": "0040_identity_provider_refresh_tokens",
+      "breakpoints": true
     }
   ]
 }

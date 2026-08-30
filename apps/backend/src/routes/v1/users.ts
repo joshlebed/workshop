@@ -3,9 +3,17 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbUser, letterboxdWatchlistFilms, users } from "../../db/schema.js";
-import { isAdminUser } from "../../lib/admin.js";
+import { deleteUserAccount } from "../../lib/accountDeletion.js";
+import { isAdminUser, userLabel } from "../../lib/admin.js";
+import { notifyDiscord } from "../../lib/discord.js";
 import { logger } from "../../lib/logger.js";
 import { notifyLetterboxdConnected, notifySessionsRevoked } from "../../lib/opsNotifications.js";
+import {
+  loadRevocableIdentities,
+  type ProviderRevocationResult,
+  revokeProviderTokens,
+} from "../../lib/providerRevocation.js";
+import { clearRefreshCredential } from "../../lib/refreshCookie.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { revokeAllSessions } from "../../lib/sessionRevocation.js";
@@ -227,6 +235,59 @@ userRoutes.delete("/me/letterboxd", async (c) => {
 // Sign out of every device — bumps `sessions_invalidated_at` so every existing
 // session token for this user is rejected on its next request. The user has
 // to sign in again to mint a fresh token.
+/**
+ * Permanent account deletion (App Store Review Guideline 5.1.1(v)).
+ *
+ * Self-only: the subject is always the authenticated `userId`; there is no
+ * target parameter, so no caller can delete anyone else. Blocked while an admin
+ * is impersonating — the session's real owner is not the account on screen, and
+ * an impersonated delete would destroy a user's data under someone else's hand.
+ *
+ * Order matters. Identity rows are read first (they hold the sealed Apple
+ * refresh token), then the transactional delete runs, then provider revocation
+ * is attempted. A revocation failure cannot leave the user stuck: their data is
+ * already gone and the response reports the real per-provider outcome. See
+ * lib/providerRevocation.ts for the full failure semantics.
+ *
+ * Because Workshop and HighScore share one `users` row, this deletes the
+ * account across both apps — the client says so before asking to confirm.
+ */
+userRoutes.delete("/me", async (c) => {
+  if (c.get("impersonatorUserId")) {
+    return err(c, "FORBIDDEN", "stop impersonating before deleting an account", {
+      code: "IMPERSONATION_ACTIVE",
+    });
+  }
+
+  const userId = c.get("userId");
+  const db = getDb();
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) return err(c, "NOT_FOUND", "user not found");
+
+  const identities = await loadRevocableIdentities(userId);
+  const counts = await deleteUserAccount(userId);
+  if (counts.users === 0) return err(c, "NOT_FOUND", "user not found");
+
+  logger.warn("account deleted", { userId, ...counts });
+  clearRefreshCredential(c);
+
+  const providerRevocations: ProviderRevocationResult[] = await revokeProviderTokens(identities, {
+    userId,
+  });
+  await notifyDiscord(
+    `:bomb: account deleted — ${userLabel(user)} (${describeRevocations(providerRevocations)})`,
+    { kind: "account_deleted" },
+  );
+
+  c.header("Cache-Control", "no-store");
+  return ok(c, { ok: true, deletedUserId: userId, providerRevocations });
+});
+
+function describeRevocations(results: ProviderRevocationResult[]): string {
+  if (results.length === 0) return "no linked providers";
+  return results.map((r) => `${r.provider}: ${r.status}`).join(", ");
+}
+
 userRoutes.delete("/me/sessions", async (c) => {
   const userId = c.get("userId");
   await revokeAllSessions(userId);

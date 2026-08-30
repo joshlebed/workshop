@@ -91,6 +91,36 @@ resource "aws_ssm_parameter" "google_books_api_key" {
   }
 }
 
+resource "aws_ssm_parameter" "apple_team_id" {
+  name  = "/${local.prefix}/apple_team_id"
+  type  = "SecureString"
+  value = var.apple_team_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "apple_key_id" {
+  name  = "/${local.prefix}/apple_key_id"
+  type  = "SecureString"
+  value = var.apple_key_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "apple_private_key" {
+  name  = "/${local.prefix}/apple_private_key"
+  type  = "SecureString"
+  value = var.apple_private_key
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 resource "aws_ssm_parameter" "spotify_client_id" {
   name  = "/${local.prefix}/spotify_client_id"
   type  = "SecureString"

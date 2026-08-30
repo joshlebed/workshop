@@ -11,6 +11,12 @@ export interface AppleSignInResult {
   nonce?: string;
   email?: string;
   fullName?: string;
+  /**
+   * One-time code Apple issues alongside the identity token. Forwarded to the
+   * backend, which exchanges it for a refresh token kept solely so account
+   * deletion can revoke it (App Store Review Guideline 5.1.1(v)).
+   */
+  authorizationCode?: string;
 }
 
 export interface AppleSignInState {
@@ -53,6 +59,7 @@ export function useAppleSignIn(): AppleSignInState {
         identityToken: credential.identityToken,
         nonce: hashedNonce,
       };
+      if (credential.authorizationCode) result.authorizationCode = credential.authorizationCode;
       if (credential.email) result.email = credential.email;
       const given = credential.fullName?.givenName ?? "";
       const family = credential.fullName?.familyName ?? "";

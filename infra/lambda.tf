@@ -56,6 +56,9 @@ resource "aws_lambda_function" "api" {
       APPLE_SERVICES_ID          = aws_ssm_parameter.apple_services_id.value
       GOOGLE_IOS_CLIENT_ID       = aws_ssm_parameter.google_ios_client_id.value
       GOOGLE_WEB_CLIENT_ID       = aws_ssm_parameter.google_web_client_id.value
+      APPLE_TEAM_ID              = aws_ssm_parameter.apple_team_id.value
+      APPLE_KEY_ID               = aws_ssm_parameter.apple_key_id.value
+      APPLE_PRIVATE_KEY          = aws_ssm_parameter.apple_private_key.value
       TMDB_API_KEY               = aws_ssm_parameter.tmdb_api_key.value
       GOOGLE_BOOKS_API_KEY       = aws_ssm_parameter.google_books_api_key.value
       ENABLE_GAMES               = "1"

@@ -127,6 +127,40 @@ that the user signed out.
 state. In return, sessions survive normal app usage for months without turning long-lived bearer
 tokens into permanent credentials.
 
+## 2026-08 — Account deletion deletes the shared Workshop + HighScore account
+
+**Context**: App Store Review Guideline 5.1.1(v) requires an in-app way to delete an account, and
+Sign in with Apple requires revoking the user's Apple tokens when they do. Workshop.dev and
+HighScore run on one backend and one `users` row — signing into HighScore with the Apple ID you use
+on Workshop resolves to the same account. There was no deletion surface at all.
+
+**Decision**: One authenticated, self-only endpoint, `DELETE /v1/users/me`. It deletes the account
+across both apps in a single transaction rather than deactivating it, and the HighScore
+confirmation states the Workshop impact explicitly instead of burying it. The alternative —
+splitting the shared identity so HighScore could delete "just" its half — would mean a second
+`users` table, a migration of the live friend graph, and a user-visible account split, all to make
+a confirmation dialog shorter. Not worth it.
+
+Owned lists are deleted outright (which takes other members' contributions _to those lists_ with
+them); other users' own lists survive, minus the deleted user's items, activity and invites. Every
+other user's data is untouched.
+
+**Provider revocation**: The client now forwards Apple's one-time `authorizationCode`; the backend
+exchanges it for a refresh token, seals it with AES-256-GCM under a `SESSION_SECRET`-derived key
+(`lib/secretBox.ts`), and stores it on `user_identities` purely so deletion can call
+`POST https://appleid.apple.com/auth/revoke`. Revocation runs **after** the data deletion commits
+and never blocks it: the response reports `revoked` / `nothing_to_revoke` / `unavailable` /
+`failed` per identity rather than assuming success. A user must never be stranded with a live
+account because Apple timed out. Google needs no equivalent — we only verify an `id_token` and
+never request offline access, so we hold nothing revocable.
+
+**Deliberately not done**: no grace period or soft-delete tombstone. Apple's guidance is that
+deletion means deletion; a "you have 30 days to change your mind" state is a second account
+lifecycle to maintain and a second thing to get wrong.
+
+**Tradeoff**: Deleting from HighScore destroys Workshop data. Accepted, stated in the
+confirmation, and covered by tests.
+
 ## 2026-04 — No TMDB integration for MVP
 
 **Context**: Client vs backend call to TMDB has infra implications (NAT Gateway if backend-side).

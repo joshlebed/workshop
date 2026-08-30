@@ -116,6 +116,12 @@ export interface AppleAuthRequest {
   nonce?: string;
   email?: string;
   fullName?: string;
+  /**
+   * One-time Apple authorization code. Optional — sent so the backend can
+   * exchange it for a refresh token and revoke it if the user later deletes
+   * their account (App Store Review Guideline 5.1.1(v)).
+   */
+  authorizationCode?: string;
 }
 
 export interface GoogleAuthRequest {
@@ -156,6 +162,28 @@ export interface ImpersonationTargetsResponse {
 export interface UpdateMeRequest {
   displayName?: string;
   avatarUrl?: string | null;
+}
+
+/**
+ * Outcome of the provider-side token revocation attempted after an account is
+ * deleted. `nothing_to_revoke` means we hold no revocable credential for that
+ * identity (always the case for Google — we never request offline access);
+ * `unavailable` means the server's provider credentials aren't configured;
+ * `failed` means the call was made and errored. The account is deleted either
+ * way — see apps/backend/src/lib/providerRevocation.ts.
+ */
+export type ProviderRevocationStatus = "revoked" | "nothing_to_revoke" | "unavailable" | "failed";
+
+export interface ProviderRevocationResult {
+  provider: AuthProvider;
+  status: ProviderRevocationStatus;
+}
+
+/** Response to `DELETE /v1/users/me`. */
+export interface DeleteAccountResponse {
+  ok: true;
+  deletedUserId: string;
+  providerRevocations: ProviderRevocationResult[];
 }
 
 // --- Lists ---
