@@ -57,3 +57,13 @@ so it is `1.0.0` for the initial Store release — an OTA only reaches builds th
 device family would make App Store Connect require a second screenshot set. Flipping it back is a
 native change: bump `version` in the same PR, and expect a fresh TestFlight build plus iPad
 screenshots before the next submission.
+
+## Theme layer
+
+Visual tokens live in `src/theme/` (`hs` = DESIGN.md literals; `tokens` = a
+`@workshop/ui`-shaped compat map onto the arcade palette so existing call sites keep working).
+Never import colors/type/shape from `@workshop/ui` — restyled surfaces use the local `Text`,
+`Button`, `MarqueeHeader`, `PixelIcon`, and `sheetContentStyle` from `src/theme`. The app is
+dark-only: `ThemeProvider forceScheme="dark"` in `app/_layout.tsx` pins shared components, and
+Press Start 2P loads there via `useFonts` before anything renders. Pixelarticons path data is
+inlined in `src/theme/PixelIcon.tsx` (the npm package ships raw SVGs and is not a dependency).

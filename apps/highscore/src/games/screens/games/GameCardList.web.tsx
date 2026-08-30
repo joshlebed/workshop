@@ -19,6 +19,7 @@ import type { MyGame } from "@workshop/shared/games";
 import { homeLayout, PullToRefresh } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { tokens } from "../../../theme";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({
@@ -114,5 +115,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: homeLayout.contentTopGap,
     paddingBottom: homeLayout.bottomInset,
+    // Framed cabinet cards need air between their bezels.
+    gap: tokens.space.md,
   },
 });

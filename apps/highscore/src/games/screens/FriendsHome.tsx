@@ -24,12 +24,12 @@ import {
   haptics,
   Screen,
   Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { tokens } from "../../theme";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
 import { useGamesRuntime } from "../runtime";

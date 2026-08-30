@@ -10,8 +10,9 @@
 // All data + mutations live in GamesHome; this component is presentational.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, homeLayout, Text, tokens } from "@workshop/ui";
+import { Button, homeLayout, Text } from "@workshop/ui";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { tokens } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface GamesOnboardingProps {

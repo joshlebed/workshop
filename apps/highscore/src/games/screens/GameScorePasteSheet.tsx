@@ -42,9 +42,10 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
+import { Avatar, Sheet } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Button, hs, sheetContentStyle, Text, tokens } from "../../theme";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -223,6 +224,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
 
   return (
     <Sheet
+      contentStyle={sheetContentStyle}
       visible={visible}
       onRequestClose={onClose}
       onClosed={() => setSnapshot(null)}
@@ -273,7 +275,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
               </Text>
               <View style={styles.chips}>
                 {candidates.map((c) => (
-                  <Chip
+                  <TeachChip
                     key={`${c.kind}-${c.start}-${c.text}`}
                     label={c.label}
                     selected={chosen?.start === c.start && chosen?.kind === c.kind}
@@ -285,7 +287,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
               {taught ? (
                 <View style={styles.chips}>
                   {(["asc", "desc"] as const).map((dir) => (
-                    <Chip
+                    <TeachChip
                       key={dir}
                       label={dir === "asc" ? "Lower is better" : "Higher is better"}
                       selected={direction === dir}
@@ -347,6 +349,38 @@ export function GameScorePasteSheet<T extends { title: string }>({
   );
 }
 
+// HighScore-owned selection chip for the teach flow: sharp corners, bezel,
+// pink (the one interactive color) when selected.
+function TeachChip({
+  label,
+  selected,
+  onPress,
+  testID,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      testID={testID}
+      style={({ pressed }) => [
+        styles.chip,
+        selected && styles.chipSelected,
+        pressed && styles.chipPressed,
+      ]}
+    >
+      <Text variant="label" style={selected ? styles.chipLabelSelected : styles.chipLabel}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
@@ -354,11 +388,29 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
+  chip: {
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: 6,
+    borderRadius: hs.radius,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface2,
+  },
+  chipSelected: {
+    borderColor: hs.color.primary,
+    backgroundColor: `${hs.color.primary}22`,
+  },
+  chipPressed: { opacity: 0.75 },
+  chipLabel: { color: hs.color.textSecondary },
+  chipLabelSelected: { color: hs.color.primaryTint },
   input: {
     minHeight: 120,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius,
+    // Focused inputs are a designated glow element: pink ring, not the
+    // browser's default white outline (web-only style, no-op on native).
+    outlineColor: hs.color.primary,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
@@ -377,8 +429,8 @@ const styles = StyleSheet.create({
   summary: { gap: tokens.space.sm },
   summaryBox: {
     borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     backgroundColor: tokens.bg.canvas,

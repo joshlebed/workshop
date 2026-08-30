@@ -6,9 +6,10 @@
 // discovery only ever surfaces here and on the empty state.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
+import { Button, Sheet, Text } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { tokens } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface AddGameSheetProps {
