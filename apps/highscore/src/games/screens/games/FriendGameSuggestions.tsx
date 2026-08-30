@@ -6,8 +6,8 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { HsText, hsColor, hsSpace } from "../../../theme";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -61,28 +61,28 @@ export function FriendGameSuggestions({
                   accessibilityIgnoresInvertColors
                 />
               ) : (
-                <Text style={styles.coverGlyph}>🎮</Text>
+                <HsText style={styles.coverGlyph}>🎮</HsText>
               )}
             </View>
             <View style={styles.text}>
-              <Text variant="label" numberOfLines={1} style={styles.title}>
+              <HsText variant="label" numberOfLines={1} style={styles.title}>
                 {dg.game.title}
-              </Text>
+              </HsText>
               {hideFriendLine ? null : (
-                <Text variant="caption" tone="muted" numberOfLines={1}>
+                <HsText variant="caption" tone="secondary" numberOfLines={1}>
                   {friendsPlayLine(dg.friends)}
-                </Text>
+                </HsText>
               )}
             </View>
             {owned ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
-                <Text style={styles.addedText} numberOfLines={1}>
+                <HsText style={styles.addedText} numberOfLines={1}>
                   ✓ In your games
-                </Text>
+                </HsText>
               </View>
             ) : added ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
+                <HsText style={styles.addedText}>✓ Added</HsText>
               </View>
             ) : (
               <Pressable
@@ -99,9 +99,9 @@ export function FriendGameSuggestions({
                 ]}
               >
                 {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
+                  <ActivityIndicator size="small" color={hsColor.primary} />
                 ) : (
-                  <Text style={styles.addLabel}>Add</Text>
+                  <HsText style={styles.addLabel}>Add</HsText>
                 )}
               </Pressable>
             )}
@@ -115,60 +115,62 @@ export function FriendGameSuggestions({
 const COVER = 40;
 
 const styles = StyleSheet.create({
-  list: { gap: tokens.space.sm },
+  list: { gap: hsSpace.sm },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
+    gap: hsSpace.md,
+    paddingVertical: hsSpace.sm,
+    paddingHorizontal: hsSpace.md,
+    borderRadius: 0,
     borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    borderColor: hsColor.border,
+    backgroundColor: hsColor.surface2,
   },
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    backgroundColor: `${hsColor.primary}1F`,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  coverGlyph: { fontSize: 20 },
+  coverImage: { width: COVER, height: COVER, borderRadius: 0 },
+  coverGlyph: { fontSize: 20, lineHeight: 26 },
   text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  title: { fontSize: 16, color: hsColor.textPrimary },
+  // Pink = the one interactive color; Add is a small pink-bezel action.
   addBtn: {
     minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: hsSpace.md,
+    paddingVertical: hsSpace.sm,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
+    backgroundColor: `${hsColor.primary}14`,
     borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderColor: `${hsColor.primary}66`,
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  addBtnHover: { backgroundColor: `${hsColor.primary}2B` },
   addBtnBusy: { opacity: 0.8 },
   addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    color: hsColor.primaryTint,
+    fontSize: 13,
+    fontWeight: "600",
   },
   addedPill: {
     minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: hsSpace.md,
+    paddingVertical: hsSpace.sm,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
   },
+  // "✓ Added" — something good happened: chartreuse, earned.
   addedText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    color: hsColor.success,
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

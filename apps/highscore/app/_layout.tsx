@@ -1,13 +1,14 @@
+import { PressStart2P_400Regular, useFonts } from "@expo-google-fonts/press-start-2p";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
-import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
+import { ThemeProvider, ToastProvider } from "@workshop/ui";
 import { type Href, Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -19,6 +20,7 @@ import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
+import { HsText, hsColor, hsSpace, PixelButton } from "../src/theme";
 
 configureApiClient({ client: "highscore" });
 
@@ -128,26 +130,23 @@ function AuthGate() {
   if (status === "loading" && !onPublicRoute) {
     return (
       <View style={centered}>
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={hsColor.primary} />
       </View>
     );
   }
 
   if (status === "unavailable" && !onPublicRoute) {
     return (
-      <SafeAreaView
-        edges={["top", "bottom"]}
-        style={{ flex: 1, backgroundColor: tokens.bg.canvas }}
-      >
-        <View style={{ ...centered, paddingHorizontal: tokens.space.xl }}>
-          <View style={{ width: "100%", maxWidth: 340, gap: tokens.space.md }}>
-            <Text variant="heading" style={{ textAlign: "center" }}>
+      <SafeAreaView edges={["top", "bottom"]} style={{ flex: 1, backgroundColor: hsColor.bg }}>
+        <View style={{ ...centered, paddingHorizontal: hsSpace.xl }}>
+          <View style={{ width: "100%", maxWidth: 340, gap: hsSpace.md }}>
+            <HsText variant="pixelHeading" style={{ textAlign: "center" }}>
               Can’t connect
-            </Text>
-            <Text tone="secondary" style={{ textAlign: "center" }}>
+            </HsText>
+            <HsText tone="secondary" style={{ textAlign: "center" }}>
               Your session is still saved. Check your connection and try again.
-            </Text>
-            <Button label="Try again" size="lg" onPress={() => void refresh()} />
+            </HsText>
+            <PixelButton label="Try again" size="lg" onPress={() => void refresh()} />
           </View>
         </View>
       </SafeAreaView>
@@ -155,11 +154,11 @@ function AuthGate() {
   }
 
   return (
-    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
+    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: hsColor.bg }}>
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: tokens.bg.canvas },
+          contentStyle: { backgroundColor: hsColor.bg },
           gestureEnabled: true,
           fullScreenGestureEnabled: true,
         }}
@@ -186,20 +185,23 @@ const centered = {
   flex: 1,
   alignItems: "center",
   justifyContent: "center",
-  backgroundColor: tokens.bg.canvas,
+  backgroundColor: hsColor.bg,
 } as const;
 
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
-  const colorScheme = useColorScheme();
-  const isLight = colorScheme === "light";
+  // Press Start 2P (headings/scores only, per DESIGN.md). Render on system
+  // fonts until it lands — a beat of fallback text beats a blank screen.
+  useFonts({ PressStart2P_400Regular });
+  // Dark-only app: force the shared components' dark palette and a light
+  // status bar regardless of the system scheme.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <ThemeProvider>
-            <StatusBar style={isLight ? "dark" : "light"} />
+          <ThemeProvider forceScheme="dark">
+            <StatusBar style="light" />
             <QueryClientProvider client={queryClient}>
               <ToastProvider>
                 <AuthProvider>

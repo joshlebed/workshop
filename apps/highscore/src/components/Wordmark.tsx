@@ -1,5 +1,8 @@
-import { Text, tokens } from "@workshop/ui";
+// "HIGHSCORE" wordmark — Press Start 2P, primary text with a neon-pink glow
+// accent (one of the few designated glow elements per DESIGN.md).
+
 import { StyleSheet, View } from "react-native";
+import { HsText, hsColor, hsSpace } from "../theme";
 import { BrandIcon } from "./BrandIcon";
 
 interface WordmarkProps {
@@ -12,17 +15,22 @@ export function Wordmark({ size = "md" }: WordmarkProps) {
   return (
     <View accessible accessibilityRole="header" accessibilityLabel="HighScore" style={styles.row}>
       <BrandIcon size={large ? 48 : 28} />
-      <Text style={[styles.text, large ? styles.textLg : styles.textMd]}>HighScore</Text>
+      <HsText variant="pixelHeading" style={[styles.text, large ? styles.textLg : styles.textMd]}>
+        HIGHSCORE
+      </HsText>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  // lineHeight must be set explicitly: the shared <Text> defaults to the
-  // `body` variant (lineHeight 22), so overriding only fontSize leaves a large
-  // glyph in a 22px line box and iOS clips the ascenders.
-  text: { color: tokens.text.primary, fontWeight: tokens.font.weight.bold },
-  textMd: { fontSize: tokens.font.size.xl, lineHeight: 28, letterSpacing: -0.8 },
-  textLg: { fontSize: 36, lineHeight: 44, letterSpacing: -1.4 },
+  row: { flexDirection: "row", alignItems: "center", gap: hsSpace.sm },
+  // Press Start 2P clips tight line boxes — keep lineHeight generous (~1.6×).
+  text: {
+    color: hsColor.textPrimary,
+    textShadowColor: hsColor.primaryGlow,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  textMd: { fontSize: 14, lineHeight: 23 },
+  textLg: { fontSize: 22, lineHeight: 36 },
 });

@@ -6,8 +6,8 @@
 // inert with no add button.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
+import { HsText, hsColor, hsSpace } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];
@@ -36,11 +36,11 @@ export function ScoreReactions({ reactions, onToggle, onAdd, testIDPrefix }: Sco
             onToggle && (pressed || hovered) && styles.chipHover,
           ]}
         >
-          <Text style={styles.chipEmoji}>{r.emoji}</Text>
+          <HsText style={styles.chipEmoji}>{r.emoji}</HsText>
           {r.count > 1 ? (
-            <Text style={[styles.chipCount, r.viewerReacted && styles.chipCountActive]}>
+            <HsText style={[styles.chipCount, r.viewerReacted && styles.chipCountActive]}>
               {r.count}
-            </Text>
+            </HsText>
           ) : null}
         </Pressable>
       ))}
@@ -56,8 +56,8 @@ export function ScoreReactions({ reactions, onToggle, onAdd, testIDPrefix }: Sco
             (pressed || hovered) && styles.chipHover,
           ]}
         >
-          <Text style={styles.addFace}>🙂</Text>
-          <Text style={styles.addPlus}>+</Text>
+          <HsText style={styles.addFace}>🙂</HsText>
+          <HsText style={styles.addPlus}>+</HsText>
         </Pressable>
       ) : null}
     </View>
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: tokens.space.xs,
+    gap: hsSpace.xs,
   },
   chip: {
     flexDirection: "row",
@@ -77,40 +77,41 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: hsColor.border,
+    backgroundColor: hsColor.surface2,
   },
+  // Your own reaction = selection → pink bezel.
   chipActive: {
-    borderColor: tokens.accent.default,
-    backgroundColor: tokens.accent.muted,
+    borderColor: hsColor.primary,
+    backgroundColor: `${hsColor.primary}1F`,
   },
-  chipHover: { backgroundColor: tokens.bg.surface },
+  chipHover: { backgroundColor: hsColor.surface3 },
   chipEmoji: { fontSize: 13, lineHeight: 18 },
   chipCount: {
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.secondary,
+    fontWeight: "600",
+    color: hsColor.textSecondary,
     fontVariant: ["tabular-nums"],
   },
-  chipCountActive: { color: tokens.accent.default },
+  chipCountActive: { color: hsColor.primaryTint },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: hsColor.border,
   },
   addFace: { fontSize: 12, lineHeight: 16, opacity: 0.7 },
   addPlus: {
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.muted,
+    fontWeight: "700",
+    color: hsColor.textSecondary,
     marginLeft: 1,
   },
 });

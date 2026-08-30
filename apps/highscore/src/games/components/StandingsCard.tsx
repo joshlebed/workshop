@@ -23,17 +23,27 @@
 // control's own action.
 
 import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
-import { Avatar, Text, tokens } from "@workshop/ui";
+import { Avatar } from "@workshop/ui";
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import {
+  HsText,
+  hsBezel,
+  hsColor,
+  hsSpace,
+  PixelCorners,
+  PixelDivider,
+  PixelIcon,
+} from "../../theme";
 import { ScoreReactions } from "./ScoreReactions";
 
 const TOP_N = 5;
 const RANK_SLOT = 20;
 const AVATAR_SM = 24;
 const COVER = 36;
+const hsFontSm = 13;
 // The score block aligns under the player's name: rank slot + gap + avatar + gap.
-const SCORE_INDENT = RANK_SLOT + tokens.space.sm + AVATAR_SM + tokens.space.sm;
+const SCORE_INDENT = RANK_SLOT + hsSpace.sm + AVATAR_SM + hsSpace.sm;
 
 /** One scored player. `body` is the distilled score block; null → "Played". */
 export interface StandingsRow {
@@ -150,6 +160,11 @@ export const StandingsCard = memo(function StandingsCard({
 
   return (
     <View style={[styles.card, isDragging && styles.cardDragging]} testID={`game-card-${cardId}`}>
+      {/* v4 hero-card construction: one-pixel-step cut corners over the bezel. */}
+      <PixelCorners
+        cutColor={hsColor.bg}
+        bezelColor={isDragging ? hsColor.primary : hsColor.border}
+      />
       {/* Header: cover opens the game; the title taps through to detail. */}
       <View style={styles.header}>
         <Pressable
@@ -176,7 +191,7 @@ export const StandingsCard = memo(function StandingsCard({
                 { backgroundColor: `${accent}1F` },
               ]}
             >
-              <Text style={styles.coverGlyph}>{coverGlyph}</Text>
+              <HsText style={styles.coverGlyph}>{coverGlyph}</HsText>
             </View>
           )}
         </Pressable>
@@ -196,9 +211,9 @@ export const StandingsCard = memo(function StandingsCard({
                 (pressed || hovered) && styles.bodyPressed,
               ]}
             >
-              <Text variant="heading" numberOfLines={1} style={styles.title}>
+              <HsText variant="pixelLabel" numberOfLines={1} style={styles.title}>
                 {title}
-              </Text>
+              </HsText>
             </Pressable>
             {showStreak ? (
               <Pressable
@@ -214,21 +229,25 @@ export const StandingsCard = memo(function StandingsCard({
                   (pressed || hovered) && styles.streakHover,
                 ]}
               >
-                <Text style={styles.streakFlame}>🔥</Text>
-                <Text style={styles.streakCount}>{streak}</Text>
-                <Text style={styles.streakLabel}>day streak</Text>
+                <PixelIcon name="fire" size={16} color={hsColor.success} />
+                <HsText variant="pixelLabel" tone="success" style={styles.streakCount}>
+                  {streak}
+                </HsText>
+                <HsText variant="caption" tone="success" style={styles.streakLabel}>
+                  day streak
+                </HsText>
               </Pressable>
             ) : null}
           </View>
           <View style={styles.metaRow}>
-            <Text variant="caption" tone="muted" numberOfLines={1} style={styles.turnout}>
+            <HsText variant="caption" tone="secondary" numberOfLines={1} style={styles.turnout}>
               {turnout}
-            </Text>
+            </HsText>
             {ctaVisible ? (
               <>
-                <Text variant="caption" tone="muted">
+                <HsText variant="caption" tone="secondary">
                   ·
-                </Text>
+                </HsText>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Paste your ${title} result`}
@@ -242,9 +261,9 @@ export const StandingsCard = memo(function StandingsCard({
                     (pressed || hovered) && styles.pasteLinkHover,
                   ]}
                 >
-                  <Text variant="caption" tone="muted" style={styles.pasteLinkText}>
+                  <HsText variant="caption" tone="pinkTint" style={styles.pasteLinkText}>
                     paste
-                  </Text>
+                  </HsText>
                 </Pressable>
               </>
             ) : null}
@@ -265,7 +284,9 @@ export const StandingsCard = memo(function StandingsCard({
               (pressed || hovered) && styles.playPillHover,
             ]}
           >
-            <Text style={styles.playLabel}>Play</Text>
+            <HsText variant="pixelLabel" tone="onNeon" style={styles.playLabel}>
+              Play
+            </HsText>
           </Pressable>
         ) : null}
 
@@ -280,7 +301,7 @@ export const StandingsCard = memo(function StandingsCard({
             (pressed || hovered) && styles.menuBtnHover,
           ]}
         >
-          <Text style={styles.menuGlyph}>⋯</Text>
+          <PixelIcon name="more-horizontal" size={16} color={hsColor.textSecondary} />
         </Pressable>
       </View>
 
@@ -311,7 +332,7 @@ export const StandingsCard = memo(function StandingsCard({
           ))}
           {pinnedSelf ? (
             <>
-              <View style={styles.pinnedDivider} />
+              <PixelDivider style={styles.pinnedDivider} />
               <PlayerRow
                 row={pinnedSelf}
                 isMe
@@ -330,9 +351,9 @@ export const StandingsCard = memo(function StandingsCard({
               onLongPress={onLongPressBody}
               delayLongPress={250}
             >
-              <Text variant="caption" tone="muted" style={styles.moreLine}>
+              <HsText variant="caption" tone="secondary" style={styles.moreLine}>
                 +{overflow} more
-              </Text>
+              </HsText>
             </Pressable>
           ) : null}
         </View>
@@ -384,15 +405,17 @@ function PlayerRow({
       >
         <RankMark rank={row.rank} />
         <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
-        <Text
+        <HsText
           style={[styles.scoreBody, row.body ? null : styles.scoreBodyMuted]}
           testID={`game-card-score-${row.userId}`}
         >
           {row.body ?? "Played"}
-        </Text>
+        </HsText>
         {isMe ? (
           <View style={styles.youPill}>
-            <Text style={styles.youPillText}>you</Text>
+            <HsText variant="pixelLabel" tone="pink" style={styles.youPillText}>
+              you
+            </HsText>
           </View>
         ) : null}
       </Pressable>
@@ -418,20 +441,26 @@ function RankMark({ rank }: { rank: number | null }) {
   if (rank == null) {
     return (
       <View style={styles.rankSlot}>
-        <Text style={styles.rankDot}>·</Text>
+        <HsText style={styles.rankDot}>·</HsText>
       </View>
     );
   }
   if (rank === 1) {
+    // Spotlight: the leader gets the neon-yellow pixel badge (accent marks
+    // what to look at — never what to tap).
     return (
       <View style={[styles.rankSlot, styles.rankFirst]}>
-        <Text style={styles.rankFirstText}>1</Text>
+        <HsText variant="pixelLabel" tone="onNeon" style={styles.rankFirstText}>
+          1
+        </HsText>
       </View>
     );
   }
   return (
     <View style={styles.rankSlot}>
-      <Text style={styles.rankText}>{rank}</Text>
+      <HsText variant="pixelLabel" tone="secondary" style={styles.rankText}>
+        {rank}
+      </HsText>
     </View>
   );
 }
@@ -465,216 +494,171 @@ function SkeletonRows() {
 }
 
 const styles = StyleSheet.create({
-  // A ledger section, not a box: hairline rule below, breathing room inside.
-  // The slight horizontal bleed gives hover/drag backgrounds room without
-  // shifting content off the column grid.
+  // v4 hero card: purple surface, chunky 2px bezel, notched corners (the
+  // PixelCorners overlay in render). Sharp everywhere — no radius, no soft
+  // shadows; elevation while dragging = surface step + pink bezel.
   card: {
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.sm,
-    marginHorizontal: -tokens.space.sm,
-    gap: tokens.space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    paddingVertical: hsSpace.md,
+    paddingHorizontal: hsSpace.md,
+    marginBottom: hsSpace.md,
+    gap: hsSpace.sm,
+    backgroundColor: hsColor.surface1,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
   },
   cardDragging: {
-    backgroundColor: tokens.bg.elevated,
-    borderRadius: tokens.radius.lg,
-    borderBottomColor: "transparent",
-    boxShadow: "0px 8px 18px rgba(0, 0, 0, 0.4)",
-    elevation: 10,
+    backgroundColor: hsColor.surface3,
+    borderColor: hsColor.primary,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: hsSpace.md,
   },
-  cover: { borderRadius: tokens.radius.sm },
+  cover: { borderRadius: 0 },
   coverPressed: { opacity: 0.7 },
   coverImage: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: 0,
+    backgroundColor: hsColor.surface2,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
   },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
-  coverGlyph: { fontSize: 18 },
+  coverGlyph: { fontSize: 18, lineHeight: 24 },
   headerText: { flex: 1, minWidth: 0 },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.xs,
+    gap: hsSpace.xs,
   },
   titlePress: {
     flexShrink: 1,
     minWidth: 0,
     maxWidth: "100%",
-    paddingHorizontal: tokens.space.xs,
-    marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    paddingHorizontal: hsSpace.xs,
+    marginHorizontal: -hsSpace.xs,
   },
-  bodyPressed: { backgroundColor: tokens.bg.elevated },
-  title: { fontSize: tokens.font.size.md, lineHeight: 21, letterSpacing: 0 },
-  // The streak flame mirrors the Play pill's warm CTA treatment (amber-muted
-  // fill, accent count) so it reads as "tap to keep your run going", not decor.
+  bodyPressed: { backgroundColor: hsColor.surface2 },
+  // Slightly oversized pixel heading for the game title (v4 latitude).
+  title: { fontSize: 12, lineHeight: 19 },
+  // Streak = celebration → chartreuse, and only chartreuse. Sharp chip.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: `${hsColor.success}55`,
+    backgroundColor: `${hsColor.success}14`,
   },
-  streakHover: { backgroundColor: `${tokens.accent.default}33` },
-  // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
-  // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
-  streakFlame: { fontSize: 12, lineHeight: 16 },
-  streakCount: {
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.accent.default,
-    fontVariant: ["tabular-nums"],
-  },
-  // The unit lives next to the bold count: "🔥 4 day streak". Lighter weight
-  // than the number so the count stays the focal point; same accent + lineHeight.
-  streakLabel: {
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.medium,
-    color: tokens.accent.default,
-  },
+  streakHover: { backgroundColor: `${hsColor.success}26` },
+  streakCount: { fontSize: 10, lineHeight: 16 },
+  streakLabel: { fontSize: 11, lineHeight: 16 },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.xs,
-    marginTop: 1,
+    gap: hsSpace.xs,
+    marginTop: 2,
   },
   turnout: { flexShrink: 1, letterSpacing: 0 },
-  pasteLink: { borderRadius: tokens.radius.sm },
-  pasteLinkHover: { backgroundColor: tokens.bg.elevated },
+  pasteLink: { borderRadius: 0 },
+  pasteLinkHover: { backgroundColor: hsColor.surface2 },
   pasteLinkText: { textDecorationLine: "underline" },
+  // Pink is the one interactive color: Play is a small filled primary block.
   playPill: {
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    paddingHorizontal: hsSpace.lg,
+    paddingVertical: 8,
+    borderRadius: 0,
+    backgroundColor: hsColor.primary,
   },
-  playPillHover: { backgroundColor: `${tokens.accent.default}33` },
-  playLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    lineHeight: 18,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  playPillHover: { backgroundColor: hsColor.primaryTint },
+  playLabel: { fontSize: 10, lineHeight: 16 },
   menuBtn: {
     width: 28,
     height: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
-  menuBtnHover: { backgroundColor: tokens.bg.elevated },
-  menuGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg,
-  },
-  standings: { gap: tokens.space.sm },
+  menuBtnHover: { backgroundColor: hsColor.surface2 },
+  standings: { gap: hsSpace.sm },
   playerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hsSpace.sm,
     paddingVertical: 4,
-    paddingHorizontal: tokens.space.xs,
-    marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    paddingHorizontal: hsSpace.xs,
+    marginHorizontal: -hsSpace.xs,
   },
   playerLine: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hsSpace.sm,
   },
   // Reactions ride to the right of the score on the same line — no extra row
   // height. They keep their natural width; the score line flexes to fill.
   reactionsWrap: { flexShrink: 0 },
-  playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
+  playerRowMe: { backgroundColor: `${hsColor.primary}14` },
   rankSlot: {
     width: RANK_SLOT,
     height: RANK_SLOT,
     alignItems: "center",
     justifyContent: "center",
   },
-  rankText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    fontVariant: ["tabular-nums"],
-  },
-  rankDot: { color: tokens.text.muted, fontSize: tokens.font.size.md },
-  rankFirst: {
-    borderRadius: RANK_SLOT / 2,
-    backgroundColor: tokens.accent.default,
-  },
-  rankFirstText: {
-    color: tokens.text.onAccent,
-    fontSize: tokens.font.size.xs,
-    fontWeight: tokens.font.weight.bold,
-    fontVariant: ["tabular-nums"],
-  },
+  rankText: { fontSize: 10, lineHeight: 14 },
+  rankDot: { color: hsColor.textSecondary, fontSize: 16 },
+  // #1 = the spotlight: neon-yellow pixel badge, sharp square.
+  rankFirst: { backgroundColor: hsColor.accent },
+  rankFirstText: { fontSize: 10, lineHeight: 14 },
   youPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: `${hsColor.primary}66`,
+    backgroundColor: `${hsColor.primary}14`,
   },
-  youPillText: {
-    fontSize: 10,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.5,
-    color: tokens.accent.default,
-    textTransform: "uppercase",
-  },
+  youPillText: { fontSize: 8, lineHeight: 11 },
   scoreBody: {
     flex: 1,
-    color: tokens.text.secondary,
+    color: hsColor.textSecondary,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 5,
+    fontSize: hsFontSm,
+    lineHeight: hsFontSm + 5,
   },
-  scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
+  scoreBodyMuted: { color: hsColor.textSecondary, fontStyle: "italic", opacity: 0.7 },
   pinnedDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginVertical: tokens.space.xs,
+    marginVertical: hsSpace.xs,
     marginLeft: SCORE_INDENT,
   },
   moreLine: {
     paddingLeft: SCORE_INDENT,
     paddingTop: 2,
   },
-  facepile: { flexDirection: "row", paddingLeft: COVER + tokens.space.md },
+  facepile: { flexDirection: "row", paddingLeft: COVER + hsSpace.md },
   faceWrap: {
     borderWidth: 2,
-    borderColor: tokens.bg.canvas,
+    borderColor: hsColor.surface1,
     borderRadius: 999,
     opacity: 0.45,
   },
   faceOverlap: { marginLeft: -10 },
-  skeletonWrap: { gap: tokens.space.sm },
-  skeletonRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  skeletonWrap: { gap: hsSpace.sm },
+  skeletonRow: { flexDirection: "row", alignItems: "center", gap: hsSpace.sm },
   skeletonDot: {
     width: AVATAR_SM,
     height: AVATAR_SM,
-    borderRadius: AVATAR_SM / 2,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: 0,
+    backgroundColor: hsColor.surface2,
   },
   skeletonBar: {
     height: 10,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: 0,
+    backgroundColor: hsColor.surface2,
   },
 });

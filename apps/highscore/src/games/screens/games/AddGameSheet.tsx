@@ -6,9 +6,10 @@
 // discovery only ever surfaces here and on the empty state.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
+import { Sheet } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { HsText, hsBezel, hsColor, hsSheet, hsSpace, PixelButton } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface AddGameSheetProps {
@@ -52,25 +53,30 @@ export function AddGameSheet({
   const hasSuggestions = discovery.length > 0;
 
   return (
-    <Sheet visible={visible} onRequestClose={onClose} testID="add-game-sheet">
+    <Sheet
+      visible={visible}
+      onRequestClose={onClose}
+      contentStyle={hsSheet}
+      testID="add-game-sheet"
+    >
       <View style={styles.header}>
-        <Text variant="heading">Add a game</Text>
-        <Text variant="caption" tone="muted">
+        <HsText variant="pixelHeading">Add a game</HsText>
+        <HsText variant="caption" tone="secondary">
           {hasSuggestions
             ? "Games your friends play, most popular first — add one, or paste any game's URL."
             : "Paste the game's URL — known dailies are recognized automatically."}
-        </Text>
+        </HsText>
       </View>
 
       {discoveryLoading ? (
         <View style={styles.suggestionsLoading}>
-          <ActivityIndicator color={tokens.accent.default} />
+          <ActivityIndicator color={hsColor.primary} />
         </View>
       ) : hasSuggestions ? (
         <View style={styles.suggestions}>
-          <Text variant="caption" tone="muted" style={styles.sectionLabel}>
+          <HsText variant="caption" tone="secondary" style={styles.sectionLabel}>
             Friends play
-          </Text>
+          </HsText>
           <ScrollView
             style={styles.suggestionsScroll}
             keyboardShouldPersistTaps="handled"
@@ -88,9 +94,9 @@ export function AddGameSheet({
       ) : null}
 
       {hasSuggestions ? (
-        <Text variant="caption" tone="muted" style={styles.orLabel}>
+        <HsText variant="caption" tone="secondary" style={styles.orLabel}>
           Or add by URL
-        </Text>
+        </HsText>
       ) : null}
 
       <TextInput
@@ -98,7 +104,7 @@ export function AddGameSheet({
         value={draft}
         onChangeText={setDraft}
         placeholder="https://example.com/daily"
-        placeholderTextColor={tokens.text.muted}
+        placeholderTextColor={hsColor.textSecondary}
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
@@ -110,8 +116,8 @@ export function AddGameSheet({
         style={styles.input}
       />
       <View style={styles.actions}>
-        <Button label="Cancel" variant="ghost" onPress={onClose} disabled={pending} />
-        <Button
+        <PixelButton label="Cancel" variant="ghost" onPress={onClose} disabled={pending} />
+        <PixelButton
           label="Add game"
           onPress={submit}
           disabled={!canSubmit}
@@ -125,25 +131,25 @@ export function AddGameSheet({
 
 const styles = StyleSheet.create({
   header: { gap: 4 },
-  suggestionsLoading: { paddingVertical: tokens.space.lg, alignItems: "center" },
-  suggestions: { gap: tokens.space.sm },
+  suggestionsLoading: { paddingVertical: hsSpace.lg, alignItems: "center" },
+  suggestions: { gap: hsSpace.sm },
   suggestionsScroll: { maxHeight: 240 },
-  sectionLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
-  orLabel: { letterSpacing: 0.4, textTransform: "uppercase", marginTop: tokens.space.xs },
+  sectionLabel: { letterSpacing: 1, textTransform: "uppercase" },
+  orLabel: { letterSpacing: 1, textTransform: "uppercase", marginTop: hsSpace.xs },
   input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
+    borderRadius: 0,
+    paddingHorizontal: hsSpace.md,
     paddingVertical: 12,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    color: hsColor.textPrimary,
+    fontSize: 16,
+    backgroundColor: hsColor.bg,
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: hsSpace.md,
   },
 });

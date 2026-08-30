@@ -3,7 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { Avatar, Button, Sheet, Text, tokens, useToast } from "@workshop/ui";
+import { Avatar, Sheet, useToast } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -11,6 +11,7 @@ import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "reac
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
 import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes";
+import { HsText, hsBezel, hsColor, hsSheet, hsSpace, PixelButton } from "../theme";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -58,13 +59,18 @@ export function ProfileMenu() {
         />
         {pending > 0 ? (
           <View style={styles.badge}>
-            <Text variant="caption" tone="onAccent" style={styles.badgeText}>
+            <HsText variant="caption" tone="onNeon" style={styles.badgeText}>
               {pending > 9 ? "9+" : pending}
-            </Text>
+            </HsText>
           </View>
         ) : null}
       </Pressable>
-      <Sheet visible={open} onRequestClose={() => setOpen(false)} testID="profile-menu-sheet">
+      <Sheet
+        visible={open}
+        onRequestClose={() => setOpen(false)}
+        contentStyle={hsSheet}
+        testID="profile-menu-sheet"
+      >
         <View style={styles.content}>
           <View style={styles.identity}>
             <Avatar
@@ -73,15 +79,15 @@ export function ProfileMenu() {
               size="lg"
             />
             <View style={styles.identityText}>
-              <Text variant="heading" numberOfLines={1}>
+              <HsText variant="pixelHeading" numberOfLines={1}>
                 {user?.displayName ?? "HighScore"}
-              </Text>
-              <Text variant="caption" tone="muted" numberOfLines={1}>
+              </HsText>
+              <HsText variant="caption" tone="secondary" numberOfLines={1}>
                 {user?.email ?? ""}
-              </Text>
+              </HsText>
             </View>
           </View>
-          <Button
+          <PixelButton
             label="Edit profile"
             variant="secondary"
             testID="open-edit-profile"
@@ -90,14 +96,14 @@ export function ProfileMenu() {
               router.push("/profile");
             }}
           />
-          <Button
+          <PixelButton
             label={pending > 0 ? `Friends (${pending})` : "Friends"}
             onPress={() => {
               setOpen(false);
               router.push("/friends");
             }}
           />
-          <Button
+          <PixelButton
             label="Send feedback"
             variant="secondary"
             testID="send-feedback"
@@ -106,7 +112,7 @@ export function ProfileMenu() {
           {/* Both routes are public pages (see src/lib/publicRoutes.ts), so the
               in-app push lands on the same content Apple sees at the published
               highscore.live URLs — on native and web alike. */}
-          <Button
+          <PixelButton
             label="Support"
             variant="ghost"
             testID="open-support"
@@ -115,7 +121,7 @@ export function ProfileMenu() {
               router.push(SUPPORT_ROUTE);
             }}
           />
-          <Button
+          <PixelButton
             label="Privacy policy"
             variant="ghost"
             testID="open-privacy"
@@ -125,7 +131,7 @@ export function ProfileMenu() {
             }}
           />
           <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
-          <Button
+          <PixelButton
             label="Sign out"
             variant="ghost"
             testID="sign-out"
@@ -203,10 +209,10 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
       impersonation.adminDisplayName?.trim() || impersonation.adminEmail || "Admin";
     return (
       <View style={impersonationStyles.form} testID="admin-impersonation-status">
-        <Text variant="caption" tone="muted" style={impersonationStyles.note}>
+        <HsText variant="caption" tone="secondary" style={impersonationStyles.note}>
           Impersonating. Started by {adminLabel}.
-        </Text>
-        <Button
+        </HsText>
+        <PixelButton
           label="Stop impersonating"
           variant="secondary"
           loading={busy}
@@ -221,7 +227,7 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
 
   if (!editing) {
     return (
-      <Button
+      <PixelButton
         label="Admin: impersonate user"
         variant="secondary"
         onPress={() => setEditing(true)}
@@ -244,7 +250,7 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
           selectDisabled ? impersonationStyles.selectDisabled : null,
         ]}
       >
-        <Text
+        <HsText
           variant="label"
           numberOfLines={1}
           style={[
@@ -260,10 +266,10 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
                 : targets.length === 0
                   ? "No users with email"
                   : "Select a user")}
-        </Text>
-        <Text variant="label" tone="muted" style={impersonationStyles.selectChevron}>
+        </HsText>
+        <HsText variant="label" tone="secondary" style={impersonationStyles.selectChevron}>
           {dropdownOpen ? "⌃" : "⌄"}
-        </Text>
+        </HsText>
       </Pressable>
       {dropdownOpen && !selectDisabled ? (
         <ScrollView
@@ -291,13 +297,13 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
                   pressed ? impersonationStyles.optionPressed : null,
                 ]}
               >
-                <Text variant="label" numberOfLines={1} style={impersonationStyles.optionEmail}>
+                <HsText variant="label" numberOfLines={1} style={impersonationStyles.optionEmail}>
                   {targetUser.email}
-                </Text>
+                </HsText>
                 {displayName ? (
-                  <Text variant="caption" tone="muted" numberOfLines={1}>
+                  <HsText variant="caption" tone="secondary" numberOfLines={1}>
                     {displayName}
-                  </Text>
+                  </HsText>
                 ) : null}
               </Pressable>
             );
@@ -306,10 +312,10 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
       ) : null}
       {targetsQuery.isError ? (
         <View style={impersonationStyles.retryRow}>
-          <Text variant="caption" tone="muted" style={impersonationStyles.retryText}>
+          <HsText variant="caption" tone="secondary" style={impersonationStyles.retryText}>
             User emails could not be loaded.
-          </Text>
-          <Button
+          </HsText>
+          <PixelButton
             label="Retry"
             size="md"
             variant="secondary"
@@ -320,7 +326,7 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
         </View>
       ) : null}
       <View style={impersonationStyles.actions}>
-        <Button
+        <PixelButton
           label="Sign in"
           size="md"
           disabled={!target.trim() || busy}
@@ -328,7 +334,7 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
           onPress={onImpersonate}
           testID="admin-impersonation-submit"
         />
-        <Button
+        <PixelButton
           label="Cancel"
           size="md"
           variant="ghost"
@@ -350,9 +356,10 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
-  pressed: { backgroundColor: tokens.bg.elevated },
+  pressed: { backgroundColor: hsColor.surface2 },
+  // Pending-requests count: a spotlight, so it wears the neon yellow.
   badge: {
     position: "absolute",
     right: 0,
@@ -360,66 +367,66 @@ const styles = StyleSheet.create({
     minWidth: 17,
     height: 17,
     paddingHorizontal: 3,
-    borderRadius: 9,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.default,
+    backgroundColor: hsColor.accent,
     borderWidth: 2,
-    borderColor: tokens.bg.canvas,
+    borderColor: hsColor.bg,
   },
-  badgeText: { fontSize: 9, lineHeight: 11, fontWeight: tokens.font.weight.bold },
-  content: { gap: tokens.space.md },
-  identity: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  badgeText: { fontSize: 9, lineHeight: 11, fontWeight: "700" },
+  content: { gap: hsSpace.md },
+  identity: { flexDirection: "row", alignItems: "center", gap: hsSpace.md },
   identityText: { flex: 1, minWidth: 0 },
 });
 
 const impersonationStyles = StyleSheet.create({
-  form: { gap: tokens.space.sm },
+  form: { gap: hsSpace.sm },
   select: {
     minHeight: 44,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
+    borderRadius: 0,
+    paddingHorizontal: hsSpace.md,
     paddingVertical: 10,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: hsColor.surface2,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hsSpace.sm,
   },
-  selectPressed: { backgroundColor: tokens.bg.elevated },
-  selectDisabled: { borderColor: tokens.border.subtle },
-  selectText: { flex: 1, minWidth: 0, color: tokens.text.primary },
-  selectPlaceholder: { color: tokens.text.muted },
+  selectPressed: { backgroundColor: hsColor.surface3 },
+  selectDisabled: { borderColor: hsColor.border, opacity: 0.6 },
+  selectText: { flex: 1, minWidth: 0, color: hsColor.textPrimary },
+  selectPlaceholder: { color: hsColor.textSecondary },
   selectChevron: {
     width: 18,
     textAlign: "center",
-    color: tokens.text.muted,
+    color: hsColor.textSecondary,
   },
   optionList: {
     maxHeight: 220,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.surface,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
+    borderRadius: 0,
+    backgroundColor: hsColor.surface2,
   },
   option: {
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
+    paddingHorizontal: hsSpace.md,
+    paddingVertical: hsSpace.sm,
     gap: 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    borderBottomWidth: 1,
+    borderBottomColor: hsColor.border,
   },
-  optionPressed: { backgroundColor: tokens.bg.elevated },
-  optionSelected: { backgroundColor: tokens.accent.muted },
-  optionEmail: { color: tokens.text.primary },
+  optionPressed: { backgroundColor: hsColor.surface3 },
+  optionSelected: { backgroundColor: `${hsColor.primary}22` },
+  optionEmail: { color: hsColor.textPrimary },
   retryRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hsSpace.sm,
     flexWrap: "wrap",
   },
   retryText: { flex: 1, minWidth: 160 },
-  actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
-  note: { paddingHorizontal: tokens.space.xs },
+  actions: { flexDirection: "row", gap: hsSpace.sm, flexWrap: "wrap" },
+  note: { paddingHorizontal: hsSpace.xs },
 });
