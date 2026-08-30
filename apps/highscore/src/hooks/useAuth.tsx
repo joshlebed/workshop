@@ -12,7 +12,13 @@ import {
   readSessionCredentials,
 } from "@workshop/api-client/sessionCredentials";
 import { getItem } from "@workshop/api-client/storage";
-import type { AuthImpersonation, AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
+import type {
+  AuthImpersonation,
+  AuthResponse,
+  DeleteAccountResponse,
+  UpdateMeRequest,
+  User,
+} from "@workshop/shared";
 import {
   createContext,
   useCallback,
@@ -22,6 +28,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { requestAccountDeletion } from "../api/users";
+import { runAccountDeletion } from "../lib/accountDeletion";
 
 const AUTO_DEV_OPT_OUT_KEY = "highscore.disable-auto-dev";
 const DEV_USER = { email: "joshlebed@gmail.com", displayName: "Josh" } as const;
@@ -50,12 +58,19 @@ export interface AuthContextValue {
     nonce?: string;
     email?: string;
     fullName?: string;
+    authorizationCode?: string;
   }) => Promise<void>;
   signInWithGoogle: (req: { idToken: string }) => Promise<void>;
   signInDev: (req: { email: string; displayName?: string | null }) => Promise<void>;
   impersonateUser: (target: string) => Promise<User>;
   stopImpersonating: () => Promise<User>;
   signOut: () => Promise<void>;
+  /**
+   * Permanently delete the signed-in account, then drop to signed-out in
+   * place — no app restart. Rejects without touching stored credentials if the
+   * server call fails, so an offline tap can never look like a success.
+   */
+  deleteAccount: () => Promise<DeleteAccountResponse>;
   setDisplayName: (name: string) => Promise<void>;
   /** Patch the signed-in user's profile (display name and/or avatar). */
   updateProfile: (patch: UpdateMeRequest) => Promise<void>;
@@ -289,6 +304,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState({ status: "signed-out", user: null, token: null, impersonation: null });
   }, [state.token]);
 
+  const deleteAccount = useCallback<AuthContextValue["deleteAccount"]>(async () => {
+    const response = await runAccountDeletion({
+      token: state.token,
+      impersonation: state.impersonation,
+      requestDelete: requestAccountDeletion,
+      clearSession: clearSessionCredentials,
+    });
+    setState({ status: "signed-out", user: null, token: null, impersonation: null });
+    return response;
+  }, [state.token, state.impersonation]);
+
   const updateProfile = useCallback<AuthContextValue["updateProfile"]>(
     async (patch) => {
       const token = state.token;
@@ -326,6 +352,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       impersonateUser,
       stopImpersonating,
       signOut,
+      deleteAccount,
       setDisplayName,
       updateProfile,
       refresh: bootstrap,
@@ -338,6 +365,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       impersonateUser,
       stopImpersonating,
       signOut,
+      deleteAccount,
       setDisplayName,
       updateProfile,
       bootstrap,

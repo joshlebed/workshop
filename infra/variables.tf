@@ -60,6 +60,25 @@ variable "google_books_api_key" {
   description = "Google Books API key for book search enrichment (Phase 2). Empty default lets infra apply before the key is obtained."
 }
 
+variable "apple_team_id" {
+  type        = string
+  default     = ""
+  description = "Apple Developer Team ID (10 chars). With apple_key_id + apple_private_key, lets the backend exchange a Sign in with Apple authorization code for a refresh token and revoke it on account deletion (App Store Review Guideline 5.1.1(v)). Empty default keeps revocation reported as 'unavailable' instead of pretending it happened."
+}
+
+variable "apple_key_id" {
+  type        = string
+  default     = ""
+  description = "Key ID of the Sign in with Apple private key (.p8) created at https://developer.apple.com/account/resources/authkeys/list."
+}
+
+variable "apple_private_key" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Contents of the Sign in with Apple .p8 private key. Newlines may be escaped as \n. Set via `aws ssm put-parameter --overwrite` (the SSM param has ignore_changes), never committed."
+}
+
 variable "spotify_client_id" {
   type        = string
   default     = ""

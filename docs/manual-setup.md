@@ -105,6 +105,41 @@ In SES sandbox mode, you can only send mail to _verified_ addresses. So for solo
       Missing secret degrades to a `::warning::` annotation rather than a hard failure — the
       notification is best-effort, the build status is the source of truth.
 
+- [ ] **Provision a Sign in with Apple key for account-deletion token revocation.** App Store
+      Review Guideline 5.1.1(v) requires that an app offering Sign in with Apple revoke the
+      user's Apple tokens when they delete their account. `DELETE /v1/users/me` does that, but
+      only if the backend can mint an Apple `client_secret`; without the key it reports
+      `unavailable` (and says so in the response) rather than pretending it revoked.
+
+      1. <https://developer.apple.com/account/resources/authkeys/list> → **+** → enable
+         **Sign in with Apple** → Configure → pick the primary App ID (`dev.josh.workshop`) →
+         Continue → Register → download `AuthKey_<KEYID>.p8` (one download only).
+      2. Push all three values into SSM (the params exist with empty defaults and carry
+         `ignore_changes`, so this never drifts Terraform):
+
+         ```bash
+         AWS_PROFILE=workshop-prod aws ssm put-parameter --overwrite --type SecureString \
+           --name /workshop-prod/apple_team_id  --value "<10-char Team ID>"
+         AWS_PROFILE=workshop-prod aws ssm put-parameter --overwrite --type SecureString \
+           --name /workshop-prod/apple_key_id   --value "<KEYID from the filename>"
+         AWS_PROFILE=workshop-prod aws ssm put-parameter --overwrite --type SecureString \
+           --name /workshop-prod/apple_private_key --value "file://$HOME/Downloads/AuthKey_<KEYID>.p8"
+         ```
+
+      3. Refresh the Lambda env so it picks them up (or wait for the next
+         `terraform apply` on merge to `main`):
+
+         ```bash
+         gh workflow run terraform.yml --ref main
+         ```
+
+      Revocation only has a token to revoke for users who signed in *after* this shipped —
+      the client now forwards Apple's one-time `authorizationCode`, which the backend
+      exchanges for a refresh token and stores sealed on `user_identities`. Pre-existing
+      users report `nothing_to_revoke` until their next Apple sign-in. Google needs no
+      equivalent: we only ever verify an `id_token` and never request offline access, so
+      there is no Google token on our side to revoke.
+
 - [ ] Create an **Expo access token** at <https://expo.dev/settings/access-tokens> (for CI).
 
 ## 6. GitHub repo + secrets

@@ -33,6 +33,8 @@ interface AppleSignInResult {
   nonce?: string;
   email?: string;
   fullName?: string;
+  /** See the native variant — forwarded so deletion can revoke Apple tokens. */
+  authorizationCode?: string;
 }
 
 interface AppleSignInState {
@@ -111,6 +113,7 @@ export function useAppleSignIn(): AppleSignInState {
       const idToken = data.authorization?.id_token;
       if (!idToken) return null;
       const result: AppleSignInResult = { identityToken: idToken };
+      if (data.authorization?.code) result.authorizationCode = data.authorization.code;
       if (data.user?.email) result.email = data.user.email;
       const given = data.user?.name?.firstName ?? "";
       const family = data.user?.name?.lastName ?? "";

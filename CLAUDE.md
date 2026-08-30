@@ -141,6 +141,24 @@ from one component tree; shared code lives in `packages/*`. HighScore owns its G
   plus a Lambda env refresh, not a code change. Apple's `sub` is stable per developer
   team, so the same Apple ID lands on the same `user_identities` row from either app.
 
+- **Account deletion is `DELETE /v1/users/me`, and it deletes the _shared_ account.**
+  Self-only (the subject is the bearer token's `userId`; there is no target parameter) and
+  403 `IMPERSONATION_ACTIVE` while an admin is impersonating. Because Workshop and HighScore
+  share one `users` row, deleting from HighScore deletes the Workshop side too — the client
+  confirmation says so out loud (`ACCOUNT_DELETION_CONSEQUENCES` in
+  `apps/highscore/src/lib/accountDeletion.ts`). `lib/accountDeletion.ts` handles the four
+  `ON DELETE restrict` edges (`lists.owner_id`, `items.added_by`, `list_invites.invited_by`,
+  `activity_events.actor_id`) plus `auth_sessions.impersonated_user_id` and the user's
+  `rate_limits` buckets, all in one transaction; everything else cascades. **If you add a new
+  table with a `restrict` FK to `users.id`, add a delete for it there** — otherwise the final
+  `DELETE FROM users` raises and the whole transaction rolls back (loud 500, not a
+  half-deleted account; that rollback is covered by a test). Provider revocation runs
+  _after_ the commit and never blocks it: `POST appleid.apple.com/auth/revoke` needs a
+  refresh token, which only exists because the Apple sign-in now forwards its one-time
+  `authorizationCode` for exchange (sealed by `lib/secretBox.ts` onto `user_identities`).
+  Every outcome is reported honestly — `revoked` / `nothing_to_revoke` / `unavailable` /
+  `failed` — never assumed. Operator setup for the `.p8` key: manual-setup.md §5.
+
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:
@@ -317,6 +335,15 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
   the file is gitignored and absent) will not catch it. Take the destination as a prop, or cast
   through `Href` with a comment. See `InlineTabSwitch` in `packages/ui/src/Layout.tsx`.
 
+- **`accessibilityState` doesn't reach the DOM on web — a disabled `Button` renders no
+  `aria-disabled`.** react-native-web 0.21 drops the `accessibilityState` prop that
+  `Button`/`IconButton`/`Chip` pass, so a disabled control is styled and inert (its `onPress`
+  is `undefined`) but reads as enabled to assistive tech and to `agent-browser snapshot`.
+  Don't assert on `aria-disabled` in a browser check — assert on the click being a no-op — and
+  pair any disabled destructive control with visible explanatory text (see the impersonation
+  note in HighScore's Danger zone). Fixing this properly means migrating the four components to
+  RNW's `aria-*` props, which touches every screen in both apps; it hasn't been done.
+
 - **Wrap top-level screens in `Screen` from `@workshop/ui`** when adding a new route.
   No-op on native; on web it constrains content to a ~560px reading column. Without it,
   RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on web.
@@ -335,7 +362,8 @@ curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)
 ```
 
 The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
-`APPLE_SERVICES_ID`, `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
+`APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`,
+`GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
 `GOOGLE_BOOKS_API_KEY`, `ENABLE_GAMES`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
 `DISCORD_NOTIFY_WEBHOOK_URL`, `LOG_LEVEL` from env vars set by Terraform.
 `aws lambda get-function-configuration` shows what's running.

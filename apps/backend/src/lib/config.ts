@@ -40,6 +40,20 @@ const configSchema = z.object({
   // Comma-separated extra audiences (e.g. additional web origins). Optional.
   appleExtraAudiences: csv,
   googleExtraAudiences: csv,
+  // Sign in with Apple server-to-server credentials. Only needed to exchange a
+  // sign-in `authorizationCode` for a refresh token and to revoke it on account
+  // deletion (App Store Review Guideline 5.1.1(v)). All three must be present
+  // or the revocation path is skipped and reported as `unavailable` — nothing
+  // else in auth depends on them.
+  appleTeamId: z.string().optional().default(""),
+  appleKeyId: z.string().optional().default(""),
+  // Contents of the .p8 private key downloaded from the Apple Developer portal.
+  // Newlines may be escaped as `\n` so the value survives SSM/Lambda env.
+  applePrivateKey: z
+    .string()
+    .optional()
+    .default("")
+    .transform((v) => v.replace(/\\n/g, "\n").trim()),
   // Enrichment provider API keys (Phase 2). Empty in local dev — search routes
   // 503 with a clear error until populated. SSM wires the real values in 0c-2.
   tmdbApiKey: z.string().optional().default(""),
@@ -87,6 +101,9 @@ export function getConfig(): Config {
     googleWebClientIds: process.env.GOOGLE_WEB_CLIENT_ID,
     appleExtraAudiences: process.env.APPLE_EXTRA_AUDIENCES,
     googleExtraAudiences: process.env.GOOGLE_EXTRA_AUDIENCES,
+    appleTeamId: process.env.APPLE_TEAM_ID,
+    appleKeyId: process.env.APPLE_KEY_ID,
+    applePrivateKey: process.env.APPLE_PRIVATE_KEY,
     tmdbApiKey: process.env.TMDB_API_KEY,
     googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY,
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,

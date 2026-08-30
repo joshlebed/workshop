@@ -66,6 +66,25 @@ export const userIdentities = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    /**
+     * The OAuth `client_id` this identity was minted for — the identity
+     * token's `aud` claim (Apple: the iOS bundle id or the web Services ID).
+     * Apple's token endpoints are per-client, so revoking on account deletion
+     * needs the exact client the refresh token was issued to. NULL on rows
+     * created before provider-revocation support landed.
+     */
+    providerClientId: text("provider_client_id"),
+    /**
+     * Provider refresh token, AES-256-GCM sealed by `lib/secretBox.ts` (key
+     * derived from `SESSION_SECRET`). Apple only returns this once, in
+     * exchange for the sign-in `authorizationCode`; we keep it solely to call
+     * `POST https://appleid.apple.com/auth/revoke` when the user deletes their
+     * account, as App Store Review Guideline 5.1.1(v) requires. NULL means we
+     * have nothing to revoke (old row, code not forwarded, or exchange failed).
+     */
+    refreshTokenEncrypted: text("refresh_token_encrypted"),
+    /** When `refresh_token_encrypted` was last written. */
+    refreshTokenUpdatedAt: timestamp("refresh_token_updated_at", { withTimezone: true }),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.provider, t.providerSub] }),

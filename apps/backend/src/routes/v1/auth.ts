@@ -1,7 +1,7 @@
 import type { AuthImpersonation, AuthProvider } from "@workshop/shared";
 import { and, eq, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
-import { deleteCookie, getCookie, setCookie } from "hono/cookie";
+import { getCookie } from "hono/cookie";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { type DbUser, userIdentities, users } from "../../db/schema.js";
@@ -19,6 +19,13 @@ import { logger } from "../../lib/logger.js";
 import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
 import { verifyGoogleIdentityToken } from "../../lib/oauth/google.js";
 import { OAuthVerifyError, type VerifiedClaims } from "../../lib/oauth/jwks.js";
+import { rememberAppleAuthorizationCode } from "../../lib/providerRevocation.js";
+import {
+  clearRefreshCredential,
+  isBrowserRequest,
+  REFRESH_COOKIE,
+  setRefreshCredential,
+} from "../../lib/refreshCookie.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { signSession } from "../../lib/session.js";
@@ -31,6 +38,13 @@ const appleBodySchema = z.object({
   nonce: z.string().min(1).optional(),
   email: z.string().email().optional(),
   fullName: z.string().min(1).max(60).optional(),
+  /**
+   * One-time code from the Apple credential. Optional — older clients don't
+   * send it. When present (and the server-to-server Apple credentials are
+   * configured) it's exchanged for a refresh token we keep sealed purely so
+   * account deletion can revoke it. See lib/providerRevocation.ts.
+   */
+  authorizationCode: z.string().min(1).max(2048).optional(),
 });
 
 const googleBodySchema = z.object({
@@ -48,8 +62,6 @@ const refreshBodySchema = z
   .optional();
 
 const MANAGED_SESSION_VERSION = "2";
-const REFRESH_COOKIE = "workshop_refresh_v1";
-const REFRESH_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 
 const targetEmailSchema = z.string().email();
 const targetUuidSchema = z.string().uuid();
@@ -79,36 +91,12 @@ function wantsManagedSession(c: Context): boolean {
   return c.req.header("X-Workshop-Session-Version") === MANAGED_SESSION_VERSION;
 }
 
-function isBrowserRequest(c: Context): boolean {
-  return Boolean(c.req.header("Origin")) || c.req.header("X-Workshop-Platform") === "web";
-}
-
 function deviceMetadata(c: Context) {
   return {
     platform: c.req.header("X-Workshop-Platform") ?? null,
     appVersion: c.req.header("X-Workshop-App-Version") ?? null,
     userAgent: c.req.header("User-Agent") ?? null,
   };
-}
-
-function setRefreshCredential(c: Context, refreshToken: string): void {
-  if (!isBrowserRequest(c)) return;
-  setCookie(c, REFRESH_COOKIE, refreshToken, {
-    httpOnly: true,
-    secure: !getConfig().isLocal,
-    sameSite: "Lax",
-    path: "/",
-    maxAge: REFRESH_COOKIE_MAX_AGE_SECONDS,
-  });
-}
-
-function clearRefreshCredential(c: Context): void {
-  if (!isBrowserRequest(c)) return;
-  deleteCookie(c, REFRESH_COOKIE, {
-    secure: !getConfig().isLocal,
-    sameSite: "Lax",
-    path: "/",
-  });
 }
 
 function authBody(input: {
@@ -310,7 +298,7 @@ async function notifySignIn(
 authRoutes.post("/apple", async (c) => {
   const parsed = await parseJsonBody(c, appleBodySchema);
   if (!parsed.ok) return parsed.response;
-  const { identityToken, nonce, email: clientEmail, fullName } = parsed.data;
+  const { identityToken, nonce, email: clientEmail, fullName, authorizationCode } = parsed.data;
 
   let claims: VerifiedClaims;
   try {
@@ -338,6 +326,20 @@ authRoutes.post("/apple", async (c) => {
     displayName: fullName ?? null,
   });
   await notifySignIn(user, "apple", createdUser);
+
+  // Apple's `aud` claim IS the client id the credential was minted for (iOS
+  // bundle id or web Services ID), and revocation is per-client — so persist
+  // the exact value alongside the token. Best effort; never blocks sign-in.
+  if (authorizationCode) {
+    const clientId = Array.isArray(claims.aud) ? claims.aud[0] : claims.aud;
+    if (clientId) {
+      await rememberAppleAuthorizationCode({
+        providerSub: claims.sub,
+        clientId,
+        authorizationCode,
+      });
+    }
+  }
 
   return issueSignIn(c, user);
 });
