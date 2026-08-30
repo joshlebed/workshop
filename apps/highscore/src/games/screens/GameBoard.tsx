@@ -820,7 +820,9 @@ const styles = StyleSheet.create({
   },
   unplayedAvatar: { opacity: 0.5 },
   pasteInput: {
-    ...hsBezel,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius.hard,
     minHeight: 110,
     paddingHorizontal: hs.space.md,
     paddingVertical: hs.space.md,

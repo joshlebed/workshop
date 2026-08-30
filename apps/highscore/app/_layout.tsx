@@ -1,8 +1,9 @@
-import { PressStart2P_400Regular, useFonts } from "@expo-google-fonts/press-start-2p";
+import { PressStart2P_400Regular } from "@expo-google-fonts/press-start-2p";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
 import { ThemeProvider, ToastProvider } from "@workshop/ui";
+import { useFonts } from "expo-font";
 import { type Href, Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
