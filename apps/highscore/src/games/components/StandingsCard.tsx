@@ -23,9 +23,9 @@
 // control's own action.
 
 import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
-import { Avatar, Text, tokens } from "@workshop/ui";
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Avatar, glow, PixelIcon, Text, tokens } from "../../theme";
 import { ScoreReactions } from "./ScoreReactions";
 
 const TOP_N = 5;
@@ -196,7 +196,7 @@ export const StandingsCard = memo(function StandingsCard({
                 (pressed || hovered) && styles.bodyPressed,
               ]}
             >
-              <Text variant="heading" numberOfLines={1} style={styles.title}>
+              <Text variant="heading" numberOfLines={1}>
                 {title}
               </Text>
             </Pressable>
@@ -280,7 +280,7 @@ export const StandingsCard = memo(function StandingsCard({
             (pressed || hovered) && styles.menuBtnHover,
           ]}
         >
-          <Text style={styles.menuGlyph}>⋯</Text>
+          <PixelIcon name="more-horizontal" size={16} color={tokens.text.secondary} />
         </Pressable>
       </View>
 
@@ -465,35 +465,36 @@ function SkeletonRows() {
 }
 
 const styles = StyleSheet.create({
-  // A ledger section, not a box: hairline rule below, breathing room inside.
-  // The slight horizontal bleed gives hover/drag backgrounds room without
-  // shifting content off the column grid.
+  // Neon Signage: each game is a near-flush frame — transparent fill on the
+  // dark canvas with a 2px purple bezel. Elevation is bezel + surface step,
+  // never a soft drop shadow.
   card: {
     paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.sm,
-    marginHorizontal: -tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    marginBottom: tokens.space.md,
     gap: tokens.space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+    backgroundColor: "transparent",
   },
+  // Dragging = active selection: the frame lights up pink (a designated glow
+  // element) and the fill steps up one surface.
   cardDragging: {
     backgroundColor: tokens.bg.elevated,
-    borderRadius: tokens.radius.lg,
-    borderBottomColor: "transparent",
-    boxShadow: "0px 8px 18px rgba(0, 0, 0, 0.4)",
-    elevation: 10,
+    borderColor: tokens.neon.pink,
+    ...glow(tokens.neon.pinkGlow, 12),
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
   },
-  cover: { borderRadius: tokens.radius.sm },
+  cover: { borderRadius: 0 },
   coverPressed: { opacity: 0.7 },
   coverImage: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
     backgroundColor: tokens.bg.elevated,
   },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
@@ -510,12 +511,11 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   bodyPressed: { backgroundColor: tokens.bg.elevated },
-  title: { fontSize: tokens.font.size.md, lineHeight: 21, letterSpacing: 0 },
-  // The streak flame mirrors the Play pill's warm CTA treatment (amber-muted
-  // fill, accent count) so it reads as "tap to keep your run going", not decor.
+  // Chartreuse is earned — the streak badge is exactly the "streaks" case.
+  // Glowing text, sharp corners, no fill block.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
@@ -523,10 +523,10 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 1,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: 0,
+    backgroundColor: "rgba(198,255,61,0.10)",
   },
-  streakHover: { backgroundColor: `${tokens.accent.default}33` },
+  streakHover: { backgroundColor: "rgba(198,255,61,0.18)" },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
   // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
   streakFlame: { fontSize: 12, lineHeight: 16 },
@@ -534,16 +534,14 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.xs,
     lineHeight: 16,
     fontWeight: tokens.font.weight.bold,
-    color: tokens.accent.default,
+    color: tokens.neon.chartreuse,
     fontVariant: ["tabular-nums"],
   },
-  // The unit lives next to the bold count: "🔥 4 day streak". Lighter weight
-  // than the number so the count stays the focal point; same accent + lineHeight.
   streakLabel: {
     fontSize: tokens.font.size.xs,
     lineHeight: 16,
     fontWeight: tokens.font.weight.medium,
-    color: tokens.accent.default,
+    color: tokens.neon.chartreuse,
   },
   metaRow: {
     flexDirection: "row",
@@ -552,18 +550,22 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   turnout: { flexShrink: 1, letterSpacing: 0 },
-  pasteLink: { borderRadius: tokens.radius.sm },
+  pasteLink: { borderRadius: 0 },
   pasteLinkHover: { backgroundColor: tokens.bg.elevated },
-  pasteLinkText: { textDecorationLine: "underline" },
+  // Interactive text is pink; tint at caption size so it doesn't read muddy.
+  pasteLinkText: { textDecorationLine: "underline", color: tokens.neon.pinkTint },
+  // Play is a small lit sign: transparent fill, 2px pink bezel, glowing.
   playPill: {
     paddingHorizontal: tokens.space.lg,
-    paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    paddingVertical: 5,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
+    ...glow(tokens.neon.pinkGlow, 8),
   },
-  playPillHover: { backgroundColor: `${tokens.accent.default}33` },
+  playPillHover: { backgroundColor: tokens.accent.muted },
   playLabel: {
-    color: tokens.accent.default,
+    color: tokens.neon.pink,
     fontSize: tokens.font.size.sm,
     lineHeight: 18,
     fontWeight: tokens.font.weight.semibold,
@@ -573,14 +575,9 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   menuBtnHover: { backgroundColor: tokens.bg.elevated },
-  menuGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg,
-  },
   standings: { gap: tokens.space.sm },
   playerRow: {
     flexDirection: "row",
@@ -589,7 +586,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   playerLine: {
     flex: 1,
@@ -601,7 +598,7 @@ const styles = StyleSheet.create({
   // Reactions ride to the right of the score on the same line — no extra row
   // height. They keep their natural width; the score line flexes to fill.
   reactionsWrap: { flexShrink: 0 },
-  playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
+  playerRowMe: { backgroundColor: tokens.accent.muted },
   rankSlot: {
     width: RANK_SLOT,
     height: RANK_SLOT,
@@ -615,9 +612,11 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   rankDot: { color: tokens.text.muted, fontSize: tokens.font.size.md },
+  // #1 gets the yellow spotlight: a small filled medal square (dark text on
+  // neon per DESIGN.md) — the only filled neon on the card.
   rankFirst: {
-    borderRadius: RANK_SLOT / 2,
-    backgroundColor: tokens.accent.default,
+    borderRadius: 0,
+    backgroundColor: tokens.neon.yellow,
   },
   rankFirstText: {
     color: tokens.text.onAccent,
@@ -628,14 +627,14 @@ const styles = StyleSheet.create({
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
     backgroundColor: tokens.accent.muted,
   },
   youPillText: {
     fontSize: 10,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: 0.5,
-    color: tokens.accent.default,
+    color: tokens.neon.pinkTint,
     textTransform: "uppercase",
   },
   scoreBody: {
@@ -648,7 +647,7 @@ const styles = StyleSheet.create({
   scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
   pinnedDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    backgroundColor: tokens.border.default,
     marginVertical: tokens.space.xs,
     marginLeft: SCORE_INDENT,
   },
@@ -660,7 +659,7 @@ const styles = StyleSheet.create({
   faceWrap: {
     borderWidth: 2,
     borderColor: tokens.bg.canvas,
-    borderRadius: 999,
+    borderRadius: 0,
     opacity: 0.45,
   },
   faceOverlap: { marginLeft: -10 },
@@ -669,12 +668,12 @@ const styles = StyleSheet.create({
   skeletonDot: {
     width: AVATAR_SM,
     height: AVATAR_SM,
-    borderRadius: AVATAR_SM / 2,
+    borderRadius: 0,
     backgroundColor: tokens.bg.elevated,
   },
   skeletonBar: {
     height: 10,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
     backgroundColor: tokens.bg.elevated,
   },
 });

@@ -5,9 +5,9 @@
 // current emoji is highlighted and a Remove row is offered.
 
 import { isReactionEmoji, REACTION_QUICK_EMOJIS } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Button, Sheet, Text, tokens } from "../../theme";
 
 export interface ReactionPickerSheetProps {
   visible: boolean;
@@ -132,13 +132,13 @@ const styles = StyleSheet.create({
     height: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    backgroundColor: tokens.bg.raised,
   },
   quickEmojiActive: {
-    borderColor: tokens.accent.default,
+    borderColor: tokens.neon.pink,
     backgroundColor: tokens.accent.muted,
   },
   quickEmojiHover: { backgroundColor: tokens.bg.surface },
@@ -152,9 +152,9 @@ const styles = StyleSheet.create({
   moreInput: {
     flex: 1,
     minHeight: 44,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     color: tokens.text.primary,
     fontSize: tokens.font.size.lg,
@@ -166,18 +166,18 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xs,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
-  moreLinkHover: { backgroundColor: tokens.bg.elevated },
-  moreLinkText: { textDecorationLine: "underline" },
+  moreLinkHover: { backgroundColor: tokens.bg.raised },
+  moreLinkText: { textDecorationLine: "underline", color: tokens.neon.pinkTint },
   removeRow: {
     marginTop: tokens.space.md,
     paddingVertical: tokens.space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: tokens.border.subtle,
+    borderTopColor: tokens.border.default,
   },
   removePressed: { backgroundColor: tokens.bg.elevated },
   removeLabel: {

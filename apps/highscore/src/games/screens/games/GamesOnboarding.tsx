@@ -10,8 +10,8 @@
 // All data + mutations live in GamesHome; this component is presentational.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, homeLayout, Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Button, homeLayout, Text, tokens } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface GamesOnboardingProps {
@@ -48,7 +48,7 @@ export function GamesOnboarding({
   if (friendsLoading) {
     return (
       <View style={styles.center} testID="games-onboarding">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
       </View>
     );
   }
@@ -132,7 +132,7 @@ export function GamesOnboarding({
 
       {discoveryLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
+          <ActivityIndicator color={tokens.neon.pink} />
         </View>
       ) : discovery.length > 0 ? (
         <FriendGameSuggestions
@@ -173,7 +173,8 @@ const styles = StyleSheet.create({
     gap: tokens.space.lg,
   },
   intro: { gap: tokens.space.sm, maxWidth: 420 },
-  introTitle: { fontSize: tokens.font.size.lg, lineHeight: 24 },
+  // Pixel heading, one step up from the card headings for the hero moment.
+  introTitle: { fontSize: 16, lineHeight: 26 },
   introBody: { maxWidth: 420, lineHeight: 22 },
   ctaStack: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
   emptyHint: { maxWidth: 420 },
@@ -189,9 +190,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.canvas,
   },
 });

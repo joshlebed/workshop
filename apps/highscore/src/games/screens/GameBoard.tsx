@@ -3,19 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
-import {
-  Avatar,
-  Button,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  openExternalUrl,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics, openExternalUrl } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import {
@@ -29,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { Avatar, Button, EmptyState, PixelIcon, Screen, Text, tokens, useToast } from "../../theme";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { DayRail } from "../components/DayRail";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
@@ -150,7 +139,7 @@ export default function GameBoard() {
   if (myGamesQuery.isPending) {
     return (
       <Screen style={styles.center}>
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
       </Screen>
     );
   }
@@ -229,7 +218,7 @@ export default function GameBoard() {
             hitSlop={10}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <Text style={styles.navGlyph}>‹</Text>
+            <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
           </Pressable>
         </View>
 
@@ -258,7 +247,7 @@ export default function GameBoard() {
               </View>
             )}
             <View style={styles.titleText}>
-              <Text variant="title" numberOfLines={2} style={styles.titleName}>
+              <Text variant="title" numberOfLines={2}>
                 {game.title}
               </Text>
               {host ? (
@@ -268,7 +257,7 @@ export default function GameBoard() {
               ) : null}
             </View>
             <View style={styles.titleOpenAffordance}>
-              <Text style={styles.titleOpenGlyph}>↗</Text>
+              <PixelIcon name="external-link" size={16} color={tokens.text.secondary} />
             </View>
           </Pressable>
 
@@ -280,9 +269,7 @@ export default function GameBoard() {
           />
 
           <View style={styles.dayHeader}>
-            <Text variant="heading" style={styles.dayTitle}>
-              {formatGameDateLabel(date, today)}
-            </Text>
+            <Text variant="heading">{formatGameDateLabel(date, today)}</Text>
             {boardQuery.isPending ? null : (
               <Text variant="caption" tone="muted">
                 {entries.length === 0
@@ -296,7 +283,7 @@ export default function GameBoard() {
 
           {boardQuery.isPending ? (
             <View style={styles.center}>
-              <ActivityIndicator color={tokens.accent.default} />
+              <ActivityIndicator color={tokens.neon.pink} />
             </View>
           ) : boardQuery.isError ? (
             <View style={styles.scoresErrorBlock}>
@@ -633,10 +620,9 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   body: {
     paddingBottom: tokens.space.xxl * 2,
     gap: tokens.space.lg,
@@ -648,37 +634,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl,
     paddingVertical: tokens.space.md,
     marginHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.lg,
+    borderRadius: 0,
   },
   titleBlockPressed: { backgroundColor: tokens.bg.surface },
   titleBadge: {
     width: 56,
     height: 56,
-    borderRadius: tokens.radius.lg,
+    borderRadius: 0,
     backgroundColor: tokens.bg.elevated,
   },
   titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
   titleBadgeGlyph: { fontSize: 28, lineHeight: 32 },
   titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.5, fontSize: 28, lineHeight: 32 },
   titleOpenAffordance: {
     width: 32,
     height: 32,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.bg.surface,
-  },
-  titleOpenGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
   },
   dayHeader: {
     paddingHorizontal: tokens.space.xl,
     gap: 2,
   },
-  dayTitle: { letterSpacing: -0.2 },
   helper: {
     paddingVertical: tokens.space.lg,
     textAlign: "center",
@@ -693,19 +672,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl,
     gap: tokens.space.md,
   },
+  // Near-flush frame rows: 2px purple bezel, no fill (Neon Signage).
   entry: {
     gap: tokens.space.sm,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+    backgroundColor: "transparent",
   },
   entryMe: {
-    // Quiet accent tint as the sole "this is you" signal; the "you" pill
-    // doubles as a textual label so the highlight isn't color-only.
-    backgroundColor: `${tokens.accent.default}14`,
+    // Quiet pink tint as the "this is you" signal; the "you" pill doubles as
+    // a textual label so the highlight isn't color-only.
+    backgroundColor: tokens.accent.muted,
   },
   entryHeader: {
     flexDirection: "row",
@@ -719,13 +699,13 @@ const styles = StyleSheet.create({
   scoreActionButton: {
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 4,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   editScorePressed: { backgroundColor: tokens.accent.muted },
   editScoreLabel: {
     fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
+    color: tokens.neon.pinkTint,
   },
   // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
   // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
@@ -739,14 +719,14 @@ const styles = StyleSheet.create({
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
     backgroundColor: tokens.accent.muted,
   },
   youPillText: {
     fontSize: 10,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: 0.5,
-    color: tokens.accent.default,
+    color: tokens.neon.pinkTint,
     textTransform: "uppercase",
   },
   // Score box + reactions share one row so reactions sit to the right of the
@@ -761,25 +741,26 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
   },
   rankBadge: {
     minWidth: 28,
     height: 28,
     paddingHorizontal: 6,
-    borderRadius: 14,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
   },
+  // #1 wears the yellow spotlight medal — dark text on neon per DESIGN.md.
   rankBadgeTop1: {
-    backgroundColor: tokens.accent.default,
-    borderColor: tokens.accent.default,
+    backgroundColor: tokens.neon.yellow,
+    borderColor: tokens.neon.yellow,
   },
   rankBadgeText: {
     fontSize: tokens.font.size.sm,
@@ -808,9 +789,9 @@ const styles = StyleSheet.create({
   unplayedAvatar: { opacity: 0.5 },
   pasteInput: {
     minHeight: 110,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,

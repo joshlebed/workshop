@@ -1,9 +1,11 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+// GoogleSignInButton stays shared: its look is Google brand policy, not ours.
+import { GoogleSignInButton } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { Button, Text, tokens } from "../src/theme";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -151,7 +153,7 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    backgroundColor: tokens.border.default,
   },
   dividerText: {
     fontSize: 11,

@@ -26,24 +26,25 @@ import type {
   GamesResponse,
   MyGame,
 } from "@workshop/shared/games";
+// Behavior-only helpers stay shared; every visual primitive comes from the
+// HighScore theme below.
+import { confirm, haptics, openExternalUrl } from "@workshop/ui";
+import { type Href, useRouter } from "expo-router";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import {
   Button,
-  CopyIcon,
-  confirm,
   EmptyState,
+  glow,
   HomeHeader,
-  haptics,
   homeLayout,
-  openExternalUrl,
+  PixelIcon,
   Screen,
   Sheet,
   Text,
   tokens,
   useToast,
-} from "@workshop/ui";
-import { type Href, useRouter } from "expo-router";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+} from "../../theme";
 import {
   addGame,
   createGameShareLink,
@@ -508,7 +509,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               {copyingScores ? (
                 <ActivityIndicator size="small" color={tokens.text.primary} />
               ) : (
-                <CopyIcon size={20} color={tokens.text.primary} />
+                <PixelIcon name="copy" size={24} color={tokens.text.primary} />
               )}
             </Pressable>
             {headerTrailing}
@@ -519,7 +520,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       <View style={styles.body}>
         {gamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={tokens.neon.pink} />
           </View>
         ) : gamesQuery.isError ? (
           <View style={styles.center}>
@@ -579,9 +580,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         ]}
         testID="fab-add-game"
       >
-        <Text style={styles.fabGlyph} tone="onAccent">
-          +
-        </Text>
+        <PixelIcon name="plus" size={24} color={tokens.neon.pink} />
       </Pressable>
 
       <AddGameSheet
@@ -701,7 +700,7 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
   headerIconBtnDisabled: { opacity: 0.6 },
@@ -714,38 +713,37 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: tokens.space.lg,
   },
+  // Neon-sign FAB: opaque canvas fill so cards scroll under it, 2px pink
+  // bezel + pink pixel plus, lit with the primary glow (a primary CTA — one
+  // of the designated glow elements).
   fab: {
     position: "absolute",
     right: homeLayout.horizontalInset,
     bottom: homeLayout.horizontalInset,
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: tokens.accent.default,
+    borderRadius: 0,
+    backgroundColor: tokens.bg.canvas,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
     alignItems: "center",
     justifyContent: "center",
-    // Calm neutral elevation, not an amber glow (see DESIGN.md "calm by default").
-    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
-    elevation: 5,
+    ...glow(tokens.neon.pinkGlow, 12),
   },
-  fabHovered: {
-    backgroundColor: tokens.accent.hover,
-    transform: [{ scale: 1.04 }],
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
+  fabHovered: { backgroundColor: tokens.accent.muted },
+  fabPressed: { backgroundColor: tokens.accent.muted },
   sheetHeader: { gap: 4 },
   sheetActions: { gap: tokens.space.sm },
   sheetDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    backgroundColor: tokens.border.default,
     marginVertical: tokens.space.xs,
   },
   sheetDangerRow: {
     paddingVertical: tokens.space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   sheetDangerPressed: { backgroundColor: `${tokens.status.danger}1A` },
   sheetDangerLabel: {
