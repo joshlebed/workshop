@@ -223,11 +223,9 @@ jobs:
           printf '%s' "$ASC_API_KEY_CONTENT" > "$ASC_API_KEY_PATH"
           chmod 600 "$ASC_API_KEY_PATH"
 
-      # No `--no-wait`: we want this step to exit on the actual build
-      # outcome, not on enqueue acceptance. `--auto-submit` still chains
-      # the TestFlight submit on EAS's side after the build succeeds, so
-      # this step blocks on the build (~30 min) but not on the submit.
-      - name: Build + auto-submit (await success)
+      # Screenshot Studio branch only: create its device provisioning profiles
+      # with the repository's ASC API key and wait for the installable build.
+      - name: Build Screenshot Studio (await success)
         id: build
         working-directory: apps/highscore
         env:
@@ -253,9 +251,8 @@ jobs:
           # but staying tidy).
           BUILD_JSON=$(npx "eas-cli@$CLI_VERSION" build \
             --platform ios \
-            --profile production \
+            --profile studio \
             --non-interactive \
-            --auto-submit \
             --json 2> >(tee -a "$BUILD_LOG" >&2))
           # `eas build --json` returns an array; the [0]th element is this build.
           BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id')
