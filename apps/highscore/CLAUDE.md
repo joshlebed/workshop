@@ -32,5 +32,17 @@ URL), so renaming either is a metadata change, not a refactor. Copy lives in `sr
 is pinned by `legal.test.ts`: every claim there about what HighScore stores, how long it keeps it,
 and what it never does must stay literally true of the shipped app. The screens are thin wrappers
 over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) only claims `/g/*` and
-`/friends/accept/*`, so iOS leaves these two in the browser where a reviewer expects them. In-app
-account deletion is still missing — an open App Store blocker; the pages point at support for it.
+`/friends/accept/*`, so iOS leaves these two in the browser where a reviewer expects them.
+
+## Account deletion
+
+The App Store Review Guideline 5.1.1(v) control lives in the **Danger zone** at the bottom of
+`src/screens/EditProfile.tsx` (profile menu → Edit profile). Rules live in
+`src/lib/accountDeletion.ts`, not the component, so they're testable without a renderer: the
+two-tap `nextDeletionStep` machine, the impersonation/signed-out guard, the consequences copy,
+and `runAccountDeletion` — which clears stored credentials **only** after the server confirms.
+A failed request must leave the session untouched and say the account still exists; never show
+success for a request that didn't happen. The copy names the shared Workshop.dev account out
+loud because deleting here really does delete there (one `users` row, see
+`apps/backend/src/lib/accountDeletion.ts`). `src/lib/legal.ts` describes this flow and is pinned
+by `legal.test.ts` — if the behavior changes, that copy changes in the same PR.

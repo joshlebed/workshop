@@ -42,7 +42,8 @@ export const SUPPORT_SECTIONS: LegalSection[] = [
   {
     heading: "Account deletion",
     body: [
-      "Deleting your account isn't in the app yet. Email the address above and your account, scores, and friend connections will be removed.",
+      "Delete your account from inside the app: profile menu → Edit profile → Danger zone → Delete account. It takes effect immediately and can't be undone.",
+      "HighScore and Workshop.dev share one account, so deleting here also deletes your Workshop.dev lists, items, and activity. The confirmation screen spells this out before you commit.",
     ],
   },
 ];
@@ -86,13 +87,15 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     heading: "Retention and deletion",
     body: [
       "Your account, scores, and friend connections are kept for as long as your account exists, so your history stays intact between seasons. Sign-in sessions expire on their own — they lapse after long inactivity and always end within a year. Server logs holding request metadata are deleted automatically after one year.",
-      "Account deletion isn't yet available inside the app. Send a request through support and your account and its data will be deleted; deletion is permanent and can't be undone.",
+      "You can delete your account at any time from the app: profile menu → Edit profile → Danger zone → Delete account. Deletion is immediate and permanent — your profile, scores, reactions, friend connections, invites, and share links are removed, not deactivated, and it can't be undone.",
+      "Because HighScore and Workshop.dev are one account, deleting also removes your Workshop.dev lists, items, and activity, including shared lists you own. Other people's own lists and scores are untouched.",
+      "If you signed in with Apple, HighScore also asks Apple to revoke the sign-in tokens it holds for you. Google sign-in leaves nothing to revoke — HighScore only ever verifies an identity token and never requests ongoing access to your Google account.",
     ],
   },
   {
     heading: "Contact",
     body: [
-      `Questions, corrections, or a deletion request: email ${SUPPORT_EMAIL} and it will be answered directly.`,
+      `Questions or corrections: email ${SUPPORT_EMAIL} and it will be answered directly. Account deletion doesn't need an email — it's in the app.`,
     ],
   },
 ];

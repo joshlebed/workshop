@@ -335,6 +335,15 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
   the file is gitignored and absent) will not catch it. Take the destination as a prop, or cast
   through `Href` with a comment. See `InlineTabSwitch` in `packages/ui/src/Layout.tsx`.
 
+- **`accessibilityState` doesn't reach the DOM on web — a disabled `Button` renders no
+  `aria-disabled`.** react-native-web 0.21 drops the `accessibilityState` prop that
+  `Button`/`IconButton`/`Chip` pass, so a disabled control is styled and inert (its `onPress`
+  is `undefined`) but reads as enabled to assistive tech and to `agent-browser snapshot`.
+  Don't assert on `aria-disabled` in a browser check — assert on the click being a no-op — and
+  pair any disabled destructive control with visible explanatory text (see the impersonation
+  note in HighScore's Danger zone). Fixing this properly means migrating the four components to
+  RNW's `aria-*` props, which touches every screen in both apps; it hasn't been done.
+
 - **Wrap top-level screens in `Screen` from `@workshop/ui`** when adding a new route.
   No-op on native; on web it constrains content to a ~560px reading column. Without it,
   RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on web.

@@ -31,6 +31,11 @@ describe("support page copy", () => {
       expect(supportText).toContain(topic);
     }
   });
+
+  it("sends account deletion to the in-app control, not to email", () => {
+    expect(supportText).toContain("danger zone → delete account");
+    expect(supportText).not.toMatch(/deleting your account isn't in the app/i);
+  });
 });
 
 describe("privacy page copy", () => {
@@ -65,11 +70,23 @@ describe("privacy page copy", () => {
     expect(privacyText).toContain("tracking you across other apps or websites");
   });
 
-  it("describes retention and the support-mediated deletion path", () => {
+  it("describes retention and the in-app deletion path", () => {
     expect(privacyText).toContain("retention");
     expect(privacyText).toContain("deleted automatically after one year");
-    expect(privacyText).toContain("deletion isn't yet available inside the app");
-    expect(privacyText).toContain("send a request through support");
+    // Deletion shipped: the copy must point at the in-app control, name the
+    // shared Workshop.dev impact, and never send anyone to email for it.
+    expect(privacyText).toContain("danger zone → delete account");
+    expect(privacyText).toContain("workshop.dev");
+    expect(privacyText).toContain("permanent");
+    expect(privacyText).not.toMatch(/deletion isn't yet available/i);
+    expect(privacyText).not.toMatch(/send a request through support/i);
+  });
+
+  it("describes provider token handling on deletion honestly", () => {
+    // Apple revocation is implemented; Google has nothing to revoke because we
+    // never request offline access. Neither claim may drift from the backend.
+    expect(privacyText).toContain("revoke");
+    expect(privacyText).toContain("never requests ongoing access");
   });
 
   it("does not pass itself off as legal advice", () => {
