@@ -3,7 +3,6 @@ import { errorMessage } from "@workshop/api-client/api";
 import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { Avatar, Button, Sheet, Text, tokens, useToast } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -11,6 +10,7 @@ import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "reac
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
 import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes";
+import { Avatar, Button, PixelIcon, Sheet, Text, tokens, useToast } from "../theme";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -261,9 +261,11 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
                   ? "No users with email"
                   : "Select a user")}
         </Text>
-        <Text variant="label" tone="muted" style={impersonationStyles.selectChevron}>
-          {dropdownOpen ? "⌃" : "⌄"}
-        </Text>
+        <PixelIcon
+          name={dropdownOpen ? "chevron-up" : "chevron-down"}
+          size={16}
+          color={tokens.text.secondary}
+        />
       </Pressable>
       {dropdownOpen && !selectDisabled ? (
         <ScrollView
@@ -350,9 +352,10 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   pressed: { backgroundColor: tokens.bg.elevated },
+  // Square pink badge — a small neon fill is fine; dark text on neon.
   badge: {
     position: "absolute",
     right: 0,
@@ -360,10 +363,10 @@ const styles = StyleSheet.create({
     minWidth: 17,
     height: 17,
     paddingHorizontal: 3,
-    borderRadius: 9,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.default,
+    backgroundColor: tokens.neon.pink,
     borderWidth: 2,
     borderColor: tokens.bg.canvas,
   },
@@ -377,38 +380,33 @@ const impersonationStyles = StyleSheet.create({
   form: { gap: tokens.space.sm },
   select: {
     minHeight: 44,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 10,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.raised,
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
   },
   selectPressed: { backgroundColor: tokens.bg.elevated },
-  selectDisabled: { borderColor: tokens.border.subtle },
+  selectDisabled: { opacity: 0.6 },
   selectText: { flex: 1, minWidth: 0, color: tokens.text.primary },
   selectPlaceholder: { color: tokens.text.muted },
-  selectChevron: {
-    width: 18,
-    textAlign: "center",
-    color: tokens.text.muted,
-  },
   optionList: {
     maxHeight: 220,
     borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.surface,
+    borderColor: tokens.border.default,
+    borderRadius: 0,
+    backgroundColor: tokens.bg.raised,
   },
   option: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     gap: 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    borderBottomColor: tokens.border.default,
   },
   optionPressed: { backgroundColor: tokens.bg.elevated },
   optionSelected: { backgroundColor: tokens.accent.muted },

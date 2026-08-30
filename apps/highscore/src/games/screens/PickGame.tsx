@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Button, EmptyState, PixelIcon, Screen, Text, tokens, useToast } from "../../theme";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import {
@@ -116,7 +117,7 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>x</Text>
+          <PixelIcon name="close" size={24} color={tokens.text.primary} />
         </Pressable>
         <View style={styles.headerTitleBlock}>
           <Text variant="title" style={styles.title}>
@@ -171,9 +172,7 @@ export default function PickGame() {
         </View>
 
         <View style={styles.gameSectionHeader}>
-          <Text variant="heading" style={styles.gameSectionTitle}>
-            Your games
-          </Text>
+          <Text variant="heading">Your games</Text>
           <Text variant="caption" tone="muted">
             {suggestion ? "Or pick a different game." : "Pick the game to update."}
           </Text>
@@ -181,7 +180,7 @@ export default function PickGame() {
 
         {myGamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={tokens.neon.pink} />
           </View>
         ) : myGamesQuery.isError ? (
           <EmptyState
@@ -263,7 +262,7 @@ function DetectedScoreSuggestion({
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-loading">
         <View style={styles.loadingRow}>
-          <ActivityIndicator color={tokens.accent.default} size="small" />
+          <ActivityIndicator color={tokens.neon.pink} size="small" />
           <Text variant="label">{label} score detected</Text>
         </View>
         <Text variant="caption" tone="muted">
@@ -369,9 +368,9 @@ function GameRow({
         </Text>
       </View>
       {loading ? (
-        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <ActivityIndicator color={tokens.neon.pink} size="small" />
       ) : (
-        <Text style={styles.rowChevron}>{">"}</Text>
+        <PixelIcon name="chevron-right" size={16} color={tokens.text.secondary} />
       )}
     </Pressable>
   );
@@ -417,16 +416,11 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
   headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
-  title: { fontSize: tokens.font.size.xl },
+  title: { fontSize: 16, lineHeight: 26 },
   payloadPill: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -434,17 +428,18 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 4,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: 0,
+    backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderColor: tokens.border.default,
     maxWidth: "100%",
   },
+  // Square pixel dot — the lit "detected" indicator.
   payloadDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
-    backgroundColor: tokens.accent.default,
+    borderRadius: 0,
+    backgroundColor: tokens.neon.pink,
   },
   payloadText: { flexShrink: 1 },
   center: { alignItems: "center", justifyContent: "center", padding: tokens.space.xl },
@@ -456,9 +451,9 @@ const styles = StyleSheet.create({
   suggestionBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
+    borderRadius: 0,
+    backgroundColor: "transparent",
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
   },
   suggestionHeader: {
@@ -471,9 +466,9 @@ const styles = StyleSheet.create({
   scoreBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
+    borderRadius: 0,
+    backgroundColor: "transparent",
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
   },
   scoreHeader: {
@@ -484,9 +479,9 @@ const styles = StyleSheet.create({
   },
   scoreInput: {
     minHeight: 116,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     color: tokens.text.primary,
@@ -495,32 +490,26 @@ const styles = StyleSheet.create({
     textAlignVertical: "top",
   },
   gameSectionHeader: { gap: 2 },
-  gameSectionTitle: { fontSize: tokens.font.size.md },
   gameList: { gap: tokens.space.sm },
   gameRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
+    borderRadius: 0,
     borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    borderColor: tokens.border.default,
+    backgroundColor: "transparent",
     minHeight: 76,
   },
   gameRowPressed: { backgroundColor: tokens.bg.surface },
   disabledRow: { opacity: 0.55 },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
   rowTitle: { color: tokens.text.primary },
-  rowChevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
   gameThumb: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     backgroundColor: tokens.bg.elevated,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },

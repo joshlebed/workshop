@@ -1,13 +1,13 @@
+import { PressStart2P_400Regular, useFonts } from "@expo-google-fonts/press-start-2p";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
-import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { type Href, Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -19,6 +19,7 @@ import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
+import { Button, Text, ToastProvider, tokens } from "../src/theme";
 
 configureApiClient({ client: "highscore" });
 
@@ -128,7 +129,7 @@ function AuthGate() {
   if (status === "loading" && !onPublicRoute) {
     return (
       <View style={centered}>
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
       </View>
     );
   }
@@ -192,24 +193,27 @@ const centered = {
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
-  const colorScheme = useColorScheme();
-  const isLight = colorScheme === "light";
+  // HighScore is dark-only (DESIGN.md): no ThemeProvider, no useColorScheme.
+  // Press Start 2P is heading/score-only, so blocking on it briefly is a
+  // dark-canvas flash, not a blank app; render proceeds on load error too.
+  const [fontsLoaded, fontError] = useFonts({ PressStart2P_400Regular });
+  if (!fontsLoaded && !fontError) {
+    return <View style={centered} />;
+  }
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <ThemeProvider>
-            <StatusBar style={isLight ? "dark" : "light"} />
-            <QueryClientProvider client={queryClient}>
-              <ToastProvider>
-                <AuthProvider>
-                  <GamesRuntimeBridge>
-                    <AuthGate />
-                  </GamesRuntimeBridge>
-                </AuthProvider>
-              </ToastProvider>
-            </QueryClientProvider>
-          </ThemeProvider>
+          <StatusBar style="light" />
+          <QueryClientProvider client={queryClient}>
+            <ToastProvider>
+              <AuthProvider>
+                <GamesRuntimeBridge>
+                  <AuthGate />
+                </GamesRuntimeBridge>
+              </AuthProvider>
+            </ToastProvider>
+          </QueryClientProvider>
         </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

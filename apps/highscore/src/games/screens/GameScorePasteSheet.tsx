@@ -42,9 +42,9 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Avatar, Button, Chip, Sheet, Text, tokens } from "../../theme";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -356,9 +356,9 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, minWidth: 0, gap: 2 },
   input: {
     minHeight: 120,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
   summaryBox: {
     borderWidth: 1,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     backgroundColor: tokens.bg.canvas,

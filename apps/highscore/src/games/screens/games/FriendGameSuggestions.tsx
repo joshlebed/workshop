@@ -6,8 +6,8 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { Text, tokens } from "../../../theme";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -99,7 +99,7 @@ export function FriendGameSuggestions({
                 ]}
               >
                 {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
+                  <ActivityIndicator size="small" color={tokens.neon.pink} />
                 ) : (
                   <Text style={styles.addLabel}>Add</Text>
                 )}
@@ -116,45 +116,47 @@ const COVER = 40;
 
 const styles = StyleSheet.create({
   list: { gap: tokens.space.sm },
+  // Near-flush row: thin hairline frame on the dark ground, no fill.
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
+    borderRadius: 0,
     borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    borderColor: tokens.border.default,
+    backgroundColor: "transparent",
   },
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    backgroundColor: tokens.bg.raised,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
+  coverImage: { width: COVER, height: COVER, borderRadius: 0 },
   coverGlyph: { fontSize: 20 },
   text: { flex: 1, minWidth: 0, gap: 2 },
   title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  // Outline lit-sign add button — pink bezel, pink label, transparent fill.
   addBtn: {
     minWidth: 64,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    backgroundColor: "transparent",
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  addBtnHover: { backgroundColor: tokens.accent.muted },
   addBtnBusy: { opacity: 0.8 },
   addLabel: {
-    color: tokens.accent.default,
+    color: tokens.neon.pink,
     fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
   },
@@ -162,12 +164,13 @@ const styles = StyleSheet.create({
     minWidth: 64,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
   },
+  // "Added" is a success — chartreuse is earned here.
   addedText: {
-    color: tokens.text.muted,
+    color: tokens.neon.chartreuse,
     fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
   },
