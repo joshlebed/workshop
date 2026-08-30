@@ -46,3 +46,14 @@ success for a request that didn't happen. The copy names the shared Workshop.dev
 loud because deleting here really does delete there (one `users` row, see
 `apps/backend/src/lib/accountDeletion.ts`). `src/lib/legal.ts` describes this flow and is pinned
 by `legal.test.ts` — if the behavior changes, that copy changes in the same PR.
+
+## App Store release shape (1.0)
+
+`app.json` `version` is the App Store version **and** the runtime version (`appVersion` policy),
+so it is `1.0.0` for the initial Store release — an OTA only reaches builds that claim the same
+`version`. The build number is not in the repo: `eas.json` sets `appVersionSource: "remote"` with
+`autoIncrement`, so EAS owns `CFBundleVersion` and increments it per production build.
+`ios.supportsTablet` is **`false`** on purpose — HighScore's layouts are phone-only and an iPad
+device family would make App Store Connect require a second screenshot set. Flipping it back is a
+native change: bump `version` in the same PR, and expect a fresh TestFlight build plus iPad
+screenshots before the next submission.
