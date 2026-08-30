@@ -10,8 +10,9 @@
 // All data + mutations live in GamesHome; this component is presentational.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, homeLayout, Text, tokens } from "@workshop/ui";
+import { homeLayout } from "@workshop/ui";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { HsText, hsColor, hsSpace, PixelButton } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface GamesOnboardingProps {
@@ -48,7 +49,7 @@ export function GamesOnboarding({
   if (friendsLoading) {
     return (
       <View style={styles.center} testID="games-onboarding">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={hsColor.primary} />
       </View>
     );
   }
@@ -61,21 +62,21 @@ export function GamesOnboarding({
         testID="games-onboarding"
       >
         <View style={styles.intro}>
-          <Text variant="heading" style={styles.introTitle}>
+          <HsText variant="pixelHeading" style={styles.introTitle}>
             Add friends to compare scores
-          </Text>
-          <Text tone="secondary" style={styles.introBody}>
+          </HsText>
+          <HsText tone="secondary" style={styles.introBody}>
             Invite someone you play with. Their games and today's scores will show up here.
-          </Text>
+          </HsText>
         </View>
         <View style={styles.ctaStack}>
-          <Button
+          <PixelButton
             label="Add friends"
             onPress={onAddFriends}
             loading={invitePending}
             testID="games-empty-add-friends"
           />
-          <Button
+          <PixelButton
             label="Add a game by URL"
             variant="ghost"
             onPress={onAddByUrl}
@@ -84,23 +85,23 @@ export function GamesOnboarding({
         </View>
         {inviteUrl ? (
           <View style={styles.inviteBlock}>
-            <Text variant="caption" tone="muted" style={styles.inviteHint}>
+            <HsText variant="caption" tone="secondary" style={styles.inviteHint}>
               {Platform.OS === "web"
                 ? "Send this link. Whoever opens it and taps Accept becomes your friend."
                 : "Share this link. Whoever opens it and taps Accept becomes your friend."}
-            </Text>
+            </HsText>
             <View style={styles.inviteUrlRow}>
               <View style={styles.inviteUrlField}>
-                <Text
+                <HsText
                   variant="caption"
                   tone="secondary"
                   numberOfLines={1}
                   testID="games-empty-invite-url"
                 >
                   {inviteUrl}
-                </Text>
+                </HsText>
               </View>
-              <Button
+              <PixelButton
                 label="Copy"
                 variant="secondary"
                 size="md"
@@ -122,17 +123,17 @@ export function GamesOnboarding({
       testID="games-onboarding"
     >
       <View style={styles.intro}>
-        <Text variant="heading" style={styles.introTitle}>
+        <HsText variant="pixelHeading" style={styles.introTitle}>
           Pick a first game
-        </Text>
-        <Text tone="secondary" style={styles.introBody}>
+        </HsText>
+        <HsText tone="secondary" style={styles.introBody}>
           Add one your friends already play, or paste a game URL.
-        </Text>
+        </HsText>
       </View>
 
       {discoveryLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
+          <ActivityIndicator color={hsColor.primary} />
         </View>
       ) : discovery.length > 0 ? (
         <FriendGameSuggestions
@@ -143,12 +144,12 @@ export function GamesOnboarding({
           testIDPrefix="games-empty-suggestion"
         />
       ) : (
-        <Text tone="secondary" style={styles.emptyHint} testID="games-empty-no-suggestions">
+        <HsText tone="secondary" style={styles.emptyHint} testID="games-empty-no-suggestions">
           Your friends haven't added any games yet. Add one by URL and they'll see it too.
-        </Text>
+        </HsText>
       )}
 
-      <Button
+      <PixelButton
         label="Add a game by URL"
         variant="ghost"
         onPress={onAddByUrl}
@@ -163,35 +164,35 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: tokens.space.lg,
+    padding: hsSpace.lg,
   },
   scroll: {
     flexGrow: 1,
     paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: tokens.space.xxl,
+    paddingTop: hsSpace.xxl,
     paddingBottom: homeLayout.bottomInset,
-    gap: tokens.space.lg,
+    gap: hsSpace.lg,
   },
-  intro: { gap: tokens.space.sm, maxWidth: 420 },
-  introTitle: { fontSize: tokens.font.size.lg, lineHeight: 24 },
+  intro: { gap: hsSpace.sm, maxWidth: 420 },
+  introTitle: { fontSize: 14, lineHeight: 23 },
   introBody: { maxWidth: 420, lineHeight: 22 },
-  ctaStack: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
+  ctaStack: { gap: hsSpace.sm, width: "100%", maxWidth: 420 },
   emptyHint: { maxWidth: 420 },
-  inviteBlock: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
+  inviteBlock: { gap: hsSpace.sm, width: "100%", maxWidth: 420 },
   inviteHint: { maxWidth: 420 },
   inviteUrlRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hsSpace.sm,
   },
   inviteUrlField: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    paddingHorizontal: hsSpace.md,
+    paddingVertical: hsSpace.sm,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: hsColor.border,
+    backgroundColor: hsColor.surface1,
   },
 });

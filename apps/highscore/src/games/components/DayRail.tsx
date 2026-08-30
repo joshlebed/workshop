@@ -7,8 +7,8 @@
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { HsText, hsBezel, hsColor, hsGlow, hsSpace, PixelBadge } from "../../theme";
 import { shiftDateKey } from "../lib/gameDate";
 
 const DEFAULT_LENGTH = 7;
@@ -33,7 +33,7 @@ export function DayRail({
   onSelectDate,
   length = DEFAULT_LENGTH,
   testIDPrefix = "day",
-  horizontalInset = tokens.space.xl,
+  horizontalInset = hsSpace.xl,
 }: DayRailProps) {
   const days: { key: string; label: string }[] = [];
   for (let i = 0; i < length; i++) {
@@ -48,6 +48,7 @@ export function DayRail({
     >
       {days.map((d) => {
         const selected = d.key === selectedDate;
+        const isToday = d.key === today;
         return (
           <Pressable
             key={d.key}
@@ -62,9 +63,18 @@ export function DayRail({
               pressed && styles.chipPressed,
             ]}
           >
-            <Text variant="label" style={[styles.chipText, selected && styles.chipTextSelected]}>
-              {d.label}
-            </Text>
+            {isToday ? (
+              // "Today" is a spotlight moment — the neon-yellow pixel badge.
+              <PixelBadge label="Today" testID={`${testIDPrefix}-today-badge`} />
+            ) : (
+              <HsText
+                variant="pixelLabel"
+                tone={selected ? "pink" : "secondary"}
+                style={styles.chipText}
+              >
+                {d.label}
+              </HsText>
+            )}
           </Pressable>
         );
       })}
@@ -84,21 +94,23 @@ function dayChipLabel(key: string, today: string): string {
 
 const styles = StyleSheet.create({
   rail: {
-    gap: tokens.space.sm,
+    gap: hsSpace.sm,
+    alignItems: "center",
   },
   chip: {
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    paddingHorizontal: hsSpace.md,
+    paddingVertical: 7,
+    borderRadius: 0,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
+    backgroundColor: hsColor.surface2,
   },
+  // Active selection is glow-eligible: pink bezel + soft neon glow.
   chipSelected: {
-    backgroundColor: tokens.accent.muted,
-    borderColor: tokens.accent.default,
+    backgroundColor: hsColor.surface3,
+    borderColor: hsColor.primary,
+    boxShadow: hsGlow.primary,
   },
   chipPressed: { opacity: 0.75 },
-  chipText: { fontSize: tokens.font.size.sm, color: tokens.text.secondary },
-  chipTextSelected: { color: tokens.accent.default, fontWeight: tokens.font.weight.semibold },
+  chipText: { fontSize: 10, lineHeight: 16 },
 });

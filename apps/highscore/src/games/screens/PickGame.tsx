@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { EmptyState, haptics, Screen, useToast } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -14,6 +14,16 @@ import {
   TextInput,
   View,
 } from "react-native";
+import {
+  HsText,
+  hsBezel,
+  hsColor,
+  hsSpace,
+  PixelButton,
+  PixelCorners,
+  PixelDivider,
+  PixelIcon,
+} from "../../theme";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import {
@@ -116,19 +126,19 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>x</Text>
+          <PixelIcon name="close" size={24} color={hsColor.textPrimary} />
         </Pressable>
         <View style={styles.headerTitleBlock}>
-          <Text variant="title" style={styles.title}>
+          <HsText variant="pixelTitle" style={styles.title}>
             Post to your Games
-          </Text>
+          </HsText>
           <View style={styles.payloadPill} testID="share-game-payload">
             <View style={styles.payloadDot} />
-            <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
+            <HsText variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
               {detectedScore
                 ? `${detectedScore.gameLabel} ${resultlessDraft ? "link" : "score"} detected`
                 : "Score share"}
-            </Text>
+            </HsText>
           </View>
         </View>
       </View>
@@ -153,42 +163,48 @@ export default function PickGame() {
 
         <View style={styles.scoreBox}>
           <View style={styles.scoreHeader}>
-            <Text variant="label">Score</Text>
-            <Text variant="caption" tone="muted">
+            <HsText variant="label">Score</HsText>
+            <HsText variant="caption" tone="secondary">
               Posts to today
-            </Text>
+            </HsText>
           </View>
           <TextInput
             testID="share-game-score-input"
             value={scoreDraft}
             onChangeText={setScoreDraft}
             placeholder="Paste score text"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={hsColor.textSecondary}
             multiline
             maxLength={2000}
             style={styles.scoreInput}
           />
         </View>
 
+        <PixelDivider />
+
         <View style={styles.gameSectionHeader}>
-          <Text variant="heading" style={styles.gameSectionTitle}>
+          <HsText variant="pixelHeading" style={styles.gameSectionTitle}>
             Your games
-          </Text>
-          <Text variant="caption" tone="muted">
+          </HsText>
+          <HsText variant="caption" tone="secondary">
             {suggestion ? "Or pick a different game." : "Pick the game to update."}
-          </Text>
+          </HsText>
         </View>
 
         {myGamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={hsColor.primary} />
           </View>
         ) : myGamesQuery.isError ? (
           <EmptyState
             title="Couldn't load your games"
             description={errorMessage(myGamesQuery.error)}
             action={
-              <Button label="Retry" variant="secondary" onPress={() => myGamesQuery.refetch()} />
+              <PixelButton
+                label="Retry"
+                variant="secondary"
+                onPress={() => myGamesQuery.refetch()}
+              />
             }
           />
         ) : myGames.length === 0 ? (
@@ -201,7 +217,10 @@ export default function PickGame() {
             }
             action={
               suggestion ? undefined : (
-                <Button label="Open Games" onPress={() => router.replace(routes.home as Href)} />
+                <PixelButton
+                  label="Open Games"
+                  onPress={() => router.replace(routes.home as Href)}
+                />
               )
             }
           />
@@ -251,10 +270,10 @@ function DetectedScoreSuggestion({
   if (resultless) {
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-resultless">
-        <Text variant="label">{label} link detected</Text>
-        <Text variant="caption" tone="muted">
+        <HsText variant="label">{label} link detected</HsText>
+        <HsText variant="caption" tone="secondary">
           We got the link but not your result. Paste your result below to post a score.
-        </Text>
+        </HsText>
       </View>
     );
   }
@@ -263,12 +282,12 @@ function DetectedScoreSuggestion({
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-loading">
         <View style={styles.loadingRow}>
-          <ActivityIndicator color={tokens.accent.default} size="small" />
-          <Text variant="label">{label} score detected</Text>
+          <ActivityIndicator color={hsColor.primary} size="small" />
+          <HsText variant="label">{label} score detected</HsText>
         </View>
-        <Text variant="caption" tone="muted">
+        <HsText variant="caption" tone="secondary">
           Looking for a matching game.
-        </Text>
+        </HsText>
       </View>
     );
   }
@@ -276,10 +295,10 @@ function DetectedScoreSuggestion({
   if (!suggestion) {
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-empty">
-        <Text variant="label">{label} score detected</Text>
-        <Text variant="caption" tone="muted">
+        <HsText variant="label">{label} score detected</HsText>
+        <HsText variant="caption" tone="secondary">
           Pick where to post it below.
-        </Text>
+        </HsText>
       </View>
     );
   }
@@ -290,14 +309,15 @@ function DetectedScoreSuggestion({
 
   return (
     <View style={styles.suggestionBox} testID="share-game-detection-suggestion">
+      <PixelCorners cutColor={hsColor.bg} bezelColor={hsColor.border} />
       <View style={styles.suggestionHeader}>
         <View style={styles.suggestionText}>
-          <Text variant="label">{label} score detected</Text>
-          <Text variant="caption" tone="muted" numberOfLines={2}>
+          <HsText variant="label">{label} score detected</HsText>
+          <HsText variant="caption" tone="secondary" numberOfLines={2}>
             {destination}
-          </Text>
+          </HsText>
         </View>
-        <Button
+        <PixelButton
           label="Post"
           size="md"
           disabled={pending}
@@ -357,21 +377,21 @@ function GameRow({
         />
       ) : (
         <View style={[styles.gameThumb, styles.gameThumbPlaceholder]}>
-          <Text style={styles.gameThumbGlyph}>🏆</Text>
+          <HsText style={styles.gameThumbGlyph}>🏆</HsText>
         </View>
       )}
       <View style={styles.rowBody}>
-        <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
+        <HsText variant="label" numberOfLines={1} style={styles.rowTitle}>
           {title}
-        </Text>
-        <Text variant="caption" tone="muted" numberOfLines={1}>
+        </HsText>
+        <HsText variant="caption" tone="secondary" numberOfLines={1}>
           {subtitle}
-        </Text>
+        </HsText>
       </View>
       {loading ? (
-        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <ActivityIndicator color={hsColor.primary} size="small" />
       ) : (
-        <Text style={styles.rowChevron}>{">"}</Text>
+        <PixelIcon name="chevron-right" size={16} color={hsColor.textSecondary} />
       )}
     </Pressable>
   );
@@ -401,130 +421,124 @@ function shortHost(url: string | null): string | null {
 
 const styles = StyleSheet.create({
   root: {
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: hsColor.bg,
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
-    paddingRight: tokens.space.lg,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    gap: hsSpace.xs,
+    paddingHorizontal: hsSpace.sm,
+    paddingRight: hsSpace.lg,
+    paddingTop: hsSpace.xl,
+    paddingBottom: hsSpace.sm,
   },
   navButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
-  title: { fontSize: tokens.font.size.xl },
+  navButtonPressed: { backgroundColor: hsColor.surface2 },
+  headerTitleBlock: { flex: 1, minWidth: 0, gap: hsSpace.sm, paddingTop: 4 },
+  title: { fontSize: 16, lineHeight: 26 },
   payloadPill: {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: tokens.space.md,
+    paddingHorizontal: hsSpace.md,
     paddingVertical: 4,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: 0,
+    backgroundColor: hsColor.surface2,
     borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderColor: hsColor.border,
     maxWidth: "100%",
   },
+  // Detection status marker — a square pixel dot, pink like the live signal.
   payloadDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
-    backgroundColor: tokens.accent.default,
+    borderRadius: 0,
+    backgroundColor: hsColor.primary,
   },
   payloadText: { flexShrink: 1 },
-  center: { alignItems: "center", justifyContent: "center", padding: tokens.space.xl },
+  center: { alignItems: "center", justifyContent: "center", padding: hsSpace.xl },
   body: {
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.lg,
+    paddingHorizontal: hsSpace.lg,
+    paddingBottom: hsSpace.xxl,
+    gap: hsSpace.lg,
   },
   suggestionBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
+    gap: hsSpace.sm,
+    padding: hsSpace.md,
+    borderRadius: 0,
+    backgroundColor: hsColor.surface1,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
   },
   suggestionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: hsSpace.md,
   },
   suggestionText: { flex: 1, minWidth: 0, gap: 2 },
-  loadingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: hsSpace.sm },
   scoreBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
+    gap: hsSpace.sm,
+    padding: hsSpace.md,
+    borderRadius: 0,
+    backgroundColor: hsColor.surface1,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
   },
   scoreHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: tokens.space.md,
+    gap: hsSpace.md,
   },
   scoreInput: {
     minHeight: 116,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
+    borderRadius: 0,
+    paddingHorizontal: hsSpace.md,
+    paddingVertical: hsSpace.sm,
+    color: hsColor.textPrimary,
+    fontSize: 16,
+    backgroundColor: hsColor.bg,
     textAlignVertical: "top",
   },
   gameSectionHeader: { gap: 2 },
-  gameSectionTitle: { fontSize: tokens.font.size.md },
-  gameList: { gap: tokens.space.sm },
+  gameSectionTitle: { fontSize: 12, lineHeight: 19 },
+  gameList: { gap: hsSpace.sm },
   gameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    gap: hsSpace.md,
+    padding: hsSpace.md,
+    borderRadius: 0,
+    borderWidth: hsBezel,
+    borderColor: hsColor.border,
+    backgroundColor: hsColor.surface1,
     minHeight: 76,
   },
-  gameRowPressed: { backgroundColor: tokens.bg.surface },
+  gameRowPressed: { backgroundColor: hsColor.surface2 },
   disabledRow: { opacity: 0.55 },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
-  rowTitle: { color: tokens.text.primary },
-  rowChevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  rowTitle: { color: hsColor.textPrimary },
   gameThumb: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: 0,
+    backgroundColor: hsColor.surface2,
+    borderWidth: 1,
+    borderColor: hsColor.border,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   gameThumbGlyph: {
-    fontSize: tokens.font.size.lg,
+    fontSize: 18,
+    lineHeight: 24,
   },
 });
