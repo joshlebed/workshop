@@ -2,10 +2,11 @@
 // Lists surface (leaderboard lists render it via `GameLeaderboardCard`) and
 // the Games tab home (one section per game in My Games).
 //
-// Not a boxed card: each game is a compact ledger section sitting directly on
-// the canvas, separated by a hairline rule. A game nobody has played collapses
-// to a single header row; standings rows give a game height only when there's
-// activity. While dragging, the section lifts into an elevated chip.
+// Marquee treatment (DESIGN.md + variation v1): each game is an arcade
+// cabinet — a 2px-bezel frame on `surface.1` whose header row is a lit
+// `surface.3` marquee strip with pixel-face lettering. A game nobody has
+// played collapses to the marquee strip alone; standings rows give a game
+// height only when there's activity. While dragging, the frame lights pink.
 //
 // Pure presentation: rows arrive pre-distilled (the caller runs each player's
 // raw result through the `scoresSummary` distiller) and surface-specific copy
@@ -23,9 +24,10 @@
 // control's own action.
 
 import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
-import { Avatar, Text, tokens } from "@workshop/ui";
+import { Avatar } from "@workshop/ui";
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { hs, PixelIcon, Text, tokens } from "../../theme";
 import { ScoreReactions } from "./ScoreReactions";
 
 const TOP_N = 5;
@@ -214,9 +216,11 @@ export const StandingsCard = memo(function StandingsCard({
                   (pressed || hovered) && styles.streakHover,
                 ]}
               >
+                {/* Compact "🔥 6d" — the marquee strip is tight and the full
+                    "day streak" phrase starves long titles; the a11y label
+                    above still reads the whole sentence. */}
                 <Text style={styles.streakFlame}>🔥</Text>
-                <Text style={styles.streakCount}>{streak}</Text>
-                <Text style={styles.streakLabel}>day streak</Text>
+                <Text style={styles.streakCount}>{streak}d</Text>
               </Pressable>
             ) : null}
           </View>
@@ -280,7 +284,7 @@ export const StandingsCard = memo(function StandingsCard({
             (pressed || hovered) && styles.menuBtnHover,
           ]}
         >
-          <Text style={styles.menuGlyph}>⋯</Text>
+          <PixelIcon name="more-horizontal" size={16} color={hs.color.textSecondary} />
         </Pressable>
       </View>
 
@@ -465,36 +469,41 @@ function SkeletonRows() {
 }
 
 const styles = StyleSheet.create({
-  // A ledger section, not a box: hairline rule below, breathing room inside.
-  // The slight horizontal bleed gives hover/drag backgrounds room without
-  // shifting content off the column grid.
+  // An arcade cabinet, not a ledger: heavy 2px bezel frame on `surface.1`,
+  // with the header row rendered as the cabinet's lit marquee strip.
   card: {
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.sm,
-    marginHorizontal: -tokens.space.sm,
+    backgroundColor: hs.color.surface1,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius,
+    paddingBottom: tokens.space.md,
     gap: tokens.space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
   },
   cardDragging: {
-    backgroundColor: tokens.bg.elevated,
-    borderRadius: tokens.radius.lg,
-    borderBottomColor: "transparent",
-    boxShadow: "0px 8px 18px rgba(0, 0, 0, 0.4)",
-    elevation: 10,
+    backgroundColor: hs.color.surface2,
+    borderColor: hs.color.primary,
+    boxShadow: hs.glow.primary,
   },
+  // Marquee strip — surface.3 bar bleeding to the frame, bezel below.
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
+    backgroundColor: hs.color.surface3,
+    borderBottomWidth: hs.bezel,
+    borderBottomColor: hs.color.border,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.sm,
   },
-  cover: { borderRadius: tokens.radius.sm },
+  cover: { borderRadius: hs.radius },
   coverPressed: { opacity: 0.7 },
   coverImage: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface2,
   },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
   coverGlyph: { fontSize: 18 },
@@ -510,12 +519,12 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    borderRadius: hs.radius,
   },
-  bodyPressed: { backgroundColor: tokens.bg.elevated },
-  title: { fontSize: tokens.font.size.md, lineHeight: 21, letterSpacing: 0 },
-  // The streak flame mirrors the Play pill's warm CTA treatment (amber-muted
-  // fill, accent count) so it reads as "tap to keep your run going", not decor.
+  bodyPressed: { backgroundColor: hs.color.surface2 },
+  // Marquee lettering: pixel face in neon yellow (spotlight/brand decoration).
+  title: { fontSize: 12, lineHeight: 20, color: hs.color.accent },
+  // Streaks are a celebration signal — chartreuse, per the palette rules.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
@@ -523,10 +532,12 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 1,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: hs.radius,
+    borderWidth: 1,
+    borderColor: hs.color.success,
+    backgroundColor: `${hs.color.success}14`,
   },
-  streakHover: { backgroundColor: `${tokens.accent.default}33` },
+  streakHover: { backgroundColor: `${hs.color.success}2E` },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
   // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
   streakFlame: { fontSize: 12, lineHeight: 16 },
@@ -534,16 +545,8 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.xs,
     lineHeight: 16,
     fontWeight: tokens.font.weight.bold,
-    color: tokens.accent.default,
+    color: hs.color.success,
     fontVariant: ["tabular-nums"],
-  },
-  // The unit lives next to the bold count: "🔥 4 day streak". Lighter weight
-  // than the number so the count stays the focal point; same accent + lineHeight.
-  streakLabel: {
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.medium,
-    color: tokens.accent.default,
   },
   metaRow: {
     flexDirection: "row",
@@ -552,36 +555,38 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   turnout: { flexShrink: 1, letterSpacing: 0 },
-  pasteLink: { borderRadius: tokens.radius.sm },
-  pasteLinkHover: { backgroundColor: tokens.bg.elevated },
+  pasteLink: { borderRadius: hs.radius },
+  pasteLinkHover: { backgroundColor: hs.color.surface2 },
   pasteLinkText: { textDecorationLine: "underline" },
+  // Pink is the one interactive color: Play is a filled primary control with
+  // dark-on-neon lettering and the reserved glow.
   playPill: {
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: hs.radius,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.primary,
+    backgroundColor: hs.color.primary,
+    boxShadow: hs.glow.primary,
   },
-  playPillHover: { backgroundColor: `${tokens.accent.default}33` },
+  playPillHover: { backgroundColor: hs.color.primaryTint, borderColor: hs.color.primaryTint },
   playLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    lineHeight: 18,
-    fontWeight: tokens.font.weight.semibold,
+    color: hs.color.textOnPrimary,
+    fontFamily: hs.font.pixel,
+    textTransform: "uppercase",
+    fontSize: 10,
+    lineHeight: 16,
+    letterSpacing: 1,
   },
   menuBtn: {
     width: 28,
     height: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.sm,
+    borderRadius: hs.radius,
   },
-  menuBtnHover: { backgroundColor: tokens.bg.elevated },
-  menuGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg,
-  },
-  standings: { gap: tokens.space.sm },
+  menuBtnHover: { backgroundColor: hs.color.surface2 },
+  standings: { gap: tokens.space.sm, paddingHorizontal: tokens.space.md },
   playerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -589,7 +594,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    borderRadius: hs.radius,
   },
   playerLine: {
     flex: 1,
@@ -601,7 +606,7 @@ const styles = StyleSheet.create({
   // Reactions ride to the right of the score on the same line — no extra row
   // height. They keep their natural width; the score line flexes to fill.
   reactionsWrap: { flexShrink: 0 },
-  playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
+  playerRowMe: { backgroundColor: `${hs.color.primary}14` },
   rankSlot: {
     width: RANK_SLOT,
     height: RANK_SLOT,
@@ -615,12 +620,14 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   rankDot: { color: tokens.text.muted, fontSize: tokens.font.size.md },
+  // #1 is a spotlight moment: neon-yellow square with the accent glow.
   rankFirst: {
-    borderRadius: RANK_SLOT / 2,
-    backgroundColor: tokens.accent.default,
+    borderRadius: hs.radius,
+    backgroundColor: hs.color.accent,
+    boxShadow: hs.glow.accent,
   },
   rankFirstText: {
-    color: tokens.text.onAccent,
+    color: hs.color.textOnPrimary,
     fontSize: tokens.font.size.xs,
     fontWeight: tokens.font.weight.bold,
     fontVariant: ["tabular-nums"],
@@ -628,14 +635,15 @@ const styles = StyleSheet.create({
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: hs.radius,
+    borderWidth: 1,
+    borderColor: hs.color.primary,
   },
   youPillText: {
     fontSize: 10,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: 0.5,
-    color: tokens.accent.default,
+    color: hs.color.primaryTint,
     textTransform: "uppercase",
   },
   scoreBody: {
@@ -647,8 +655,8 @@ const styles = StyleSheet.create({
   },
   scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
   pinnedDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    height: hs.bezel,
+    backgroundColor: hs.color.border,
     marginVertical: tokens.space.xs,
     marginLeft: SCORE_INDENT,
   },
@@ -656,25 +664,29 @@ const styles = StyleSheet.create({
     paddingLeft: SCORE_INDENT,
     paddingTop: 2,
   },
-  facepile: { flexDirection: "row", paddingLeft: COVER + tokens.space.md },
+  facepile: {
+    flexDirection: "row",
+    paddingLeft: COVER + tokens.space.md,
+    paddingHorizontal: tokens.space.md,
+  },
   faceWrap: {
     borderWidth: 2,
-    borderColor: tokens.bg.canvas,
+    borderColor: hs.color.surface1,
     borderRadius: 999,
     opacity: 0.45,
   },
   faceOverlap: { marginLeft: -10 },
-  skeletonWrap: { gap: tokens.space.sm },
+  skeletonWrap: { gap: tokens.space.sm, paddingHorizontal: tokens.space.md },
   skeletonRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   skeletonDot: {
     width: AVATAR_SM,
     height: AVATAR_SM,
     borderRadius: AVATAR_SM / 2,
-    backgroundColor: tokens.bg.elevated,
+    backgroundColor: hs.color.surface2,
   },
   skeletonBar: {
     height: 10,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius,
+    backgroundColor: hs.color.surface2,
   },
 });

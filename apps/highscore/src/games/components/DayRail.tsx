@@ -7,8 +7,8 @@
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { hs, Text, tokens } from "../../theme";
 import { shiftDateKey } from "../lib/gameDate";
 
 const DEFAULT_LENGTH = 7;
@@ -86,19 +86,22 @@ const styles = StyleSheet.create({
   rail: {
     gap: tokens.space.sm,
   },
+  // Sharp bezelled keys, like buttons on a control deck. Selection is pink
+  // (the one interactive color) and carries the reserved glow.
   chip: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: hs.radius,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface2,
   },
   chipSelected: {
-    backgroundColor: tokens.accent.muted,
-    borderColor: tokens.accent.default,
+    backgroundColor: `${hs.color.primary}22`,
+    borderColor: hs.color.primary,
+    boxShadow: hs.glow.primary,
   },
   chipPressed: { opacity: 0.75 },
   chipText: { fontSize: tokens.font.size.sm, color: tokens.text.secondary },
-  chipTextSelected: { color: tokens.accent.default, fontWeight: tokens.font.weight.semibold },
+  chipTextSelected: { color: hs.color.primaryTint, fontWeight: tokens.font.weight.semibold },
 });

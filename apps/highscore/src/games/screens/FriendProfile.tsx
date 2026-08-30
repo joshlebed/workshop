@@ -20,12 +20,12 @@ import {
   haptics,
   Screen,
   Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { tokens } from "../../theme";
 import { addGame } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";

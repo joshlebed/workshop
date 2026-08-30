@@ -22,6 +22,7 @@ import ReorderableList, {
   useIsActive,
   useReorderableDrag,
 } from "react-native-reorderable-list";
+import { tokens } from "../../../theme";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({
@@ -85,5 +86,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: homeLayout.contentTopGap,
     paddingBottom: homeLayout.bottomInset,
+    // Framed cabinet cards need air between their bezels.
+    gap: tokens.space.md,
   },
 });

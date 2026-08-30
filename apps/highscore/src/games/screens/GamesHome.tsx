@@ -27,8 +27,6 @@ import type {
   MyGame,
 } from "@workshop/shared/games";
 import {
-  Button,
-  CopyIcon,
   confirm,
   EmptyState,
   HomeHeader,
@@ -37,13 +35,12 @@ import {
   openExternalUrl,
   Screen,
   Sheet,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Button, hs, MarqueeHeader, PixelIcon, sheetContentStyle, Text, tokens } from "../../theme";
 import {
   addGame,
   createGameShareLink,
@@ -441,7 +438,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           title={mg.game.title}
           coverImageUrl={mg.game.iconUrl}
           coverGlyph="🎮"
-          accent={tokens.accent.default}
+          accent={hs.color.accent}
           isDragging={isDragging}
           turnout={turnoutLine(rows.length, standings?.viewerHasPlayed ?? false, viewingToday)}
           // Streak rides on the today-pinned `mg` (not the rail's viewed day) so
@@ -508,7 +505,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               {copyingScores ? (
                 <ActivityIndicator size="small" color={tokens.text.primary} />
               ) : (
-                <CopyIcon size={20} color={tokens.text.primary} />
+                <PixelIcon name="copy" size={16} color={tokens.text.primary} />
               )}
             </Pressable>
             {headerTrailing}
@@ -548,6 +545,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           />
         ) : (
           <>
+            <MarqueeHeader label="My Games" style={styles.marquee} />
             <View style={styles.dayRail}>
               <DayRail
                 selectedDate={viewDate}
@@ -579,9 +577,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         ]}
         testID="fab-add-game"
       >
-        <Text style={styles.fabGlyph} tone="onAccent">
-          +
-        </Text>
+        <PixelIcon name="plus" size={24} color={hs.color.textOnPrimary} />
       </Pressable>
 
       <AddGameSheet
@@ -622,6 +618,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 
       {/* Card menu — Open game / (admin) Re-teach scoring / Remove. */}
       <Sheet
+        contentStyle={sheetContentStyle}
         visible={!!menuGame}
         onRequestClose={() => setMenuGame(null)}
         onClosed={() => {
@@ -705,6 +702,10 @@ const styles = StyleSheet.create({
   },
   headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
   headerIconBtnDisabled: { opacity: 0.6 },
+  marquee: {
+    marginHorizontal: homeLayout.horizontalInset,
+    marginBottom: tokens.space.sm,
+  },
   dayRail: {
     paddingBottom: tokens.space.sm,
   },
@@ -714,31 +715,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: tokens.space.lg,
   },
+  // Primary CTA: a square pink key with the reserved neon glow.
   fab: {
     position: "absolute",
     right: homeLayout.horizontalInset,
     bottom: homeLayout.horizontalInset,
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: tokens.accent.default,
+    borderRadius: hs.radius,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.primary,
+    backgroundColor: hs.color.primary,
     alignItems: "center",
     justifyContent: "center",
-    // Calm neutral elevation, not an amber glow (see DESIGN.md "calm by default").
-    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
-    elevation: 5,
+    boxShadow: hs.glow.primary,
   },
-  fabHovered: {
-    backgroundColor: tokens.accent.hover,
-    transform: [{ scale: 1.04 }],
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
+  fabHovered: { backgroundColor: hs.color.primaryTint, borderColor: hs.color.primaryTint },
+  fabPressed: { backgroundColor: hs.color.primaryTint, borderColor: hs.color.primaryTint },
   sheetHeader: { gap: 4 },
   sheetActions: { gap: tokens.space.sm },
   sheetDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    height: hs.bezel,
+    backgroundColor: hs.color.border,
     marginVertical: tokens.space.xs,
   },
   sheetDangerRow: {

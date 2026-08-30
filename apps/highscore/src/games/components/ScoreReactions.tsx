@@ -6,8 +6,9 @@
 // inert with no add button.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
+import { Text } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
+import { tokens } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];

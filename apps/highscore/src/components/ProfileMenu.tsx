@@ -3,7 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { Avatar, Button, Sheet, Text, tokens, useToast } from "@workshop/ui";
+import { Avatar, Sheet, useToast } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -11,6 +11,7 @@ import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "reac
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
 import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes";
+import { Button, sheetContentStyle, Text, tokens } from "../theme";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -64,7 +65,12 @@ export function ProfileMenu() {
           </View>
         ) : null}
       </Pressable>
-      <Sheet visible={open} onRequestClose={() => setOpen(false)} testID="profile-menu-sheet">
+      <Sheet
+        contentStyle={sheetContentStyle}
+        visible={open}
+        onRequestClose={() => setOpen(false)}
+        testID="profile-menu-sheet"
+      >
         <View style={styles.content}>
           <View style={styles.identity}>
             <Avatar

@@ -5,15 +5,12 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import {
   Avatar,
-  Button,
   confirm,
   EmptyState,
   formatRelative,
   haptics,
   openExternalUrl,
   Screen,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
@@ -29,6 +26,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { Button, hs, MarqueeHeader, PixelIcon, Text, tokens } from "../../theme";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { DayRail } from "../components/DayRail";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
@@ -229,7 +227,7 @@ export default function GameBoard() {
             hitSlop={10}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <Text style={styles.navGlyph}>‹</Text>
+            <PixelIcon name="chevron-left" size={24} color={hs.color.textPrimary} />
           </Pressable>
         </View>
 
@@ -268,7 +266,7 @@ export default function GameBoard() {
               ) : null}
             </View>
             <View style={styles.titleOpenAffordance}>
-              <Text style={styles.titleOpenGlyph}>↗</Text>
+              <PixelIcon name="external-link" size={16} color={hs.color.textSecondary} />
             </View>
           </Pressable>
 
@@ -279,20 +277,21 @@ export default function GameBoard() {
             testIDPrefix="game-board-day"
           />
 
-          <View style={styles.dayHeader}>
-            <Text variant="heading" style={styles.dayTitle}>
-              {formatGameDateLabel(date, today)}
-            </Text>
-            {boardQuery.isPending ? null : (
-              <Text variant="caption" tone="muted">
-                {entries.length === 0
-                  ? isToday
-                    ? "No plays yet."
-                    : "No plays."
-                  : `${entries.length} played`}
-              </Text>
-            )}
-          </View>
+          <MarqueeHeader
+            label={formatGameDateLabel(date, today)}
+            style={styles.dayHeader}
+            trailing={
+              boardQuery.isPending ? null : (
+                <Text variant="caption" tone="muted">
+                  {entries.length === 0
+                    ? isToday
+                      ? "No plays yet."
+                      : "No plays."
+                    : `${entries.length} played`}
+                </Text>
+              )
+            }
+          />
 
           {boardQuery.isPending ? (
             <View style={styles.center}>
@@ -636,7 +635,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   body: {
     paddingBottom: tokens.space.xxl * 2,
     gap: tokens.space.lg,
@@ -654,31 +652,30 @@ const styles = StyleSheet.create({
   titleBadge: {
     width: 56,
     height: 56,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface2,
   },
   titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
   titleBadgeGlyph: { fontSize: 28, lineHeight: 32 },
   titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.5, fontSize: 28, lineHeight: 32 },
+  // Pixel title sized down from the variant default: long game names still
+  // need to fit two lines in the marquee row.
+  titleName: { fontSize: 16, lineHeight: 26 },
   titleOpenAffordance: {
     width: 32,
     height: 32,
-    borderRadius: tokens.radius.md,
+    borderRadius: hs.radius,
+    borderWidth: 1,
+    borderColor: hs.color.border,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
-  },
-  titleOpenGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
+    backgroundColor: hs.color.surface2,
   },
   dayHeader: {
-    paddingHorizontal: tokens.space.xl,
-    gap: 2,
+    marginHorizontal: tokens.space.xl,
   },
-  dayTitle: { letterSpacing: -0.2 },
   helper: {
     paddingVertical: tokens.space.lg,
     textAlign: "center",
@@ -693,19 +690,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.xl,
     gap: tokens.space.md,
   },
+  // Bezelled cabinet row: sharp corners, 2px frame, purple surface.
   entry: {
     gap: tokens.space.sm,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: hs.radius,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface1,
   },
   entryMe: {
-    // Quiet accent tint as the sole "this is you" signal; the "you" pill
-    // doubles as a textual label so the highlight isn't color-only.
-    backgroundColor: `${tokens.accent.default}14`,
+    // Quiet pink tint as the "this is you" signal; the "you" pill doubles as
+    // a textual label so the highlight isn't color-only.
+    backgroundColor: `${hs.color.primary}14`,
   },
   entryHeader: {
     flexDirection: "row",
@@ -721,11 +719,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: tokens.radius.sm,
   },
-  editScorePressed: { backgroundColor: tokens.accent.muted },
+  editScorePressed: { backgroundColor: `${hs.color.primary}22` },
   editScoreLabel: {
     fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
+    color: hs.color.primaryTint,
   },
   // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
   // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
@@ -739,14 +737,15 @@ const styles = StyleSheet.create({
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: hs.radius,
+    borderWidth: 1,
+    borderColor: hs.color.primary,
   },
   youPillText: {
     fontSize: 10,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: 0.5,
-    color: tokens.accent.default,
+    color: hs.color.primaryTint,
     textTransform: "uppercase",
   },
   // Score box + reactions share one row so reactions sit to the right of the
@@ -761,25 +760,27 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderRadius: hs.radius,
+    backgroundColor: hs.color.bg,
+    borderWidth: 1,
+    borderColor: hs.color.border,
   },
   rankBadge: {
     minWidth: 28,
     height: 28,
     paddingHorizontal: 6,
-    borderRadius: 14,
+    borderRadius: hs.radius,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    backgroundColor: hs.color.bg,
+    borderWidth: 1,
+    borderColor: hs.color.border,
   },
+  // #1 is the spotlight: neon-yellow square with the accent glow.
   rankBadgeTop1: {
-    backgroundColor: tokens.accent.default,
-    borderColor: tokens.accent.default,
+    backgroundColor: hs.color.accent,
+    borderColor: hs.color.accent,
+    boxShadow: hs.glow.accent,
   },
   rankBadgeText: {
     fontSize: tokens.font.size.sm,
@@ -787,7 +788,7 @@ const styles = StyleSheet.create({
     color: tokens.text.secondary,
     fontVariant: ["tabular-nums"],
   },
-  rankBadgeTextTop1: { color: tokens.text.onAccent },
+  rankBadgeTextTop1: { color: hs.color.textOnPrimary },
   scoreText: {
     color: tokens.text.primary,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
@@ -808,9 +809,11 @@ const styles = StyleSheet.create({
   unplayedAvatar: { opacity: 0.5 },
   pasteInput: {
     minHeight: 110,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius,
+    // Pink focus ring instead of the browser default (web-only, no-op native).
+    outlineColor: hs.color.primary,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,

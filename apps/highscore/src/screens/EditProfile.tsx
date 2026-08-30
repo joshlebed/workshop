@@ -3,10 +3,10 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { Avatar, Screen, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useAuth } from "../hooks/useAuth";
 import {
@@ -17,6 +17,7 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import { Button, hs, MarqueeHeader, PixelIcon, Text, tokens } from "../theme";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -70,13 +71,16 @@ export default function EditProfile() {
             Edit profile
           </Text>
         </View>
-        <IconButton
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel="Close profile editor"
           onPress={() => goBack("/")}
           testID="profile-edit-close"
+          hitSlop={8}
+          style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}
         >
-          <Text style={styles.closeGlyph}>✕</Text>
-        </IconButton>
+          <PixelIcon name="close" size={16} color={hs.color.textSecondary} />
+        </Pressable>
       </View>
 
       <KeyboardAwareScrollView
@@ -197,10 +201,7 @@ function DeleteAccountSection() {
 
   return (
     <View style={dangerStyles.section} testID="danger-zone">
-      <View style={dangerStyles.divider} />
-      <Text variant="caption" tone="muted" style={dangerStyles.eyebrow}>
-        Danger zone
-      </Text>
+      <MarqueeHeader label="Danger zone" />
 
       {step === "idle" ? null : (
         <View style={dangerStyles.confirmCard} testID="account-delete-confirm-card">
@@ -269,7 +270,17 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
   headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: hs.radius,
+    borderWidth: 1,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface2,
+  },
+  closeBtnPressed: { backgroundColor: hs.color.surface3 },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
@@ -284,14 +295,16 @@ const styles = StyleSheet.create({
   avatarButtons: { flex: 1, gap: tokens.space.sm },
   field: { gap: tokens.space.sm },
   input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius,
+    // Pink focus ring instead of the browser default (web-only, no-op native).
+    outlineColor: hs.color.primary,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 14,
     color: tokens.text.primary,
     fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: hs.color.surface2,
   },
   hint: { marginTop: tokens.space.xs },
   saveButton: { marginTop: tokens.space.sm },
@@ -299,19 +312,13 @@ const styles = StyleSheet.create({
 
 const dangerStyles = StyleSheet.create({
   section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginBottom: tokens.space.md,
-  },
-  eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.status.danger,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: hs.radius,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.danger,
+    backgroundColor: hs.color.surface1,
   },
   confirmActions: {
     flexDirection: "row",
