@@ -9,7 +9,7 @@ import type { DiscoveryGame } from "@workshop/shared/games";
 import { Sheet } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
-import { HsButton, HsText, hs, hsBezel } from "../../../theme";
+import { HsButton, HsText, hs } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface AddGameSheetProps {
@@ -146,7 +146,10 @@ const styles = StyleSheet.create({
   sectionLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
   orLabel: { letterSpacing: 0.4, textTransform: "uppercase", marginTop: hs.space.xs },
   input: {
-    ...hsBezel,
+    // hsBezel's fields inlined — spreading a ViewStyle into a TextStyle trips TS.
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius.hard,
     paddingHorizontal: hs.space.md,
     paddingVertical: 12,
     color: hs.color.textPrimary,

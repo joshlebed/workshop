@@ -83,7 +83,7 @@ export default function SignIn() {
           <>
             <View style={styles.divider} accessibilityElementsHidden>
               <View style={styles.dividerLine} />
-              <HsText tone="muted" style={styles.dividerText}>
+              <HsText tone="secondary" style={styles.dividerText}>
                 or
               </HsText>
               <View style={styles.dividerLine} />
@@ -100,7 +100,7 @@ export default function SignIn() {
           </>
         ) : null}
         {!apple.available && !GOOGLE_CONFIGURED && !DEV_AUTH_ENABLED ? (
-          <HsText tone="muted" style={styles.help} testID="sign-in-providers-unconfigured">
+          <HsText tone="secondary" style={styles.help} testID="sign-in-providers-unconfigured">
             Sign-in providers are still being configured.
           </HsText>
         ) : null}
