@@ -27,23 +27,19 @@ import type {
   MyGame,
 } from "@workshop/shared/games";
 import {
-  Button,
-  CopyIcon,
   confirm,
-  EmptyState,
   HomeHeader,
   haptics,
   homeLayout,
   openExternalUrl,
   Screen,
   Sheet,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { HsButton, HsText, hs, hsGlow, PixelIcon } from "../../theme";
 import {
   addGame,
   createGameShareLink,
