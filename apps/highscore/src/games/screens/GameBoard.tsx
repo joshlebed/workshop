@@ -5,15 +5,11 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import {
   Avatar,
-  Button,
   confirm,
-  EmptyState,
   formatRelative,
   haptics,
   openExternalUrl,
   Screen,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
@@ -25,10 +21,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { HsButton, HsText, hs, hsBezel, PixelIcon } from "../../theme";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { DayRail } from "../components/DayRail";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
@@ -142,7 +140,7 @@ export default function GameBoard() {
   if (!gameId) {
     return (
       <Screen style={styles.center}>
-        <EmptyState title="Missing game id" />
+        <EmptyBlock title="Missing game id" />
       </Screen>
     );
   }
@@ -150,7 +148,7 @@ export default function GameBoard() {
   if (myGamesQuery.isPending) {
     return (
       <Screen style={styles.center}>
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={hs.color.primary} />
       </Screen>
     );
   }
@@ -158,11 +156,11 @@ export default function GameBoard() {
   if (myGamesQuery.isError) {
     return (
       <Screen style={styles.center}>
-        <EmptyState
+        <EmptyBlock
           title="Couldn't load game"
           description={errorMessage(myGamesQuery.error)}
           action={
-            <Button label="Retry" variant="secondary" onPress={() => myGamesQuery.refetch()} />
+            <HsButton label="Retry" variant="secondary" onPress={() => myGamesQuery.refetch()} />
           }
         />
       </Screen>
@@ -172,11 +170,15 @@ export default function GameBoard() {
   if (!game) {
     return (
       <Screen style={styles.center}>
-        <EmptyState
+        <EmptyBlock
           title="Game not found"
           description="This game isn't in My Games."
           action={
-            <Button label="Back to Games" variant="secondary" onPress={() => goBack(routes.home)} />
+            <HsButton
+              label="Back to Games"
+              variant="secondary"
+              onPress={() => goBack(routes.home)}
+            />
           }
         />
       </Screen>
@@ -229,7 +231,7 @@ export default function GameBoard() {
             hitSlop={10}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <Text style={styles.navGlyph}>‹</Text>
+            <PixelIcon name="chevron-left" size={24} />
           </Pressable>
         </View>
 
@@ -258,17 +260,17 @@ export default function GameBoard() {
               </View>
             )}
             <View style={styles.titleText}>
-              <Text variant="title" numberOfLines={2} style={styles.titleName}>
+              <HsText variant="pixelTitle" numberOfLines={2}>
                 {game.title}
-              </Text>
+              </HsText>
               {host ? (
-                <Text variant="caption" tone="secondary" numberOfLines={1}>
+                <HsText variant="caption" tone="secondary" numberOfLines={1}>
                   {host}
-                </Text>
+                </HsText>
               ) : null}
             </View>
             <View style={styles.titleOpenAffordance}>
-              <Text style={styles.titleOpenGlyph}>↗</Text>
+              <PixelIcon name="external-link" size={16} />
             </View>
           </Pressable>
 
@@ -280,31 +282,29 @@ export default function GameBoard() {
           />
 
           <View style={styles.dayHeader}>
-            <Text variant="heading" style={styles.dayTitle}>
-              {formatGameDateLabel(date, today)}
-            </Text>
+            <HsText variant="heading">{formatGameDateLabel(date, today)}</HsText>
             {boardQuery.isPending ? null : (
-              <Text variant="caption" tone="muted">
+              <HsText variant="caption" tone="secondary">
                 {entries.length === 0
                   ? isToday
                     ? "No plays yet."
                     : "No plays."
                   : `${entries.length} played`}
-              </Text>
+              </HsText>
             )}
           </View>
 
           {boardQuery.isPending ? (
             <View style={styles.center}>
-              <ActivityIndicator color={tokens.accent.default} />
+              <ActivityIndicator color={hs.color.primary} />
             </View>
           ) : boardQuery.isError ? (
             <View style={styles.scoresErrorBlock}>
-              <Text tone="danger" style={styles.helper}>
+              <HsText tone="danger" style={styles.helper}>
                 Couldn't load scores.
-              </Text>
+              </HsText>
               <View style={styles.scoresErrorAction}>
-                <Button
+                <HsButton
                   label="Try again"
                   variant="secondary"
                   size="md"
@@ -368,9 +368,9 @@ export default function GameBoard() {
                     size="md"
                     style={styles.unplayedAvatar}
                   />
-                  <Text variant="caption" tone="muted">
+                  <HsText variant="caption" tone="secondary">
                     You didn't play this day.
-                  </Text>
+                  </HsText>
                 </View>
               )}
 
@@ -405,6 +405,31 @@ export default function GameBoard() {
   );
 }
 
+// Local stand-in for the retired shared EmptyState — a quiet centered block.
+function EmptyBlock({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <View style={styles.emptyBlock}>
+      <HsText variant="heading" style={styles.emptyTitle}>
+        {title}
+      </HsText>
+      {description ? (
+        <HsText variant="body" tone="secondary" style={styles.emptyDescription}>
+          {description}
+        </HsText>
+      ) : null}
+      {action ? <View style={styles.emptyAction}>{action}</View> : null}
+    </View>
+  );
+}
+
 interface EntryRowProps {
   entry: GameStandingsEntry;
   game: Pick<Game, "title" | "url" | "summarySpec">;
@@ -436,18 +461,20 @@ function EntryRow({
     <View style={[styles.entry, isMe && styles.entryMe]} testID={`game-board-row-${entry.userId}`}>
       <View style={styles.entryHeader}>
         {entry.rank != null ? (
-          <View style={[styles.rankBadge, entry.rank === 1 && styles.rankBadgeTop1]}>
-            <Text style={[styles.rankBadgeText, entry.rank === 1 && styles.rankBadgeTextTop1]}>
-              {entry.rank}
-            </Text>
+          <View style={styles.rankBadge}>
+            {entry.rank === 1 ? (
+              <PixelIcon name="trophy" size={16} color={hs.color.accent} />
+            ) : (
+              <Text style={styles.rankBadgeText}>{entry.rank}</Text>
+            )}
           </View>
         ) : null}
         <Avatar name={entry.displayName} imageUrl={userAvatarImageUrl(entry.userId)} size="md" />
         <View style={styles.entryNameWrap}>
           <View style={styles.entryNameRow}>
-            <Text variant="label" style={styles.entryName} numberOfLines={1}>
+            <HsText variant="label" style={styles.entryName} numberOfLines={1}>
               {name}
-            </Text>
+            </HsText>
             {isMe ? (
               <View style={styles.youPill}>
                 <Text style={styles.youPillText}>you</Text>
@@ -455,9 +482,9 @@ function EntryRow({
             ) : null}
           </View>
           {entry.updatedAt ? (
-            <Text variant="caption" tone="muted">
+            <HsText variant="caption" tone="secondary">
               Posted {formatRelative(entry.updatedAt)}
-            </Text>
+            </HsText>
           ) : null}
         </View>
         {onEdit || onClear ? (
@@ -572,16 +599,16 @@ function ScoreComposer({
         <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
         <View style={styles.entryNameWrap}>
           <View style={styles.entryNameRow}>
-            <Text variant="label" style={styles.entryName}>
+            <HsText variant="label" style={styles.entryName}>
               {userName?.trim() || "You"}
-            </Text>
+            </HsText>
             <View style={styles.youPill}>
               <Text style={styles.youPillText}>you</Text>
             </View>
           </View>
-          <Text variant="caption" tone="muted">
+          <HsText variant="caption" tone="secondary">
             {isEdit ? "Edit your result" : "Paste your result to play"}
-          </Text>
+          </HsText>
         </View>
       </View>
       <TextInput
@@ -589,7 +616,7 @@ function ScoreComposer({
         value={draft}
         onChangeText={onChangeDraft}
         placeholder={"Paste your result here"}
-        placeholderTextColor={tokens.text.muted}
+        placeholderTextColor={hs.color.textSecondary}
         multiline
         autoFocus={isEdit}
         maxLength={2000}
@@ -598,7 +625,7 @@ function ScoreComposer({
       />
       <View style={styles.pasteActions}>
         {isEdit ? (
-          <Button
+          <HsButton
             label="Cancel"
             variant="secondary"
             size="md"
@@ -607,7 +634,7 @@ function ScoreComposer({
             testID="game-board-edit-cancel"
           />
         ) : null}
-        <Button
+        <HsButton
           label={isEdit ? "Save" : "Post score"}
           size="md"
           onPress={onSubmit}
@@ -621,132 +648,126 @@ function ScoreComposer({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: tokens.bg.canvas, paddingTop: tokens.space.xl },
+  root: { flex: 1, backgroundColor: hs.color.bg, paddingTop: hs.space.xl },
   headerNav: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
+    paddingHorizontal: hs.space.sm,
   },
   navButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: hs.radius.hard,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
+  navButtonPressed: { backgroundColor: hs.color.surface3 },
   body: {
-    paddingBottom: tokens.space.xxl * 2,
-    gap: tokens.space.lg,
+    paddingBottom: hs.space.xxl * 2,
+    gap: hs.space.lg,
   },
   titleBlock: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.md,
-    marginHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.lg,
+    gap: hs.space.lg,
+    paddingHorizontal: hs.space.xl,
+    paddingVertical: hs.space.md,
+    marginHorizontal: hs.space.sm,
+    borderRadius: hs.radius.hard,
   },
-  titleBlockPressed: { backgroundColor: tokens.bg.surface },
+  titleBlockPressed: { backgroundColor: hs.color.surface1 },
   titleBadge: {
     width: 56,
     height: 56,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface2,
   },
   titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
   titleBadgeGlyph: { fontSize: 28, lineHeight: 32 },
   titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.5, fontSize: 28, lineHeight: 32 },
   titleOpenAffordance: {
     width: 32,
     height: 32,
-    borderRadius: tokens.radius.md,
+    borderRadius: hs.radius.hard,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
-  },
-  titleOpenGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
+    backgroundColor: hs.color.surface2,
   },
   dayHeader: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: hs.space.xl,
     gap: 2,
   },
-  dayTitle: { letterSpacing: -0.2 },
   helper: {
-    paddingVertical: tokens.space.lg,
+    paddingVertical: hs.space.lg,
     textAlign: "center",
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: hs.space.xl,
   },
   scoresErrorBlock: {
-    gap: tokens.space.sm,
-    paddingBottom: tokens.space.md,
+    gap: hs.space.sm,
+    paddingBottom: hs.space.md,
   },
   scoresErrorAction: { alignItems: "center" },
   leaderboard: {
-    paddingHorizontal: tokens.space.xl,
-    gap: tokens.space.md,
+    paddingHorizontal: hs.space.xl,
+    gap: hs.space.md,
   },
   entry: {
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    ...hsBezel,
+    gap: hs.space.sm,
+    paddingVertical: hs.space.md,
+    paddingHorizontal: hs.space.md,
+    backgroundColor: hs.color.surface1,
   },
   entryMe: {
-    // Quiet accent tint as the sole "this is you" signal; the "you" pill
-    // doubles as a textual label so the highlight isn't color-only.
-    backgroundColor: `${tokens.accent.default}14`,
+    // The 2px pink left edge is the "this is you" signal (Quiet Arcade active
+    // card treatment); the "you" pill doubles as a textual label so the
+    // highlight isn't color-only.
+    borderLeftWidth: 2,
+    borderLeftColor: hs.color.primary,
   },
   entryHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
   },
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
-  entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
-  entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  scoreActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  entryNameRow: { flexDirection: "row", alignItems: "center", gap: hs.space.xs },
+  entryName: { fontSize: hs.font.size.md, color: hs.color.textPrimary },
+  scoreActions: { flexDirection: "row", alignItems: "center", gap: hs.space.xs },
   scoreActionButton: {
-    paddingHorizontal: tokens.space.sm,
+    paddingHorizontal: hs.space.sm,
     paddingVertical: 4,
-    borderRadius: tokens.radius.sm,
+    borderRadius: hs.radius.hard,
   },
-  editScorePressed: { backgroundColor: tokens.accent.muted },
+  editScorePressed: { backgroundColor: hs.color.surface3 },
   editScoreLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
+    fontSize: hs.font.size.sm,
+    fontWeight: hs.font.weight.semibold,
+    color: hs.color.primary,
   },
   // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
   // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
   // the control itself stays calm rather than a loud red on a daily screen.
-  clearScorePressed: { backgroundColor: tokens.bg.elevated },
+  clearScorePressed: { backgroundColor: hs.color.surface3 },
   clearScoreLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.secondary,
+    fontSize: hs.font.size.sm,
+    fontWeight: hs.font.weight.semibold,
+    color: hs.color.textSecondary,
   },
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface2,
+    borderWidth: 1,
+    borderColor: hs.color.border,
   },
   youPillText: {
     fontSize: 10,
-    fontWeight: tokens.font.weight.semibold,
+    fontWeight: hs.font.weight.semibold,
     letterSpacing: 0.5,
-    color: tokens.accent.default,
+    color: hs.color.textSecondary,
     textTransform: "uppercase",
   },
   // Score box + reactions share one row so reactions sit to the right of the
@@ -754,82 +775,80 @@ const styles = StyleSheet.create({
   scoreRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
   },
   scoreFrame: {
     flex: 1,
     minWidth: 0,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    paddingVertical: hs.space.sm,
+    paddingHorizontal: hs.space.md,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.bg,
+    borderWidth: 1,
+    borderColor: hs.color.border,
   },
   rankBadge: {
     minWidth: 28,
     height: 28,
     paddingHorizontal: 6,
-    borderRadius: 14,
+    borderRadius: hs.radius.hard,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-  },
-  rankBadgeTop1: {
-    backgroundColor: tokens.accent.default,
-    borderColor: tokens.accent.default,
   },
   rankBadgeText: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.secondary,
+    fontSize: hs.font.size.sm,
+    fontWeight: hs.font.weight.bold,
+    color: hs.color.textSecondary,
     fontVariant: ["tabular-nums"],
   },
-  rankBadgeTextTop1: { color: tokens.text.onAccent },
   scoreText: {
-    color: tokens.text.primary,
+    color: hs.color.textPrimary,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 6,
+    fontSize: hs.font.size.sm,
+    lineHeight: hs.font.size.sm + 6,
   },
   scoreTextMuted: {
-    color: tokens.text.muted,
+    color: hs.color.textSecondary,
     fontStyle: "italic",
   },
   unplayedRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.xs,
+    gap: hs.space.sm,
+    paddingVertical: hs.space.sm,
+    paddingHorizontal: hs.space.xs,
   },
   unplayedAvatar: { opacity: 0.5 },
   pasteInput: {
+    ...hsBezel,
     minHeight: 110,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    backgroundColor: tokens.bg.canvas,
+    paddingHorizontal: hs.space.md,
+    paddingVertical: hs.space.md,
+    color: hs.color.textPrimary,
+    fontSize: hs.font.size.sm,
+    backgroundColor: hs.color.surface2,
     textAlignVertical: "top",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    lineHeight: tokens.font.size.sm + 6,
+    lineHeight: hs.font.size.sm + 6,
   },
   pasteActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: hs.space.md,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: tokens.space.xl,
+    paddingVertical: hs.space.xl,
   },
+  emptyBlock: {
+    alignItems: "center",
+    gap: hs.space.sm,
+    paddingHorizontal: hs.space.xl,
+  },
+  emptyTitle: { textAlign: "center" },
+  emptyDescription: { textAlign: "center" },
+  emptyAction: { marginTop: hs.space.sm },
 });

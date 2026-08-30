@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { haptics, Screen, useToast } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { HsButton, HsText, hs, hsBezel, PixelIcon } from "../../theme";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import {
@@ -32,6 +33,7 @@ export default function PickGame() {
   const params = useLocalSearchParams<{ url?: string; text?: string }>();
   const sharedPayload = readSharedPayload(params);
   const [scoreDraft, setScoreDraft] = useState(sharedPayload);
+  const [inputFocused, setInputFocused] = useState(false);
   const router = useRouter();
   const { token, routes } = useGamesRuntime();
   const queryClient = useQueryClient();
@@ -116,19 +118,17 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>x</Text>
+          <PixelIcon name="close" size={16} color={hs.color.textPrimary} />
         </Pressable>
         <View style={styles.headerTitleBlock}>
-          <Text variant="title" style={styles.title}>
-            Post to your Games
-          </Text>
+          <HsText variant="pixelTitle">Post to your Games</HsText>
           <View style={styles.payloadPill} testID="share-game-payload">
             <View style={styles.payloadDot} />
-            <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
+            <HsText variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
               {detectedScore
                 ? `${detectedScore.gameLabel} ${resultlessDraft ? "link" : "score"} detected`
                 : "Score share"}
-            </Text>
+            </HsText>
           </View>
         </View>
       </View>
@@ -153,46 +153,46 @@ export default function PickGame() {
 
         <View style={styles.scoreBox}>
           <View style={styles.scoreHeader}>
-            <Text variant="label">Score</Text>
-            <Text variant="caption" tone="muted">
+            <HsText variant="label">Score</HsText>
+            <HsText variant="caption" tone="secondary">
               Posts to today
-            </Text>
+            </HsText>
           </View>
           <TextInput
             testID="share-game-score-input"
             value={scoreDraft}
             onChangeText={setScoreDraft}
             placeholder="Paste score text"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={hs.color.textSecondary}
             multiline
             maxLength={2000}
-            style={styles.scoreInput}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+            style={[styles.scoreInput, inputFocused && styles.scoreInputFocused]}
           />
         </View>
 
         <View style={styles.gameSectionHeader}>
-          <Text variant="heading" style={styles.gameSectionTitle}>
-            Your games
-          </Text>
-          <Text variant="caption" tone="muted">
+          <HsText variant="heading">Your games</HsText>
+          <HsText variant="caption" tone="secondary">
             {suggestion ? "Or pick a different game." : "Pick the game to update."}
-          </Text>
+          </HsText>
         </View>
 
         {myGamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={hs.color.primary} />
           </View>
         ) : myGamesQuery.isError ? (
-          <EmptyState
+          <EmptyBox
             title="Couldn't load your games"
             description={errorMessage(myGamesQuery.error)}
             action={
-              <Button label="Retry" variant="secondary" onPress={() => myGamesQuery.refetch()} />
+              <HsButton label="Retry" variant="secondary" onPress={() => myGamesQuery.refetch()} />
             }
           />
         ) : myGames.length === 0 ? (
-          <EmptyState
+          <EmptyBox
             title="No games yet"
             description={
               suggestion
@@ -201,7 +201,11 @@ export default function PickGame() {
             }
             action={
               suggestion ? undefined : (
-                <Button label="Open Games" onPress={() => router.replace(routes.home as Href)} />
+                <HsButton
+                  label="Open Games"
+                  variant="secondary"
+                  onPress={() => router.replace(routes.home as Href)}
+                />
               )
             }
           />
@@ -215,6 +219,7 @@ export default function PickGame() {
                   title={mg.game.title}
                   subtitle={shortHost(mg.game.url) ?? "Game"}
                   iconUrl={mg.game.iconUrl}
+                  selected={!!suggestion?.gameId && suggestion.gameId === mg.gameId}
                   testID={`share-game-row-${mg.gameId}`}
                   {...rowState(target)}
                   onPress={() => postScore(target)}
@@ -251,10 +256,10 @@ function DetectedScoreSuggestion({
   if (resultless) {
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-resultless">
-        <Text variant="label">{label} link detected</Text>
-        <Text variant="caption" tone="muted">
+        <HsText variant="label">{label} link detected</HsText>
+        <HsText variant="caption" tone="secondary">
           We got the link but not your result. Paste your result below to post a score.
-        </Text>
+        </HsText>
       </View>
     );
   }
@@ -263,12 +268,12 @@ function DetectedScoreSuggestion({
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-loading">
         <View style={styles.loadingRow}>
-          <ActivityIndicator color={tokens.accent.default} size="small" />
-          <Text variant="label">{label} score detected</Text>
+          <ActivityIndicator color={hs.color.primary} size="small" />
+          <HsText variant="label">{label} score detected</HsText>
         </View>
-        <Text variant="caption" tone="muted">
+        <HsText variant="caption" tone="secondary">
           Looking for a matching game.
-        </Text>
+        </HsText>
       </View>
     );
   }
@@ -276,10 +281,10 @@ function DetectedScoreSuggestion({
   if (!suggestion) {
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-empty">
-        <Text variant="label">{label} score detected</Text>
-        <Text variant="caption" tone="muted">
+        <HsText variant="label">{label} score detected</HsText>
+        <HsText variant="caption" tone="secondary">
           Pick where to post it below.
-        </Text>
+        </HsText>
       </View>
     );
   }
@@ -289,16 +294,20 @@ function DetectedScoreSuggestion({
     : `Post to ${suggestion.title} — we'll add it to your games`;
 
   return (
-    <View style={styles.suggestionBox} testID="share-game-detection-suggestion">
+    <View
+      style={[styles.suggestionBox, styles.suggestionBoxActive]}
+      testID="share-game-detection-suggestion"
+    >
       <View style={styles.suggestionHeader}>
         <View style={styles.suggestionText}>
-          <Text variant="label">{label} score detected</Text>
-          <Text variant="caption" tone="muted" numberOfLines={2}>
+          <HsText variant="label">{label} score detected</HsText>
+          <HsText variant="caption" tone="secondary" numberOfLines={2}>
             {destination}
-          </Text>
+          </HsText>
         </View>
-        <Button
+        <HsButton
           label="Post"
+          variant="primary"
           size="md"
           disabled={pending}
           loading={pending}
@@ -306,6 +315,30 @@ function DetectedScoreSuggestion({
           testID="share-game-post-suggestion"
         />
       </View>
+    </View>
+  );
+}
+
+// Sharp-cornered replacement for the old @workshop/ui EmptyState: a quiet
+// surface1 card with a system heading and caption.
+function EmptyBox({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <View style={styles.emptyBox}>
+      <HsText variant="heading" style={styles.emptyTitle}>
+        {title}
+      </HsText>
+      <HsText variant="caption" tone="secondary" style={styles.emptyDescription}>
+        {description}
+      </HsText>
+      {action ? <View style={styles.emptyAction}>{action}</View> : null}
     </View>
   );
 }
@@ -323,6 +356,7 @@ function GameRow({
   title,
   subtitle,
   iconUrl,
+  selected,
   disabled,
   loading,
   onPress,
@@ -331,6 +365,7 @@ function GameRow({
   title: string;
   subtitle: string;
   iconUrl: Game["iconUrl"];
+  selected: boolean;
   disabled: boolean;
   loading: boolean;
   onPress: () => void;
@@ -345,6 +380,7 @@ function GameRow({
       testID={testID}
       style={({ pressed }) => [
         styles.gameRow,
+        selected && styles.gameRowSelected,
         pressed && !disabled && styles.gameRowPressed,
         disabled && !loading && styles.disabledRow,
       ]}
@@ -357,21 +393,21 @@ function GameRow({
         />
       ) : (
         <View style={[styles.gameThumb, styles.gameThumbPlaceholder]}>
-          <Text style={styles.gameThumbGlyph}>🏆</Text>
+          <HsText style={styles.gameThumbGlyph}>🏆</HsText>
         </View>
       )}
       <View style={styles.rowBody}>
-        <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
+        <HsText variant="label" numberOfLines={1}>
           {title}
-        </Text>
-        <Text variant="caption" tone="muted" numberOfLines={1}>
+        </HsText>
+        <HsText variant="caption" tone="secondary" numberOfLines={1}>
           {subtitle}
-        </Text>
+        </HsText>
       </View>
       {loading ? (
-        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <ActivityIndicator color={hs.color.primary} size="small" />
       ) : (
-        <Text style={styles.rowChevron}>{">"}</Text>
+        <PixelIcon name="chevron-right" size={16} />
       )}
     </Pressable>
   );
@@ -401,130 +437,121 @@ function shortHost(url: string | null): string | null {
 
 const styles = StyleSheet.create({
   root: {
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: hs.color.bg,
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
-    paddingRight: tokens.space.lg,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    gap: hs.space.xs,
+    paddingHorizontal: hs.space.sm,
+    paddingRight: hs.space.lg,
+    paddingTop: hs.space.xl,
+    paddingBottom: hs.space.sm,
   },
   navButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: hs.radius.hard,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
-  title: { fontSize: tokens.font.size.xl },
+  navButtonPressed: { backgroundColor: hs.color.surface3 },
+  headerTitleBlock: { flex: 1, minWidth: 0, gap: hs.space.sm, paddingTop: 4 },
   payloadPill: {
+    ...hsBezel,
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: tokens.space.md,
+    paddingHorizontal: hs.space.md,
     paddingVertical: 4,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    backgroundColor: hs.color.surface1,
     maxWidth: "100%",
   },
   payloadDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
-    backgroundColor: tokens.accent.default,
+    backgroundColor: hs.color.primary,
   },
   payloadText: { flexShrink: 1 },
-  center: { alignItems: "center", justifyContent: "center", padding: tokens.space.xl },
+  center: { alignItems: "center", justifyContent: "center", padding: hs.space.xl },
   body: {
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.lg,
+    paddingHorizontal: hs.space.lg,
+    paddingBottom: hs.space.xxl,
+    gap: hs.space.lg,
   },
   suggestionBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
+    ...hsBezel,
+    gap: hs.space.sm,
+    padding: hs.space.md,
+    backgroundColor: hs.color.surface1,
   },
+  suggestionBoxActive: { borderLeftColor: hs.color.primary },
   suggestionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: hs.space.md,
   },
   suggestionText: { flex: 1, minWidth: 0, gap: 2 },
-  loadingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: hs.space.sm },
   scoreBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
+    ...hsBezel,
+    gap: hs.space.sm,
+    padding: hs.space.md,
+    backgroundColor: hs.color.surface1,
   },
   scoreHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: tokens.space.md,
+    gap: hs.space.md,
   },
   scoreInput: {
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius.hard,
     minHeight: 116,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    paddingHorizontal: hs.space.md,
+    paddingVertical: hs.space.sm,
+    color: hs.color.textPrimary,
+    fontSize: hs.font.size.md,
+    backgroundColor: hs.color.surface2,
     textAlignVertical: "top",
   },
+  scoreInputFocused: { borderColor: hs.color.primary },
   gameSectionHeader: { gap: 2 },
-  gameSectionTitle: { fontSize: tokens.font.size.md },
-  gameList: { gap: tokens.space.sm },
+  gameList: { gap: hs.space.sm },
   gameRow: {
+    ...hsBezel,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    gap: hs.space.md,
+    padding: hs.space.md,
+    backgroundColor: hs.color.surface1,
     minHeight: 76,
   },
-  gameRowPressed: { backgroundColor: tokens.bg.surface },
+  gameRowSelected: { borderLeftColor: hs.color.primary },
+  gameRowPressed: { backgroundColor: hs.color.surface3 },
   disabledRow: { opacity: 0.55 },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
-  rowTitle: { color: tokens.text.primary },
-  rowChevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
+  emptyBox: {
+    ...hsBezel,
+    alignItems: "center",
+    gap: hs.space.sm,
+    padding: hs.space.xl,
+    backgroundColor: hs.color.surface1,
   },
+  emptyTitle: { textAlign: "center" },
+  emptyDescription: { textAlign: "center" },
+  emptyAction: { marginTop: hs.space.xs },
   gameThumb: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface2,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   gameThumbGlyph: {
-    fontSize: tokens.font.size.lg,
+    fontSize: hs.font.size.lg,
   },
 });

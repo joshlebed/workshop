@@ -1,15 +1,16 @@
-import { Button, Text, tokens } from "@workshop/ui";
 import { useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { Wordmark } from "../../src/components/Wordmark";
 import { useAuth } from "../../src/hooks/useAuth";
+import { HsButton, HsText, hs } from "../../src/theme";
 
 export default function DisplayName() {
   const { setDisplayName } = useAuth();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
 
   const trimmed = value.trim();
   const canSubmit = trimmed.length >= 1 && trimmed.length <= 40 && !busy;
@@ -34,36 +35,39 @@ export default function DisplayName() {
       <View style={styles.form}>
         <View style={styles.brandBlock}>
           <Wordmark />
-          <Text tone="secondary">Pick a name for the leaderboard.</Text>
+          <HsText tone="secondary">Pick a name for the leaderboard.</HsText>
         </View>
-        <Text variant="label" tone="secondary" style={styles.label}>
+        <HsText variant="pixelTitle" style={styles.title}>
           Display name
-        </Text>
+        </HsText>
         <TextInput
           testID="display-name-input"
           value={value}
           onChangeText={setValue}
           placeholder="Ada Lovelace"
-          placeholderTextColor={tokens.text.muted}
+          placeholderTextColor={hs.color.textSecondary}
           autoFocus
           autoComplete="name"
           maxLength={40}
-          style={styles.input}
+          style={[styles.input, focused && styles.inputFocused]}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onSubmitEditing={handleSave}
           returnKeyType="done"
         />
-        <Button
+        <HsButton
           testID="display-name-save"
           label="Continue"
+          variant="primary"
           size="lg"
           disabled={!canSubmit}
           loading={busy}
           onPress={handleSave}
         />
         {error ? (
-          <Text tone="danger" style={styles.error}>
+          <HsText tone="danger" style={styles.error}>
             {error}
-          </Text>
+          </HsText>
         ) : null}
       </View>
     </KeyboardAvoidingView>
@@ -73,29 +77,30 @@ export default function DisplayName() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.xxl,
+    backgroundColor: hs.color.bg,
+    paddingHorizontal: hs.space.xl,
+    paddingVertical: hs.space.xxl,
     justifyContent: "center",
-    gap: tokens.space.xxl,
+    gap: hs.space.xxl,
   },
   form: {
-    gap: tokens.space.md,
+    gap: hs.space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
   },
-  brandBlock: { gap: tokens.space.sm, marginBottom: tokens.space.md },
-  label: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
+  brandBlock: { gap: hs.space.sm, marginBottom: hs.space.md },
+  title: { fontSize: 14, lineHeight: 22 },
   input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius.hard,
+    paddingHorizontal: hs.space.lg,
     paddingVertical: 14,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
+    color: hs.color.textPrimary,
+    fontSize: hs.font.size.lg,
+    backgroundColor: hs.color.surface2,
   },
-  error: { textAlign: "center", marginTop: tokens.space.xs },
+  inputFocused: { borderColor: hs.color.primary },
+  error: { textAlign: "center", marginTop: hs.space.xs },
 });

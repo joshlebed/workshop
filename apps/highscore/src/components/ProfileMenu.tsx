@@ -3,7 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { Avatar, Button, Sheet, Text, tokens, useToast } from "@workshop/ui";
+import { Avatar, Sheet, useToast } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -11,6 +11,37 @@ import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "reac
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
 import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes";
+import { HsButton, HsText, hs, hsBezel, PixelIcon, type PixelIconName } from "../theme";
+
+function MenuRow({
+  label,
+  icon,
+  danger = false,
+  testID,
+  onPress,
+}: {
+  label: string;
+  icon: PixelIconName;
+  danger?: boolean;
+  testID?: string;
+  onPress: () => void;
+}) {
+  const color = danger ? hs.color.danger : hs.color.textSecondary;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      testID={testID}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
+      <PixelIcon name={icon} size={16} color={color} />
+      <HsText variant="body" tone={danger ? "danger" : "primary"} style={styles.rowLabel}>
+        {label}
+      </HsText>
+    </Pressable>
+  );
+}
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -58,13 +89,24 @@ export function ProfileMenu() {
         />
         {pending > 0 ? (
           <View style={styles.badge}>
-            <Text variant="caption" tone="onAccent" style={styles.badgeText}>
+            <HsText variant="caption" tone="onNeon" style={styles.badgeText}>
               {pending > 9 ? "9+" : pending}
-            </Text>
+            </HsText>
           </View>
         ) : null}
       </Pressable>
-      <Sheet visible={open} onRequestClose={() => setOpen(false)} testID="profile-menu-sheet">
+      <Sheet
+        visible={open}
+        onRequestClose={() => setOpen(false)}
+        testID="profile-menu-sheet"
+        contentStyle={{
+          backgroundColor: hs.color.surface1,
+          borderTopWidth: 2,
+          borderColor: hs.color.border,
+          borderTopLeftRadius: 0,
+          borderTopRightRadius: 0,
+        }}
+      >
         <View style={styles.content}>
           <View style={styles.identity}>
             <Avatar
@@ -73,51 +115,52 @@ export function ProfileMenu() {
               size="lg"
             />
             <View style={styles.identityText}>
-              <Text variant="heading" numberOfLines={1}>
+              <HsText variant="heading" numberOfLines={1}>
                 {user?.displayName ?? "HighScore"}
-              </Text>
-              <Text variant="caption" tone="muted" numberOfLines={1}>
+              </HsText>
+              <HsText variant="caption" tone="secondary" numberOfLines={1}>
                 {user?.email ?? ""}
-              </Text>
+              </HsText>
             </View>
           </View>
-          <Button
+          <MenuRow
             label="Edit profile"
-            variant="secondary"
+            icon="edit"
             testID="open-edit-profile"
             onPress={() => {
               setOpen(false);
               router.push("/profile");
             }}
           />
-          <Button
+          <MenuRow
             label={pending > 0 ? `Friends (${pending})` : "Friends"}
+            icon="users"
             onPress={() => {
               setOpen(false);
               router.push("/friends");
             }}
           />
-          <Button
+          <MenuRow
             label="Send feedback"
-            variant="secondary"
+            icon="mail"
             testID="send-feedback"
             onPress={onSendFeedback}
           />
           {/* Both routes are public pages (see src/lib/publicRoutes.ts), so the
               in-app push lands on the same content Apple sees at the published
               highscore.live URLs — on native and web alike. */}
-          <Button
+          <MenuRow
             label="Support"
-            variant="ghost"
+            icon="external-link"
             testID="open-support"
             onPress={() => {
               setOpen(false);
               router.push(SUPPORT_ROUTE);
             }}
           />
-          <Button
+          <MenuRow
             label="Privacy policy"
-            variant="ghost"
+            icon="external-link"
             testID="open-privacy"
             onPress={() => {
               setOpen(false);
@@ -125,9 +168,10 @@ export function ProfileMenu() {
             }}
           />
           <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
-          <Button
+          <MenuRow
             label="Sign out"
-            variant="ghost"
+            icon="logout"
+            danger
             testID="sign-out"
             onPress={() => {
               setOpen(false);
@@ -203,10 +247,10 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
       impersonation.adminDisplayName?.trim() || impersonation.adminEmail || "Admin";
     return (
       <View style={impersonationStyles.form} testID="admin-impersonation-status">
-        <Text variant="caption" tone="muted" style={impersonationStyles.note}>
+        <HsText variant="caption" tone="secondary" style={impersonationStyles.note}>
           Impersonating. Started by {adminLabel}.
-        </Text>
-        <Button
+        </HsText>
+        <HsButton
           label="Stop impersonating"
           variant="secondary"
           loading={busy}
@@ -221,7 +265,7 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
 
   if (!editing) {
     return (
-      <Button
+      <HsButton
         label="Admin: impersonate user"
         variant="secondary"
         onPress={() => setEditing(true)}
@@ -244,7 +288,7 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
           selectDisabled ? impersonationStyles.selectDisabled : null,
         ]}
       >
-        <Text
+        <HsText
           variant="label"
           numberOfLines={1}
           style={[
@@ -260,10 +304,8 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
                 : targets.length === 0
                   ? "No users with email"
                   : "Select a user")}
-        </Text>
-        <Text variant="label" tone="muted" style={impersonationStyles.selectChevron}>
-          {dropdownOpen ? "⌃" : "⌄"}
-        </Text>
+        </HsText>
+        <PixelIcon name={dropdownOpen ? "chevron-up" : "chevron-down"} size={16} />
       </Pressable>
       {dropdownOpen && !selectDisabled ? (
         <ScrollView
@@ -291,13 +333,13 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
                   pressed ? impersonationStyles.optionPressed : null,
                 ]}
               >
-                <Text variant="label" numberOfLines={1} style={impersonationStyles.optionEmail}>
+                <HsText variant="label" numberOfLines={1}>
                   {targetUser.email}
-                </Text>
+                </HsText>
                 {displayName ? (
-                  <Text variant="caption" tone="muted" numberOfLines={1}>
+                  <HsText variant="caption" tone="secondary" numberOfLines={1}>
                     {displayName}
-                  </Text>
+                  </HsText>
                 ) : null}
               </Pressable>
             );
@@ -306,10 +348,10 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
       ) : null}
       {targetsQuery.isError ? (
         <View style={impersonationStyles.retryRow}>
-          <Text variant="caption" tone="muted" style={impersonationStyles.retryText}>
+          <HsText variant="caption" tone="secondary" style={impersonationStyles.retryText}>
             User emails could not be loaded.
-          </Text>
-          <Button
+          </HsText>
+          <HsButton
             label="Retry"
             size="md"
             variant="secondary"
@@ -320,15 +362,16 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
         </View>
       ) : null}
       <View style={impersonationStyles.actions}>
-        <Button
+        <HsButton
           label="Sign in"
           size="md"
+          variant="secondary"
           disabled={!target.trim() || busy}
           loading={busy}
           onPress={onImpersonate}
           testID="admin-impersonation-submit"
         />
-        <Button
+        <HsButton
           label="Cancel"
           size="md"
           variant="ghost"
@@ -350,9 +393,9 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: hs.radius.hard,
   },
-  pressed: { backgroundColor: tokens.bg.elevated },
+  pressed: { backgroundColor: hs.color.surface3 },
   badge: {
     position: "absolute",
     right: 0,
@@ -360,66 +403,75 @@ const styles = StyleSheet.create({
     minWidth: 17,
     height: 17,
     paddingHorizontal: 3,
-    borderRadius: 9,
+    borderRadius: hs.radius.hard,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.default,
+    backgroundColor: hs.color.primary,
     borderWidth: 2,
-    borderColor: tokens.bg.canvas,
+    borderColor: hs.color.bg,
   },
-  badgeText: { fontSize: 9, lineHeight: 11, fontWeight: tokens.font.weight.bold },
-  content: { gap: tokens.space.md },
-  identity: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  badgeText: { fontSize: 9, lineHeight: 11, fontWeight: hs.font.weight.bold },
+  content: { gap: hs.space.xs },
+  identity: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: hs.space.md,
+    marginBottom: hs.space.md,
+  },
   identityText: { flex: 1, minWidth: 0 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: hs.space.md,
+    paddingVertical: hs.space.md,
+    paddingHorizontal: hs.space.sm,
+    borderRadius: hs.radius.hard,
+  },
+  rowPressed: { backgroundColor: hs.color.surface3 },
+  rowLabel: { flex: 1, minWidth: 0 },
 });
 
 const impersonationStyles = StyleSheet.create({
-  form: { gap: tokens.space.sm },
+  form: { gap: hs.space.sm },
   select: {
+    ...hsBezel,
     minHeight: 44,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
+    paddingHorizontal: hs.space.md,
     paddingVertical: 10,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: hs.color.surface2,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
   },
-  selectPressed: { backgroundColor: tokens.bg.elevated },
-  selectDisabled: { borderColor: tokens.border.subtle },
-  selectText: { flex: 1, minWidth: 0, color: tokens.text.primary },
-  selectPlaceholder: { color: tokens.text.muted },
-  selectChevron: {
-    width: 18,
-    textAlign: "center",
-    color: tokens.text.muted,
-  },
+  selectPressed: { backgroundColor: hs.color.surface3 },
+  selectDisabled: { opacity: 0.6 },
+  selectText: { flex: 1, minWidth: 0 },
+  selectPlaceholder: { color: hs.color.textSecondary },
   optionList: {
+    ...hsBezel,
     maxHeight: 220,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: hs.color.surface2,
   },
   option: {
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
+    paddingHorizontal: hs.space.md,
+    paddingVertical: hs.space.sm,
     gap: 2,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    borderBottomColor: hs.color.border,
   },
-  optionPressed: { backgroundColor: tokens.bg.elevated },
-  optionSelected: { backgroundColor: tokens.accent.muted },
-  optionEmail: { color: tokens.text.primary },
+  optionPressed: { backgroundColor: hs.color.surface3 },
+  optionSelected: {
+    backgroundColor: hs.color.surface3,
+    borderLeftWidth: 2,
+    borderLeftColor: hs.color.primary,
+  },
   retryRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
     flexWrap: "wrap",
   },
   retryText: { flex: 1, minWidth: 160 },
-  actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
-  note: { paddingHorizontal: tokens.space.xs },
+  actions: { flexDirection: "row", gap: hs.space.sm, flexWrap: "wrap" },
+  note: { paddingHorizontal: hs.space.xs },
 });

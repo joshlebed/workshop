@@ -6,8 +6,8 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { HsText, hs, hsBezel } from "../../../theme";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -22,7 +22,7 @@ interface FriendGameSuggestionsProps {
   games: DiscoveryGame[];
   /** Game ids whose add request is currently in flight (spinner on Add). */
   addingGameIds: string[];
-  /** Game ids added this session — the row flips to a "✓ Added" pill. */
+  /** Game ids added this session — the row flips to a "✓ Added" marker. */
   addedGameIds: string[];
   onAdd: (game: DiscoveryGame) => void;
   /**
@@ -61,28 +61,31 @@ export function FriendGameSuggestions({
                   accessibilityIgnoresInvertColors
                 />
               ) : (
-                <Text style={styles.coverGlyph}>🎮</Text>
+                <HsText style={styles.coverGlyph}>🎮</HsText>
               )}
             </View>
             <View style={styles.text}>
-              <Text variant="label" numberOfLines={1} style={styles.title}>
+              <HsText variant="label" numberOfLines={1} style={styles.title}>
                 {dg.game.title}
-              </Text>
+              </HsText>
               {hideFriendLine ? null : (
-                <Text variant="caption" tone="muted" numberOfLines={1}>
+                <HsText variant="caption" tone="secondary" numberOfLines={1}>
                   {friendsPlayLine(dg.friends)}
-                </Text>
+                </HsText>
               )}
             </View>
             {owned ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
-                <Text style={styles.addedText} numberOfLines={1}>
+              <View style={styles.addedMarker} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
+                <HsText variant="label" tone="secondary" numberOfLines={1}>
                   ✓ In your games
-                </Text>
+                </HsText>
               </View>
             ) : added ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
+              <View style={styles.addedMarker} testID={`${testIDPrefix}-added-${dg.game.id}`}>
+                {/* Chartreuse is earned — this add just succeeded. */}
+                <HsText variant="label" tone="success">
+                  ✓ Added
+                </HsText>
               </View>
             ) : (
               <Pressable
@@ -99,9 +102,9 @@ export function FriendGameSuggestions({
                 ]}
               >
                 {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
+                  <ActivityIndicator size="small" color={hs.color.primary} />
                 ) : (
-                  <Text style={styles.addLabel}>Add</Text>
+                  <HsText style={styles.addLabel}>Add</HsText>
                 )}
               </Pressable>
             )}
@@ -115,60 +118,52 @@ export function FriendGameSuggestions({
 const COVER = 40;
 
 const styles = StyleSheet.create({
-  list: { gap: tokens.space.sm },
+  list: { gap: hs.space.sm },
   row: {
+    ...hsBezel,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: hs.space.md,
+    paddingVertical: hs.space.md,
+    paddingHorizontal: hs.space.md,
+    backgroundColor: hs.color.surface1,
   },
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface2,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
+  coverImage: { width: COVER, height: COVER, borderRadius: hs.radius.hard },
   coverGlyph: { fontSize: 20 },
   text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  title: { fontSize: hs.font.size.md, color: hs.color.textPrimary },
+  // Pink is the one interactive color — quiet bezeled button, pink label.
   addBtn: {
+    ...hsBezel,
     minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: hs.space.md,
+    paddingVertical: hs.space.sm,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    backgroundColor: hs.color.surface2,
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  addBtnHover: { backgroundColor: hs.color.surface3 },
   addBtnBusy: { opacity: 0.8 },
   addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    // Small-size pink reads muddy at 13px — use the tint per DESIGN.md.
+    color: hs.color.primaryTint,
+    fontSize: hs.font.size.sm,
+    fontWeight: hs.font.weight.semibold,
   },
-  addedPill: {
+  addedMarker: {
     minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: hs.space.md,
+    paddingVertical: hs.space.sm,
     alignItems: "center",
     justifyContent: "center",
-  },
-  addedText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
   },
 });

@@ -42,9 +42,10 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
+import { Avatar, Sheet } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { HsButton, HsText, hs, hsBezel } from "../../theme";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -101,6 +102,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
 }: GameScorePasteSheetProps<T>) {
   const [snapshot, setSnapshot] = useState<T | null>(item);
   const [draft, setDraft] = useState("");
+  const [focused, setFocused] = useState(false);
   const [chosen, setChosen] = useState<ScoreCandidate | null>(null);
   const [direction, setDirection] = useState<GameScoreDirection>("desc");
   // The user's include/exclude taps on recap-preview lines, keyed by raw line
@@ -227,18 +229,25 @@ export function GameScorePasteSheet<T extends { title: string }>({
       onRequestClose={onClose}
       onClosed={() => setSnapshot(null)}
       testID="game-paste-sheet"
+      contentStyle={{
+        backgroundColor: hs.color.surface1,
+        borderTopWidth: 2,
+        borderColor: hs.color.border,
+        borderTopLeftRadius: 0,
+        borderTopRightRadius: 0,
+      }}
     >
       {snapshot ? (
         <>
           <View style={styles.header}>
             <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
             <View style={styles.headerText}>
-              <Text variant="heading" numberOfLines={1}>
+              <HsText variant="heading" numberOfLines={1}>
                 Played {snapshot.title}?
-              </Text>
-              <Text variant="caption" tone="muted">
+              </HsText>
+              <HsText variant="caption" tone="secondary">
                 Paste your result to log today's score.
-              </Text>
+              </HsText>
             </View>
           </View>
           <TextInput
@@ -246,23 +255,32 @@ export function GameScorePasteSheet<T extends { title: string }>({
             value={draft}
             onChangeText={editDraft}
             placeholder={"Paste your result here"}
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={hs.color.textSecondary}
             multiline
             maxLength={2000}
             autoFocus
-            style={styles.input}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={[styles.input, focused && styles.inputFocused]}
             {...webProps}
           />
           {preview ? (
-            <Text variant="caption" tone="muted" testID="game-paste-preview">
-              {preview.value !== null
-                ? `Recording score: ${preview.value}`
-                : "Couldn't read a score in this. It'll post as “Played”."}
-            </Text>
+            <HsText variant="caption" tone="secondary" testID="game-paste-preview">
+              {preview.value !== null ? (
+                <>
+                  {"Recording score: "}
+                  <HsText variant="pixelSmall" tone="success">
+                    {String(preview.value)}
+                  </HsText>
+                </>
+              ) : (
+                "Couldn't read a score in this. It'll post as “Played”."
+              )}
+            </HsText>
           ) : null}
           {showTeach ? (
             <View style={styles.teach} testID="game-paste-teach">
-              <Text variant="caption" tone="muted">
+              <HsText variant="caption" tone="secondary">
                 {chosen
                   ? taught
                     ? `Got it. We'll record ${taught.expectedValue} and score this game the same way from now on.`
@@ -270,22 +288,25 @@ export function GameScorePasteSheet<T extends { title: string }>({
                   : reteaching
                     ? "Tap the score to re-teach this game:"
                     : "New game! Tap your score so we can rank it:"}
-              </Text>
+              </HsText>
               <View style={styles.chips}>
-                {candidates.map((c) => (
-                  <Chip
-                    key={`${c.kind}-${c.start}-${c.text}`}
-                    label={c.label}
-                    selected={chosen?.start === c.start && chosen?.kind === c.kind}
-                    onPress={() => pickCandidate(c)}
-                    testID={`game-paste-candidate-${c.kind}-${c.start}`}
-                  />
-                ))}
+                {candidates.map((c) => {
+                  const selected = chosen?.start === c.start && chosen?.kind === c.kind;
+                  return (
+                    <TeachChip
+                      key={`${c.kind}-${c.start}-${c.text}`}
+                      label={c.label}
+                      selected={selected}
+                      onPress={() => pickCandidate(c)}
+                      testID={`game-paste-candidate-${c.kind}-${c.start}`}
+                    />
+                  );
+                })}
               </View>
               {taught ? (
                 <View style={styles.chips}>
                   {(["asc", "desc"] as const).map((dir) => (
-                    <Chip
+                    <TeachChip
                       key={dir}
                       label={dir === "asc" ? "Lower is better" : "Higher is better"}
                       selected={direction === dir}
@@ -297,9 +318,9 @@ export function GameScorePasteSheet<T extends { title: string }>({
               ) : null}
               {taught && summaryEditable ? (
                 <View style={styles.summary} testID="game-paste-summary">
-                  <Text variant="caption" tone="muted">
+                  <HsText variant="caption" tone="secondary">
                     Tap a line to leave it out of recaps:
-                  </Text>
+                  </HsText>
                   <View style={styles.summaryBox}>
                     {summaryLines.map((line) => {
                       // Reflect what will actually render: with no learned
@@ -312,29 +333,30 @@ export function GameScorePasteSheet<T extends { title: string }>({
                           hitSlop={4}
                           testID={`game-paste-summary-line-${line.index}`}
                         >
-                          <Text
+                          <HsText
                             style={[styles.summaryLine, !included && styles.summaryLineExcluded]}
                             numberOfLines={1}
                           >
                             {line.text}
-                          </Text>
+                          </HsText>
                         </Pressable>
                       );
                     })}
                   </View>
                   {summaryTrimFailed ? (
-                    <Text variant="caption" tone="muted" testID="game-paste-summary-fallback">
+                    <HsText variant="caption" tone="secondary" testID="game-paste-summary-fallback">
                       Couldn't trim it that way. The full result will show.
-                    </Text>
+                    </HsText>
                   ) : null}
                 </View>
               ) : null}
             </View>
           ) : null}
           <View style={styles.actions}>
-            <Button label="Cancel" variant="ghost" onPress={onClose} disabled={pending} />
-            <Button
+            <HsButton label="Cancel" variant="ghost" onPress={onClose} disabled={pending} />
+            <HsButton
               label="Post score"
+              variant="primary"
               onPress={submit}
               disabled={empty || pending}
               loading={pending}
@@ -347,57 +369,98 @@ export function GameScorePasteSheet<T extends { title: string }>({
   );
 }
 
+// Sharp-cornered replacement for the old @workshop/ui Chip: surface2 fill,
+// 2px bezel, pink border + label when selected (pink is the one interactive
+// color — no fills, no pills).
+function TeachChip({
+  label,
+  selected,
+  onPress,
+  testID,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      testID={testID}
+      style={({ pressed }) => [
+        styles.chip,
+        selected && styles.chipSelected,
+        pressed && styles.chipPressed,
+      ]}
+    >
+      <HsText variant="label" style={selected ? styles.chipLabelSelected : undefined}>
+        {label}
+      </HsText>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: hs.space.md,
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
   input: {
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius.hard,
     minHeight: 120,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    backgroundColor: tokens.bg.canvas,
+    paddingHorizontal: hs.space.md,
+    paddingVertical: hs.space.md,
+    color: hs.color.textPrimary,
+    fontSize: hs.font.size.sm,
+    backgroundColor: hs.color.surface2,
     textAlignVertical: "top",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    lineHeight: tokens.font.size.sm + 6,
+    lineHeight: hs.font.size.sm + 6,
   },
-  teach: { gap: tokens.space.sm },
+  inputFocused: { borderColor: hs.color.primary },
+  teach: { gap: hs.space.sm },
   chips: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
   },
-  summary: { gap: tokens.space.sm },
+  chip: {
+    ...hsBezel,
+    backgroundColor: hs.color.surface2,
+    paddingHorizontal: hs.space.md,
+    paddingVertical: hs.space.xs + 2,
+  },
+  chipSelected: { borderColor: hs.color.primary },
+  chipPressed: { backgroundColor: hs.color.surface3 },
+  chipLabelSelected: { color: hs.color.primary },
+  summary: { gap: hs.space.sm },
   summaryBox: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    backgroundColor: tokens.bg.canvas,
+    ...hsBezel,
+    paddingHorizontal: hs.space.md,
+    paddingVertical: hs.space.sm,
+    backgroundColor: hs.color.surface2,
     gap: 2,
   },
   summaryLine: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 6,
+    color: hs.color.textPrimary,
+    fontSize: hs.font.size.sm,
+    lineHeight: hs.font.size.sm + 6,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
   summaryLineExcluded: {
-    color: tokens.text.muted,
+    color: hs.color.textSecondary,
     textDecorationLine: "line-through",
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: hs.space.md,
   },
 });
