@@ -7,6 +7,7 @@ They are web-render approximations; native iPhone captures are the higher-fideli
 
 - `6.9-inch/`: 1320 × 2868 PNGs
 - `6.5-inch/`: 1284 × 2778 PNGs
+- `native-6.5-inch/`: 1284 × 2778 real-device PNGs, ready for App Store Connect
 - `raw/`: unframed 440 × 956 source captures
 
 ## Regenerate
@@ -19,6 +20,13 @@ node scripts/compose-highscore-appstore-screenshots.mjs
 
 The script requires `ffmpeg` with SVG support and writes opaque RGB PNGs at both required
 App Store sizes.
+
+Real-device screenshots captured at 1290 × 2796 can be normalized for the 6.5-inch App Store
+Connect slot without stretching:
+
+```bash
+node scripts/normalize-highscore-native-screenshot.mjs input.png output.png
+```
 
 ## Native replacement shot list
 
