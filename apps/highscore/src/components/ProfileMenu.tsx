@@ -10,6 +10,7 @@ import { useCallback, useState } from "react";
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
+import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -101,6 +102,27 @@ export function ProfileMenu() {
             variant="secondary"
             testID="send-feedback"
             onPress={onSendFeedback}
+          />
+          {/* Both routes are public pages (see src/lib/publicRoutes.ts), so the
+              in-app push lands on the same content Apple sees at the published
+              highscore.live URLs — on native and web alike. */}
+          <Button
+            label="Support"
+            variant="ghost"
+            testID="open-support"
+            onPress={() => {
+              setOpen(false);
+              router.push(SUPPORT_ROUTE);
+            }}
+          />
+          <Button
+            label="Privacy policy"
+            variant="ghost"
+            testID="open-privacy"
+            onPress={() => {
+              setOpen(false);
+              router.push(PRIVACY_ROUTE);
+            }}
           />
           <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
           <Button
