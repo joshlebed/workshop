@@ -3,7 +3,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { Avatar, IconButton, Screen, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
@@ -17,6 +17,7 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import { HsButton, HsText, hs, PixelIcon } from "../theme";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -25,6 +26,7 @@ export default function EditProfile() {
   const [name, setName] = useState(user?.displayName ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
   const [busy, setBusy] = useState(false);
+  const [nameFocused, setNameFocused] = useState(false);
 
   const initialName = user?.displayName ?? "";
   const initialAvatar = user?.avatarUrl ?? null;
@@ -63,19 +65,19 @@ export default function EditProfile() {
     <Screen style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
+          <HsText variant="caption" tone="secondary" style={styles.headerEyebrow}>
             Account
-          </Text>
-          <Text variant="heading" numberOfLines={1}>
+          </HsText>
+          <HsText variant="pixelTitle" numberOfLines={1}>
             Edit profile
-          </Text>
+          </HsText>
         </View>
         <IconButton
           accessibilityLabel="Close profile editor"
           onPress={() => goBack("/")}
           testID="profile-edit-close"
         >
-          <Text style={styles.closeGlyph}>✕</Text>
+          <PixelIcon name="close" size={24} />
         </IconButton>
       </View>
 
@@ -83,7 +85,7 @@ export default function EditProfile() {
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
-        bottomOffset={tokens.space.lg}
+        bottomOffset={hs.space.lg}
       >
         <View style={styles.avatarSection}>
           <Avatar
@@ -94,7 +96,7 @@ export default function EditProfile() {
             testID="profile-edit-avatar"
           />
           <View style={styles.avatarButtons}>
-            <Button
+            <HsButton
               testID="profile-photo-pick"
               label={avatarUrl ? "Change photo" : "Upload photo"}
               variant="secondary"
@@ -102,7 +104,7 @@ export default function EditProfile() {
               onPress={onPickPhoto}
             />
             {avatarUrl ? (
-              <Button
+              <HsButton
                 testID="profile-photo-remove"
                 label="Remove"
                 variant="secondary"
@@ -114,40 +116,43 @@ export default function EditProfile() {
         </View>
 
         <View style={styles.field}>
-          <Text variant="caption" tone="muted">
+          <HsText variant="caption" tone="secondary">
             Display name
-          </Text>
+          </HsText>
           <TextInput
             testID="profile-display-name"
             value={name}
             onChangeText={setName}
             placeholder="Ada Lovelace"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={hs.color.textSecondary}
             autoComplete="name"
             maxLength={40}
-            style={styles.input}
+            style={[styles.input, nameFocused && styles.inputFocused]}
+            onFocus={() => setNameFocused(true)}
+            onBlur={() => setNameFocused(false)}
             returnKeyType="done"
             onSubmitEditing={onSave}
           />
-          <Text variant="caption" tone="muted" style={styles.hint}>
+          <HsText variant="caption" tone="secondary" style={styles.hint}>
             Shown to friends on your leaderboards.
-          </Text>
+          </HsText>
         </View>
 
         {user?.email ? (
           <View style={styles.field}>
-            <Text variant="caption" tone="muted">
+            <HsText variant="caption" tone="secondary">
               Email
-            </Text>
-            <Text tone="secondary" numberOfLines={1}>
+            </HsText>
+            <HsText tone="secondary" numberOfLines={1}>
               {user.email}
-            </Text>
+            </HsText>
           </View>
         ) : null}
 
-        <Button
+        <HsButton
           testID="profile-save"
           label="Save changes"
+          variant="primary"
           size="lg"
           disabled={!canSave}
           loading={busy}
@@ -197,126 +202,123 @@ function DeleteAccountSection() {
 
   return (
     <View style={dangerStyles.section} testID="danger-zone">
-      <View style={dangerStyles.divider} />
-      <Text variant="caption" tone="muted" style={dangerStyles.eyebrow}>
+      <HsText variant="caption" tone="secondary" style={dangerStyles.eyebrow}>
         Danger zone
-      </Text>
+      </HsText>
 
-      {step === "idle" ? null : (
-        <View style={dangerStyles.confirmCard} testID="account-delete-confirm-card">
-          <Text variant="label">Delete your account permanently?</Text>
-          {ACCOUNT_DELETION_CONSEQUENCES.map((line) => (
-            <Text key={line} variant="caption" tone="secondary">
-              • {line}
-            </Text>
-          ))}
-          <View style={dangerStyles.confirmActions}>
-            <Button
-              testID="account-delete-confirm"
-              label="Delete my account"
+      <View style={dangerStyles.zone}>
+        {step === "idle" ? null : (
+          <View style={dangerStyles.confirmCard} testID="account-delete-confirm-card">
+            <HsText variant="label">Delete your account permanently?</HsText>
+            {ACCOUNT_DELETION_CONSEQUENCES.map((line) => (
+              <HsText key={line} variant="caption" tone="secondary">
+                • {line}
+              </HsText>
+            ))}
+            <View style={dangerStyles.confirmActions}>
+              <HsButton
+                testID="account-delete-confirm"
+                label="Delete my account"
+                variant="danger"
+                size="md"
+                loading={deleting}
+                disabled={deleting}
+                onPress={onConfirmDelete}
+              />
+              <HsButton
+                testID="account-delete-cancel"
+                label="Cancel"
+                variant="ghost"
+                size="md"
+                disabled={deleting}
+                onPress={() => setStep((s) => nextDeletionStep(s, "cancel"))}
+              />
+            </View>
+          </View>
+        )}
+        {step === "idle" ? (
+          <>
+            <HsText variant="caption" tone="secondary">
+              Deleting removes your HighScore and Workshop.dev account and all of its data. This
+              cannot be undone.
+            </HsText>
+            <HsButton
+              testID="account-delete-open"
+              label="Delete account"
               variant="danger"
               size="md"
-              loading={deleting}
-              disabled={deleting}
-              onPress={onConfirmDelete}
+              disabled={blocked !== null}
+              onPress={() => setStep((s) => nextDeletionStep(s, "open"))}
             />
-            <Button
-              testID="account-delete-cancel"
-              label="Cancel"
-              variant="ghost"
-              size="md"
-              disabled={deleting}
-              onPress={() => setStep((s) => nextDeletionStep(s, "cancel"))}
-            />
-          </View>
-        </View>
-      )}
-      {step === "idle" ? (
-        <>
-          <Text variant="caption" tone="muted">
-            Deleting removes your HighScore and Workshop.dev account and all of its data. This
-            cannot be undone.
-          </Text>
-          <Button
-            testID="account-delete-open"
-            label="Delete account"
-            variant="danger"
-            size="md"
-            disabled={blocked !== null}
-            onPress={() => setStep((s) => nextDeletionStep(s, "open"))}
-          />
-          {blocked === "impersonating" ? (
-            <Text variant="caption" tone="muted" testID="account-delete-blocked">
-              Stop impersonating before deleting an account.
-            </Text>
-          ) : null}
-        </>
-      ) : null}
+            {blocked === "impersonating" ? (
+              <HsText variant="caption" tone="secondary" testID="account-delete-blocked">
+                Stop impersonating before deleting an account.
+              </HsText>
+            ) : null}
+          </>
+        ) : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: hs.color.bg },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-    gap: tokens.space.md,
+    paddingHorizontal: hs.space.lg,
+    paddingTop: hs.space.lg,
+    paddingBottom: hs.space.md,
+    gap: hs.space.md,
   },
-  headerText: { flex: 1, minWidth: 0, gap: 2 },
+  headerText: { flex: 1, minWidth: 0, gap: hs.space.xs },
   headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
   body: {
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.xl,
+    paddingHorizontal: hs.space.lg,
+    paddingBottom: hs.space.xxl,
+    gap: hs.space.xl,
   },
   avatarSection: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
+    gap: hs.space.lg,
   },
-  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
-  avatarButtons: { flex: 1, gap: tokens.space.sm },
-  field: { gap: tokens.space.sm },
+  avatarPreview: { width: 72, height: 72, borderRadius: hs.radius.hard },
+  avatarButtons: { flex: 1, gap: hs.space.sm },
+  field: { gap: hs.space.sm },
   input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius.hard,
+    paddingHorizontal: hs.space.lg,
     paddingVertical: 14,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
+    color: hs.color.textPrimary,
+    fontSize: hs.font.size.lg,
+    backgroundColor: hs.color.surface2,
   },
-  hint: { marginTop: tokens.space.xs },
-  saveButton: { marginTop: tokens.space.sm },
+  inputFocused: { borderColor: hs.color.primary },
+  hint: { marginTop: hs.space.xs },
+  saveButton: { marginTop: hs.space.sm },
 });
 
 const dangerStyles = StyleSheet.create({
-  section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginBottom: tokens.space.md,
-  },
+  section: { gap: hs.space.sm, marginTop: hs.space.lg },
   eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  confirmCard: {
-    gap: tokens.space.sm,
-    padding: tokens.space.lg,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.status.danger,
-    backgroundColor: tokens.bg.surface,
+  zone: {
+    gap: hs.space.sm,
+    padding: hs.space.lg,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.danger,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface1,
   },
+  confirmCard: { gap: hs.space.sm },
   confirmActions: {
     flexDirection: "row",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
     flexWrap: "wrap",
-    marginTop: tokens.space.xs,
+    marginTop: hs.space.xs,
   },
 });

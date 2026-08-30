@@ -23,9 +23,10 @@
 // control's own action.
 
 import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
-import { Avatar, Text, tokens } from "@workshop/ui";
+import { Avatar } from "@workshop/ui";
 import { memo } from "react";
-import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { HsText, hs, PixelIcon } from "../../theme";
 import { ScoreReactions } from "./ScoreReactions";
 
 const TOP_N = 5;
@@ -33,7 +34,7 @@ const RANK_SLOT = 20;
 const AVATAR_SM = 24;
 const COVER = 36;
 // The score block aligns under the player's name: rank slot + gap + avatar + gap.
-const SCORE_INDENT = RANK_SLOT + tokens.space.sm + AVATAR_SM + tokens.space.sm;
+const SCORE_INDENT = RANK_SLOT + hs.space.sm + AVATAR_SM + hs.space.sm;
 
 /** One scored player. `body` is the distilled score block; null → "Played". */
 export interface StandingsRow {
@@ -196,9 +197,9 @@ export const StandingsCard = memo(function StandingsCard({
                 (pressed || hovered) && styles.bodyPressed,
               ]}
             >
-              <Text variant="heading" numberOfLines={1} style={styles.title}>
+              <HsText variant="heading" numberOfLines={1} style={styles.title}>
                 {title}
-              </Text>
+              </HsText>
             </Pressable>
             {showStreak ? (
               <Pressable
@@ -221,14 +222,14 @@ export const StandingsCard = memo(function StandingsCard({
             ) : null}
           </View>
           <View style={styles.metaRow}>
-            <Text variant="caption" tone="muted" numberOfLines={1} style={styles.turnout}>
+            <HsText variant="caption" tone="secondary" numberOfLines={1} style={styles.turnout}>
               {turnout}
-            </Text>
+            </HsText>
             {ctaVisible ? (
               <>
-                <Text variant="caption" tone="muted">
+                <HsText variant="caption" tone="secondary">
                   ·
-                </Text>
+                </HsText>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Paste your ${title} result`}
@@ -242,9 +243,9 @@ export const StandingsCard = memo(function StandingsCard({
                     (pressed || hovered) && styles.pasteLinkHover,
                   ]}
                 >
-                  <Text variant="caption" tone="muted" style={styles.pasteLinkText}>
+                  <HsText variant="caption" tone="link" style={styles.pasteLinkText}>
                     paste
-                  </Text>
+                  </HsText>
                 </Pressable>
               </>
             ) : null}
@@ -280,7 +281,7 @@ export const StandingsCard = memo(function StandingsCard({
             (pressed || hovered) && styles.menuBtnHover,
           ]}
         >
-          <Text style={styles.menuGlyph}>⋯</Text>
+          <PixelIcon name="more-horizontal" size={16} />
         </Pressable>
       </View>
 
@@ -330,9 +331,9 @@ export const StandingsCard = memo(function StandingsCard({
               onLongPress={onLongPressBody}
               delayLongPress={250}
             >
-              <Text variant="caption" tone="muted" style={styles.moreLine}>
+              <HsText variant="caption" tone="secondary" style={styles.moreLine}>
                 +{overflow} more
-              </Text>
+              </HsText>
             </Pressable>
           ) : null}
         </View>
@@ -423,9 +424,10 @@ function RankMark({ rank }: { rank: number | null }) {
     );
   }
   if (rank === 1) {
+    // Yellow spotlight marker for the leader — never tappable, never pink.
     return (
-      <View style={[styles.rankSlot, styles.rankFirst]}>
-        <Text style={styles.rankFirstText}>1</Text>
+      <View style={styles.rankSlot}>
+        <PixelIcon name="trophy" size={16} color={hs.color.accent} />
       </View>
     );
   }
@@ -469,32 +471,34 @@ const styles = StyleSheet.create({
   // The slight horizontal bleed gives hover/drag backgrounds room without
   // shifting content off the column grid.
   card: {
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.sm,
-    marginHorizontal: -tokens.space.sm,
-    gap: tokens.space.sm,
+    paddingVertical: hs.space.md,
+    paddingHorizontal: hs.space.sm,
+    marginHorizontal: -hs.space.sm,
+    gap: hs.space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    borderBottomColor: hs.color.border,
   },
+  // Elevation = surface step + bezel, no soft drop shadows (Quiet Arcade).
   cardDragging: {
-    backgroundColor: tokens.bg.elevated,
-    borderRadius: tokens.radius.lg,
-    borderBottomColor: "transparent",
-    boxShadow: "0px 8px 18px rgba(0, 0, 0, 0.4)",
-    elevation: 10,
+    backgroundColor: hs.color.surface2,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius.hard,
+    borderBottomWidth: hs.bezel,
+    borderBottomColor: hs.color.border,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: hs.space.md,
   },
-  cover: { borderRadius: tokens.radius.sm },
+  cover: { borderRadius: hs.radius.hard },
   coverPressed: { opacity: 0.7 },
   coverImage: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface2,
   },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
   coverGlyph: { fontSize: 18 },
@@ -502,20 +506,20 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.xs,
+    gap: hs.space.xs,
   },
   titlePress: {
     flexShrink: 1,
     minWidth: 0,
     maxWidth: "100%",
-    paddingHorizontal: tokens.space.xs,
-    marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    paddingHorizontal: hs.space.xs,
+    marginHorizontal: -hs.space.xs,
+    borderRadius: hs.radius.hard,
   },
-  bodyPressed: { backgroundColor: tokens.bg.elevated },
-  title: { fontSize: tokens.font.size.md, lineHeight: 21, letterSpacing: 0 },
-  // The streak flame mirrors the Play pill's warm CTA treatment (amber-muted
-  // fill, accent count) so it reads as "tap to keep your run going", not decor.
+  bodyPressed: { backgroundColor: hs.color.surface2 },
+  title: { fontSize: hs.font.size.md, lineHeight: 21, letterSpacing: 0 },
+  // The streak flame is a chartreuse "earned" badge — a run in progress reads
+  // as a win, so it takes the success color, not the yellow spotlight.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
@@ -523,85 +527,89 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 1,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface2,
   },
-  streakHover: { backgroundColor: `${tokens.accent.default}33` },
+  streakHover: { backgroundColor: hs.color.surface3 },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
   // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
   streakFlame: { fontSize: 12, lineHeight: 16 },
   streakCount: {
-    fontSize: tokens.font.size.xs,
+    fontSize: hs.font.size.xs,
     lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.accent.default,
+    fontWeight: hs.font.weight.bold,
+    color: hs.color.success,
     fontVariant: ["tabular-nums"],
   },
   // The unit lives next to the bold count: "🔥 4 day streak". Lighter weight
-  // than the number so the count stays the focal point; same accent + lineHeight.
+  // than the number so the count stays the focal point; same color + lineHeight.
   streakLabel: {
-    fontSize: tokens.font.size.xs,
+    fontSize: hs.font.size.xs,
     lineHeight: 16,
-    fontWeight: tokens.font.weight.medium,
-    color: tokens.accent.default,
+    fontWeight: hs.font.weight.medium,
+    color: hs.color.success,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.xs,
+    gap: hs.space.xs,
     marginTop: 1,
   },
   turnout: { flexShrink: 1, letterSpacing: 0 },
-  pasteLink: { borderRadius: tokens.radius.sm },
-  pasteLinkHover: { backgroundColor: tokens.bg.elevated },
+  pasteLink: { borderRadius: hs.radius.hard },
+  pasteLinkHover: { backgroundColor: hs.color.surface2 },
   pasteLinkText: { textDecorationLine: "underline" },
+  // Play is tappable → pink, on a sharp bezeled chip (no pills).
   playPill: {
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: hs.space.lg,
     paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: hs.radius.hard,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface2,
   },
-  playPillHover: { backgroundColor: `${tokens.accent.default}33` },
+  playPillHover: { backgroundColor: hs.color.surface3 },
   playLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
+    color: hs.color.primary,
+    fontSize: hs.font.size.sm,
     lineHeight: 18,
-    fontWeight: tokens.font.weight.semibold,
+    fontWeight: hs.font.weight.semibold,
   },
   menuBtn: {
     width: 28,
     height: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.sm,
+    borderRadius: hs.radius.hard,
   },
-  menuBtnHover: { backgroundColor: tokens.bg.elevated },
-  menuGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg,
-  },
-  standings: { gap: tokens.space.sm },
+  menuBtnHover: { backgroundColor: hs.color.surface2 },
+  standings: { gap: hs.space.sm },
   playerRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
     paddingVertical: 4,
-    paddingHorizontal: tokens.space.xs,
-    marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    paddingHorizontal: hs.space.xs,
+    marginHorizontal: -hs.space.xs,
+    borderRadius: hs.radius.hard,
   },
   playerLine: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
   },
   // Reactions ride to the right of the score on the same line — no extra row
   // height. They keep their natural width; the score line flexes to fill.
   reactionsWrap: { flexShrink: 0 },
-  playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
+  // The 2px pink left edge marks the viewer's own row (Quiet Arcade active
+  // treatment); the "you" pill keeps it non-color-only.
+  playerRowMe: {
+    borderLeftWidth: 2,
+    borderLeftColor: hs.color.primary,
+    backgroundColor: hs.color.surface1,
+  },
   rankSlot: {
     width: RANK_SLOT,
     height: RANK_SLOT,
@@ -609,72 +617,70 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   rankText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    color: hs.color.textSecondary,
+    fontSize: hs.font.size.sm,
+    fontWeight: hs.font.weight.semibold,
     fontVariant: ["tabular-nums"],
   },
-  rankDot: { color: tokens.text.muted, fontSize: tokens.font.size.md },
-  rankFirst: {
-    borderRadius: RANK_SLOT / 2,
-    backgroundColor: tokens.accent.default,
-  },
-  rankFirstText: {
-    color: tokens.text.onAccent,
-    fontSize: tokens.font.size.xs,
-    fontWeight: tokens.font.weight.bold,
-    fontVariant: ["tabular-nums"],
-  },
+  rankDot: { color: hs.color.textSecondary, fontSize: hs.font.size.md },
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface2,
+    borderWidth: 1,
+    borderColor: hs.color.border,
   },
   youPillText: {
     fontSize: 10,
-    fontWeight: tokens.font.weight.semibold,
+    fontWeight: hs.font.weight.semibold,
     letterSpacing: 0.5,
-    color: tokens.accent.default,
+    color: hs.color.textSecondary,
     textTransform: "uppercase",
   },
+  // Score numerals in the standings column set in the pixel face — Press
+  // Start 2P is effectively monospace, so score columns align. Names stay
+  // out of the row entirely (identity rides on the avatar).
   scoreBody: {
     flex: 1,
-    color: tokens.text.secondary,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 5,
+    color: hs.color.textSecondary,
+    fontFamily: hs.font.pixel,
+    fontSize: 10,
+    lineHeight: 16,
+    letterSpacing: 1,
   },
-  scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
+  scoreBodyMuted: { color: hs.color.textSecondary, opacity: 0.6 },
   pinnedDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginVertical: tokens.space.xs,
+    backgroundColor: hs.color.border,
+    marginVertical: hs.space.xs,
     marginLeft: SCORE_INDENT,
   },
   moreLine: {
     paddingLeft: SCORE_INDENT,
     paddingTop: 2,
   },
-  facepile: { flexDirection: "row", paddingLeft: COVER + tokens.space.md },
+  facepile: { flexDirection: "row", paddingLeft: COVER + hs.space.md },
+  // The ring hugs the (shared, circular) Avatar, so it stays round — squaring
+  // just the ring around a circle would read broken.
   faceWrap: {
     borderWidth: 2,
-    borderColor: tokens.bg.canvas,
+    borderColor: hs.color.bg,
     borderRadius: 999,
     opacity: 0.45,
   },
   faceOverlap: { marginLeft: -10 },
-  skeletonWrap: { gap: tokens.space.sm },
-  skeletonRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  skeletonWrap: { gap: hs.space.sm },
+  skeletonRow: { flexDirection: "row", alignItems: "center", gap: hs.space.sm },
   skeletonDot: {
     width: AVATAR_SM,
     height: AVATAR_SM,
     borderRadius: AVATAR_SM / 2,
-    backgroundColor: tokens.bg.elevated,
+    backgroundColor: hs.color.surface2,
   },
   skeletonBar: {
     height: 10,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.surface2,
   },
 });

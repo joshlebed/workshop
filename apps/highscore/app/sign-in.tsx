@@ -1,9 +1,10 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+import { GoogleSignInButton } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { HsButton, HsText, hs } from "../src/theme";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -59,14 +60,14 @@ export default function SignIn() {
       <View style={styles.topSpacer} />
       <View style={styles.brandBlock}>
         <Wordmark size="lg" />
-        <Text tone="secondary">Compete in daily games</Text>
+        <HsText tone="secondary">Compete in daily games</HsText>
       </View>
 
       <View style={styles.actions}>
-        <Button
+        <HsButton
           testID="sign-in-apple"
           label="Continue with Apple"
-          variant="secondary"
+          variant="primary"
           size="lg"
           loading={busy === "apple"}
           disabled={busy !== null || !apple.available}
@@ -82,12 +83,12 @@ export default function SignIn() {
           <>
             <View style={styles.divider} accessibilityElementsHidden>
               <View style={styles.dividerLine} />
-              <Text tone="muted" style={styles.dividerText}>
+              <HsText tone="secondary" style={styles.dividerText}>
                 or
-              </Text>
+              </HsText>
               <View style={styles.dividerLine} />
             </View>
-            <Button
+            <HsButton
               testID="sign-in-dev"
               label="Dev sign-in"
               variant="ghost"
@@ -99,14 +100,14 @@ export default function SignIn() {
           </>
         ) : null}
         {!apple.available && !GOOGLE_CONFIGURED && !DEV_AUTH_ENABLED ? (
-          <Text tone="muted" style={styles.help} testID="sign-in-providers-unconfigured">
+          <HsText tone="secondary" style={styles.help} testID="sign-in-providers-unconfigured">
             Sign-in providers are still being configured.
-          </Text>
+          </HsText>
         ) : null}
         {error ? (
-          <Text tone="danger" style={styles.error}>
+          <HsText tone="danger" style={styles.error}>
             {error}
-          </Text>
+          </HsText>
         ) : null}
       </View>
 
@@ -118,10 +119,10 @@ export default function SignIn() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.xxl,
-    gap: tokens.space.xxl,
+    backgroundColor: hs.color.bg,
+    paddingHorizontal: hs.space.xl,
+    paddingVertical: hs.space.xxl,
+    gap: hs.space.xxl,
   },
   // Push the brand block to ~38% from the top — purely-vertical centering on
   // desktop leaves a void above the wordmark; this brings it closer to where
@@ -129,29 +130,29 @@ const styles = StyleSheet.create({
   topSpacer: { flex: 0.7 },
   bottomSpacer: { flex: 1 },
   brandBlock: {
-    gap: tokens.space.md,
+    gap: hs.space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
   },
   actions: {
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
   },
-  error: { textAlign: "center", marginTop: tokens.space.xs },
-  help: { textAlign: "center", marginTop: tokens.space.xs },
+  error: { textAlign: "center", marginTop: hs.space.xs },
+  help: { textAlign: "center", marginTop: hs.space.xs },
   divider: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.xs,
+    gap: hs.space.sm,
+    paddingVertical: hs.space.xs,
   },
   dividerLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    backgroundColor: hs.color.border,
   },
   dividerText: {
     fontSize: 11,

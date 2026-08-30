@@ -7,8 +7,8 @@
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
-import { Text, tokens } from "@workshop/ui";
-import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { hs } from "../../theme";
 import { shiftDateKey } from "../lib/gameDate";
 
 const DEFAULT_LENGTH = 7;
@@ -33,7 +33,7 @@ export function DayRail({
   onSelectDate,
   length = DEFAULT_LENGTH,
   testIDPrefix = "day",
-  horizontalInset = tokens.space.xl,
+  horizontalInset = hs.space.xl,
 }: DayRailProps) {
   const days: { key: string; label: string }[] = [];
   for (let i = 0; i < length; i++) {
@@ -48,6 +48,7 @@ export function DayRail({
     >
       {days.map((d) => {
         const selected = d.key === selectedDate;
+        const isToday = d.key === today;
         return (
           <Pressable
             key={d.key}
@@ -62,9 +63,9 @@ export function DayRail({
               pressed && styles.chipPressed,
             ]}
           >
-            <Text variant="label" style={[styles.chipText, selected && styles.chipTextSelected]}>
-              {d.label}
-            </Text>
+            {/* Yellow "today" spotlight marker — decoration, never tappable. */}
+            {isToday ? <View style={styles.todayDot} /> : null}
+            <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{d.label}</Text>
           </Pressable>
         );
       })}
@@ -84,21 +85,38 @@ function dayChipLabel(key: string, today: string): string {
 
 const styles = StyleSheet.create({
   rail: {
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
   },
+  // Underline tabs, not pills: sharp corners, a 2px pink edge marks the
+  // active day (Quiet Arcade selected treatment).
   chip: {
-    paddingHorizontal: tokens.space.md,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: hs.space.xs,
+    paddingHorizontal: hs.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: hs.radius.none,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
   },
   chipSelected: {
-    backgroundColor: tokens.accent.muted,
-    borderColor: tokens.accent.default,
+    borderBottomColor: hs.color.primary,
   },
   chipPressed: { opacity: 0.75 },
-  chipText: { fontSize: tokens.font.size.sm, color: tokens.text.secondary },
-  chipTextSelected: { color: tokens.accent.default, fontWeight: tokens.font.weight.semibold },
+  todayDot: {
+    width: 6,
+    height: 6,
+    borderRadius: hs.radius.hard,
+    backgroundColor: hs.color.accent,
+  },
+  chipText: {
+    fontSize: hs.font.size.sm,
+    lineHeight: 18,
+    fontWeight: hs.font.weight.medium,
+    color: hs.color.textSecondary,
+  },
+  chipTextSelected: {
+    color: hs.color.primary,
+    fontWeight: hs.font.weight.semibold,
+  },
 });

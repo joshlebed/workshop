@@ -6,8 +6,8 @@
 // inert with no add button.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { hs } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];
@@ -69,48 +69,51 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: tokens.space.xs,
+    gap: hs.space.xs,
   },
+  // Sharp-cornered chips on a raised surface; the viewer's own reaction is a
+  // selection, so it takes the pink edge.
   chip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius.hard,
+    borderWidth: 1,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface2,
   },
   chipActive: {
-    borderColor: tokens.accent.default,
-    backgroundColor: tokens.accent.muted,
+    borderColor: hs.color.primary,
+    backgroundColor: hs.color.surface3,
   },
-  chipHover: { backgroundColor: tokens.bg.surface },
+  chipHover: { backgroundColor: hs.color.surface3 },
   chipEmoji: { fontSize: 13, lineHeight: 18 },
   chipCount: {
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.secondary,
+    fontWeight: hs.font.weight.semibold,
+    color: hs.color.textSecondary,
     fontVariant: ["tabular-nums"],
   },
-  chipCountActive: { color: tokens.accent.default },
+  // Small pink text uses the tint so the count stays legible at 11px.
+  chipCountActive: { color: hs.color.primaryTint },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderRadius: hs.radius.hard,
+    borderWidth: 1,
+    borderColor: hs.color.border,
   },
   addFace: { fontSize: 12, lineHeight: 16, opacity: 0.7 },
   addPlus: {
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.muted,
+    fontWeight: hs.font.weight.bold,
+    color: hs.color.textSecondary,
     marginLeft: 1,
   },
 });

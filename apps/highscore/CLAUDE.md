@@ -57,3 +57,15 @@ so it is `1.0.0` for the initial Store release — an OTA only reaches builds th
 device family would make App Store Connect require a second screenshot set. Flipping it back is a
 native change: bump `version` in the same PR, and expect a fresh TestFlight build plus iPad
 screenshots before the next submission.
+
+## Theme (Quiet Arcade)
+
+`apps/highscore/DESIGN.md` is the binding visual spec; the implementation is the app-owned
+token layer in `src/theme/` (`hs` tokens, `HsText`, `HsButton`, `PixelIcon`, `hsBezel`,
+`hsGlow`). Dark-only — never reintroduce `useColorScheme()` into HighScore styling. Do not
+import visual tokens (`tokens`, `Text`, `Button`, `Card`) from `@workshop/ui`; structural
+shared components (`Sheet`, `Screen`, `useToast`, `PullToRefresh`, `Avatar`) may remain but
+get restyled via style props. Press Start 2P loads in `app/_layout.tsx` and is reserved for
+the wordmark, top-level screen titles, and hero score numerals; everything else is system
+font. Pixelarticons path data is inlined in `src/theme/PixelIcon.tsx` (MIT) and rendered via
+`react-native-svg` — add new icons there, keeping sizes on the 24px grid.

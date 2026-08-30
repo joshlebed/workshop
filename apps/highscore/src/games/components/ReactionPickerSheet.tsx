@@ -5,9 +5,10 @@
 // current emoji is highlighted and a Remove row is offered.
 
 import { isReactionEmoji, REACTION_QUICK_EMOJIS } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
+import { Sheet } from "@workshop/ui";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { HsButton, HsText, hs } from "../../theme";
 
 export interface ReactionPickerSheetProps {
   visible: boolean;
@@ -42,11 +43,16 @@ export function ReactionPickerSheet({
   const draftValid = isReactionEmoji(draft);
 
   return (
-    <Sheet visible={visible} onRequestClose={onClose} testID="reaction-picker-sheet">
+    <Sheet
+      visible={visible}
+      onRequestClose={onClose}
+      testID="reaction-picker-sheet"
+      contentStyle={styles.sheetContent}
+    >
       <View style={styles.header}>
-        <Text variant="heading" numberOfLines={1}>
+        <HsText variant="heading" numberOfLines={1}>
           {targetName ? `React to ${targetName}'s score` : "React to this score"}
-        </Text>
+        </HsText>
       </View>
 
       <View style={styles.quickBar}>
@@ -74,13 +80,13 @@ export function ReactionPickerSheet({
             value={draft}
             onChangeText={setDraft}
             placeholder="Type or paste an emoji"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={hs.color.textSecondary}
             autoFocus
             maxLength={32}
             style={styles.moreInput}
             testID="reaction-more-input"
           />
-          <Button
+          <HsButton
             label="React"
             size="md"
             disabled={!draftValid}
@@ -99,9 +105,9 @@ export function ReactionPickerSheet({
             (pressed || hovered) && styles.moreLinkHover,
           ]}
         >
-          <Text variant="caption" tone="secondary" style={styles.moreLinkText}>
+          <HsText variant="caption" tone="link" style={styles.moreLinkText}>
             More…
-          </Text>
+          </HsText>
         </Pressable>
       )}
 
@@ -121,68 +127,78 @@ export function ReactionPickerSheet({
 }
 
 const styles = StyleSheet.create({
-  header: { gap: 4, marginBottom: tokens.space.md },
+  // Sheets are surface1 with the standard 2px bezel on the top edge — sharp
+  // corners, no rounding.
+  sheetContent: {
+    backgroundColor: hs.color.surface1,
+    borderTopWidth: 2,
+    borderColor: hs.color.border,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+  },
+  header: { gap: 4, marginBottom: hs.space.md },
   quickBar: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: tokens.space.sm,
+    gap: hs.space.sm,
   },
   quickEmoji: {
     width: 48,
     height: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: hs.radius.hard,
+    borderWidth: 1,
+    borderColor: hs.color.border,
+    backgroundColor: hs.color.surface2,
   },
+  // The viewer's current reaction is a selection → pink edge.
   quickEmojiActive: {
-    borderColor: tokens.accent.default,
-    backgroundColor: tokens.accent.muted,
+    borderColor: hs.color.primary,
+    backgroundColor: hs.color.surface3,
   },
-  quickEmojiHover: { backgroundColor: tokens.bg.surface },
+  quickEmojiHover: { backgroundColor: hs.color.surface3 },
   quickEmojiGlyph: { fontSize: 26, lineHeight: 32 },
   moreRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
-    marginTop: tokens.space.md,
+    gap: hs.space.sm,
+    marginTop: hs.space.md,
   },
   moreInput: {
+    borderWidth: hs.bezel,
+    borderColor: hs.color.border,
+    borderRadius: hs.radius.hard,
     flex: 1,
     minHeight: 44,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.canvas,
+    paddingHorizontal: hs.space.md,
+    color: hs.color.textPrimary,
+    fontSize: hs.font.size.lg,
+    backgroundColor: hs.color.surface2,
   },
   moreLink: {
     alignSelf: "flex-start",
-    marginTop: tokens.space.sm,
-    paddingVertical: tokens.space.xs,
-    paddingHorizontal: tokens.space.xs,
-    marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    marginTop: hs.space.sm,
+    paddingVertical: hs.space.xs,
+    paddingHorizontal: hs.space.xs,
+    marginHorizontal: -hs.space.xs,
+    borderRadius: hs.radius.hard,
   },
-  moreLinkHover: { backgroundColor: tokens.bg.elevated },
+  moreLinkHover: { backgroundColor: hs.color.surface2 },
   moreLinkText: { textDecorationLine: "underline" },
   removeRow: {
-    marginTop: tokens.space.md,
-    paddingVertical: tokens.space.md,
+    marginTop: hs.space.md,
+    paddingVertical: hs.space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: hs.radius.hard,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: tokens.border.subtle,
+    borderTopColor: hs.color.border,
   },
-  removePressed: { backgroundColor: tokens.bg.elevated },
+  removePressed: { backgroundColor: hs.color.surface2 },
   removeLabel: {
-    color: tokens.status.danger,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    color: hs.color.danger,
+    fontSize: hs.font.size.md,
+    fontWeight: hs.font.weight.semibold,
   },
 });

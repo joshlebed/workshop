@@ -27,23 +27,19 @@ import type {
   MyGame,
 } from "@workshop/shared/games";
 import {
-  Button,
-  CopyIcon,
   confirm,
-  EmptyState,
   HomeHeader,
   haptics,
   homeLayout,
   openExternalUrl,
   Screen,
   Sheet,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { HsButton, HsText, hs, hsGlow, PixelIcon } from "../../theme";
 import {
   addGame,
   createGameShareLink,
@@ -441,7 +437,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           title={mg.game.title}
           coverImageUrl={mg.game.iconUrl}
           coverGlyph="🎮"
-          accent={tokens.accent.default}
+          accent={hs.color.primary}
           isDragging={isDragging}
           turnout={turnoutLine(rows.length, standings?.viewerHasPlayed ?? false, viewingToday)}
           // Streak rides on the today-pinned `mg` (not the rail's viewed day) so
@@ -506,9 +502,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               ]}
             >
               {copyingScores ? (
-                <ActivityIndicator size="small" color={tokens.text.primary} />
+                <ActivityIndicator size="small" color={hs.color.textSecondary} />
               ) : (
-                <CopyIcon size={20} color={tokens.text.primary} />
+                <PixelIcon name="copy" size={24} />
               )}
             </Pressable>
             {headerTrailing}
@@ -519,17 +515,19 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       <View style={styles.body}>
         {gamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={hs.color.primary} />
           </View>
         ) : gamesQuery.isError ? (
           <View style={styles.center}>
-            <EmptyState
-              title="Couldn't load your games"
-              description={errorMessage(gamesQuery.error)}
-              action={
-                <Button label="Retry" variant="secondary" onPress={() => gamesQuery.refetch()} />
-              }
-            />
+            <View style={styles.errorState}>
+              <HsText variant="heading" style={styles.errorTitle}>
+                Couldn't load your games
+              </HsText>
+              <HsText tone="secondary" style={styles.errorBody}>
+                {errorMessage(gamesQuery.error)}
+              </HsText>
+              <HsButton label="Retry" variant="secondary" onPress={() => gamesQuery.refetch()} />
+            </View>
           </View>
         ) : isEmpty ? (
           <GamesOnboarding
@@ -579,9 +577,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         ]}
         testID="fab-add-game"
       >
-        <Text style={styles.fabGlyph} tone="onAccent">
-          +
-        </Text>
+        <PixelIcon name="plus" size={24} color={hs.color.textOnNeon} />
       </Pressable>
 
       <AddGameSheet
@@ -633,17 +629,19 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           }
         }}
         testID="game-menu-sheet"
+        contentStyle={sheetContentStyle}
       >
         {menuGame ? (
           <>
             <View style={styles.sheetHeader}>
-              <Text variant="heading" numberOfLines={1}>
+              <HsText variant="heading" numberOfLines={1}>
                 {menuGame.game.title}
-              </Text>
+              </HsText>
             </View>
             <View style={styles.sheetActions}>
-              <Button
+              <HsButton
                 testID="game-menu-open"
+                variant="secondary"
                 label="Open game"
                 onPress={() => {
                   setMenuGame(null);
@@ -653,7 +651,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               {user?.isAdmin && isGameReteachable(menuGame.game) ? (
                 <>
                   <View style={styles.sheetDivider} />
-                  <Button
+                  <HsButton
                     testID="game-menu-reteach"
                     variant="ghost"
                     label="Re-teach scoring"
@@ -678,7 +676,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
                   pressed && styles.sheetDangerPressed,
                 ]}
               >
-                <Text style={styles.sheetDangerLabel}>Remove from My Games</Text>
+                <HsText style={styles.sheetDangerLabel}>Remove from My Games</HsText>
               </Pressable>
             </View>
           </>
@@ -688,12 +686,22 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   );
 }
 
+// Quiet Arcade sheet chrome: surface.1 fill, 2px bezel on the top edge, sharp
+// corners (see DESIGN.md — no pills, no rounded cards).
+const sheetContentStyle = {
+  backgroundColor: hs.color.surface1,
+  borderTopWidth: hs.bezel,
+  borderColor: hs.color.border,
+  borderTopLeftRadius: hs.radius.none,
+  borderTopRightRadius: hs.radius.none,
+} as const;
+
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.lg,
+    backgroundColor: hs.color.bg,
+    paddingTop: hs.space.lg,
+    paddingBottom: hs.space.lg,
   },
   body: { flex: 1 },
   headerIconBtn: {
@@ -701,56 +709,57 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: hs.radius.hard,
   },
-  headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
+  headerIconBtnHover: { backgroundColor: hs.color.surface2 },
   headerIconBtnDisabled: { opacity: 0.6 },
   dayRail: {
-    paddingBottom: tokens.space.sm,
+    paddingBottom: hs.space.sm,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: tokens.space.lg,
+    padding: hs.space.lg,
   },
+  errorState: { alignItems: "center", gap: hs.space.md, maxWidth: 420 },
+  errorTitle: { textAlign: "center" },
+  errorBody: { textAlign: "center" },
+  // The one glowing primary CTA on this screen (DESIGN.md: glow is reserved
+  // for the primary action). Sharp corners, pink fill, dark glyph.
   fab: {
     position: "absolute",
     right: homeLayout.horizontalInset,
     bottom: homeLayout.horizontalInset,
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: tokens.accent.default,
+    borderRadius: hs.radius.hard,
+    borderWidth: hs.bezel,
+    borderColor: hs.color.primary,
+    backgroundColor: hs.color.primary,
     alignItems: "center",
     justifyContent: "center",
-    // Calm neutral elevation, not an amber glow (see DESIGN.md "calm by default").
-    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
-    elevation: 5,
+    ...hsGlow(hs.color.primaryGlow),
   },
-  fabHovered: {
-    backgroundColor: tokens.accent.hover,
-    transform: [{ scale: 1.04 }],
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
+  fabHovered: { opacity: 0.9 },
+  fabPressed: { opacity: 0.85 },
   sheetHeader: { gap: 4 },
-  sheetActions: { gap: tokens.space.sm },
+  sheetActions: { gap: hs.space.sm },
   sheetDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginVertical: tokens.space.xs,
+    backgroundColor: hs.color.border,
+    marginVertical: hs.space.xs,
   },
   sheetDangerRow: {
-    paddingVertical: tokens.space.md,
+    paddingVertical: hs.space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: hs.radius.hard,
   },
-  sheetDangerPressed: { backgroundColor: `${tokens.status.danger}1A` },
+  sheetDangerPressed: { backgroundColor: hs.color.surface2 },
   sheetDangerLabel: {
-    color: tokens.status.danger,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    color: hs.color.danger,
+    fontSize: hs.font.size.md,
+    fontWeight: hs.font.weight.semibold,
   },
 });
