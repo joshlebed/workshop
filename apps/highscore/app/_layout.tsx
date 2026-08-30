@@ -17,6 +17,7 @@ import {
 } from "../src/games/lib/inviteStash";
 import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
+import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
 
 configureApiClient({ client: "highscore" });
@@ -82,9 +83,15 @@ function AuthGate() {
   const segments = rawSegments.filter((segment) => !segment.startsWith("("));
   const router = useRouter();
   const postSignInResolvedRef = useRef(false);
+  // `/support` and `/privacy` are published App Store URLs: they must render
+  // for a signed-out visitor, and must survive an unreachable API. Everything
+  // auth-shaped below — the redirects and the two interstitials — steps aside
+  // for them.
+  const onPublicRoute = isPublicRoute(segments);
 
   useEffect(() => {
     if (status === "loading" || status === "unavailable") return;
+    if (onPublicRoute) return;
     const first = segments[0];
     const onSignIn = first === "sign-in";
     const onOnboarding = first === "onboarding";
@@ -116,9 +123,9 @@ function AuthGate() {
       }
       router.replace("/");
     })();
-  }, [status, segments, router]);
+  }, [status, segments, router, onPublicRoute]);
 
-  if (status === "loading") {
+  if (status === "loading" && !onPublicRoute) {
     return (
       <View style={centered}>
         <ActivityIndicator color={tokens.accent.default} />
@@ -126,7 +133,7 @@ function AuthGate() {
     );
   }
 
-  if (status === "unavailable") {
+  if (status === "unavailable" && !onPublicRoute) {
     return (
       <SafeAreaView
         edges={["top", "bottom"]}
@@ -166,6 +173,8 @@ function AuthGate() {
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="profile" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="support" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="privacy" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="onboarding/display-name" />
       </Stack>
