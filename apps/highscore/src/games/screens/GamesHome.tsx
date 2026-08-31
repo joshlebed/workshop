@@ -69,6 +69,7 @@ import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
+import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
@@ -623,6 +624,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       />
 
       <AppUpdateBanner />
+      <ShareAnnouncementCard />
 
       <View style={styles.body}>
         {gamesQuery.isPending ? (

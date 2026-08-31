@@ -48,6 +48,11 @@ export const USER_FLAG_KEYS = {
   appUpdateDismissed: "app.update-banner-dismissed",
   /** HighScore's one-time "daily nudge?" pre-prompt was answered (`{ choice, at }`). */
   playReminderPrompted: "games.play-reminder-prompted",
+  // One-time share-sheet announcement on HighScore's Games home. Client-
+  // authored: `{ dismissedAt }` when X'd away, `{ completedAt }` when the
+  // walkthrough finished. Server-side so a reinstall/second device never
+  // re-blasts a user who already dealt with it.
+  shareSheetAnnouncement: "games.share-sheet-announcement",
 } as const;
 
 // Operator-set "update from the App Store" nudge (`client_releases`, read by

@@ -33,6 +33,8 @@ import { isPublicRoute } from "../src/lib/publicRoutes";
 import { addResponseListener, notificationPath } from "../src/lib/pushNotifications";
 import { registerPushTokenIfGranted } from "../src/lib/pushRegistration";
 import { createQueryClient } from "../src/lib/query";
+import { isSharePractice } from "../src/lib/shareOnboarding";
+import { markSharePracticeReceived } from "../src/lib/sharePractice";
 import { Button, Text, ToastProvider, tokens } from "../src/theme";
 
 configureApiClient({ client: "highscore" });
@@ -99,6 +101,14 @@ function useShareIntentRedirect(status: ReturnType<typeof useAuth>["status"]): b
     const params = new URLSearchParams();
     const webUrl = shareIntent?.webUrl?.trim();
     const text = shareIntent?.text?.trim();
+    // The share-setup walkthrough's practice share coming back: confirm the
+    // setup worked rather than offering to post it as a score.
+    if (isSharePractice(text)) {
+      markSharePracticeReceived();
+      router.navigate("/share-setup?tested=1" as Href);
+      resetShareIntent();
+      return;
+    }
     if (webUrl) params.set("url", webUrl);
     if (text) params.set("text", text);
     const query = params.toString();
@@ -284,6 +294,7 @@ function AuthGate() {
         <Stack.Screen name="admin/index" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="admin/analytics" />
         <Stack.Screen name="admin/graph" />
+        <Stack.Screen name="share-setup" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="support" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="privacy" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="terms" options={{ animation: "slide_from_right" }} />
