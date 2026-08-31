@@ -337,6 +337,13 @@
       "when": 1791430660370,
       "tag": "0047_game_direction_revisions",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791435029882,
+      "tag": "0048_game_score_entry_source_and_user_flags",
+      "breakpoints": true
     }
   ]
 }

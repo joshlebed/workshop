@@ -4,6 +4,7 @@
 // re-exports, so the client must import this file directly —
 // `import { normalizeGameUrl } from "@workshop/shared/games"`.
 
+import type { GameScoreEntrySource } from "./constants.js";
 import type { ScoreFeature, ScoreFeatureRole, ScorePick } from "./scoreCandidates.js";
 import type { ScoreSpec } from "./scoreParsing.js";
 import type { SummarySpec } from "./summarySpec.js";
@@ -278,6 +279,8 @@ export interface UpsertGameScoreRequest {
   previewSeen?: boolean;
   /** The wrong-game warning the player answered, if one was shown. */
   wrongGame?: { gameId: string; choice: "here" | "there" };
+  /** The surface the post came from (share-panel adoption observability). */
+  entrySource?: GameScoreEntrySource;
 }
 
 /** `POST /v1/games/:id/scores/:periodKey/pick` — "Fix score" on the caller's own row. */
@@ -381,6 +384,13 @@ export interface RecognizedGame {
 
 export interface RecognizeGameResponse {
   match: RecognizedGame | null;
+}
+
+/** `GET /v1/users/me/flags` — all of the caller's `user_flags` rows as a map.
+ * Keys are the constants in `@workshop/shared/constants` (USER_FLAG_KEYS);
+ * values are small client- or server-authored JSON blobs. */
+export interface UserFlagsResponse {
+  flags: Record<string, unknown>;
 }
 
 /** `PUT /v1/games/:id/score-spec` — teach a non-registry game its parser. */
