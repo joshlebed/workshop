@@ -379,7 +379,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       taught?: TaughtScoreSpec;
     }) => {
       if (taught) await setGameScoreSpec(game.id, taught, token);
-      return upsertGameScore(game.id, { periodKey: todayKey, scoreRaw }, token);
+      return upsertGameScore(game.id, { periodKey: todayKey, scoreRaw, source: "paste" }, token);
     },
     onSuccess: async (_data, { game }) => {
       haptics.medium();

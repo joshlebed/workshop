@@ -3,6 +3,7 @@
 // `scores.ts`; nothing here touches `/v1/items` or `/v1/lists`.
 
 import { apiRequest } from "@workshop/api-client/api";
+import type { GameScoreSource } from "@workshop/shared/constants";
 import type {
   AddGameResponse,
   GameDiscoveryResponse,
@@ -95,7 +96,9 @@ export function moveGame(
 
 export function upsertGameScore(
   gameId: string,
-  body: { periodKey: string; scoreRaw: string },
+  // `source` is write provenance ("share_extension" | "paste") — observability
+  // for share-panel adoption; older clients omit it.
+  body: { periodKey: string; scoreRaw: string; source?: GameScoreSource },
   token: string | null,
 ): Promise<UpsertGameScoreResponse> {
   return apiRequest<UpsertGameScoreResponse>({

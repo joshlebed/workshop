@@ -39,6 +39,10 @@ const otherUserId = "00000000-0000-4000-8000-000000000002";
 // Seeded with an ADMIN_EMAILS address so isAdminUser() is true — used to
 // exercise the admin-only re-teach gate on PUT /:id/score-spec.
 const adminUserId = "00000000-0000-4000-8000-0000000000ad";
+// Dedicated users for the score-provenance tests, so their score writes and
+// auto-added My Games rows can't perturb the exact-count assertions elsewhere.
+const sourceUserId = "00000000-0000-4000-8000-0000000000b1";
+const legacyUserId = "00000000-0000-4000-8000-0000000000b2";
 
 function authHeaders(asUser = userId): Record<string, string> {
   return {
@@ -97,8 +101,10 @@ beforeAll(async () => {
     `INSERT INTO users (id, email, display_name) VALUES
        ($1, 'games-tester@example.com', 'Games Tester'),
        ($2, 'other@example.com', 'Other User'),
-       ($3, 'joshlebed@gmail.com', 'Admin User')`,
-    [userId, otherUserId, adminUserId],
+       ($3, 'joshlebed@gmail.com', 'Admin User'),
+       ($4, 'source-tester@example.com', 'Source Tester'),
+       ($5, 'legacy-tester@example.com', 'Legacy Tester')`,
+    [userId, otherUserId, adminUserId, sourceUserId, legacyUserId],
   );
 }, 60_000);
 
@@ -264,6 +270,96 @@ describe("PUT /v1/games/:id/scores", () => {
       body: JSON.stringify({ periodKey: "2026-06-10", scoreRaw: "x 1" }),
     });
     expect(res.status).toBe(404);
+  });
+
+  it("stores write provenance and records the first share-extension score as a durable user flag", async () => {
+    const wordle = await rows<{ id: string }>(`SELECT id FROM games WHERE game_key = 'wordle'`);
+    const gameId = wordle[0]?.id as string;
+
+    const shared = await gameRoutes.request(`/${gameId}/scores`, {
+      method: "PUT",
+      headers: authHeaders(sourceUserId),
+      body: JSON.stringify({
+        periodKey: "2026-06-11",
+        scoreRaw: "Wordle 1,450 4/6",
+        source: "share_extension",
+      }),
+    });
+    expect(shared.status).toBe(200);
+
+    const scoreRow = await rows<{ source: string | null }>(
+      `SELECT source FROM game_scores
+       WHERE game_id = $1 AND user_id = $2 AND period_key = '2026-06-11'`,
+      [gameId, sourceUserId],
+    );
+    expect(scoreRow[0]?.source).toBe("share_extension");
+
+    const flag = await rows<{ value: { firstAt?: string } }>(
+      `SELECT value FROM user_flags WHERE user_id = $1 AND key = 'games.share-extension-score'`,
+      [sourceUserId],
+    );
+    const firstAt = flag[0]?.value?.firstAt;
+    expect(typeof firstAt).toBe("string");
+
+    // A later paste re-post updates the row's source (latest write wins) but
+    // never moves the adoption marker's firstAt.
+    const pasted = await gameRoutes.request(`/${gameId}/scores`, {
+      method: "PUT",
+      headers: authHeaders(sourceUserId),
+      body: JSON.stringify({
+        periodKey: "2026-06-11",
+        scoreRaw: "Wordle 1,450 5/6",
+        source: "paste",
+      }),
+    });
+    expect(pasted.status).toBe(200);
+    const after = await rows<{ source: string | null }>(
+      `SELECT source FROM game_scores
+       WHERE game_id = $1 AND user_id = $2 AND period_key = '2026-06-11'`,
+      [gameId, sourceUserId],
+    );
+    expect(after[0]?.source).toBe("paste");
+    const flagAfter = await rows<{ value: { firstAt?: string } }>(
+      `SELECT value FROM user_flags WHERE user_id = $1 AND key = 'games.share-extension-score'`,
+      [sourceUserId],
+    );
+    expect(flagAfter[0]?.value?.firstAt).toBe(firstAt);
+  });
+
+  it("rejects an unknown score source", async () => {
+    const wordle = await rows<{ id: string }>(`SELECT id FROM games WHERE game_key = 'wordle'`);
+    const res = await gameRoutes.request(`/${wordle[0]?.id}/scores`, {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        periodKey: "2026-06-12",
+        scoreRaw: "Wordle 1,451 3/6",
+        source: "carrier_pigeon",
+      }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("a legacy body without source leaves the column NULL and writes no flag", async () => {
+    const wordle = await rows<{ id: string }>(`SELECT id FROM games WHERE game_key = 'wordle'`);
+    const gameId = wordle[0]?.id as string;
+    const res = await gameRoutes.request(`/${gameId}/scores`, {
+      method: "PUT",
+      headers: authHeaders(legacyUserId),
+      body: JSON.stringify({ periodKey: "2026-06-11", scoreRaw: "Wordle 1,450 2/6" }),
+    });
+    expect(res.status).toBe(200);
+    const scoreRow = await rows<{ source: string | null }>(
+      `SELECT source FROM game_scores
+       WHERE game_id = $1 AND user_id = $2 AND period_key = '2026-06-11'`,
+      [gameId, legacyUserId],
+    );
+    expect(scoreRow[0]?.source).toBeNull();
+    const flag = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM user_flags WHERE user_id = $1`,
+      [legacyUserId],
+    );
+    expect(flag[0]?.n).toBe(0);
   });
 });
 
