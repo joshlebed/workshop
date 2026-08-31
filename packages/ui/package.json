@@ -18,17 +18,17 @@
   },
   "dependencies": {
     "@workshop/api-client": "workspace:*",
-    "expo-clipboard": "~55.0.13",
-    "expo-haptics": "~55.0.14",
-    "expo-router": "55.0.14",
+    "expo-clipboard": "~57.0.1",
+    "expo-haptics": "~57.0.1",
+    "expo-router": "57.0.16",
     "react": "19.2.0",
     "react-native": "0.83.6",
-    "react-native-keyboard-controller": "1.20.7",
+    "react-native-keyboard-controller": "1.22.4",
     "react-native-reanimated": "4.2.1"
   },
   "devDependencies": {
     "@types/react": "19.2.14",
-    "expo": "55.0.24",
+    "expo": "57.0.16",
     "typescript": "5.9.3",
     "vitest": "2.1.9"
   }
