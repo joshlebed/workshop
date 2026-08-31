@@ -24,6 +24,8 @@ export const queryKeys = {
   },
   users: {
     impersonationTargets: ["users", "impersonationTargets"] as const,
+    /** `GET /v1/users/me/flags` — the caller's durable per-user flags map. */
+    flags: ["users", "flags"] as const,
   },
   invites: {
     forList: (listId: string) => ["invites", "forList", listId] as const,

@@ -29,6 +29,14 @@ send `"paste"`); the redirect also reports the intent snapshot to the log-only
 redirect — it's the only thing distinguishing a share-sheet post from a manual paste, and the
 backend derives the durable `user_flags` adoption marker from it (see root CLAUDE.md).
 
+Discoverability: the Games home shows a one-time share-sheet announcement card
+(`ShareAnnouncementCard`, gating rules in `src/lib/shareOnboarding.ts` — iOS native only, hidden
+while flags load, hidden once dismissed/completed/already-adopted) that leads into the
+`/share-setup` multi-step walkthrough (`src/screens/ShareSetupWalkthrough.tsx`, persistent entry
+also in Edit profile). Dismiss/complete state is the server-side
+`games.share-sheet-announcement` user flag — never a local storage key, so reinstalls and second
+devices don't re-blast. **Merging the announcement PR is the blast** — OTA ships ~60s after merge.
+
 ## Public pages (`/support`, `/privacy`)
 
 Both routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and

@@ -27,4 +27,9 @@ export type GameScoreSource = (typeof GAME_SCORE_SOURCES)[number];
 // no API to detect share-panel membership.
 export const USER_FLAG_KEYS = {
   shareExtensionScore: "games.share-extension-score",
+  // One-time share-sheet announcement on HighScore's Games home. Client-
+  // authored: `{ dismissedAt }` when X'd away, `{ completedAt }` when the
+  // walkthrough finished. Server-side so a reinstall/second device never
+  // re-blasts a user who already dealt with it.
+  shareSheetAnnouncement: "games.share-sheet-announcement",
 } as const;
