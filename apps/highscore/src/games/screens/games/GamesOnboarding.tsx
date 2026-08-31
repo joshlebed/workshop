@@ -10,8 +10,9 @@
 // All data + mutations live in GamesHome; this component is presentational.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, homeLayout, Text, tokens } from "@workshop/ui";
+import { homeLayout } from "@workshop/ui";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Button, bezel, colors, space, Text } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface GamesOnboardingProps {
@@ -48,7 +49,7 @@ export function GamesOnboarding({
   if (friendsLoading) {
     return (
       <View style={styles.center} testID="games-onboarding">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -61,9 +62,7 @@ export function GamesOnboarding({
         testID="games-onboarding"
       >
         <View style={styles.intro}>
-          <Text variant="heading" style={styles.introTitle}>
-            Add friends to compare scores
-          </Text>
+          <Text variant="heading">Add friends to compare scores</Text>
           <Text tone="secondary" style={styles.introBody}>
             Invite someone you play with. Their games and today's scores will show up here.
           </Text>
@@ -122,9 +121,7 @@ export function GamesOnboarding({
       testID="games-onboarding"
     >
       <View style={styles.intro}>
-        <Text variant="heading" style={styles.introTitle}>
-          Pick a first game
-        </Text>
+        <Text variant="heading">Pick a first game</Text>
         <Text tone="secondary" style={styles.introBody}>
           Add one your friends already play, or paste a game URL.
         </Text>
@@ -132,7 +129,7 @@ export function GamesOnboarding({
 
       {discoveryLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
+          <ActivityIndicator color={colors.primary} />
         </View>
       ) : discovery.length > 0 ? (
         <FriendGameSuggestions
@@ -163,35 +160,34 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: tokens.space.lg,
+    padding: space.lg,
   },
   scroll: {
     flexGrow: 1,
     paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: tokens.space.xxl,
+    paddingTop: space.xxl,
     paddingBottom: homeLayout.bottomInset,
-    gap: tokens.space.lg,
+    gap: space.lg,
   },
-  intro: { gap: tokens.space.sm, maxWidth: 420 },
-  introTitle: { fontSize: tokens.font.size.lg, lineHeight: 24 },
+  intro: { gap: space.sm, maxWidth: 420 },
   introBody: { maxWidth: 420, lineHeight: 22 },
-  ctaStack: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
+  ctaStack: { gap: space.sm, width: "100%", maxWidth: 420 },
   emptyHint: { maxWidth: 420 },
-  inviteBlock: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
+  inviteBlock: { gap: space.sm, width: "100%", maxWidth: 420 },
   inviteHint: { maxWidth: 420 },
   inviteUrlRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
   inviteUrlField: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
   },
 });

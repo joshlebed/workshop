@@ -26,9 +26,9 @@
 // inherit RN-Web's injected text font, so without this it renders in the UA
 // serif (Times). The value mirrors RN-Web's default `Text` stack exactly.
 
-import { Button, Card, Text, tokens } from "@workshop/ui";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
+import { Button, bezel, colors, font, glow, radius, space, Text } from "../../../theme";
 import type { OpenInAppCardProps } from "./impl";
 
 export type { OpenInAppCardProps } from "./impl";
@@ -46,16 +46,19 @@ const anchorStyle: CSSProperties = {
   display: "block",
   width: "100%",
   boxSizing: "border-box",
-  backgroundColor: tokens.accent.default,
-  color: tokens.text.onAccent,
+  backgroundColor: colors.primary,
+  color: colors.textOnNeon,
   textDecoration: "none",
   textAlign: "center",
   fontFamily: SYSTEM_FONT,
-  fontSize: tokens.font.size.md,
-  fontWeight: tokens.font.weight.semibold,
-  paddingTop: tokens.space.md,
-  paddingBottom: tokens.space.md,
-  borderRadius: tokens.radius.md,
+  fontSize: font.size.md,
+  fontWeight: font.weight.semibold,
+  paddingTop: space.md,
+  paddingBottom: space.md,
+  border: `${bezel}px solid ${colors.primary}`,
+  borderRadius: radius.soft,
+  // Primary-CTA neon glow (glow() returns { boxShadow } on web).
+  ...glow(colors.primaryGlow),
 };
 
 export function OpenInAppCard({ appName, url, onContinue }: OpenInAppCardProps) {
@@ -85,7 +88,7 @@ export function OpenInAppCard({ appName, url, onContinue }: OpenInAppCardProps) 
   };
 
   return (
-    <Card style={styles.card} elevated>
+    <View style={styles.card}>
       <View style={styles.header}>
         <Text style={styles.glyph}>🎮</Text>
         <Text variant="title" style={styles.title}>
@@ -109,18 +112,23 @@ export function OpenInAppCard({ appName, url, onContinue }: OpenInAppCardProps) 
         onPress={onContinue}
         testID="open-in-app-continue"
       />
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    gap: tokens.space.md,
+    gap: space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
+    backgroundColor: colors.surface1,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    padding: space.lg,
   },
-  header: { alignItems: "center", gap: tokens.space.sm },
+  header: { alignItems: "center", gap: space.sm },
   glyph: { fontSize: 40, lineHeight: 46 },
   title: { textAlign: "center" },
   body: { textAlign: "center" },

@@ -6,8 +6,8 @@
 // inert with no add button.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
+import { colors, font, radius, space, Text } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: tokens.space.xs,
+    gap: space.xs,
   },
   chip: {
     flexDirection: "row",
@@ -77,40 +77,40 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: radius.soft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface2,
   },
   chipActive: {
-    borderColor: tokens.accent.default,
-    backgroundColor: tokens.accent.muted,
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}26`,
   },
-  chipHover: { backgroundColor: tokens.bg.surface },
+  chipHover: { backgroundColor: colors.surface3 },
   chipEmoji: { fontSize: 13, lineHeight: 18 },
   chipCount: {
     fontSize: 11,
     lineHeight: 14,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.secondary,
+    fontWeight: font.weight.semibold,
+    color: colors.textSecondary,
     fontVariant: ["tabular-nums"],
   },
-  chipCountActive: { color: tokens.accent.default },
+  chipCountActive: { color: colors.primary },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderRadius: radius.soft,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   addFace: { fontSize: 12, lineHeight: 16, opacity: 0.7 },
   addPlus: {
     fontSize: 12,
     lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.muted,
+    fontWeight: font.weight.bold,
+    color: colors.textSecondary,
     marginLeft: 1,
   },
 });

@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
-import { Button, Card, Text, tokens } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
+import { Button, bezel, colors, space, Text } from "../../theme";
 import { fetchGameShareLink } from "../api/games";
 import { OpenInAppCard } from "../components/OpenInAppCard";
 import { isInAppBrowser } from "../lib/inAppBrowser";
@@ -102,7 +102,7 @@ export default function GameShareLanding() {
   if (!linkToken) {
     return (
       <Centered>
-        <Card style={styles.card} elevated>
+        <View style={styles.card}>
           <Text variant="title">Link missing token</Text>
           <Text tone="secondary">Ask your friend to send you a fresh link.</Text>
           <Button
@@ -110,7 +110,7 @@ export default function GameShareLanding() {
             onPress={() => router.replace(routes.root as Href)}
             testID="game-share-home"
           />
-        </Card>
+        </View>
       </Centered>
     );
   }
@@ -118,7 +118,7 @@ export default function GameShareLanding() {
   if (resolveQuery.isError) {
     return (
       <Centered>
-        <Card style={styles.card} elevated>
+        <View style={styles.card}>
           <Text variant="title">Link not found</Text>
           <Text tone="secondary" testID="game-share-error">
             This link isn't valid anymore.
@@ -128,7 +128,7 @@ export default function GameShareLanding() {
             onPress={() => router.replace(routes.root as Href)}
             testID="game-share-home"
           />
-        </Card>
+        </View>
       </Centered>
     );
   }
@@ -136,7 +136,7 @@ export default function GameShareLanding() {
   // Resolving auth / the link, or already redirecting — show a spinner.
   return (
     <Centered testID="game-share-loading">
-      <ActivityIndicator color={tokens.accent.default} />
+      <ActivityIndicator color={colors.primary} />
     </Centered>
   );
 }
@@ -152,16 +152,21 @@ function Centered({ children, testID }: { children: React.ReactNode; testID?: st
 const styles = StyleSheet.create({
   center: {
     flex: 1,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: colors.bg,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: tokens.space.xl,
-    gap: tokens.space.md,
+    paddingHorizontal: space.xl,
+    gap: space.md,
   },
   card: {
-    gap: tokens.space.md,
+    gap: space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
+    padding: space.lg,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
 });

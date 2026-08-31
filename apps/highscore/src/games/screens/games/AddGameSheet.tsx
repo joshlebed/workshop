@@ -6,9 +6,9 @@
 // discovery only ever surfaces here and on the empty state.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Button, bezel, colors, font, radius, Sheet, space, Text } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface AddGameSheetProps {
@@ -64,7 +64,7 @@ export function AddGameSheet({
 
       {discoveryLoading ? (
         <View style={styles.suggestionsLoading}>
-          <ActivityIndicator color={tokens.accent.default} />
+          <ActivityIndicator color={colors.primary} />
         </View>
       ) : hasSuggestions ? (
         <View style={styles.suggestions}>
@@ -98,7 +98,7 @@ export function AddGameSheet({
         value={draft}
         onChangeText={setDraft}
         placeholder="https://example.com/daily"
-        placeholderTextColor={tokens.text.muted}
+        placeholderTextColor={colors.textSecondary}
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
@@ -125,25 +125,25 @@ export function AddGameSheet({
 
 const styles = StyleSheet.create({
   header: { gap: 4 },
-  suggestionsLoading: { paddingVertical: tokens.space.lg, alignItems: "center" },
-  suggestions: { gap: tokens.space.sm },
+  suggestionsLoading: { paddingVertical: space.lg, alignItems: "center" },
+  suggestions: { gap: space.sm },
   suggestionsScroll: { maxHeight: 240 },
   sectionLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
-  orLabel: { letterSpacing: 0.4, textTransform: "uppercase", marginTop: tokens.space.xs },
+  orLabel: { letterSpacing: 0.4, textTransform: "uppercase", marginTop: space.xs },
   input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    paddingHorizontal: space.md,
     paddingVertical: 12,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    color: colors.textPrimary,
+    fontSize: font.size.md,
+    backgroundColor: colors.bg,
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: space.md,
   },
 });

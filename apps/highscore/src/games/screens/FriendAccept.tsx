@@ -5,10 +5,11 @@ import { acceptFriendRequest, fetchFriendRequestPreview } from "@workshop/api-cl
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Avatar, Button, Card, haptics, Text, tokens } from "@workshop/ui";
+import { Avatar, haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { Button, bezel, colors, space, Text } from "../../theme";
 import { addGame, fetchGameDiscovery } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../lib/inviteStash";
@@ -90,7 +91,7 @@ export default function AcceptFriendInvite() {
   if (!inviteToken) {
     return (
       <Centered>
-        <Card style={styles.card} elevated>
+        <View style={styles.card}>
           <Text variant="title">Invite link missing token</Text>
           <Text tone="secondary">Ask your friend to send you a fresh invite link.</Text>
           <Button
@@ -98,7 +99,7 @@ export default function AcceptFriendInvite() {
             onPress={() => router.replace(routes.root as Href)}
             testID="friend-accept-home"
           />
-        </Card>
+        </View>
       </Centered>
     );
   }
@@ -106,7 +107,7 @@ export default function AcceptFriendInvite() {
   if (error) {
     return (
       <Centered>
-        <Card style={styles.card} elevated>
+        <View style={styles.card}>
           <Text variant="title">Couldn't add friend</Text>
           <Text tone="secondary" testID="friend-accept-error">
             {error}
@@ -116,7 +117,7 @@ export default function AcceptFriendInvite() {
             onPress={() => router.replace(routes.root as Href)}
             testID="friend-accept-home"
           />
-        </Card>
+        </View>
       </Centered>
     );
   }
@@ -125,7 +126,7 @@ export default function AcceptFriendInvite() {
   if (status !== "signed-in") {
     return (
       <Centered testID="friend-accept-loading">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={colors.primary} />
         <Text tone="secondary" style={styles.loadingText}>
           Sign in to add your friend
         </Text>
@@ -147,7 +148,7 @@ export default function AcceptFriendInvite() {
   if (previewQuery.isPending) {
     return (
       <Centered testID="friend-accept-loading">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={colors.primary} />
       </Centered>
     );
   }
@@ -155,7 +156,7 @@ export default function AcceptFriendInvite() {
   if (previewQuery.isError) {
     return (
       <Centered>
-        <Card style={styles.card} elevated>
+        <View style={styles.card}>
           <Text variant="title">Invite not found</Text>
           <Text tone="secondary">This invite link isn't valid anymore.</Text>
           <Button
@@ -163,7 +164,7 @@ export default function AcceptFriendInvite() {
             onPress={() => router.replace(routes.root as Href)}
             testID="friend-accept-home"
           />
-        </Card>
+        </View>
       </Centered>
     );
   }
@@ -176,7 +177,7 @@ export default function AcceptFriendInvite() {
   if (isOwnInvite) {
     return (
       <Centered>
-        <Card style={styles.card} elevated>
+        <View style={styles.card}>
           <Text variant="title">This is your invite link</Text>
           <Text tone="secondary">Send it to a friend so they can add you.</Text>
           <Button
@@ -184,14 +185,14 @@ export default function AcceptFriendInvite() {
             onPress={() => router.replace(routes.friends as Href)}
             testID="friend-accept-home"
           />
-        </Card>
+        </View>
       </Centered>
     );
   }
 
   return (
     <Centered testID="friend-accept">
-      <Card style={styles.card} elevated>
+      <View style={styles.card}>
         <View style={styles.inviterBlock}>
           <Avatar
             name={preview.inviter.displayName}
@@ -223,7 +224,7 @@ export default function AcceptFriendInvite() {
           disabled={acceptMutation.isPending}
           testID="friend-accept-decline"
         />
-      </Card>
+      </View>
     </Centered>
   );
 }
@@ -296,7 +297,7 @@ function PostAcceptPicker({
 
   return (
     <Centered testID="friend-accept-picker">
-      <Card style={styles.card} elevated>
+      <View style={styles.card}>
         <View style={styles.inviterBlock}>
           <Avatar
             name={friend.displayName}
@@ -310,7 +311,7 @@ function PostAcceptPicker({
 
         {discoveryQuery.isLoading ? (
           <View style={styles.pickerLoading}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : games.length > 0 ? (
           <>
@@ -358,7 +359,7 @@ function PostAcceptPicker({
             testID="friend-accept-picker-done"
           />
         )}
-      </Card>
+      </View>
     </Centered>
   );
 }
@@ -374,22 +375,27 @@ function Centered({ children, testID }: { children: React.ReactNode; testID?: st
 const styles = StyleSheet.create({
   center: {
     flex: 1,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: colors.bg,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: tokens.space.xl,
-    gap: tokens.space.md,
+    paddingHorizontal: space.xl,
+    gap: space.md,
   },
   card: {
-    gap: tokens.space.md,
+    gap: space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
+    padding: space.lg,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
-  inviterBlock: { alignItems: "center", gap: tokens.space.sm },
+  inviterBlock: { alignItems: "center", gap: space.sm },
   inviterTitle: { textAlign: "center" },
   inviterCaption: { textAlign: "center" },
   loadingText: { textAlign: "center" },
-  pickerLoading: { paddingVertical: tokens.space.lg, alignItems: "center" },
+  pickerLoading: { paddingVertical: space.lg, alignItems: "center" },
   pickerScroll: { maxHeight: 280, alignSelf: "stretch" },
 });

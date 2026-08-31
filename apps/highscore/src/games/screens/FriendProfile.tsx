@@ -13,19 +13,17 @@ import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInter
 import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
 import {
   Avatar,
-  Button,
   confirm,
   EmptyState,
   formatRelative,
   haptics,
   Screen,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Button, bezel, colors, font, PixelIcon, space, Text } from "../../theme";
 import { addGame } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
@@ -209,7 +207,7 @@ export default function FriendProfileScreen() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>‹</Text>
+          <PixelIcon name="chevronLeft" size={24} color={colors.textPrimary} />
         </Pressable>
         <Text variant="title">Profile</Text>
         <View style={styles.navButton} />
@@ -218,7 +216,7 @@ export default function FriendProfileScreen() {
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {profileQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : profileQuery.isError || !profile ? (
           <View style={styles.center}>
@@ -390,7 +388,9 @@ export default function FriendProfileScreen() {
                         </Text>
                       </View>
                       {pg.viewerHasGame ? (
-                        <Text style={styles.chevron}>›</Text>
+                        <View style={styles.chevron}>
+                          <PixelIcon name="chevronRight" size={16} color={colors.textSecondary} />
+                        </View>
                       ) : isSelf ? null : (
                         <Pressable
                           accessibilityRole="button"
@@ -412,7 +412,7 @@ export default function FriendProfileScreen() {
                           ]}
                         >
                           {adding ? (
-                            <ActivityIndicator size="small" color={tokens.accent.default} />
+                            <ActivityIndicator size="small" color={colors.primary} />
                           ) : (
                             <Text style={styles.addLabel}>Add</Text>
                           )}
@@ -437,104 +437,98 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    paddingHorizontal: space.sm,
+    paddingTop: space.xl,
+    paddingBottom: space.sm,
   },
   navButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
+  navButtonPressed: { backgroundColor: colors.surface2 },
   body: {
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.xl,
+    paddingHorizontal: space.xl,
+    paddingBottom: space.xxl,
+    gap: space.xl,
   },
   center: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: tokens.space.xl,
+    paddingVertical: space.xl,
   },
   identityCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
-    padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: space.lg,
+    padding: space.lg,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
   identityText: { flex: 1, minWidth: 0, gap: 4 },
-  actionRow: { flexDirection: "row", gap: tokens.space.md },
+  actionRow: { flexDirection: "row", gap: space.md },
   actionFlex: { flex: 1 },
   lockedCard: {
     alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.xxl,
-    paddingHorizontal: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: space.sm,
+    paddingVertical: space.xxl,
+    paddingHorizontal: space.lg,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
   lockedGlyph: { fontSize: 28, lineHeight: 34 },
-  lockedTitle: { color: tokens.text.primary },
+  lockedTitle: { color: colors.textPrimary },
   lockedText: { textAlign: "center" },
-  list: { gap: tokens.space.sm },
+  list: { gap: space.sm },
   listLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
   gameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: space.md,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
-  gameRowHover: { backgroundColor: tokens.bg.elevated },
+  gameRowHover: { backgroundColor: colors.surface2 },
   gameCover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    backgroundColor: colors.surface2,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  gameCoverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
+  gameCoverImage: { width: COVER, height: COVER, borderRadius: 0 },
   gameCoverGlyph: { fontSize: 20 },
   gameText: { flex: 1, minWidth: 0, gap: 2 },
-  gameTitle: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  chevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl * 1.2,
-    paddingHorizontal: tokens.space.sm,
-  },
+  gameTitle: { fontSize: font.size.md, color: colors.textPrimary },
+  chevron: { paddingHorizontal: space.sm },
   addBtn: {
     minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    backgroundColor: `${colors.primary}26`,
+    borderWidth: bezel,
+    borderColor: colors.primary,
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  addBtnHover: { backgroundColor: `${colors.primary}40` },
   addBtnBusy: { opacity: 0.8 },
   addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    color: colors.primaryTint,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
   },
 });

@@ -3,7 +3,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { Avatar, IconButton, Screen, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
@@ -17,6 +17,7 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import { Button, bezel, colors, font, PixelIcon, radius, space, Text } from "../theme";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -75,7 +76,7 @@ export default function EditProfile() {
           onPress={() => goBack("/")}
           testID="profile-edit-close"
         >
-          <Text style={styles.closeGlyph}>✕</Text>
+          <PixelIcon name="close" size={24} color={colors.textSecondary} />
         </IconButton>
       </View>
 
@@ -83,7 +84,7 @@ export default function EditProfile() {
         contentContainerStyle={styles.body}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
-        bottomOffset={tokens.space.lg}
+        bottomOffset={space.lg}
       >
         <View style={styles.avatarSection}>
           <Avatar
@@ -122,7 +123,7 @@ export default function EditProfile() {
             value={name}
             onChangeText={setName}
             placeholder="Ada Lovelace"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={colors.textSecondary}
             autoComplete="name"
             maxLength={40}
             style={styles.input}
@@ -262,61 +263,60 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-    gap: tokens.space.md,
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+    paddingBottom: space.md,
+    gap: space.md,
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  headerEyebrow: { letterSpacing: 1, textTransform: "uppercase" },
   body: {
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.xl,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.xxl,
+    gap: space.xl,
   },
   avatarSection: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
+    gap: space.lg,
   },
   avatarPreview: { width: 72, height: 72, borderRadius: 36 },
-  avatarButtons: { flex: 1, gap: tokens.space.sm },
-  field: { gap: tokens.space.sm },
+  avatarButtons: { flex: 1, gap: space.sm },
+  field: { gap: space.sm },
   input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    paddingHorizontal: space.lg,
     paddingVertical: 14,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
+    color: colors.textPrimary,
+    fontSize: font.size.lg,
+    backgroundColor: colors.surface1,
   },
-  hint: { marginTop: tokens.space.xs },
-  saveButton: { marginTop: tokens.space.sm },
+  hint: { marginTop: space.xs },
+  saveButton: { marginTop: space.sm },
 });
 
 const dangerStyles = StyleSheet.create({
-  section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
+  section: { gap: space.sm, marginTop: space.lg },
   divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginBottom: tokens.space.md,
+    height: bezel,
+    backgroundColor: colors.border,
+    marginBottom: space.md,
   },
   eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
   confirmCard: {
-    gap: tokens.space.sm,
-    padding: tokens.space.lg,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.status.danger,
-    backgroundColor: tokens.bg.surface,
+    gap: space.sm,
+    padding: space.lg,
+    borderRadius: radius.soft,
+    borderWidth: bezel,
+    borderColor: colors.danger,
+    backgroundColor: colors.surface1,
   },
   confirmActions: {
     flexDirection: "row",
-    gap: tokens.space.sm,
+    gap: space.sm,
     flexWrap: "wrap",
-    marginTop: tokens.space.xs,
+    marginTop: space.xs,
   },
 });

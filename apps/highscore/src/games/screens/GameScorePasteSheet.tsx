@@ -42,9 +42,10 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
+import { Avatar } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Button, bezel, Chip, colors, font, Sheet, space, Text } from "../../theme";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -246,7 +247,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
             value={draft}
             onChangeText={editDraft}
             placeholder={"Paste your result here"}
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={colors.textSecondary}
             multiline
             maxLength={2000}
             autoFocus
@@ -351,53 +352,53 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: space.md,
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
   input: {
     minHeight: 120,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    backgroundColor: tokens.bg.canvas,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: 0,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    color: colors.textPrimary,
+    fontSize: font.size.sm,
+    backgroundColor: colors.bg,
     textAlignVertical: "top",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    lineHeight: tokens.font.size.sm + 6,
+    lineHeight: font.size.sm + 6,
   },
-  teach: { gap: tokens.space.sm },
+  teach: { gap: space.sm },
   chips: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
-  summary: { gap: tokens.space.sm },
+  summary: { gap: space.sm },
   summaryBox: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    backgroundColor: tokens.bg.canvas,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: 0,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    backgroundColor: colors.bg,
     gap: 2,
   },
   summaryLine: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 6,
+    color: colors.textPrimary,
+    fontSize: font.size.sm,
+    lineHeight: font.size.sm + 6,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
   summaryLineExcluded: {
-    color: tokens.text.muted,
+    color: colors.textSecondary,
     textDecorationLine: "line-through",
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: space.md,
   },
 });

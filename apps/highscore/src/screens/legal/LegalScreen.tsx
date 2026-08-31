@@ -5,11 +5,12 @@
 // auth, no queries, nothing that can fail. `Screen` gives the web reading
 // column; the wordmark doubles as the way back into the app.
 
-import { Button, Card, openExternalUrl, Screen, Text, tokens } from "@workshop/ui";
+import { openExternalUrl, Screen } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Wordmark } from "../../components/Wordmark";
 import type { LegalSection } from "../../lib/legal";
+import { Button, bezel, colors, radius, space, Text } from "../../theme";
 
 interface LegalScreenProps {
   eyebrow: string;
@@ -69,7 +70,7 @@ export function LegalScreen({
         </View>
 
         {sections.map((section) => (
-          <Card key={section.heading} style={styles.section}>
+          <View key={section.heading} style={styles.section}>
             <Text variant="heading">{section.heading}</Text>
             {section.body?.map((paragraph) => (
               <Text key={paragraph} tone="secondary">
@@ -86,7 +87,7 @@ export function LegalScreen({
                 </Text>
               </View>
             ))}
-          </Card>
+          </View>
         ))}
 
         <Button
@@ -111,21 +112,28 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.md,
+    paddingHorizontal: space.lg,
+    paddingTop: space.lg,
+    paddingBottom: space.md,
   },
-  homeLink: { borderRadius: tokens.radius.md },
+  homeLink: { borderRadius: radius.none },
   pressed: { opacity: 0.6 },
   body: {
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xxl * 2,
-    gap: tokens.space.lg,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.xxl * 2,
+    gap: space.lg,
   },
-  titleBlock: { gap: tokens.space.sm },
+  titleBlock: { gap: space.sm },
   eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  section: { gap: tokens.space.sm },
-  bulletRow: { flexDirection: "row", gap: tokens.space.sm },
+  section: {
+    gap: space.sm,
+    backgroundColor: colors.surface1,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    padding: space.lg,
+  },
+  bulletRow: { flexDirection: "row", gap: space.sm },
   bulletGlyph: { lineHeight: 22 },
   bulletText: { flex: 1 },
   footnote: { textAlign: "center" },
