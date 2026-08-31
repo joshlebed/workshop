@@ -5,8 +5,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
+import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useAuth } from "../hooks/useAuth";
 import {
@@ -155,11 +156,50 @@ export default function EditProfile() {
           style={styles.saveButton}
         />
 
+        <ShareSetupSection />
+
         <DeleteAccountSection />
       </KeyboardAwareScrollView>
     </Screen>
   );
 }
+
+/**
+ * Persistent entry into the /share-setup walkthrough, so the one-time Games-home
+ * announcement isn't the only path to it. iOS-native only — the share sheet
+ * doesn't exist elsewhere.
+ */
+function ShareSetupSection() {
+  const router = useRouter();
+  if (Platform.OS !== "ios") return null;
+  return (
+    <View style={shareSetupStyles.section}>
+      <Text variant="caption" tone="muted" style={shareSetupStyles.eyebrow}>
+        Share sheet
+      </Text>
+      <Text tone="secondary">
+        Post scores straight from any game's Share button — no copying, no app switching.
+      </Text>
+      <Button
+        testID="profile-share-setup"
+        label="Set up the share sheet"
+        variant="secondary"
+        onPress={() => router.push("/share-setup" as Href)}
+      />
+    </View>
+  );
+}
+
+const shareSetupStyles = StyleSheet.create({
+  section: {
+    marginTop: tokens.space.xl,
+    gap: tokens.space.sm,
+    paddingTop: tokens.space.lg,
+    borderTopWidth: 1,
+    borderTopColor: tokens.border.subtle,
+  },
+  eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
+});
 
 /**
  * Permanent account deletion, required in-app by App Store Review Guideline

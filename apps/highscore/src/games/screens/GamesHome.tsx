@@ -19,6 +19,7 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { createFriendInvite, fetchFriends } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
+import { USER_FLAG_KEYS } from "@workshop/shared/constants";
 import type {
   DiscoveryGame,
   Game,
@@ -43,7 +44,9 @@ import {
 } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from "react-native";
+import { fetchMyFlags, setMyFlag } from "../../api/userFlags";
+import { dismissedFlagValue, shouldShowShareAnnouncement } from "../../lib/shareOnboarding";
 import {
   addGame,
   createGameShareLink,
@@ -56,6 +59,7 @@ import {
 } from "../api/games";
 import { DayRail } from "../components/DayRail";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
+import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
@@ -199,6 +203,38 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     refetchInterval: livePoll,
   });
   const discovery = discoveryQuery.data?.games ?? [];
+
+  // One-time share-sheet announcement (see src/lib/shareOnboarding.ts). Only
+  // iOS native has a share sheet, so the flags fetch is skipped elsewhere.
+  const isIosNative = Platform.OS === "ios";
+  const flagsQuery = useQuery({
+    queryKey: queryKeys.users.flags,
+    queryFn: () => fetchMyFlags(token),
+    enabled: !!token && isIosNative,
+    staleTime: 5 * 60 * 1000,
+  });
+  const showShareAnnouncement = shouldShowShareAnnouncement({
+    flags: flagsQuery.data?.flags,
+    isIosNative,
+  });
+  const dismissAnnouncementMutation = useMutation({
+    mutationFn: () =>
+      setMyFlag(USER_FLAG_KEYS.shareSheetAnnouncement, dismissedFlagValue(new Date()), token),
+    // Optimistic: hide immediately; a failed write just resurfaces the card on
+    // the next flags fetch.
+    onMutate: () => {
+      queryClient.setQueryData(
+        queryKeys.users.flags,
+        (prev: { flags: Record<string, unknown> } | undefined) => ({
+          flags: {
+            ...prev?.flags,
+            [USER_FLAG_KEYS.shareSheetAnnouncement]: dismissedFlagValue(new Date()),
+          },
+        }),
+      );
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.users.flags }),
+  });
 
   const addMutation = useMutation({
     mutationFn: (url: string) => addGame(url, token),
@@ -548,6 +584,14 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           />
         ) : (
           <>
+            {showShareAnnouncement ? (
+              <View style={styles.announcement}>
+                <ShareAnnouncementCard
+                  onShowMeHow={() => router.push("/share-setup" as Href)}
+                  onDismiss={() => dismissAnnouncementMutation.mutate()}
+                />
+              </View>
+            ) : null}
             <View style={styles.dayRail}>
               <DayRail
                 selectedDate={viewDate}
@@ -706,6 +750,10 @@ const styles = StyleSheet.create({
   headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
   headerIconBtnDisabled: { opacity: 0.6 },
   dayRail: {
+    paddingBottom: tokens.space.sm,
+  },
+  announcement: {
+    paddingHorizontal: homeLayout.horizontalInset,
     paddingBottom: tokens.space.sm,
   },
   center: {
