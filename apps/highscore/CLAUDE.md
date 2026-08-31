@@ -22,6 +22,13 @@ matters. `PickGame` re-runs `detectSharedScore` over the live paste-box draft ra
 route params, so a share the iOS sheet stripped to a bare referral URL (`isResultlessShare`) shows a
 "paste your result" prompt that turns into a Post button as soon as the result is typed in.
 
+Share-panel adoption observability: the `_layout.tsx` redirect appends `via=share-extension`, and
+`PickGame` maps that to `source: "share_extension"` on the score upsert (all other paste surfaces
+send `"paste"`); the redirect also reports the intent snapshot to the log-only
+`POST /v1/telemetry/share-intent` (`src/api/telemetry.ts`). Keep the `via` param if you touch the
+redirect — it's the only thing distinguishing a share-sheet post from a manual paste, and the
+backend derives the durable `user_flags` adoption marker from it (see root CLAUDE.md).
+
 ## Public pages (`/support`, `/privacy`)
 
 Both routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and

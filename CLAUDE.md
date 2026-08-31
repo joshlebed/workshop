@@ -168,6 +168,20 @@ from one component tree; shared code lives in `packages/*`. HighScore owns its G
   Never widen to `*` with `credentials: true`.
   Verify: `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`.
 
+- **Share-panel adoption is observed, never detected.** iOS has no API to ask "is this app
+  enabled in the share sheet", so adoption is inferred from usage: HighScore's score upsert
+  (`PUT /v1/games/:id/scores`) takes an optional `source` (`share_extension` | `paste`,
+  `GAME_SCORE_SOURCES` in `@workshop/shared/constants`) stored on `game_scores.source`
+  (latest write wins; NULL = pre-observability client), and the first `share_extension`
+  score also writes a durable `user_flags` row (`games.share-extension-score`,
+  `{ firstAt }`, insert-only) — the queryable "who actually set it up" marker. `user_flags`
+  is generic per-user server-side key/value state (`GET /v1/users/me/flags`,
+  `PUT /v1/users/me/flags/:key`, keys in `USER_FLAG_KEYS`, values ≤2KB jsonb) — use it for
+  announcement dismissals and similar cross-device client state, not client localStorage.
+  HighScore also reports share-intent arrival to the log-only
+  `POST /v1/telemetry/share-intent` (CloudWatch, filter `client_share_intent`), same as
+  Workshop.
+
 - **Backend-minted app links carry a validated client identity.** Every request from
   `@workshop/api-client` includes `X-Workshop-Client: workshop|highscore`, configured once in
   each app's root layout; old clients omit it. Friend invites map the validated value to the

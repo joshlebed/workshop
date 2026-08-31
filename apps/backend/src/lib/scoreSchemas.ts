@@ -2,6 +2,7 @@
 // the Games score routes (routes/v1/games.ts) — one definition, not two
 // drifting copies.
 
+import { GAME_SCORE_SOURCES } from "@workshop/shared/constants";
 import { z } from "zod";
 
 export const periodKeySchema = z
@@ -15,4 +16,7 @@ export const scoreRawSchema = z.string().min(1, "scoreRaw required").max(2000, "
 export const upsertScoreSchema = z.object({
   periodKey: periodKeySchema,
   scoreRaw: scoreRawSchema,
+  // Optional provenance: which surface produced this write. Omitted by
+  // pre-observability clients; stored on `game_scores.source` as-is.
+  source: z.enum(GAME_SCORE_SOURCES).optional(),
 });

@@ -81,7 +81,7 @@ export default function GameBoard() {
   const upsertMutation = useMutation({
     mutationFn: ({ scoreRaw }: { scoreRaw: string; isEdit: boolean }) => {
       if (!gameId) throw new Error("missing game id");
-      return upsertGameScore(gameId, { periodKey: today, scoreRaw }, token);
+      return upsertGameScore(gameId, { periodKey: today, scoreRaw, source: "paste" }, token);
     },
     onSuccess: async (_data, variables) => {
       haptics.medium();

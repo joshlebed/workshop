@@ -11,6 +11,7 @@ import { ActivityIndicator, useColorScheme, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
@@ -57,9 +58,20 @@ function GamesRuntimeBridge({ children }: { children: ReactNode }) {
 
 function useShareIntentRedirect(status: ReturnType<typeof useAuth>["status"]) {
   const router = useRouter();
+  const { token } = useAuth();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
+  // Dedupe telemetry to one report per distinct payload (the effect re-runs on
+  // unrelated renders while the intent is pending).
+  const lastReportedRef = useRef<string | null>(null);
   useEffect(() => {
     if (status !== "signed-in" || !hasShareIntent) return;
+
+    const signature = `${shareIntent?.type ?? ""}|${shareIntent?.webUrl ?? ""}|${shareIntent?.text ?? ""}`;
+    if (lastReportedRef.current !== signature) {
+      lastReportedRef.current = signature;
+      void reportShareIntent(buildShareIntentTelemetry(shareIntent, "layout-redirect"), token);
+    }
+
     const params = new URLSearchParams();
     const webUrl = shareIntent?.webUrl?.trim();
     const text = shareIntent?.text?.trim();
@@ -67,9 +79,41 @@ function useShareIntentRedirect(status: ReturnType<typeof useAuth>["status"]) {
     if (text) params.set("text", text);
     const query = params.toString();
     if (!query) return;
-    router.replace(`/share/pick-game?${query}` as Href);
+    // Marks the score write's provenance as the iOS share sheet — PickGame
+    // sends `source: "share_extension"` on the upsert when it sees this.
+    params.set("via", "share-extension");
+    router.replace(`/share/pick-game?${params.toString()}` as Href);
     resetShareIntent();
-  }, [hasShareIntent, resetShareIntent, router, shareIntent, status]);
+  }, [hasShareIntent, resetShareIntent, router, shareIntent, status, token]);
+}
+
+type ShareIntentPayload = ReturnType<typeof useShareIntent>["shareIntent"];
+
+// Snapshot the shape of what the native share extension handed us — capped
+// previews only; the share text is the user's own game result.
+function buildShareIntentTelemetry(
+  shareIntent: ShareIntentPayload,
+  source: string,
+): ShareIntentTelemetry {
+  const text = shareIntent?.text ?? null;
+  const webUrl = shareIntent?.webUrl ?? null;
+  const meta: unknown = shareIntent?.meta;
+  const files: unknown = shareIntent?.files;
+  return {
+    source,
+    type: shareIntent?.type ?? null,
+    hasWebUrl: !!webUrl,
+    webUrlLen: webUrl?.length ?? 0,
+    hasText: !!text,
+    textLen: text?.length ?? 0,
+    textPreview: text ? text.slice(0, 240) : undefined,
+    webUrlPreview: webUrl ? webUrl.slice(0, 240) : undefined,
+    fileCount: Array.isArray(files) ? files.length : 0,
+    metaKeys:
+      meta && typeof meta === "object" ? Object.keys(meta as object).slice(0, 40) : undefined,
+    runtimeVersion: Updates.runtimeVersion ?? null,
+    updateId: Updates.updateId ?? null,
+  };
 }
 
 function AuthGate() {

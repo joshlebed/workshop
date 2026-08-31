@@ -64,6 +64,7 @@ import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
+import { recordShareExtensionScore } from "../../lib/userFlags.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
@@ -610,6 +611,7 @@ gameRoutes.put(
         periodKey: parsed.data.periodKey,
         scoreRaw: parsed.data.scoreRaw,
         scoreValue: value === null ? null : String(value),
+        source: parsed.data.source ?? null,
         updatedAt: now,
       })
       .onConflictDoUpdate({
@@ -617,11 +619,19 @@ gameRoutes.put(
         set: {
           scoreRaw: parsed.data.scoreRaw,
           scoreValue: value === null ? null : String(value),
+          source: parsed.data.source ?? null,
           updatedAt: now,
         },
       })
       .returning();
     if (!row) return err(c, "INTERNAL", "score upsert returned no row");
+
+    // Durable adoption marker: first-ever share-sheet score. Insert-only, so
+    // re-posts never move `firstAt`; the queryable "who set up the share
+    // panel" signal (iOS has no API to detect share-sheet membership).
+    if (parsed.data.source === "share_extension") {
+      await recordShareExtensionScore(db, userId, now);
+    }
 
     // Posting a score auto-adds the game to My Games (spec §3.5) — no
     // membership prerequisite, idempotent if it's already there.

@@ -29,8 +29,12 @@ import { useGamesRuntime } from "../runtime";
 // paste box, and My Games rows. When the detected game isn't in My Games yet,
 // posting find-or-creates the catalog game and the upsert auto-adds it.
 export default function PickGame() {
-  const params = useLocalSearchParams<{ url?: string; text?: string }>();
+  const params = useLocalSearchParams<{ url?: string; text?: string; via?: string }>();
   const sharedPayload = readSharedPayload(params);
+  // Provenance for the score write: only the share-intent redirect in
+  // _layout.tsx sets `via=share-extension`, so its presence means the payload
+  // arrived through the iOS share sheet (vs. a manual visit / in-app paste).
+  const scoreSource = firstParam(params.via) === "share-extension" ? "share_extension" : "paste";
   const [scoreDraft, setScoreDraft] = useState(sharedPayload);
   const router = useRouter();
   const { token, routes } = useGamesRuntime();
@@ -66,7 +70,11 @@ export default function PickGame() {
   const submitScore = useMutation({
     mutationFn: async (target: ShareGameTarget) => {
       const gameId = target.gameId ?? (await addGame(target.url, token)).game.id;
-      return upsertGameScore(gameId, { periodKey: today, scoreRaw: scoreDraft.trim() }, token);
+      return upsertGameScore(
+        gameId,
+        { periodKey: today, scoreRaw: scoreDraft.trim(), source: scoreSource },
+        token,
+      );
     },
     onSuccess: async () => {
       haptics.medium();

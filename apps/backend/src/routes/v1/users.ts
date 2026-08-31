@@ -2,7 +2,7 @@ import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { type DbUser, letterboxdWatchlistFilms, users } from "../../db/schema.js";
+import { type DbUser, letterboxdWatchlistFilms, userFlags, users } from "../../db/schema.js";
 import { deleteUserAccount } from "../../lib/accountDeletion.js";
 import { isAdminUser, userLabel } from "../../lib/admin.js";
 import { notifyDiscord } from "../../lib/discord.js";
@@ -23,6 +23,7 @@ import {
   normalizeLetterboxdUsername,
   syncUserWatchlist,
 } from "../../lib/sources/letterboxdWatchlist.js";
+import { userFlagKeySchema, userFlagValueSchema } from "../../lib/userFlags.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 
@@ -153,6 +154,58 @@ userRoutes.patch("/me", async (c) => {
   if (!updated) return err(c, "NOT_FOUND", "user not found");
   return ok(c, { user: toUserShape(updated) });
 });
+
+// --- User flags (durable per-user key/value state: dismissals, adoption markers) ---
+
+/**
+ * All of the caller's flags in one map. Small by construction (bounded keys,
+ * ≤2KB values, one row per key), so no pagination.
+ */
+userRoutes.get("/me/flags", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb();
+  const rows = await db
+    .select({ key: userFlags.key, value: userFlags.value })
+    .from(userFlags)
+    .where(eq(userFlags.userId, userId));
+  const flags: Record<string, unknown> = {};
+  for (const row of rows) flags[row.key] = row.value;
+  return ok(c, { flags });
+});
+
+const putFlagSchema = z.object({ value: userFlagValueSchema });
+
+/** Set (upsert) one flag. Client-owned flags only carry client-authored state;
+ * server-authored markers (e.g. `games.share-extension-score`) are also
+ * writable here by their owner — harmless, since flags are self-scoped and
+ * only ever gate that same user's UI. */
+userRoutes.put(
+  "/me/flags/:key",
+  rateLimit({
+    family: "v1.users.flags",
+    limit: 30,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const key = userFlagKeySchema.safeParse(c.req.param("key"));
+    if (!key.success) return err(c, "VALIDATION", "invalid flag key");
+    const parsed = await parseJsonBody(c, putFlagSchema);
+    if (!parsed.ok) return parsed.response;
+
+    const userId = c.get("userId");
+    const db = getDb();
+    const now = new Date();
+    await db
+      .insert(userFlags)
+      .values({ userId, key: key.data, value: parsed.data.value, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [userFlags.userId, userFlags.key],
+        set: { value: parsed.data.value, updatedAt: now },
+      });
+    return ok(c, { key: key.data, value: parsed.data.value });
+  },
+);
 
 // --- Letterboxd connection (account-level, reused by every match list) ---
 

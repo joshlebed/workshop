@@ -134,6 +134,13 @@ export interface UpsertGameScoreResponse {
   score: GameScore;
 }
 
+/** `GET /v1/users/me/flags` — all of the caller's `user_flags` rows as a map.
+ * Keys are the constants in `@workshop/shared/constants` (USER_FLAG_KEYS);
+ * values are small client- or server-authored JSON blobs. */
+export interface UserFlagsResponse {
+  flags: Record<string, unknown>;
+}
+
 /** `PUT /v1/games/:id/score-spec` — teach a non-registry game its parser. */
 export interface SetGameScoreSpecResponse {
   game: Game;
