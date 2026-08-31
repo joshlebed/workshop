@@ -5,9 +5,9 @@
 // current emoji is highlighted and a Remove row is offered.
 
 import { isReactionEmoji, REACTION_QUICK_EMOJIS } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Button, bezel, colors, font, radius, Sheet, space, Text } from "../../theme";
 
 export interface ReactionPickerSheetProps {
   visible: boolean;
@@ -74,7 +74,7 @@ export function ReactionPickerSheet({
             value={draft}
             onChangeText={setDraft}
             placeholder="Type or paste an emoji"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={colors.textSecondary}
             autoFocus
             maxLength={32}
             style={styles.moreInput}
@@ -121,68 +121,68 @@ export function ReactionPickerSheet({
 }
 
 const styles = StyleSheet.create({
-  header: { gap: 4, marginBottom: tokens.space.md },
+  header: { gap: 4, marginBottom: space.md },
   quickBar: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
   quickEmoji: {
     width: 48,
     height: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: radius.none,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface2,
   },
   quickEmojiActive: {
-    borderColor: tokens.accent.default,
-    backgroundColor: tokens.accent.muted,
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}26`,
   },
-  quickEmojiHover: { backgroundColor: tokens.bg.surface },
+  quickEmojiHover: { backgroundColor: colors.surface3 },
   quickEmojiGlyph: { fontSize: 26, lineHeight: 32 },
   moreRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
-    marginTop: tokens.space.md,
+    gap: space.sm,
+    marginTop: space.md,
   },
   moreInput: {
     flex: 1,
     minHeight: 44,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.canvas,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    paddingHorizontal: space.md,
+    color: colors.textPrimary,
+    fontSize: font.size.lg,
+    backgroundColor: colors.bg,
   },
   moreLink: {
     alignSelf: "flex-start",
-    marginTop: tokens.space.sm,
-    paddingVertical: tokens.space.xs,
-    paddingHorizontal: tokens.space.xs,
-    marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    marginTop: space.sm,
+    paddingVertical: space.xs,
+    paddingHorizontal: space.xs,
+    marginHorizontal: -space.xs,
+    borderRadius: radius.none,
   },
-  moreLinkHover: { backgroundColor: tokens.bg.elevated },
+  moreLinkHover: { backgroundColor: colors.surface2 },
   moreLinkText: { textDecorationLine: "underline" },
   removeRow: {
-    marginTop: tokens.space.md,
-    paddingVertical: tokens.space.md,
+    marginTop: space.md,
+    paddingVertical: space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: tokens.border.subtle,
+    borderRadius: radius.none,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
   },
-  removePressed: { backgroundColor: tokens.bg.elevated },
+  removePressed: { backgroundColor: colors.surface2 },
   removeLabel: {
-    color: tokens.status.danger,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    color: colors.danger,
+    fontSize: font.size.md,
+    fontWeight: font.weight.semibold,
   },
 });

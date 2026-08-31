@@ -1,9 +1,9 @@
-import { Button, Text, tokens } from "@workshop/ui";
 import { useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { Wordmark } from "../../src/components/Wordmark";
 import { useAuth } from "../../src/hooks/useAuth";
+import { Button, bezel, colors, font, radius, space, Text } from "../../src/theme";
 
 export default function DisplayName() {
   const { setDisplayName } = useAuth();
@@ -44,7 +44,7 @@ export default function DisplayName() {
           value={value}
           onChangeText={setValue}
           placeholder="Ada Lovelace"
-          placeholderTextColor={tokens.text.muted}
+          placeholderTextColor={colors.textSecondary}
           autoFocus
           autoComplete="name"
           maxLength={40}
@@ -73,29 +73,29 @@ export default function DisplayName() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.xxl,
+    backgroundColor: colors.bg,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.xxl,
     justifyContent: "center",
-    gap: tokens.space.xxl,
+    gap: space.xxl,
   },
   form: {
-    gap: tokens.space.md,
+    gap: space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
   },
-  brandBlock: { gap: tokens.space.sm, marginBottom: tokens.space.md },
-  label: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
+  brandBlock: { gap: space.sm, marginBottom: space.md },
+  label: { fontSize: font.size.sm },
   input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    paddingHorizontal: space.lg,
     paddingVertical: 14,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
+    color: colors.textPrimary,
+    fontSize: font.size.lg,
+    backgroundColor: colors.surface1,
   },
-  error: { textAlign: "center", marginTop: tokens.space.xs },
+  error: { textAlign: "center", marginTop: space.xs },
 });

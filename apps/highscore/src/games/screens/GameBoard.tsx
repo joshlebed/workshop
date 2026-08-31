@@ -5,15 +5,12 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import {
   Avatar,
-  Button,
   confirm,
   EmptyState,
   formatRelative,
   haptics,
   openExternalUrl,
   Screen,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
@@ -29,6 +26,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { Button, bezel, colors, font, glow, PixelIcon, radius, space, Text } from "../../theme";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { DayRail } from "../components/DayRail";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
@@ -150,7 +148,7 @@ export default function GameBoard() {
   if (myGamesQuery.isPending) {
     return (
       <Screen style={styles.center}>
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={colors.primary} />
       </Screen>
     );
   }
@@ -229,7 +227,7 @@ export default function GameBoard() {
             hitSlop={10}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <Text style={styles.navGlyph}>‹</Text>
+            <PixelIcon name="arrowLeft" size={24} color={colors.textPrimary} />
           </Pressable>
         </View>
 
@@ -268,7 +266,7 @@ export default function GameBoard() {
               ) : null}
             </View>
             <View style={styles.titleOpenAffordance}>
-              <Text style={styles.titleOpenGlyph}>↗</Text>
+              <PixelIcon name="externalLink" size={16} color={colors.textSecondary} />
             </View>
           </Pressable>
 
@@ -296,7 +294,7 @@ export default function GameBoard() {
 
           {boardQuery.isPending ? (
             <View style={styles.center}>
-              <ActivityIndicator color={tokens.accent.default} />
+              <ActivityIndicator color={colors.primary} />
             </View>
           ) : boardQuery.isError ? (
             <View style={styles.scoresErrorBlock}>
@@ -589,7 +587,7 @@ function ScoreComposer({
         value={draft}
         onChangeText={onChangeDraft}
         placeholder={"Paste your result here"}
-        placeholderTextColor={tokens.text.muted}
+        placeholderTextColor={colors.textSecondary}
         multiline
         autoFocus={isEdit}
         maxLength={2000}
@@ -621,132 +619,127 @@ function ScoreComposer({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: tokens.bg.canvas, paddingTop: tokens.space.xl },
+  root: { flex: 1, backgroundColor: colors.bg, paddingTop: space.xl },
   headerNav: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
+    paddingHorizontal: space.sm,
   },
   navButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: radius.soft,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
+  navButtonPressed: { backgroundColor: colors.surface2 },
   body: {
-    paddingBottom: tokens.space.xxl * 2,
-    gap: tokens.space.lg,
+    paddingBottom: space.xxl * 2,
+    gap: space.lg,
   },
   titleBlock: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.md,
-    marginHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.lg,
+    gap: space.lg,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.md,
+    marginHorizontal: space.sm,
+    borderRadius: radius.soft,
   },
-  titleBlockPressed: { backgroundColor: tokens.bg.surface },
+  titleBlockPressed: { backgroundColor: colors.surface1 },
   titleBadge: {
     width: 56,
     height: 56,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: radius.soft,
+    backgroundColor: colors.surface2,
   },
   titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
   titleBadgeGlyph: { fontSize: 28, lineHeight: 32 },
   titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.5, fontSize: 28, lineHeight: 32 },
+  titleName: { fontSize: 16, lineHeight: 26 },
   titleOpenAffordance: {
     width: 32,
     height: 32,
-    borderRadius: tokens.radius.md,
+    borderRadius: radius.soft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
-  },
-  titleOpenGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
+    backgroundColor: colors.surface1,
   },
   dayHeader: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: space.xl,
     gap: 2,
   },
-  dayTitle: { letterSpacing: -0.2 },
+  dayTitle: { fontSize: 12, lineHeight: 20 },
   helper: {
-    paddingVertical: tokens.space.lg,
+    paddingVertical: space.lg,
     textAlign: "center",
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: space.xl,
   },
   scoresErrorBlock: {
-    gap: tokens.space.sm,
-    paddingBottom: tokens.space.md,
+    gap: space.sm,
+    paddingBottom: space.md,
   },
   scoresErrorAction: { alignItems: "center" },
   leaderboard: {
-    paddingHorizontal: tokens.space.xl,
-    gap: tokens.space.md,
+    paddingHorizontal: space.xl,
+    gap: space.md,
   },
   entry: {
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: space.sm,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    borderRadius: radius.soft,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
   entryMe: {
-    // Quiet accent tint as the sole "this is you" signal; the "you" pill
-    // doubles as a textual label so the highlight isn't color-only.
-    backgroundColor: `${tokens.accent.default}14`,
+    // Pink marks the viewer's own row (v3 Scoreboard); the "you" pill doubles
+    // as a textual label so the highlight isn't color-only.
+    borderColor: `${colors.primary}66`,
+    backgroundColor: `${colors.primary}0F`,
   },
   entryHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
-  entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
-  entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  scoreActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  entryNameRow: { flexDirection: "row", alignItems: "center", gap: space.xs },
+  entryName: { fontSize: font.size.md, color: colors.textPrimary },
+  scoreActions: { flexDirection: "row", alignItems: "center", gap: space.xs },
   scoreActionButton: {
-    paddingHorizontal: tokens.space.sm,
+    paddingHorizontal: space.sm,
     paddingVertical: 4,
-    borderRadius: tokens.radius.sm,
+    borderRadius: radius.soft,
   },
-  editScorePressed: { backgroundColor: tokens.accent.muted },
+  editScorePressed: { backgroundColor: `${colors.primary}26` },
   editScoreLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.primary,
   },
   // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
   // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
   // the control itself stays calm rather than a loud red on a daily screen.
-  clearScorePressed: { backgroundColor: tokens.bg.elevated },
+  clearScorePressed: { backgroundColor: colors.surface2 },
   clearScoreLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.secondary,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.textSecondary,
   },
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: radius.soft,
+    backgroundColor: `${colors.primary}26`,
   },
   youPillText: {
     fontSize: 10,
-    fontWeight: tokens.font.weight.semibold,
+    fontWeight: font.weight.semibold,
     letterSpacing: 0.5,
-    color: tokens.accent.default,
+    color: colors.primary,
     textTransform: "uppercase",
   },
   // Score box + reactions share one row so reactions sit to the right of the
@@ -754,82 +747,87 @@ const styles = StyleSheet.create({
   scoreRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
   scoreFrame: {
     flex: 1,
     minWidth: 0,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.canvas,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: radius.soft,
+    backgroundColor: colors.bg,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderColor: colors.border,
   },
   rankBadge: {
     minWidth: 28,
     height: 28,
     paddingHorizontal: 6,
-    borderRadius: 14,
+    borderRadius: radius.soft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    backgroundColor: colors.bg,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
+  // The #1 rank is the spotlight: neon yellow, accent glow (DESIGN.md).
   rankBadgeTop1: {
-    backgroundColor: tokens.accent.default,
-    borderColor: tokens.accent.default,
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+    ...glow(colors.accentGlow, 8),
   },
   rankBadgeText: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.secondary,
-    fontVariant: ["tabular-nums"],
+    fontFamily: font.pixel,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 1,
+    color: colors.textSecondary,
   },
-  rankBadgeTextTop1: { color: tokens.text.onAccent },
+  rankBadgeTextTop1: { color: colors.textOnNeon },
+  // Score numerals in Press Start 2P — effectively monospace, so multi-line
+  // result grids keep their column alignment.
   scoreText: {
-    color: tokens.text.primary,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 6,
+    color: colors.textPrimary,
+    fontFamily: font.pixel,
+    fontSize: 10,
+    letterSpacing: 1,
+    lineHeight: 18,
   },
   scoreTextMuted: {
-    color: tokens.text.muted,
-    fontStyle: "italic",
+    color: colors.textSecondary,
   },
   unplayedRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.xs,
+    gap: space.sm,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.xs,
   },
   unplayedAvatar: { opacity: 0.5 },
   pasteInput: {
     minHeight: 110,
     borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    backgroundColor: tokens.bg.canvas,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    color: colors.textPrimary,
+    fontSize: font.size.sm,
+    backgroundColor: colors.bg,
     textAlignVertical: "top",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    lineHeight: tokens.font.size.sm + 6,
+    lineHeight: font.size.sm + 6,
   },
   pasteActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: space.md,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: tokens.space.xl,
+    paddingVertical: space.xl,
   },
 });

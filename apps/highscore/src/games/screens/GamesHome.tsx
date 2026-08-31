@@ -27,8 +27,6 @@ import type {
   MyGame,
 } from "@workshop/shared/games";
 import {
-  Button,
-  CopyIcon,
   confirm,
   EmptyState,
   HomeHeader,
@@ -36,14 +34,12 @@ import {
   homeLayout,
   openExternalUrl,
   Screen,
-  Sheet,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Button, bezel, colors, font, glow, PixelIcon, Sheet, space, Text } from "../../theme";
 import {
   addGame,
   createGameShareLink,
@@ -441,7 +437,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           title={mg.game.title}
           coverImageUrl={mg.game.iconUrl}
           coverGlyph="🎮"
-          accent={tokens.accent.default}
+          accent={colors.primary}
           isDragging={isDragging}
           turnout={turnoutLine(rows.length, standings?.viewerHasPlayed ?? false, viewingToday)}
           // Streak rides on the today-pinned `mg` (not the rail's viewed day) so
@@ -506,9 +502,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               ]}
             >
               {copyingScores ? (
-                <ActivityIndicator size="small" color={tokens.text.primary} />
+                <ActivityIndicator size="small" color={colors.textPrimary} />
               ) : (
-                <CopyIcon size={20} color={tokens.text.primary} />
+                <PixelIcon name="copy" size={24} color={colors.textPrimary} />
               )}
             </Pressable>
             {headerTrailing}
@@ -519,7 +515,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       <View style={styles.body}>
         {gamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : gamesQuery.isError ? (
           <View style={styles.center}>
@@ -579,9 +575,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         ]}
         testID="fab-add-game"
       >
-        <Text style={styles.fabGlyph} tone="onAccent">
-          +
-        </Text>
+        <PixelIcon name="plus" size={24} color={colors.textOnNeon} />
       </Pressable>
 
       <AddGameSheet
@@ -691,9 +685,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.lg,
+    backgroundColor: colors.bg,
+    paddingTop: space.lg,
+    paddingBottom: space.lg,
   },
   body: { flex: 1 },
   headerIconBtn: {
@@ -701,56 +695,52 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
   },
-  headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
+  headerIconBtnHover: { backgroundColor: colors.surface2 },
   headerIconBtnDisabled: { opacity: 0.6 },
   dayRail: {
-    paddingBottom: tokens.space.sm,
+    paddingBottom: space.sm,
   },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: tokens.space.lg,
+    padding: space.lg,
   },
+  // A pink arcade button: sharp square, 2px bezel, neon glow (primary CTA is
+  // glow-eligible per DESIGN.md).
   fab: {
     position: "absolute",
     right: homeLayout.horizontalInset,
     bottom: homeLayout.horizontalInset,
     width: 56,
     height: 56,
-    borderRadius: 28,
-    backgroundColor: tokens.accent.default,
+    borderRadius: 2,
+    borderWidth: bezel,
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    // Calm neutral elevation, not an amber glow (see DESIGN.md "calm by default").
-    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
-    elevation: 5,
+    ...glow(colors.primaryGlow, 12),
   },
-  fabHovered: {
-    backgroundColor: tokens.accent.hover,
-    transform: [{ scale: 1.04 }],
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
+  fabHovered: { backgroundColor: colors.primaryTint, borderColor: colors.primaryTint },
+  fabPressed: { backgroundColor: colors.primaryTint, borderColor: colors.primaryTint },
   sheetHeader: { gap: 4 },
-  sheetActions: { gap: tokens.space.sm },
+  sheetActions: { gap: space.sm },
   sheetDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginVertical: tokens.space.xs,
+    height: bezel,
+    backgroundColor: colors.surface2,
+    marginVertical: space.xs,
   },
   sheetDangerRow: {
-    paddingVertical: tokens.space.md,
+    paddingVertical: space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
   },
-  sheetDangerPressed: { backgroundColor: `${tokens.status.danger}1A` },
+  sheetDangerPressed: { backgroundColor: `${colors.danger}1A` },
   sheetDangerLabel: {
-    color: tokens.status.danger,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
+    color: colors.danger,
+    fontSize: font.size.md,
+    fontWeight: font.weight.semibold,
   },
 });

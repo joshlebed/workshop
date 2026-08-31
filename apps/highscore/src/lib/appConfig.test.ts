@@ -74,11 +74,11 @@ describe("apps/highscore app.json", () => {
     expect(expo.splash).toEqual({
       image: "./assets/splash-icon.png",
       resizeMode: "contain",
-      backgroundColor: "#0E0C0B",
+      backgroundColor: "#121216",
     });
     expect(expo.android.adaptiveIcon).toEqual({
       foregroundImage: "./assets/adaptive-icon.png",
-      backgroundColor: "#0E0C0B",
+      backgroundColor: "#121216",
     });
     expect(expo.web.favicon).toBe("./public/favicon.png");
 

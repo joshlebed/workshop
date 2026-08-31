@@ -3,7 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { Avatar, Button, Sheet, Text, tokens, useToast } from "@workshop/ui";
+import { Avatar, useToast } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -11,6 +11,7 @@ import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "reac
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
 import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes";
+import { Button, bezel, colors, font, radius, Sheet, space, Text } from "../theme";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -350,9 +351,9 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: radius.soft,
   },
-  pressed: { backgroundColor: tokens.bg.elevated },
+  pressed: { backgroundColor: colors.surface3 },
   badge: {
     position: "absolute",
     right: 0,
@@ -360,66 +361,66 @@ const styles = StyleSheet.create({
     minWidth: 17,
     height: 17,
     paddingHorizontal: 3,
-    borderRadius: 9,
+    borderRadius: radius.soft,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.default,
+    backgroundColor: colors.primary,
     borderWidth: 2,
-    borderColor: tokens.bg.canvas,
+    borderColor: colors.bg,
   },
-  badgeText: { fontSize: 9, lineHeight: 11, fontWeight: tokens.font.weight.bold },
-  content: { gap: tokens.space.md },
-  identity: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  badgeText: { fontSize: 9, lineHeight: 11, fontWeight: font.weight.bold },
+  content: { gap: space.md },
+  identity: { flexDirection: "row", alignItems: "center", gap: space.md },
   identityText: { flex: 1, minWidth: 0 },
 });
 
 const impersonationStyles = StyleSheet.create({
-  form: { gap: tokens.space.sm },
+  form: { gap: space.sm },
   select: {
     minHeight: 44,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    paddingHorizontal: space.md,
     paddingVertical: 10,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: colors.surface2,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
-  selectPressed: { backgroundColor: tokens.bg.elevated },
-  selectDisabled: { borderColor: tokens.border.subtle },
-  selectText: { flex: 1, minWidth: 0, color: tokens.text.primary },
-  selectPlaceholder: { color: tokens.text.muted },
+  selectPressed: { backgroundColor: colors.surface3 },
+  selectDisabled: { borderColor: colors.border },
+  selectText: { flex: 1, minWidth: 0, color: colors.textPrimary },
+  selectPlaceholder: { color: colors.textSecondary },
   selectChevron: {
     width: 18,
     textAlign: "center",
-    color: tokens.text.muted,
+    color: colors.textSecondary,
   },
   optionList: {
     maxHeight: 220,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.surface,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    backgroundColor: colors.surface2,
   },
   option: {
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
     gap: 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  optionPressed: { backgroundColor: tokens.bg.elevated },
-  optionSelected: { backgroundColor: tokens.accent.muted },
-  optionEmail: { color: tokens.text.primary },
+  optionPressed: { backgroundColor: colors.surface3 },
+  optionSelected: { backgroundColor: `${colors.primary}26` },
+  optionEmail: { color: colors.textPrimary },
   retryRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: space.sm,
     flexWrap: "wrap",
   },
   retryText: { flex: 1, minWidth: 160 },
-  actions: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
-  note: { paddingHorizontal: tokens.space.xs },
+  actions: { flexDirection: "row", gap: space.sm, flexWrap: "wrap" },
+  note: { paddingHorizontal: space.xs },
 });

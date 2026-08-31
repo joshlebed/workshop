@@ -6,8 +6,8 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { bezel, colors, font, PixelIcon, space, Text } from "../../../theme";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -76,13 +76,15 @@ export function FriendGameSuggestions({
             </View>
             {owned ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
+                <PixelIcon name="check" size={16} color={colors.textSecondary} />
                 <Text style={styles.addedText} numberOfLines={1}>
-                  ✓ In your games
+                  In your games
                 </Text>
               </View>
             ) : added ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
+                <PixelIcon name="check" size={16} color={colors.success} />
+                <Text style={[styles.addedText, styles.addedTextSuccess]}>Added</Text>
               </View>
             ) : (
               <Pressable
@@ -99,7 +101,7 @@ export function FriendGameSuggestions({
                 ]}
               >
                 {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
+                  <ActivityIndicator size="small" color={colors.primary} />
                 ) : (
                   <Text style={styles.addLabel}>Add</Text>
                 )}
@@ -115,60 +117,62 @@ export function FriendGameSuggestions({
 const COVER = 40;
 
 const styles = StyleSheet.create({
-  list: { gap: tokens.space.sm },
+  list: { gap: space.sm },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: space.md,
+    paddingVertical: space.sm,
+    paddingHorizontal: space.md,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    backgroundColor: colors.surface2,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
+  coverImage: { width: COVER, height: COVER, borderRadius: 0 },
   coverGlyph: { fontSize: 20 },
   text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  title: { fontSize: font.size.md, color: colors.textPrimary },
   addBtn: {
     minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    backgroundColor: `${colors.primary}26`,
+    borderWidth: bezel,
+    borderColor: colors.primary,
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  addBtnHover: { backgroundColor: `${colors.primary}40` },
   addBtnBusy: { opacity: 0.8 },
   addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    color: colors.primary,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
   },
   addedPill: {
     minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    flexDirection: "row",
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
     alignItems: "center",
     justifyContent: "center",
   },
   addedText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    color: colors.textSecondary,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
   },
+  addedTextSuccess: { color: colors.success },
 });

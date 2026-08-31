@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { EmptyState, haptics, Screen, useToast } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Button, bezel, colors, font, PixelIcon, radius, space, Text } from "../../theme";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import {
@@ -116,12 +117,10 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>x</Text>
+          <PixelIcon name="close" size={24} color={colors.textPrimary} />
         </Pressable>
         <View style={styles.headerTitleBlock}>
-          <Text variant="title" style={styles.title}>
-            Post to your Games
-          </Text>
+          <Text variant="title">Post to your Games</Text>
           <View style={styles.payloadPill} testID="share-game-payload">
             <View style={styles.payloadDot} />
             <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
@@ -163,7 +162,7 @@ export default function PickGame() {
             value={scoreDraft}
             onChangeText={setScoreDraft}
             placeholder="Paste score text"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={colors.textSecondary}
             multiline
             maxLength={2000}
             style={styles.scoreInput}
@@ -171,9 +170,7 @@ export default function PickGame() {
         </View>
 
         <View style={styles.gameSectionHeader}>
-          <Text variant="heading" style={styles.gameSectionTitle}>
-            Your games
-          </Text>
+          <Text variant="heading">Your games</Text>
           <Text variant="caption" tone="muted">
             {suggestion ? "Or pick a different game." : "Pick the game to update."}
           </Text>
@@ -181,7 +178,7 @@ export default function PickGame() {
 
         {myGamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : myGamesQuery.isError ? (
           <EmptyState
@@ -263,7 +260,7 @@ function DetectedScoreSuggestion({
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-loading">
         <View style={styles.loadingRow}>
-          <ActivityIndicator color={tokens.accent.default} size="small" />
+          <ActivityIndicator color={colors.primary} size="small" />
           <Text variant="label">{label} score detected</Text>
         </View>
         <Text variant="caption" tone="muted">
@@ -369,9 +366,9 @@ function GameRow({
         </Text>
       </View>
       {loading ? (
-        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <ActivityIndicator color={colors.primary} size="small" />
       ) : (
-        <Text style={styles.rowChevron}>{">"}</Text>
+        <PixelIcon name="chevronRight" size={16} color={colors.textSecondary} />
       )}
     </Pressable>
   );
@@ -401,130 +398,117 @@ function shortHost(url: string | null): string | null {
 
 const styles = StyleSheet.create({
   root: {
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: colors.bg,
   },
   header: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
-    paddingRight: tokens.space.lg,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingRight: space.lg,
+    paddingTop: space.xl,
+    paddingBottom: space.sm,
   },
   navButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: radius.none,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
-  title: { fontSize: tokens.font.size.xl },
+  navButtonPressed: { backgroundColor: colors.surface2 },
+  headerTitleBlock: { flex: 1, minWidth: 0, gap: space.xs, paddingTop: 4 },
   payloadPill: {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: tokens.space.md,
+    paddingHorizontal: space.md,
     paddingVertical: 4,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: radius.none,
+    backgroundColor: colors.surface1,
     borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderColor: colors.border,
     maxWidth: "100%",
   },
   payloadDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
-    backgroundColor: tokens.accent.default,
+    backgroundColor: colors.primary,
   },
   payloadText: { flexShrink: 1 },
-  center: { alignItems: "center", justifyContent: "center", padding: tokens.space.xl },
+  center: { alignItems: "center", justifyContent: "center", padding: space.xl },
   body: {
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.lg,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.xxl,
+    gap: space.lg,
   },
   suggestionBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.none,
+    backgroundColor: colors.surface1,
+    borderWidth: bezel,
+    borderColor: colors.border,
   },
   suggestionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: space.md,
   },
   suggestionText: { flex: 1, minWidth: 0, gap: 2 },
-  loadingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   scoreBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.none,
+    backgroundColor: colors.surface1,
+    borderWidth: bezel,
+    borderColor: colors.border,
   },
   scoreHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: tokens.space.md,
+    gap: space.md,
   },
   scoreInput: {
     minHeight: 116,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderRadius: radius.soft,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    color: colors.textPrimary,
+    fontSize: font.size.md,
+    backgroundColor: colors.bg,
     textAlignVertical: "top",
   },
   gameSectionHeader: { gap: 2 },
-  gameSectionTitle: { fontSize: tokens.font.size.md },
-  gameList: { gap: tokens.space.sm },
+  gameList: { gap: space.sm },
   gameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    gap: space.md,
+    padding: space.md,
+    borderRadius: radius.none,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
     minHeight: 76,
   },
-  gameRowPressed: { backgroundColor: tokens.bg.surface },
+  gameRowPressed: { backgroundColor: colors.surface2 },
   disabledRow: { opacity: 0.55 },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
-  rowTitle: { color: tokens.text.primary },
-  rowChevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  rowTitle: { color: colors.textPrimary },
   gameThumb: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: radius.soft,
+    backgroundColor: colors.surface2,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   gameThumbGlyph: {
-    fontSize: tokens.font.size.lg,
+    fontSize: font.size.lg,
   },
 });

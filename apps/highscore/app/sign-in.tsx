@@ -1,9 +1,10 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+import { GoogleSignInButton } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { Button, colors, space, Text } from "../src/theme";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -118,10 +119,10 @@ export default function SignIn() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.xxl,
-    gap: tokens.space.xxl,
+    backgroundColor: colors.bg,
+    paddingHorizontal: space.xl,
+    paddingVertical: space.xxl,
+    gap: space.xxl,
   },
   // Push the brand block to ~38% from the top — purely-vertical centering on
   // desktop leaves a void above the wordmark; this brings it closer to where
@@ -129,29 +130,29 @@ const styles = StyleSheet.create({
   topSpacer: { flex: 0.7 },
   bottomSpacer: { flex: 1 },
   brandBlock: {
-    gap: tokens.space.md,
+    gap: space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
   },
   actions: {
-    gap: tokens.space.sm,
+    gap: space.sm,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
   },
-  error: { textAlign: "center", marginTop: tokens.space.xs },
-  help: { textAlign: "center", marginTop: tokens.space.xs },
+  error: { textAlign: "center", marginTop: space.xs },
+  help: { textAlign: "center", marginTop: space.xs },
   divider: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.xs,
+    gap: space.sm,
+    paddingVertical: space.xs,
   },
   dividerLine: {
     flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    height: 2,
+    backgroundColor: colors.border,
   },
   dividerText: {
     fontSize: 11,

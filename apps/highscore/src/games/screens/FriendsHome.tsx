@@ -17,19 +17,17 @@ import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInter
 import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
 import {
   Avatar,
-  Button,
   confirm,
   EmptyState,
   formatRelative,
   haptics,
   Screen,
-  Text,
-  tokens,
   useToast,
 } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Button, bezel, colors, font, PixelIcon, space, Text } from "../../theme";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
 import { useGamesRuntime } from "../runtime";
@@ -257,7 +255,7 @@ export default function FriendsScreen() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>‹</Text>
+          <PixelIcon name="chevronLeft" size={24} color={colors.textPrimary} />
         </Pressable>
         <Text variant="title">Friends</Text>
         <View style={styles.navButton} />
@@ -266,9 +264,7 @@ export default function FriendsScreen() {
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {/* Invite — the share-link path for people outside the graph. */}
         <View style={styles.inviteCard}>
-          <Text variant="heading" style={styles.inviteTitle}>
-            Add a friend
-          </Text>
+          <Text variant="heading">Add a friend</Text>
           <Text variant="caption" tone="muted">
             {Platform.OS === "web"
               ? "Generate a link and send it however you like. Whoever opens it and taps Accept becomes your friend."
@@ -357,7 +353,7 @@ export default function FriendsScreen() {
                     </Text>
                   </View>
                   {answering ? (
-                    <ActivityIndicator size="small" color={tokens.accent.default} />
+                    <ActivityIndicator size="small" color={colors.primary} />
                   ) : (
                     <>
                       <Pressable
@@ -397,7 +393,7 @@ export default function FriendsScreen() {
         {/* Friends list. */}
         {friendsQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         ) : friendsQuery.isError ? (
           <View style={styles.center}>
@@ -512,9 +508,9 @@ export default function FriendsScreen() {
                       ]}
                     >
                       {requesting ? (
-                        <ActivityIndicator size="small" color={tokens.accent.default} />
+                        <ActivityIndicator size="small" color={colors.primary} />
                       ) : (
-                        <Text style={styles.addGlyph}>+</Text>
+                        <PixelIcon name="plus" size={16} color={colors.primary} />
                       )}
                     </Pressable>
                   )}
@@ -533,131 +529,123 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    paddingHorizontal: space.sm,
+    paddingTop: space.xl,
+    paddingBottom: space.sm,
   },
   navButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
+  navButtonPressed: { backgroundColor: colors.surface2 },
   body: {
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.xl,
+    paddingHorizontal: space.xl,
+    paddingBottom: space.xxl,
+    gap: space.xl,
   },
   inviteCard: {
-    gap: tokens.space.md,
-    padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: space.md,
+    padding: space.lg,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
-  inviteTitle: { letterSpacing: -0.2 },
   inviteUrlRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
   inviteUrlField: {
     flex: 1,
     minWidth: 0,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
   },
   resetRow: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
   resetPressed: { opacity: 0.6 },
   resetLabel: {
-    color: tokens.status.danger,
-    fontWeight: tokens.font.weight.semibold,
+    color: colors.danger,
+    fontWeight: font.weight.semibold,
   },
   center: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: tokens.space.xl,
+    paddingVertical: space.xl,
   },
-  list: { gap: tokens.space.sm },
+  list: { gap: space.sm },
   listLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
   friendRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: space.md,
+    paddingVertical: space.md,
+    paddingHorizontal: space.md,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
-  friendRowHover: { backgroundColor: tokens.bg.elevated },
+  friendRowHover: { backgroundColor: colors.surface2 },
   friendText: { flex: 1, minWidth: 0, gap: 2 },
-  friendName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  friendName: { fontSize: font.size.md, color: colors.textPrimary },
   removeBtn: {
-    paddingHorizontal: tokens.space.sm,
+    paddingHorizontal: space.sm,
     paddingVertical: 6,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
-  removeBtnPressed: { backgroundColor: `${tokens.status.danger}1A` },
+  removeBtnPressed: { backgroundColor: `${colors.danger}1A` },
   removeLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.status.danger,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.danger,
   },
   acceptBtn: {
-    paddingHorizontal: tokens.space.md,
+    paddingHorizontal: space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderRadius: 0,
+    backgroundColor: `${colors.primary}26`,
+    borderWidth: bezel,
+    borderColor: colors.primary,
   },
-  acceptBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  acceptBtnHover: { backgroundColor: `${colors.primary}40` },
   acceptLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.primaryTint,
   },
   addBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    backgroundColor: `${colors.primary}26`,
+    borderWidth: bezel,
+    borderColor: colors.primary,
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  addBtnHover: { backgroundColor: `${colors.primary}40` },
   addBtnBusy: { opacity: 0.8 },
-  addGlyph: {
-    fontSize: 20,
-    lineHeight: 24,
-    color: tokens.accent.default,
-    fontWeight: tokens.font.weight.semibold,
-  },
   requestedPill: {
-    paddingHorizontal: tokens.space.md,
+    paddingHorizontal: space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   requestedText: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.muted,
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+    color: colors.textSecondary,
   },
 });

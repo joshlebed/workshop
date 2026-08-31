@@ -7,8 +7,8 @@
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { bezel, colors, font, glow, space, Text } from "../../theme";
 import { shiftDateKey } from "../lib/gameDate";
 
 const DEFAULT_LENGTH = 7;
@@ -33,7 +33,7 @@ export function DayRail({
   onSelectDate,
   length = DEFAULT_LENGTH,
   testIDPrefix = "day",
-  horizontalInset = tokens.space.xl,
+  horizontalInset = space.xl,
 }: DayRailProps) {
   const days: { key: string; label: string }[] = [];
   for (let i = 0; i < length; i++) {
@@ -82,23 +82,26 @@ function dayChipLabel(key: string, today: string): string {
   return dt.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
 }
 
+// Sharp bezeled day chips; the active day is the selection, so it gets pink
+// plus the selection glow (one of the few designated glow elements).
 const styles = StyleSheet.create({
   rail: {
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
   chip: {
-    paddingHorizontal: tokens.space.md,
+    paddingHorizontal: space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    borderRadius: 0,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    backgroundColor: colors.surface1,
   },
   chipSelected: {
-    backgroundColor: tokens.accent.muted,
-    borderColor: tokens.accent.default,
+    backgroundColor: colors.surface2,
+    borderColor: colors.primary,
+    ...glow(colors.primaryGlow, 8),
   },
   chipPressed: { opacity: 0.75 },
-  chipText: { fontSize: tokens.font.size.sm, color: tokens.text.secondary },
-  chipTextSelected: { color: tokens.accent.default, fontWeight: tokens.font.weight.semibold },
+  chipText: { fontSize: font.size.sm, color: colors.textSecondary },
+  chipTextSelected: { color: colors.primary, fontWeight: font.weight.semibold },
 });

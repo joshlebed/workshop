@@ -1,11 +1,11 @@
-// Presentational leaderboard section — one per game, shared between the
-// Lists surface (leaderboard lists render it via `GameLeaderboardCard`) and
-// the Games tab home (one section per game in My Games).
+// Presentational leaderboard section — one per game on the Games home.
 //
-// Not a boxed card: each game is a compact ledger section sitting directly on
-// the canvas, separated by a hairline rule. A game nobody has played collapses
-// to a single header row; standings rows give a game height only when there's
-// activity. While dragging, the section lifts into an elevated chip.
+// v3 "Scoreboard": each game is a classic arcade hi-score table. Rank column
+// in Press Start 2P, score numerals in Press Start 2P right-aligned so the
+// column reads like an attract-mode standings screen, grid-like 2px row
+// dividers instead of card-per-row chrome. The leader (#1) row is spotlit in
+// neon yellow with an accent glow; the viewer's own row is marked in pink.
+// Streaks celebrate in chartreuse.
 //
 // Pure presentation: rows arrive pre-distilled (the caller runs each player's
 // raw result through the `scoresSummary` distiller) and surface-specific copy
@@ -23,17 +23,18 @@
 // control's own action.
 
 import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
-import { Avatar, Text, tokens } from "@workshop/ui";
+import { Avatar } from "@workshop/ui";
 import { memo } from "react";
-import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+import { bezel, colors, font, glow, PixelIcon, radius, space, Text } from "../../theme";
 import { ScoreReactions } from "./ScoreReactions";
 
 const TOP_N = 5;
-const RANK_SLOT = 20;
+const RANK_SLOT = 24;
 const AVATAR_SM = 24;
 const COVER = 36;
 // The score block aligns under the player's name: rank slot + gap + avatar + gap.
-const SCORE_INDENT = RANK_SLOT + tokens.space.sm + AVATAR_SM + tokens.space.sm;
+const SCORE_INDENT = RANK_SLOT + space.sm + AVATAR_SM + space.sm;
 
 /** One scored player. `body` is the distilled score block; null → "Played". */
 export interface StandingsRow {
@@ -59,7 +60,7 @@ export interface StandingsCardProps {
   title: string;
   coverImageUrl: string | null;
   coverGlyph: string;
-  /** Surface accent — tints the cover placeholder only (identity, per DESIGN.md). */
+  /** Surface accent — tints the cover placeholder only. */
   accent: string;
   isDragging: boolean;
   /** One-line social signal under the title ("3 of 5 played today"). */
@@ -104,7 +105,7 @@ export interface StandingsCardProps {
   /**
    * Open the reaction picker for a friend's row. When omitted, no add
    * affordance shows (and the whole reaction row is hidden on rows with no
-   * reactions) — this is what keeps the Lists surface reaction-free.
+   * reactions).
    */
   onOpenReactionPicker?: (userId: string) => void;
 }
@@ -214,7 +215,7 @@ export const StandingsCard = memo(function StandingsCard({
                   (pressed || hovered) && styles.streakHover,
                 ]}
               >
-                <Text style={styles.streakFlame}>🔥</Text>
+                <PixelIcon name="fire" size={16} color={colors.success} />
                 <Text style={styles.streakCount}>{streak}</Text>
                 <Text style={styles.streakLabel}>day streak</Text>
               </Pressable>
@@ -242,7 +243,7 @@ export const StandingsCard = memo(function StandingsCard({
                     (pressed || hovered) && styles.pasteLinkHover,
                   ]}
                 >
-                  <Text variant="caption" tone="muted" style={styles.pasteLinkText}>
+                  <Text variant="caption" style={styles.pasteLinkText}>
                     paste
                   </Text>
                 </Pressable>
@@ -265,7 +266,7 @@ export const StandingsCard = memo(function StandingsCard({
               (pressed || hovered) && styles.playPillHover,
             ]}
           >
-            <Text style={styles.playLabel}>Play</Text>
+            <Text style={styles.playLabel}>PLAY</Text>
           </Pressable>
         ) : null}
 
@@ -280,16 +281,15 @@ export const StandingsCard = memo(function StandingsCard({
             (pressed || hovered) && styles.menuBtnHover,
           ]}
         >
-          <Text style={styles.menuGlyph}>⋯</Text>
+          <PixelIcon name="moreHorizontal" size={16} color={colors.textSecondary} />
         </Pressable>
       </View>
 
-      {/* Standings — only when there's something to show. The turnout line
-          already carries the nobody-played story; an empty game stays one
-          header row tall. Each score line is its own tap/long-press target
-          (open detail / reorder on native) so the reaction controls beneath it
-          aren't nested inside a button — that both avoids invalid DOM on web
-          and keeps a reaction tap from bubbling into "open game". */}
+      {/* Standings — the hi-score table. Only when there's something to show;
+          the turnout line already carries the nobody-played story, so an empty
+          game stays one header row tall. Each score line is its own
+          tap/long-press target (open detail / reorder on native) so the
+          reaction controls beneath it aren't nested inside a button. */}
       {loading ? (
         <SkeletonRows />
       ) : emptyShown ? (
@@ -298,11 +298,12 @@ export const StandingsCard = memo(function StandingsCard({
         ) : null
       ) : (
         <View style={styles.standings}>
-          {topRows.map((row) => (
+          {topRows.map((row, i) => (
             <PlayerRow
               key={row.userId}
               row={row}
               isMe={row.userId === selfId}
+              isFirstLine={i === 0}
               onPressBody={onPressBody}
               onLongPressBody={onLongPressBody}
               onReact={onReact}
@@ -310,17 +311,15 @@ export const StandingsCard = memo(function StandingsCard({
             />
           ))}
           {pinnedSelf ? (
-            <>
-              <View style={styles.pinnedDivider} />
-              <PlayerRow
-                row={pinnedSelf}
-                isMe
-                onPressBody={onPressBody}
-                onLongPressBody={onLongPressBody}
-                onReact={onReact}
-                onOpenReactionPicker={onOpenReactionPicker}
-              />
-            </>
+            <PlayerRow
+              row={pinnedSelf}
+              isMe
+              isFirstLine={false}
+              onPressBody={onPressBody}
+              onLongPressBody={onLongPressBody}
+              onReact={onReact}
+              onOpenReactionPicker={onOpenReactionPicker}
+            />
           ) : null}
           {overflow > 0 ? (
             <Pressable
@@ -344,6 +343,8 @@ export const StandingsCard = memo(function StandingsCard({
 interface PlayerRowProps {
   row: StandingsRow;
   isMe: boolean;
+  /** First rendered line of the table — no divider above it. */
+  isFirstLine: boolean;
   onPressBody?: () => void;
   onLongPressBody?: () => void;
   onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
@@ -353,6 +354,7 @@ interface PlayerRowProps {
 function PlayerRow({
   row,
   isMe,
+  isFirstLine,
   onPressBody,
   onLongPressBody,
   onReact,
@@ -365,13 +367,14 @@ function PlayerRow({
   // viewer's own row still shows reactions others left, read-only.
   const canReact = !isMe && !!onOpenReactionPicker;
   const showReactions = reactions.length > 0 || canReact;
-  // Names are dropped from the row to save vertical space — the score sits
-  // inline next to the avatar so each player is one line, not two. Identity
-  // rides on the avatar circle; the full name stays in the accessibility
-  // label so screen readers still announce who's who.
+  const isLeader = row.rank === 1;
+  // Names are dropped from the row to save vertical space — identity rides on
+  // the avatar; the full name stays in the accessibility label. The score is
+  // the hero: right-aligned Press Start 2P numerals in a monospace column,
+  // spotlit yellow on the leader row, marked pink on the viewer's own row.
   return (
     <View
-      style={[styles.playerRow, isMe && styles.playerRowMe]}
+      style={[styles.playerRow, !isFirstLine && styles.playerRowDivider]}
       testID={`game-card-row-${row.userId}`}
     >
       <Pressable
@@ -384,17 +387,18 @@ function PlayerRow({
       >
         <RankMark rank={row.rank} />
         <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
+        {isMe ? <Text style={styles.youMark}>YOU</Text> : null}
         <Text
-          style={[styles.scoreBody, row.body ? null : styles.scoreBodyMuted]}
+          style={[
+            styles.scoreBody,
+            isLeader && styles.scoreBodyLeader,
+            isMe && !isLeader && styles.scoreBodyMe,
+            row.body ? null : styles.scoreBodyMuted,
+          ]}
           testID={`game-card-score-${row.userId}`}
         >
-          {row.body ?? "Played"}
+          {row.body ?? "PLAYED"}
         </Text>
-        {isMe ? (
-          <View style={styles.youPill}>
-            <Text style={styles.youPillText}>you</Text>
-          </View>
-        ) : null}
       </Pressable>
       {showReactions ? (
         <View style={styles.reactionsWrap}>
@@ -423,9 +427,11 @@ function RankMark({ rank }: { rank: number | null }) {
     );
   }
   if (rank === 1) {
+    // The one spotlight: neon-yellow #1 with an accent glow (DESIGN.md —
+    // yellow marks what to look at, and rank moments are glow-eligible).
     return (
-      <View style={[styles.rankSlot, styles.rankFirst]}>
-        <Text style={styles.rankFirstText}>1</Text>
+      <View style={styles.rankSlot}>
+        <Text style={[styles.rankText, styles.rankFirstText]}>1</Text>
       </View>
     );
   }
@@ -436,8 +442,8 @@ function RankMark({ rank }: { rank: number | null }) {
   );
 }
 
-// Lists surface: the member roster, dimmed, so "nobody played" still shows
-// who could. The Games home passes no faces and the section stays one row.
+// Dimmed roster so "nobody played" still shows who could. The Games home
+// passes no faces and the section stays one row.
 function EmptyFacepile({ faces }: { faces: StandingsFace[] }) {
   const shown = faces.slice(0, 5);
   return (
@@ -465,36 +471,35 @@ function SkeletonRows() {
 }
 
 const styles = StyleSheet.create({
-  // A ledger section, not a box: hairline rule below, breathing room inside.
-  // The slight horizontal bleed gives hover/drag backgrounds room without
-  // shifting content off the column grid.
+  // A scoreboard section sitting on the canvas: 2px grid rule below, no boxed
+  // chrome. The slight horizontal bleed gives hover/drag backgrounds room
+  // without shifting content off the column grid.
   card: {
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.sm,
-    marginHorizontal: -tokens.space.sm,
-    gap: tokens.space.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    paddingVertical: space.md,
+    paddingHorizontal: space.sm,
+    marginHorizontal: -space.sm,
+    gap: space.sm,
+    borderBottomWidth: bezel,
+    borderBottomColor: colors.border,
   },
   cardDragging: {
-    backgroundColor: tokens.bg.elevated,
-    borderRadius: tokens.radius.lg,
-    borderBottomColor: "transparent",
-    boxShadow: "0px 8px 18px rgba(0, 0, 0, 0.4)",
-    elevation: 10,
+    backgroundColor: colors.surface2,
+    borderWidth: bezel,
+    borderColor: colors.border,
+    borderBottomColor: colors.border,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
+    gap: space.md,
   },
-  cover: { borderRadius: tokens.radius.sm },
+  cover: { borderRadius: radius.soft },
   coverPressed: { opacity: 0.7 },
   coverImage: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.elevated,
+    borderRadius: radius.soft,
+    backgroundColor: colors.surface2,
   },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
   coverGlyph: { fontSize: 18 },
@@ -502,179 +507,163 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.xs,
+    gap: space.xs,
   },
   titlePress: {
     flexShrink: 1,
     minWidth: 0,
     maxWidth: "100%",
-    paddingHorizontal: tokens.space.xs,
-    marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    paddingHorizontal: space.xs,
+    marginHorizontal: -space.xs,
   },
-  bodyPressed: { backgroundColor: tokens.bg.elevated },
-  title: { fontSize: tokens.font.size.md, lineHeight: 21, letterSpacing: 0 },
-  // The streak flame mirrors the Play pill's warm CTA treatment (amber-muted
-  // fill, accent count) so it reads as "tap to keep your run going", not decor.
+  bodyPressed: { backgroundColor: colors.surface2 },
+  // Game titles are section headings → pixel face, sized down to fit a row.
+  title: { fontSize: 11, lineHeight: 18 },
+  // Streaks celebrate in chartreuse (DESIGN.md: success = streaks/wins).
   streak: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
+    gap: 4,
     paddingHorizontal: 7,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: colors.success,
+    backgroundColor: "transparent",
   },
-  streakHover: { backgroundColor: `${tokens.accent.default}33` },
-  // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
-  // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
-  streakFlame: { fontSize: 12, lineHeight: 16 },
+  streakHover: { backgroundColor: `${colors.success}1A` },
   streakCount: {
-    fontSize: tokens.font.size.xs,
+    fontFamily: font.pixel,
+    fontSize: 10,
     lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.accent.default,
-    fontVariant: ["tabular-nums"],
+    letterSpacing: 1,
+    color: colors.success,
   },
-  // The unit lives next to the bold count: "🔥 4 day streak". Lighter weight
-  // than the number so the count stays the focal point; same accent + lineHeight.
   streakLabel: {
-    fontSize: tokens.font.size.xs,
+    fontSize: font.size.xs,
     lineHeight: 16,
-    fontWeight: tokens.font.weight.medium,
-    color: tokens.accent.default,
+    fontWeight: font.weight.medium,
+    color: colors.success,
   },
   metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.xs,
+    gap: space.xs,
     marginTop: 1,
   },
   turnout: { flexShrink: 1, letterSpacing: 0 },
-  pasteLink: { borderRadius: tokens.radius.sm },
-  pasteLinkHover: { backgroundColor: tokens.bg.elevated },
-  pasteLinkText: { textDecorationLine: "underline" },
+  pasteLink: {},
+  pasteLinkHover: { backgroundColor: colors.surface2 },
+  pasteLinkText: { textDecorationLine: "underline", color: colors.primaryTint },
+  // Pink is the one interactive color: PLAY is a bezeled pink text button.
   playPill: {
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    paddingHorizontal: space.md,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: "transparent",
   },
-  playPillHover: { backgroundColor: `${tokens.accent.default}33` },
+  playPillHover: { backgroundColor: `${colors.primary}1A` },
   playLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    lineHeight: 18,
-    fontWeight: tokens.font.weight.semibold,
+    color: colors.primary,
+    fontFamily: font.pixel,
+    fontSize: 10,
+    lineHeight: 16,
+    letterSpacing: 1,
   },
   menuBtn: {
     width: 28,
     height: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.sm,
   },
-  menuBtnHover: { backgroundColor: tokens.bg.elevated },
-  menuGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg,
-  },
-  standings: { gap: tokens.space.sm },
+  menuBtnHover: { backgroundColor: colors.surface2 },
+  // Grid-like table: rows separated by 2px rules, no per-row chrome.
+  standings: { gap: 0 },
   playerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: 4,
-    paddingHorizontal: tokens.space.xs,
-    marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    paddingVertical: 6,
+    paddingHorizontal: space.xs,
+    marginHorizontal: -space.xs,
+  },
+  playerRowDivider: {
+    borderTopWidth: bezel,
+    borderTopColor: colors.surface2,
   },
   playerLine: {
-    flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    gap: space.sm,
   },
-  // Reactions ride to the right of the score on the same line — no extra row
-  // height. They keep their natural width; the score line flexes to fill.
-  reactionsWrap: { flexShrink: 0 },
-  playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
+  // Reactions ride below the score line, right-aligned with the table.
+  reactionsWrap: { alignSelf: "flex-end", flexShrink: 0, paddingTop: 2 },
   rankSlot: {
     width: RANK_SLOT,
-    height: RANK_SLOT,
     alignItems: "center",
     justifyContent: "center",
   },
   rankText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    fontVariant: ["tabular-nums"],
-  },
-  rankDot: { color: tokens.text.muted, fontSize: tokens.font.size.md },
-  rankFirst: {
-    borderRadius: RANK_SLOT / 2,
-    backgroundColor: tokens.accent.default,
-  },
-  rankFirstText: {
-    color: tokens.text.onAccent,
-    fontSize: tokens.font.size.xs,
-    fontWeight: tokens.font.weight.bold,
-    fontVariant: ["tabular-nums"],
-  },
-  youPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
-  },
-  youPillText: {
+    color: colors.textSecondary,
+    fontFamily: font.pixel,
     fontSize: 10,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.5,
-    color: tokens.accent.default,
-    textTransform: "uppercase",
+    lineHeight: 16,
+    letterSpacing: 1,
   },
+  rankDot: { color: colors.textSecondary, fontSize: font.size.md, lineHeight: 16 },
+  rankFirstText: {
+    color: colors.accent,
+    textShadowColor: colors.accentGlow,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+  youMark: {
+    fontFamily: font.pixel,
+    fontSize: 8,
+    lineHeight: 13,
+    letterSpacing: 1,
+    color: colors.primary,
+  },
+  // The score column: right-aligned pixel numerals (Press Start 2P is
+  // effectively monospace, so columns of scores align across rows).
   scoreBody: {
     flex: 1,
-    color: tokens.text.secondary,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 5,
+    textAlign: "right",
+    color: colors.textPrimary,
+    fontFamily: font.pixel,
+    fontSize: 10,
+    lineHeight: 16,
+    letterSpacing: 1,
   },
-  scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
-  pinnedDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginVertical: tokens.space.xs,
-    marginLeft: SCORE_INDENT,
+  scoreBodyLeader: {
+    color: colors.accent,
+    textShadowColor: colors.accentGlow,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
   },
+  scoreBodyMe: { color: colors.primaryTint },
+  scoreBodyMuted: { color: colors.textSecondary },
   moreLine: {
     paddingLeft: SCORE_INDENT,
-    paddingTop: 2,
+    paddingTop: 4,
   },
-  facepile: { flexDirection: "row", paddingLeft: COVER + tokens.space.md },
+  facepile: { flexDirection: "row", paddingLeft: COVER + space.md },
   faceWrap: {
     borderWidth: 2,
-    borderColor: tokens.bg.canvas,
+    borderColor: colors.bg,
     borderRadius: 999,
     opacity: 0.45,
   },
   faceOverlap: { marginLeft: -10 },
-  skeletonWrap: { gap: tokens.space.sm },
-  skeletonRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  skeletonWrap: { gap: space.sm },
+  skeletonRow: { flexDirection: "row", alignItems: "center", gap: space.sm },
   skeletonDot: {
     width: AVATAR_SM,
     height: AVATAR_SM,
     borderRadius: AVATAR_SM / 2,
-    backgroundColor: tokens.bg.elevated,
+    backgroundColor: colors.surface2,
   },
   skeletonBar: {
     height: 10,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.elevated,
+    backgroundColor: colors.surface2,
   },
 });
