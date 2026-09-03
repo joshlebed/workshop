@@ -7,11 +7,13 @@
 //   • Has friends  → their games as one-tap suggestions (you likely just
 //                     accepted an invite and have nothing on your home yet).
 //
-// All data + mutations live in GamesHome; this component is presentational.
+// All data + mutations live in the shell; this component is presentational.
+// Inviting is the drawer's job now, so "Add friends" opens it rather than
+// minting a second copy of the invite-link UI here.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, homeLayout, Text, tokens } from "@workshop/ui";
-import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { Button, homeLayout, pixelType, Text, tokens } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface GamesOnboardingProps {
@@ -19,10 +21,7 @@ interface GamesOnboardingProps {
   hasFriends: boolean;
   discovery: DiscoveryGame[];
   discoveryLoading: boolean;
-  invitePending: boolean;
-  inviteUrl: string | null;
   onAddFriends: () => void;
-  onCopyInvite: () => void;
   onAddByUrl: () => void;
   onAddDiscovery: (game: DiscoveryGame) => void;
   addingGameIds: string[];
@@ -34,10 +33,7 @@ export function GamesOnboarding({
   hasFriends,
   discovery,
   discoveryLoading,
-  invitePending,
-  inviteUrl,
   onAddFriends,
-  onCopyInvite,
   onAddByUrl,
   onAddDiscovery,
   addingGameIds,
@@ -48,7 +44,7 @@ export function GamesOnboarding({
   if (friendsLoading) {
     return (
       <View style={styles.center} testID="games-onboarding">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
       </View>
     );
   }
@@ -61,20 +57,14 @@ export function GamesOnboarding({
         testID="games-onboarding"
       >
         <View style={styles.intro}>
-          <Text variant="heading" style={styles.introTitle}>
-            Add friends to compare scores
-          </Text>
+          <Text style={styles.introTitle}>NOBODY TO BEAT YET</Text>
           <Text tone="secondary" style={styles.introBody}>
-            Invite someone you play with. Their games and today's scores will show up here.
+            HighScore is a scoreboard, so it needs someone on the other side of it. Add a person you
+            already play with and their results land here every morning.
           </Text>
         </View>
         <View style={styles.ctaStack}>
-          <Button
-            label="Add friends"
-            onPress={onAddFriends}
-            loading={invitePending}
-            testID="games-empty-add-friends"
-          />
+          <Button label="Add friends" onPress={onAddFriends} testID="games-empty-add-friends" />
           <Button
             label="Add a game by URL"
             variant="ghost"
@@ -82,34 +72,6 @@ export function GamesOnboarding({
             testID="games-empty-add-url"
           />
         </View>
-        {inviteUrl ? (
-          <View style={styles.inviteBlock}>
-            <Text variant="caption" tone="muted" style={styles.inviteHint}>
-              {Platform.OS === "web"
-                ? "Send this link. Whoever opens it and taps Accept becomes your friend."
-                : "Share this link. Whoever opens it and taps Accept becomes your friend."}
-            </Text>
-            <View style={styles.inviteUrlRow}>
-              <View style={styles.inviteUrlField}>
-                <Text
-                  variant="caption"
-                  tone="secondary"
-                  numberOfLines={1}
-                  testID="games-empty-invite-url"
-                >
-                  {inviteUrl}
-                </Text>
-              </View>
-              <Button
-                label="Copy"
-                variant="secondary"
-                size="md"
-                onPress={onCopyInvite}
-                testID="games-empty-invite-copy"
-              />
-            </View>
-          </View>
-        ) : null}
       </ScrollView>
     );
   }
@@ -122,17 +84,15 @@ export function GamesOnboarding({
       testID="games-onboarding"
     >
       <View style={styles.intro}>
-        <Text variant="heading" style={styles.introTitle}>
-          Pick a first game
-        </Text>
+        <Text style={styles.introTitle}>PICK YOUR FIRST GAME</Text>
         <Text tone="secondary" style={styles.introBody}>
-          Add one your friends already play, or paste a game URL.
+          Add one your friends already play. Their scores for it are already waiting.
         </Text>
       </View>
 
       {discoveryLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
+          <ActivityIndicator color={tokens.neon.pink} />
         </View>
       ) : discovery.length > 0 ? (
         <FriendGameSuggestions
@@ -173,25 +133,8 @@ const styles = StyleSheet.create({
     gap: tokens.space.lg,
   },
   intro: { gap: tokens.space.sm, maxWidth: 420 },
-  introTitle: { fontSize: tokens.font.size.lg, lineHeight: 24 },
+  introTitle: { ...pixelType(14), color: tokens.text.primary },
   introBody: { maxWidth: 420, lineHeight: 22 },
   ctaStack: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
   emptyHint: { maxWidth: 420 },
-  inviteBlock: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
-  inviteHint: { maxWidth: 420 },
-  inviteUrlRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-  },
-  inviteUrlField: {
-    flex: 1,
-    minWidth: 0,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
-  },
 });

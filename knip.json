@@ -20,7 +20,8 @@
       "ignoreDependencies": ["@react-navigation/native"]
     },
     "apps/highscore": {
-      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "functions/**/*.ts"]
+      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "functions/**/*.ts"],
+      "ignoreDependencies": ["expo-font", "pixelarticons"]
     },
     "packages/*": {}
   }

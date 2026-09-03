@@ -54,8 +54,8 @@ describe("public routes", () => {
     }
   });
 
-  it("links both pages from the signed-in profile menu", () => {
-    const menu = readFileSync(join(__dirname, "..", "components", "ProfileMenu.tsx"), "utf8");
+  it("links both pages from the signed-in profile sheet", () => {
+    const menu = readFileSync(join(__dirname, "..", "shell", "ProfileSheet.tsx"), "utf8");
     expect(menu).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
     expect(menu).toContain('label="Support"');
     expect(menu).toContain("router.push(SUPPORT_ROUTE)");

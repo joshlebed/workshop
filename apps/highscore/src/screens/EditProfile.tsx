@@ -3,10 +3,9 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useAuth } from "../hooks/useAuth";
 import {
@@ -17,6 +16,19 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import {
+  Avatar,
+  actionType,
+  Button,
+  IconButton,
+  PixelIcon,
+  pixelType,
+  Screen,
+  Text,
+  TextField,
+  tokens,
+  useToast,
+} from "../theme";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -62,20 +74,15 @@ export default function EditProfile() {
   return (
     <Screen style={styles.root}>
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
-            Account
-          </Text>
-          <Text variant="heading" numberOfLines={1}>
-            Edit profile
-          </Text>
-        </View>
+        <Text variant="heading" numberOfLines={1} style={styles.headerText}>
+          EDIT PROFILE
+        </Text>
         <IconButton
           accessibilityLabel="Close profile editor"
           onPress={() => goBack("/")}
           testID="profile-edit-close"
         >
-          <Text style={styles.closeGlyph}>✕</Text>
+          <PixelIcon name="close" size={16} color={tokens.text.secondary} />
         </IconButton>
       </View>
 
@@ -93,22 +100,30 @@ export default function EditProfile() {
             style={styles.avatarPreview}
             testID="profile-edit-avatar"
           />
+          {/* Text actions, not two full-height buttons: changing a photo is a
+              minor errand and shouldn't outweigh the form below it. */}
           <View style={styles.avatarButtons}>
-            <Button
+            <Pressable
               testID="profile-photo-pick"
-              label={avatarUrl ? "Change photo" : "Upload photo"}
-              variant="secondary"
-              size="md"
+              accessibilityRole="button"
+              accessibilityLabel={avatarUrl ? "Change photo" : "Upload photo"}
               onPress={onPickPhoto}
-            />
+              hitSlop={6}
+              style={({ pressed }) => [pressed && styles.dim]}
+            >
+              <Text style={styles.avatarAction}>{avatarUrl ? "Change photo" : "Upload photo"}</Text>
+            </Pressable>
             {avatarUrl ? (
-              <Button
+              <Pressable
                 testID="profile-photo-remove"
-                label="Remove"
-                variant="secondary"
-                size="md"
+                accessibilityRole="button"
+                accessibilityLabel="Remove photo"
                 onPress={() => setAvatarUrl(null)}
-              />
+                hitSlop={6}
+                style={({ pressed }) => [pressed && styles.dim]}
+              >
+                <Text style={styles.avatarActionQuiet}>Remove</Text>
+              </Pressable>
             ) : null}
           </View>
         </View>
@@ -117,12 +132,11 @@ export default function EditProfile() {
           <Text variant="caption" tone="muted">
             Display name
           </Text>
-          <TextInput
+          <TextField
             testID="profile-display-name"
             value={name}
             onChangeText={setName}
             placeholder="Ada Lovelace"
-            placeholderTextColor={tokens.text.muted}
             autoComplete="name"
             maxLength={40}
             style={styles.input}
@@ -198,9 +212,7 @@ function DeleteAccountSection() {
   return (
     <View style={dangerStyles.section} testID="danger-zone">
       <View style={dangerStyles.divider} />
-      <Text variant="caption" tone="muted" style={dangerStyles.eyebrow}>
-        Danger zone
-      </Text>
+      <Text style={dangerStyles.eyebrow}>DANGER ZONE</Text>
 
       {step === "idle" ? null : (
         <View style={dangerStyles.confirmCard} testID="account-delete-confirm-card">
@@ -267,9 +279,7 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.md,
     gap: tokens.space.md,
   },
-  headerText: { flex: 1, minWidth: 0, gap: 2 },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  headerText: { flex: 1, minWidth: 0 },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
@@ -280,19 +290,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
   },
-  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
-  avatarButtons: { flex: 1, gap: tokens.space.sm },
+  avatarPreview: { width: 72, height: 72, borderRadius: 0 },
+  avatarButtons: { flex: 1, gap: tokens.space.md },
+  avatarAction: actionType(tokens.neon.pinkTint),
+  avatarActionQuiet: actionType(tokens.text.secondary),
+  dim: { opacity: 0.6 },
   field: { gap: tokens.space.sm },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 14,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
-  },
+  input: { paddingVertical: 14, fontSize: 18 },
   hint: { marginTop: tokens.space.xs },
   saveButton: { marginTop: tokens.space.sm },
 });
@@ -300,11 +304,11 @@ const styles = StyleSheet.create({
 const dangerStyles = StyleSheet.create({
   section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
   divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    height: 1,
+    backgroundColor: tokens.border.default,
     marginBottom: tokens.space.md,
   },
-  eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
+  eyebrow: { ...pixelType(10), color: tokens.status.danger },
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,

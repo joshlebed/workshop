@@ -39,6 +39,16 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
   `expo-cli` issue: in root/CI/sandbox environments the install attempt should silently
   skip instead of logging FATAL.
 
+- **`agent-browser fill` silently no-ops on react-native-web `TextInput`s.** It sets the
+  DOM `value` and the text appears, but RNW's `TextInput` listens for its own change event,
+  so React state never updates and the form's submit button stays disabled — the failure
+  looks like a broken component rather than a broken driver. Workaround that does work:
+  `agent-browser focus <ref>` then `agent-browser keyboard inserttext "…"`. Every browser
+  verification of a Workshop or HighScore form hits this. **Fix:** either teach
+  `agent-browser fill` to dispatch a native-setter `input` event (the standard
+  React-controlled-input trick) or document the `focus` + `inserttext` pattern in the
+  agent-browser skill so agents don't rediscover it each session.
+
 ### E2E suite
 
 - **`dev@workshop.local` state is sticky across e2e specs.** The user's `display_name`
