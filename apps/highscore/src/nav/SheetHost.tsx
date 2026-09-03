@@ -140,7 +140,9 @@ export function SheetHost() {
     .onEnd((event) => {
       const height = measured.value;
       const halfY = height * HALF;
-      if (y.value > height * 0.58 || event.velocityY > 1400) {
+      // A flick dismisses from anywhere; a slow drag has to pass the halfway
+      // snap first, so the peek state is reachable without closing by accident.
+      if (y.value > height * 0.58 || event.velocityY > 900) {
         y.value = withTiming(
           height,
           { duration: tokens.motion.fast, easing: Easing.in(Easing.cubic) },
