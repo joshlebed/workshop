@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -14,6 +14,13 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Button } from "../../theme/Button";
+import { EmptyState } from "../../theme/EmptyState";
+import { Screen } from "../../theme/layout";
+import { PixelIcon } from "../../theme/PixelIcon";
+import { Text } from "../../theme/Text";
+import { useToast } from "../../theme/Toast";
+import { tokens } from "../../theme/tokens";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import {
@@ -116,20 +123,12 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>x</Text>
+          <PixelIcon name="close" size={16} color={tokens.text.secondary} />
         </Pressable>
-        <View style={styles.headerTitleBlock}>
-          <Text variant="title" style={styles.title}>
-            Post to your Games
+        <View style={styles.headerTitleBlock} testID="share-game-payload">
+          <Text variant="title" numberOfLines={1} style={styles.title}>
+            Post a score
           </Text>
-          <View style={styles.payloadPill} testID="share-game-payload">
-            <View style={styles.payloadDot} />
-            <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
-              {detectedScore
-                ? `${detectedScore.gameLabel} ${resultlessDraft ? "link" : "score"} detected`
-                : "Score share"}
-            </Text>
-          </View>
         </View>
       </View>
 
@@ -263,7 +262,7 @@ function DetectedScoreSuggestion({
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-loading">
         <View style={styles.loadingRow}>
-          <ActivityIndicator color={tokens.accent.default} size="small" />
+          <ActivityIndicator color={tokens.neon.pink} size="small" />
           <Text variant="label">{label} score detected</Text>
         </View>
         <Text variant="caption" tone="muted">
@@ -369,7 +368,7 @@ function GameRow({
         </Text>
       </View>
       {loading ? (
-        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <ActivityIndicator color={tokens.neon.pink} size="small" />
       ) : (
         <Text style={styles.rowChevron}>{">"}</Text>
       )}

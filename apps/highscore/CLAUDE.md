@@ -1,5 +1,11 @@
 # apps/highscore — coding agent guide
 
+Design language: `DESIGN.md` (binding). Layout/navigation rationale for the current UX:
+`UX-EXPLORATION.md`. Visual tokens and primitives live in `src/theme/` — never import colors,
+type or shape from `@workshop/ui`; behavior-only helpers (`confirm`, `haptics`,
+`openExternalUrl`, `formatRelative`, `REORDER_AUTOSCROLL`, `GoogleSignInButton`) still come
+from there.
+
 HighScore owns its complete frontend under `app/` and `src/games/`. Style, layout, branding, and
 client behavior should be implemented locally so they cannot change Workshop users. Do not move
 presentation code back into a shared package.
@@ -11,6 +17,37 @@ HighScore. Only an explicitly requested critical-fix backport may touch both cop
 
 Friends remain a shared product concept backed by the same graph and `@workshop/api-client/friends`,
 but each app owns its screen implementation so either frontend can evolve independently.
+
+## Navigation: the dock
+
+`src/nav/dock.tsx` owns every piece of navigation chrome. Screens declare their keys with
+`useDock(memoizedKeys)`; the provider keeps a **stack** of registrations keyed by a per-mount
+id, because expo-router leaves the pushing screen mounted and a plain "last write wins" would
+strand the pushed screen's keys after a pop. A screen that registers nothing (sign-in,
+onboarding, the legal pages) gets no dock — the bar animates itself away rather than rendering
+an empty frame. Conventions the keys must keep: the **last key is the way out** and is never
+the widest (`weight: 0.7`); at most **one key is lit** (`tone: "primary"`, filled pink); and a
+destructive action is never the lit key. `DOCK_HEIGHT` is the bottom inset every docked screen
+owes its scroll content.
+
+Layout weights are ratios, not fractions — the Dock normalises them so the smallest live key
+has `flexGrow ≥ 1`, otherwise a screen whose only action is BACK leaves the bar two-thirds
+empty.
+
+## Gestures
+
+`GameRow` and the board header use `react-native-gesture-handler` Pan gestures. They work under
+CDP mouse input on web **only if the moves are paced** (~50ms apart); a burst of synthetic
+`pointermove`s never activates the handler, which makes swipes look broken in browser
+automation when they are fine. Every gesture has a visible tap fallback — see the table in
+`UX-EXPLORATION.md`; web users are expected to use the fallbacks.
+
+The home day scrubber is not a gesture: it is rendered _above_ the top of the list and the
+list is parked past it on first layout, so "pull down to reveal" is just scrolling up. That
+avoids a Pan handler competing with the list's own scroll on both platforms. The park needs
+both the viewport height and the content height, and re-arms whenever the list remounts
+(leaving sort mode) — `contentOffset` is iOS-only and `onContentSizeChange` can beat the first
+layout, so neither alone is enough.
 
 ## Share flow
 
@@ -37,7 +74,7 @@ over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) on
 ## Account deletion
 
 The App Store Review Guideline 5.1.1(v) control lives in the **Danger zone** at the bottom of
-`src/screens/EditProfile.tsx` (profile menu → Edit profile). Rules live in
+`src/screens/EditProfile.tsx` (dock → YOU → EDIT). Rules live in
 `src/lib/accountDeletion.ts`, not the component, so they're testable without a renderer: the
 two-tap `nextDeletionStep` machine, the impersonation/signed-out guard, the consequences copy,
 and `runAccountDeletion` — which clears stored credentials **only** after the server confirms.

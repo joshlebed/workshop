@@ -6,8 +6,10 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { PixelIcon } from "../../../theme/PixelIcon";
+import { Text } from "../../../theme/Text";
+import { tokens } from "../../../theme/tokens";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -52,7 +54,11 @@ export function FriendGameSuggestions({
         // stay in the ranked list for context but aren't addable.
         const owned = dg.inMyGames;
         return (
-          <View key={dg.game.id} style={styles.row} testID={`${testIDPrefix}-row-${dg.game.id}`}>
+          <View
+            key={dg.game.id}
+            style={[styles.row, owned && styles.rowOwned]}
+            testID={`${testIDPrefix}-row-${dg.game.id}`}
+          >
             <View style={styles.cover}>
               {dg.game.iconUrl ? (
                 <Image
@@ -61,28 +67,31 @@ export function FriendGameSuggestions({
                   accessibilityIgnoresInvertColors
                 />
               ) : (
-                <Text style={styles.coverGlyph}>🎮</Text>
+                <PixelIcon name="gamepad" size={16} color={tokens.text.secondary} />
               )}
             </View>
             <View style={styles.text}>
-              <Text variant="label" numberOfLines={1} style={styles.title}>
+              <Text variant="heading" numberOfLines={1} style={styles.title}>
                 {dg.game.title}
               </Text>
               {hideFriendLine ? null : (
-                <Text variant="caption" tone="muted" numberOfLines={1}>
+                <Text variant="caption" tone="secondary" numberOfLines={1}>
                   {friendsPlayLine(dg.friends)}
                 </Text>
               )}
             </View>
-            {owned ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
-                <Text style={styles.addedText} numberOfLines={1}>
-                  ✓ In your games
-                </Text>
-              </View>
-            ) : added ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
+            {/* Owned rows stay in the ranked list for context but say so with a
+                check, not a repeated "in your games" pill on every one. */}
+            {owned || added ? (
+              <View
+                style={styles.state}
+                testID={`${testIDPrefix}-${owned ? "owned" : "added"}-${dg.game.id}`}
+              >
+                <PixelIcon
+                  name="check"
+                  size={16}
+                  color={added ? tokens.neon.chartreuse : tokens.text.secondary}
+                />
               </View>
             ) : (
               <Pressable
@@ -99,9 +108,9 @@ export function FriendGameSuggestions({
                 ]}
               >
                 {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
+                  <ActivityIndicator size="small" color={tokens.neon.pink} />
                 ) : (
-                  <Text style={styles.addLabel}>Add</Text>
+                  <PixelIcon name="plus" size={16} color={tokens.neon.pink} />
                 )}
               </Pressable>
             )}
@@ -112,63 +121,34 @@ export function FriendGameSuggestions({
   );
 }
 
-const COVER = 40;
+const COVER = 24;
 
 const styles = StyleSheet.create({
-  list: { gap: tokens.space.sm },
+  list: {},
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    paddingVertical: tokens.space.md,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: tokens.border.default,
   },
+  rowOwned: { opacity: 0.5 },
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    backgroundColor: tokens.bg.raised,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  coverGlyph: { fontSize: 20 },
-  text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  addBtn: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
-  },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  coverImage: { width: COVER, height: COVER },
+  text: { flex: 1, minWidth: 0, gap: tokens.space.xs },
+  title: { fontSize: 11, color: tokens.text.primary },
+  addBtn: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
+  addBtnHover: { opacity: 0.6 },
   addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  addedPill: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addedText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  state: { width: 34, height: 34, alignItems: "center", justifyContent: "center" },
 });

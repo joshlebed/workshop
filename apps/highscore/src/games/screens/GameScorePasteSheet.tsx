@@ -42,9 +42,14 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Avatar } from "../../theme/Avatar";
+import { Button } from "../../theme/Button";
+import { Chip } from "../../theme/Chip";
+import { Sheet } from "../../theme/Sheet";
+import { Text } from "../../theme/Text";
+import { tokens } from "../../theme/tokens";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */

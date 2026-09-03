@@ -50,20 +50,29 @@ The Niteshift sandbox sets both by default.
 
 ```
 app/                     expo-router routes
-  _layout.tsx            providers + auth gate
-  (tabs)/index.tsx       Games home
+  _layout.tsx            providers + auth gate + the dock
+  (tabs)/index.tsx       Games home — the board
   games/[id].tsx         per-game standings history
-  friends/               friends, profiles, invite acceptance
+  friends/               players, profiles, invite acceptance
+  you.tsx                identity, counts, settings
+  profile.tsx            edit profile (incl. account deletion)
   g/[token].tsx          in-app play-link resolver
   share/                 native score-share picker
   sign-in.tsx            Apple / Google / dev sign-in
   onboarding/            display-name capture
 src/hooks/useAuth.tsx    auth context over @workshop/api-client
-src/components/          app-local components (wordmark)
+src/theme/               design tokens + primitives (DESIGN.md lives here in code)
+src/nav/dock.tsx         the morphing bottom dock — all navigation chrome
+src/components/          app-local components (wordmark, quick menu, admin tools)
 src/games/               app-owned Games + friends UI, hooks, and client adapters
+src/screens/             You, edit profile, legal pages
 public/index.html        web HTML shell — OG tags, theme-color, canvas lock
 functions/               Pages API proxy, AASA, and OG metadata/PNG routes
 ```
+
+The UI is dark-only and implements [`DESIGN.md`](DESIGN.md); the layout and navigation model
+(and why it looks like that) are written up in
+[`UX-EXPLORATION.md`](UX-EXPLORATION.md).
 
 Shared code comes from `@workshop/ui` (design system and Google sign-in button),
 `@workshop/api-client` (API, friends boundary, session, storage, OAuth hooks), and

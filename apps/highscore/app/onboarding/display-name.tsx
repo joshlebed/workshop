@@ -1,9 +1,11 @@
-import { Button, Text, tokens } from "@workshop/ui";
 import { useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { Wordmark } from "../../src/components/Wordmark";
 import { useAuth } from "../../src/hooks/useAuth";
+import { Button } from "../../src/theme/Button";
+import { Text } from "../../src/theme/Text";
+import { tokens } from "../../src/theme/tokens";
 
 export default function DisplayName() {
   const { setDisplayName } = useAuth();

@@ -3,9 +3,8 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useAuth } from "../hooks/useAuth";
@@ -17,6 +16,13 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import { DOCK_HEIGHT, type DockKey, useDock } from "../nav/dock";
+import { Avatar } from "../theme/Avatar";
+import { Button } from "../theme/Button";
+import { Screen } from "../theme/layout";
+import { Text } from "../theme/Text";
+import { useToast } from "../theme/Toast";
+import { tokens } from "../theme/tokens";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -41,7 +47,7 @@ export default function EditProfile() {
     if (picked) setAvatarUrl(picked.dataUrl);
   }
 
-  async function onSave() {
+  const onSave = useCallback(async () => {
     if (!canSave) return;
     try {
       setBusy(true);
@@ -52,31 +58,47 @@ export default function EditProfile() {
       if (avatarChanged) patch.avatarUrl = avatarUrl;
       await updateProfile(patch);
       showToast({ message: "Profile updated", tone: "success" });
-      goBack("/");
+      goBack("/you");
     } catch (e) {
       showToast({ message: errorMessage(e, "Could not save profile"), tone: "danger" });
       setBusy(false);
     }
-  }
+  }, [canSave, nameChanged, avatarChanged, trimmed, avatarUrl, updateProfile, showToast]);
+
+  // Saving and leaving are dock keys, so the screen itself is only the form —
+  // no close chevron in the corner, no full-width Save button in the flow.
+  const dockKeys = useMemo<DockKey[]>(
+    () => [
+      {
+        id: "relate",
+        label: "Save",
+        glyph: "check",
+        tone: "primary",
+        weight: 1.5,
+        disabled: !canSave,
+        onPress: () => void onSave(),
+        testID: "profile-save",
+        accessibilityLabel: "Save profile changes",
+      },
+      {
+        id: "back",
+        label: "Back",
+        glyph: "arrow-left",
+        weight: 0.7,
+        onPress: () => goBack("/you"),
+        testID: "profile-edit-close",
+      },
+    ],
+    [canSave, onSave],
+  );
+  useDock(dockKeys);
 
   return (
     <Screen style={styles.root}>
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
-            Account
-          </Text>
-          <Text variant="heading" numberOfLines={1}>
-            Edit profile
-          </Text>
-        </View>
-        <IconButton
-          accessibilityLabel="Close profile editor"
-          onPress={() => goBack("/")}
-          testID="profile-edit-close"
-        >
-          <Text style={styles.closeGlyph}>✕</Text>
-        </IconButton>
+        <Text variant="title" numberOfLines={1} style={styles.headerTitle}>
+          Edit profile
+        </Text>
       </View>
 
       <KeyboardAwareScrollView
@@ -122,7 +144,7 @@ export default function EditProfile() {
             value={name}
             onChangeText={setName}
             placeholder="Ada Lovelace"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             autoComplete="name"
             maxLength={40}
             style={styles.input}
@@ -144,16 +166,6 @@ export default function EditProfile() {
             </Text>
           </View>
         ) : null}
-
-        <Button
-          testID="profile-save"
-          label="Save changes"
-          size="lg"
-          disabled={!canSave}
-          loading={busy}
-          onPress={onSave}
-          style={styles.saveButton}
-        />
 
         <DeleteAccountSection />
       </KeyboardAwareScrollView>
@@ -259,20 +271,16 @@ function DeleteAccountSection() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
     paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
+    paddingTop: tokens.space.md,
     paddingBottom: tokens.space.md,
-    gap: tokens.space.md,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: tokens.border.default,
   },
-  headerText: { flex: 1, minWidth: 0, gap: 2 },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  headerTitle: { fontSize: 14 },
   body: {
     paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xxl,
+    paddingBottom: DOCK_HEIGHT + tokens.space.xl,
     gap: tokens.space.xl,
   },
   avatarSection: {
@@ -280,13 +288,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
   },
-  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
+  avatarPreview: { width: 72, height: 72 },
   avatarButtons: { flex: 1, gap: tokens.space.sm },
   field: { gap: tokens.space.sm },
   input: {
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 14,
     color: tokens.text.primary,
@@ -294,22 +301,20 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
   },
   hint: { marginTop: tokens.space.xs },
-  saveButton: { marginTop: tokens.space.sm },
 });
 
 const dangerStyles = StyleSheet.create({
   section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
   divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    height: tokens.bezel,
+    backgroundColor: tokens.border.default,
     marginBottom: tokens.space.md,
   },
   eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.status.danger,
     backgroundColor: tokens.bg.surface,
   },

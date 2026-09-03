@@ -54,12 +54,14 @@ describe("public routes", () => {
     }
   });
 
-  it("links both pages from the signed-in profile menu", () => {
-    const menu = readFileSync(join(__dirname, "..", "components", "ProfileMenu.tsx"), "utf8");
-    expect(menu).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
-    expect(menu).toContain('label="Support"');
-    expect(menu).toContain("router.push(SUPPORT_ROUTE)");
-    expect(menu).toContain('label="Privacy policy"');
-    expect(menu).toContain("router.push(PRIVACY_ROUTE)");
+  // The profile sheet became the YOU screen (dock → YOU); both public pages
+  // still have to be one tap from a signed-in session.
+  it("links both pages from the signed-in YOU screen", () => {
+    const you = readFileSync(join(__dirname, "..", "screens", "You.tsx"), "utf8");
+    expect(you).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
+    expect(you).toContain('label="Support"');
+    expect(you).toContain("router.push(SUPPORT_ROUTE)");
+    expect(you).toContain('label="Privacy policy"');
+    expect(you).toContain("router.push(PRIVACY_ROUTE)");
   });
 });

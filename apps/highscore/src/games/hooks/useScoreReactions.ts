@@ -7,8 +7,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import type { ScoreReactionSummary, SetScoreReactionResponse } from "@workshop/shared/games";
-import { haptics, useToast } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { useCallback, useState } from "react";
+import { useToast } from "../../theme/Toast";
 import { removeScoreReaction, setScoreReaction } from "../api/games";
 import { applyViewerReaction, type ReactionChange } from "../lib/scoreReactions";
 

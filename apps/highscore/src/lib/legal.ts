@@ -36,13 +36,13 @@ export const SUPPORT_SECTIONS: LegalSection[] = [
     heading: "Getting a faster answer",
     body: [
       "Include the game and date you were looking at, plus the display name on your account. Screenshots help — the paste box and the leaderboard row usually show what went wrong.",
-      "The Send feedback button in the profile menu pre-fills the app version and platform for you.",
+      "The Send feedback row on the YOU screen pre-fills the app version and platform for you.",
     ],
   },
   {
     heading: "Account deletion",
     body: [
-      "Delete your account from inside the app: profile menu → Edit profile → Danger zone → Delete account. It takes effect immediately and can't be undone.",
+      "Delete your account from inside the app: YOU → Edit → Danger zone → Delete account. It takes effect immediately and can't be undone.",
       "HighScore and Workshop.dev share one account, so deleting here also deletes your Workshop.dev lists, items, and activity. The confirmation screen spells this out before you commit.",
     ],
   },
@@ -87,7 +87,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     heading: "Retention and deletion",
     body: [
       "Your account, scores, and friend connections are kept for as long as your account exists, so your history stays intact between seasons. Sign-in sessions expire on their own — they lapse after long inactivity and always end within a year. Server logs holding request metadata are deleted automatically after one year.",
-      "You can delete your account at any time from the app: profile menu → Edit profile → Danger zone → Delete account. Deletion is immediate and permanent — your profile, scores, reactions, friend connections, invites, and share links are removed, not deactivated, and it can't be undone.",
+      "You can delete your account at any time from the app: YOU → Edit → Danger zone → Delete account. Deletion is immediate and permanent — your profile, scores, reactions, friend connections, invites, and share links are removed, not deactivated, and it can't be undone.",
       "Because HighScore and Workshop.dev are one account, deleting also removes your Workshop.dev lists, items, and activity, including shared lists you own. Other people's own lists and scores are untouched.",
       "If you signed in with Apple, HighScore also asks Apple to revoke the sign-in tokens it holds for you. Google sign-in leaves nothing to revoke — HighScore only ever verifies an identity token and never requests ongoing access to your Google account.",
     ],
