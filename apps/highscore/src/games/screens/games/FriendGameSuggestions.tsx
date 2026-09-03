@@ -1,13 +1,15 @@
 // Friend-game discovery list (G3, issue #293) — a presentational column of
 // "games your friends play that you haven't added", each one-tap addable.
-// Shared by three surfaces: the + add-game sheet (suggestions above the URL
-// field), the Games-home "friends but no games" empty state, and the
-// post-accept picker. Data + add mutations live at the call site; this file
-// only renders rows and reports taps.
+// Shared by the + add-game sheet and the empty timeline. Data + add mutations
+// live at the call site; this file only renders rows and reports taps.
+//
+// Rendered as ledger lines rather than cards: the same grammar as the feed, so
+// a game reads the same whether you already have it or not.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { PixelIcon, Text, tokens } from "../../../theme";
+import { GameGlyph } from "../../../timeline/GameLedger";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -22,13 +24,12 @@ interface FriendGameSuggestionsProps {
   games: DiscoveryGame[];
   /** Game ids whose add request is currently in flight (spinner on Add). */
   addingGameIds: string[];
-  /** Game ids added this session — the row flips to a "✓ Added" pill. */
+  /** Game ids added this session — the row flips to a checked state. */
   addedGameIds: string[];
   onAdd: (game: DiscoveryGame) => void;
   /**
-   * Hide the per-row "Sam plays" line. Used by the post-accept picker, where
-   * a single friend's name already heads the section so repeating it on every
-   * row reads as noise.
+   * Hide the per-row "Sam plays" line. Used where a single friend's name
+   * already heads the section so repeating it on every row reads as noise.
    */
   hideFriendLine?: boolean;
   /** testID stem → `${testIDPrefix}-row-${id}` / `${testIDPrefix}-add-${id}`. */
@@ -53,19 +54,9 @@ export function FriendGameSuggestions({
         const owned = dg.inMyGames;
         return (
           <View key={dg.game.id} style={styles.row} testID={`${testIDPrefix}-row-${dg.game.id}`}>
-            <View style={styles.cover}>
-              {dg.game.iconUrl ? (
-                <Image
-                  source={{ uri: dg.game.iconUrl }}
-                  style={styles.coverImage}
-                  accessibilityIgnoresInvertColors
-                />
-              ) : (
-                <Text style={styles.coverGlyph}>🎮</Text>
-              )}
-            </View>
+            <GameGlyph iconUrl={dg.game.iconUrl} size={20} />
             <View style={styles.text}>
-              <Text variant="label" numberOfLines={1} style={styles.title}>
+              <Text variant="title" numberOfLines={1}>
                 {dg.game.title}
               </Text>
               {hideFriendLine ? null : (
@@ -74,15 +65,15 @@ export function FriendGameSuggestions({
                 </Text>
               )}
             </View>
-            {owned ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
-                <Text style={styles.addedText} numberOfLines={1}>
-                  ✓ In your games
+            {owned || added ? (
+              <View
+                style={styles.done}
+                testID={`${testIDPrefix}-${owned ? "owned" : "added"}-${dg.game.id}`}
+              >
+                <PixelIcon name="check" size={16} color={tokens.neon.chartreuse} />
+                <Text variant="eyebrow" tone="success">
+                  {owned ? "Yours" : "Added"}
                 </Text>
-              </View>
-            ) : added ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
               </View>
             ) : (
               <Pressable
@@ -99,9 +90,11 @@ export function FriendGameSuggestions({
                 ]}
               >
                 {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
+                  <ActivityIndicator size="small" color={tokens.neon.pink} />
                 ) : (
-                  <Text style={styles.addLabel}>Add</Text>
+                  <Text variant="eyebrow" tone="link">
+                    Add
+                  </Text>
                 )}
               </Pressable>
             )}
@@ -112,63 +105,24 @@ export function FriendGameSuggestions({
   );
 }
 
-const COVER = 40;
-
 const styles = StyleSheet.create({
-  list: { gap: tokens.space.sm },
+  list: { gap: tokens.space.xs },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    minHeight: 44,
   },
-  cover: {
-    width: COVER,
-    height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  coverGlyph: { fontSize: 20 },
-  text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  text: { flex: 1, minWidth: 0, gap: 1 },
+  done: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   addBtn: {
-    minWidth: 64,
     paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
-  addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  addedPill: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addedText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  addBtnHover: { backgroundColor: tokens.accent.muted },
+  addBtnBusy: { opacity: 0.7 },
 });

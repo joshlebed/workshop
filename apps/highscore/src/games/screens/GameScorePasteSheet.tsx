@@ -42,9 +42,10 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Button, Chip, Sheet, Text, tokens } from "../../theme";
+import { GameGlyph } from "../../timeline/GameLedger";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -57,11 +58,9 @@ export interface TaughtScoreSpec {
   summarySpec: SummarySpec | null;
 }
 
-interface GameScorePasteSheetProps<T extends { title: string }> {
+interface GameScorePasteSheetProps<T extends { title: string; iconUrl?: string | null }> {
   /** Target game, or `null` when the sheet should be closed. */
   item: T | null;
-  userName: string | null;
-  userAvatarUrl?: string | null;
   pending: boolean;
   /**
    * Parser for the target game (registry or user-taught); null/undefined =
@@ -84,20 +83,25 @@ interface GameScorePasteSheetProps<T extends { title: string }> {
   canReteach?: boolean;
   onSubmit: (item: T, scoreRaw: string) => void;
   onClose: () => void;
+  /**
+   * Where a score of `value` would land you on today's board. Returning a rank
+   * turns the paste box from a form into a bet — you see the consequence before
+   * you commit. Return null when the standing can't be computed.
+   */
+  rankPreview?: (value: number) => number | null;
 }
 
 const MAX_CANDIDATES = 6;
 
-export function GameScorePasteSheet<T extends { title: string }>({
+export function GameScorePasteSheet<T extends { title: string; iconUrl?: string | null }>({
   item,
-  userName,
-  userAvatarUrl,
   pending,
   spec,
   onTeach,
   canReteach,
   onSubmit,
   onClose,
+  rankPreview,
 }: GameScorePasteSheetProps<T>) {
   const [snapshot, setSnapshot] = useState<T | null>(item);
   const [draft, setDraft] = useState("");
@@ -186,6 +190,15 @@ export function GameScorePasteSheet<T extends { title: string }>({
     };
   }, [chosen, learnedSpec, draft, direction, summarySpec]);
 
+  // Where this result would land you on today's board. Uses the value we're
+  // actually going to record — the taught candidate when the teach chips are
+  // up, the parsed preview otherwise.
+  const previewRank = useMemo(() => {
+    const value = taught?.expectedValue ?? preview?.value ?? null;
+    if (value === null || !rankPreview) return null;
+    return rankPreview(value);
+  }, [taught, preview?.value, rankPreview]);
+
   const pickCandidate = (candidate: ScoreCandidate) => {
     setChosen(candidate);
     setDirection(suggestScoreDirection(candidate));
@@ -231,10 +244,12 @@ export function GameScorePasteSheet<T extends { title: string }>({
       {snapshot ? (
         <>
           <View style={styles.header}>
-            <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
+            {/* The game's mark, not yours: you know who you are, and the sheet
+                can open from a row you didn't tap. */}
+            <GameGlyph iconUrl={snapshot.iconUrl ?? null} size={24} />
             <View style={styles.headerText}>
-              <Text variant="heading" numberOfLines={1}>
-                Played {snapshot.title}?
+              <Text variant="display" numberOfLines={1}>
+                {snapshot.title}
               </Text>
               <Text variant="caption" tone="muted">
                 Paste your result to log today's score.
@@ -254,11 +269,18 @@ export function GameScorePasteSheet<T extends { title: string }>({
             {...webProps}
           />
           {preview ? (
-            <Text variant="caption" tone="muted" testID="game-paste-preview">
-              {preview.value !== null
-                ? `Recording score: ${preview.value}`
-                : "Couldn't read a score in this. It'll post as “Played”."}
-            </Text>
+            <View style={styles.preview}>
+              <Text variant="caption" tone="muted" testID="game-paste-preview">
+                {preview.value !== null
+                  ? `Scores as ${preview.value}`
+                  : "Couldn't read a score in this. It'll post as “Played”."}
+              </Text>
+              {previewRank !== null ? (
+                <Text variant="display" tone="success" testID="game-paste-rank">
+                  #{previewRank} today
+                </Text>
+              ) : null}
+            </View>
           ) : null}
           {showTeach ? (
             <View style={styles.teach} testID="game-paste-teach">
@@ -348,6 +370,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
 }
 
 const styles = StyleSheet.create({
+  preview: { gap: 2, alignItems: "flex-start" },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -355,8 +378,10 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
   input: {
-    minHeight: 120,
-    borderWidth: 1,
+    // Two lines of a share, not a wall: most results are short and the sheet
+    // grows with its content.
+    minHeight: 84,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,

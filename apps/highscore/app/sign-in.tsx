@@ -1,9 +1,10 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+import { GoogleSignInButton } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { Button, Text, tokens } from "../src/theme";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -56,10 +57,15 @@ export default function SignIn() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.topSpacer} />
+      {/* Same shape as the feed it opens onto: the mark at the top, a rule
+          under it, and the one thing to do pinned to the bottom. */}
       <View style={styles.brandBlock}>
         <Wordmark size="lg" />
-        <Text tone="secondary">Compete in daily games</Text>
+        <View style={styles.rule} />
+        <Text tone="secondary" style={styles.pitch}>
+          Your daily games, your friends, one scoreboard. Paste a result and it lands on everyone's
+          board.
+        </Text>
       </View>
 
       <View style={styles.actions}>
@@ -79,24 +85,15 @@ export default function SignIn() {
           disabled={busy !== null && busy !== "google"}
         />
         {DEV_AUTH_ENABLED ? (
-          <>
-            <View style={styles.divider} accessibilityElementsHidden>
-              <View style={styles.dividerLine} />
-              <Text tone="muted" style={styles.dividerText}>
-                or
-              </Text>
-              <View style={styles.dividerLine} />
-            </View>
-            <Button
-              testID="sign-in-dev"
-              label="Dev sign-in"
-              variant="ghost"
-              size="md"
-              loading={busy === "dev"}
-              disabled={busy !== null}
-              onPress={handleDev}
-            />
-          </>
+          <Button
+            testID="sign-in-dev"
+            label="Dev sign-in"
+            variant="ghost"
+            size="md"
+            loading={busy === "dev"}
+            disabled={busy !== null}
+            onPress={handleDev}
+          />
         ) : null}
         {!apple.available && !GOOGLE_CONFIGURED && !DEV_AUTH_ENABLED ? (
           <Text tone="muted" style={styles.help} testID="sign-in-providers-unconfigured">
@@ -109,8 +106,6 @@ export default function SignIn() {
           </Text>
         ) : null}
       </View>
-
-      <View style={styles.bottomSpacer} />
     </View>
   );
 }
@@ -121,19 +116,19 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
     paddingHorizontal: tokens.space.xl,
     paddingVertical: tokens.space.xxl,
-    gap: tokens.space.xxl,
+    // One centred lockup rather than a mark at the top and buttons at the
+    // bottom with 400px of nothing between them.
+    justifyContent: "center",
+    gap: tokens.space.xl,
   },
-  // Push the brand block to ~38% from the top — purely-vertical centering on
-  // desktop leaves a void above the wordmark; this brings it closer to where
-  // the eye naturally lands without crowding the top.
-  topSpacer: { flex: 0.7 },
-  bottomSpacer: { flex: 1 },
   brandBlock: {
     gap: tokens.space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
   },
+  rule: { height: tokens.bezel, backgroundColor: tokens.border.default },
+  pitch: { maxWidth: 340 },
   actions: {
     gap: tokens.space.sm,
     maxWidth: 420,
@@ -142,20 +137,4 @@ const styles = StyleSheet.create({
   },
   error: { textAlign: "center", marginTop: tokens.space.xs },
   help: { textAlign: "center", marginTop: tokens.space.xs },
-  divider: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.xs,
-  },
-  dividerLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-  },
-  dividerText: {
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
 });

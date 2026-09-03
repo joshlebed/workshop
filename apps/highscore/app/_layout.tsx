@@ -1,13 +1,13 @@
+import { PressStart2P_400Regular, useFonts } from "@expo-google-fonts/press-start-2p";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
-import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { type Href, Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -19,6 +19,7 @@ import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
+import { Text, ToastProvider, tokens } from "../src/theme";
 
 configureApiClient({ client: "highscore" });
 
@@ -77,16 +78,14 @@ function AuthGate() {
   useShareIntentRedirect(status);
   // Widen to `string[]` so index access typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
-  // generated in CI. Group segments (`(tabs)`) are stripped so the route
+  // generated in CI. Group segments (`(feed)`) are stripped so the route
   // checks below match URL-shaped paths.
   const rawSegments: string[] = useSegments();
   const segments = rawSegments.filter((segment) => !segment.startsWith("("));
   const router = useRouter();
   const postSignInResolvedRef = useRef(false);
   // `/support` and `/privacy` are published App Store URLs: they must render
-  // for a signed-out visitor, and must survive an unreachable API. Everything
-  // auth-shaped below — the redirects and the two interstitials — steps aside
-  // for them.
+  // for a signed-out visitor, and must survive an unreachable API.
   const onPublicRoute = isPublicRoute(segments);
 
   useEffect(() => {
@@ -128,7 +127,7 @@ function AuthGate() {
   if (status === "loading" && !onPublicRoute) {
     return (
       <View style={centered}>
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
       </View>
     );
   }
@@ -141,13 +140,28 @@ function AuthGate() {
       >
         <View style={{ ...centered, paddingHorizontal: tokens.space.xl }}>
           <View style={{ width: "100%", maxWidth: 340, gap: tokens.space.md }}>
-            <Text variant="heading" style={{ textAlign: "center" }}>
-              Can’t connect
+            <Text variant="display" style={{ textAlign: "center" }}>
+              No signal
             </Text>
             <Text tone="secondary" style={{ textAlign: "center" }}>
               Your session is still saved. Check your connection and try again.
             </Text>
-            <Button label="Try again" size="lg" onPress={() => void refresh()} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Try again"
+              onPress={() => void refresh()}
+              style={{
+                height: 44,
+                alignItems: "center",
+                justifyContent: "center",
+                borderWidth: tokens.bezel,
+                borderColor: tokens.neon.pink,
+              }}
+            >
+              <Text variant="heading" tone="link">
+                Try again
+              </Text>
+            </Pressable>
           </View>
         </View>
       </SafeAreaView>
@@ -162,17 +176,13 @@ function AuthGate() {
           contentStyle: { backgroundColor: tokens.bg.canvas },
           gestureEnabled: true,
           fullScreenGestureEnabled: true,
+          animation: "fade",
         }}
       >
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="games/[id]" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/[userId]" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/accept/[token]" />
+        <Stack.Screen name="(feed)" />
         <Stack.Screen name="g/[token]" />
         <Stack.Screen name="share/index" />
-        <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="profile" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_bottom" }} />
         <Stack.Screen name="support" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="privacy" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="sign-in" />
@@ -192,24 +202,26 @@ const centered = {
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
-  const colorScheme = useColorScheme();
-  const isLight = colorScheme === "light";
+  // HighScore is dark-only (DESIGN.md): no ThemeProvider, no useColorScheme.
+  // Press Start 2P is heading/score-only, so blocking on it briefly is a
+  // dark-canvas flash, not a blank app; render proceeds on load error too.
+  const [fontsLoaded, fontError] = useFonts({ PressStart2P_400Regular });
+  if (!fontsLoaded && !fontError) return <View style={centered} />;
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <ThemeProvider>
-            <StatusBar style={isLight ? "dark" : "light"} />
-            <QueryClientProvider client={queryClient}>
-              <ToastProvider>
-                <AuthProvider>
-                  <GamesRuntimeBridge>
-                    <AuthGate />
-                  </GamesRuntimeBridge>
-                </AuthProvider>
-              </ToastProvider>
-            </QueryClientProvider>
-          </ThemeProvider>
+          <StatusBar style="light" />
+          <QueryClientProvider client={queryClient}>
+            <ToastProvider>
+              <AuthProvider>
+                <GamesRuntimeBridge>
+                  <AuthGate />
+                </GamesRuntimeBridge>
+              </AuthProvider>
+            </ToastProvider>
+          </QueryClientProvider>
         </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

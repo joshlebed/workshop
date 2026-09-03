@@ -1,28 +1,35 @@
-import { Text, tokens } from "@workshop/ui";
 import { StyleSheet, View } from "react-native";
+import { Text, textGlow, tokens } from "../theme";
 import { BrandIcon } from "./BrandIcon";
 
 interface WordmarkProps {
-  /** Sign-in screen renders the oversized variant; headers use the default. */
+  /** Sign-in screen renders the oversized variant with the cabinet mark. */
   size?: "md" | "lg";
 }
 
+/**
+ * "HIGHSCORE" set in Press Start 2P with a pink glow — one of the few elements
+ * in the app allowed to glow at all (DESIGN.md). The header variant drops the
+ * app icon: the icon is already the thing you tapped to get here, so repeating
+ * it beside the name is decoration.
+ */
 export function Wordmark({ size = "md" }: WordmarkProps) {
   const large = size === "lg";
   return (
     <View accessible accessibilityRole="header" accessibilityLabel="HighScore" style={styles.row}>
-      <BrandIcon size={large ? 48 : 28} />
-      <Text style={[styles.text, large ? styles.textLg : styles.textMd]}>HighScore</Text>
+      {large ? <BrandIcon size={56} /> : null}
+      <Text
+        variant={large ? "display" : "heading"}
+        style={[large ? styles.lg : styles.md, textGlow(tokens.neon.pinkGlow, large ? 14 : 9)]}
+      >
+        HighScore
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  // lineHeight must be set explicitly: the shared <Text> defaults to the
-  // `body` variant (lineHeight 22), so overriding only fontSize leaves a large
-  // glyph in a 22px line box and iOS clips the ascenders.
-  text: { color: tokens.text.primary, fontWeight: tokens.font.weight.bold },
-  textMd: { fontSize: tokens.font.size.xl, lineHeight: 28, letterSpacing: -0.8 },
-  textLg: { fontSize: 36, lineHeight: 44, letterSpacing: -1.4 },
+  row: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  md: { letterSpacing: 1.5 },
+  lg: { letterSpacing: 2 },
 });

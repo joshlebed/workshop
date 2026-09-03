@@ -54,12 +54,14 @@ describe("public routes", () => {
     }
   });
 
-  it("links both pages from the signed-in profile menu", () => {
-    const menu = readFileSync(join(__dirname, "..", "components", "ProfileMenu.tsx"), "utf8");
-    expect(menu).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
-    expect(menu).toContain('label="Support"');
-    expect(menu).toContain("router.push(SUPPORT_ROUTE)");
-    expect(menu).toContain('label="Privacy policy"');
-    expect(menu).toContain("router.push(PRIVACY_ROUTE)");
+  // Both links live in the account sheet (`/profile`), which absorbed the old
+  // profile menu and edit-profile screen.
+  it("links both pages from the signed-in account sheet", () => {
+    const sheet = readFileSync(join(__dirname, "..", "sheets", "AccountSheet.tsx"), "utf8");
+    expect(sheet).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
+    expect(sheet).toContain('label="Support"');
+    expect(sheet).toContain("router.push(SUPPORT_ROUTE)");
+    expect(sheet).toContain('label="Privacy policy"');
+    expect(sheet).toContain("router.push(PRIVACY_ROUTE)");
   });
 });

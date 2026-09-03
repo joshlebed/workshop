@@ -171,3 +171,20 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
   in `ci-docs.yml`") but nothing fails the build when someone forgets. **Fix:** a tiny
   script in CI that diffs the job names between the two workflows and fails on
   mismatch. ~30m.
+
+### HighScore
+
+- **`@workshop/ui`'s `GoogleSignInButton` is the one control HighScore can't restyle.** It
+  renders rounded corners and a grey fill on `/sign-in`, next to sharp-cornered 2px-bezel
+  buttons â€” the only element in the app not on HighScore tokens, and DESIGN.md forbids
+  importing/altering shared visuals. **Fix:** move the Google-identity plumbing (the
+  `useGoogleSignIn` hook / GSI script loader) into `@workshop/api-client/oauth` and let each app
+  own the button chrome, the same split Apple sign-in already has. ~1h.
+
+- **`agent-browser record start` reloads the page, and the demo toolkit is injected into the
+  pre-reload document.** Injecting immediately after `record start` (as the skill template shows)
+  silently loses `window.demo*` a second or two later, and the recording dies mid-script on
+  `ReferenceError: demoMoveToEl is not defined`. On this app the reload + Metro hydrate takes
+  ~5s. **Fix:** wait for `document.readyState === "complete"` _and_ a real app element, sleep a
+  few seconds, then inject and assert `typeof window.demoSubtitle === "function"` before the
+  first action. Worth adding to the skill's script template. ~10m doc edit.

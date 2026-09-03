@@ -50,20 +50,33 @@ The Niteshift sandbox sets both by default.
 
 ```
 app/                     expo-router routes
-  _layout.tsx            providers + auth gate
-  (tabs)/index.tsx       Games home
-  games/[id].tsx         per-game standings history
-  friends/               friends, profiles, invite acceptance
+  _layout.tsx            providers, fonts, auth gate
+  (feed)/                the one mounted screen + the sheets over it
+    _layout.tsx          mounts TimelineHome once, plus SheetHost and a Slot
+    index.tsx            /            → timeline (route renders null)
+    games/[id].tsx       /games/:id   → game board sheet
+    friends/index.tsx    /friends     → friends sheet
+    friends/[userId].tsx /friends/:id → friend profile sheet
+    friends/accept/      invite acceptance (full screen, works signed out)
+    profile.tsx          /profile     → account sheet
   g/[token].tsx          in-app play-link resolver
   share/                 native score-share picker
   sign-in.tsx            Apple / Google / dev sign-in
   onboarding/            display-name capture
+src/theme/               app-owned design tokens + primitives (DESIGN.md)
+src/nav/                 SheetHost, SheetFrame, URL→sheet mapping
+src/timeline/            the day feed: hero, per-game ledgers, day sections
+src/sheets/              game board, friends, friend profile, account
 src/hooks/useAuth.tsx    auth context over @workshop/api-client
-src/components/          app-local components (wordmark)
-src/games/               app-owned Games + friends UI, hooks, and client adapters
+src/components/          app-local components (wordmark, brand icon)
+src/games/               app-owned games/friends data adapters, hooks, paste flow
 public/index.html        web HTML shell — OG tags, theme-color, canvas lock
 functions/               Pages API proxy, AASA, and OG metadata/PNG routes
 ```
+
+The screen structure and navigation model are documented in
+[`UX-EXPLORATION.md`](./UX-EXPLORATION.md); the visual language is
+[`DESIGN.md`](./DESIGN.md). Agent-facing gotchas live in [`CLAUDE.md`](./CLAUDE.md).
 
 Shared code comes from `@workshop/ui` (design system and Google sign-in button),
 `@workshop/api-client` (API, friends boundary, session, storage, OAuth hooks), and
