@@ -130,6 +130,8 @@ const styles = StyleSheet.create({
     borderRadius: 0,
     borderColor: tokens.border.default,
     borderTopWidth: tokens.bezel,
+    borderLeftWidth: tokens.bezel,
+    borderRightWidth: tokens.bezel,
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl,
@@ -137,7 +139,7 @@ const styles = StyleSheet.create({
   },
   handle: {
     alignSelf: "center",
-    width: 32,
+    width: 48,
     height: 4,
     borderRadius: 0,
     backgroundColor: tokens.border.default,

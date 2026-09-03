@@ -37,6 +37,7 @@ export function LedgerList({
       }
       contentContainerStyle={styles.listContent}
       testID="games-home-list"
+      showsVerticalScrollIndicator={false}
       ListFooterComponent={footer}
       refreshControl={
         <RefreshControl

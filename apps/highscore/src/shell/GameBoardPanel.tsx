@@ -6,7 +6,6 @@
 
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import type { Game, GameStandingsEntry } from "@workshop/shared/games";
-import { formatRelative } from "@workshop/ui";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { ScoreReactions } from "../games/components/ScoreReactions";
 import { summarizeGameScoreBody } from "../games/lib/scoresSummary";
@@ -15,7 +14,7 @@ import { Text } from "../theme/Text";
 import { ledgerMetrics } from "./LedgerRow";
 import { railSaysItAll, railScore } from "./railScore";
 
-const { GUTTER, RAIL_W } = ledgerMetrics;
+const { GUTTER, COL_W } = ledgerMetrics;
 
 export interface HistoryCell {
   dateKey: string;
@@ -231,6 +230,9 @@ export function GameBoardPanel(props: GameBoardPanelProps) {
         </View>
       </View>
 
+      {/* One pink action. Re-teach is admin-only and Remove is the rarest,
+          most destructive thing here, so it sits apart at the far edge in the
+          quiet colour and lets its confirm dialog carry the weight. */}
       <View style={styles.gameActions}>
         <Pressable
           accessibilityRole="button"
@@ -242,6 +244,7 @@ export function GameBoardPanel(props: GameBoardPanelProps) {
         >
           <Text style={styles.actionText}>OPEN GAME</Text>
         </Pressable>
+        <View style={styles.gameActionsSpacer} />
         {onReteach ? (
           <Pressable
             accessibilityRole="button"
@@ -251,7 +254,7 @@ export function GameBoardPanel(props: GameBoardPanelProps) {
             testID="game-menu-reteach"
             style={({ pressed }) => [pressed && styles.dim]}
           >
-            <Text style={styles.actionText}>RE-TEACH</Text>
+            <Text style={styles.actionQuiet}>RE-TEACH</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -262,7 +265,7 @@ export function GameBoardPanel(props: GameBoardPanelProps) {
           testID="game-menu-remove"
           style={({ pressed }) => [pressed && styles.dim]}
         >
-          <Text style={[styles.actionText, styles.actionDanger]}>REMOVE</Text>
+          <Text style={styles.actionQuiet}>REMOVE</Text>
         </Pressable>
       </View>
     </View>
@@ -357,11 +360,8 @@ function StandingRow({
             testID="game-board-clear-score"
             style={({ pressed }) => [pressed && styles.dim]}
           >
-            <Text style={[styles.actionText, styles.actionQuiet]}>CLEAR</Text>
+            <Text style={styles.actionQuiet}>CLEAR</Text>
           </Pressable>
-          {entry.updatedAt ? (
-            <Text style={styles.posted}>posted {formatRelative(entry.updatedAt)}</Text>
-          ) : null}
         </View>
       ) : null}
     </View>
@@ -394,15 +394,12 @@ const styles = StyleSheet.create({
   entryNameText: { fontSize: 13, lineHeight: 18, color: tokens.text.primary },
   entryScore: {
     ...pixelType(12),
-    width: RAIL_W,
+    width: COL_W,
     textAlign: "right",
     color: tokens.text.primary,
   },
   entryScoreTop: { color: tokens.neon.yellow },
-  entryScoreMark: {
-    width: RAIL_W,
-    alignItems: "flex-end",
-  },
+  entryScoreMark: { width: COL_W },
   entryRest: {
     paddingLeft: GUTTER,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
@@ -417,7 +414,6 @@ const styles = StyleSheet.create({
     paddingLeft: GUTTER,
     paddingTop: 4,
   },
-  posted: { fontSize: 11, lineHeight: 14, color: tokens.text.secondary },
   sectionLabel: { ...pixelType(10), color: tokens.text.secondary },
   composer: {
     gap: tokens.space.sm,
@@ -445,7 +441,7 @@ const styles = StyleSheet.create({
   },
   historyRow: { flexDirection: "row", justifyContent: "space-between" },
   historyCell: { flex: 1, alignItems: "center", gap: 4 },
-  historyDay: { fontSize: 9, lineHeight: 11, letterSpacing: 1, color: tokens.text.secondary },
+  historyDay: { fontSize: 10, lineHeight: 13, letterSpacing: 1, color: tokens.text.secondary },
   historyDaySelected: { color: tokens.text.primary },
   historyBody: { ...pixelType(10), color: tokens.text.primary },
   historyPending: { width: 8, height: 8, marginVertical: 4, backgroundColor: tokens.bg.raised },
@@ -464,12 +460,14 @@ const styles = StyleSheet.create({
   historyBarOn: { backgroundColor: tokens.neon.pink },
   gameActions: {
     flexDirection: "row",
-    gap: tokens.space.lg,
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: tokens.space.md,
     borderTopWidth: 1,
     borderTopColor: tokens.border.default,
     paddingTop: tokens.space.md,
   },
+  gameActionsSpacer: { flex: 1, minWidth: tokens.space.md },
   actionText: { ...pixelType(10), color: tokens.neon.pink },
-  actionQuiet: { color: tokens.text.secondary },
-  actionDanger: { color: tokens.status.danger },
+  actionQuiet: { ...pixelType(10), color: tokens.text.secondary },
 });

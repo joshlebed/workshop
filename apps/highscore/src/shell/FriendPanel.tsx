@@ -20,10 +20,10 @@ import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { addGame } from "../games/api/games";
 import { localDateKey } from "../games/lib/gameDate";
-import { summarizeGameScoreBody } from "../games/lib/scoresSummary";
 import { useGamesRuntime } from "../games/runtime";
 import { Avatar, Button, PixelIcon, pixelType, tokens, useToast } from "../theme";
 import { Text } from "../theme/Text";
+import { railScore } from "./railScore";
 
 function shortDate(iso: string): string {
   const d = new Date(iso);
@@ -58,12 +58,11 @@ export interface FriendPanelProps {
   userId: string;
   via: string | undefined;
   onBack: () => void;
-  onClose: () => void;
   /** Open one of their games in the ledger behind the drawer. */
   onOpenGame: (gameId: string) => void;
 }
 
-export function FriendPanel({ userId, via, onBack, onClose, onOpenGame }: FriendPanelProps) {
+export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProps) {
   const { token, user } = useGamesRuntime();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -204,18 +203,13 @@ export function FriendPanel({ userId, via, onBack, onClose, onOpenGame }: Friend
           <PixelIcon name="chevron-left" size={16} color={tokens.neon.pink} />
           <Text style={styles.backLabel}>FRIENDS</Text>
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Close friends"
-          onPress={onClose}
-          hitSlop={10}
-          style={({ pressed }) => [styles.headBtn, pressed && styles.dim]}
-        >
-          <PixelIcon name="close" size={16} color={tokens.text.secondary} />
-        </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {profileQuery.isPending ? (
           <>
             <View style={styles.identity}>
@@ -324,18 +318,15 @@ export function FriendPanel({ userId, via, onBack, onClose, onOpenGame }: Friend
                 <Text style={styles.sectionLabel}>GAMES</Text>
                 {profile.games.map((pg) => {
                   const adding = addingGameIds.includes(pg.game.id);
-                  const line = pg.score
-                    ? (summarizeGameScoreBody(pg.game, {
+                  // Same compact rule as the ledger — one score language
+                  // everywhere outside the open board.
+                  const body = pg.score
+                    ? railScore(pg.game, {
                         scoreValue: pg.score.scoreValue,
                         scoreRaw: pg.score.scoreRaw,
                       })
-                        ?.split("\n")[0]
-                        ?.trim() ?? null)
                     : null;
-                  // Same rule as the ledger: a short result reads inline, a
-                  // long share grid collapses to "played" rather than eating
-                  // the game's name.
-                  const body = line && [...line].length <= 10 ? line : null;
+                  const line = pg.score ? "played" : null;
                   return (
                     <View key={pg.game.id} style={styles.gameRow}>
                       <Pressable
@@ -429,7 +420,6 @@ const styles = StyleSheet.create({
   },
   back: { flexDirection: "row", alignItems: "center", gap: 4 },
   backLabel: { ...pixelType(11), color: tokens.neon.pink },
-  headBtn: { width: 32, height: 32, alignItems: "flex-end", justifyContent: "center" },
   body: { paddingBottom: tokens.space.xxl * 2 },
   dim: { opacity: 0.6 },
   skeletonRow: {

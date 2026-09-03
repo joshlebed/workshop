@@ -107,16 +107,17 @@ export function AddGameSheet({
         autoFocus={!hasSuggestions}
         onSubmitEditing={submit}
       />
-      <View style={styles.actions}>
-        <Button label="Cancel" variant="ghost" onPress={onClose} disabled={pending} />
-        <Button
-          label="Add game"
-          onPress={submit}
-          disabled={!canSubmit}
-          loading={pending}
-          testID="add-game-submit"
-        />
-      </View>
+      {trimmed.length > 0 || pending ? (
+        <View style={styles.actions}>
+          <Button
+            label="Add game"
+            onPress={submit}
+            disabled={!canSubmit}
+            loading={pending}
+            testID="add-game-submit"
+          />
+        </View>
+      ) : null}
     </Sheet>
   );
 }
@@ -125,7 +126,7 @@ const styles = StyleSheet.create({
   header: { gap: 4 },
   suggestionsLoading: { paddingVertical: tokens.space.lg, alignItems: "center" },
   suggestions: { gap: tokens.space.sm },
-  suggestionsScroll: { maxHeight: 240 },
+  suggestionsScroll: { maxHeight: 220 },
   sectionLabel: { ...pixelType(10), color: tokens.text.secondary },
   orLabel: { ...pixelType(10), color: tokens.text.secondary, marginTop: tokens.space.xs },
   actions: {

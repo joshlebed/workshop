@@ -1,7 +1,7 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { GoogleSignInButton } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
+import { GoogleSignInButton } from "../src/components/GoogleSignInButton";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
 import { Button, Text, tokens } from "../src/theme";
@@ -60,7 +60,7 @@ export default function SignIn() {
       <View style={styles.topSpacer} />
       <View style={styles.brandBlock}>
         <Wordmark size="lg" />
-        <Text tone="secondary">Compete in daily games</Text>
+        <Text tone="secondary">Post your daily results. Beat the people you know.</Text>
       </View>
 
       <View style={styles.actions}>
@@ -124,12 +124,12 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xxl,
     gap: tokens.space.xl,
   },
-  // Brand and actions read as one block in the lower half of the screen —
-  // vertical centring left a dead band under the buttons.
-  topSpacer: { flex: 1 },
-  bottomSpacer: { flex: 0.28 },
+  // The cabinet at scale fills what used to be a dead band above the
+  // wordmark; the spacers just balance the block off-centre.
+  topSpacer: { flex: 0.6 },
+  bottomSpacer: { flex: 0.55 },
   brandBlock: {
-    gap: tokens.space.sm,
+    gap: tokens.space.lg,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",

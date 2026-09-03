@@ -9,8 +9,8 @@
 import type { Game } from "@workshop/shared/games";
 import { summarizeGameScoreBody } from "../games/lib/scoresSummary";
 
-/** Cells a rail string is allowed to occupy at pixel-12 in a 76px rail. */
-export const RAIL_CELLS = 7;
+/** Cells a value may occupy in the 56px BEST / YOU columns at pixel 10–12. */
+export const RAIL_CELLS = 5;
 
 const PICTOGRAPHIC = /\p{Extended_Pictographic}/u;
 

@@ -7,7 +7,7 @@
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text, tokens } from "../../theme";
+import { PixelIcon, Text, tokens } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];
@@ -56,8 +56,7 @@ export function ScoreReactions({ reactions, onToggle, onAdd, testIDPrefix }: Sco
             (pressed || hovered) && styles.chipHover,
           ]}
         >
-          <Text style={styles.addFace}>🙂</Text>
-          <Text style={styles.addPlus}>+</Text>
+          <PixelIcon name="plus" size={16} color={tokens.border.default} />
         </Pressable>
       ) : null}
     </View>
@@ -103,13 +102,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 2,
     paddingVertical: 1,
-  },
-  addFace: { fontSize: 12, lineHeight: 16, opacity: 0.45 },
-  addPlus: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.secondary,
-    marginLeft: 1,
   },
 });

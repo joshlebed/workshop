@@ -58,7 +58,7 @@ import { GameBoardPanel, type HistoryCell } from "./GameBoardPanel";
 import { LedgerList } from "./LedgerList";
 import { type LedgerFace, LedgerRow, ledgerMetrics } from "./LedgerRow";
 import { ProfileSheet } from "./ProfileSheet";
-import { compactScore, railScore } from "./railScore";
+import { railScore } from "./railScore";
 import { ShellHeader } from "./ShellHeader";
 import { useShellNavigation } from "./useShellNavigation";
 
@@ -66,8 +66,6 @@ const HISTORY_DAYS = 7;
 /** Per-row squeeze offset, growing with distance from the row you tapped. */
 const STAGGER_MS = 28;
 const STAGGER_MAX = 84;
-/** Rail budget is 7 cells; the meta line beside the faces can carry a few more. */
-const LEADER_CELLS = 12;
 
 function hostOf(url: string | null): string | null {
   if (!url) return null;
@@ -204,6 +202,23 @@ export function Shell() {
     refetchInterval: livePoll,
   });
   const pendingRequests = requestsQuery.data?.inbound.length ?? 0;
+
+  // One line of competitive signal per friend row: what they've done today,
+  // read off the standings the ledger already has. A friends list that is
+  // only names has nothing to do with this app.
+  const friendSignals = useMemo(() => {
+    const map = new Map<string, { played: number; leads: number }>();
+    for (const g of gamesQuery.data?.games ?? []) {
+      for (const e of g.standings.entries) {
+        if (!e.scoreRaw) continue;
+        const cur = map.get(e.userId) ?? { played: 0, leads: 0 };
+        cur.played += 1;
+        if (e.rank === 1) cur.leads += 1;
+        map.set(e.userId, cur);
+      }
+    }
+    return map;
+  }, [gamesQuery.data]);
 
   const discoveryQuery = useQuery({
     queryKey: queryKeys.games.discovery(),
@@ -414,12 +429,12 @@ export function Shell() {
     );
     const mine = user?.id ? entries.find((e) => e.userId === user.id) : undefined;
     const myScore = mine ? railScore(mg.game, mine) : null;
-    // The day's leading result, beside the facepile. Gets a wider budget than
-    // the rail (the meta line has more room), and falls back to the parsed
-    // number so every played game shows a best — never sometimes-a-grid,
-    // sometimes-nothing.
+    // The day's leading result, beside the facepile, in the same compact form
+    // as every other number in the app. Raw share grids live in exactly one
+    // place — the open board — so the ledger reads as one score language
+    // rather than one dialect per game.
     const leader = entries.find((e) => e.rank === 1);
-    const bestScore = leader ? compactScore(mg.game, leader, LEADER_CELLS) : null;
+    const bestScore = leader ? railScore(mg.game, leader) : null;
     const faces: LedgerFace[] = entries.slice(0, 6).map((e) => ({
       userId: e.userId,
       displayName: e.displayName,
@@ -446,6 +461,7 @@ export function Shell() {
         onExpand={() => nav.expandGame(mg.gameId)}
         onCollapse={nav.collapseGame}
         onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
+        onPost={() => openPasteFor({ id: mg.gameId, url: mg.game.url })}
         {...(onLongPressBody ? { onLongPressBody } : {})}
         board={
           isOpen ? (
@@ -596,6 +612,15 @@ export function Shell() {
             onSelectDate={onSelectDate}
             horizontalInset={homeLayout.horizontalInset}
           />
+          {/* Column header — one 22px rule that turns the list into a
+              high-score table and says out loud what the right rail holds. */}
+          <View style={styles.columns}>
+            <Text style={styles.columnLabel}>GAME</Text>
+            <View style={styles.columnRight}>
+              <Text style={[styles.columnLabel, styles.columnValue]}>BEST</Text>
+              <Text style={[styles.columnLabel, styles.columnValue]}>YOU</Text>
+            </View>
+          </View>
           <View style={styles.ledger}>
             <LedgerList
               games={myGames}
@@ -616,14 +641,19 @@ export function Shell() {
         onOpen={nav.openFriends}
         onClose={nav.closeDrawer}
         onBack={nav.drawerBack}
-        listPanel={<FriendsPanel onClose={nav.closeDrawer} onOpenFriend={nav.openFriend} />}
+        listPanel={
+          <FriendsPanel
+            signals={friendSignals}
+            onClose={nav.closeDrawer}
+            onOpenFriend={nav.openFriend}
+          />
+        }
         friendPanel={
           nav.drawer?.kind === "friend" ? (
             <FriendPanel
               userId={nav.drawer.userId}
               via={nav.via}
               onBack={nav.drawerBack}
-              onClose={nav.closeDrawer}
               onOpenGame={(gameId) => {
                 nav.closeDrawer();
                 nav.expandGame(gameId);
@@ -649,8 +679,6 @@ export function Shell() {
 
       <GameScorePasteSheet
         item={pasteTarget}
-        userName={user?.displayName ?? null}
-        userAvatarUrl={user?.avatarUrl ?? null}
         pending={upsertMutation.isPending}
         spec={pasteTarget ? specForGame(pasteTarget) : null}
         canReteach={!!user?.isAdmin && pasteTarget != null && isGameReteachable(pasteTarget)}
@@ -675,6 +703,17 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
   ledger: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: tokens.space.lg },
+  columns: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: homeLayout.horizontalInset,
+    paddingTop: tokens.space.sm,
+    paddingBottom: 4,
+  },
+  columnLabel: { ...pixelType(10), color: tokens.text.secondary, opacity: 0.7 },
+  columnRight: { flexDirection: "row" },
+  columnValue: { width: ledgerMetrics.COL_W, textAlign: "right" },
   footer: { paddingTop: tokens.space.lg },
   footerRow: {
     flexDirection: "row",

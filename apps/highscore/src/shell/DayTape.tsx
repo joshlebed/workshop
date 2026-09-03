@@ -100,8 +100,8 @@ const styles = StyleSheet.create({
   },
   cellPressed: { opacity: 0.6 },
   weekday: {
-    fontSize: 9,
-    lineHeight: 11,
+    fontSize: 10,
+    lineHeight: 13,
     letterSpacing: 1.2,
     color: tokens.text.secondary,
     opacity: 0.7,

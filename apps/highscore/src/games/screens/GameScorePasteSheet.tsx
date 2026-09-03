@@ -43,8 +43,8 @@ import {
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, View } from "react-native";
-import { Avatar, Button, Chip, Sheet, Text, TextField, tokens } from "../../theme";
+import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Button, Chip, PixelIcon, pixelType, Sheet, Text, TextField, tokens } from "../../theme";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -57,11 +57,9 @@ export interface TaughtScoreSpec {
   summarySpec: SummarySpec | null;
 }
 
-interface GameScorePasteSheetProps<T extends { title: string }> {
+interface GameScorePasteSheetProps<T extends { title: string; iconUrl?: string | null }> {
   /** Target game, or `null` when the sheet should be closed. */
   item: T | null;
-  userName: string | null;
-  userAvatarUrl?: string | null;
   pending: boolean;
   /**
    * Parser for the target game (registry or user-taught); null/undefined =
@@ -88,10 +86,8 @@ interface GameScorePasteSheetProps<T extends { title: string }> {
 
 const MAX_CANDIDATES = 6;
 
-export function GameScorePasteSheet<T extends { title: string }>({
+export function GameScorePasteSheet<T extends { title: string; iconUrl?: string | null }>({
   item,
-  userName,
-  userAvatarUrl,
   pending,
   spec,
   onTeach,
@@ -230,11 +226,24 @@ export function GameScorePasteSheet<T extends { title: string }>({
     >
       {snapshot ? (
         <>
+          {/* The game's own art, not yours — this sheet is about the game
+              you just played, and its icon is the fastest way to confirm the
+              app guessed the right one. */}
           <View style={styles.header}>
-            <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
+            <View style={styles.headerCover}>
+              {snapshot.iconUrl ? (
+                <Image
+                  source={{ uri: snapshot.iconUrl }}
+                  style={styles.headerCoverImage}
+                  accessibilityIgnoresInvertColors
+                />
+              ) : (
+                <PixelIcon name="gamepad" size={16} color={tokens.text.secondary} />
+              )}
+            </View>
             <View style={styles.headerText}>
               <Text variant="heading" numberOfLines={1}>
-                Played {snapshot.title}?
+                PLAYED {snapshot.title.toUpperCase()}?
               </Text>
               <Text variant="caption" tone="muted">
                 Paste your result to log today's score.
@@ -254,11 +263,16 @@ export function GameScorePasteSheet<T extends { title: string }>({
             {...webProps}
           />
           {preview ? (
-            <Text variant="caption" tone="muted" testID="game-paste-preview">
-              {preview.value !== null
-                ? `Recording score: ${preview.value}`
-                : "Couldn't read a score in this. It'll post as “Played”."}
-            </Text>
+            <View style={styles.preview} testID="game-paste-preview">
+              <Text style={styles.previewLabel}>POSTS AS</Text>
+              {preview.value !== null ? (
+                <Text style={styles.previewValue}>{preview.value}</Text>
+              ) : (
+                <Text variant="caption" tone="muted" style={styles.previewMiss}>
+                  Played — no score found in this text
+                </Text>
+              )}
+            </View>
           ) : null}
           {showTeach ? (
             <View style={styles.teach} testID="game-paste-teach">
@@ -347,7 +361,23 @@ export function GameScorePasteSheet<T extends { title: string }>({
   );
 }
 
+const COVER = 36;
+
 const styles = StyleSheet.create({
+  headerCover: {
+    width: COVER,
+    height: COVER,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+    backgroundColor: tokens.bg.canvas,
+  },
+  headerCoverImage: { width: "100%", height: "100%" },
+  preview: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  previewLabel: { ...pixelType(10), color: tokens.text.secondary },
+  previewValue: { ...pixelType(14), color: tokens.neon.chartreuse },
+  previewMiss: { flex: 1, minWidth: 0 },
   header: {
     flexDirection: "row",
     alignItems: "center",

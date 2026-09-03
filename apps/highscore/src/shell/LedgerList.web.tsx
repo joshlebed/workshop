@@ -45,7 +45,11 @@ export function LedgerList({
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
-      <ScrollView contentContainerStyle={styles.listContent} testID="games-home-list">
+      <ScrollView
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        testID="games-home-list"
+      >
         <SortableContext items={ids} strategy={verticalListSortingStrategy}>
           {games.map((game) => (
             <SortableRow

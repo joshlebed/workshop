@@ -115,7 +115,7 @@ export function FriendsDrawer({
         <View
           style={StyleSheet.absoluteFill}
           pointerEvents={open ? "auto" : "none"}
-          onLayout={(e) => setWidth(Math.min(400, e.nativeEvent.layout.width * 0.88))}
+          onLayout={(e) => setWidth(Math.min(440, e.nativeEvent.layout.width * 0.94))}
         >
           <Animated.View style={[styles.backdrop, backdropStyle]} pointerEvents="none" />
           <Pressable

@@ -32,10 +32,10 @@ import { Text } from "../theme/Text";
 export type RowMode = "row" | "strip" | "board";
 
 const ROW_H = 64;
-const STRIP_H = 30;
+const STRIP_H = 34;
 const COVER = 40;
 const STRIP_COVER = 18;
-const RAIL_W = 76;
+const COL_W = 56;
 const META_H = 22;
 const GUTTER = COVER + tokens.space.md;
 
@@ -63,20 +63,23 @@ export interface LedgerRowProps {
    */
   myScore: string | null;
   myPlayed: boolean;
-  /** True when I'm leading the day — yellow, the spotlight colour for rank 1. */
+  /** True when I'm leading the day — the one place chartreuse is earned. */
   myScoreIsBest: boolean;
   faces: LedgerFace[];
-  /** The day's leading result, already distilled. Shown beside the facepile. */
+  /** The day's leading result, already distilled — the BEST column. */
   bestScore: string | null;
   /** Viewer's consecutive-day run for this game (today-pinned). */
   streak: number;
-  /** Results only post to today, so past days show no play affordance. */
+  /** Results only post to today, so past days show no post affordance. */
   viewingToday: boolean;
   host: string | null;
   isDragging: boolean;
   onExpand: () => void;
   onCollapse: () => void;
+  /** Cover tile: opens the game and arms the paste-on-return prompt. */
   onPlay: () => void;
+  /** Rail "POST": opens the paste sheet without leaving the ledger. */
+  onPost: () => void;
   onLongPressBody?: () => void;
   /** Rendered only while expanded — the parent builds it lazily. */
   board: ReactNode;
@@ -98,6 +101,7 @@ export const LedgerRow = memo(function LedgerRow({
   onExpand,
   onCollapse,
   onPlay,
+  onPost,
   onLongPressBody,
   board,
 }: LedgerRowProps) {
@@ -143,7 +147,7 @@ export const LedgerRow = memo(function LedgerRow({
     opacity: 1 - t.value,
     height: META_H * (1 - t.value),
   }));
-  const titleStyle = useAnimatedStyle(() => ({ opacity: 1 - t.value * 0.35 }));
+  const titleStyle = useAnimatedStyle(() => ({ opacity: 1 - t.value * 0.2 }));
   const boardWrapStyle = useAnimatedStyle(() => ({
     height: boardH.value * openT.value,
   }));
@@ -208,12 +212,20 @@ export const LedgerRow = memo(function LedgerRow({
                 {host ?? "Daily game"}
               </Text>
             ) : faces.length > 0 ? (
-              <Facepile faces={faces} best={bestScore} />
+              <Facepile faces={faces} />
             ) : (
               <Text style={styles.host}>{viewingToday ? "Nobody yet" : "No plays"}</Text>
             )}
           </Animated.View>
         </Pressable>
+
+        <Animated.View style={[styles.bestCol, metaStyle]} pointerEvents="none">
+          {!open && bestScore ? (
+            <Text numberOfLines={1} style={styles.best}>
+              {bestScore}
+            </Text>
+          ) : null}
+        </Animated.View>
 
         <View style={styles.rail}>
           {open ? (
@@ -243,19 +255,21 @@ export const LedgerRow = memo(function LedgerRow({
             />
           ) : playable && !squeezed ? (
             <Pressable
-              accessibilityRole="link"
-              accessibilityLabel={`Play ${title}`}
-              onPress={onPlay}
+              accessibilityRole="button"
+              accessibilityLabel={`Post your ${title} result`}
+              onPress={onPost}
               onLongPress={onLongPressBody}
               delayLongPress={250}
               hitSlop={8}
               testID={`game-card-play-${game.gameId}`}
-              style={({ pressed }) => [styles.playPress, pressed && styles.dim]}
+              style={({ pressed }) => [styles.postPress, pressed && styles.dim]}
             >
-              <PixelIcon name="play" size={16} color={tokens.neon.pink} />
+              {/* An empty slot on an arcade table, not a pink word repeated
+                  down the page — still tappable to post. */}
+              <Text style={styles.blank}>---</Text>
             </Pressable>
-          ) : (
-            <Text style={styles.blank}>–</Text>
+          ) : squeezed ? null : (
+            <Text style={styles.blank}>---</Text>
           )}
         </View>
       </Animated.View>
@@ -272,12 +286,8 @@ export const LedgerRow = memo(function LedgerRow({
   );
 });
 
-/**
- * Who played, and the one number worth seeing without opening anything: the
- * day's best. Yellow because it is the leader — the spotlight colour, never
- * the tappable one and never the "you did well" one.
- */
-function Facepile({ faces, best }: { faces: LedgerFace[]; best: string | null }) {
+/** Who played, in rank order. The count is the faces; there is no "N played". */
+function Facepile({ faces }: { faces: LedgerFace[] }) {
   const shown = faces.slice(0, 5);
   return (
     <View style={styles.facepile}>
@@ -289,16 +299,11 @@ function Facepile({ faces, best }: { faces: LedgerFace[]; best: string | null })
       {faces.length > shown.length ? (
         <Text style={styles.faceMore}>+{faces.length - shown.length}</Text>
       ) : null}
-      {best ? (
-        <Text numberOfLines={1} style={styles.best}>
-          {best}
-        </Text>
-      ) : null}
     </View>
   );
 }
 
-export const ledgerMetrics = { ROW_H, STRIP_H, GUTTER, RAIL_W } as const;
+export const ledgerMetrics = { ROW_H, STRIP_H, GUTTER, COL_W } as const;
 
 const styles = StyleSheet.create({
   row: {
@@ -330,7 +335,7 @@ const styles = StyleSheet.create({
   dim: { opacity: 0.6 },
   titleCol: { flex: 1, minWidth: 0, justifyContent: "center", gap: 3 },
   titleLine: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  title: { ...pixelType(12), color: tokens.text.primary, flexShrink: 1 },
+  title: { ...pixelType(11), color: tokens.text.primary, flexShrink: 1 },
   streak: { flexDirection: "row", alignItems: "center", gap: 2 },
   streakCount: { ...pixelType(10), color: tokens.neon.chartreuse },
   meta: { justifyContent: "center", overflow: "hidden" },
@@ -338,18 +343,14 @@ const styles = StyleSheet.create({
   facepile: { flexDirection: "row", alignItems: "center", minWidth: 0 },
   faceOverlap: { marginLeft: -5 },
   faceMore: { fontSize: 11, lineHeight: 16, color: tokens.text.secondary, marginLeft: 6 },
-  best: {
-    ...pixelType(10),
-    color: tokens.neon.yellow,
-    marginLeft: tokens.space.sm,
-    flexShrink: 1,
-  },
-  rail: { width: RAIL_W, alignItems: "flex-end", justifyContent: "center" },
+  bestCol: { width: COL_W, alignItems: "flex-end", justifyContent: "center" },
+  best: { ...pixelType(10), color: tokens.neon.yellow },
+  rail: { width: COL_W, alignItems: "flex-end", justifyContent: "center" },
   score: { ...pixelType(12), color: tokens.text.primary, textAlign: "right" },
-  scoreBest: { color: tokens.neon.yellow },
-  blank: { ...pixelType(12), color: tokens.border.default },
+  scoreBest: { color: tokens.neon.chartreuse },
+  blank: { ...pixelType(10), color: tokens.border.default },
   playedMark: { width: 10, height: 10, backgroundColor: tokens.neon.chartreuse },
-  playPress: { width: 28, height: 28, alignItems: "flex-end", justifyContent: "center" },
+  postPress: { alignItems: "flex-end", justifyContent: "center" },
   collapse: { width: 32, height: 32, alignItems: "flex-end", justifyContent: "center" },
   boardWrap: { overflow: "hidden" },
 });

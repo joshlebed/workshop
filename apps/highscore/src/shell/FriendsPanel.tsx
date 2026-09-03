@@ -36,12 +36,26 @@ export function mutualLine(m: MutualSummary): string {
   return `${count} · ${names[0]}, ${names[1]} +${names.length - 2}`;
 }
 
+export interface FriendSignal {
+  played: number;
+  leads: number;
+}
+
 export interface FriendsPanelProps {
+  /** Today's play count and wins per user, keyed by userId. */
+  signals: Map<string, FriendSignal>;
   onClose: () => void;
   onOpenFriend: (userId: string) => void;
 }
 
-export function FriendsPanel({ onClose, onOpenFriend }: FriendsPanelProps) {
+/** "4 played · leads 2" — what this person has done on the board today. */
+function signalLine(signal: FriendSignal | undefined): string {
+  if (!signal || signal.played === 0) return "Nothing today";
+  const played = `${signal.played} played`;
+  return signal.leads > 0 ? `${played} · leads ${signal.leads}` : played;
+}
+
+export function FriendsPanel({ signals, onClose, onOpenFriend }: FriendsPanelProps) {
   const { token } = useGamesRuntime();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -70,7 +84,17 @@ export function FriendsPanel({ onClose, onOpenFriend }: FriendsPanelProps) {
     enabled,
   });
 
-  const friends = friendsQuery.data?.friends ?? [];
+  // Sorted by what they did today, not alphabetically: the people you're
+  // actually racing float to the top of the list.
+  const friends = [...(friendsQuery.data?.friends ?? [])].sort((a, b) => {
+    const sa = signals.get(a.userId);
+    const sb = signals.get(b.userId);
+    return (
+      (sb?.leads ?? 0) - (sa?.leads ?? 0) ||
+      (sb?.played ?? 0) - (sa?.played ?? 0) ||
+      (a.displayName ?? "").localeCompare(b.displayName ?? "")
+    );
+  });
   const inbound = requestsQuery.data?.inbound ?? [];
   const outboundIds = new Set((requestsQuery.data?.outbound ?? []).map((r) => r.userId));
   const inboundIds = new Set(inbound.map((r) => r.userId));
@@ -201,7 +225,11 @@ export function FriendsPanel({ onClose, onOpenFriend }: FriendsPanelProps) {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {inbound.length > 0 ? (
           <View style={styles.section} testID="friend-requests-section">
             <Text style={styles.sectionLabel}>REQUESTS</Text>
@@ -287,18 +315,23 @@ export function FriendsPanel({ onClose, onOpenFriend }: FriendsPanelProps) {
                   testID={`friend-row-${friend.userId}`}
                   style={({ pressed }) => [styles.person, pressed && styles.dim]}
                 >
-                  {/* One line per friend: the "friends since" date and a
-                      chevron on every row were twelve repetitions of nothing.
-                      The date lives on their profile, one tap in. */}
+                  {/* The "friends since" date and a chevron on every row were
+                      twelve repetitions of nothing; what belongs here is what
+                      they've done on today's board. */}
                   <View style={styles.personMain}>
                     <Avatar
                       name={friend.displayName}
                       imageUrl={userAvatarImageUrl(friend.userId)}
-                      size="sm"
+                      size="md"
                     />
-                    <Text numberOfLines={1} style={styles.personName}>
-                      {name}
-                    </Text>
+                    <View style={styles.personText}>
+                      <Text numberOfLines={1} style={styles.personName}>
+                        {name}
+                      </Text>
+                      <Text numberOfLines={1} style={styles.personMeta}>
+                        {signalLine(signals.get(friend.userId))}
+                      </Text>
+                    </View>
                   </View>
                 </Pressable>
               );
@@ -437,7 +470,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.sm,
     paddingHorizontal: tokens.space.lg,
-    minHeight: 44,
+    paddingVertical: tokens.space.sm,
+    minHeight: 52,
     borderBottomWidth: 1,
     borderBottomColor: tokens.border.default,
   },

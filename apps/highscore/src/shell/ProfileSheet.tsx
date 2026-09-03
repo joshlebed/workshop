@@ -58,7 +58,7 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
         </View>
       </View>
 
-      <View style={styles.rows}>
+      <View style={styles.rowsTop}>
         <MenuRow
           label="Edit profile"
           testID="open-edit-profile"
@@ -88,21 +88,17 @@ export function ProfileSheet({ visible, onClose }: ProfileSheetProps) {
         />
       </View>
 
-      <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Sign out"
-        onPress={() => {
-          onClose();
-          void signOut();
-        }}
-        testID="sign-out"
-        hitSlop={6}
-        style={({ pressed }) => [styles.signOut, pressed && styles.dim]}
-      >
-        <Text style={styles.signOutLabel}>SIGN OUT</Text>
-      </Pressable>
+      <View style={styles.rows}>
+        <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
+        <MenuRow
+          label="Sign out"
+          testID="sign-out"
+          onPress={() => {
+            onClose();
+            void signOut();
+          }}
+        />
+      </View>
     </Sheet>
   );
 }
@@ -210,18 +206,11 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
 
   if (!editing) {
     return (
-      <View style={styles.admin}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Admin: impersonate user"
-          onPress={() => setEditing(true)}
-          testID="open-admin-impersonation"
-          hitSlop={6}
-          style={({ pressed }) => [pressed && styles.dim]}
-        >
-          <Text style={styles.adminLabel}>ADMIN: IMPERSONATE</Text>
-        </Pressable>
-      </View>
+      <MenuRow
+        label="Admin: impersonate user"
+        testID="open-admin-impersonation"
+        onPress={() => setEditing(true)}
+      />
     );
   }
 
@@ -310,7 +299,8 @@ const styles = StyleSheet.create({
   identityText: { flex: 1, minWidth: 0, gap: 4 },
   name: { ...pixelType(13), color: tokens.text.primary },
   email: { fontSize: 12, lineHeight: 16, color: tokens.text.secondary },
-  rows: { borderTopWidth: 1, borderTopColor: tokens.border.default },
+  rowsTop: { borderTopWidth: 1, borderTopColor: tokens.border.default },
+  rows: {},
   row: {
     minHeight: 44,
     justifyContent: "center",
@@ -320,7 +310,6 @@ const styles = StyleSheet.create({
   rowHover: { backgroundColor: tokens.bg.raised },
   rowLabel: { fontSize: 14, lineHeight: 18, color: tokens.text.primary },
   admin: { gap: tokens.space.sm },
-  adminLabel: { ...pixelType(10), color: tokens.text.secondary },
   adminActions: { flexDirection: "row", gap: tokens.space.sm },
   select: {
     minHeight: 44,
@@ -341,7 +330,5 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: tokens.border.default,
   },
-  signOut: { paddingTop: tokens.space.xs },
-  signOutLabel: { ...pixelType(10), color: tokens.text.secondary },
   dim: { opacity: 0.6 },
 });

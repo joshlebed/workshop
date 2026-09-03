@@ -110,7 +110,7 @@ export default function EditProfile() {
               hitSlop={6}
               style={({ pressed }) => [pressed && styles.dim]}
             >
-              <Text style={styles.avatarAction}>{avatarUrl ? "CHANGE PHOTO" : "UPLOAD PHOTO"}</Text>
+              <Text style={styles.avatarAction}>{avatarUrl ? "Change photo" : "Upload photo"}</Text>
             </Pressable>
             {avatarUrl ? (
               <Pressable
@@ -121,7 +121,7 @@ export default function EditProfile() {
                 hitSlop={6}
                 style={({ pressed }) => [pressed && styles.dim]}
               >
-                <Text style={styles.avatarActionQuiet}>REMOVE</Text>
+                <Text style={styles.avatarActionQuiet}>Remove</Text>
               </Pressable>
             ) : null}
           </View>
@@ -291,8 +291,8 @@ const styles = StyleSheet.create({
   },
   avatarPreview: { width: 72, height: 72, borderRadius: 0 },
   avatarButtons: { flex: 1, gap: tokens.space.md },
-  avatarAction: { ...pixelType(10), color: tokens.neon.pink },
-  avatarActionQuiet: { ...pixelType(10), color: tokens.text.secondary },
+  avatarAction: { fontSize: 14, lineHeight: 18, color: tokens.neon.pinkTint },
+  avatarActionQuiet: { fontSize: 14, lineHeight: 18, color: tokens.text.secondary },
   dim: { opacity: 0.6 },
   field: { gap: tokens.space.sm },
   input: { paddingVertical: 14, fontSize: 18 },
