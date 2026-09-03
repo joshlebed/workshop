@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Button, tokens } from "../../theme";
+import { Button } from "../../theme";
 
 interface GoogleSignInResult {
   idToken: string;
