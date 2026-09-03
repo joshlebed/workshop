@@ -6,9 +6,12 @@
 // discovery only ever surfaces here and on the empty state.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Button } from "../../../theme/Button";
+import { Sheet } from "../../../theme/Sheet";
+import { Text } from "../../../theme/Text";
+import { tokens } from "../../../theme/tokens";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface AddGameSheetProps {
@@ -49,26 +52,24 @@ export function AddGameSheet({
     if (canSubmit) onSubmit(trimmed);
   };
 
-  const hasSuggestions = discovery.length > 0;
+  // Owned games stay in the list for context but never above the ones you can
+  // actually add.
+  const ranked = [...discovery].sort((a, b) => Number(a.inMyGames) - Number(b.inMyGames));
+  const hasSuggestions = ranked.some((g) => !g.inMyGames);
 
   return (
     <Sheet visible={visible} onRequestClose={onClose} testID="add-game-sheet">
-      <View style={styles.header}>
-        <Text variant="heading">Add a game</Text>
-        <Text variant="caption" tone="muted">
-          {hasSuggestions
-            ? "Games your friends play, most popular first — add one, or paste any game's URL."
-            : "Paste the game's URL — known dailies are recognized automatically."}
-        </Text>
-      </View>
+      <Text variant="title" style={styles.title}>
+        Add a game
+      </Text>
 
       {discoveryLoading ? (
         <View style={styles.suggestionsLoading}>
-          <ActivityIndicator color={tokens.accent.default} />
+          <ActivityIndicator color={tokens.neon.pink} />
         </View>
       ) : hasSuggestions ? (
         <View style={styles.suggestions}>
-          <Text variant="caption" tone="muted" style={styles.sectionLabel}>
+          <Text variant="heading" tone="secondary" style={styles.sectionLabel}>
             Friends play
           </Text>
           <ScrollView
@@ -77,7 +78,7 @@ export function AddGameSheet({
             showsVerticalScrollIndicator={false}
           >
             <FriendGameSuggestions
-              games={discovery}
+              games={ranked}
               addingGameIds={addingGameIds}
               addedGameIds={addedGameIds}
               onAdd={onAddDiscovery}
@@ -87,18 +88,16 @@ export function AddGameSheet({
         </View>
       ) : null}
 
-      {hasSuggestions ? (
-        <Text variant="caption" tone="muted" style={styles.orLabel}>
-          Or add by URL
-        </Text>
-      ) : null}
+      <Text variant="heading" tone="secondary" style={styles.sectionLabel}>
+        {hasSuggestions ? "Or paste a URL" : "Paste the game's URL"}
+      </Text>
 
       <TextInput
         testID="add-game-url-input"
         value={draft}
         onChangeText={setDraft}
         placeholder="https://example.com/daily"
-        placeholderTextColor={tokens.text.muted}
+        placeholderTextColor={tokens.text.secondary}
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
@@ -124,16 +123,18 @@ export function AddGameSheet({
 }
 
 const styles = StyleSheet.create({
-  header: { gap: 4 },
+  title: { fontSize: 14 },
   suggestionsLoading: { paddingVertical: tokens.space.lg, alignItems: "center" },
   suggestions: { gap: tokens.space.sm },
-  suggestionsScroll: { maxHeight: 240 },
-  sectionLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
-  orLabel: { letterSpacing: 0.4, textTransform: "uppercase", marginTop: tokens.space.xs },
+  suggestionsScroll: {
+    maxHeight: 216,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: tokens.border.default,
+  },
+  sectionLabel: { fontSize: 10 },
   input: {
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 12,
     color: tokens.text.primary,

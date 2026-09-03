@@ -1,5 +1,5 @@
-import { tokens } from "@workshop/ui";
 import { Tabs } from "expo-router";
+import { tokens } from "../../src/theme/tokens";
 
 // Minimal tab shell. HighScore ships a single surface today (the Games home);
 // the group exists so PR-4 can drop the Games routes plus a Friends/Profile

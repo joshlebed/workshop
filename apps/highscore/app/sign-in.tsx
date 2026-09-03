@@ -1,9 +1,13 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+import { GoogleSignInButton } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
+import { BrandIcon } from "../src/components/BrandIcon";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { Button } from "../src/theme/Button";
+import { Text } from "../src/theme/Text";
+import { tokens } from "../src/theme/tokens";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -58,15 +62,17 @@ export default function SignIn() {
     <View style={styles.root}>
       <View style={styles.topSpacer} />
       <View style={styles.brandBlock}>
+        <BrandIcon size={72} />
         <Wordmark size="lg" />
-        <Text tone="secondary">Compete in daily games</Text>
+        <Text variant="heading" tone="secondary" style={styles.tagline}>
+          One day. One try. Everyone watching.
+        </Text>
       </View>
 
       <View style={styles.actions}>
         <Button
           testID="sign-in-apple"
           label="Continue with Apple"
-          variant="secondary"
           size="lg"
           loading={busy === "apple"}
           disabled={busy !== null || !apple.available}
@@ -129,13 +135,15 @@ const styles = StyleSheet.create({
   topSpacer: { flex: 0.7 },
   bottomSpacer: { flex: 1 },
   brandBlock: {
-    gap: tokens.space.md,
+    alignItems: "center",
+    gap: tokens.space.lg,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
   },
+  tagline: { fontSize: 10, textAlign: "center", lineHeight: 18 },
   actions: {
-    gap: tokens.space.sm,
+    gap: tokens.space.md,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
@@ -150,8 +158,8 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    height: tokens.bezel,
+    backgroundColor: tokens.border.default,
   },
   dividerText: {
     fontSize: 11,

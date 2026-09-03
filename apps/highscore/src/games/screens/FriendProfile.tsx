@@ -1,3 +1,14 @@
+// One player's profile — `/friends/:userId`.
+//
+// The relationship action isn't a button in the page, it's the lit key in the
+// dock, and it changes with the relationship: ADD / CANCEL / ACCEPT+DECLINE /
+// REMOVE. The page itself is just who they are and what they play, so the
+// content never rearranges when the relationship does.
+//
+// Backend rules are unchanged: profiles of strangers with no mutual friends
+// 404, so this page can't be used to probe, and a `via` play-link token vouches
+// past that gate.
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
@@ -11,65 +22,55 @@ import {
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
-import {
-  Avatar,
-  Button,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { addGame } from "../api/games";
+import { DOCK_HEIGHT, type DockKey, useDock } from "../../nav/dock";
+import { Avatar } from "../../theme/Avatar";
+import { Button } from "../../theme/Button";
+import { EmptyState } from "../../theme/EmptyState";
+import { Screen } from "../../theme/layout";
+import { PixelIcon } from "../../theme/PixelIcon";
+import { Text } from "../../theme/Text";
+import { useToast } from "../../theme/Toast";
+import { tokens } from "../../theme/tokens";
+import { addGame, fetchMyGames } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { useGamesRuntime } from "../runtime";
 
-/**
- * Friend profile page — `/friends/:userId`. Shows the relationship state with
- * the matching action (add / cancel / accept-decline / remove), mutual
- * friends, and — for friends (or yourself) — their game list with today's
- * score per game and a one-tap add for games you don't have. Non-friends see
- * a locked message instead of games. The backend 404s profiles of users with
- * no relationship and no mutual friends, so this page can't probe strangers.
- */
+const RAIL = 42;
 
 function relationshipLine(profile: FriendProfileResponse): string {
   switch (profile.relationship) {
     case "self":
-      return "This is you";
+      return "this is you";
     case "friends":
       return profile.friendsSince
-        ? `Friends since ${formatRelative(profile.friendsSince)}`
-        : "Friends";
+        ? `player since ${formatRelative(profile.friendsSince)}`
+        : "player";
     case "outbound":
-      return "Friend request sent";
+      return "request sent";
     case "inbound":
-      return "Wants to be friends";
+      return "wants in";
     case "none":
-      return "Not friends yet";
+      return "not a player yet";
   }
 }
 
 function mutualsLine(profile: FriendProfileResponse): string | null {
   const names = profile.mutualFriends.map((f) => f.displayName?.trim() || "Someone");
   if (names.length === 0) return null;
-  const label = names.length === 1 ? "1 mutual friend" : `${names.length} mutual friends`;
+  const label = names.length === 1 ? "1 mutual" : `${names.length} mutuals`;
   return `${label} · ${names.join(", ")}`;
 }
 
 export default function FriendProfileScreen() {
   const params = useLocalSearchParams<{ userId?: string; via?: string }>();
   const userId = typeof params.userId === "string" ? params.userId : "";
-  // Play-link vouch token (`/g/:token` → here for a not-yet-friend sharer). Lets
-  // the backend show this profile past the anti-probe 404 so we can add them.
+  // Play-link vouch token (`/g/:token` → here for a not-yet-friend sharer).
   const via = typeof params.via === "string" ? params.via : undefined;
   const { token, user, routes } = useGamesRuntime();
   const router = useRouter();
@@ -87,6 +88,31 @@ export default function FriendProfileScreen() {
     refetchInterval: livePoll,
   });
   const profile = profileQuery.data;
+
+  // Today's head-to-head, straight off the board's own cache: for every game
+  // you both posted to today, who won. This is the question the screen exists
+  // to answer, so it sits above the game list rather than being derivable only
+  // by reading down two score columns.
+  const boardQuery = useQuery({
+    queryKey: queryKeys.games.mine(todayKey),
+    queryFn: () => fetchMyGames(todayKey, token),
+    enabled: !!token,
+    refetchInterval: livePoll,
+  });
+  const head2head = useMemo(() => {
+    let mine = 0;
+    let theirs = 0;
+    for (const g of boardQuery.data?.games ?? []) {
+      const a = g.standings.entries.find((e) => e.userId === user?.id)?.scoreValue;
+      const b = g.standings.entries.find((e) => e.userId === userId)?.scoreValue;
+      if (a == null || b == null) continue;
+      if (a === b) continue;
+      const iWin = g.game.scoreDirection === "asc" ? a < b : a > b;
+      if (iWin) mine += 1;
+      else theirs += 1;
+    }
+    return { mine, theirs, played: mine + theirs };
+  }, [boardQuery.data, user?.id, userId]);
 
   const invalidateFriendsAndGames = () =>
     Promise.all([
@@ -136,13 +162,15 @@ export default function FriendProfileScreen() {
     },
   });
 
+  const back = useCallback(() => goBack(routes.friends), [routes.friends]);
+
   const declineMutation = useMutation({
     mutationFn: () => removeFriendRequest(userId, token),
     onSuccess: async () => {
-      // Declining can revoke this page's own visibility (no relationship +
-      // no mutuals = 404), so land back on the friends list.
+      // Declining can revoke this page's own visibility (no relationship + no
+      // mutuals = 404), so land back on the players list.
       await queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
-      goBack(routes.friends);
+      back();
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't decline that request."), tone: "danger" });
@@ -153,9 +181,8 @@ export default function FriendProfileScreen() {
     mutationFn: () => unfriend(userId, token),
     onSuccess: async () => {
       haptics.medium();
-      // Same as decline: removing the edge may 404 this profile on refetch.
       await invalidateFriendsAndGames();
-      goBack(routes.friends);
+      back();
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't remove that friend."), tone: "danger" });
@@ -183,8 +210,12 @@ export default function FriendProfileScreen() {
     },
   });
 
-  const onUnfriend = async () => {
-    const name = profile?.user.displayName?.trim() || "this friend";
+  const name = profile?.user.displayName?.trim() || "Someone";
+  const mutuals = profile ? mutualsLine(profile) : null;
+  const isSelf = profile?.relationship === "self" || (!!user?.id && user.id === userId);
+  const relationship = profile?.relationship ?? null;
+
+  const onUnfriend = useCallback(async () => {
     const ok = await confirm({
       title: `Remove ${name}?`,
       message: "You'll stop seeing each other's scores. Past scores stay put.",
@@ -192,349 +223,361 @@ export default function FriendProfileScreen() {
       destructive: true,
     });
     if (ok) unfriendMutation.mutate();
-  };
+  }, [name, unfriendMutation]);
 
-  const name = profile?.user.displayName?.trim() || "Someone";
-  const mutuals = profile ? mutualsLine(profile) : null;
-  const isSelf = profile?.relationship === "self" || (!!user?.id && user.id === userId);
+  // The dock carries the relationship. It's the only place the action lives —
+  // no duplicate button in the page body.
+  const dockKeys = useMemo<DockKey[]>(() => {
+    const keys: DockKey[] = [];
+    if (relationship === "none") {
+      keys.push({
+        id: "relate",
+        label: "Add",
+        glyph: "user-plus",
+        tone: "primary",
+        weight: 1.5,
+        disabled: sendMutation.isPending,
+        onPress: () => sendMutation.mutate(),
+        testID: "friend-profile-add",
+        accessibilityLabel: `Send ${name} a friend request`,
+      });
+    } else if (relationship === "outbound") {
+      keys.push({
+        id: "relate",
+        label: "Cancel",
+        glyph: "close",
+        weight: 1.5,
+        disabled: cancelMutation.isPending,
+        onPress: () => cancelMutation.mutate(),
+        testID: "friend-profile-cancel",
+        accessibilityLabel: "Cancel friend request",
+      });
+    } else if (relationship === "inbound") {
+      keys.push(
+        {
+          id: "relate",
+          label: "Accept",
+          glyph: "check",
+          tone: "primary",
+          weight: 1.5,
+          disabled: acceptMutation.isPending || declineMutation.isPending,
+          onPress: () => acceptMutation.mutate(),
+          testID: "friend-profile-accept",
+          accessibilityLabel: `Accept ${name}'s friend request`,
+        },
+        {
+          id: "decline",
+          label: "Decline",
+          glyph: "close",
+          disabled: acceptMutation.isPending || declineMutation.isPending,
+          onPress: () => declineMutation.mutate(),
+          testID: "friend-profile-decline",
+        },
+      );
+    }
+    keys.push({
+      id: "back",
+      label: "Back",
+      glyph: "arrow-left",
+      weight: 0.7,
+      onPress: back,
+      testID: "friend-profile-back",
+    });
+    return keys;
+  }, [relationship, name, back, sendMutation, cancelMutation, acceptMutation, declineMutation]);
+  useDock(dockKeys);
 
   return (
     <Screen testID="friend-profile-screen">
-      <View style={styles.headerNav}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => goBack(routes.friends)}
-          testID="friend-profile-back"
-          hitSlop={10}
-          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-        >
-          <Text style={styles.navGlyph}>‹</Text>
-        </Pressable>
-        <Text variant="title">Profile</Text>
-        <View style={styles.navButton} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {profileQuery.isPending ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
-          </View>
-        ) : profileQuery.isError || !profile ? (
-          <View style={styles.center}>
-            <EmptyState
-              title="Couldn't load this profile"
-              description={errorMessage(profileQuery.error, "User not found.")}
-              action={
-                <Button label="Back" variant="secondary" onPress={() => goBack(routes.friends)} />
-              }
-            />
-          </View>
-        ) : (
-          <>
-            {/* Identity + relationship. */}
-            <View style={styles.identityCard}>
+      {profileQuery.isPending ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={tokens.neon.pink} />
+        </View>
+      ) : profileQuery.isError || !profile ? (
+        <View style={styles.center}>
+          <EmptyState
+            title="No such player"
+            description={errorMessage(profileQuery.error, "User not found.")}
+            action={<Button label="Back" variant="secondary" onPress={back} />}
+          />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <View style={styles.identity}>
+            <View style={styles.rail}>
               <Avatar
                 name={profile.user.displayName}
                 imageUrl={userAvatarImageUrl(profile.user.userId)}
-                size="lg"
+                size="md"
               />
-              <View style={styles.identityText}>
-                <Text variant="heading" numberOfLines={1} testID="friend-profile-name">
-                  {name}
-                </Text>
+            </View>
+            <View style={styles.identityText}>
+              <Text
+                variant="title"
+                numberOfLines={1}
+                style={styles.name}
+                testID="friend-profile-name"
+              >
+                {name}
+              </Text>
+              <Text variant="caption" tone="secondary" testID="friend-profile-status">
+                {relationshipLine(profile)}
+              </Text>
+              {mutuals ? (
                 <Text
                   variant="caption"
-                  tone="muted"
-                  numberOfLines={1}
-                  testID="friend-profile-status"
+                  tone="secondary"
+                  numberOfLines={2}
+                  testID="friend-profile-mutuals"
                 >
-                  {relationshipLine(profile)}
+                  {mutuals}
                 </Text>
-                {mutuals ? (
-                  <Text
-                    variant="caption"
-                    tone="muted"
-                    numberOfLines={2}
-                    testID="friend-profile-mutuals"
-                  >
-                    {mutuals}
-                  </Text>
-                ) : null}
+              ) : null}
+            </View>
+          </View>
+
+          {!isSelf && head2head.played > 0 ? (
+            <View style={styles.head2head} testID="friend-profile-head2head">
+              <Text variant="heading" tone="secondary" style={styles.h2hCaption}>
+                {`Today · ${head2head.played} ${head2head.played === 1 ? "game" : "games"} both played`}
+              </Text>
+              <View style={styles.h2hRow}>
+                <Text variant="heading" tone="secondary" style={styles.h2hSide}>
+                  You
+                </Text>
+                <Text
+                  variant="score"
+                  tone={head2head.mine > head2head.theirs ? "success" : "secondary"}
+                  style={styles.h2hValue}
+                >
+                  {String(head2head.mine)}
+                </Text>
+                <Text variant="score" tone="secondary" style={styles.h2hDash}>
+                  —
+                </Text>
+                <Text
+                  variant="score"
+                  tone={head2head.theirs > head2head.mine ? "primary" : "secondary"}
+                  style={styles.h2hValue}
+                >
+                  {String(head2head.theirs)}
+                </Text>
+                <Text
+                  variant="heading"
+                  tone="secondary"
+                  numberOfLines={1}
+                  style={[styles.h2hSide, styles.h2hSideRight]}
+                >
+                  {name}
+                </Text>
               </View>
             </View>
+          ) : null}
 
-            {/* Relationship actions. */}
-            {profile.relationship === "none" ? (
-              <Button
-                label="Add friend"
-                onPress={() => sendMutation.mutate()}
-                loading={sendMutation.isPending}
-                disabled={sendMutation.isPending}
-                testID="friend-profile-add"
-              />
-            ) : null}
-            {profile.relationship === "outbound" ? (
-              <Button
-                label="Cancel request"
-                variant="secondary"
-                onPress={() => cancelMutation.mutate()}
-                loading={cancelMutation.isPending}
-                disabled={cancelMutation.isPending}
-                testID="friend-profile-cancel"
-              />
-            ) : null}
-            {profile.relationship === "inbound" ? (
-              <View style={styles.actionRow}>
-                <Button
-                  label="Accept request"
-                  onPress={() => acceptMutation.mutate()}
-                  loading={acceptMutation.isPending}
-                  disabled={acceptMutation.isPending || declineMutation.isPending}
-                  style={styles.actionFlex}
-                  testID="friend-profile-accept"
-                />
-                <Button
-                  label="Decline"
-                  variant="secondary"
-                  onPress={() => declineMutation.mutate()}
-                  loading={declineMutation.isPending}
-                  disabled={acceptMutation.isPending || declineMutation.isPending}
-                  style={styles.actionFlex}
-                  testID="friend-profile-decline"
-                />
-              </View>
-            ) : null}
-            {profile.relationship === "friends" ? (
-              <Button
-                label="Remove friend"
-                variant="danger"
-                onPress={onUnfriend}
-                loading={unfriendMutation.isPending}
-                disabled={unfriendMutation.isPending}
-                testID="friend-profile-remove"
-              />
-            ) : null}
-
-            {/* Games. */}
-            {profile.games === null ? (
-              <View style={styles.lockedCard} testID="friend-profile-locked">
-                <Text style={styles.lockedGlyph}>🎮</Text>
-                <Text variant="label" style={styles.lockedTitle}>
-                  Games are for friends
-                </Text>
-                <Text variant="caption" tone="muted" style={styles.lockedText}>
-                  Add {name} as a friend to see what games they play.
-                </Text>
-              </View>
-            ) : profile.games.length === 0 ? (
-              <View style={styles.list}>
-                <Text variant="caption" tone="muted" style={styles.listLabel}>
-                  Games
-                </Text>
-                <Text variant="caption" tone="muted">
-                  {isSelf ? "You haven't" : `${name} hasn't`} added any games yet.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.list} testID="friend-profile-games">
-                <Text variant="caption" tone="muted" style={styles.listLabel}>
+          {profile.games === null ? (
+            <View style={styles.locked} testID="friend-profile-locked">
+              <PixelIcon name="gamepad" size={24} color={tokens.text.secondary} />
+              <Text variant="caption" tone="secondary" style={styles.lockedText}>
+                {`Add ${name} to see what they play.`}
+              </Text>
+            </View>
+          ) : profile.games.length === 0 ? (
+            <View style={styles.sectionHeader}>
+              <Text variant="heading" tone="secondary" style={styles.sectionLabel}>
+                {isSelf ? "No games on your board" : "No games yet"}
+              </Text>
+            </View>
+          ) : (
+            <View testID="friend-profile-games">
+              <View style={styles.sectionHeader}>
+                <Text variant="heading" tone="secondary" style={styles.sectionLabel}>
                   {profile.games.length === 1 ? "1 game" : `${profile.games.length} games`}
                 </Text>
-                {profile.games.map((pg) => {
-                  const adding = addingGameIds.includes(pg.game.id);
-                  const scoreBody = pg.score
-                    ? summarizeGameScoreBody(pg.game, {
-                        scoreValue: pg.score.scoreValue,
-                        scoreRaw: pg.score.scoreRaw,
-                      })
-                    : null;
-                  const scoreLine = scoreBody
-                    ? `Today: ${scoreBody.split("\n")[0]}`
-                    : pg.score
-                      ? "Played today"
-                      : "Not played today";
-                  return (
-                    <Pressable
-                      key={pg.game.id}
-                      onPress={
-                        pg.viewerHasGame
-                          ? () => router.push(routes.game(pg.game.id) as Href)
-                          : undefined
-                      }
-                      accessibilityLabel={pg.game.title}
-                      disabled={!pg.viewerHasGame}
-                      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                        styles.gameRow,
-                        pg.viewerHasGame && (pressed || hovered) && styles.gameRowHover,
-                      ]}
-                      testID={`friend-profile-game-${pg.game.id}`}
-                    >
-                      <View style={styles.gameCover}>
-                        {pg.game.iconUrl ? (
-                          <Image
-                            source={{ uri: pg.game.iconUrl }}
-                            style={styles.gameCoverImage}
-                            accessibilityIgnoresInvertColors
-                          />
-                        ) : (
-                          <Text style={styles.gameCoverGlyph}>🎮</Text>
-                        )}
-                      </View>
-                      <View style={styles.gameText}>
-                        <Text variant="label" numberOfLines={1} style={styles.gameTitle}>
-                          {pg.game.title}
-                        </Text>
-                        <Text variant="caption" tone="muted" numberOfLines={1}>
-                          {scoreLine}
-                        </Text>
-                      </View>
-                      {pg.viewerHasGame ? (
-                        <Text style={styles.chevron}>›</Text>
-                      ) : isSelf ? null : (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`Add ${pg.game.title}`}
-                          onPress={() => addGameMutation.mutate(pg)}
-                          disabled={adding}
-                          testID={`friend-profile-game-add-${pg.game.id}`}
-                          hitSlop={6}
-                          style={({
-                            pressed,
-                            hovered,
-                          }: {
-                            pressed: boolean;
-                            hovered?: boolean;
-                          }) => [
-                            styles.addBtn,
-                            (pressed || hovered) && styles.addBtnHover,
-                            adding && styles.addBtnBusy,
-                          ]}
-                        >
-                          {adding ? (
-                            <ActivityIndicator size="small" color={tokens.accent.default} />
-                          ) : (
-                            <Text style={styles.addLabel}>Add</Text>
-                          )}
-                        </Pressable>
-                      )}
-                    </Pressable>
-                  );
-                })}
               </View>
-            )}
-          </>
-        )}
-      </ScrollView>
+              {profile.games.map((pg) => {
+                const adding = addingGameIds.includes(pg.game.id);
+                const scoreBody = pg.score
+                  ? summarizeGameScoreBody(pg.game, {
+                      scoreValue: pg.score.scoreValue,
+                      scoreRaw: pg.score.scoreRaw,
+                    })
+                  : null;
+                const value =
+                  pg.score?.scoreValue != null
+                    ? String(pg.score.scoreValue)
+                    : (scoreBody?.split("\n")[0]?.slice(0, 6) ?? null);
+                return (
+                  <Pressable
+                    key={pg.game.id}
+                    onPress={
+                      pg.viewerHasGame
+                        ? () => router.push(routes.game(pg.game.id) as Href)
+                        : undefined
+                    }
+                    accessibilityRole={pg.viewerHasGame ? "button" : undefined}
+                    accessibilityLabel={pg.game.title}
+                    disabled={!pg.viewerHasGame}
+                    style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                      styles.gameRow,
+                      pg.viewerHasGame && (pressed || hovered) && styles.gameRowActive,
+                    ]}
+                    testID={`friend-profile-game-${pg.game.id}`}
+                  >
+                    <View style={styles.rail}>
+                      {pg.game.iconUrl ? (
+                        <Image
+                          source={{ uri: pg.game.iconUrl }}
+                          style={styles.mark}
+                          accessibilityIgnoresInvertColors
+                        />
+                      ) : (
+                        <View style={[styles.mark, styles.markPlaceholder]}>
+                          <PixelIcon name="gamepad" size={16} color={tokens.text.secondary} />
+                        </View>
+                      )}
+                    </View>
+                    <Text variant="heading" numberOfLines={1} style={styles.gameTitle}>
+                      {pg.game.title}
+                    </Text>
+                    {value ? (
+                      <Text variant="score" style={styles.gameScore}>
+                        {value}
+                      </Text>
+                    ) : (
+                      <Text variant="caption" tone="secondary">
+                        —
+                      </Text>
+                    )}
+                    {pg.viewerHasGame || isSelf ? null : (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Add ${pg.game.title} to your board`}
+                        onPress={() => addGameMutation.mutate(pg)}
+                        disabled={adding}
+                        testID={`friend-profile-game-add-${pg.game.id}`}
+                        hitSlop={4}
+                        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                          styles.addKey,
+                          (pressed || hovered) && styles.addKeyActive,
+                        ]}
+                      >
+                        {adding ? (
+                          <ActivityIndicator size="small" color={tokens.neon.pink} />
+                        ) : (
+                          <PixelIcon name="plus" size={16} color={tokens.neon.pink} />
+                        )}
+                      </Pressable>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {profile.relationship === "friends" ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${name} as a friend`}
+              onPress={() => void onUnfriend()}
+              disabled={unfriendMutation.isPending}
+              testID="friend-profile-remove"
+              style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                styles.removeRow,
+                (pressed || hovered) && styles.gameRowActive,
+              ]}
+            >
+              <Text variant="heading" tone="danger" style={styles.removeLabel}>
+                {`Remove ${name}`}
+              </Text>
+            </Pressable>
+          ) : null}
+        </ScrollView>
+      )}
     </Screen>
   );
 }
 
-const COVER = 40;
-
 const styles = StyleSheet.create({
-  headerNav: {
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: tokens.space.lg },
+  body: { paddingBottom: DOCK_HEIGHT + tokens.space.xl },
+  identity: {
     flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    paddingTop: tokens.space.lg,
+    paddingRight: tokens.space.md,
+    paddingBottom: tokens.space.lg,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: tokens.border.default,
   },
-  navButton: {
-    width: 40,
-    height: 40,
+  rail: {
+    width: RAIL,
     alignItems: "center",
+    alignSelf: "stretch",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRightWidth: tokens.bezel,
+    borderRightColor: tokens.border.default,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
-  body: {
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.xl,
-  },
-  center: {
+  identityText: { flex: 1, minWidth: 0, paddingLeft: tokens.space.md, gap: tokens.space.sm },
+  name: { fontSize: 14, color: tokens.text.primary },
+  locked: {
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: tokens.space.xl,
-  },
-  identityCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.lg,
-    padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-  },
-  identityText: { flex: 1, minWidth: 0, gap: 4 },
-  actionRow: { flexDirection: "row", gap: tokens.space.md },
-  actionFlex: { flex: 1 },
-  lockedCard: {
-    alignItems: "center",
-    gap: tokens.space.sm,
+    gap: tokens.space.md,
     paddingVertical: tokens.space.xxl,
     paddingHorizontal: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
   },
-  lockedGlyph: { fontSize: 28, lineHeight: 34 },
-  lockedTitle: { color: tokens.text.primary },
   lockedText: { textAlign: "center" },
-  list: { gap: tokens.space.sm },
-  listLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
+  head2head: {
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.lg,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: tokens.border.default,
+  },
+  h2hCaption: { fontSize: 10 },
+  h2hRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  h2hSide: { flex: 1, fontSize: 10 },
+  h2hSideRight: { textAlign: "right" },
+  h2hValue: { fontSize: 32, lineHeight: 40 },
+  h2hDash: { fontSize: 14, lineHeight: 40 },
+  removeRow: {
+    marginTop: tokens.space.xxl,
+    paddingHorizontal: tokens.space.md,
+    paddingVertical: tokens.space.lg,
+    borderTopWidth: tokens.bezel,
+    borderTopColor: tokens.border.default,
+  },
+  removeLabel: { fontSize: 11 },
+  sectionHeader: {
+    paddingHorizontal: tokens.space.md,
+    paddingTop: tokens.space.lg,
+    paddingBottom: tokens.space.sm,
+  },
+  sectionLabel: { fontSize: 10 },
   gameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: tokens.space.sm,
+    paddingRight: tokens.space.md,
+    paddingVertical: tokens.space.md,
+    borderTopWidth: tokens.bezel,
+    borderTopColor: tokens.border.default,
   },
-  gameRowHover: { backgroundColor: tokens.bg.elevated },
-  gameCover: {
-    width: COVER,
-    height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+  gameRowActive: { backgroundColor: tokens.bg.surface },
+  mark: {
+    width: 24,
+    height: 24,
+    backgroundColor: tokens.bg.raised,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+  },
+  markPlaceholder: { alignItems: "center", justifyContent: "center" },
+  gameTitle: { flex: 1, minWidth: 0, paddingLeft: tokens.space.md, fontSize: 11 },
+  gameScore: { fontSize: 14, color: tokens.text.primary },
+  addKey: {
+    width: 34,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
-  gameCoverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  gameCoverGlyph: { fontSize: 20 },
-  gameText: { flex: 1, minWidth: 0, gap: 2 },
-  gameTitle: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  chevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl * 1.2,
-    paddingHorizontal: tokens.space.sm,
-  },
-  addBtn: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
-  },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
-  addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  addKeyActive: { backgroundColor: tokens.accent.muted },
 });

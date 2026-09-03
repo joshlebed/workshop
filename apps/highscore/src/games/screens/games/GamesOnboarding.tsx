@@ -2,16 +2,19 @@
 // variants depending on whether the viewer has any friends yet:
 //
 //   • No friends   → pitch "Add friends" (mints + shares an invite link via the
-//                     G2b machinery), with "Add a game by URL" as the skip /
-//                     bootstrap path for the very first user.
+//                     G2b machinery). The skip / bootstrap path is the dock's
+//                     ADD key, not a second button on this screen.
 //   • Has friends  → their games as one-tap suggestions (you likely just
 //                     accepted an invite and have nothing on your home yet).
 //
 // All data + mutations live in GamesHome; this component is presentational.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, homeLayout, Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Button } from "../../../theme/Button";
+import { homeLayout } from "../../../theme/layout";
+import { Text } from "../../../theme/Text";
+import { tokens } from "../../../theme/tokens";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface GamesOnboardingProps {
@@ -23,7 +26,6 @@ interface GamesOnboardingProps {
   inviteUrl: string | null;
   onAddFriends: () => void;
   onCopyInvite: () => void;
-  onAddByUrl: () => void;
   onAddDiscovery: (game: DiscoveryGame) => void;
   addingGameIds: string[];
   addedGameIds: string[];
@@ -38,7 +40,6 @@ export function GamesOnboarding({
   inviteUrl,
   onAddFriends,
   onCopyInvite,
-  onAddByUrl,
   onAddDiscovery,
   addingGameIds,
   addedGameIds,
@@ -48,7 +49,7 @@ export function GamesOnboarding({
   if (friendsLoading) {
     return (
       <View style={styles.center} testID="games-onboarding">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
       </View>
     );
   }
@@ -70,16 +71,11 @@ export function GamesOnboarding({
         </View>
         <View style={styles.ctaStack}>
           <Button
-            label="Add friends"
+            label="Send an invite"
+            size="lg"
             onPress={onAddFriends}
             loading={invitePending}
             testID="games-empty-add-friends"
-          />
-          <Button
-            label="Add a game by URL"
-            variant="ghost"
-            onPress={onAddByUrl}
-            testID="games-empty-add-url"
           />
         </View>
         {inviteUrl ? (
@@ -132,7 +128,7 @@ export function GamesOnboarding({
 
       {discoveryLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
+          <ActivityIndicator color={tokens.neon.pink} />
         </View>
       ) : discovery.length > 0 ? (
         <FriendGameSuggestions
@@ -147,13 +143,6 @@ export function GamesOnboarding({
           Your friends haven't added any games yet. Add one by URL and they'll see it too.
         </Text>
       )}
-
-      <Button
-        label="Add a game by URL"
-        variant="ghost"
-        onPress={onAddByUrl}
-        testID="games-empty-add-url"
-      />
     </ScrollView>
   );
 }
@@ -173,7 +162,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.lg,
   },
   intro: { gap: tokens.space.sm, maxWidth: 420 },
-  introTitle: { fontSize: tokens.font.size.lg, lineHeight: 24 },
+  introTitle: { fontSize: 16, lineHeight: 26 },
   introBody: { maxWidth: 420, lineHeight: 22 },
   ctaStack: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
   emptyHint: { maxWidth: 420 },
@@ -189,9 +178,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+    backgroundColor: tokens.bg.surface,
   },
 });
