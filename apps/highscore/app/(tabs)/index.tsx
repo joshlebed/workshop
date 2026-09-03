@@ -1,7 +1,5 @@
-import { ProfileMenu } from "../../src/components/ProfileMenu";
-import { Wordmark } from "../../src/components/Wordmark";
-import { GamesHome } from "../../src/games/screens/GamesHome";
+import { AppShell } from "../../src/deck/AppShell";
 
-export default function HighScoreGamesHome() {
-  return <GamesHome headerLeft={<Wordmark />} headerTrailing={<ProfileMenu />} />;
+export default function HighScoreHome() {
+  return <AppShell />;
 }

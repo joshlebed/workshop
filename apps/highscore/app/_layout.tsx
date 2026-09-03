@@ -1,16 +1,17 @@
+import { PressStart2P_400Regular, useFonts } from "@expo-google-fonts/press-start-2p";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
-import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { type Href, Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { DeckNavProvider } from "../src/deck/DeckNav";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
@@ -19,6 +20,7 @@ import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
+import { Button, Text, ToastProvider, tokens } from "../src/theme";
 
 configureApiClient({ client: "highscore" });
 
@@ -29,6 +31,9 @@ function useApplyOtaUpdatesOnArrival() {
   }, [isUpdatePending]);
 }
 
+// Every one of these resolves onto the single app surface: `/games/:id` and
+// `/friends/*` are deep-link entry points that hand their target to the deck
+// and replace themselves (see `app/games/[id].tsx`).
 const HIGHSCORE_GAMES_ROUTES: GamesRoutes = {
   root: "/",
   home: "/",
@@ -128,7 +133,7 @@ function AuthGate() {
   if (status === "loading" && !onPublicRoute) {
     return (
       <View style={centered}>
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
       </View>
     );
   }
@@ -141,8 +146,8 @@ function AuthGate() {
       >
         <View style={{ ...centered, paddingHorizontal: tokens.space.xl }}>
           <View style={{ width: "100%", maxWidth: 340, gap: tokens.space.md }}>
-            <Text variant="heading" style={{ textAlign: "center" }}>
-              Can’t connect
+            <Text variant="title" style={{ textAlign: "center" }}>
+              No signal
             </Text>
             <Text tone="secondary" style={{ textAlign: "center" }}>
               Your session is still saved. Check your connection and try again.
@@ -165,9 +170,11 @@ function AuthGate() {
         }}
       >
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="games/[id]" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/[userId]" options={{ animation: "slide_from_right" }} />
+        {/* Deep-link entry points — they resolve into the deck and replace
+            themselves, so they must not animate like pushed screens. */}
+        <Stack.Screen name="games/[id]" options={{ animation: "none" }} />
+        <Stack.Screen name="friends/index" options={{ animation: "none" }} />
+        <Stack.Screen name="friends/[userId]" options={{ animation: "none" }} />
         <Stack.Screen name="friends/accept/[token]" />
         <Stack.Screen name="g/[token]" />
         <Stack.Screen name="share/index" />
@@ -192,24 +199,27 @@ const centered = {
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
-  const colorScheme = useColorScheme();
-  const isLight = colorScheme === "light";
+  // HighScore is dark-only (DESIGN.md): no ThemeProvider, no useColorScheme.
+  // Press Start 2P is heading/score-only, so blocking on it briefly is a dark
+  // canvas, not a blank app; render proceeds on load error too.
+  const [fontsLoaded, fontError] = useFonts({ PressStart2P_400Regular });
+  if (!fontsLoaded && !fontError) return <View style={centered} />;
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <ThemeProvider>
-            <StatusBar style={isLight ? "dark" : "light"} />
-            <QueryClientProvider client={queryClient}>
-              <ToastProvider>
-                <AuthProvider>
-                  <GamesRuntimeBridge>
+          <StatusBar style="light" />
+          <QueryClientProvider client={queryClient}>
+            <ToastProvider>
+              <AuthProvider>
+                <GamesRuntimeBridge>
+                  <DeckNavProvider>
                     <AuthGate />
-                  </GamesRuntimeBridge>
-                </AuthProvider>
-              </ToastProvider>
-            </QueryClientProvider>
-          </ThemeProvider>
+                  </DeckNavProvider>
+                </GamesRuntimeBridge>
+              </AuthProvider>
+            </ToastProvider>
+          </QueryClientProvider>
         </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

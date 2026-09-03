@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
-import { Button, Card, Text, tokens } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
+import { Button, Card, Text, tokens } from "../../theme";
 import { fetchGameShareLink } from "../api/games";
 import { OpenInAppCard } from "../components/OpenInAppCard";
 import { isInAppBrowser } from "../lib/inAppBrowser";
@@ -136,7 +136,7 @@ export default function GameShareLanding() {
   // Resolving auth / the link, or already redirecting — show a spinner.
   return (
     <Centered testID="game-share-loading">
-      <ActivityIndicator color={tokens.accent.default} />
+      <ActivityIndicator color={tokens.neon.pink} />
     </Centered>
   );
 }

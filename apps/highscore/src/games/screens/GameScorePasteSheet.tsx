@@ -42,9 +42,9 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Avatar, Button, Chip, Sheet, Text, tokens } from "../../theme";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -63,6 +63,11 @@ interface GameScorePasteSheetProps<T extends { title: string }> {
   userName: string | null;
   userAvatarUrl?: string | null;
   pending: boolean;
+  /**
+   * Seed text for the box. Editing an already-posted score reuses this sheet
+   * rather than a second composer — one place in the app takes a result.
+   */
+  initialDraft?: string;
   /**
    * Parser for the target game (registry or user-taught); null/undefined =
    * none known. Drives the score preview under the input.
@@ -93,6 +98,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
   userName,
   userAvatarUrl,
   pending,
+  initialDraft = "",
   spec,
   onTeach,
   canReteach,
@@ -100,7 +106,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
   onClose,
 }: GameScorePasteSheetProps<T>) {
   const [snapshot, setSnapshot] = useState<T | null>(item);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialDraft);
   const [chosen, setChosen] = useState<ScoreCandidate | null>(null);
   const [direction, setDirection] = useState<GameScoreDirection>("desc");
   // The user's include/exclude taps on recap-preview lines, keyed by raw line
@@ -111,11 +117,11 @@ export function GameScorePasteSheet<T extends { title: string }>({
   useEffect(() => {
     if (item) {
       setSnapshot(item);
-      setDraft("");
+      setDraft(initialDraft);
       setChosen(null);
       setLineOverrides({});
     }
-  }, [item]);
+  }, [item, initialDraft]);
 
   const visible = !!item;
   const empty = draft.trim().length === 0;
@@ -233,8 +239,8 @@ export function GameScorePasteSheet<T extends { title: string }>({
           <View style={styles.header}>
             <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
             <View style={styles.headerText}>
-              <Text variant="heading" numberOfLines={1}>
-                Played {snapshot.title}?
+              <Text variant="title" numberOfLines={1} style={styles.headerTitle}>
+                {snapshot.title}
               </Text>
               <Text variant="caption" tone="muted">
                 Paste your result to log today's score.
@@ -246,7 +252,7 @@ export function GameScorePasteSheet<T extends { title: string }>({
             value={draft}
             onChangeText={editDraft}
             placeholder={"Paste your result here"}
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             multiline
             maxLength={2000}
             autoFocus
@@ -256,8 +262,8 @@ export function GameScorePasteSheet<T extends { title: string }>({
           {preview ? (
             <Text variant="caption" tone="muted" testID="game-paste-preview">
               {preview.value !== null
-                ? `Recording score: ${preview.value}`
-                : "Couldn't read a score in this. It'll post as “Played”."}
+                ? `Reads as ${preview.value}`
+                : "No score found — this will post as “Played”."}
             </Text>
           ) : null}
           {showTeach ? (
@@ -354,11 +360,11 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
+  headerTitle: { fontSize: 14, lineHeight: 22 },
   input: {
     minHeight: 120,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
@@ -376,9 +382,8 @@ const styles = StyleSheet.create({
   },
   summary: { gap: tokens.space.sm },
   summaryBox: {
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     backgroundColor: tokens.bg.canvas,
@@ -391,7 +396,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
   },
   summaryLineExcluded: {
-    color: tokens.text.muted,
+    color: tokens.text.secondary,
     textDecorationLine: "line-through",
   },
   actions: {

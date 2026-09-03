@@ -1,6 +1,7 @@
 # apps/highscore — coding agent guide
 
-HighScore owns its complete frontend under `app/` and `src/games/`. Style, layout, branding, and
+HighScore owns its complete frontend under `app/`, `src/deck/`, `src/theme/` and
+`src/games/`. Style, layout, branding, and
 client behavior should be implemented locally so they cannot change Workshop users. Do not move
 presentation code back into a shared package.
 
@@ -11,6 +12,38 @@ HighScore. Only an explicitly requested critical-fix backport may touch both cop
 
 Friends remain a shared product concept backed by the same graph and `@workshop/api-client/friends`,
 but each app owns its screen implementation so either frontend can evolve independently.
+
+## The app is one screen (`src/deck/`)
+
+HighScore does not push a route to show you a game, your friends or your account. `AppShell`
+holds three panels — the deck, players, you — and `ControlPanel` crossfades between them with
+one 8px step (`stepped` in `src/theme/motion.ts`). The deck is a paging `Animated.ScrollView`
+of full-screen cartridges (`Cartridge`), each of which scrolls _vertically_ through seven days
+(`DayBlock`), so the old `games/[id]` board no longer exists as a screen. `Shelf` is the deck
+zoomed out, and owns reordering.
+
+- **`/games/:id`, `/friends`, `/friends/:userId` and `/profile` are deep-link entry points
+  only.** They hand their target to `useDeckNav()` and `router.replace("/")`. Keep them: they
+  are what share links, the `/g/:token` resolver and the AuthGate bounce all route through.
+  Their `Stack.Screen` options are `animation: "none"` for that reason.
+- **Reordering is one gesture-handler + reanimated implementation for both platforms**
+  (`Shelf.tsx`). `react-native-reorderable-list` and `@dnd-kit/*` were removed from this app;
+  don't reintroduce a `.web.tsx` split for drag.
+- **Never print a game's raw share text in a row.** `summarizeGameScoreBody` still distills
+  the provider's copy, but `distillScore` (`src/games/lib/scoreMarks.ts`) then reduces it to
+  one rankable token plus `MarkKind[]`, and `ScoreMarks` draws the grid as palette squares.
+  Emoji in Press Start 2P break line boxes; a token plus squares is a fixed width, which is
+  what makes the score column align.
+- **`scoreMarks.ts` and `monogram.ts` are deliberately dependency-free** so vitest can collect
+  them. Anything importing `src/theme` pulls in `react-native-svg`/`expo-font` and fails the
+  test collector with a Rollup parse error — put pure logic in its own module and keep the
+  theme in the renderer.
+- **Gutter labels must fit `deck.gutter`.** The marker column is 76px wide and Press Start 2P
+  has a 10px floor, so a gutter word is at most four characters. Longer copy wraps mid-word
+  and looks like a bug.
+- **A game is identified by a `CartridgeLabel` plate, never a favicon.** The plate's monogram
+  comes from `monogramsFor(titles)` where a whole deck is on screen (so two similarly-named
+  games can't collide) and from `monogramFor(title)` elsewhere.
 
 ## Share flow
 
@@ -34,10 +67,11 @@ and what it never does must stay literally true of the shipped app. The screens 
 over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) only claims `/g/*` and
 `/friends/accept/*`, so iOS leaves these two in the browser where a reviewer expects them.
 
-## Account deletion
+## Account deletion (reached from the YOU panel)
 
 The App Store Review Guideline 5.1.1(v) control lives in the **Danger zone** at the bottom of
-`src/screens/EditProfile.tsx` (profile menu → Edit profile). Rules live in
+`src/screens/EditProfile.tsx`, reached from the YOU panel → Edit profile (`/profile` is still
+a real pushed route — it is a form with a destructive zone, which deserves its own screen). Rules live in
 `src/lib/accountDeletion.ts`, not the component, so they're testable without a renderer: the
 two-tap `nextDeletionStep` machine, the impersonation/signed-out guard, the consequences copy,
 and `runAccountDeletion` — which clears stored credentials **only** after the server confirms.

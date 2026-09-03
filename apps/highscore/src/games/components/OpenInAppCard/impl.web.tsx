@@ -26,9 +26,9 @@
 // inherit RN-Web's injected text font, so without this it renders in the UA
 // serif (Times). The value mirrors RN-Web's default `Text` stack exactly.
 
-import { Button, Card, Text, tokens } from "@workshop/ui";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
+import { Button, Card, Text, tokens } from "../../../theme";
 import type { OpenInAppCardProps } from "./impl";
 
 export type { OpenInAppCardProps } from "./impl";
@@ -46,7 +46,7 @@ const anchorStyle: CSSProperties = {
   display: "block",
   width: "100%",
   boxSizing: "border-box",
-  backgroundColor: tokens.accent.default,
+  backgroundColor: tokens.neon.pink,
   color: tokens.text.onAccent,
   textDecoration: "none",
   textAlign: "center",
@@ -55,7 +55,6 @@ const anchorStyle: CSSProperties = {
   fontWeight: tokens.font.weight.semibold,
   paddingTop: tokens.space.md,
   paddingBottom: tokens.space.md,
-  borderRadius: tokens.radius.md,
 };
 
 export function OpenInAppCard({ appName, url, onContinue }: OpenInAppCardProps) {

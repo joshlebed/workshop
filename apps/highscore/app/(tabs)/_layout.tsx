@@ -1,23 +1,21 @@
-import { tokens } from "@workshop/ui";
 import { Tabs } from "expo-router";
+import { tokens } from "../../src/theme";
 
-// Minimal tab shell. HighScore ships a single surface today (the Games home);
-// the group exists so PR-4 can drop the Games routes plus a Friends/Profile
-// sibling in without restructuring the router. The bottom bar is hidden on
-// every platform, matching Workshop — top-level navigation lives in screen
-// headers.
+// Router-level tab shell, deliberately inert: HighScore has exactly one
+// screen. Panel switching (deck / players / you) happens inside `AppShell`,
+// not here, so the native tab bar stays hidden on every platform.
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: tokens.bg.canvas },
-        tabBarActiveTintColor: tokens.accent.default,
-        tabBarInactiveTintColor: tokens.text.muted,
+        tabBarActiveTintColor: tokens.neon.pink,
+        tabBarInactiveTintColor: tokens.text.secondary,
         tabBarStyle: { display: "none" },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Games" }} />
+      <Tabs.Screen name="index" options={{ title: "HighScore" }} />
     </Tabs>
   );
 }

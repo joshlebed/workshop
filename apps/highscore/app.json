@@ -8,7 +8,7 @@
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0E0C0B"
+      "backgroundColor": "#121216"
     },
     "scheme": "highscore",
     "userInterfaceStyle": "automatic",
@@ -36,7 +36,7 @@
       "package": "live.highscore.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0E0C0B"
+        "backgroundColor": "#121216"
       }
     },
     "web": {

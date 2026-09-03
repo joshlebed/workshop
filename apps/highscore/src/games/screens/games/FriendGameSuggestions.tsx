@@ -1,13 +1,12 @@
-// Friend-game discovery list (G3, issue #293) — a presentational column of
-// "games your friends play that you haven't added", each one-tap addable.
-// Shared by three surfaces: the + add-game sheet (suggestions above the URL
-// field), the Games-home "friends but no games" empty state, and the
-// post-accept picker. Data + add mutations live at the call site; this file
-// only renders rows and reports taps.
+// "Games your friends play" — a ruled column, whole rows tappable. Used by the
+// deck's slot cartridge and by the post-accept picker after a friend invite.
+// Data + add mutations live at the call site; this file renders rows and
+// reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { CartridgeLabel } from "../../../deck/CartridgeLabel";
+import { PixelIcon, Text, tokens } from "../../../theme";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -20,15 +19,14 @@ function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
 
 interface FriendGameSuggestionsProps {
   games: DiscoveryGame[];
-  /** Game ids whose add request is currently in flight (spinner on Add). */
+  /** Game ids whose add request is in flight. */
   addingGameIds: string[];
-  /** Game ids added this session — the row flips to a "✓ Added" pill. */
+  /** Game ids added this session. */
   addedGameIds: string[];
   onAdd: (game: DiscoveryGame) => void;
   /**
-   * Hide the per-row "Sam plays" line. Used by the post-accept picker, where
-   * a single friend's name already heads the section so repeating it on every
-   * row reads as noise.
+   * Hide the per-row "Sam plays" line — the post-accept picker already names
+   * the friend in its heading.
    */
   hideFriendLine?: boolean;
   /** testID stem → `${testIDPrefix}-row-${id}` / `${testIDPrefix}-add-${id}`. */
@@ -44,28 +42,30 @@ export function FriendGameSuggestions({
   testIDPrefix,
 }: FriendGameSuggestionsProps) {
   return (
-    <View style={styles.list}>
+    <View>
       {games.map((dg) => {
         const adding = addingGameIds.includes(dg.game.id);
         const added = addedGameIds.includes(dg.game.id);
-        // Games already in My Games (only present in the `includeOwned` feed)
-        // stay in the ranked list for context but aren't addable.
+        // Games already in the deck stay in the ranked list for context but
+        // aren't addable.
         const owned = dg.inMyGames;
+        const settled = owned || added;
         return (
-          <View key={dg.game.id} style={styles.row} testID={`${testIDPrefix}-row-${dg.game.id}`}>
-            <View style={styles.cover}>
-              {dg.game.iconUrl ? (
-                <Image
-                  source={{ uri: dg.game.iconUrl }}
-                  style={styles.coverImage}
-                  accessibilityIgnoresInvertColors
-                />
-              ) : (
-                <Text style={styles.coverGlyph}>🎮</Text>
-              )}
-            </View>
+          <Pressable
+            key={dg.game.id}
+            accessibilityRole="button"
+            accessibilityLabel={
+              settled ? `${dg.game.title}, already added` : `Add ${dg.game.title}`
+            }
+            onPress={settled || adding ? undefined : () => onAdd(dg)}
+            testID={
+              settled ? `${testIDPrefix}-row-${dg.game.id}` : `${testIDPrefix}-add-${dg.game.id}`
+            }
+            style={({ pressed }) => [styles.row, pressed && !settled && styles.rowPressed]}
+          >
+            <CartridgeLabel title={dg.game.title} size={COVER} />
             <View style={styles.text}>
-              <Text variant="label" numberOfLines={1} style={styles.title}>
+              <Text variant="label" numberOfLines={1} tone={settled ? "secondary" : "primary"}>
                 {dg.game.title}
               </Text>
               {hideFriendLine ? null : (
@@ -74,101 +74,40 @@ export function FriendGameSuggestions({
                 </Text>
               )}
             </View>
-            {owned ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
-                <Text style={styles.addedText} numberOfLines={1}>
-                  ✓ In your games
-                </Text>
-              </View>
-            ) : added ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
+            {adding ? (
+              <ActivityIndicator size="small" color={tokens.neon.pink} />
+            ) : settled ? (
+              <View
+                testID={
+                  owned
+                    ? `${testIDPrefix}-owned-${dg.game.id}`
+                    : `${testIDPrefix}-added-${dg.game.id}`
+                }
+              >
+                <PixelIcon name="check" size={16} color={tokens.neon.chartreuse} />
               </View>
             ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Add ${dg.game.title}`}
-                onPress={() => onAdd(dg)}
-                disabled={adding}
-                testID={`${testIDPrefix}-add-${dg.game.id}`}
-                hitSlop={6}
-                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                  styles.addBtn,
-                  (pressed || hovered) && styles.addBtnHover,
-                  adding && styles.addBtnBusy,
-                ]}
-              >
-                {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
-                ) : (
-                  <Text style={styles.addLabel}>Add</Text>
-                )}
-              </Pressable>
+              <PixelIcon name="plus" size={16} color={tokens.neon.pink} />
             )}
-          </View>
+          </Pressable>
         );
       })}
     </View>
   );
 }
 
-const COVER = 40;
+const COVER = 28;
 
 const styles = StyleSheet.create({
-  list: { gap: tokens.space.sm },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    minHeight: 48,
+    borderTopWidth: tokens.bezel,
+    borderTopColor: tokens.border.default,
   },
-  cover: {
-    width: COVER,
-    height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  coverGlyph: { fontSize: 20 },
-  text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  addBtn: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
-  },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
-  addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  addedPill: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addedText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  rowPressed: { backgroundColor: tokens.bg.surface },
+  text: { flex: 1, minWidth: 0 },
 });
