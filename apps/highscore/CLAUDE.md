@@ -12,6 +12,55 @@ HighScore. Only an explicitly requested critical-fix backport may touch both cop
 Friends remain a shared product concept backed by the same graph and `@workshop/api-client/friends`,
 but each app owns its screen implementation so either frontend can evolve independently.
 
+## Navigation: one screen, one sheet host
+
+HighScore has a single mounted screen. `app/(feed)/_layout.tsx` mounts `TimelineHome` once and
+never unmounts it; every route inside that group (`index`, `games/[id]`, `friends/index`,
+`friends/[userId]`, `profile`) renders `null`, and `src/nav/SheetHost.tsx` reads the pathname to
+decide which sheet belongs on top. Consequences worth knowing before you touch routing:
+
+- **The URL is the sheet stack.** `src/nav/sheetRoute.ts` is the only place that maps a pathname
+  onto a sheet. Adding a sheet route means adding a `null` route file under `app/(feed)/` **and** a
+  case in `parseSheetRoute` + `SheetBody`. Forget the second and the URL changes with nothing on
+  screen.
+- **Navigation sheets are not RN `Modal`s.** `SheetHost` is a plain absolutely-positioned overlay,
+  so the root CLAUDE.md's "never stack two Modals in one tick" hazard can't happen between them.
+  The only Modals are the utility sheets that ride on top (`GameScorePasteSheet`,
+  `ReactionPickerSheet`, `AddGameSheet`); react-native-web portals those to `<body>`, so they
+  correctly render above the host. Keep it that way — a Modal-based navigation sheet reintroduces
+  the wedge.
+- **Sheets size to content up to `screenHeight - 72`.** `SheetFrame`'s root is `flexShrink: 1`, not
+  `flex: 1`, and its scroll view is `flexGrow: 0`. Adding `flex: 1` anywhere in that chain makes
+  every sheet full-height again.
+- **Anything reachable while signed out is a full screen, not a sheet** — the feed layout only
+  mounts `TimelineHome` when `status === "signed-in"`. `friends/accept/[token]` lives inside the
+  group but renders full-bleed into the `<Slot />` overlay above the host.
+- **`app/(feed)/friends/` and `friends/accept/` share a segment on purpose.** Both live inside the
+  group so expo-router sees one `friends` node; moving `accept` to a top-level `app/friends/`
+  directory risks a duplicate-route resolution.
+
+## Timeline gotchas
+
+- **The sticky day marker is driven by block _heights_, not measured positions.** `onLayout` fires
+  when a view resizes but not when a sibling above it grows, so absolute `y` offsets go stale the
+  moment a day section loads its scores. `TimelineHome` keeps a height per day key and prefix-sums
+  them; keep it that way if you add feed sections.
+- **The feed's scroll container is platform-split.** `FeedScroll.tsx` is
+  react-native-reorderable-list's `ScrollViewContainer` (required so the TODAY list can be a
+  `NestedReorderableList` and still autoscroll while dragging); `FeedScroll.web.tsx` is a plain
+  `Animated.ScrollView` because that library has no web implementation. Both take a Reanimated
+  scroll handler, never a plain `onScroll`.
+- **Scores are split, not printed.** `src/timeline/scoreDisplay.ts` turns a pasted share into
+  `{ value, strip }` so the number sets in the pixel face in a right-aligned column and the emoji
+  grid clips to one line. Use it anywhere a score appears in a list; the board sheet is the only
+  place that shows the full multi-line share.
+- **Reacting is a tap on a friend's score line**, everywhere, with no persistent affordance (a
+  tapback). Your own line is inert. If you add a new standings surface, wire
+  `onOpenReactionPicker` rather than inventing a button.
+- **Feed reactions go through `useFeedReactions`, not `useScoreReactions`.** The feed shows many
+  days at once, so the day travels on the call; `useScoreReactions` (one period, one query key)
+  still serves the board sheet.
+
 ## Share flow
 
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so
@@ -37,7 +86,8 @@ over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) on
 ## Account deletion
 
 The App Store Review Guideline 5.1.1(v) control lives in the **Danger zone** at the bottom of
-`src/screens/EditProfile.tsx` (profile menu → Edit profile). Rules live in
+`src/sheets/AccountSheet.tsx` (tap your picture, top right — the account sheet absorbed the old
+profile menu and edit-profile screen). Rules live in
 `src/lib/accountDeletion.ts`, not the component, so they're testable without a renderer: the
 two-tap `nextDeletionStep` machine, the impersonation/signed-out guard, the consequences copy,
 and `runAccountDeletion` — which clears stored credentials **only** after the server confirms.
@@ -45,7 +95,9 @@ A failed request must leave the session untouched and say the account still exis
 success for a request that didn't happen. The copy names the shared Workshop.dev account out
 loud because deleting here really does delete there (one `users` row, see
 `apps/backend/src/lib/accountDeletion.ts`). `src/lib/legal.ts` describes this flow and is pinned
-by `legal.test.ts` — if the behavior changes, that copy changes in the same PR.
+by `legal.test.ts` — if the behavior changes, that copy changes in the same PR, and the copy names
+the route the user actually takes ("tap your picture (top right) → Danger zone"), so moving the
+control means editing that string too.
 
 ## App Store release shape (1.0)
 
