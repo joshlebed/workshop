@@ -63,20 +63,34 @@ export function DeckSurface({
     [pagerRef, width],
   );
 
-  // A deep link (or the shelf) names a game; park the pager on it.
+  // A deep link (or the shelf, or a friend's profile) names a game; park the
+  // pager on it. `targetRef` holds that destination until the pager arrives —
+  // without it, the scroll event the pager fires at rest (x = 0) reports
+  // cartridge 0 back up to the nav and the deep link is lost before the games
+  // query has even resolved.
   const requestedIndex = gameId ? games.findIndex((g) => g.gameId === gameId) : -1;
-  const pendingRef = useRef<number | null>(null);
+  const targetRef = useRef<number | null>(null);
   useEffect(() => {
     if (requestedIndex < 0 || width <= 0) return;
-    if (pendingRef.current === requestedIndex) return;
-    pendingRef.current = requestedIndex;
+    if (requestedIndex === index) {
+      targetRef.current = null;
+      return;
+    }
+    targetRef.current = requestedIndex;
     setIndex(requestedIndex);
+    lastIndex.value = requestedIndex;
     scrollToIndex(requestedIndex, false);
-  }, [requestedIndex, width, scrollToIndex]);
+  }, [requestedIndex, width, index, lastIndex, scrollToIndex]);
 
   const setIndexFromScroll = useCallback(
     (next: number) => {
-      pendingRef.current = next;
+      // Nothing to report until the deck has loaded — reporting cartridge 0 of
+      // an empty deck would clear a pending deep link.
+      if (games.length === 0) return;
+      if (targetRef.current !== null) {
+        if (next !== targetRef.current) return;
+        targetRef.current = null;
+      }
       setIndex(next);
       onGameIdChange(games[next]?.gameId ?? null);
     },
@@ -120,7 +134,7 @@ export function DeckSurface({
   const onSelectCell = useCallback(
     (next: number) => {
       setIndex(next);
-      pendingRef.current = next;
+      targetRef.current = next;
       lastIndex.value = next;
       onGameIdChange(games[next]?.gameId ?? null);
       // A jump of more than one cartridge cuts rather than flies: sliding
@@ -156,6 +170,13 @@ export function DeckSurface({
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 onScroll={scrollHandler}
+                // Two things need this. The cartridges lay out after the pager
+                // mounts, so a deep link's scroll clamps to 0 until the content
+                // is wide enough; and a transient layout width of 0 unmounts
+                // and remounts the scroller at offset 0 while `index` still
+                // says otherwise. Re-parking on every content-size change
+                // covers both, and is a no-op when the DOM already agrees.
+                onContentSizeChange={() => scrollToIndex(targetRef.current ?? index, false)}
                 scrollEventThrottle={16}
                 testID="deck-pager"
               >
