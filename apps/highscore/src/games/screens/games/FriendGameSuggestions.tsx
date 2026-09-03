@@ -6,8 +6,9 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { PixelIcon, Text, tokens } from "../../../theme";
+import { GameCover } from "../../components/GameCover";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -53,17 +54,7 @@ export function FriendGameSuggestions({
         const owned = dg.inMyGames;
         return (
           <View key={dg.game.id} style={styles.row} testID={`${testIDPrefix}-row-${dg.game.id}`}>
-            <View style={styles.cover}>
-              {dg.game.iconUrl ? (
-                <Image
-                  source={{ uri: dg.game.iconUrl }}
-                  style={styles.coverImage}
-                  accessibilityIgnoresInvertColors
-                />
-              ) : (
-                <Text style={styles.coverGlyph}>🎮</Text>
-              )}
-            </View>
+            <GameCover iconUrl={dg.game.iconUrl} size={COVER} />
             <View style={styles.text}>
               <Text variant="label" numberOfLines={1} style={styles.title}>
                 {dg.game.title}
@@ -74,15 +65,12 @@ export function FriendGameSuggestions({
                 </Text>
               )}
             </View>
-            {owned ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
-                <Text style={styles.addedText} numberOfLines={1}>
-                  ✓ In your games
-                </Text>
-              </View>
-            ) : added ? (
-              <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
+            {owned || added ? (
+              <View
+                style={styles.addedMark}
+                testID={`${testIDPrefix}-${owned ? "owned" : "added"}-${dg.game.id}`}
+              >
+                <PixelIcon name="check" size={16} color={tokens.neon.chartreuse} />
               </View>
             ) : (
               <Pressable
@@ -92,16 +80,12 @@ export function FriendGameSuggestions({
                 disabled={adding}
                 testID={`${testIDPrefix}-add-${dg.game.id}`}
                 hitSlop={6}
-                style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                  styles.addBtn,
-                  (pressed || hovered) && styles.addBtnHover,
-                  adding && styles.addBtnBusy,
-                ]}
+                style={({ pressed }) => [styles.addKey, pressed && styles.addKeyPressed]}
               >
                 {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
+                  <ActivityIndicator size="small" color={tokens.neon.pink} />
                 ) : (
-                  <Text style={styles.addLabel}>Add</Text>
+                  <PixelIcon name="plus" size={16} color={tokens.neon.pink} />
                 )}
               </Pressable>
             )}
@@ -112,63 +96,28 @@ export function FriendGameSuggestions({
   );
 }
 
-const COVER = 40;
+const COVER = 28;
 
 const styles = StyleSheet.create({
-  list: { gap: tokens.space.sm },
+  list: {},
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    gap: tokens.space.sm,
+    minHeight: 48,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: tokens.border.default,
   },
-  cover: {
-    width: COVER,
-    height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+  text: { flex: 1, minWidth: 0 },
+  title: { color: tokens.text.primary },
+  addKey: {
+    width: 32,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  coverGlyph: { fontSize: 20 },
-  text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  addBtn: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
-  },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
-  addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  addedPill: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addedText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  addKeyPressed: { backgroundColor: tokens.accent.muted },
+  addedMark: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
 });

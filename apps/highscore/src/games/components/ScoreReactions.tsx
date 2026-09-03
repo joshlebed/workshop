@@ -6,8 +6,8 @@
 // inert with no add button.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
+import { PixelIcon, Text, tokens } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];
@@ -30,15 +30,15 @@ export function ScoreReactions({ reactions, onToggle, onAdd, testIDPrefix }: Sco
           accessibilityLabel={`${r.emoji}, ${r.count}${r.viewerReacted ? ", you reacted" : ""}`}
           onPress={() => onToggle?.(r.emoji, r.viewerReacted)}
           testID={testIDPrefix ? `${testIDPrefix}-chip-${r.emoji}` : undefined}
-          style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+          style={({ pressed }) => [
             styles.chip,
             r.viewerReacted && styles.chipActive,
-            onToggle && (pressed || hovered) && styles.chipHover,
+            onToggle && pressed && styles.chipPressed,
           ]}
         >
           <Text style={styles.chipEmoji}>{r.emoji}</Text>
           {r.count > 1 ? (
-            <Text style={[styles.chipCount, r.viewerReacted && styles.chipCountActive]}>
+            <Text variant="cell" style={r.viewerReacted ? styles.countActive : styles.count}>
               {r.count}
             </Text>
           ) : null}
@@ -51,13 +51,9 @@ export function ScoreReactions({ reactions, onToggle, onAdd, testIDPrefix }: Sco
           onPress={onAdd}
           hitSlop={6}
           testID={testIDPrefix ? `${testIDPrefix}-add` : undefined}
-          style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-            styles.addBtn,
-            (pressed || hovered) && styles.chipHover,
-          ]}
+          style={({ pressed }) => [styles.addBtn, pressed && styles.chipPressed]}
         >
-          <Text style={styles.addFace}>🙂</Text>
-          <Text style={styles.addPlus}>+</Text>
+          <PixelIcon name="plus" size={12} color={tokens.text.secondary} />
         </Pressable>
       ) : null}
     </View>
@@ -65,52 +61,28 @@ export function ScoreReactions({ reactions, onToggle, onAdd, testIDPrefix }: Sco
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    gap: tokens.space.xs,
-  },
+  row: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs, flexShrink: 0 },
   chip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    height: 22,
+    paddingHorizontal: 5,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.elevated,
   },
-  chipActive: {
-    borderColor: tokens.accent.default,
-    backgroundColor: tokens.accent.muted,
-  },
-  chipHover: { backgroundColor: tokens.bg.surface },
-  chipEmoji: { fontSize: 13, lineHeight: 18 },
-  chipCount: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.secondary,
-    fontVariant: ["tabular-nums"],
-  },
-  chipCountActive: { color: tokens.accent.default },
+  chipActive: { borderColor: tokens.neon.pink },
+  chipPressed: { backgroundColor: tokens.bg.raised },
+  chipEmoji: { fontSize: 12, lineHeight: 16 },
+  count: { color: tokens.text.secondary, letterSpacing: 0 },
+  countActive: { color: tokens.neon.pinkTint, letterSpacing: 0 },
   addBtn: {
-    flexDirection: "row",
+    width: 22,
+    height: 22,
     alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-  },
-  addFace: { fontSize: 12, lineHeight: 16, opacity: 0.7 },
-  addPlus: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.muted,
-    marginLeft: 1,
+    justifyContent: "center",
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
   },
 });

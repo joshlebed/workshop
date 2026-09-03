@@ -1,16 +1,19 @@
+import { PressStart2P_400Regular, useFonts } from "@expo-google-fonts/press-start-2p";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
-import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { type Href, Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { FlightProvider } from "../src/components/Flight";
+import { PeekProvider } from "../src/components/Peek";
+import { Wordmark } from "../src/components/Wordmark";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
@@ -19,6 +22,7 @@ import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
+import { Button, Text, ToastProvider, tokens } from "../src/theme";
 
 configureApiClient({ client: "highscore" });
 
@@ -126,9 +130,11 @@ function AuthGate() {
   }, [status, segments, router, onPublicRoute]);
 
   if (status === "loading" && !onPublicRoute) {
+    // Bootstrapping the session can take a moment on a cold connection; show
+    // the wordmark rather than an unbranded spinner on black.
     return (
       <View style={centered}>
-        <ActivityIndicator color={tokens.accent.default} />
+        <Wordmark size="lg" />
       </View>
     );
   }
@@ -139,10 +145,10 @@ function AuthGate() {
         edges={["top", "bottom"]}
         style={{ flex: 1, backgroundColor: tokens.bg.canvas }}
       >
-        <View style={{ ...centered, paddingHorizontal: tokens.space.xl }}>
+        <View style={{ ...centered, paddingHorizontal: tokens.space.lg }}>
           <View style={{ width: "100%", maxWidth: 340, gap: tokens.space.md }}>
             <Text variant="heading" style={{ textAlign: "center" }}>
-              Can’t connect
+              Can't connect
             </Text>
             <Text tone="secondary" style={{ textAlign: "center" }}>
               Your session is still saved. Check your connection and try again.
@@ -165,9 +171,20 @@ function AuthGate() {
         }}
       >
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="games/[id]" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/[userId]" options={{ animation: "slide_from_right" }} />
+        {/* The detail screens fade rather than slide: their identity block is
+            the landing pad for the flight animation started by the row you
+            tapped (src/components/Flight.tsx), and a horizontal slide would
+            fight it. */}
+        <Stack.Screen name="games/[id]" options={{ animation: "fade", animationDuration: 140 }} />
+        <Stack.Screen
+          name="friends/index"
+          options={{ animation: "fade", animationDuration: 140 }}
+        />
+        <Stack.Screen
+          name="friends/[userId]"
+          options={{ animation: "fade", animationDuration: 140 }}
+        />
+        <Stack.Screen name="you" options={{ animation: "fade", animationDuration: 140 }} />
         <Stack.Screen name="friends/accept/[token]" />
         <Stack.Screen name="g/[token]" />
         <Stack.Screen name="share/index" />
@@ -192,24 +209,33 @@ const centered = {
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
-  const colorScheme = useColorScheme();
-  const isLight = colorScheme === "light";
+  // HighScore is dark-only (DESIGN.md): no ThemeProvider, no useColorScheme.
+  // Press Start 2P is heading/score-only, so blocking on it briefly is a dark
+  // canvas, not a blank app; render proceeds on load error too.
+  const [fontsLoaded, fontError] = useFonts({ PressStart2P_400Regular });
+  if (!fontsLoaded && !fontError) {
+    return <View style={centered} />;
+  }
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <ThemeProvider>
-            <StatusBar style={isLight ? "dark" : "light"} />
-            <QueryClientProvider client={queryClient}>
-              <ToastProvider>
-                <AuthProvider>
-                  <GamesRuntimeBridge>
-                    <AuthGate />
-                  </GamesRuntimeBridge>
-                </AuthProvider>
-              </ToastProvider>
-            </QueryClientProvider>
-          </ThemeProvider>
+          <StatusBar style="light" />
+          <QueryClientProvider client={queryClient}>
+            <ToastProvider>
+              <AuthProvider>
+                <GamesRuntimeBridge>
+                  {/* Both providers render a root-level overlay above the
+                      router: the flight clone and the peek panel. */}
+                  <FlightProvider>
+                    <PeekProvider>
+                      <AuthGate />
+                    </PeekProvider>
+                  </FlightProvider>
+                </GamesRuntimeBridge>
+              </AuthProvider>
+            </ToastProvider>
+          </QueryClientProvider>
         </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>

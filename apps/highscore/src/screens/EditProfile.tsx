@@ -3,11 +3,11 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { BackKey } from "../components/BackKey";
 import { useAuth } from "../hooks/useAuth";
 import {
   ACCOUNT_DELETION_CONSEQUENCES,
@@ -17,6 +17,7 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import { Avatar, Button, layout, Screen, Text, TextField, tokens, useToast } from "../theme";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -62,21 +63,10 @@ export default function EditProfile() {
   return (
     <Screen style={styles.root}>
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
-            Account
-          </Text>
-          <Text variant="heading" numberOfLines={1}>
-            Edit profile
-          </Text>
-        </View>
-        <IconButton
-          accessibilityLabel="Close profile editor"
-          onPress={() => goBack("/")}
-          testID="profile-edit-close"
-        >
-          <Text style={styles.closeGlyph}>✕</Text>
-        </IconButton>
+        <BackKey label="You" onPress={() => goBack("/you")} testID="profile-edit-close" />
+        <Text variant="title" numberOfLines={1} style={styles.title}>
+          Edit profile
+        </Text>
       </View>
 
       <KeyboardAwareScrollView
@@ -96,17 +86,19 @@ export default function EditProfile() {
           <View style={styles.avatarButtons}>
             <Button
               testID="profile-photo-pick"
-              label={avatarUrl ? "Change photo" : "Upload photo"}
+              label={avatarUrl ? "Change" : "Upload"}
               variant="secondary"
-              size="md"
+              size="sm"
+              pixel
               onPress={onPickPhoto}
             />
             {avatarUrl ? (
               <Button
                 testID="profile-photo-remove"
                 label="Remove"
-                variant="secondary"
-                size="md"
+                variant="ghost"
+                size="sm"
+                pixel
                 onPress={() => setAvatarUrl(null)}
               />
             ) : null}
@@ -117,15 +109,13 @@ export default function EditProfile() {
           <Text variant="caption" tone="muted">
             Display name
           </Text>
-          <TextInput
+          <TextField
             testID="profile-display-name"
             value={name}
             onChangeText={setName}
             placeholder="Ada Lovelace"
-            placeholderTextColor={tokens.text.muted}
             autoComplete="name"
             maxLength={40}
-            style={styles.input}
             returnKeyType="done"
             onSubmitEditing={onSave}
           />
@@ -147,8 +137,9 @@ export default function EditProfile() {
 
         <Button
           testID="profile-save"
-          label="Save changes"
-          size="lg"
+          label="Save"
+          size="md"
+          pixel
           disabled={!canSave}
           loading={busy}
           onPress={onSave}
@@ -259,17 +250,11 @@ function DeleteAccountSection() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
+    paddingTop: tokens.space.md,
     paddingBottom: tokens.space.md,
-    gap: tokens.space.md,
+    gap: tokens.space.xs,
   },
-  headerText: { flex: 1, minWidth: 0, gap: 2 },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  title: { paddingHorizontal: layout.inset },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
@@ -280,27 +265,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
   },
-  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
-  avatarButtons: { flex: 1, gap: tokens.space.sm },
+  avatarPreview: { width: 72, height: 72 },
+  avatarButtons: { flexDirection: "row", gap: tokens.space.sm, alignItems: "center" },
   field: { gap: tokens.space.sm },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 14,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
-  },
   hint: { marginTop: tokens.space.xs },
-  saveButton: { marginTop: tokens.space.sm },
+  saveButton: { marginTop: tokens.space.sm, alignSelf: "flex-start" },
 });
 
 const dangerStyles = StyleSheet.create({
   section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
   divider: {
-    height: StyleSheet.hairlineWidth,
+    height: tokens.bezel,
     backgroundColor: tokens.border.subtle,
     marginBottom: tokens.space.md,
   },
@@ -308,8 +283,7 @@ const dangerStyles = StyleSheet.create({
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.status.danger,
     backgroundColor: tokens.bg.surface,
   },

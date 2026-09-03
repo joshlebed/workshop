@@ -5,9 +5,9 @@
 // current emoji is highlighted and a Remove row is offered.
 
 import { isReactionEmoji, REACTION_QUICK_EMOJIS } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Button, Sheet, Text, TextField, tokens } from "../../theme";
 
 export interface ReactionPickerSheetProps {
   visible: boolean;
@@ -70,19 +70,19 @@ export function ReactionPickerSheet({
 
       {moreOpen ? (
         <View style={styles.moreRow}>
-          <TextInput
+          <TextField
             value={draft}
             onChangeText={setDraft}
             placeholder="Type or paste an emoji"
-            placeholderTextColor={tokens.text.muted}
             autoFocus
             maxLength={32}
-            style={styles.moreInput}
+            containerStyle={styles.moreInput}
             testID="reaction-more-input"
           />
           <Button
             label="React"
             size="md"
+            pixel
             disabled={!draftValid}
             onPress={() => draftValid && onPick(draft.trim())}
             testID="reaction-more-submit"
@@ -132,8 +132,7 @@ const styles = StyleSheet.create({
     height: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.elevated,
   },
@@ -149,24 +148,13 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     marginTop: tokens.space.md,
   },
-  moreInput: {
-    flex: 1,
-    minHeight: 44,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.canvas,
-  },
+  moreInput: { flex: 1 },
   moreLink: {
     alignSelf: "flex-start",
     marginTop: tokens.space.sm,
     paddingVertical: tokens.space.xs,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
   },
   moreLinkHover: { backgroundColor: tokens.bg.elevated },
   moreLinkText: { textDecorationLine: "underline" },
@@ -175,8 +163,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: tokens.bezel,
     borderTopColor: tokens.border.subtle,
   },
   removePressed: { backgroundColor: tokens.bg.elevated },

@@ -10,8 +10,8 @@
 // All data + mutations live in GamesHome; this component is presentational.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, homeLayout, Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Button, layout, Text, tokens } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface GamesOnboardingProps {
@@ -167,9 +167,9 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: homeLayout.horizontalInset,
+    paddingHorizontal: layout.inset,
     paddingTop: tokens.space.xxl,
-    paddingBottom: homeLayout.bottomInset,
+    paddingBottom: tokens.space.xl,
     gap: tokens.space.lg,
   },
   intro: { gap: tokens.space.sm, maxWidth: 420 },
@@ -189,8 +189,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.canvas,
   },

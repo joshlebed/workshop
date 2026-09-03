@@ -54,12 +54,15 @@ describe("public routes", () => {
     }
   });
 
-  it("links both pages from the signed-in profile menu", () => {
-    const menu = readFileSync(join(__dirname, "..", "components", "ProfileMenu.tsx"), "utf8");
-    expect(menu).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
-    expect(menu).toContain('label="Support"');
-    expect(menu).toContain("router.push(SUPPORT_ROUTE)");
-    expect(menu).toContain('label="Privacy policy"');
-    expect(menu).toContain("router.push(PRIVACY_ROUTE)");
+  // Apple checks that a signed-in user can reach both published URLs from
+  // inside the app. They hang off the YOU screen (the profile menu sheet it
+  // replaced is gone).
+  it("links both pages from the signed-in YOU screen", () => {
+    const you = readFileSync(join(__dirname, "..", "screens", "You.tsx"), "utf8");
+    expect(you).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
+    expect(you).toContain('label="Support"');
+    expect(you).toContain("router.push(SUPPORT_ROUTE)");
+    expect(you).toContain('label="Privacy"');
+    expect(you).toContain("router.push(PRIVACY_ROUTE)");
   });
 });

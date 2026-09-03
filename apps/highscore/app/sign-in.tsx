@@ -1,9 +1,10 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+import { GoogleSignInButton } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { Wordmark } from "../src/components/Wordmark";
+import { CabinetMark, Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { Button, Text, tokens } from "../src/theme";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -58,8 +59,9 @@ export default function SignIn() {
     <View style={styles.root}>
       <View style={styles.topSpacer} />
       <View style={styles.brandBlock}>
+        <CabinetMark size={104} />
         <Wordmark size="lg" />
-        <Text tone="secondary">Compete in daily games</Text>
+        <Text tone="secondary">Your friends' daily games, on one board.</Text>
       </View>
 
       <View style={styles.actions}>
@@ -129,7 +131,7 @@ const styles = StyleSheet.create({
   topSpacer: { flex: 0.7 },
   bottomSpacer: { flex: 1 },
   brandBlock: {
-    gap: tokens.space.md,
+    gap: tokens.space.sm,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
@@ -150,7 +152,7 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: StyleSheet.hairlineWidth,
+    height: tokens.bezel,
     backgroundColor: tokens.border.subtle,
   },
   dividerText: {

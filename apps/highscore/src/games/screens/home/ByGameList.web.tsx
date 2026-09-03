@@ -1,8 +1,5 @@
-// Web Games-home card container — @dnd-kit drag-to-reorder over My Games.
-//
-// Mirrors `ItemList.web.tsx`'s ordered-section wiring (same sensors, same
-// activation feel, same `stripButtonRole` workaround) for a single flat
-// ordered list: every card is sortable, there are no sections.
+// Web BY GAME scroller — @dnd-kit drag-to-reorder over My Games, with the
+// recap / add-game footer inside the same scroll view.
 
 import {
   closestCenter,
@@ -16,24 +13,18 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { MyGame } from "@workshop/shared/games";
-import { homeLayout, PullToRefresh } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import type { GameCardListProps } from "./gameCardListProps";
+import { layout, tokens } from "../../../theme";
+import type { ByGameListProps } from "./byGameListProps";
 
-export function GameCardList({
-  games,
-  renderCard,
-  onReorder,
-  refreshing,
-  onRefresh,
-}: GameCardListProps) {
-  // Two sensors, never one with mixed activation (see ItemList.web.tsx):
-  // MouseSensor stays snappy on desktop; TouchSensor's delay+tolerance lets
-  // a swipe scroll and a press-and-hold reorder.
+export function ByGameList({ games, renderRow, onReorder, footer }: ByGameListProps) {
+  // Two sensors, never one with mixed activation: MouseSensor stays snappy on
+  // desktop; TouchSensor's delay+tolerance lets a swipe scroll and a
+  // press-and-hold reorder.
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 280, tolerance: 8 } }),
   );
   const ids = useMemo(() => games.map((g) => g.gameId), [games]);
 
@@ -51,27 +42,29 @@ export function GameCardList({
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
-      <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
-        <ScrollView contentContainerStyle={styles.listContent} testID="games-home-list">
-          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-            {games.map((game) => (
-              <SortableCard key={game.gameId} game={game} render={renderCard} />
-            ))}
-          </SortableContext>
-        </ScrollView>
-      </PullToRefresh>
+      <ScrollView contentContainerStyle={styles.content} testID="by-game-list">
+        <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+          {games.map((game, index) => (
+            <SortableRow key={game.gameId} game={game} index={index} render={renderRow} />
+          ))}
+        </SortableContext>
+        {footer}
+      </ScrollView>
     </DndContext>
   );
 }
 
-interface SortableCardProps {
+// Whole-row drag target: listeners on the wrapper; a press-and-hold reorders,
+// a tap falls through to the row's own Pressables.
+function SortableRow({
+  game,
+  index,
+  render,
+}: {
   game: MyGame;
-  render: GameCardListProps["renderCard"];
-}
-
-// Whole-card drag target: listeners on the wrapper; a press-and-hold reorders,
-// a tap falls through to the card's own Pressables.
-function SortableCard({ game, render }: SortableCardProps) {
+  index: number;
+  render: ByGameListProps["renderRow"];
+}) {
   const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
     id: game.gameId,
   });
@@ -87,8 +80,8 @@ function SortableCard({ game, render }: SortableCardProps) {
 
   // Strip `role`/`tabIndex` from dnd-kit's a11y attributes — react-native-web
   // turns `role="button"` on a View into an HTML <button>, nesting around the
-  // card's inner Pressables (also <button>s). Touch/mouse sensors only here,
-  // so dropping them is safe. Same workaround as ItemList.web.tsx.
+  // row's inner Pressables (also <button>s). Touch/mouse sensors only here, so
+  // dropping them is safe.
   const wrapperAttributes = stripButtonRole(attributes);
 
   return (
@@ -98,7 +91,7 @@ function SortableCard({ game, render }: SortableCardProps) {
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
       {...(wrapperAttributes as unknown as Record<string, unknown>)}
     >
-      {render(game, isDragging)}
+      {render(game, index, isDragging)}
     </View>
   );
 }
@@ -110,9 +103,8 @@ function stripButtonRole(attributes: unknown): Record<string, unknown> {
 }
 
 const styles = StyleSheet.create({
-  listContent: {
-    paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: homeLayout.contentTopGap,
-    paddingBottom: homeLayout.bottomInset,
+  content: {
+    paddingHorizontal: layout.inset,
+    paddingBottom: tokens.space.xl,
   },
 });
