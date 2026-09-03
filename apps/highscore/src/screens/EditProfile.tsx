@@ -18,6 +18,7 @@ import {
 import { pickProfilePhoto } from "../lib/profilePhoto";
 import {
   Avatar,
+  actionType,
   Button,
   IconButton,
   PixelIcon,
@@ -291,8 +292,8 @@ const styles = StyleSheet.create({
   },
   avatarPreview: { width: 72, height: 72, borderRadius: 0 },
   avatarButtons: { flex: 1, gap: tokens.space.md },
-  avatarAction: { fontSize: 14, lineHeight: 18, color: tokens.neon.pinkTint },
-  avatarActionQuiet: { fontSize: 14, lineHeight: 18, color: tokens.text.secondary },
+  avatarAction: actionType(tokens.neon.pinkTint),
+  avatarActionQuiet: actionType(tokens.text.secondary),
   dim: { opacity: 0.6 },
   field: { gap: tokens.space.sm },
   input: { paddingVertical: 14, fontSize: 18 },

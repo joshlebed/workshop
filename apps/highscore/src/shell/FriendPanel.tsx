@@ -21,7 +21,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } fro
 import { addGame } from "../games/api/games";
 import { localDateKey } from "../games/lib/gameDate";
 import { useGamesRuntime } from "../games/runtime";
-import { Avatar, Button, PixelIcon, pixelType, tokens, useToast } from "../theme";
+import { Avatar, actionType, Button, PixelIcon, pixelType, tokens, useToast } from "../theme";
 import { Text } from "../theme/Text";
 import { railScore } from "./railScore";
 
@@ -57,12 +57,14 @@ function mutualsLine(profile: FriendProfileResponse): string | null {
 export interface FriendPanelProps {
   userId: string;
   via: string | undefined;
+  /** My compact result per game today — this page is a head-to-head, not a list. */
+  myScores: Map<string, string | null>;
   onBack: () => void;
   /** Open one of their games in the ledger behind the drawer. */
   onOpenGame: (gameId: string) => void;
 }
 
-export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProps) {
+export function FriendPanel({ userId, via, myScores, onBack, onOpenGame }: FriendPanelProps) {
   const { token, user } = useGamesRuntime();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -192,6 +194,7 @@ export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProp
   return (
     <View style={styles.panel} testID="friend-profile-screen">
       <View style={styles.head}>
+        {/* A breadcrumb, not a chevron: it says where back goes. */}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back to friends"
@@ -200,9 +203,16 @@ export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProp
           testID="friend-profile-back"
           style={({ pressed }) => [styles.back, pressed && styles.dim]}
         >
-          <PixelIcon name="chevron-left" size={16} color={tokens.neon.pink} />
           <Text style={styles.backLabel}>FRIENDS</Text>
         </Pressable>
+        <Text style={styles.crumbSep}>/</Text>
+        <Text numberOfLines={1} style={styles.crumbHere}>
+          {(
+            profile?.user.displayName?.trim() ||
+            known?.displayName?.trim() ||
+            "PROFILE"
+          ).toUpperCase()}
+        </Text>
       </View>
 
       <ScrollView
@@ -219,8 +229,8 @@ export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProp
                 size="lg"
               />
               <View style={styles.identityText}>
-                <Text numberOfLines={2} style={styles.name}>
-                  {known?.displayName?.trim() || "…"}
+                <Text numberOfLines={1} style={styles.meta}>
+                  Loading…
                 </Text>
               </View>
             </View>
@@ -246,10 +256,9 @@ export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProp
                 imageUrl={userAvatarImageUrl(profile.user.userId)}
                 size="lg"
               />
+              {/* The breadcrumb above already names them; repeating it here
+                  was the same word twice in 60px. */}
               <View style={styles.identityText}>
-                <Text numberOfLines={2} style={styles.name} testID="friend-profile-name">
-                  {name}
-                </Text>
                 <Text numberOfLines={1} style={styles.meta} testID="friend-profile-status">
                   {relationshipLine(profile)}
                 </Text>
@@ -315,7 +324,13 @@ export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProp
               </View>
             ) : (
               <View style={styles.section} testID="friend-profile-games">
-                <Text style={styles.sectionLabel}>GAMES</Text>
+                <View style={styles.columns}>
+                  <Text style={styles.sectionLabel}>GAMES</Text>
+                  <View style={styles.columnRight}>
+                    <Text style={[styles.sectionLabel, styles.columnValue]}>THEM</Text>
+                    <Text style={[styles.sectionLabel, styles.columnValue]}>YOU</Text>
+                  </View>
+                </View>
                 {profile.games.map((pg) => {
                   const adding = addingGameIds.includes(pg.game.id);
                   // Same compact rule as the ledger — one score language
@@ -352,15 +367,22 @@ export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProp
                           {pg.game.title}
                         </Text>
                       </Pressable>
-                      {body ? (
-                        <Text numberOfLines={1} style={styles.gameScore}>
-                          {body}
-                        </Text>
-                      ) : line ? (
-                        <View style={styles.gamePlayed} />
-                      ) : pg.viewerHasGame ? (
-                        <Text style={styles.gameBlank}>–</Text>
-                      ) : null}
+                      <View style={styles.scoreCol}>
+                        {body ? (
+                          <Text numberOfLines={1} style={styles.gameScore}>
+                            {body}
+                          </Text>
+                        ) : line ? (
+                          <View style={styles.gamePlayed} />
+                        ) : null}
+                      </View>
+                      <View style={styles.scoreCol}>
+                        {pg.viewerHasGame ? (
+                          <Text numberOfLines={1} style={styles.gameScoreMine}>
+                            {myScores.get(pg.game.id) ?? ""}
+                          </Text>
+                        ) : null}
+                      </View>
                       {pg.viewerHasGame ? null : (
                         <Pressable
                           accessibilityRole="button"
@@ -374,7 +396,7 @@ export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProp
                           {adding ? (
                             <ActivityIndicator size="small" color={tokens.neon.pink} />
                           ) : (
-                            <Text style={styles.addLabel}>ADD</Text>
+                            <Text style={styles.addLabel}>Add</Text>
                           )}
                         </Pressable>
                       )}
@@ -395,7 +417,7 @@ export function FriendPanel({ userId, via, onBack, onOpenGame }: FriendPanelProp
                   testID="friend-profile-remove"
                   style={({ pressed }) => [pressed && styles.dim]}
                 >
-                  <Text style={styles.danger}>REMOVE FRIEND</Text>
+                  <Text style={styles.danger}>Remove friend</Text>
                 </Pressable>
               </View>
             ) : null}
@@ -411,15 +433,17 @@ const styles = StyleSheet.create({
   head: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: tokens.space.sm,
     paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.md,
     borderBottomWidth: tokens.bezel,
     borderBottomColor: tokens.border.default,
   },
-  back: { flexDirection: "row", alignItems: "center", gap: 4 },
-  backLabel: { ...pixelType(11), color: tokens.neon.pink },
+  back: {},
+  backLabel: { ...pixelType(11), color: tokens.neon.pinkTint },
+  crumbSep: { ...pixelType(11), color: tokens.border.default },
+  crumbHere: { ...pixelType(11), color: tokens.text.primary, flexShrink: 1 },
   body: { paddingBottom: tokens.space.xxl * 2 },
   dim: { opacity: 0.6 },
   skeletonRow: {
@@ -438,7 +462,6 @@ const styles = StyleSheet.create({
     padding: tokens.space.lg,
   },
   identityText: { flex: 1, minWidth: 0, gap: 4 },
-  name: { ...pixelType(12), color: tokens.text.primary },
   meta: { fontSize: 12, lineHeight: 16, color: tokens.text.secondary },
   actions: { gap: tokens.space.sm, paddingHorizontal: tokens.space.lg },
   locked: { padding: tokens.space.lg },
@@ -476,14 +499,27 @@ const styles = StyleSheet.create({
   },
   gameCoverImage: { width: "100%", height: "100%" },
   gameTitle: { ...pixelType(10), color: tokens.text.primary, flexShrink: 1 },
-  gameScore: { ...pixelType(10), color: tokens.text.primary, flexShrink: 0 },
+  columns: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  columnRight: { flexDirection: "row", paddingRight: tokens.space.lg },
+  columnValue: { width: 44, textAlign: "right", paddingHorizontal: 0 },
+  scoreCol: { width: 44, alignItems: "flex-end" },
+  gameScore: { ...pixelType(10), color: tokens.neon.yellow },
+  gameScoreMine: { ...pixelType(10), color: tokens.text.primary },
   gamePlayed: {
     width: 8,
     height: 8,
     backgroundColor: tokens.neon.chartreuse,
   },
-  gameBlank: { ...pixelType(10), color: tokens.border.default },
-  addLabel: { ...pixelType(10), color: tokens.neon.pink },
-  dangerRow: { padding: tokens.space.lg, marginTop: tokens.space.lg },
-  danger: { ...pixelType(10), color: tokens.status.danger },
+  addLabel: actionType(tokens.neon.pinkTint),
+  dangerRow: {
+    padding: tokens.space.lg,
+    marginTop: tokens.space.xl,
+    borderTopWidth: tokens.bezel,
+    borderTopColor: tokens.border.default,
+  },
+  danger: actionType(tokens.status.danger),
 });

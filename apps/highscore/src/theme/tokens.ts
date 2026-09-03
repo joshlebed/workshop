@@ -139,3 +139,18 @@ export function textGlow(color: string, radius = 10): TextStyle {
     textShadowRadius: radius,
   };
 }
+
+/**
+ * Inline text actions ("Edit", "Remove", "Add") are body-face, never pixel.
+ * The pixel face is headings, game names and numerals only — setting actions
+ * in it made them read as captions and gave the app two competing type
+ * systems for the same job.
+ */
+export function actionType(color: string): TextStyle {
+  return {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: tokens.font.weight.semibold,
+    color,
+  };
+}

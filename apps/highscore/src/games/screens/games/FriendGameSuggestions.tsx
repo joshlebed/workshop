@@ -7,7 +7,7 @@
 
 import type { DiscoveryGame } from "@workshop/shared/games";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
-import { pixelType, Text, tokens } from "../../../theme";
+import { actionType, pixelType, Text, tokens } from "../../../theme";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -22,7 +22,7 @@ interface FriendGameSuggestionsProps {
   games: DiscoveryGame[];
   /** Game ids whose add request is currently in flight (spinner on Add). */
   addingGameIds: string[];
-  /** Game ids added this session — the row flips to a "ADDED" pill. */
+  /** Game ids added this session — the row flips to an "Added" marker. */
   addedGameIds: string[];
   onAdd: (game: DiscoveryGame) => void;
   /**
@@ -77,12 +77,12 @@ export function FriendGameSuggestions({
             {owned ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
                 <Text style={styles.addedText} numberOfLines={1}>
-                  ADDED
+                  Added
                 </Text>
               </View>
             ) : added ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>ADDED</Text>
+                <Text style={styles.addedText}>Added</Text>
               </View>
             ) : (
               <Pressable
@@ -101,7 +101,7 @@ export function FriendGameSuggestions({
                 {adding ? (
                   <ActivityIndicator size="small" color={tokens.neon.pink} />
                 ) : (
-                  <Text style={styles.addLabel}>ADD</Text>
+                  <Text style={styles.addLabel}>Add</Text>
                 )}
               </Pressable>
             )}
@@ -144,7 +144,7 @@ const styles = StyleSheet.create({
   addBtn: { paddingHorizontal: tokens.space.xs, paddingVertical: 4 },
   addBtnHover: { opacity: 0.6 },
   addBtnBusy: { opacity: 0.8 },
-  addLabel: { ...pixelType(10), color: tokens.neon.pink },
+  addLabel: actionType(tokens.neon.pinkTint),
   addedPill: { paddingHorizontal: tokens.space.xs, paddingVertical: 4 },
-  addedText: { ...pixelType(10), color: tokens.border.default },
+  addedText: actionType(tokens.border.default),
 });

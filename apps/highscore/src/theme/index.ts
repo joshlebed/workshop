@@ -12,4 +12,13 @@ export { Sheet, type SheetProps } from "./Sheet";
 export { AnimatedText, type HSTextProps, Text } from "./Text";
 export { TextField, type TextFieldProps } from "./TextField";
 export { ToastProvider, useToast } from "./Toast";
-export { glow, PIXEL_FONT, palette, pixelType, type Tokens, textGlow, tokens } from "./tokens";
+export {
+  actionType,
+  glow,
+  PIXEL_FONT,
+  palette,
+  pixelType,
+  type Tokens,
+  textGlow,
+  tokens,
+} from "./tokens";

@@ -23,7 +23,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { shareOrCopyLink } from "../games/lib/share";
 import { useGamesRuntime } from "../games/runtime";
-import { Avatar, Button, PixelIcon, pixelType, tokens, useToast } from "../theme";
+import { Avatar, actionType, Button, PixelIcon, pixelType, tokens, useToast } from "../theme";
 import { Text } from "../theme/Text";
 
 /** "1 mutual friend · Alice" / "2 mutual friends · Alice & Bob" / "+N". */
@@ -271,7 +271,7 @@ export function FriendsPanel({ signals, onClose, onOpenFriend }: FriendsPanelPro
                         testID={`friend-request-accept-${request.userId}`}
                         style={({ pressed }) => [pressed && styles.dim]}
                       >
-                        <Text style={styles.accept}>ACCEPT</Text>
+                        <Text style={styles.accept}>Accept</Text>
                       </Pressable>
                       <Pressable
                         accessibilityRole="button"
@@ -281,7 +281,7 @@ export function FriendsPanel({ signals, onClose, onOpenFriend }: FriendsPanelPro
                         testID={`friend-request-deny-${request.userId}`}
                         style={({ pressed }) => [pressed && styles.dim]}
                       >
-                        <Text style={styles.decline}>DECLINE</Text>
+                        <Text style={styles.decline}>Decline</Text>
                       </Pressable>
                     </View>
                   )}
@@ -371,7 +371,7 @@ export function FriendsPanel({ signals, onClose, onOpenFriend }: FriendsPanelPro
                   </Pressable>
                   {requested ? (
                     <Text style={styles.requested} testID={`friend-requested-${mutual.userId}`}>
-                      SENT
+                      Sent
                     </Text>
                   ) : (
                     <Pressable
@@ -386,7 +386,7 @@ export function FriendsPanel({ signals, onClose, onOpenFriend }: FriendsPanelPro
                       {requesting ? (
                         <ActivityIndicator size="small" color={tokens.neon.pink} />
                       ) : (
-                        <Text style={styles.accept}>ADD</Text>
+                        <Text style={styles.accept}>Add</Text>
                       )}
                     </Pressable>
                   )}
@@ -418,7 +418,7 @@ export function FriendsPanel({ signals, onClose, onOpenFriend }: FriendsPanelPro
                   testID="friends-invite-copy"
                   style={({ pressed }) => [pressed && styles.dim]}
                 >
-                  <Text style={styles.accept}>COPY</Text>
+                  <Text style={styles.accept}>Copy</Text>
                 </Pressable>
                 <Pressable
                   accessibilityRole="button"
@@ -430,7 +430,7 @@ export function FriendsPanel({ signals, onClose, onOpenFriend }: FriendsPanelPro
                   style={({ pressed }) => [pressed && styles.dim]}
                 >
                   <Text style={styles.decline}>
-                    {resetMutation.isPending ? "RESETTING" : "RESET LINK"}
+                    {resetMutation.isPending ? "Resetting…" : "Reset link"}
                   </Text>
                 </Pressable>
               </View>
@@ -486,9 +486,9 @@ const styles = StyleSheet.create({
   personName: { fontSize: 14, lineHeight: 18, color: tokens.text.primary },
   personMeta: { fontSize: 11, lineHeight: 15, color: tokens.text.secondary },
   personActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
-  accept: { ...pixelType(10), color: tokens.neon.pink },
-  decline: { ...pixelType(10), color: tokens.text.secondary },
-  requested: { ...pixelType(10), color: tokens.border.default },
+  accept: actionType(tokens.neon.pinkTint),
+  decline: actionType(tokens.text.secondary),
+  requested: actionType(tokens.border.default),
   spinner: { paddingVertical: tokens.space.xl },
   errorBlock: { gap: tokens.space.sm, paddingHorizontal: tokens.space.lg },
   invite: {

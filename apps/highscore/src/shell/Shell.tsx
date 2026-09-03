@@ -40,6 +40,7 @@ import { GameScorePasteSheet, type TaughtScoreSpec } from "../games/screens/Game
 import { AddGameSheet } from "../games/screens/games/AddGameSheet";
 import { GamesOnboarding } from "../games/screens/games/GamesOnboarding";
 import {
+  actionType,
   Button,
   EmptyState,
   homeLayout,
@@ -104,6 +105,9 @@ export function Shell() {
   const [editing, setEditing] = useState(false);
   const [scoreShareUrl, setScoreShareUrl] = useState<string | null>(null);
   const [copyingScores, setCopyingScores] = useState(false);
+  // Set for ~1.2s after a post so the row's rail value blinks — posting a
+  // score is the whole point of the app and used to end in a silent dismiss.
+  const [celebrateGameId, setCelebrateGameId] = useState<string | null>(null);
   const [addingDiscoveryIds, setAddingDiscoveryIds] = useState<string[]>([]);
   const [addedDiscoveryIds, setAddedDiscoveryIds] = useState<string[]>([]);
 
@@ -220,6 +224,17 @@ export function Shell() {
     return map;
   }, [gamesQuery.data]);
 
+  // My compact result per game today, so a friend's profile can read as a
+  // head-to-head instead of a list of their scores.
+  const myScoresByGame = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const g of gamesQuery.data?.games ?? []) {
+      const mine = g.standings.entries.find((e) => e.userId === user?.id && e.scoreRaw);
+      map.set(g.gameId, mine ? railScore(g.game, mine) : null);
+    }
+    return map;
+  }, [gamesQuery.data, user?.id]);
+
   const discoveryQuery = useQuery({
     queryKey: queryKeys.games.discovery(),
     queryFn: () => fetchGameDiscovery(token, { includeOwned: true }),
@@ -321,13 +336,28 @@ export function Shell() {
       if (taught) await setGameScoreSpec(game.id, taught, token);
       return upsertGameScore(game.id, { periodKey: todayKey, scoreRaw }, token);
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, { game }) => {
       haptics.medium();
       dismiss();
       setDraft("");
       setEditing(false);
       await queryClient.invalidateQueries({ queryKey: ["games"] });
-      showToast({ message: "Score posted", tone: "success" });
+      // Say where the result landed, not just that it landed. The rank comes
+      // from the freshly-invalidated standings, so it is the real one.
+      const fresh = queryClient
+        .getQueryData<GamesResponse>(gamesKey)
+        ?.games.find((g) => g.gameId === game.id);
+      const played = fresh?.standings.entries.filter((e) => e.scoreRaw) ?? [];
+      const mine = played.find((e) => e.userId === user?.id);
+      const message =
+        mine?.rank === 1 && played.length > 1
+          ? `You lead ${game.title} today`
+          : mine?.rank && played.length > 1
+            ? `Posted — #${mine.rank} of ${played.length}`
+            : "Score posted";
+      setCelebrateGameId(game.id);
+      setTimeout(() => setCelebrateGameId(null), 1200);
+      showToast({ message, tone: "success" });
     },
     onError: (e) => showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" }),
   });
@@ -462,6 +492,7 @@ export function Shell() {
         onCollapse={nav.collapseGame}
         onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
         onPost={() => openPasteFor({ id: mg.gameId, url: mg.game.url })}
+        celebrate={celebrateGameId === mg.gameId}
         {...(onLongPressBody ? { onLongPressBody } : {})}
         board={
           isOpen ? (
@@ -539,7 +570,7 @@ export function Shell() {
         <View style={styles.footerIcon}>
           <PixelIcon name="plus" size={16} color={tokens.neon.pink} />
         </View>
-        <Text style={styles.footerLabel}>ADD A GAME</Text>
+        <Text style={styles.footerLabel}>Add a game</Text>
       </Pressable>
       {viewingToday ? (
         <Pressable
@@ -561,7 +592,7 @@ export function Shell() {
               <PixelIcon name="copy" size={16} color={tokens.text.secondary} />
             )}
           </View>
-          <Text style={styles.footerLabelQuiet}>COPY TODAY'S RECAP</Text>
+          <Text style={styles.footerLabelQuiet}>Copy today&apos;s recap</Text>
         </Pressable>
       ) : null}
     </View>
@@ -653,6 +684,7 @@ export function Shell() {
             <FriendPanel
               userId={nav.drawer.userId}
               via={nav.via}
+              myScores={myScoresByGame}
               onBack={nav.drawerBack}
               onOpenGame={(gameId) => {
                 nav.closeDrawer();
@@ -724,7 +756,7 @@ const styles = StyleSheet.create({
   },
   footerRowHover: { backgroundColor: tokens.bg.surface },
   footerIcon: { width: ledgerMetrics.GUTTER, alignItems: "flex-start" },
-  footerLabel: { ...pixelType(10), color: tokens.neon.pink },
-  footerLabelQuiet: { ...pixelType(10), color: tokens.text.secondary },
+  footerLabel: actionType(tokens.neon.pinkTint),
+  footerLabelQuiet: actionType(tokens.text.secondary),
   dim: { opacity: 0.5 },
 });

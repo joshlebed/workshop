@@ -37,7 +37,7 @@ export const TextField = forwardRef<TextInput, TextFieldProps>(function TextFiel
 
 const focusStyle = {
   borderColor: tokens.neon.pink,
-  ...glow(tokens.neon.pinkGlow, 8),
+  ...glow(tokens.neon.pinkGlow, 5),
 } as TextStyle;
 
 const styles = StyleSheet.create({

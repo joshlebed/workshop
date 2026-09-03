@@ -24,17 +24,18 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
+  withRepeat,
   withTiming,
 } from "react-native-reanimated";
 import { Avatar, PixelIcon, pixelType, tokens } from "../theme";
-import { Text } from "../theme/Text";
+import { AnimatedText, Text } from "../theme/Text";
 
 export type RowMode = "row" | "strip" | "board";
 
 const ROW_H = 64;
-const STRIP_H = 34;
+const STRIP_H = 36;
 const COVER = 40;
-const STRIP_COVER = 18;
+const STRIP_COVER = 24;
 const COL_W = 56;
 const META_H = 22;
 const GUTTER = COVER + tokens.space.md;
@@ -78,9 +79,11 @@ export interface LedgerRowProps {
   onCollapse: () => void;
   /** Cover tile: opens the game and arms the paste-on-return prompt. */
   onPlay: () => void;
-  /** Rail "POST": opens the paste sheet without leaving the ledger. */
+  /** Rail slot: opens the paste sheet without leaving the ledger. */
   onPost: () => void;
   onLongPressBody?: () => void;
+  /** Set briefly after this game's score posts — the rail value blinks. */
+  celebrate?: boolean;
   /** Rendered only while expanded — the parent builds it lazily. */
   board: ReactNode;
 }
@@ -103,6 +106,7 @@ export const LedgerRow = memo(function LedgerRow({
   onPlay,
   onPost,
   onLongPressBody,
+  celebrate = false,
   board,
 }: LedgerRowProps) {
   const squeezed = mode === "strip";
@@ -152,6 +156,22 @@ export const LedgerRow = memo(function LedgerRow({
     height: boardH.value * openT.value,
   }));
   const boardInnerStyle = useAnimatedStyle(() => ({ opacity: reveal.value }));
+
+  // Arcade attract-mode blink on a freshly posted score: three hard frames,
+  // no easing, no springs (DESIGN.md's one sanctioned celebration).
+  const blink = useSharedValue(1);
+  useEffect(() => {
+    if (!celebrate) return;
+    blink.value = withRepeat(
+      withTiming(0.15, { duration: 90, easing: Easing.steps(1, true) }),
+      6,
+      true,
+    );
+    return () => {
+      blink.value = 1;
+    };
+  }, [celebrate, blink]);
+  const railValueStyle = useAnimatedStyle(() => ({ opacity: blink.value }));
 
   const title = game.game.title;
   const playable = viewingToday && !myPlayed;
@@ -219,13 +239,13 @@ export const LedgerRow = memo(function LedgerRow({
           </Animated.View>
         </Pressable>
 
-        <Animated.View style={[styles.bestCol, metaStyle]} pointerEvents="none">
+        <View style={styles.bestCol} pointerEvents="none">
           {!open && bestScore ? (
             <Text numberOfLines={1} style={styles.best}>
               {bestScore}
             </Text>
           ) : null}
-        </Animated.View>
+        </View>
 
         <View style={styles.rail}>
           {open ? (
@@ -240,20 +260,20 @@ export const LedgerRow = memo(function LedgerRow({
               <PixelIcon name="chevron-up" size={16} color={tokens.text.secondary} />
             </Pressable>
           ) : myScore ? (
-            <Text
+            <AnimatedText
               numberOfLines={1}
-              style={[styles.score, myScoreIsBest && styles.scoreBest]}
+              style={[styles.score, myScoreIsBest && styles.scoreBest, railValueStyle]}
               testID={`game-card-score-${game.gameId}`}
             >
               {myScore}
-            </Text>
+            </AnimatedText>
           ) : myPlayed ? (
             <View
               style={styles.playedMark}
               testID={`game-card-score-${game.gameId}`}
               accessibilityLabel="You played"
             />
-          ) : playable && !squeezed ? (
+          ) : playable ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Post your ${title} result`}
@@ -262,15 +282,16 @@ export const LedgerRow = memo(function LedgerRow({
               delayLongPress={250}
               hitSlop={8}
               testID={`game-card-play-${game.gameId}`}
-              style={({ pressed }) => [styles.postPress, pressed && styles.dim]}
+              style={styles.postPress}
             >
-              {/* An empty slot on an arcade table, not a pink word repeated
-                  down the page — still tappable to post. */}
-              <Text style={styles.blank}>---</Text>
+              {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+                // An empty slot waiting for today's result. Quiet at rest —
+                // seven lit marks down the column would shout — and it lights
+                // pink under the finger.
+                <View style={[styles.slot, (pressed || hovered) && styles.slotLit]} />
+              )}
             </Pressable>
-          ) : squeezed ? null : (
-            <Text style={styles.blank}>---</Text>
-          )}
+          ) : null}
         </View>
       </Animated.View>
 
@@ -348,7 +369,8 @@ const styles = StyleSheet.create({
   rail: { width: COL_W, alignItems: "flex-end", justifyContent: "center" },
   score: { ...pixelType(12), color: tokens.text.primary, textAlign: "right" },
   scoreBest: { color: tokens.neon.chartreuse },
-  blank: { ...pixelType(10), color: tokens.border.default },
+  slot: { width: 14, height: 14, borderWidth: tokens.bezel, borderColor: tokens.border.default },
+  slotLit: { borderColor: tokens.neon.pink },
   playedMark: { width: 10, height: 10, backgroundColor: tokens.neon.chartreuse },
   postPress: { alignItems: "flex-end", justifyContent: "center" },
   collapse: { width: 32, height: 32, alignItems: "flex-end", justifyContent: "center" },

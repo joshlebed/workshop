@@ -56,7 +56,7 @@ export function ScoreReactions({ reactions, onToggle, onAdd, testIDPrefix }: Sco
             (pressed || hovered) && styles.chipHover,
           ]}
         >
-          <PixelIcon name="plus" size={16} color={tokens.border.default} />
+          <PixelIcon name="plus" size={16} color={tokens.text.secondary} />
         </Pressable>
       ) : null}
     </View>
@@ -102,5 +102,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 2,
     paddingVertical: 1,
+    opacity: 0.8,
   },
 });

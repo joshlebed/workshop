@@ -54,7 +54,7 @@ export function Button({
         variantStyle[variant],
         variant === "primary" && !isDisabled ? glowStyle : null,
         pressed && !isDisabled ? pressedStyle[variant] : null,
-        isDisabled && !loading ? disabledStyle[variant] : null,
+        isDisabled && !loading ? disabledStyle : null,
         style,
       ]}
     >
@@ -115,10 +115,11 @@ const labelColor: Record<Variant, string> = {
   danger: tokens.status.danger,
 };
 
-// Disabled: kill the neon — plain purple bezel, secondary label, no glow.
-const disabledStyle: Record<Variant, ViewStyle> = {
-  primary: { borderColor: tokens.border.default },
-  secondary: { borderColor: tokens.border.default },
-  ghost: { borderColor: "transparent" },
-  danger: { borderColor: tokens.border.default },
+// Disabled: kill the neon and drop the whole control back. An outlined
+// purple bezel alone was indistinguishable from the enabled `secondary`
+// variant, so an outlined button meant two opposite things.
+const disabledStyle: ViewStyle = {
+  borderColor: tokens.border.default,
+  borderStyle: "dashed",
+  opacity: 0.5,
 };

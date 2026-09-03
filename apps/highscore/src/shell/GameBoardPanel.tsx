@@ -9,7 +9,7 @@ import type { Game, GameStandingsEntry } from "@workshop/shared/games";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { ScoreReactions } from "../games/components/ScoreReactions";
 import { summarizeGameScoreBody } from "../games/lib/scoresSummary";
-import { Avatar, Button, PixelIcon, pixelType, TextField, tokens } from "../theme";
+import { Avatar, actionType, Button, PixelIcon, pixelType, TextField, tokens } from "../theme";
 import { Text } from "../theme/Text";
 import { ledgerMetrics } from "./LedgerRow";
 import { railSaysItAll, railScore } from "./railScore";
@@ -150,7 +150,7 @@ export function GameBoardPanel(props: GameBoardPanelProps) {
                 testID="game-board-play"
                 style={({ pressed }) => [styles.playAction, pressed && styles.dim]}
               >
-                <Text style={styles.playLabel}>PLAY</Text>
+                <Text style={styles.playLabel}>Play</Text>
                 <PixelIcon name="external-link" size={16} color={tokens.neon.pink} />
               </Pressable>
             )}
@@ -234,16 +234,12 @@ export function GameBoardPanel(props: GameBoardPanelProps) {
           most destructive thing here, so it sits apart at the far edge in the
           quiet colour and lets its confirm dialog carry the weight. */}
       <View style={styles.gameActions}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open ${game.title}`}
+        <Button
+          label="Open game"
+          variant="secondary"
           onPress={onOpenGame}
-          hitSlop={6}
           testID="game-menu-open"
-          style={({ pressed }) => [pressed && styles.dim]}
-        >
-          <Text style={styles.actionText}>OPEN GAME</Text>
-        </Pressable>
+        />
         <View style={styles.gameActionsSpacer} />
         {onReteach ? (
           <Pressable
@@ -254,7 +250,7 @@ export function GameBoardPanel(props: GameBoardPanelProps) {
             testID="game-menu-reteach"
             style={({ pressed }) => [pressed && styles.dim]}
           >
-            <Text style={styles.actionQuiet}>RE-TEACH</Text>
+            <Text style={styles.actionQuiet}>Re-teach</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -265,7 +261,7 @@ export function GameBoardPanel(props: GameBoardPanelProps) {
           testID="game-menu-remove"
           style={({ pressed }) => [pressed && styles.dim]}
         >
-          <Text style={styles.actionQuiet}>REMOVE</Text>
+          <Text style={styles.actionQuiet}>Remove</Text>
         </Pressable>
       </View>
     </View>
@@ -350,7 +346,7 @@ function StandingRow({
             testID="game-board-edit-score"
             style={({ pressed }) => [pressed && styles.dim]}
           >
-            <Text style={styles.actionText}>EDIT</Text>
+            <Text style={styles.actionText}>Edit</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
@@ -360,7 +356,7 @@ function StandingRow({
             testID="game-board-clear-score"
             style={({ pressed }) => [pressed && styles.dim]}
           >
-            <Text style={styles.actionQuiet}>CLEAR</Text>
+            <Text style={styles.actionQuiet}>Clear</Text>
           </Pressable>
         </View>
       ) : null}
@@ -431,7 +427,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
   },
   playAction: { flexDirection: "row", alignItems: "center", gap: 4 },
-  playLabel: { ...pixelType(10), color: tokens.neon.pink },
+  playLabel: actionType(tokens.neon.pinkTint),
   dim: { opacity: 0.6 },
   history: {
     gap: tokens.space.sm,
@@ -468,6 +464,6 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.md,
   },
   gameActionsSpacer: { flex: 1, minWidth: tokens.space.md },
-  actionText: { ...pixelType(10), color: tokens.neon.pink },
-  actionQuiet: { ...pixelType(10), color: tokens.text.secondary },
+  actionText: actionType(tokens.neon.pinkTint),
+  actionQuiet: actionType(tokens.text.secondary),
 });
