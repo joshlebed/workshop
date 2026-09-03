@@ -6,9 +6,9 @@
 // discovery only ever surfaces here and on the empty state.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { Button, Sheet, Text, TextField, tokens } from "../../../theme";
 import { FriendGameSuggestions } from "./FriendGameSuggestions";
 
 interface AddGameSheetProps {
@@ -93,12 +93,11 @@ export function AddGameSheet({
         </Text>
       ) : null}
 
-      <TextInput
+      <TextField
         testID="add-game-url-input"
         value={draft}
         onChangeText={setDraft}
         placeholder="https://example.com/daily"
-        placeholderTextColor={tokens.text.muted}
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
@@ -107,12 +106,12 @@ export function AddGameSheet({
         // primary affordance — the user taps the field when they want it.
         autoFocus={!hasSuggestions}
         onSubmitEditing={submit}
-        style={styles.input}
       />
       <View style={styles.actions}>
-        <Button label="Cancel" variant="ghost" onPress={onClose} disabled={pending} />
+        <Button label="Cancel" variant="ghost" pixel onPress={onClose} disabled={pending} />
         <Button
-          label="Add game"
+          label="Add"
+          pixel
           onPress={submit}
           disabled={!canSubmit}
           loading={pending}
@@ -130,16 +129,6 @@ const styles = StyleSheet.create({
   suggestionsScroll: { maxHeight: 240 },
   sectionLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
   orLabel: { letterSpacing: 0.4, textTransform: "uppercase", marginTop: tokens.space.xs },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 12,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
-  },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",

@@ -1,9 +1,9 @@
-import { Button, Text, tokens } from "@workshop/ui";
 import { useState } from "react";
-import { Platform, StyleSheet, TextInput, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { Wordmark } from "../../src/components/Wordmark";
 import { useAuth } from "../../src/hooks/useAuth";
+import { Button, Text, TextField, tokens } from "../../src/theme";
 
 export default function DisplayName() {
   const { setDisplayName } = useAuth();
@@ -39,16 +39,14 @@ export default function DisplayName() {
         <Text variant="label" tone="secondary" style={styles.label}>
           Display name
         </Text>
-        <TextInput
+        <TextField
           testID="display-name-input"
           value={value}
           onChangeText={setValue}
           placeholder="Ada Lovelace"
-          placeholderTextColor={tokens.text.muted}
           autoFocus
           autoComplete="name"
           maxLength={40}
-          style={styles.input}
           onSubmitEditing={handleSave}
           returnKeyType="done"
         />
@@ -87,15 +85,5 @@ const styles = StyleSheet.create({
   },
   brandBlock: { gap: tokens.space.sm, marginBottom: tokens.space.md },
   label: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 14,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
-  },
   error: { textAlign: "center", marginTop: tokens.space.xs },
 });

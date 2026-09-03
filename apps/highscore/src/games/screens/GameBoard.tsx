@@ -1,69 +1,78 @@
+// One game, every day. The row you tapped on TODAY continues into this
+// screen's header — same mark, same place — and below it the day stepper walks
+// this game's history.
+//
+// Rules (unchanged): pasted scores always upload to *today's* bucket whatever
+// day the board is showing, and there is no future to step into.
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
+import { fetchFriends } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
+import type { GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
+import type { SummarySpec } from "@workshop/shared/summarySpec";
+import { confirm, haptics, openExternalUrl } from "@workshop/ui";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { BackKey } from "../../components/BackKey";
+import { DateStepper } from "../../components/DateStepper";
+import { DETAIL_IDENTITY } from "../../components/Flight";
+import { KeyPanel } from "../../components/KeyPanel";
 import {
   Avatar,
   Button,
-  confirm,
   EmptyState,
-  formatRelative,
-  haptics,
-  openExternalUrl,
+  layout,
+  PixelIcon,
   Screen,
   Text,
+  TextField,
   tokens,
   useToast,
-} from "@workshop/ui";
-import { useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+} from "../../theme";
 import {
-  ActivityIndicator,
-  Image,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
-import { DayRail } from "../components/DayRail";
+  clearGameScore,
+  fetchGameLeaderboard,
+  fetchMyGames,
+  removeGame,
+  setGameScoreSpec,
+  upsertGameScore,
+} from "../api/games";
+import { GameCover } from "../components/GameCover";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
-import { ScoreReactions } from "../components/ScoreReactions";
+import { StandingsRows } from "../components/StandingsRows";
 import { useScoreReactions } from "../hooks/useScoreReactions";
-import { formatGameDateLabel, localDateKey } from "../lib/gameDate";
+import { localDateKey } from "../lib/gameDate";
+import { type StandingCell, scoreMark } from "../lib/matrix";
 import { goBack } from "../lib/navigation";
+import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { useGamesRuntime } from "../runtime";
+import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
+import { GameActions } from "./home/GameActions";
 
-/**
- * Per-game board (G1b) — history for one game in My Games. The home card
- * owns today's standings; this screen is for paging back through past days
- * (DayRail) plus a paste slot so today is still postable from here.
- *
- * Spec rules (mirrors the Lists game-detail screen):
- *   - Pasted scores always upload to *today's* bucket regardless of which
- *     day the board is showing.
- *   - Going past today on the day rail isn't offered.
- */
 export default function GameBoard() {
   const params = useLocalSearchParams<{ id: string }>();
   const gameId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { token, user, routes } = useGamesRuntime();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   const today = localDateKey();
   const [date, setDate] = useState(today);
   const [draft, setDraft] = useState("");
-  const [editingScore, setEditingScore] = useState(false);
+  const [editing, setEditing] = useState(false);
+  // Admin "re-teach scoring" — the tap-the-score flow, which needs the paste
+  // sheet's teach chips rather than this screen's plain composer.
+  const [reteaching, setReteaching] = useState(false);
 
-  // The catalog row (title / URL) comes from the My Games query — there's no
-  // standalone `GET /v1/games/:id`. Navigation always arrives from the home
-  // cards, so the row is in cache; a cold deep-link refetches the list.
+  // The catalog row comes from the My Games query — there's no standalone
+  // `GET /v1/games/:id`. Navigation always arrives from home, so it's cached;
+  // a cold deep-link refetches the list.
   const myGamesQuery = useQuery({
     queryKey: queryKeys.games.mine(today),
     queryFn: () => fetchMyGames(today, token),
@@ -72,6 +81,12 @@ export default function GameBoard() {
   const myGame = myGamesQuery.data?.games.find((g) => g.gameId === gameId);
   const game = myGame?.game ?? null;
 
+  const friendsQuery = useQuery({
+    queryKey: queryKeys.friends.all,
+    queryFn: () => fetchFriends(token),
+    enabled: !!token,
+  });
+
   const boardQuery = useQuery({
     queryKey: queryKeys.games.leaderboard(gameId ?? "", date),
     queryFn: () => fetchGameLeaderboard(gameId ?? "", date, token),
@@ -79,24 +94,31 @@ export default function GameBoard() {
   });
 
   const upsertMutation = useMutation({
-    mutationFn: ({ scoreRaw }: { scoreRaw: string; isEdit: boolean }) => {
+    mutationFn: async ({
+      scoreRaw,
+      taught,
+    }: {
+      scoreRaw: string;
+      isEdit: boolean;
+      taught?: TaughtScoreSpec;
+    }) => {
       if (!gameId) throw new Error("missing game id");
+      // A taught parser is stored first so this very post parses with it.
+      if (taught) await setGameScoreSpec(gameId, taught, token);
       return upsertGameScore(gameId, { periodKey: today, scoreRaw }, token);
     },
     onSuccess: async (_data, variables) => {
       haptics.medium();
       setDraft("");
-      setEditingScore(false);
+      setEditing(false);
+      setReteaching(false);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: queryKeys.games.leaderboard(gameId ?? "", today),
         }),
         queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) }),
       ]);
-      showToast({
-        message: variables.isEdit ? "Score updated" : "Score posted",
-        tone: "success",
-      });
+      showToast({ message: variables.isEdit ? "Score updated" : "Score posted", tone: "success" });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" });
@@ -111,7 +133,7 @@ export default function GameBoard() {
     onSuccess: async () => {
       haptics.medium();
       setDraft("");
-      setEditingScore(false);
+      setEditing(false);
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: queryKeys.games.leaderboard(gameId ?? "", today),
@@ -125,7 +147,21 @@ export default function GameBoard() {
     },
   });
 
-  // Emoji reactions on friends' scores for the day being viewed (G2c).
+  const removeMutation = useMutation({
+    mutationFn: () => {
+      if (!gameId) throw new Error("missing game id");
+      return removeGame(gameId, token);
+    },
+    onSuccess: async () => {
+      haptics.medium();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) });
+      goBack(routes.home);
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't remove that game."), tone: "danger" });
+    },
+  });
+
   const reactionCtl = useScoreReactions<GameLeaderboardResponse>({
     periodKey: date,
     token,
@@ -147,36 +183,40 @@ export default function GameBoard() {
     );
   }
 
+  // Same as the friend profile: hold the identity slot open so the flight has
+  // somewhere to land, instead of flashing a centred spinner.
   if (myGamesQuery.isPending) {
     return (
-      <Screen style={styles.center}>
-        <ActivityIndicator color={tokens.accent.default} />
+      <Screen testID="game-board">
+        <View style={styles.nav}>
+          <BackKey label="Today" onPress={() => goBack(routes.home)} testID="game-board-back" />
+        </View>
+        <View style={styles.identity}>
+          <GameCover iconUrl={null} size={DETAIL_IDENTITY.size} />
+          <View style={styles.identityText}>
+            <View style={styles.skeletonTitle} />
+          </View>
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator color={tokens.neon.pink} />
+        </View>
+        <KeyPanel active="today" />
       </Screen>
     );
   }
 
-  if (myGamesQuery.isError) {
+  if (myGamesQuery.isError || !game) {
     return (
       <Screen style={styles.center}>
         <EmptyState
-          title="Couldn't load game"
-          description={errorMessage(myGamesQuery.error)}
-          action={
-            <Button label="Retry" variant="secondary" onPress={() => myGamesQuery.refetch()} />
+          title={myGamesQuery.isError ? "Can't load this game" : "Not in your games"}
+          description={
+            myGamesQuery.isError
+              ? errorMessage(myGamesQuery.error)
+              : "Add it from TODAY to see the board."
           }
-        />
-      </Screen>
-    );
-  }
-
-  if (!game) {
-    return (
-      <Screen style={styles.center}>
-        <EmptyState
-          title="Game not found"
-          description="This game isn't in My Games."
           action={
-            <Button label="Back to Games" variant="secondary" onPress={() => goBack(routes.home)} />
+            <Button label="Back to today" variant="secondary" onPress={() => goBack(routes.home)} />
           }
         />
       </Screen>
@@ -185,33 +225,40 @@ export default function GameBoard() {
 
   const isToday = date === today;
   const entries = boardQuery.data?.entries ?? [];
+  const scored = entries.filter((e) => e.scoreRaw && e.scoreRaw.length > 0);
   const myEntry = entries.find((e) => e.userId === user?.id);
-  const otherEntries = entries.filter((e) => e.userId !== user?.id);
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
-  // The composer owns the my-slot when posting a first result OR editing an
-  // existing one. Both only make sense on today (scores always upload to
-  // today's bucket), so past days fall through to the read-only row.
-  const showComposer = isToday && (!myScore || editingScore);
-  const composerMode: "new" | "edit" = myScore ? "edit" : "new";
-  const host = (() => {
-    if (!game.url) return null;
-    try {
-      return new URL(game.url).host.replace(/^www\./, "");
-    } catch {
-      return game.url;
-    }
-  })();
-
-  const onDate = (key: string) => {
-    setDate(key);
-    setDraft("");
-    setEditingScore(false);
-  };
+  const showComposer = isToday && (!myScore || editing);
+  const soleWinner = scored.filter((e) => e.rank === 1).length === 1;
+  const cells: StandingCell[] = scored.map((entry) =>
+    toCell(entry, game, user?.id ?? null, soleWinner),
+  );
+  const host = hostOf(game.url);
+  // Friends who haven't posted this day — the nudge list, and the reason the
+  // bottom of this screen isn't empty.
+  const posted = new Set(scored.map((e) => e.userId));
+  const missing = (friendsQuery.data?.friends ?? []).filter((f) => !posted.has(f.userId));
 
   const onSubmit = () => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    upsertMutation.mutate({ scoreRaw: trimmed, isEdit: editingScore });
+    upsertMutation.mutate({ scoreRaw: trimmed, isEdit: editing });
+  };
+
+  const onRemoveGame = async () => {
+    const ok = await confirm({
+      title: `Remove ${game.title}?`,
+      message: "Your past scores stay — re-adding the game brings them back.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (ok) removeMutation.mutate();
+  };
+
+  const onDate = (key: string) => {
+    setDate(key);
+    setDraft("");
+    setEditing(false);
   };
 
   return (
@@ -220,17 +267,52 @@ export default function GameBoard() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Screen testID="game-board">
-        <View style={styles.headerNav}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={() => goBack(routes.home)}
-            testID="game-board-back"
-            hitSlop={10}
-            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-          >
-            <Text style={styles.navGlyph}>‹</Text>
-          </Pressable>
+        <View style={styles.nav}>
+          <BackKey label="Today" onPress={() => goBack(routes.home)} testID="game-board-back" />
+        </View>
+
+        {/* Flight destination — `DETAIL_IDENTITY` pins the mark's size and
+            offset so the row that was tapped lands exactly here. */}
+        <View style={styles.identity}>
+          <GameCover iconUrl={game.iconUrl} size={DETAIL_IDENTITY.size} />
+          <View style={styles.identityText}>
+            <Text variant="title" numberOfLines={2}>
+              {game.title}
+            </Text>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel={`Play ${game.title}`}
+              accessibilityHint="Opens the game in your browser"
+              onPress={() => openExternalUrl(game.url)}
+              testID="game-board-title-link"
+              hitSlop={6}
+              style={({ pressed }) => [styles.host, pressed && styles.hostPressed]}
+            >
+              <Text variant="caption" style={styles.hostLabel} numberOfLines={1}>
+                {host ?? "Play"}
+              </Text>
+              <PixelIcon name="external-link" size={12} color={tokens.neon.pinkTint} />
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.stepperRow}>
+          <DateStepper
+            date={date}
+            today={today}
+            onChange={onDate}
+            absolute
+            testID="game-board-day"
+          />
+          {boardQuery.isPending ? null : (
+            <Text variant="caption" tone="secondary">
+              {scored.length === 0
+                ? isToday
+                  ? "No plays yet"
+                  : "No plays"
+                : `${scored.length} played`}
+            </Text>
+          )}
         </View>
 
         <ScrollView
@@ -238,159 +320,132 @@ export default function GameBoard() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={`Open ${game.title}`}
-            accessibilityHint="Opens the game in your browser"
-            onPress={() => openExternalUrl(game.url)}
-            testID="game-board-title-link"
-            style={({ pressed }) => [styles.titleBlock, pressed && styles.titleBlockPressed]}
-          >
-            {game.iconUrl ? (
-              <Image
-                source={{ uri: game.iconUrl }}
-                style={styles.titleBadge}
-                accessibilityIgnoresInvertColors
-              />
-            ) : (
-              <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
-                <Text style={styles.titleBadgeGlyph}>🎮</Text>
-              </View>
-            )}
-            <View style={styles.titleText}>
-              <Text variant="title" numberOfLines={2} style={styles.titleName}>
-                {game.title}
-              </Text>
-              {host ? (
-                <Text variant="caption" tone="secondary" numberOfLines={1}>
-                  {host}
-                </Text>
-              ) : null}
-            </View>
-            <View style={styles.titleOpenAffordance}>
-              <Text style={styles.titleOpenGlyph}>↗</Text>
-            </View>
-          </Pressable>
-
-          <DayRail
-            selectedDate={date}
-            today={today}
-            onSelectDate={onDate}
-            testIDPrefix="game-board-day"
-          />
-
-          <View style={styles.dayHeader}>
-            <Text variant="heading" style={styles.dayTitle}>
-              {formatGameDateLabel(date, today)}
-            </Text>
-            {boardQuery.isPending ? null : (
-              <Text variant="caption" tone="muted">
-                {entries.length === 0
-                  ? isToday
-                    ? "No plays yet."
-                    : "No plays."
-                  : `${entries.length} played`}
-              </Text>
-            )}
-          </View>
+          {showComposer ? (
+            <ScoreComposer
+              mode={myScore ? "edit" : "new"}
+              draft={draft}
+              baseline={myScore ?? ""}
+              onChangeDraft={setDraft}
+              onSubmit={onSubmit}
+              onCancel={() => {
+                setDraft("");
+                setEditing(false);
+              }}
+              pending={upsertMutation.isPending}
+            />
+          ) : null}
 
           {boardQuery.isPending ? (
             <View style={styles.center}>
-              <ActivityIndicator color={tokens.accent.default} />
+              <ActivityIndicator color={tokens.neon.pink} />
             </View>
           ) : boardQuery.isError ? (
-            <View style={styles.scoresErrorBlock}>
-              <Text tone="danger" style={styles.helper}>
-                Couldn't load scores.
-              </Text>
-              <View style={styles.scoresErrorAction}>
-                <Button
-                  label="Try again"
-                  variant="secondary"
-                  size="md"
-                  onPress={() => boardQuery.refetch()}
-                  loading={boardQuery.isFetching}
-                  testID="game-board-scores-retry"
-                />
-              </View>
+            <View style={styles.errorBlock}>
+              <Text tone="danger">Couldn't load scores.</Text>
+              <Button
+                label="Try again"
+                variant="secondary"
+                size="sm"
+                pixel
+                onPress={() => boardQuery.refetch()}
+                loading={boardQuery.isFetching}
+                testID="game-board-scores-retry"
+              />
             </View>
           ) : (
-            <View style={styles.leaderboard}>
-              {/* My slot is always at the top: the paste composer on today,
-                  my filled entry, or a quiet "didn't play" line on past days. */}
-              {showComposer ? (
-                <ScoreComposer
-                  mode={composerMode}
-                  draft={draft}
-                  baseline={myScore ?? ""}
-                  onChangeDraft={setDraft}
-                  onSubmit={onSubmit}
-                  onCancel={() => {
-                    setDraft("");
-                    setEditingScore(false);
-                  }}
-                  pending={upsertMutation.isPending}
-                  userName={user?.displayName ?? null}
-                  userAvatarUrl={user?.avatarUrl ?? null}
-                />
-              ) : myEntry ? (
-                <EntryRow
-                  entry={myEntry}
-                  game={game}
-                  isMe
-                  onEdit={
-                    isToday
-                      ? () => {
-                          setDraft(myEntry.scoreRaw ?? "");
-                          setEditingScore(true);
-                        }
-                      : undefined
-                  }
-                  onClear={
-                    isToday
-                      ? async () => {
-                          const ok = await confirm({
-                            title: "Clear your score for today?",
-                            message: "Your result is removed. Scores on other days are kept.",
-                            confirmLabel: "Clear",
-                            destructive: true,
-                          });
-                          if (ok) clearMutation.mutate();
-                        }
-                      : undefined
-                  }
-                />
-              ) : (
-                <View style={styles.unplayedRow} testID="game-board-my-unplayed">
-                  <Avatar
-                    name={user?.displayName ?? null}
-                    imageUrl={user?.avatarUrl}
-                    size="md"
-                    style={styles.unplayedAvatar}
-                  />
-                  <Text variant="caption" tone="muted">
-                    You didn't play this day.
-                  </Text>
-                </View>
-              )}
-
-              {otherEntries.map((entry) => (
-                <EntryRow
-                  key={entry.userId}
-                  entry={entry}
-                  game={game}
-                  isMe={false}
-                  onReact={(userId, emoji, currentlyReacted) =>
-                    reactionCtl.react(gameId, userId, emoji, currentlyReacted)
-                  }
-                  onOpenReactionPicker={(userId) =>
-                    reactionCtl.openPicker(gameId, userId, entry.displayName ?? null)
-                  }
-                />
-              ))}
-            </View>
+            <StandingsRows
+              cells={cells}
+              expandGrids
+              selfActions={
+                myScore && isToday ? (
+                  <View style={styles.myActions}>
+                    <TextKey
+                      label="Edit"
+                      onPress={() => {
+                        setDraft(myEntry?.scoreRaw ?? "");
+                        setEditing(true);
+                      }}
+                      testID="game-board-edit-score"
+                    />
+                    <TextKey
+                      label="Clear"
+                      onPress={async () => {
+                        const ok = await confirm({
+                          title: "Clear your score for today?",
+                          message: "Your result is removed. Scores on other days are kept.",
+                          confirmLabel: "Clear",
+                          destructive: true,
+                        });
+                        if (ok) clearMutation.mutate();
+                      }}
+                      testID="game-board-clear-score"
+                    />
+                  </View>
+                ) : null
+              }
+              onPressPlayer={(userId) => router.push(routes.friendProfile(userId) as Href)}
+              onReact={(userId, emoji, reacted) =>
+                reactionCtl.react(gameId, userId, emoji, reacted)
+              }
+              onOpenReactionPicker={(userId) =>
+                reactionCtl.openPicker(
+                  gameId,
+                  userId,
+                  cells.find((c) => c.userId === userId)?.displayName ?? null,
+                )
+              }
+              emptyLabel={isToday ? "Nobody's played yet today." : "Nobody played this day."}
+              testIDPrefix="game-board"
+            />
           )}
+
+          {missing.length > 0 ? (
+            <View style={styles.missing} testID="game-board-missing">
+              <Text variant="eyebrow" tone="secondary" style={styles.sectionLabel}>
+                {isToday ? "Still owe a score" : "Didn't play"}
+              </Text>
+              <View style={styles.faces}>
+                {missing.map((friend) => (
+                  <Pressable
+                    key={friend.userId}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${friend.displayName?.trim() || "friend"}`}
+                    onPress={() => router.push(routes.friendProfile(friend.userId) as Href)}
+                    style={({ pressed }) => [styles.face, pressed && styles.hostPressed]}
+                  >
+                    <Avatar
+                      name={friend.displayName}
+                      imageUrl={userAvatarImageUrl(friend.userId)}
+                      size="sm"
+                    />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          <GameActions
+            onOpenGame={() => openExternalUrl(game.url)}
+            {...(user?.isAdmin && isGameReteachable(game)
+              ? { onReteach: () => setReteaching(true) }
+              : {})}
+            onRemove={onRemoveGame}
+          />
         </ScrollView>
+
+        <GameScorePasteSheet
+          item={reteaching ? game : null}
+          userName={user?.displayName ?? null}
+          userAvatarUrl={user?.avatarUrl ?? null}
+          pending={upsertMutation.isPending}
+          spec={specForGame(game)}
+          canReteach
+          onTeach={(_g, scoreRaw, taught) =>
+            upsertMutation.mutate({ scoreRaw, isEdit: !!myScore, taught })
+          }
+          onSubmit={(_g, scoreRaw) => upsertMutation.mutate({ scoreRaw, isEdit: !!myScore })}
+          onClose={() => setReteaching(false)}
+        />
 
         <ReactionPickerSheet
           visible={!!reactionCtl.target}
@@ -400,124 +455,66 @@ export default function GameBoard() {
           onRemove={reactionCtl.removeReaction}
           onClose={reactionCtl.closePicker}
         />
+
+        <KeyPanel active="today" />
       </Screen>
     </KeyboardAvoidingView>
   );
 }
 
-interface EntryRowProps {
-  entry: GameStandingsEntry;
-  game: Pick<Game, "title" | "url" | "summarySpec">;
-  isMe: boolean;
-  onEdit?: () => void;
-  onClear?: () => void;
-  onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
-  onOpenReactionPicker?: (userId: string) => void;
+function toCell(
+  entry: GameStandingsEntry,
+  game: { title: string; url: string | null; summarySpec?: SummarySpec | null },
+  selfId: string | null,
+  soleWinner: boolean,
+): StandingCell {
+  const body = summarizeGameScoreBody(game, entry);
+  return {
+    userId: entry.userId,
+    displayName: entry.displayName,
+    isSelf: entry.userId === selfId,
+    rank: entry.rank,
+    outrightFirst: entry.rank === 1 && soleWinner,
+    glyph: scoreMark(entry, body),
+    mark: scoreMark(entry, body),
+    body,
+    reactions: entry.reactions,
+    updatedAt: entry.updatedAt,
+  };
 }
 
-function EntryRow({
-  entry,
-  game,
-  isMe,
-  onEdit,
-  onClear,
-  onReact,
-  onOpenReactionPicker,
-}: EntryRowProps) {
-  const name = entry.displayName ?? "Someone";
-  // Same distillation as the home card (and the Lists clipboard recap): a
-  // URL-only share formats to nothing → show "Played" rather than the link.
-  const body = summarizeGameScoreBody(game, entry);
-  // You react to friends' scores, not your own — so the controls only wire up
-  // on other people's rows; your own row shows others' reactions read-only.
-  const canReact = !isMe && !!onOpenReactionPicker;
-  const showReactions = entry.reactions.length > 0 || canReact;
+function hostOf(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/** A quiet text-only control — for actions that live inside a data row. */
+function TextKey({
+  label,
+  onPress,
+  testID,
+}: {
+  label: string;
+  onPress: () => void;
+  testID: string;
+}) {
   return (
-    <View style={[styles.entry, isMe && styles.entryMe]} testID={`game-board-row-${entry.userId}`}>
-      <View style={styles.entryHeader}>
-        {entry.rank != null ? (
-          <View style={[styles.rankBadge, entry.rank === 1 && styles.rankBadgeTop1]}>
-            <Text style={[styles.rankBadgeText, entry.rank === 1 && styles.rankBadgeTextTop1]}>
-              {entry.rank}
-            </Text>
-          </View>
-        ) : null}
-        <Avatar name={entry.displayName} imageUrl={userAvatarImageUrl(entry.userId)} size="md" />
-        <View style={styles.entryNameWrap}>
-          <View style={styles.entryNameRow}>
-            <Text variant="label" style={styles.entryName} numberOfLines={1}>
-              {name}
-            </Text>
-            {isMe ? (
-              <View style={styles.youPill}>
-                <Text style={styles.youPillText}>you</Text>
-              </View>
-            ) : null}
-          </View>
-          {entry.updatedAt ? (
-            <Text variant="caption" tone="muted">
-              Posted {formatRelative(entry.updatedAt)}
-            </Text>
-          ) : null}
-        </View>
-        {onEdit || onClear ? (
-          <View style={styles.scoreActions}>
-            {onEdit ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Edit your score"
-                onPress={onEdit}
-                testID="game-board-edit-score"
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.scoreActionButton,
-                  pressed && styles.editScorePressed,
-                ]}
-              >
-                <Text style={styles.editScoreLabel}>Edit</Text>
-              </Pressable>
-            ) : null}
-            {onClear ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Clear your score for today"
-                onPress={onClear}
-                testID="game-board-clear-score"
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.scoreActionButton,
-                  pressed && styles.clearScorePressed,
-                ]}
-              >
-                <Text style={styles.clearScoreLabel}>Clear</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.scoreRow}>
-        <View style={styles.scoreFrame}>
-          <Text
-            style={[styles.scoreText, body ? null : styles.scoreTextMuted]}
-            testID={`game-board-score-${entry.userId}`}
-          >
-            {body ?? "Played"}
-          </Text>
-        </View>
-        {showReactions ? (
-          <ScoreReactions
-            reactions={entry.reactions}
-            testIDPrefix={`game-board-react-${entry.userId}`}
-            {...(canReact && onReact
-              ? { onToggle: (emoji, cur) => onReact(entry.userId, emoji, cur) }
-              : {})}
-            {...(canReact && onOpenReactionPicker
-              ? { onAdd: () => onOpenReactionPicker(entry.userId) }
-              : {})}
-          />
-        ) : null}
-      </View>
-    </View>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      hitSlop={8}
+      testID={testID}
+      style={({ pressed }) => [styles.textKey, pressed && styles.hostPressed]}
+    >
+      <Text variant="cell" tone="link">
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -529,14 +526,9 @@ interface ScoreComposerProps {
   onSubmit: () => void;
   onCancel: () => void;
   pending: boolean;
-  userName: string | null;
-  userAvatarUrl?: string | null;
 }
 
-// The my-slot in compose mode — posting a first result ("new") or fixing a
-// botched paste in place ("edit"). Edit pre-fills the field and disables Save
-// until the text actually changes. Clearing a posted score lives on the row's
-// Edit/Clear pair (DELETE /v1/games/:id/scores/:periodKey), not in here.
+// The paste slot. On today only — scores always upload to today's bucket.
 function ScoreComposer({
   mode,
   draft,
@@ -545,14 +537,10 @@ function ScoreComposer({
   onSubmit,
   onCancel,
   pending,
-  userName,
-  userAvatarUrl,
 }: ScoreComposerProps) {
   const isEdit = mode === "edit";
   const trimmed = draft.trim();
-  const empty = trimmed.length === 0;
-  const unchanged = isEdit && trimmed === baseline.trim();
-  const canSubmit = !empty && !unchanged && !pending;
+  const canSubmit = trimmed.length > 0 && !(isEdit && trimmed === baseline.trim()) && !pending;
   // On web, Enter posts — results arrive via paste, so a newline keystroke is
   // almost never intentional (Shift+Enter still inserts one). RN-Web's
   // TextInput overwrites any custom onKeyDown with its own handler, which only
@@ -567,49 +555,38 @@ function ScoreComposer({
         }
       : {};
   return (
-    <View style={[styles.entry, styles.entryMe]} testID="game-board-paste-slot">
-      <View style={styles.entryHeader}>
-        <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
-        <View style={styles.entryNameWrap}>
-          <View style={styles.entryNameRow}>
-            <Text variant="label" style={styles.entryName}>
-              {userName?.trim() || "You"}
-            </Text>
-            <View style={styles.youPill}>
-              <Text style={styles.youPillText}>you</Text>
-            </View>
-          </View>
-          <Text variant="caption" tone="muted">
-            {isEdit ? "Edit your result" : "Paste your result to play"}
-          </Text>
-        </View>
-      </View>
-      <TextInput
+    <View style={styles.composer} testID="game-board-paste-slot">
+      <Text variant="eyebrow" tone="secondary" style={styles.composerLabel}>
+        {isEdit ? "Fix your result" : "Paste your result"}
+      </Text>
+      <TextField
         testID="game-board-paste-input"
         value={draft}
         onChangeText={onChangeDraft}
-        placeholder={"Paste your result here"}
-        placeholderTextColor={tokens.text.muted}
+        placeholder="Paste your result here"
         multiline
+        mono
         autoFocus={isEdit}
         maxLength={2000}
-        style={styles.pasteInput}
+        style={styles.input}
         {...webProps}
       />
-      <View style={styles.pasteActions}>
+      <View style={styles.composerActions}>
         {isEdit ? (
           <Button
             label="Cancel"
-            variant="secondary"
-            size="md"
+            variant="ghost"
+            size="sm"
+            pixel
             onPress={onCancel}
             disabled={pending}
             testID="game-board-edit-cancel"
           />
         ) : null}
         <Button
-          label={isEdit ? "Save" : "Post score"}
-          size="md"
+          label={isEdit ? "Save" : "Post"}
+          size="sm"
+          pixel
           onPress={onSubmit}
           disabled={!canSubmit}
           loading={pending}
@@ -621,215 +598,47 @@ function ScoreComposer({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: tokens.bg.canvas, paddingTop: tokens.space.xl },
-  headerNav: {
+  root: { flex: 1, backgroundColor: tokens.bg.canvas },
+  // Sized so the identity block below starts exactly at `DETAIL_IDENTITY.top`.
+  nav: { height: DETAIL_IDENTITY.top, justifyContent: "center" },
+  identity: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: tokens.space.sm,
+    paddingHorizontal: layout.inset,
+  },
+  identityText: { flex: 1, minWidth: 0, gap: 2 },
+  host: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  hostPressed: { opacity: 0.6 },
+  hostLabel: { color: tokens.neon.pinkTint },
+  stepperRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
+    paddingHorizontal: layout.inset,
+    paddingTop: tokens.space.sm,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: tokens.border.default,
+    paddingBottom: tokens.space.xs,
+    marginTop: tokens.space.sm,
   },
-  navButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.md,
-  },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   body: {
-    paddingBottom: tokens.space.xxl * 2,
-    gap: tokens.space.lg,
-  },
-  titleBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.md,
-    marginHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.lg,
-  },
-  titleBlockPressed: { backgroundColor: tokens.bg.surface },
-  titleBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.elevated,
-  },
-  titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
-  titleBadgeGlyph: { fontSize: 28, lineHeight: 32 },
-  titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.5, fontSize: 28, lineHeight: 32 },
-  titleOpenAffordance: {
-    width: 32,
-    height: 32,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
-  },
-  titleOpenGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
-  },
-  dayHeader: {
-    paddingHorizontal: tokens.space.xl,
-    gap: 2,
-  },
-  dayTitle: { letterSpacing: -0.2 },
-  helper: {
-    paddingVertical: tokens.space.lg,
-    textAlign: "center",
-    paddingHorizontal: tokens.space.xl,
-  },
-  scoresErrorBlock: {
-    gap: tokens.space.sm,
-    paddingBottom: tokens.space.md,
-  },
-  scoresErrorAction: { alignItems: "center" },
-  leaderboard: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.inset,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.xl,
     gap: tokens.space.md,
   },
-  entry: {
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-  },
-  entryMe: {
-    // Quiet accent tint as the sole "this is you" signal; the "you" pill
-    // doubles as a textual label so the highlight isn't color-only.
-    backgroundColor: `${tokens.accent.default}14`,
-  },
-  entryHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-  },
-  entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
-  entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
-  entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  scoreActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
-  scoreActionButton: {
-    paddingHorizontal: tokens.space.sm,
-    paddingVertical: 4,
-    borderRadius: tokens.radius.sm,
-  },
-  editScorePressed: { backgroundColor: tokens.accent.muted },
-  editScoreLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
-  },
-  // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
-  // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
-  // the control itself stays calm rather than a loud red on a daily screen.
-  clearScorePressed: { backgroundColor: tokens.bg.elevated },
-  clearScoreLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.secondary,
-  },
-  youPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
-  },
-  youPillText: {
-    fontSize: 10,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.5,
-    color: tokens.accent.default,
-    textTransform: "uppercase",
-  },
-  // Score box + reactions share one row so reactions sit to the right of the
-  // score instead of below it (no extra row height).
-  scoreRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-  },
-  scoreFrame: {
-    flex: 1,
-    minWidth: 0,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-  },
-  rankBadge: {
-    minWidth: 28,
-    height: 28,
-    paddingHorizontal: 6,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-  },
-  rankBadgeTop1: {
-    backgroundColor: tokens.accent.default,
-    borderColor: tokens.accent.default,
-  },
-  rankBadgeText: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.secondary,
-    fontVariant: ["tabular-nums"],
-  },
-  rankBadgeTextTop1: { color: tokens.text.onAccent },
-  scoreText: {
-    color: tokens.text.primary,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 6,
-  },
-  scoreTextMuted: {
-    color: tokens.text.muted,
-    fontStyle: "italic",
-  },
-  unplayedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.xs,
-  },
-  unplayedAvatar: { opacity: 0.5 },
-  pasteInput: {
-    minHeight: 110,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    backgroundColor: tokens.bg.canvas,
-    textAlignVertical: "top",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    lineHeight: tokens.font.size.sm + 6,
-  },
-  pasteActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: tokens.space.md,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: tokens.space.xl,
-  },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: tokens.space.lg },
+  errorBlock: { gap: tokens.space.sm, alignItems: "flex-start" },
+  skeletonTitle: { width: 168, height: 18, backgroundColor: tokens.bg.surface },
+  missing: { gap: tokens.space.xs, paddingTop: tokens.space.sm },
+  sectionLabel: { letterSpacing: 1 },
+  faces: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.xs, opacity: 0.5 },
+  face: {},
+  myActions: { flexDirection: "row", gap: tokens.space.sm, paddingTop: 2 },
+  textKey: { paddingHorizontal: 2 },
+  composer: { gap: tokens.space.sm },
+  composerLabel: { letterSpacing: 1 },
+  input: { minHeight: 72 },
+  composerActions: { flexDirection: "row", justifyContent: "flex-end", gap: tokens.space.sm },
 });

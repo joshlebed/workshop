@@ -202,6 +202,10 @@ from one component tree; shared code lives in `packages/*`. HighScore owns its G
   Without a human ticking the box, a "should-be-required" check is silently optional. End the
   PR description with an "After merge" section telling the user exactly what to add and why.
 
+- **`scripts/check-expo-sdk-deps.mjs` takes an app directory, not a path relative to it.** Run it
+  from the repo root (`node scripts/check-expo-sdk-deps.mjs apps/highscore`). Running it from
+  inside the app with `.` resolves the package.json against the repo root instead and reports every
+  native module as "not declared".
 - **The RN/Expo SDK compatibility check is `scripts/check-expo-sdk-deps.mjs`, not
   `expo install --check`.** `expo install --check` fetches Expo's well-known-versions
   endpoint and merges it _over_ the installed `expo/bundledNativeModules.json`, preferring

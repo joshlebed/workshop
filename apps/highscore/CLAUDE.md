@@ -12,6 +12,13 @@ HighScore. Only an explicitly requested critical-fix backport may touch both cop
 Friends remain a shared product concept backed by the same graph and `@workshop/api-client/friends`,
 but each app owns its screen implementation so either frontend can evolve independently.
 
+## UX explorations (draft branches)
+
+Five competing UX explorations of this app exist as draft PRs against the `DESIGN.md` visual brief
+(#403–#407 restyle the existing screens; `joshlebed/hs-ux4-players-matrix` restructures them). A
+merged exploration replaces `src/theme/`, the home screen, and the navigation shell wholesale, so
+don't hand-merge pieces between them — pick one. Each carries its own `UX-EXPLORATION.md`.
+
 ## Share flow
 
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so
