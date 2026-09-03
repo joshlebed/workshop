@@ -107,7 +107,59 @@ to it.
 Two rounds, each run in a fresh context with screenshots and the recording only — no code, no
 notes, no earlier iteration.
 
-<!-- CRITIC-ROUNDS -->
+### Round 1 — **5 / 10**
+
+> "The day strip, the disciplined palette, and the absence of glow show taste, and the
+> single-screen ledger is a genuinely interesting navigation idea. But the type system has no
+> rule, the accordion is uncommitted, the score language is unabstracted, and every secondary
+> screen falls back to stock."
+
+Its sharpest points, and what changed:
+
+1. **"Ledger row semantics are three symbols in one column."** The right slot cycled between a
+   pink play chevron, a yellow numeral and a grey dash — one nav affordance and two kinds of
+   data in the same place. → The ledger became a real table: a `GAME · BEST · YOU` header rule,
+   two fixed 56px value columns, and no nav affordance in a data column.
+2. **"The score glyph zoo."** Eleven games in eight visual dialects; trophy runs, tile runs,
+   `= 2`, `4.5 2/6`. → `railScore` became the one rule, and raw share grids now appear in
+   exactly one place: the open board.
+3. **"The board's action layer has no hierarchy."** The most destructive action had the same
+   weight as the primary one, and a system-emoji reaction stub sat under every row. → One pink
+   action per board, Remove pushed to the far edge in the quiet colour, and the reaction
+   affordance became a pixel glyph instead of an emoji.
+
+Also applied from round 1: friends rows carry a line of competitive signal instead of a
+"friends since" date and a chevron; the friend panel paints the identity it already knows
+instead of a blank spinner; both sign-in providers share one bezel (app-owned Google button);
+web scrollbars hidden; sub-10px text lifted off the legibility floor.
+
+### Round 2 — **5.5 / 10**
+
+> "The concept is above the bar — the single-surface navigation and the BEST/YOU ledger are
+> ideas a studio would keep, and the restraint (no card stacks, no glow spam, no badges) is
+> real. But the hierarchy fails at the three moments that matter most: your empty column,
+> posting a score, and comparing yourself to a friend."
+
+Its sharpest points, and what changed:
+
+1. **"The YOU column is 78% dashes"** — the most important column read as an error state.
+   → `---` became an empty slot: a 14px square outline that lights pink under the finger and
+   opens the paste sheet. Past days show nothing, because you can't post into them.
+2. **"Posting a score is the emotional peak and it's a silent dismiss."** → The toast now says
+   where the result landed ("You lead Satle today", "Posted — #2 of 4") and the number that
+   changed blinks in three hard frames.
+3. **"Friend profile is a scoreboard without the vs."** → It became a `THEM / YOU` head-to-head
+   on the same two-column grid as the ledger, with a `FRIENDS / MARTIN` breadcrumb replacing
+   the generic back chevron.
+4. **"Two type worlds glued together"** and **"spine collapse deletes the comparison data."**
+   → One rule: pixel for headings, game names and numerals; the body face for every inline
+   action. And spines keep both value columns, so expanding a game no longer costs you the
+   comparison you opened it to make.
+
+Left undone on purpose: the critic wanted the board pushed as a page with a shared-element
+transition and Friends promoted to a peer of the ledger — both would undo the variant's
+premise. Its "container zoo" note is partly structural: edit-profile is a form with account
+deletion in it and `/share/pick-game` is the iOS share-extension target, so both stay routes.
 
 ## Notes for reviewers
 
