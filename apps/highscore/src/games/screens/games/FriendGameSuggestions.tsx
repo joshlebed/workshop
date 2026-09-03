@@ -6,8 +6,8 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { pixelType, Text, tokens } from "../../../theme";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -22,7 +22,7 @@ interface FriendGameSuggestionsProps {
   games: DiscoveryGame[];
   /** Game ids whose add request is currently in flight (spinner on Add). */
   addingGameIds: string[];
-  /** Game ids added this session — the row flips to a "✓ Added" pill. */
+  /** Game ids added this session — the row flips to a "ADDED" pill. */
   addedGameIds: string[];
   onAdd: (game: DiscoveryGame) => void;
   /**
@@ -77,12 +77,12 @@ export function FriendGameSuggestions({
             {owned ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
                 <Text style={styles.addedText} numberOfLines={1}>
-                  ✓ In your games
+                  ADDED
                 </Text>
               </View>
             ) : added ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
+                <Text style={styles.addedText}>ADDED</Text>
               </View>
             ) : (
               <Pressable
@@ -99,9 +99,9 @@ export function FriendGameSuggestions({
                 ]}
               >
                 {adding ? (
-                  <ActivityIndicator size="small" color={tokens.accent.default} />
+                  <ActivityIndicator size="small" color={tokens.neon.pink} />
                 ) : (
-                  <Text style={styles.addLabel}>Add</Text>
+                  <Text style={styles.addLabel}>ADD</Text>
                 )}
               </Pressable>
             )}
@@ -115,60 +115,36 @@ export function FriendGameSuggestions({
 const COVER = 40;
 
 const styles = StyleSheet.create({
-  list: { gap: tokens.space.sm },
+  list: {},
+  // Rows on the canvas separated by a rule — the same ledger idiom as the
+  // home surface, not a stack of boxed cards.
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: tokens.border.default,
   },
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+    backgroundColor: tokens.bg.elevated,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
+  coverImage: { width: COVER, height: COVER },
   coverGlyph: { fontSize: 20 },
   text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  addBtn: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
-  },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
+  title: { ...pixelType(10), color: tokens.text.primary },
+  addBtn: { paddingHorizontal: tokens.space.xs, paddingVertical: 4 },
+  addBtnHover: { opacity: 0.6 },
   addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
-  addedPill: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addedText: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  addLabel: { ...pixelType(10), color: tokens.neon.pink },
+  addedPill: { paddingHorizontal: tokens.space.xs, paddingVertical: 4 },
+  addedText: { ...pixelType(10), color: tokens.border.default },
 });

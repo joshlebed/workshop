@@ -1,8 +1,5 @@
-// Web Games-home card container — @dnd-kit drag-to-reorder over My Games.
-//
-// Mirrors `ItemList.web.tsx`'s ordered-section wiring (same sensors, same
-// activation feel, same `stripButtonRole` workaround) for a single flat
-// ordered list: every card is sortable, there are no sections.
+// Web ledger container — @dnd-kit drag-to-reorder, same activation feel as
+// the native long-press. See `LedgerList.tsx` for the shared contract.
 
 import {
   closestCenter,
@@ -16,21 +13,18 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { MyGame } from "@workshop/shared/games";
-import { homeLayout, PullToRefresh } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import type { GameCardListProps } from "./gameCardListProps";
+import { homeLayout } from "../theme";
+import type { LedgerListProps } from "./ledgerListProps";
 
-export function GameCardList({
+export function LedgerList({
   games,
-  renderCard,
+  renderRow,
   onReorder,
-  refreshing,
-  onRefresh,
-}: GameCardListProps) {
-  // Two sensors, never one with mixed activation (see ItemList.web.tsx):
-  // MouseSensor stays snappy on desktop; TouchSensor's delay+tolerance lets
-  // a swipe scroll and a press-and-hold reorder.
+  reorderEnabled,
+  footer,
+}: LedgerListProps) {
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
@@ -51,33 +45,37 @@ export function GameCardList({
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
-      <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
-        <ScrollView contentContainerStyle={styles.listContent} testID="games-home-list">
-          <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-            {games.map((game) => (
-              <SortableCard key={game.gameId} game={game} render={renderCard} />
-            ))}
-          </SortableContext>
-        </ScrollView>
-      </PullToRefresh>
+      <ScrollView contentContainerStyle={styles.listContent} testID="games-home-list">
+        <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+          {games.map((game) => (
+            <SortableRow
+              key={game.gameId}
+              game={game}
+              render={renderRow}
+              disabled={!reorderEnabled}
+            />
+          ))}
+        </SortableContext>
+        {footer}
+      </ScrollView>
     </DndContext>
   );
 }
 
-interface SortableCardProps {
+function SortableRow({
+  game,
+  render,
+  disabled,
+}: {
   game: MyGame;
-  render: GameCardListProps["renderCard"];
-}
-
-// Whole-card drag target: listeners on the wrapper; a press-and-hold reorders,
-// a tap falls through to the card's own Pressables.
-function SortableCard({ game, render }: SortableCardProps) {
+  render: LedgerListProps["renderRow"];
+  disabled: boolean;
+}) {
   const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
     id: game.gameId,
+    disabled,
   });
 
-  // `touchAction: "pan-y"` lets vertical scroll pass through until the
-  // long-press activation fires (TouchSensor delay+tolerance).
   const webStyle = {
     transform: CSS.Transform.toString(transform) ?? undefined,
     transition: transition ?? undefined,
@@ -85,10 +83,9 @@ function SortableCard({ game, render }: SortableCardProps) {
     userSelect: "none",
   } as unknown as object;
 
-  // Strip `role`/`tabIndex` from dnd-kit's a11y attributes — react-native-web
-  // turns `role="button"` on a View into an HTML <button>, nesting around the
-  // card's inner Pressables (also <button>s). Touch/mouse sensors only here,
-  // so dropping them is safe. Same workaround as ItemList.web.tsx.
+  // Strip dnd-kit's `role="button"` / `tabIndex`: react-native-web turns a
+  // View with role="button" into an HTML <button>, which would wrap the row's
+  // own <button> Pressables. Mouse/touch sensors only, so it's safe to drop.
   const wrapperAttributes = stripButtonRole(attributes);
 
   return (
@@ -112,7 +109,6 @@ function stripButtonRole(attributes: unknown): Record<string, unknown> {
 const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: homeLayout.contentTopGap,
     paddingBottom: homeLayout.bottomInset,
   },
 });

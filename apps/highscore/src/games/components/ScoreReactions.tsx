@@ -6,8 +6,8 @@
 // inert with no add button.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
+import { Text, tokens } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];
@@ -75,18 +75,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 0,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.elevated,
   },
   chipActive: {
     borderColor: tokens.accent.default,
     backgroundColor: tokens.accent.muted,
   },
-  chipHover: { backgroundColor: tokens.bg.surface },
+  chipHover: { backgroundColor: tokens.bg.raised },
   chipEmoji: { fontSize: 13, lineHeight: 18 },
   chipCount: {
     fontSize: 11,
@@ -96,21 +96,20 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
   },
   chipCountActive: { color: tokens.accent.default },
+  // No frame on the add affordance — it appears on every friend's row, and a
+  // boxed version turns the board into a grid of identical chips.
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    paddingHorizontal: 2,
+    paddingVertical: 1,
   },
-  addFace: { fontSize: 12, lineHeight: 16, opacity: 0.7 },
+  addFace: { fontSize: 12, lineHeight: 16, opacity: 0.45 },
   addPlus: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: tokens.font.weight.bold,
-    color: tokens.text.muted,
+    color: tokens.text.secondary,
     marginLeft: 1,
   },
 });

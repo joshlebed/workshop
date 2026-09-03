@@ -1,9 +1,10 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+import { GoogleSignInButton } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { Button, Text, tokens } from "../src/theme";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -121,15 +122,14 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
     paddingHorizontal: tokens.space.xl,
     paddingVertical: tokens.space.xxl,
-    gap: tokens.space.xxl,
+    gap: tokens.space.xl,
   },
-  // Push the brand block to ~38% from the top — purely-vertical centering on
-  // desktop leaves a void above the wordmark; this brings it closer to where
-  // the eye naturally lands without crowding the top.
-  topSpacer: { flex: 0.7 },
-  bottomSpacer: { flex: 1 },
+  // Brand and actions read as one block in the lower half of the screen —
+  // vertical centring left a dead band under the buttons.
+  topSpacer: { flex: 1 },
+  bottomSpacer: { flex: 0.28 },
   brandBlock: {
-    gap: tokens.space.md,
+    gap: tokens.space.sm,
     maxWidth: 420,
     width: "100%",
     alignSelf: "center",
@@ -148,11 +148,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     paddingVertical: tokens.space.xs,
   },
-  dividerLine: {
-    flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: tokens.border.default },
   dividerText: {
     fontSize: 11,
     letterSpacing: 1,

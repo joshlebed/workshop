@@ -42,9 +42,9 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { Avatar, Button, Chip, Sheet, Text, TextField, tokens } from "../../theme";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -241,12 +241,12 @@ export function GameScorePasteSheet<T extends { title: string }>({
               </Text>
             </View>
           </View>
-          <TextInput
+          <TextField
             testID="game-paste-input"
+            mono
             value={draft}
             onChangeText={editDraft}
             placeholder={"Paste your result here"}
-            placeholderTextColor={tokens.text.muted}
             multiline
             maxLength={2000}
             autoFocus
@@ -354,20 +354,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
-  input: {
-    minHeight: 120,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    backgroundColor: tokens.bg.canvas,
-    textAlignVertical: "top",
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    lineHeight: tokens.font.size.sm + 6,
-  },
+  input: { minHeight: 120 },
   teach: { gap: tokens.space.sm },
   chips: {
     flexDirection: "row",
