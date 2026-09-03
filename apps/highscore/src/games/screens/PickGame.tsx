@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Button, Notice, Screen, Text, tokens, useToast } from "../../theme";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import {
@@ -163,7 +164,7 @@ export default function PickGame() {
             value={scoreDraft}
             onChangeText={setScoreDraft}
             placeholder="Paste score text"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             multiline
             maxLength={2000}
             style={styles.scoreInput}
@@ -181,10 +182,10 @@ export default function PickGame() {
 
         {myGamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={tokens.neon.pink} />
           </View>
         ) : myGamesQuery.isError ? (
-          <EmptyState
+          <Notice
             title="Couldn't load your games"
             description={errorMessage(myGamesQuery.error)}
             action={
@@ -192,7 +193,7 @@ export default function PickGame() {
             }
           />
         ) : myGames.length === 0 ? (
-          <EmptyState
+          <Notice
             title="No games yet"
             description={
               suggestion
@@ -263,7 +264,7 @@ function DetectedScoreSuggestion({
     return (
       <View style={styles.suggestionBox} testID="share-game-detection-loading">
         <View style={styles.loadingRow}>
-          <ActivityIndicator color={tokens.accent.default} size="small" />
+          <ActivityIndicator color={tokens.neon.pink} size="small" />
           <Text variant="label">{label} score detected</Text>
         </View>
         <Text variant="caption" tone="muted">
@@ -369,7 +370,7 @@ function GameRow({
         </Text>
       </View>
       {loading ? (
-        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <ActivityIndicator color={tokens.neon.pink} size="small" />
       ) : (
         <Text style={styles.rowChevron}>{">"}</Text>
       )}
@@ -417,7 +418,6 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
   navGlyph: {
@@ -434,17 +434,16 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 4,
-    borderRadius: tokens.radius.pill,
     backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     maxWidth: "100%",
   },
   payloadDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: tokens.accent.default,
+    backgroundColor: tokens.neon.pink,
   },
   payloadText: { flexShrink: 1 },
   center: { alignItems: "center", justifyContent: "center", padding: tokens.space.xl },
@@ -456,9 +455,8 @@ const styles = StyleSheet.create({
   suggestionBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
     backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
   },
   suggestionHeader: {
@@ -471,9 +469,8 @@ const styles = StyleSheet.create({
   scoreBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
     backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
   },
   scoreHeader: {
@@ -484,9 +481,8 @@ const styles = StyleSheet.create({
   },
   scoreInput: {
     minHeight: 116,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     color: tokens.text.primary,
@@ -502,9 +498,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.canvas,
     minHeight: 76,
   },
@@ -513,14 +508,13 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
   rowTitle: { color: tokens.text.primary },
   rowChevron: {
-    color: tokens.text.muted,
+    color: tokens.text.secondary,
     fontSize: tokens.font.size.lg,
     fontWeight: tokens.font.weight.semibold,
   },
   gameThumb: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.md,
     backgroundColor: tokens.bg.elevated,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },

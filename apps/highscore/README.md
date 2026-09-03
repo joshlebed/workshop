@@ -4,9 +4,10 @@ Expo app for **HighScore** (`highscore.live`) — the daily-games half of the sp
 in [`docs/highscore-migration-plan.md`](../../docs/highscore-migration-plan.md). Builds web
 and iOS from one component tree via `react-native-web`, exactly like `apps/workshop`.
 
-This app owns the Games home, standings, catalog, friends, play-link resolver, and native
-score-share flow. Its live UI is app-owned under `src/games`; Workshop's pre-cutover UI is a
-separate frozen snapshot, so frontend iteration here cannot change Workshop users.
+This app owns the games surface, standings, catalog, friends, play-link resolver, and native
+score-share flow. Its live UI is app-owned under `src/deck`, `src/theme` and `src/games`;
+Workshop's pre-cutover UI is a separate frozen snapshot, so frontend iteration here cannot
+change Workshop users.
 
 |                              |                                                                 |
 | ---------------------------- | --------------------------------------------------------------- |
@@ -51,25 +52,33 @@ The Niteshift sandbox sets both by default.
 ```
 app/                     expo-router routes
   _layout.tsx            providers + auth gate
-  (tabs)/index.tsx       Games home
-  games/[id].tsx         per-game standings history
-  friends/               friends, profiles, invite acceptance
+  (tabs)/index.tsx       the app — renders src/deck/AppShell
+  games/[id].tsx         deep link: opens the deck on that cartridge, then replaces
+  friends/               deep links to the PLAYERS panel + invite acceptance
   g/[token].tsx          in-app play-link resolver
+  profile.tsx            edit profile (a real pushed route — it's a form)
   share/                 native score-share picker
   sign-in.tsx            Apple / Google / dev sign-in
   onboarding/            display-name capture
+src/deck/                the single app surface: deck, cartridges, shelf, panels
+src/theme/               app-owned design tokens + primitives (see DESIGN.md)
 src/hooks/useAuth.tsx    auth context over @workshop/api-client
-src/components/          app-local components (wordmark)
-src/games/               app-owned Games + friends UI, hooks, and client adapters
+src/components/          wordmark, brand mark, app-owned Google sign-in button
+src/games/               API adapters, score parsing/distillation, sheets
 public/index.html        web HTML shell — OG tags, theme-color, canvas lock
 functions/               Pages API proxy, AASA, and OG metadata/PNG routes
 ```
 
-Shared code comes from `@workshop/ui` (design system and Google sign-in button),
-`@workshop/api-client` (API, friends boundary, session, storage, OAuth hooks), and
-`@workshop/shared` (types, game registry, score parsing, summary specs). Presentation and
-games-specific client adapters stay here even when Workshop's frozen snapshot has a copy;
-only contract-level code belongs in a package.
+Navigation is described in [`UX-EXPLORATION.md`](./UX-EXPLORATION.md): the app is one screen
+with three panels, and the router exists for deep links rather than for moving around.
+
+Visual tokens and primitives are app-owned in `src/theme/` — nothing visual comes from
+`@workshop/ui` (see `DESIGN.md`). From `@workshop/ui` HighScore takes only behaviour helpers
+(`haptics`, `confirm`, `openExternalUrl`, `formatRelative`, `clipboard`, `navigation`).
+`@workshop/api-client` provides the API, friends boundary, session, storage and OAuth hooks;
+`@workshop/shared` provides types, the game registry, score parsing and summary specs.
+Presentation and games-specific client adapters stay here even when Workshop's frozen
+snapshot has a copy; only contract-level code belongs in a package.
 
 ## Brand assets
 

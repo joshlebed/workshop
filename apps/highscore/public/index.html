@@ -46,9 +46,9 @@
       the HighScore accent; the html/body canvas below stays pinned to the
       dark background token so overscroll and safe-area regions never flash.
     -->
-    <meta name="theme-color" content="#F5A524" />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F5A524" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#F5A524" />
+    <meta name="theme-color" content="#121216" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#121216" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121216" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -60,7 +60,7 @@
       html,
       body {
         height: 100%;
-        background-color: #0E0C0B;
+        background-color: #121216;
         color-scheme: dark;
       }
       body {
@@ -70,6 +70,15 @@
         display: flex;
         height: 100%;
         flex: 1;
+      }
+      /* This is a phone app rendered in a browser: desktop scrollbar tracks
+         cut into the 2px-bezel grid and read as chrome the design never
+         intended. Scrolling still works with wheel, trackpad and touch. */
+      * {
+        scrollbar-width: none;
+      }
+      *::-webkit-scrollbar {
+        display: none;
       }
     </style>
   </head>

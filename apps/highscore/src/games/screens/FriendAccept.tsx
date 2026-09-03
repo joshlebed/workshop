@@ -5,10 +5,11 @@ import { acceptFriendRequest, fetchFriendRequestPreview } from "@workshop/api-cl
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Avatar, Button, Card, haptics, Text, tokens } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { Avatar, Button, Card, Text, tokens } from "../../theme";
 import { addGame, fetchGameDiscovery } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../lib/inviteStash";
@@ -125,7 +126,7 @@ export default function AcceptFriendInvite() {
   if (status !== "signed-in") {
     return (
       <Centered testID="friend-accept-loading">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
         <Text tone="secondary" style={styles.loadingText}>
           Sign in to add your friend
         </Text>
@@ -147,7 +148,7 @@ export default function AcceptFriendInvite() {
   if (previewQuery.isPending) {
     return (
       <Centered testID="friend-accept-loading">
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.neon.pink} />
       </Centered>
     );
   }
@@ -310,7 +311,7 @@ function PostAcceptPicker({
 
         {discoveryQuery.isLoading ? (
           <View style={styles.pickerLoading}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={tokens.neon.pink} />
           </View>
         ) : games.length > 0 ? (
           <>

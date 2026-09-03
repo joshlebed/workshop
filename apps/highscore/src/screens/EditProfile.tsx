@@ -3,7 +3,6 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
@@ -17,6 +16,7 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import { Avatar, Button, IconButton, PixelIcon, Screen, Text, tokens, useToast } from "../theme";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -63,10 +63,7 @@ export default function EditProfile() {
     <Screen style={styles.root}>
       <View style={styles.header}>
         <View style={styles.headerText}>
-          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
-            Account
-          </Text>
-          <Text variant="heading" numberOfLines={1}>
+          <Text variant="title" numberOfLines={1} style={styles.headerTitle}>
             Edit profile
           </Text>
         </View>
@@ -75,7 +72,7 @@ export default function EditProfile() {
           onPress={() => goBack("/")}
           testID="profile-edit-close"
         >
-          <Text style={styles.closeGlyph}>✕</Text>
+          <PixelIcon name="close" size={16} color={tokens.text.secondary} />
         </IconButton>
       </View>
 
@@ -122,7 +119,7 @@ export default function EditProfile() {
             value={name}
             onChangeText={setName}
             placeholder="Ada Lovelace"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             autoComplete="name"
             maxLength={40}
             style={styles.input}
@@ -268,8 +265,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  headerTitle: { fontSize: 14, lineHeight: 22 },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
@@ -280,13 +276,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
   },
-  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
+  avatarPreview: { width: 72, height: 72 },
   avatarButtons: { flex: 1, gap: tokens.space.sm },
   field: { gap: tokens.space.sm },
   input: {
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 14,
     color: tokens.text.primary,
@@ -300,16 +295,15 @@ const styles = StyleSheet.create({
 const dangerStyles = StyleSheet.create({
   section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
   divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    height: tokens.bezel,
+    backgroundColor: tokens.border.default,
     marginBottom: tokens.space.md,
   },
   eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.status.danger,
     backgroundColor: tokens.bg.surface,
   },

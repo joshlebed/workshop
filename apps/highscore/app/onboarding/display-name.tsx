@@ -1,9 +1,8 @@
-import { Button, Text, tokens } from "@workshop/ui";
 import { useState } from "react";
 import { Platform, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { Wordmark } from "../../src/components/Wordmark";
 import { useAuth } from "../../src/hooks/useAuth";
+import { Button, Screen, Text, tokens } from "../../src/theme";
 
 export default function DisplayName() {
   const { setDisplayName } = useAuth();
@@ -31,71 +30,57 @@ export default function DisplayName() {
       style={styles.root}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <View style={styles.form}>
-        <View style={styles.brandBlock}>
-          <Wordmark />
-          <Text tone="secondary">Pick a name for the leaderboard.</Text>
-        </View>
-        <Text variant="label" tone="secondary" style={styles.label}>
-          Display name
-        </Text>
-        <TextInput
-          testID="display-name-input"
-          value={value}
-          onChangeText={setValue}
-          placeholder="Ada Lovelace"
-          placeholderTextColor={tokens.text.muted}
-          autoFocus
-          autoComplete="name"
-          maxLength={40}
-          style={styles.input}
-          onSubmitEditing={handleSave}
-          returnKeyType="done"
-        />
-        <Button
-          testID="display-name-save"
-          label="Continue"
-          size="lg"
-          disabled={!canSubmit}
-          loading={busy}
-          onPress={handleSave}
-        />
-        {error ? (
-          <Text tone="danger" style={styles.error}>
-            {error}
+      <Screen style={styles.screen} testID="display-name">
+        <View style={styles.form}>
+          <Text variant="title" style={styles.title}>
+            Enter your name
           </Text>
-        ) : null}
-      </View>
+          <Text tone="secondary">This is the name on the board.</Text>
+          <TextInput
+            testID="display-name-input"
+            value={value}
+            onChangeText={setValue}
+            placeholder="Ada Lovelace"
+            placeholderTextColor={tokens.text.secondary}
+            autoFocus
+            autoComplete="name"
+            maxLength={40}
+            style={styles.input}
+            onSubmitEditing={handleSave}
+            returnKeyType="done"
+          />
+          <Button
+            testID="display-name-save"
+            label="Continue"
+            size="lg"
+            disabled={!canSubmit}
+            loading={busy}
+            onPress={handleSave}
+          />
+          {error ? (
+            <Text tone="danger" style={styles.error}>
+              {error}
+            </Text>
+          ) : null}
+        </View>
+      </Screen>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.xxl,
-    justifyContent: "center",
-    gap: tokens.space.xxl,
-  },
-  form: {
-    gap: tokens.space.md,
-    maxWidth: 420,
-    width: "100%",
-    alignSelf: "center",
-  },
-  brandBlock: { gap: tokens.space.sm, marginBottom: tokens.space.md },
-  label: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
+  root: { flex: 1, backgroundColor: tokens.bg.canvas },
+  screen: { justifyContent: "center", paddingHorizontal: tokens.space.xl },
+  form: { gap: tokens.space.md },
+  title: { fontSize: 16, lineHeight: 26 },
   input: {
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 14,
     color: tokens.text.primary,
     fontSize: tokens.font.size.lg,
     backgroundColor: tokens.bg.surface,
   },
-  error: { textAlign: "center", marginTop: tokens.space.xs },
+  error: { textAlign: "center" },
 });

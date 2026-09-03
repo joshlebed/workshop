@@ -6,8 +6,8 @@
 // inert with no add button.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
+import { Text, tokens } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];
@@ -77,13 +77,12 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.elevated,
   },
   chipActive: {
-    borderColor: tokens.accent.default,
+    borderColor: tokens.neon.pink,
     backgroundColor: tokens.accent.muted,
   },
   chipHover: { backgroundColor: tokens.bg.surface },
@@ -95,22 +94,21 @@ const styles = StyleSheet.create({
     color: tokens.text.secondary,
     fontVariant: ["tabular-nums"],
   },
-  chipCountActive: { color: tokens.accent.default },
+  chipCountActive: { color: tokens.neon.pinkTint },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
   },
   addFace: { fontSize: 12, lineHeight: 16, opacity: 0.7 },
   addPlus: {
     fontSize: 12,
     lineHeight: 16,
     fontWeight: tokens.font.weight.bold,
-    color: tokens.text.muted,
+    color: tokens.text.secondary,
     marginLeft: 1,
   },
 });

@@ -54,12 +54,12 @@ describe("public routes", () => {
     }
   });
 
-  it("links both pages from the signed-in profile menu", () => {
-    const menu = readFileSync(join(__dirname, "..", "components", "ProfileMenu.tsx"), "utf8");
-    expect(menu).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
-    expect(menu).toContain('label="Support"');
-    expect(menu).toContain("router.push(SUPPORT_ROUTE)");
-    expect(menu).toContain('label="Privacy policy"');
-    expect(menu).toContain("router.push(PRIVACY_ROUTE)");
+  it("links both pages from the signed-in YOU panel", () => {
+    const panel = readFileSync(join(__dirname, "..", "deck", "YouPanel.tsx"), "utf8");
+    expect(panel).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
+    expect(panel).toContain('label="Support"');
+    expect(panel).toContain("router.push(SUPPORT_ROUTE)");
+    expect(panel).toContain('label="Privacy policy"');
+    expect(panel).toContain("router.push(PRIVACY_ROUTE)");
   });
 });
