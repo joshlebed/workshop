@@ -5,8 +5,9 @@ in [`docs/highscore-migration-plan.md`](../../docs/highscore-migration-plan.md).
 and iOS from one component tree via `react-native-web`, exactly like `apps/workshop`.
 
 This app owns the Games home, standings, catalog, friends, play-link resolver, and native
-score-share flow. Its live UI is app-owned under `src/games`; Workshop's pre-cutover UI is a
-separate frozen snapshot, so frontend iteration here cannot change Workshop users.
+score-share flow. Its live UI is app-owned under `src/shell`, `src/theme` and `src/games`;
+Workshop's pre-cutover UI is a separate frozen snapshot, so frontend iteration here cannot
+change Workshop users.
 
 |                              |                                                                 |
 | ---------------------------- | --------------------------------------------------------------- |
@@ -51,25 +52,43 @@ The Niteshift sandbox sets both by default.
 ```
 app/                     expo-router routes
   _layout.tsx            providers + auth gate
-  (tabs)/index.tsx       Games home
-  games/[id].tsx         per-game standings history
-  friends/               friends, profiles, invite acceptance
+  (shell)/               the one surface — see "The shell" below
+    _layout.tsx          persistent layout that renders <Shell />
+    index.tsx            /                    → null
+    games/[id].tsx       /games/:id           → null
+    friends/index.tsx    /friends             → null
+    friends/[userId].tsx /friends/:userId     → null
+  friends/accept/        invite acceptance (full page, works signed out)
   g/[token].tsx          in-app play-link resolver
   share/                 native score-share picker
+  profile.tsx            edit profile (form + account deletion)
   sign-in.tsx            Apple / Google / dev sign-in
   onboarding/            display-name capture
 src/hooks/useAuth.tsx    auth context over @workshop/api-client
-src/components/          app-local components (wordmark)
-src/games/               app-owned Games + friends UI, hooks, and client adapters
+src/theme/               app-owned design tokens + primitives (see DESIGN.md)
+src/shell/               the ledger, the expanding board, the friends drawer
+src/components/          app-local components (wordmark, brand icon, Google button)
+src/games/               app-owned games hooks, API adapters and shared sheets
 public/index.html        web HTML shell — OG tags, theme-color, canvas lock
 functions/               Pages API proxy, AASA, and OG metadata/PNG routes
 ```
 
-Shared code comes from `@workshop/ui` (design system and Google sign-in button),
-`@workshop/api-client` (API, friends boundary, session, storage, OAuth hooks), and
-`@workshop/shared` (types, game registry, score parsing, summary specs). Presentation and
-games-specific client adapters stay here even when Workshop's frozen snapshot has a copy;
-only contract-level code belongs in a package.
+### The shell
+
+`/`, `/games/:id`, `/friends` and `/friends/:userId` are four real routes that all resolve to one
+mounted `<Shell />`. A layout in expo-router is not remounted when you move between its child
+routes, so the `(shell)` layout persists while its children (which render `null`) swap underneath.
+The shell reads `usePathname()` and animates into the matching state: a game expanded in place, or
+the friends drawer slid over. Deep links, refresh, browser back and the iOS system back all work
+because the URLs are real; nothing in the daily loop is a screen you travel to.
+
+Visual tokens and primitives are app-owned in `src/theme/` (per `DESIGN.md`, nothing visual
+may come from `@workshop/ui`). What still comes from packages is behaviour and contracts:
+`@workshop/ui` for `confirm`, `haptics`, `formatRelative`, `openExternalUrl`, clipboard and
+share helpers; `@workshop/api-client` for the API, friends boundary, session, storage and
+OAuth hooks; `@workshop/shared` for types, the game registry, score parsing and summary specs.
+Presentation and games-specific client adapters stay here even when Workshop's frozen snapshot
+has a copy; only contract-level code belongs in a package.
 
 ## Brand assets
 

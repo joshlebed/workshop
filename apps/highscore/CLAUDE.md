@@ -1,8 +1,10 @@
 # apps/highscore — coding agent guide
 
-HighScore owns its complete frontend under `app/` and `src/games/`. Style, layout, branding, and
-client behavior should be implemented locally so they cannot change Workshop users. Do not move
-presentation code back into a shared package.
+HighScore owns its complete frontend under `app/`, `src/shell/`, `src/theme/` and `src/games/`.
+Style, layout, branding, and client behavior should be implemented locally so they cannot change
+Workshop users. Do not move presentation code back into a shared package. `src/theme/` is the only
+place visual tokens come from — see `DESIGN.md`; `@workshop/ui` is for behaviour helpers
+(`confirm`, `haptics`, `formatRelative`, `openExternalUrl`, clipboard, share) only.
 
 Shared boundaries are contracts and primitives only: `@workshop/api-client`, `@workshop/shared`
 (`games`, `gameRegistry`, `scoreParsing`, `summarySpec`), and `@workshop/ui`. Workshop's current
@@ -11,6 +13,38 @@ HighScore. Only an explicitly requested critical-fix backport may touch both cop
 
 Friends remain a shared product concept backed by the same graph and `@workshop/api-client/friends`,
 but each app owns its screen implementation so either frontend can evolve independently.
+
+## The shell — one surface, four URLs
+
+The daily loop pushes nothing. `app/(shell)/_layout.tsx` renders `<Shell />` (`src/shell/Shell.tsx`)
+and a hidden `<Slot />`; its four child routes — `index`, `games/[id]`, `friends/index`,
+`friends/[userId]` — all `return null`. Expo Router does not remount a layout when navigating
+between its own children, so the shell stays mounted across all four and animates instead:
+`/games/:id` expands that row in the ledger, `/friends*` slides the drawer over it.
+
+Things that bite here:
+
+- **`useSegments()` returns the route _pattern_, not the values** (`["games", "[id]"]`). The shell
+  parses `usePathname()` instead — see `src/shell/useShellNavigation.ts`. `useLocalSearchParams()`
+  is scoped to the nearest route, which for a layout is the layout, so it is no help either.
+- **While the drawer is open the URL is a `/friends` one**, so the expanded game can't be read off
+  it. `useShellNavigation` remembers the ledger's href and `router.dismissTo()`s back to it, which
+  is what makes closing the drawer land on `/games/:id` again instead of `/`.
+- **Switching games while expanded `replace`s rather than `push`es**, so one back press always
+  returns to the closed ledger instead of walking back through every game you looked at.
+- Adding a route that should _not_ live inside the shell (a full page like
+  `friends/accept/[token]`) goes at `app/` top level, not in the group.
+
+## The score rail
+
+`src/shell/railScore.ts` is the single rule for what may appear in the `BEST` / `YOU` columns and
+in the open board's score column. Press Start 2P is fixed-advance, so those columns only line up if
+the strings are short — the budget is measured in _cells_ (emoji count as two) rather than
+characters. A result that fits prints as-is; anything longer falls back to the number the backend
+parsed, and only then to a lit "played" square. Raw multi-line share grids appear in exactly one
+place in the app, the open board, so the ledger reads as one score language instead of one dialect
+per game. If you add a new surface that shows a score, use `railScore` rather than
+`summarizeGameScoreBody` directly.
 
 ## Share flow
 
