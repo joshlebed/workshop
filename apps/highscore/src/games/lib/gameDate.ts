@@ -40,3 +40,24 @@ export function formatGameDateLabel(date: string, today: string = localDateKey()
     year: dt.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
   });
 }
+
+/**
+ * Resolve a `?date=` route param to a day the DayRail can show: a valid
+ * YYYY-MM-DD within `length` days of `today` (today inclusive). Anything
+ * else — missing, malformed, future, older than the rail — falls back to
+ * `today`, so a stale or hand-edited link never strands the board on a day
+ * the rail can't select.
+ */
+export function resolveRailDate(
+  raw: string | string[] | undefined,
+  today: string,
+  length: number,
+): string {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return today;
+  const oldest = shiftDateKey(today, -(length - 1));
+  // Keys are zero-padded ISO dates, so string order is chronological.
+  if (value > today || value < oldest) return today;
+  // Reject calendar-invalid keys like 2026-02-31 (they'd never match a chip).
+  return shiftDateKey(value, 0) === value ? value : today;
+}

@@ -13,7 +13,8 @@ export interface GamesRoutes {
   home: string;
   signIn: string;
   friends: string;
-  game: (gameId: string) => string;
+  /** Per-game board; `date` (YYYY-MM-DD) preselects that day on its rail. */
+  game: (gameId: string, date?: string) => string;
   friendProfile: (userId: string, via?: string) => string;
 }
 

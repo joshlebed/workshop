@@ -455,7 +455,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           // (post a past day from the per-game board), so Play / paste hide
           // off-today.
           showCta={viewingToday && !mg.standings.viewerHasPlayed}
-          onPressBody={() => router.push(routes.game(mg.gameId) as Href)}
+          // Hand the rail's day to the board so "Yesterday" stays selected
+          // when drilling in from a past-day view.
+          onPressBody={() => router.push(routes.game(mg.gameId, viewDate) as Href)}
           {...(onLongPressBody ? { onLongPressBody } : {})}
           onMenu={() => setMenuGame(mg)}
           onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
@@ -479,6 +481,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       markPlaying,
       openPasteFor,
       viewStandings,
+      viewDate,
       viewingToday,
       viewQuery.isPending,
       reactionCtl.react,

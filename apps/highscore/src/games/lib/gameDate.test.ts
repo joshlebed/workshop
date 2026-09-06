@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatGameDateLabel, localDateKey, shiftDateKey } from "./gameDate";
+import { formatGameDateLabel, localDateKey, resolveRailDate, shiftDateKey } from "./gameDate";
 
 describe("localDateKey", () => {
   it("formats a local date as YYYY-MM-DD", () => {
@@ -61,5 +61,32 @@ describe("formatGameDateLabel", () => {
     expect(label).not.toBe("Today");
     expect(label).not.toBe("Yesterday");
     expect(label.length).toBeGreaterThan(0);
+  });
+});
+
+describe("resolveRailDate", () => {
+  const today = "2026-09-06";
+
+  it("keeps a valid day inside the rail", () => {
+    expect(resolveRailDate("2026-09-05", today, 7)).toBe("2026-09-05");
+    expect(resolveRailDate("2026-08-31", today, 7)).toBe("2026-08-31");
+    expect(resolveRailDate(today, today, 7)).toBe(today);
+  });
+
+  it("takes the first value of an array param", () => {
+    expect(resolveRailDate(["2026-09-04", "2026-09-05"], today, 7)).toBe("2026-09-04");
+  });
+
+  it("falls back to today when missing or malformed", () => {
+    expect(resolveRailDate(undefined, today, 7)).toBe(today);
+    expect(resolveRailDate("", today, 7)).toBe(today);
+    expect(resolveRailDate("yesterday", today, 7)).toBe(today);
+    expect(resolveRailDate("2026-9-5", today, 7)).toBe(today);
+    expect(resolveRailDate("2026-02-31", today, 7)).toBe(today);
+  });
+
+  it("falls back to today when outside the rail", () => {
+    expect(resolveRailDate("2026-09-07", today, 7)).toBe(today);
+    expect(resolveRailDate("2026-08-30", today, 7)).toBe(today);
   });
 });

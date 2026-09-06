@@ -31,11 +31,11 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useClientRuntime } from "../../lib/clientRuntime";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
-import { DayRail } from "../components/DayRail";
+import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { ScoreReactions } from "../components/ScoreReactions";
 import { useScoreReactions } from "../hooks/useScoreReactions";
-import { formatGameDateLabel, localDateKey } from "../lib/gameDate";
+import { formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 
@@ -51,14 +51,18 @@ import { summarizeGameScoreBody } from "../lib/scoresSummary";
  *   - Going past today on the day rail isn't offered.
  */
 export default function GameBoard() {
-  const params = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; date?: string }>();
   const gameId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { token, user, routes } = useClientRuntime();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   const today = localDateKey();
-  const [date, setDate] = useState(today);
+  // `?date=` carries the home rail's selection so drilling in from
+  // "Yesterday" opens on yesterday; anything the rail can't show → today.
+  const [date, setDate] = useState(() =>
+    resolveRailDate(params.date, today, DAY_RAIL_DEFAULT_LENGTH),
+  );
   const [draft, setDraft] = useState("");
   const [editingScore, setEditingScore] = useState(false);
 
