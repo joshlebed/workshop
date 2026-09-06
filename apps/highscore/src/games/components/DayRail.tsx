@@ -11,7 +11,8 @@ import { Text, tokens } from "@workshop/ui";
 import { Pressable, ScrollView, StyleSheet } from "react-native";
 import { shiftDateKey } from "../lib/gameDate";
 
-const DEFAULT_LENGTH = 7;
+/** Days the rail spans by default, today inclusive. */
+export const DAY_RAIL_DEFAULT_LENGTH = 7;
 
 export interface DayRailProps {
   /** Currently selected day, YYYY-MM-DD. */
@@ -31,7 +32,7 @@ export function DayRail({
   selectedDate,
   today,
   onSelectDate,
-  length = DEFAULT_LENGTH,
+  length = DAY_RAIL_DEFAULT_LENGTH,
   testIDPrefix = "day",
   horizontalInset = tokens.space.xl,
 }: DayRailProps) {
