@@ -57,3 +57,14 @@ so it is `1.0.0` for the initial Store release — an OTA only reaches builds th
 device family would make App Store Connect require a second screenshot set. Flipping it back is a
 native change: bump `version` in the same PR, and expect a fresh TestFlight build plus iPad
 screenshots before the next submission.
+
+## Reorder activation vs. taps (Games home)
+
+Every Games-home card is both a drag handle and a stack of tap targets, and once a drag
+_activates_ the tap is lost: RN `Pressable` suppresses `onPress` after `onLongPress`, and dnd-kit
+stops the trailing `click` at document capture. The thresholds all come from `REORDER_ACTIVATION`
+in `packages/ui/src/reorderActivation.ts` (500ms hold on native + web touch, 10px mouse travel on
+web). The previous 250ms hold / 4px distance swallowed hesitant taps and trackpad-drift clicks —
+"tapping a game or a leaderboard row sometimes doesn't open the board until the second tap". Don't
+hard-code a new `delayLongPress` or sensor constraint on these surfaces; read it from the constant,
+and keep the native long-press and the web `TouchSensor` delay equal.

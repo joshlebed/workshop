@@ -2,7 +2,9 @@
 //
 // Mirrors `ItemList.tsx`'s ordered-section wiring for a single flat ordered
 // list: long-press anywhere on a card (except the kebab menu) activates reorder
-// via `useReorderableDrag()` (250ms, matched to the web TouchSensor delay).
+// via `useReorderableDrag()` (`REORDER_ACTIVATION.longPressMs`, matched to the
+// web TouchSensor delay — see packages/ui/src/reorderActivation.ts for why a
+// shorter hold ate taps).
 //
 // The list owns its own scroll. It used to be a `NestedReorderableList` inside a
 // `ScrollViewContainer` — the library's nesting API — but Games home has no
@@ -13,7 +15,13 @@
 // `scrollable={false}` disabled windowing, mounting every card up front.
 
 import type { MyGame } from "@workshop/shared/games";
-import { haptics, homeLayout, PullToRefresh, REORDER_AUTOSCROLL } from "@workshop/ui";
+import {
+  haptics,
+  homeLayout,
+  PullToRefresh,
+  REORDER_ACTIVATION,
+  REORDER_AUTOSCROLL,
+} from "@workshop/ui";
 import { memo } from "react";
 import type { ListRenderItemInfo } from "react-native";
 import { Pressable, StyleSheet } from "react-native";
@@ -74,7 +82,11 @@ const DraggableCard = memo(function DraggableCard({ game, render }: DraggableCar
     drag();
   };
   return (
-    <Pressable onLongPress={onLongPressBody} delayLongPress={250} accessible={false}>
+    <Pressable
+      onLongPress={onLongPressBody}
+      delayLongPress={REORDER_ACTIVATION.longPressMs}
+      accessible={false}
+    >
       {render(game, isActive, onLongPressBody)}
     </Pressable>
   );

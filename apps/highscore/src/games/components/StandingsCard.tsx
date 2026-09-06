@@ -23,7 +23,7 @@
 // control's own action.
 
 import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
-import { Avatar, Text, tokens } from "@workshop/ui";
+import { Avatar, REORDER_ACTIVATION, Text, tokens } from "@workshop/ui";
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
 import { ScoreReactions } from "./ScoreReactions";
@@ -157,7 +157,7 @@ export const StandingsCard = memo(function StandingsCard({
           accessibilityLabel={`Play ${title}`}
           onPress={onPlay}
           onLongPress={onLongPressBody}
-          delayLongPress={250}
+          delayLongPress={REORDER_ACTIVATION.longPressMs}
           hitSlop={6}
           testID={`game-card-cover-${cardId}`}
           style={({ pressed }) => [styles.cover, pressed && styles.coverPressed]}
@@ -188,7 +188,7 @@ export const StandingsCard = memo(function StandingsCard({
               accessibilityLabel={`Open ${title} leaderboard`}
               onPress={onPressBody}
               onLongPress={onLongPressBody}
-              delayLongPress={250}
+              delayLongPress={REORDER_ACTIVATION.longPressMs}
               hitSlop={{ top: 6, bottom: 2 }}
               testID={`game-card-body-${cardId}`}
               style={({ pressed, hovered }) => [
@@ -206,7 +206,7 @@ export const StandingsCard = memo(function StandingsCard({
                 accessibilityLabel={`${streak} day streak — play ${title} today to keep it going`}
                 onPress={onPlay}
                 onLongPress={onLongPressBody}
-                delayLongPress={250}
+                delayLongPress={REORDER_ACTIVATION.longPressMs}
                 hitSlop={6}
                 testID={`game-card-streak-${cardId}`}
                 style={({ pressed, hovered }) => [
@@ -234,7 +234,7 @@ export const StandingsCard = memo(function StandingsCard({
                   accessibilityLabel={`Paste your ${title} result`}
                   onPress={onPaste}
                   onLongPress={onLongPressBody}
-                  delayLongPress={250}
+                  delayLongPress={REORDER_ACTIVATION.longPressMs}
                   hitSlop={8}
                   testID={`game-card-paste-${cardId}`}
                   style={({ pressed, hovered }) => [
@@ -257,7 +257,7 @@ export const StandingsCard = memo(function StandingsCard({
             accessibilityLabel={`Play ${title}`}
             onPress={onPlay}
             onLongPress={onLongPressBody}
-            delayLongPress={250}
+            delayLongPress={REORDER_ACTIVATION.longPressMs}
             hitSlop={8}
             testID={`game-card-play-${cardId}`}
             style={({ pressed, hovered }) => [
@@ -328,7 +328,7 @@ export const StandingsCard = memo(function StandingsCard({
               accessibilityLabel={`Open ${title} leaderboard`}
               onPress={onPressBody}
               onLongPress={onLongPressBody}
-              delayLongPress={250}
+              delayLongPress={REORDER_ACTIVATION.longPressMs}
             >
               <Text variant="caption" tone="muted" style={styles.moreLine}>
                 +{overflow} more
@@ -380,7 +380,7 @@ function PlayerRow({
         accessibilityLabel={`${name}${isMe ? " (you)" : ""}: ${row.body ?? "played"}`}
         onPress={onPressBody}
         onLongPress={onLongPressBody}
-        delayLongPress={250}
+        delayLongPress={REORDER_ACTIVATION.longPressMs}
       >
         <RankMark rank={row.rank} />
         <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
