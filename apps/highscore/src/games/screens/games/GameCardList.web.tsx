@@ -16,7 +16,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { MyGame } from "@workshop/shared/games";
-import { homeLayout, PullToRefresh } from "@workshop/ui";
+import { homeLayout, PullToRefresh, REORDER_ACTIVATION } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { GameCardListProps } from "./gameCardListProps";
@@ -30,10 +30,20 @@ export function GameCardList({
 }: GameCardListProps) {
   // Two sensors, never one with mixed activation (see ItemList.web.tsx):
   // MouseSensor stays snappy on desktop; TouchSensor's delay+tolerance lets
-  // a swipe scroll and a press-and-hold reorder.
+  // a swipe scroll and a press-and-hold reorder. Thresholds are shared with
+  // the native long-press (`REORDER_ACTIVATION`): once a sensor activates,
+  // dnd-kit stops the trailing `click`, so the card's Pressables never fire —
+  // a threshold inside normal tap variance reads as "the tap did nothing".
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: REORDER_ACTIVATION.mouseDistancePx },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: REORDER_ACTIVATION.longPressMs,
+        tolerance: REORDER_ACTIVATION.touchTolerancePx,
+      },
+    }),
   );
   const ids = useMemo(() => games.map((g) => g.gameId), [games]);
 

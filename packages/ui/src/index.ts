@@ -27,6 +27,7 @@ export type { PullToRefreshProps } from "./PullToRefresh";
 export { PullToRefresh } from "./PullToRefresh";
 export { formatRelative } from "./relativeTime";
 export { neighborsForOrderedReorder } from "./reorder";
+export { REORDER_ACTIVATION } from "./reorderActivation";
 export { REORDER_AUTOSCROLL } from "./reorderAutoscroll";
 export type { SearchResultRowProps } from "./SearchResultRow";
 export { SearchResultRow } from "./SearchResultRow";
