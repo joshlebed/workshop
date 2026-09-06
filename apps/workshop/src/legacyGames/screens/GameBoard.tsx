@@ -42,11 +42,12 @@ import { summarizeGameScoreBody } from "../lib/scoresSummary";
 /**
  * Per-game board (G1b) — history for one game in My Games. The home card
  * owns today's standings; this screen is for paging back through past days
- * (DayRail) plus a paste slot so today is still postable from here.
+ * (DayRail) plus a paste slot for whichever day is showing.
  *
- * Spec rules (mirrors the Lists game-detail screen):
- *   - Pasted scores always upload to *today's* bucket regardless of which
- *     day the board is showing.
+ * Rules:
+ *   - Pasted scores upload to the bucket of the *selected* day, so a result
+ *     finished just after midnight can still be posted to "Yesterday". Edit
+ *     and Clear follow the same day.
  *   - Going past today on the day rail isn't offered.
  */
 export default function GameBoard() {
@@ -79,17 +80,26 @@ export default function GameBoard() {
   });
 
   const upsertMutation = useMutation({
-    mutationFn: ({ scoreRaw }: { scoreRaw: string; isEdit: boolean }) => {
+    mutationFn: ({
+      scoreRaw,
+      periodKey,
+    }: {
+      scoreRaw: string;
+      periodKey: string;
+      isEdit: boolean;
+    }) => {
       if (!gameId) throw new Error("missing game id");
-      return upsertGameScore(gameId, { periodKey: today, scoreRaw }, token);
+      return upsertGameScore(gameId, { periodKey, scoreRaw }, token);
     },
     onSuccess: async (_data, variables) => {
       haptics.medium();
       setDraft("");
       setEditingScore(false);
+      // The home card + streak ride on today's My Games query even when the
+      // score landed on a past day, so both get refreshed.
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.games.leaderboard(gameId ?? "", today),
+          queryKey: queryKeys.games.leaderboard(gameId ?? "", variables.periodKey),
         }),
         queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) }),
       ]);
@@ -104,17 +114,17 @@ export default function GameBoard() {
   });
 
   const clearMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (periodKey: string) => {
       if (!gameId) throw new Error("missing game id");
-      return clearGameScore(gameId, today, token);
+      return clearGameScore(gameId, periodKey, token);
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, periodKey) => {
       haptics.medium();
       setDraft("");
       setEditingScore(false);
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: queryKeys.games.leaderboard(gameId ?? "", today),
+          queryKey: queryKeys.games.leaderboard(gameId ?? "", periodKey),
         }),
         queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) }),
       ]);
@@ -189,10 +199,11 @@ export default function GameBoard() {
   const otherEntries = entries.filter((e) => e.userId !== user?.id);
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
   // The composer owns the my-slot when posting a first result OR editing an
-  // existing one. Both only make sense on today (scores always upload to
-  // today's bucket), so past days fall through to the read-only row.
-  const showComposer = isToday && (!myScore || editingScore);
+  // existing one — on any day the rail can reach, not just today, so a
+  // puzzle finished right after midnight still lands on the day it belongs to.
+  const showComposer = !myScore || editingScore;
   const composerMode: "new" | "edit" = myScore ? "edit" : "new";
+  const dateLabel = formatGameDateLabel(date, today);
   const host = (() => {
     if (!game.url) return null;
     try {
@@ -211,7 +222,7 @@ export default function GameBoard() {
   const onSubmit = () => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    upsertMutation.mutate({ scoreRaw: trimmed, isEdit: editingScore });
+    upsertMutation.mutate({ scoreRaw: trimmed, periodKey: date, isEdit: editingScore });
   };
 
   return (
@@ -316,11 +327,13 @@ export default function GameBoard() {
             </View>
           ) : (
             <View style={styles.leaderboard}>
-              {/* My slot is always at the top: the paste composer on today,
-                  my filled entry, or a quiet "didn't play" line on past days. */}
+              {/* My slot is always at the top: the paste composer when I
+                  haven't posted for this day (or am editing), else my entry. */}
               {showComposer ? (
                 <ScoreComposer
                   mode={composerMode}
+                  isToday={isToday}
+                  dateLabel={dateLabel}
                   draft={draft}
                   baseline={myScore ?? ""}
                   onChangeDraft={setDraft}
@@ -338,41 +351,23 @@ export default function GameBoard() {
                   entry={myEntry}
                   game={game}
                   isMe
-                  onEdit={
-                    isToday
-                      ? () => {
-                          setDraft(myEntry.scoreRaw ?? "");
-                          setEditingScore(true);
-                        }
-                      : undefined
-                  }
-                  onClear={
-                    isToday
-                      ? async () => {
-                          const ok = await confirm({
-                            title: "Clear your score for today?",
-                            message: "Your result is removed. Scores on other days are kept.",
-                            confirmLabel: "Clear",
-                            destructive: true,
-                          });
-                          if (ok) clearMutation.mutate();
-                        }
-                      : undefined
-                  }
+                  onEdit={() => {
+                    setDraft(myEntry.scoreRaw ?? "");
+                    setEditingScore(true);
+                  }}
+                  onClear={async () => {
+                    const ok = await confirm({
+                      title: isToday
+                        ? "Clear your score for today?"
+                        : `Clear your score for ${dateLabel}?`,
+                      message: "Your result is removed. Scores on other days are kept.",
+                      confirmLabel: "Clear",
+                      destructive: true,
+                    });
+                    if (ok) clearMutation.mutate(date);
+                  }}
                 />
-              ) : (
-                <View style={styles.unplayedRow} testID="game-board-my-unplayed">
-                  <Avatar
-                    name={user?.displayName ?? null}
-                    imageUrl={user?.avatarUrl}
-                    size="md"
-                    style={styles.unplayedAvatar}
-                  />
-                  <Text variant="caption" tone="muted">
-                    You didn't play this day.
-                  </Text>
-                </View>
-              )}
+              ) : null}
 
               {otherEntries.map((entry) => (
                 <EntryRow
@@ -480,7 +475,7 @@ function EntryRow({
             {onClear ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Clear your score for today"
+                accessibilityLabel="Clear your score"
                 onPress={onClear}
                 testID="game-board-clear-score"
                 hitSlop={8}
@@ -523,6 +518,10 @@ function EntryRow({
 
 interface ScoreComposerProps {
   mode: "new" | "edit";
+  /** Whether the board is showing today; past days get a dated caption. */
+  isToday: boolean;
+  /** "Today" / "Yesterday" / "Sep 4" — the day the paste will be filed under. */
+  dateLabel: string;
   draft: string;
   baseline: string;
   onChangeDraft: (v: string) => void;
@@ -539,6 +538,8 @@ interface ScoreComposerProps {
 // Edit/Clear pair (DELETE /v1/games/:id/scores/:periodKey), not in here.
 function ScoreComposer({
   mode,
+  isToday,
+  dateLabel,
   draft,
   baseline,
   onChangeDraft,
@@ -580,7 +581,13 @@ function ScoreComposer({
             </View>
           </View>
           <Text variant="caption" tone="muted">
-            {isEdit ? "Edit your result" : "Paste your result to play"}
+            {isEdit
+              ? isToday
+                ? "Edit your result"
+                : `Edit your result for ${dateLabel}`
+              : isToday
+                ? "Paste your result to play"
+                : `Paste your result for ${dateLabel}`}
           </Text>
         </View>
       </View>
@@ -798,14 +805,6 @@ const styles = StyleSheet.create({
     color: tokens.text.muted,
     fontStyle: "italic",
   },
-  unplayedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.xs,
-  },
-  unplayedAvatar: { opacity: 0.5 },
   pasteInput: {
     minHeight: 110,
     borderWidth: 1,

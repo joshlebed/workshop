@@ -103,9 +103,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const todayKey = localDateKey();
   const gamesKey = queryKeys.games.mine(todayKey);
 
-  // The day rail re-dates every card's standings. Scores can only be POSTED
-  // to today's bucket, so the play→paste loop below stays pinned to
-  // `todayKey`; only the displayed standings follow `viewDate`.
+  // The day rail re-dates every card's standings. The home play→paste loop
+  // stays pinned to `todayKey`; only the displayed standings follow
+  // `viewDate`. Posting to a past day lives on the per-game board.
   const [viewDate, setViewDate] = useState(todayKey);
   const viewingToday = viewDate === todayKey;
 
@@ -451,8 +451,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           selfId={user?.id ?? null}
           loading={!viewingToday && viewQuery.isPending}
           emptyFaces={[]}
-          // Results can only be posted to today's bucket — past days are
-          // read-only, so the Play / paste affordances hide off-today.
+          // The home CTA posts to today only — past days are read-only here
+          // (post a past day from the per-game board), so Play / paste hide
+          // off-today.
           showCta={viewingToday && !mg.standings.viewerHasPlayed}
           onPressBody={() => router.push(routes.game(mg.gameId) as Href)}
           {...(onLongPressBody ? { onLongPressBody } : {})}
