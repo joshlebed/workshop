@@ -620,16 +620,30 @@ includes `http://localhost:8081` (Workshop) and `http://localhost:8082` (HighSco
 
 ### Database in the Niteshift sandbox
 
-Local `pnpm dev` uses docker postgres. Niteshift sandbox can use docker OR a per-task Neon
-branch, depending on the repo's Niteshift Database integration (Settings → Repositories →
-`joshlebed/workshop` → Database). When enabled: fresh Neon branch on task start with
-`DATABASE_URL` injected, reused on resume, GC'd on archive. `niteshift-setup.sh` detects
-shape — non-localhost `DATABASE_URL` skips docker. Migrations still run. Dev seed is
-**skipped by default** against remote DBs to avoid smearing fixtures over real data; force
-with `SEED_DEV_DATA=1`.
+**Default: local docker Postgres, hydrated from a `pg_dump` of prod on first boot.** Local
+gives sub-millisecond queries; the prod dump gives prod-shaped data, which the dev seed
+cannot (prod has 17 games with scores across a dozen different share formats, the seed has
+2). Full dump is ~3MB / ~9s, restore is under a second, and it only runs when the local
+database is empty — a resume reuses what's there. `PG_IMAGE` is `postgres:17` to match
+Neon; **pg_dump refuses to dump a server newer than itself**, so bumping prod's major
+version means bumping that image in the same PR.
 
-**PII caveat**: if the parent branch is prod, every sandbox gets a copy of real user data.
-Point at a scrubbed staging branch if that's not OK.
+Override with `WORKSHOP_DB_SOURCE=prod|seed|remote`. `seed` skips the dump and uses the
+fixtures (right for reproducing empty-state bugs); `SEED_DEV_DATA=1` forces the seed on top
+of any source.
+
+An injected remote `DATABASE_URL` (Niteshift's database-branches integration, Settings →
+Repositories → `joshlebed/workshop` → Database) still wins **when it answers** — setup
+probes it with a `select 1` rather than trusting it. That probe exists because a per-task
+Neon branch can be reclaimed underneath a _running_ sandbox: migrations succeed at boot,
+then every later query fails `28P01 password authentication failed` and the app surfaces it
+as "can't sign in". See `docs/recovery-runbook.md`.
+
+**PII caveat**: the dump is a full copy of production, so every sandbox holds real user
+data — same exposure as the Neon prod-fork branches it replaces, but local and ephemeral.
+Hydration is strictly read-only (`pg_dump` only; nothing in setup opens prod for write).
+If that stops being acceptable, add a scrub step to the hydrate path rather than falling
+back to the seed, which would cost the prod-shaped coverage.
 
 ### Dev data seed
 
