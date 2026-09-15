@@ -29,6 +29,8 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { ReportSheet } from "../../moderation/ReportSheet";
+import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
@@ -152,6 +154,7 @@ export default function GameBoard() {
       entries: data.entries.map((e) => (e.userId === scoreUserId ? { ...e, reactions: next } : e)),
     }),
   });
+  const reportFlow = useScoreReportFlow(reactionCtl.closePicker);
 
   if (!gameId) {
     return (
@@ -398,7 +401,20 @@ export default function GameBoard() {
           onPick={reactionCtl.pick}
           onRemove={reactionCtl.removeReaction}
           onClose={reactionCtl.closePicker}
+          onClosed={reportFlow.onPickerClosed}
+          onReport={() => {
+            const t = reactionCtl.target;
+            if (!t) return;
+            reportFlow.requestReport({
+              userId: t.scoreUserId,
+              name: t.name,
+              kind: "score",
+              gameId: t.gameId,
+              periodKey: date,
+            });
+          }}
         />
+        <ReportSheet target={reportFlow.target} token={token} onClose={reportFlow.close} />
       </Screen>
     </KeyboardAvoidingView>
   );

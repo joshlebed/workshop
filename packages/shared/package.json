@@ -18,7 +18,8 @@
     "./itemKinds": "./src/itemKinds.ts",
     "./sourceKinds": "./src/sourceKinds.ts",
     "./modules": "./src/modules.ts",
-    "./templates": "./src/templates.ts"
+    "./templates": "./src/templates.ts",
+    "./moderation": "./src/moderation.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

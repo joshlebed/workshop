@@ -331,6 +331,10 @@ export function GameScorePasteSheet<T extends { title: string }>({
               ) : null}
             </View>
           ) : null}
+          {/* Guideline 5.1.2: say where the score goes before the upload. */}
+          <Text variant="caption" tone="muted" testID="game-paste-consent">
+            Posting uploads this result and shows it to your friends on HighScore.
+          </Text>
           <View style={styles.actions}>
             <Button label="Cancel" variant="ghost" onPress={onClose} disabled={pending} />
             <Button

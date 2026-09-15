@@ -150,6 +150,39 @@ export function buildSourceWebhookNotification(
   };
 }
 
+/**
+ * Tier 3 (safety): a user reported someone's content. Apple's 1.2 guideline
+ * requires the developer to act within 24h, so this ping is the SLA clock —
+ * it always fires, and carries the ids the runbook's eject script needs.
+ */
+export function buildContentReportNotification(
+  reporter: string,
+  target: string,
+  targetId: string,
+  contentKind: string,
+  reason: string,
+  snapshot: string | null,
+): Notification {
+  const what = contentKind === "score" ? "a score post" : "their profile";
+  const quoted = snapshot ? ` — "${snapshot.replace(/\s+/g, " ").slice(0, 120)}"` : "";
+  return {
+    content: `:rotating_light: content report — ${reporter} reported ${target} (${what}, ${reason})${quoted} · target id ${targetId} · act within 24h: docs/moderation-runbook.md`,
+    kind: "content_report",
+  };
+}
+
+/** Tier 3 (safety): a user blocked another. Apple requires the developer be told. */
+export function buildUserBlockedNotification(
+  blocker: string,
+  blocked: string,
+  blockedId: string,
+): Notification {
+  return {
+    content: `:no_entry: user blocked — ${blocker} blocked ${blocked} · blocked id ${blockedId}`,
+    kind: "user_blocked",
+  };
+}
+
 // --- DB label helpers -------------------------------------------------------
 
 /** Resolve a friendly display label for a user id (display name → email → id). */
@@ -299,4 +332,33 @@ export async function notifySourceWebhook(
   addedCount: number,
 ): Promise<void> {
   await safeNotify(async () => buildSourceWebhookNotification(slug, kind, addedCount));
+}
+
+export async function notifyContentReport(
+  reporterId: string,
+  targetId: string,
+  contentKind: string,
+  reason: string,
+  snapshot: string | null,
+): Promise<void> {
+  await safeNotify(async () =>
+    buildContentReportNotification(
+      await loadUserLabel(reporterId),
+      await loadUserLabel(targetId),
+      targetId,
+      contentKind,
+      reason,
+      snapshot,
+    ),
+  );
+}
+
+export async function notifyUserBlocked(blockerId: string, blockedId: string): Promise<void> {
+  await safeNotify(async () =>
+    buildUserBlockedNotification(
+      await loadUserLabel(blockerId),
+      await loadUserLabel(blockedId),
+      blockedId,
+    ),
+  );
 }

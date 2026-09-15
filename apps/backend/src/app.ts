@@ -18,6 +18,7 @@ import { itemAcceptRoutes, listLetterboxdRoutes } from "./routes/v1/letterboxd.j
 import { linkPreviewRoutes } from "./routes/v1/link-preview.js";
 import { listRoutes, publicListRoutes } from "./routes/v1/lists.js";
 import { memberRoutes } from "./routes/v1/members.js";
+import { moderationRoutes } from "./routes/v1/moderation.js";
 import { searchRoutes } from "./routes/v1/search.js";
 import { sourcePreviewRoutes } from "./routes/v1/sources.js";
 import { telemetryRoutes } from "./routes/v1/telemetry.js";
@@ -145,6 +146,7 @@ export function buildApp() {
   app.route("/v1/auth", authRoutes);
   app.route("/v1/users", publicUserRoutes);
   app.route("/v1/users", userRoutes);
+  app.route("/v1", moderationRoutes);
   app.route("/v1", publicListRoutes);
   app.route("/v1/lists", listRoutes);
   app.route("/v1/lists", memberRoutes);

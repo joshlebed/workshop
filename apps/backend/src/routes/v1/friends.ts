@@ -34,6 +34,7 @@ import {
   userGames,
   users,
 } from "../../db/schema.js";
+import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
@@ -374,6 +375,9 @@ friendRoutes.post(
     if (request.inviterId === userId) {
       return err(c, "VALIDATION", "you can't accept your own invite");
     }
+    if (await blockedEitherWay(userId, request.inviterId)) {
+      return err(c, "NOT_FOUND", "invite not found");
+    }
 
     // Reusable link: anyone who opens it can add the inviter, any number of
     // times. The `friendships` edge is the source of truth and the insert is
@@ -482,6 +486,8 @@ friendRoutes.post(
       .where(eq(users.id, targetId))
       .limit(1);
     if (!target) return err(c, "NOT_FOUND", "user not found");
+    // A block in either direction reads as "no such user" (no probing).
+    if (await blockedEitherWay(userId, targetId)) return err(c, "NOT_FOUND", "user not found");
 
     const friendShape = (edgeCreatedAt: Date): FriendSummary => ({
       userId: target.id,
@@ -567,6 +573,7 @@ friendRoutes.post(
       )
       .limit(1);
     if (!pending) return err(c, "NOT_FOUND", "request not found");
+    if (await blockedEitherWay(userId, senderId)) return err(c, "NOT_FOUND", "request not found");
 
     const formed = await addFriendship(senderId, userId);
     await deleteDirectedPending(userId, senderId);
@@ -622,6 +629,7 @@ friendRoutes.get("/mutuals", requireAuth, async (c) => {
   }
 
   const friendSet = new Set(myFriends);
+  const blocked = await blockedIdsFor(userId);
   const db = getDb();
   const edges = await db
     .select({ userLow: friendships.userLow, userHigh: friendships.userHigh })
@@ -636,7 +644,7 @@ friendRoutes.get("/mutuals", requireAuth, async (c) => {
       [e.userHigh, e.userLow],
     ] as const) {
       if (!friendSet.has(mine)) continue;
-      if (other === userId || friendSet.has(other)) continue;
+      if (other === userId || friendSet.has(other) || blocked.has(other)) continue;
       const connectors = connectorsByCandidate.get(other) ?? new Set<string>();
       connectors.add(mine);
       connectorsByCandidate.set(other, connectors);
@@ -703,6 +711,7 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
     .where(eq(users.id, targetId))
     .limit(1);
   if (!target) return err(c, "NOT_FOUND", "user not found");
+  if (await blockedEitherWay(viewerId, targetId)) return err(c, "NOT_FOUND", "user not found");
 
   let relationship: FriendshipState = "none";
   let friendsSince: string | null = null;

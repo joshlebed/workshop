@@ -10,7 +10,7 @@ import { useCallback, useState } from "react";
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
-import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes";
+import { PRIVACY_ROUTE, SUPPORT_ROUTE, TERMS_ROUTE } from "../lib/publicRoutes";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -122,6 +122,15 @@ export function ProfileMenu() {
             onPress={() => {
               setOpen(false);
               router.push(PRIVACY_ROUTE);
+            }}
+          />
+          <Button
+            label="Terms of use"
+            variant="ghost"
+            testID="open-terms"
+            onPress={() => {
+              setOpen(false);
+              router.push(TERMS_ROUTE);
             }}
           />
           <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />

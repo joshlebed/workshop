@@ -44,6 +44,8 @@ import {
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ReportSheet } from "../../moderation/ReportSheet";
+import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
 import {
   addGame,
   createGameShareLink,
@@ -177,6 +179,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       ),
     }),
   });
+  const reportFlow = useScoreReportFlow(reactionCtl.closePicker);
 
   // Friends drive which empty-state variant shows; discovery powers both the
   // friends-but-no-games suggestions and the + sheet's suggestion list. Both
@@ -622,7 +625,20 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         onPick={reactionCtl.pick}
         onRemove={reactionCtl.removeReaction}
         onClose={reactionCtl.closePicker}
+        onClosed={reportFlow.onPickerClosed}
+        onReport={() => {
+          const t = reactionCtl.target;
+          if (!t) return;
+          reportFlow.requestReport({
+            userId: t.scoreUserId,
+            name: t.name,
+            kind: "score",
+            gameId: t.gameId,
+            periodKey: viewDate,
+          });
+        }}
       />
+      <ReportSheet target={reportFlow.target} token={token} onClose={reportFlow.close} />
 
       {/* Card menu — Open game / (admin) Re-teach scoring / Remove. */}
       <Sheet
