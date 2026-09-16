@@ -1,9 +1,12 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
 import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
+import { AppleSignInButton } from "../src/components/AppleSignInButton";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
+import { PRIVACY_ROUTE, TERMS_ROUTE } from "../src/lib/publicRoutes";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 const GOOGLE_CONFIGURED = Boolean(
@@ -13,6 +16,7 @@ const GOOGLE_CONFIGURED = Boolean(
 export default function SignIn() {
   const { signInWithApple, signInWithGoogle, signInDev } = useAuth();
   const apple = useAppleSignIn();
+  const router = useRouter();
   const [busy, setBusy] = useState<"apple" | "google" | "dev" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,15 +67,15 @@ export default function SignIn() {
       </View>
 
       <View style={styles.actions}>
-        <Button
-          testID="sign-in-apple"
-          label="Continue with Apple"
-          variant="secondary"
-          size="lg"
-          loading={busy === "apple"}
-          disabled={busy !== null || !apple.available}
-          onPress={handleApple}
-        />
+        {/* Apple's own button artwork (Guideline 4) — see AppleSignInButton. */}
+        {apple.available ? (
+          <AppleSignInButton
+            testID="sign-in-apple"
+            loading={busy === "apple"}
+            disabled={busy !== null}
+            onPress={handleApple}
+          />
+        ) : null}
         <GoogleSignInButton
           onCredential={handleGoogleCredential}
           onError={(e) => setError(e.message)}
@@ -108,6 +112,34 @@ export default function SignIn() {
             {error}
           </Text>
         ) : null}
+        {/* Guidelines 1.2 + 5.1.2: the terms (no tolerance for abuse) and the
+            privacy policy (scores are uploaded and shown to friends) are
+            presented before sign-in, and both open without a session. */}
+        <Text variant="caption" tone="muted" style={styles.legal} testID="sign-in-legal">
+          By continuing you agree to HighScore's{" "}
+          <Text
+            variant="caption"
+            tone="secondary"
+            style={styles.legalLink}
+            onPress={() => router.push(TERMS_ROUTE)}
+            accessibilityRole="link"
+            testID="sign-in-terms-link"
+          >
+            Terms of Use
+          </Text>{" "}
+          and{" "}
+          <Text
+            variant="caption"
+            tone="secondary"
+            style={styles.legalLink}
+            onPress={() => router.push(PRIVACY_ROUTE)}
+            accessibilityRole="link"
+            testID="sign-in-privacy-link"
+          >
+            Privacy Policy
+          </Text>
+          . Scores you post are shared with your friends on HighScore.
+        </Text>
       </View>
 
       <View style={styles.bottomSpacer} />
@@ -141,6 +173,8 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   error: { textAlign: "center", marginTop: tokens.space.xs },
+  legal: { textAlign: "center", marginTop: tokens.space.md, lineHeight: 18 },
+  legalLink: { textDecorationLine: "underline" },
   help: { textAlign: "center", marginTop: tokens.space.xs },
   divider: {
     flexDirection: "row",

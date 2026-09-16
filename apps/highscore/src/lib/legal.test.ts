@@ -8,6 +8,9 @@ import {
   SUPPORT_INTRO,
   SUPPORT_MAILTO,
   SUPPORT_SECTIONS,
+  TERMS_EFFECTIVE_DATE,
+  TERMS_INTRO,
+  TERMS_SECTIONS,
 } from "./legal";
 
 const flatten = (sections: typeof PRIVACY_SECTIONS) =>
@@ -18,6 +21,7 @@ const flatten = (sections: typeof PRIVACY_SECTIONS) =>
 
 const supportText = `${SUPPORT_INTRO}\n${flatten(SUPPORT_SECTIONS)}`.toLowerCase();
 const privacyText = `${PRIVACY_INTRO}\n${flatten(PRIVACY_SECTIONS)}`.toLowerCase();
+const termsText = `${TERMS_INTRO}\n${flatten(TERMS_SECTIONS)}`.toLowerCase();
 
 describe("support page copy", () => {
   it("points at the address feedback already goes to", () => {
@@ -91,5 +95,31 @@ describe("privacy page copy", () => {
 
   it("does not pass itself off as legal advice", () => {
     expect(PRIVACY_INTRO.toLowerCase()).toContain("not legal advice");
+  });
+});
+
+describe("terms page copy (App Store Review Guideline 1.2)", () => {
+  it("carries an effective date", () => {
+    expect(TERMS_EFFECTIVE_DATE).toMatch(/^[A-Z][a-z]+ \d{1,2}, \d{4}$/);
+  });
+
+  it("states zero tolerance for objectionable content and abusive users", () => {
+    expect(termsText).toContain("no tolerance for objectionable content");
+    expect(termsText).toContain("zero tolerance");
+    expect(termsText).toContain("abus");
+  });
+
+  it("describes the report, block, filter and 24-hour commitments the app ships", () => {
+    for (const phrase of ["report", "block", "filter", "within 24 hours", "ejected"]) {
+      expect(termsText).toContain(phrase);
+    }
+  });
+});
+
+describe("privacy page — score upload consent (Guideline 5.1.2)", () => {
+  it("says scores are uploaded and shown to friends, and never globally", () => {
+    expect(privacyText).toContain("uploads it to highscore's server");
+    expect(privacyText).toContain("no public or global leaderboard");
+    expect(privacyText).toContain("blocks and reports");
   });
 });

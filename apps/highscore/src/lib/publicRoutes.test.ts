@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isPublicRoute, PRIVACY_ROUTE, PUBLIC_ROUTES, SUPPORT_ROUTE } from "./publicRoutes";
+import {
+  isPublicRoute,
+  PRIVACY_ROUTE,
+  PUBLIC_ROUTES,
+  SUPPORT_ROUTE,
+  TERMS_ROUTE,
+} from "./publicRoutes";
 
 const APP_DIR = join(__dirname, "..", "..", "app");
 const readApp = (...parts: string[]) => readFileSync(join(APP_DIR, ...parts), "utf8");
@@ -11,12 +17,14 @@ describe("public routes", () => {
     // Changing either literal breaks a URL registered in App Store Connect.
     expect(SUPPORT_ROUTE).toBe("/support");
     expect(PRIVACY_ROUTE).toBe("/privacy");
-    expect(PUBLIC_ROUTES).toEqual(["/support", "/privacy"]);
+    expect(TERMS_ROUTE).toBe("/terms");
+    expect(PUBLIC_ROUTES).toEqual(["/support", "/privacy", "/terms"]);
   });
 
   it("recognises the public routes, with or without group segments", () => {
     expect(isPublicRoute(["support"])).toBe(true);
     expect(isPublicRoute(["privacy"])).toBe(true);
+    expect(isPublicRoute(["terms"])).toBe(true);
     expect(isPublicRoute(["(tabs)", "privacy"])).toBe(true);
   });
 
@@ -54,9 +62,13 @@ describe("public routes", () => {
     }
   });
 
-  it("links both pages from the signed-in profile menu", () => {
+  it("links all three pages from the signed-in profile menu", () => {
     const menu = readFileSync(join(__dirname, "..", "components", "ProfileMenu.tsx"), "utf8");
-    expect(menu).toContain('import { PRIVACY_ROUTE, SUPPORT_ROUTE } from "../lib/publicRoutes"');
+    expect(menu).toContain(
+      'import { PRIVACY_ROUTE, SUPPORT_ROUTE, TERMS_ROUTE } from "../lib/publicRoutes"',
+    );
+    expect(menu).toContain('label="Terms of use"');
+    expect(menu).toContain("router.push(TERMS_ROUTE)");
     expect(menu).toContain('label="Support"');
     expect(menu).toContain("router.push(SUPPORT_ROUTE)");
     expect(menu).toContain('label="Privacy policy"');

@@ -40,6 +40,10 @@ import {
 } from "../../db/schema.js";
 import { isAdminUser } from "../../lib/admin.js";
 import { getConfig } from "../../lib/config.js";
+import {
+  containsObjectionableContent,
+  OBJECTIONABLE_CONTENT_MESSAGE,
+} from "../../lib/contentFilter.js";
 import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
 import { friendsOf } from "../../lib/friends.js";
 import {
@@ -589,6 +593,10 @@ gameRoutes.put(
 
     const parsed = await parseJsonBody(c, upsertScoreSchema);
     if (!parsed.ok) return parsed.response;
+    // Guideline 1.2: the pasted share text is shown verbatim to friends.
+    if (containsObjectionableContent(parsed.data.scoreRaw)) {
+      return err(c, "VALIDATION", OBJECTIONABLE_CONTENT_MESSAGE, { code: "OBJECTIONABLE_CONTENT" });
+    }
 
     const db = getDb();
     const [game] = await db.select().from(games).where(eq(games.id, gameId.data)).limit(1);

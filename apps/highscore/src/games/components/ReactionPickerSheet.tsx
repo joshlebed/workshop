@@ -18,6 +18,10 @@ export interface ReactionPickerSheetProps {
   onPick: (emoji: string) => void;
   onRemove: () => void;
   onClose: () => void;
+  /** Guideline 1.2: flag this score post. Omitted → no Report row. */
+  onReport?: () => void;
+  /** Forwarded to `Sheet` so a follow-up sheet can chain after the exit animation. */
+  onClosed?: () => void;
 }
 
 export function ReactionPickerSheet({
@@ -27,6 +31,8 @@ export function ReactionPickerSheet({
   onPick,
   onRemove,
   onClose,
+  onReport,
+  onClosed,
 }: ReactionPickerSheetProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -42,7 +48,12 @@ export function ReactionPickerSheet({
   const draftValid = isReactionEmoji(draft);
 
   return (
-    <Sheet visible={visible} onRequestClose={onClose} testID="reaction-picker-sheet">
+    <Sheet
+      visible={visible}
+      onRequestClose={onClose}
+      onClosed={onClosed}
+      testID="reaction-picker-sheet"
+    >
       <View style={styles.header}>
         <Text variant="heading" numberOfLines={1}>
           {targetName ? `React to ${targetName}'s score` : "React to this score"}
@@ -116,6 +127,20 @@ export function ReactionPickerSheet({
           <Text style={styles.removeLabel}>Remove {current}</Text>
         </Pressable>
       ) : null}
+
+      {onReport ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Report this score"
+          onPress={onReport}
+          testID="reaction-report"
+          style={({ pressed }) => [styles.reportRow, pressed && styles.removePressed]}
+        >
+          <Text variant="caption" tone="muted" style={styles.reportLabel}>
+            Report this score…
+          </Text>
+        </Pressable>
+      ) : null}
     </Sheet>
   );
 }
@@ -180,6 +205,14 @@ const styles = StyleSheet.create({
     borderTopColor: tokens.border.subtle,
   },
   removePressed: { backgroundColor: tokens.bg.elevated },
+  reportRow: {
+    marginTop: tokens.space.sm,
+    paddingVertical: tokens.space.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.md,
+  },
+  reportLabel: { textDecorationLine: "underline" },
   removeLabel: {
     color: tokens.status.danger,
     fontSize: tokens.font.size.md,

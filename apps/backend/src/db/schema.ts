@@ -728,6 +728,64 @@ export const friendRequests = pgTable(
   }),
 );
 
+/**
+ * One-directional user blocks (App Store Review Guideline 1.2). `blocker_id`
+ * blocked `blocked_id`. Blocking removes any `friendships` edge and pending
+ * `friend_requests` between the pair (routes/v1/moderation.ts), and every
+ * friend-forming path (send / accept request, accept invite link) refuses
+ * while a block exists in *either* direction, so the pair can never see each
+ * other's scores again until the blocker unblocks.
+ */
+export const userBlocks = pgTable(
+  "user_blocks",
+  {
+    blockerId: uuid("blocker_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    blockedId: uuid("blocked_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.blockerId, t.blockedId] }),
+    blockedIdx: index("user_blocks_blocked_idx").on(t.blockedId),
+  }),
+);
+
+/**
+ * User reports of objectionable content (Guideline 1.2). One row per report;
+ * the operator is pinged in #workshop-admin as each lands and acts within 24h
+ * (see docs/moderation-runbook.md). `content_kind` says what was reported:
+ * `profile` (name / photo) or `score` (a pasted result, located by
+ * `game_id` + `period_key`). Rows outlive the reported content on purpose —
+ * they are the audit trail for the eject decision.
+ */
+export const contentReports = pgTable(
+  "content_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    targetUserId: uuid("target_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    contentKind: text("content_kind").notNull(),
+    gameId: uuid("game_id").references(() => games.id, { onDelete: "set null" }),
+    periodKey: text("period_key"),
+    reason: text("reason").notNull(),
+    details: text("details"),
+    /** Snapshot of the offending text at report time (name or score paste). */
+    contentSnapshot: text("content_snapshot"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => ({
+    targetIdx: index("content_reports_target_idx").on(t.targetUserId, t.createdAt),
+  }),
+);
+
 export const rateLimits = pgTable(
   "rate_limits",
   {
@@ -757,6 +815,8 @@ export type DbListSource = typeof listSources.$inferSelect;
 export type DbGame = typeof games.$inferSelect;
 export type DbFriendship = typeof friendships.$inferSelect;
 export type DbFriendRequest = typeof friendRequests.$inferSelect;
+export type DbUserBlock = typeof userBlocks.$inferSelect;
+export type DbContentReport = typeof contentReports.$inferSelect;
 export type DbUserGame = typeof userGames.$inferSelect;
 export type DbGameScore = typeof gameScores.$inferSelect;
 export type DbGameShareLink = typeof gameShareLinks.$inferSelect;

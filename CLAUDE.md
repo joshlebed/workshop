@@ -159,6 +159,18 @@ from one component tree; shared code lives in `packages/*`. HighScore owns its G
   Every outcome is reported honestly — `revoked` / `nothing_to_revoke` / `unavailable` /
   `failed` — never assumed. Operator setup for the `.p8` key: manual-setup.md §5.
 
+- **HighScore ships UGC safety controls that App Review checks (Guideline 1.2) — keep
+  them working.** Terms (`/terms`, EULA with zero tolerance for abuse) + privacy are
+  linked on the sign-in screen; `lib/contentFilter.ts` rejects slurs in display names and
+  score pastes (400 `OBJECTIONABLE_CONTENT`); `POST /v1/reports` and
+  `POST /v1/users/:id/block` (`routes/v1/moderation.ts`) ping `#workshop-admin`; a
+  block drops the friendship + pending requests and every friend-forming path checks
+  `blockedEitherWay`. **If you add a new way for two users to connect or see each
+  other's content, add the block check there too.** Operator SLA (24h, `admin:eject`) is
+  in `docs/moderation-runbook.md`. HighScore's Sign in with Apple button must stay the
+  system `AppleAuthenticationButton` (`src/components/AppleSignInButton`) — Apple
+  rejects hand-drawn logos (Guideline 4).
+
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:

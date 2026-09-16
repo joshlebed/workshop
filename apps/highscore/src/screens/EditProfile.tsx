@@ -1,13 +1,14 @@
 // HighScore's edit-profile screen. Adapted copy of apps/workshop's — same
 // PATCH /v1/users/me contract, HighScore-owned presentation.
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { blockedUsersQueryKey, fetchBlockedUsers, unblockUser } from "../api/moderation";
 import { useAuth } from "../hooks/useAuth";
 import {
   ACCOUNT_DELETION_CONSEQUENCES,
@@ -155,11 +156,78 @@ export default function EditProfile() {
           style={styles.saveButton}
         />
 
+        <BlockedUsersSection />
         <DeleteAccountSection />
       </KeyboardAwareScrollView>
     </Screen>
   );
 }
+
+/**
+ * Who you've blocked (App Store Review Guideline 1.2), with an Unblock per row.
+ * Unblocking does not restore the friendship — they'd have to be re-added.
+ */
+function BlockedUsersSection() {
+  const { token } = useAuth();
+  const { showToast } = useToast();
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: blockedUsersQueryKey,
+    queryFn: () => fetchBlockedUsers(token),
+    enabled: !!token,
+  });
+  const unblock = useMutation({
+    mutationFn: (userId: string) => unblockUser(userId, token),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: blockedUsersQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["friends"] }),
+      ]);
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't unblock that user."), tone: "danger" });
+    },
+  });
+  const blocked = query.data?.blocked ?? [];
+
+  return (
+    <View style={dangerStyles.section} testID="blocked-users">
+      <View style={dangerStyles.divider} />
+      <Text variant="caption" tone="muted" style={dangerStyles.eyebrow}>
+        Blocked users
+      </Text>
+      {blocked.length === 0 ? (
+        <Text variant="caption" tone="muted">
+          {query.isError
+            ? "Couldn't load your blocked users."
+            : "Nobody blocked. Block someone from their profile and they'll show up here."}
+        </Text>
+      ) : (
+        blocked.map((b) => (
+          <View key={b.userId} style={blockedStyles.row} testID={`blocked-user-${b.userId}`}>
+            <Avatar name={b.displayName} size="sm" />
+            <Text style={blockedStyles.name} numberOfLines={1}>
+              {b.displayName?.trim() || "Someone"}
+            </Text>
+            <Button
+              label="Unblock"
+              variant="secondary"
+              size="md"
+              disabled={unblock.isPending}
+              onPress={() => unblock.mutate(b.userId)}
+              testID={`unblock-${b.userId}`}
+            />
+          </View>
+        ))
+      )}
+    </View>
+  );
+}
+
+const blockedStyles = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  name: { flex: 1, minWidth: 0 },
+});
 
 /**
  * Permanent account deletion, required in-app by App Store Review Guideline

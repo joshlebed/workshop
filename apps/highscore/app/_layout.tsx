@@ -84,7 +84,7 @@ function AuthGate() {
   const segments = rawSegments.filter((segment) => !segment.startsWith("("));
   const router = useRouter();
   const postSignInResolvedRef = useRef(false);
-  // `/support` and `/privacy` are published App Store URLs: they must render
+  // `/support`, `/privacy` and `/terms` are published App Store URLs: they must render
   // for a signed-out visitor, and must survive an unreachable API. Everything
   // auth-shaped below — the redirects and the two interstitials — steps aside
   // for them.
@@ -176,6 +176,7 @@ function AuthGate() {
         <Stack.Screen name="profile" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="support" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="privacy" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="terms" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="onboarding/display-name" />
       </Stack>

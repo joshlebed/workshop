@@ -26,6 +26,8 @@ import {
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { blockUser } from "../../api/moderation";
+import { ReportSheet, type ReportTarget } from "../../moderation/ReportSheet";
 import { addGame } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
@@ -79,6 +81,7 @@ export default function FriendProfileScreen() {
 
   const todayKey = localDateKey();
   const [addingGameIds, setAddingGameIds] = useState<string[]>([]);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   const profileQuery = useQuery({
     queryKey: queryKeys.friends.profile(userId, todayKey),
@@ -161,6 +164,32 @@ export default function FriendProfileScreen() {
       showToast({ message: errorMessage(e, "Couldn't remove that friend."), tone: "danger" });
     },
   });
+
+  // Guideline 1.2: block drops the friendship server-side and hides the pair
+  // from each other's boards; the profile then 404s, so leave the page.
+  const blockMutation = useMutation({
+    mutationFn: () => blockUser(userId, token),
+    onSuccess: async () => {
+      haptics.medium();
+      showToast({ message: `${name} is blocked.`, tone: "success" });
+      await invalidateFriendsAndGames();
+      goBack(routes.friends);
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't block that user."), tone: "danger" });
+    },
+  });
+
+  const onBlock = async () => {
+    const ok = await confirm({
+      title: `Block ${name}?`,
+      message:
+        "They'll be removed from your friends, you'll stop seeing each other's scores right away, and they can't send you friend requests. HighScore is notified. You can unblock from Edit profile.",
+      confirmLabel: "Block",
+      destructive: true,
+    });
+    if (ok) blockMutation.mutate();
+  };
 
   const addGameMutation = useMutation({
     mutationFn: (game: FriendProfileGame) => {
@@ -316,6 +345,39 @@ export default function FriendProfileScreen() {
               />
             ) : null}
 
+            {/* Safety (Guideline 1.2): report this name / photo, or block. */}
+            {isSelf ? null : (
+              <View style={styles.safetyRow} testID="friend-profile-safety">
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Report ${name}`}
+                  onPress={() =>
+                    setReportTarget({ userId, name: profile.user.displayName, kind: "profile" })
+                  }
+                  testID="friend-profile-report"
+                  hitSlop={6}
+                  style={({ pressed }) => [styles.safetyBtn, pressed && styles.safetyBtnPressed]}
+                >
+                  <Text variant="caption" tone="secondary" style={styles.safetyLabel}>
+                    Report
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Block ${name}`}
+                  onPress={onBlock}
+                  disabled={blockMutation.isPending}
+                  testID="friend-profile-block"
+                  hitSlop={6}
+                  style={({ pressed }) => [styles.safetyBtn, pressed && styles.safetyBtnPressed]}
+                >
+                  <Text variant="caption" style={styles.blockLabel}>
+                    {blockMutation.isPending ? "Blocking…" : "Block"}
+                  </Text>
+                </Pressable>
+              </View>
+            )}
+
             {/* Games. */}
             {profile.games === null ? (
               <View style={styles.lockedCard} testID="friend-profile-locked">
@@ -426,6 +488,7 @@ export default function FriendProfileScreen() {
           </>
         )}
       </ScrollView>
+      <ReportSheet target={reportTarget} token={token} onClose={() => setReportTarget(null)} />
     </Screen>
   );
 }
@@ -473,6 +536,20 @@ const styles = StyleSheet.create({
   identityText: { flex: 1, minWidth: 0, gap: 4 },
   actionRow: { flexDirection: "row", gap: tokens.space.md },
   actionFlex: { flex: 1 },
+  safetyRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: tokens.space.lg,
+    marginTop: -tokens.space.sm,
+  },
+  safetyBtn: {
+    paddingVertical: tokens.space.xs,
+    paddingHorizontal: tokens.space.sm,
+    borderRadius: tokens.radius.sm,
+  },
+  safetyBtnPressed: { backgroundColor: tokens.bg.elevated },
+  safetyLabel: { textDecorationLine: "underline" },
+  blockLabel: { color: tokens.status.danger, textDecorationLine: "underline" },
   lockedCard: {
     alignItems: "center",
     gap: tokens.space.sm,

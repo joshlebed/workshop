@@ -22,17 +22,31 @@ matters. `PickGame` re-runs `detectSharedScore` over the live paste-box draft ra
 route params, so a share the iOS sheet stripped to a bare referral URL (`isResultlessShare`) shows a
 "paste your result" prompt that turns into a Post button as soon as the result is typed in.
 
-## Public pages (`/support`, `/privacy`)
+## Public pages (`/support`, `/privacy`, `/terms`)
 
-Both routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and
+All three routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and
 `AuthGate` in `app/_layout.tsx` consults `isPublicRoute` before every redirect **and** before the
 loading / "can't connect" interstitials — a public page has to resolve even when the API is
-unreachable. The two URL literals are registered in App Store Connect (support URL + privacy policy
-URL), so renaming either is a metadata change, not a refactor. Copy lives in `src/lib/legal.ts` and
+unreachable. The first two URL literals are registered in App Store Connect (support URL + privacy policy
+URL) and `/terms` is the EULA the sign-in screen links to (Guideline 1.2), so renaming any is
+a metadata change, not a refactor. Copy lives in `src/lib/legal.ts` and
 is pinned by `legal.test.ts`: every claim there about what HighScore stores, how long it keeps it,
 and what it never does must stay literally true of the shipped app. The screens are thin wrappers
 over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) only claims `/g/*` and
-`/friends/accept/*`, so iOS leaves these two in the browser where a reviewer expects them.
+`/friends/accept/*`, so iOS leaves these in the browser where a reviewer expects them.
+
+## App Review 1.0 (9) rejection fixes — don't regress
+
+- **Guideline 4 (Sign in with Apple artwork):** the Apple button is the system
+  `AppleAuthenticationButton` in `src/components/AppleSignInButton/impl.tsx` (web variant beside
+  it). Never swap it back to the styled `Button` — Apple checks the logo is theirs.
+- **Guideline 5.1.2 (consent before uploading scores):** the sign-in legal line and the paste
+  sheet caption both say scores are uploaded and shown to friends; the privacy page says the same
+  and that there is no global leaderboard. `legal.test.ts` pins those sentences.
+- **Guideline 1.2 (UGC):** `/terms` EULA, Report (profile page + reaction picker row → `ReportSheet`),
+  Block (profile page; unblock in Edit profile → Blocked users). The reaction-picker → report
+  hand-off goes through `useScoreReportFlow` so two Sheets never stack. Backend + operator side:
+  `docs/moderation-runbook.md`.
 
 ## Account deletion
 

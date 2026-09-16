@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetConfigForTesting } from "./config.js";
 import {
+  buildContentReportNotification,
   buildFirstScoreNotification,
   buildFriendRequestSentNotification,
   buildFriendshipFormedNotification,
@@ -12,10 +13,30 @@ import {
   buildScoreSpecTaughtNotification,
   buildSessionsRevokedNotification,
   buildSourceWebhookNotification,
+  buildUserBlockedNotification,
   opsNotificationsEnabled,
 } from "./opsNotifications.js";
 
 describe("ops notification builders", () => {
+  it("content report carries the target id, a trimmed snapshot and the runbook", () => {
+    const n = buildContentReportNotification("Josh", "Troll", "t-id", "score", "abusive", "a\n b");
+    expect(n.kind).toBe("content_report");
+    expect(n.content).toContain("Josh reported Troll (a score post, abusive)");
+    expect(n.content).toContain('"a b"');
+    expect(n.content).toContain("target id t-id");
+    expect(n.content).toContain("moderation-runbook");
+    expect(
+      buildContentReportNotification("A", "B", "id", "profile", "spam", null).content,
+    ).toContain("their profile");
+  });
+
+  it("user blocked names both sides and the blocked id", () => {
+    expect(buildUserBlockedNotification("Josh", "Troll", "t-id")).toEqual({
+      content: ":no_entry: user blocked — Josh blocked Troll · blocked id t-id",
+      kind: "user_blocked",
+    });
+  });
+
   it("friend request sent", () => {
     expect(buildFriendRequestSentNotification("Josh", "Alex")).toEqual({
       content: ":envelope_with_arrow: friend request — Josh → Alex",
