@@ -72,6 +72,20 @@ device family would make App Store Connect require a second screenshot set. Flip
 native change: bump `version` in the same PR, and expect a fresh TestFlight build plus iPad
 screenshots before the next submission.
 
+## Photo-library purpose string
+
+`expo-image-picker` is an Expo auto-plugin, so leaving it out of `app.json` `plugins` still
+ships a working picker — with the generic "Allow HighScore to access your photos" string, which
+App Review can flag under 5.1.1(ii). The explicit `photosPermission` entry in `app.json` is the
+one that describes the use (profile picture). Camera/microphone are `false` on purpose; the
+picker never opens them. Any change here is a native change: bump `version`.
+
+## Share while signed out
+
+`useShareIntentRedirect` returns whether a payload is pending and `AuthGate`'s post-sign-in
+resolver skips its `router.replace("/")` while it is — otherwise the async home redirect lands
+after the `/share/pick-game` one and the shared score is silently discarded.
+
 ## Reorder activation vs. taps (Games home)
 
 Every Games-home card is both a drag handle and a stack of tap targets, and once a drag

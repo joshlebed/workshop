@@ -2,7 +2,7 @@
   "expo": {
     "name": "HighScore",
     "slug": "highscore",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -49,6 +49,14 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HighScore uses your photo library only to let you pick a profile picture, which your friends see next to your scores.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
       [
         "expo-share-intent",
         {
