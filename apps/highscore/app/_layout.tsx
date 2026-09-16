@@ -56,7 +56,14 @@ function GamesRuntimeBridge({ children }: { children: ReactNode }) {
   return <GamesRuntimeProvider value={value}>{children}</GamesRuntimeProvider>;
 }
 
-function useShareIntentRedirect(status: ReturnType<typeof useAuth>["status"]) {
+/**
+ * Routes an iOS share-sheet payload to `/share/pick-game` once there's a
+ * session. Returns whether a payload is still pending so `AuthGate`'s
+ * post-sign-in resolver can step aside — otherwise its async
+ * `router.replace("/")` lands after this redirect and silently discards a
+ * score shared while signed out.
+ */
+function useShareIntentRedirect(status: ReturnType<typeof useAuth>["status"]): boolean {
   const router = useRouter();
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
   useEffect(() => {
@@ -71,11 +78,12 @@ function useShareIntentRedirect(status: ReturnType<typeof useAuth>["status"]) {
     router.replace(`/share/pick-game?${query}` as Href);
     resetShareIntent();
   }, [hasShareIntent, resetShareIntent, router, shareIntent, status]);
+  return hasShareIntent;
 }
 
 function AuthGate() {
   const { status, refresh } = useAuth();
-  useShareIntentRedirect(status);
+  const shareIntentPending = useShareIntentRedirect(status);
   // Widen to `string[]` so index access typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
   // generated in CI. Group segments (`(tabs)`) are stripped so the route
@@ -111,6 +119,9 @@ function AuthGate() {
     }
     if ((!onSignIn && !onOnboarding) || postSignInResolvedRef.current) return;
     postSignInResolvedRef.current = true;
+    // A share payload is already being routed by `useShareIntentRedirect`
+    // (same commit, declared first). Don't race it with a home redirect.
+    if (shareIntentPending) return;
     void (async () => {
       const friendToken = await getItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => null);
       if (friendToken) {
@@ -124,7 +135,7 @@ function AuthGate() {
       }
       router.replace("/");
     })();
-  }, [status, segments, router, onPublicRoute]);
+  }, [status, segments, router, onPublicRoute, shareIntentPending]);
 
   if (status === "loading" && !onPublicRoute) {
     return (
