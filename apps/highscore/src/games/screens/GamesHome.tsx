@@ -59,12 +59,13 @@ import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
-import { localDateKey } from "../lib/gameDate";
+import { daysBack, localDateKey } from "../lib/gameDate";
 import { neighborsForOrderedReorder } from "../lib/reorder";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
 import { useGamesRuntime } from "../runtime";
+import { useViewDay } from "../state/viewDay";
 import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
 import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
@@ -105,9 +106,14 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 
   // The day rail re-dates every card's standings. Scores can only be POSTED
   // to today's bucket, so the play→paste loop below stays pinned to
-  // `todayKey`; only the displayed standings follow `viewDate`.
-  const [viewDate, setViewDate] = useState(todayKey);
+  // `todayKey`; only the displayed standings follow `viewDate`. The selection
+  // is shared with each game board (see state/viewDay.tsx) so the day sticks
+  // across home ↔ board navigation.
+  const { viewDate, setViewDate } = useViewDay();
   const viewingToday = viewDate === todayKey;
+  // A board's "Earlier" chip can select a day beyond our 7-day rail; grow the
+  // rail to keep the shared selection visible.
+  const railLength = Math.max(7, daysBack(viewDate, todayKey) + 1);
 
   const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
@@ -553,6 +559,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
                 selectedDate={viewDate}
                 today={todayKey}
                 onSelectDate={setViewDate}
+                length={railLength}
                 testIDPrefix="games-day"
                 horizontalInset={homeLayout.horizontalInset}
               />

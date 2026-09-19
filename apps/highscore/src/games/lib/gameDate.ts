@@ -24,6 +24,24 @@ export function shiftDateKey(date: string, delta: number): string {
 }
 
 /**
+ * How many calendar days `date` sits behind `today` (0 = today, 1 =
+ * yesterday). Future or malformed dates return 0 so callers can treat the
+ * result as a safe rail offset.
+ */
+export function daysBack(date: string, today: string): number {
+  const parse = (key: string): number | null => {
+    const [y, m, d] = key.split("-").map(Number);
+    if (!y || !m || !d) return null;
+    return new Date(y, m - 1, d).getTime();
+  };
+  const from = parse(date);
+  const to = parse(today);
+  if (from == null || to == null) return 0;
+  const diff = Math.round((to - from) / 86_400_000);
+  return diff > 0 ? diff : 0;
+}
+
+/**
  * Human-friendly label for a date relative to today. Returns "Today",
  * "Yesterday", or a longer locale-aware date for older days. Used in the
  * game-detail screen's date strip.

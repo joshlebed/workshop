@@ -25,6 +25,12 @@ export interface DayRailProps {
   testIDPrefix?: string;
   /** Edge padding so chips align with the host screen's content inset. */
   horizontalInset?: number;
+  /**
+   * When set, an "Earlier" chip trails the last day; tapping it asks the
+   * parent to grow `length`. Lets history-focused hosts page past the default
+   * week without rendering an unbounded rail up front.
+   */
+  onExtend?: () => void;
 }
 
 export function DayRail({
@@ -34,6 +40,7 @@ export function DayRail({
   length = DEFAULT_LENGTH,
   testIDPrefix = "day",
   horizontalInset = tokens.space.xl,
+  onExtend,
 }: DayRailProps) {
   const days: { key: string; label: string }[] = [];
   for (let i = 0; i < length; i++) {
@@ -68,6 +75,19 @@ export function DayRail({
           </Pressable>
         );
       })}
+      {onExtend ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Show earlier days"
+          onPress={onExtend}
+          testID={`${testIDPrefix}-earlier`}
+          style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+        >
+          <Text variant="label" style={styles.chipText}>
+            Earlier
+          </Text>
+        </Pressable>
+      ) : null}
     </ScrollView>
   );
 }

@@ -16,6 +16,7 @@ import {
   PENDING_GAME_SHARE_TOKEN_KEY,
 } from "../src/games/lib/inviteStash";
 import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
+import { ViewDayProvider } from "../src/games/state/viewDay";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
@@ -204,7 +205,9 @@ export default function RootLayout() {
               <ToastProvider>
                 <AuthProvider>
                   <GamesRuntimeBridge>
-                    <AuthGate />
+                    <ViewDayProvider>
+                      <AuthGate />
+                    </ViewDayProvider>
                   </GamesRuntimeBridge>
                 </AuthProvider>
               </ToastProvider>

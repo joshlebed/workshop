@@ -1,5 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatGameDateLabel, localDateKey, shiftDateKey } from "./gameDate";
+import { daysBack, formatGameDateLabel, localDateKey, shiftDateKey } from "./gameDate";
+
+describe("daysBack", () => {
+  it("returns 0 for today", () => {
+    expect(daysBack("2026-05-15", "2026-05-15")).toBe(0);
+  });
+
+  it("returns 1 for yesterday", () => {
+    expect(daysBack("2026-05-14", "2026-05-15")).toBe(1);
+  });
+
+  it("counts across month boundaries", () => {
+    expect(daysBack("2026-02-28", "2026-03-02")).toBe(2);
+  });
+
+  it("clamps future dates to 0", () => {
+    expect(daysBack("2026-05-16", "2026-05-15")).toBe(0);
+  });
+
+  it("returns 0 for malformed input", () => {
+    expect(daysBack("not-a-date", "2026-05-15")).toBe(0);
+  });
+});
 
 describe("localDateKey", () => {
   it("formats a local date as YYYY-MM-DD", () => {

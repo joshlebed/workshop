@@ -3,6 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
+import { STREAK_MIN_DAYS } from "@workshop/shared/games";
 import {
   Avatar,
   Button,
@@ -29,25 +30,38 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
+import {
+  clearGameScore,
+  fetchGameLeaderboard,
+  fetchMyGames,
+  setGameScoreSpec,
+  upsertGameScore,
+} from "../api/games";
 import { DayRail } from "../components/DayRail";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { ScoreReactions } from "../components/ScoreReactions";
+import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
-import { formatGameDateLabel, localDateKey } from "../lib/gameDate";
+import { daysBack, formatGameDateLabel, localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
+import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { useGamesRuntime } from "../runtime";
+import { useViewDay } from "../state/viewDay";
+import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
 
 /**
  * Per-game board (G1b) — history for one game in My Games. The home card
  * owns today's standings; this screen is for paging back through past days
- * (DayRail) plus a paste slot so today is still postable from here.
+ * (DayRail) plus the same play→paste loop home has, so today is still
+ * postable from here.
  *
- * Spec rules (mirrors the Lists game-detail screen):
+ * Spec rules (mirrors the home cards):
  *   - Pasted scores always upload to *today's* bucket regardless of which
  *     day the board is showing.
  *   - Going past today on the day rail isn't offered.
+ *   - The selected day is shared with home (state/viewDay.tsx): arrive on the
+ *     day home was showing, and leave home on the day you paged to here.
  */
 export default function GameBoard() {
   const params = useLocalSearchParams<{ id: string }>();
@@ -57,9 +71,13 @@ export default function GameBoard() {
   const { showToast } = useToast();
 
   const today = localDateKey();
-  const [date, setDate] = useState(today);
+  const { viewDate: date, setViewDate } = useViewDay();
   const [draft, setDraft] = useState("");
   const [editingScore, setEditingScore] = useState(false);
+  // "Earlier" pages the rail back a week at a time; the rail also grows to
+  // cover a selection inherited from home (never shrinks below it).
+  const [railPages, setRailPages] = useState(1);
+  const railLength = Math.max(railPages * 7, daysBack(date, today) + 1);
 
   // The catalog row (title / URL) comes from the My Games query — there's no
   // standalone `GET /v1/games/:id`. Navigation always arrives from the home
@@ -78,15 +96,41 @@ export default function GameBoard() {
     enabled: !!token && !!gameId,
   });
 
+  // Play-then-paste loop — same machinery as home, but its own scope: the
+  // home instance stays mounted underneath this pushed screen, and two
+  // instances prompting on one pending play would stack two Modals (iOS
+  // wedge, see CLAUDE.md). A play armed here prompts here; one armed on home
+  // prompts on home.
+  const { promptItemId, markPlaying, openPasteFor, dismiss } = useReturnToPaste({
+    todayKey: today,
+    // Another board's pending play isn't ours to drop — report "no score" so
+    // the pending survives until that game's board (same scope) picks it up.
+    hasScoreForItem: (itemId) =>
+      itemId === gameId ? (myGame?.standings.viewerHasPlayed ?? false) : false,
+    scope: "games-board",
+  });
+  const pasteTarget: Game | null = (promptItemId === gameId ? game : null) ?? null;
+
   const upsertMutation = useMutation({
-    mutationFn: ({ scoreRaw }: { scoreRaw: string; isEdit: boolean }) => {
+    // `taught` (the tap-the-score flow, see GameScorePasteSheet) stores the
+    // learned parser on the game first, so this very post parses with it.
+    mutationFn: async ({
+      scoreRaw,
+      taught,
+    }: {
+      scoreRaw: string;
+      isEdit: boolean;
+      taught?: TaughtScoreSpec;
+    }) => {
       if (!gameId) throw new Error("missing game id");
+      if (taught) await setGameScoreSpec(gameId, taught, token);
       return upsertGameScore(gameId, { periodKey: today, scoreRaw }, token);
     },
     onSuccess: async (_data, variables) => {
       haptics.medium();
       setDraft("");
       setEditingScore(false);
+      dismiss();
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: queryKeys.games.leaderboard(gameId ?? "", today),
@@ -188,30 +232,22 @@ export default function GameBoard() {
   const myEntry = entries.find((e) => e.userId === user?.id);
   const otherEntries = entries.filter((e) => e.userId !== user?.id);
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
-  // The composer owns the my-slot when posting a first result OR editing an
-  // existing one. Both only make sense on today (scores always upload to
-  // today's bucket), so past days fall through to the read-only row.
-  const showComposer = isToday && (!myScore || editingScore);
-  const composerMode: "new" | "edit" = myScore ? "edit" : "new";
-  const host = (() => {
-    if (!game.url) return null;
-    try {
-      return new URL(game.url).host.replace(/^www\./, "");
-    } catch {
-      return game.url;
-    }
-  })();
+  const streak = myGame?.standings.viewerStreak ?? 0;
+  // One line says where you are and how busy the day was — the rail's
+  // selected chip already restates the day, so keep this quiet.
+  const turnout =
+    entries.length === 0 ? (isToday ? "No plays yet" : "No plays") : `${entries.length} played`;
 
   const onDate = (key: string) => {
-    setDate(key);
+    setViewDate(key);
     setDraft("");
     setEditingScore(false);
   };
 
-  const onSubmit = () => {
+  const onSubmitEdit = () => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    upsertMutation.mutate({ scoreRaw: trimmed, isEdit: editingScore });
+    upsertMutation.mutate({ scoreRaw: trimmed, isEdit: true });
   };
 
   return (
@@ -220,6 +256,8 @@ export default function GameBoard() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Screen testID="game-board">
+        {/* Compact header: back · icon · title (+streak) · open-game. Pinned,
+            like home's header — the day rail below never scrolls away. */}
         <View style={styles.headerNav}>
           <Pressable
             accessibilityRole="button"
@@ -231,6 +269,57 @@ export default function GameBoard() {
           >
             <Text style={styles.navGlyph}>‹</Text>
           </Pressable>
+          {game.iconUrl ? (
+            <Image
+              source={{ uri: game.iconUrl }}
+              style={styles.titleBadge}
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
+              <Text style={styles.titleBadgeGlyph}>🎮</Text>
+            </View>
+          )}
+          <View style={styles.titleText}>
+            <Text variant="heading" numberOfLines={1} style={styles.titleName}>
+              {game.title}
+            </Text>
+          </View>
+          {streak >= STREAK_MIN_DAYS ? (
+            <View style={styles.streak} testID="game-board-streak">
+              <Text style={styles.streakFlame}>🔥</Text>
+              <Text style={styles.streakCount}>{streak}</Text>
+            </View>
+          ) : null}
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Open ${game.title} in your browser`}
+            onPress={() => openExternalUrl(game.url)}
+            testID="game-board-title-link"
+            hitSlop={6}
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+          >
+            <Text style={styles.titleOpenGlyph}>↗</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.dayRail}>
+          <DayRail
+            selectedDate={date}
+            today={today}
+            onSelectDate={onDate}
+            length={railLength}
+            onExtend={() => setRailPages((p) => p + 1)}
+            testIDPrefix="game-board-day"
+          />
+        </View>
+
+        <View style={styles.dayHeader}>
+          <Text variant="caption" tone="muted" testID="game-board-turnout">
+            {boardQuery.isPending
+              ? formatGameDateLabel(date, today)
+              : `${formatGameDateLabel(date, today)} · ${turnout}`}
+          </Text>
         </View>
 
         <ScrollView
@@ -238,62 +327,6 @@ export default function GameBoard() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={`Open ${game.title}`}
-            accessibilityHint="Opens the game in your browser"
-            onPress={() => openExternalUrl(game.url)}
-            testID="game-board-title-link"
-            style={({ pressed }) => [styles.titleBlock, pressed && styles.titleBlockPressed]}
-          >
-            {game.iconUrl ? (
-              <Image
-                source={{ uri: game.iconUrl }}
-                style={styles.titleBadge}
-                accessibilityIgnoresInvertColors
-              />
-            ) : (
-              <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
-                <Text style={styles.titleBadgeGlyph}>🎮</Text>
-              </View>
-            )}
-            <View style={styles.titleText}>
-              <Text variant="title" numberOfLines={2} style={styles.titleName}>
-                {game.title}
-              </Text>
-              {host ? (
-                <Text variant="caption" tone="secondary" numberOfLines={1}>
-                  {host}
-                </Text>
-              ) : null}
-            </View>
-            <View style={styles.titleOpenAffordance}>
-              <Text style={styles.titleOpenGlyph}>↗</Text>
-            </View>
-          </Pressable>
-
-          <DayRail
-            selectedDate={date}
-            today={today}
-            onSelectDate={onDate}
-            testIDPrefix="game-board-day"
-          />
-
-          <View style={styles.dayHeader}>
-            <Text variant="heading" style={styles.dayTitle}>
-              {formatGameDateLabel(date, today)}
-            </Text>
-            {boardQuery.isPending ? null : (
-              <Text variant="caption" tone="muted">
-                {entries.length === 0
-                  ? isToday
-                    ? "No plays yet."
-                    : "No plays."
-                  : `${entries.length} played`}
-              </Text>
-            )}
-          </View>
-
           {boardQuery.isPending ? (
             <View style={styles.center}>
               <ActivityIndicator color={tokens.accent.default} />
@@ -316,24 +349,10 @@ export default function GameBoard() {
             </View>
           ) : (
             <View style={styles.leaderboard}>
-              {/* My slot is always at the top: the paste composer on today,
-                  my filled entry, or a quiet "didn't play" line on past days. */}
-              {showComposer ? (
-                <ScoreComposer
-                  mode={composerMode}
-                  draft={draft}
-                  baseline={myScore ?? ""}
-                  onChangeDraft={setDraft}
-                  onSubmit={onSubmit}
-                  onCancel={() => {
-                    setDraft("");
-                    setEditingScore(false);
-                  }}
-                  pending={upsertMutation.isPending}
-                  userName={user?.displayName ?? null}
-                  userAvatarUrl={user?.avatarUrl ?? null}
-                />
-              ) : myEntry ? (
+              {/* My slot is always at the top: my filled entry (with in-place
+                  edit), the play CTA on an unplayed today, or a quiet "didn't
+                  play" line on past days. */}
+              {myEntry && !(isToday && editingScore) ? (
                 <EntryRow
                   entry={myEntry}
                   game={game}
@@ -360,6 +379,49 @@ export default function GameBoard() {
                       : undefined
                   }
                 />
+              ) : isToday && editingScore ? (
+                <ScoreComposer
+                  draft={draft}
+                  baseline={myScore ?? ""}
+                  onChangeDraft={setDraft}
+                  onSubmit={onSubmitEdit}
+                  onCancel={() => {
+                    setDraft("");
+                    setEditingScore(false);
+                  }}
+                  pending={upsertMutation.isPending}
+                  userName={user?.displayName ?? null}
+                  userAvatarUrl={user?.avatarUrl ?? null}
+                />
+              ) : isToday ? (
+                <View style={[styles.entry, styles.entryMe]} testID="game-board-play-cta">
+                  <View style={styles.entryHeader}>
+                    <Avatar name={user?.displayName ?? null} imageUrl={user?.avatarUrl} size="md" />
+                    <View style={styles.entryNameWrap}>
+                      <Text variant="label" style={styles.entryName}>
+                        {user?.displayName?.trim() || "You"}
+                      </Text>
+                      <Text variant="caption" tone="muted">
+                        You haven't played yet
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.playCtaActions}>
+                    <Button
+                      label="Paste result"
+                      variant="secondary"
+                      size="md"
+                      onPress={() => openPasteFor({ id: gameId, url: game.url })}
+                      testID="game-board-paste-open"
+                    />
+                    <Button
+                      label="Play"
+                      size="md"
+                      onPress={() => markPlaying({ id: gameId, url: game.url })}
+                      testID="game-board-play"
+                    />
+                  </View>
+                </View>
               ) : (
                 <View style={styles.unplayedRow} testID="game-board-my-unplayed">
                   <Avatar
@@ -391,6 +453,22 @@ export default function GameBoard() {
             </View>
           )}
         </ScrollView>
+
+        <GameScorePasteSheet
+          item={pasteTarget}
+          userName={user?.displayName ?? null}
+          userAvatarUrl={user?.avatarUrl ?? null}
+          pending={upsertMutation.isPending}
+          spec={pasteTarget ? specForGame(pasteTarget) : null}
+          // Same gate as home: admins may re-teach a parsing game; everyone
+          // gets the teach chips on a game's first paste (no spec yet).
+          canReteach={!!user?.isAdmin && pasteTarget != null && isGameReteachable(pasteTarget)}
+          onTeach={(_game, scoreRaw, taught) =>
+            upsertMutation.mutate({ scoreRaw, isEdit: false, taught })
+          }
+          onSubmit={(_game, scoreRaw) => upsertMutation.mutate({ scoreRaw, isEdit: false })}
+          onClose={dismiss}
+        />
 
         <ReactionPickerSheet
           visible={!!reactionCtl.target}
@@ -522,7 +600,6 @@ function EntryRow({
 }
 
 interface ScoreComposerProps {
-  mode: "new" | "edit";
   draft: string;
   baseline: string;
   onChangeDraft: (v: string) => void;
@@ -533,12 +610,11 @@ interface ScoreComposerProps {
   userAvatarUrl?: string | null;
 }
 
-// The my-slot in compose mode — posting a first result ("new") or fixing a
-// botched paste in place ("edit"). Edit pre-fills the field and disables Save
-// until the text actually changes. Clearing a posted score lives on the row's
-// Edit/Clear pair (DELETE /v1/games/:id/scores/:periodKey), not in here.
+// The my-slot in edit mode — fixing a botched paste in place. Pre-fills the
+// field and disables Save until the text actually changes. First-time posts
+// go through GameScorePasteSheet (Play CTA above), which carries the parse
+// preview and teach flow; clearing lives on the row's Edit/Clear pair.
 function ScoreComposer({
-  mode,
   draft,
   baseline,
   onChangeDraft,
@@ -548,10 +624,9 @@ function ScoreComposer({
   userName,
   userAvatarUrl,
 }: ScoreComposerProps) {
-  const isEdit = mode === "edit";
   const trimmed = draft.trim();
   const empty = trimmed.length === 0;
-  const unchanged = isEdit && trimmed === baseline.trim();
+  const unchanged = trimmed === baseline.trim();
   const canSubmit = !empty && !unchanged && !pending;
   // On web, Enter posts — results arrive via paste, so a newline keystroke is
   // almost never intentional (Shift+Enter still inserts one). RN-Web's
@@ -580,7 +655,7 @@ function ScoreComposer({
             </View>
           </View>
           <Text variant="caption" tone="muted">
-            {isEdit ? "Edit your result" : "Paste your result to play"}
+            Edit your result
           </Text>
         </View>
       </View>
@@ -591,24 +666,22 @@ function ScoreComposer({
         placeholder={"Paste your result here"}
         placeholderTextColor={tokens.text.muted}
         multiline
-        autoFocus={isEdit}
+        autoFocus
         maxLength={2000}
         style={styles.pasteInput}
         {...webProps}
       />
       <View style={styles.pasteActions}>
-        {isEdit ? (
-          <Button
-            label="Cancel"
-            variant="secondary"
-            size="md"
-            onPress={onCancel}
-            disabled={pending}
-            testID="game-board-edit-cancel"
-          />
-        ) : null}
         <Button
-          label={isEdit ? "Save" : "Post score"}
+          label="Cancel"
+          variant="secondary"
+          size="md"
+          onPress={onCancel}
+          disabled={pending}
+          testID="game-board-edit-cancel"
+        />
+        <Button
+          label="Save"
           size="md"
           onPress={onSubmit}
           disabled={!canSubmit}
@@ -625,8 +698,10 @@ const styles = StyleSheet.create({
   headerNav: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
+    gap: tokens.space.sm,
+    paddingLeft: tokens.space.sm,
+    paddingRight: tokens.space.md,
+    paddingBottom: tokens.space.md,
   },
   navButton: {
     width: 40,
@@ -638,47 +713,48 @@ const styles = StyleSheet.create({
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
   navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   body: {
+    paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl * 2,
-    gap: tokens.space.lg,
   },
-  titleBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.md,
-    marginHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.lg,
-  },
-  titleBlockPressed: { backgroundColor: tokens.bg.surface },
   titleBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.elevated,
-  },
-  titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
-  titleBadgeGlyph: { fontSize: 28, lineHeight: 32 },
-  titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.5, fontSize: 28, lineHeight: 32 },
-  titleOpenAffordance: {
     width: 32,
     height: 32,
     borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
   },
+  titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
+  // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
+  // glyph to the inherited line box otherwise (see app CLAUDE.md).
+  titleBadgeGlyph: { fontSize: 18, lineHeight: 22 },
+  titleText: { flex: 1, minWidth: 0 },
+  titleName: { letterSpacing: -0.3 },
   titleOpenGlyph: {
     color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
+    fontSize: tokens.font.size.lg,
+    lineHeight: tokens.font.size.lg + 2,
   },
-  dayHeader: {
-    paddingHorizontal: tokens.space.xl,
-    gap: 2,
+  // Streak pill mirrors the home card's (StandingsCard) so the flame reads as
+  // the same signal on both surfaces; static here — Play lives in the my-slot.
+  streak: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: `${tokens.accent.default}1F`,
   },
-  dayTitle: { letterSpacing: -0.2 },
+  streakFlame: { fontSize: 12, lineHeight: 16 },
+  streakCount: {
+    fontSize: tokens.font.size.xs,
+    lineHeight: 16,
+    fontWeight: tokens.font.weight.bold,
+    color: tokens.accent.default,
+    fontVariant: ["tabular-nums"],
+  },
+  dayRail: { paddingBottom: tokens.space.sm },
+  dayHeader: { paddingHorizontal: tokens.space.xl },
   helper: {
     paddingVertical: tokens.space.lg,
     textAlign: "center",
@@ -715,6 +791,12 @@ const styles = StyleSheet.create({
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  playCtaActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: tokens.space.sm,
+  },
   scoreActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   scoreActionButton: {
     paddingHorizontal: tokens.space.sm,
