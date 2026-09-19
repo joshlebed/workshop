@@ -126,3 +126,19 @@ describe("global onError handler", () => {
     expect(body.details?.requestId?.length).toBeGreaterThan(0);
   });
 });
+
+describe("anonymous /v1 routes", () => {
+  beforeEach(setEnv);
+
+  // Regression: a router mounted at `/v1` with `use("*", requireAuth)` gates
+  // every anonymous route registered after it. Crawler-facing routes must
+  // reach their own handler (here: slug validation → 404), never a 401.
+  it.each([
+    "/v1/game-share/not-a-valid-slug!",
+    "/v1/lists/by-slug/not-a-valid-slug!/preview",
+    "/v1/friends/requests/not-a-valid-slug!",
+  ])("does not demand a bearer token for GET %s", async (path) => {
+    const res = await buildApp().request(path, { method: "GET" });
+    expect(res.status).not.toBe(401);
+  });
+});

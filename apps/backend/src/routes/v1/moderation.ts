@@ -50,12 +50,15 @@ const createReportSchema = z
   });
 
 export const moderationRoutes = new Hono();
-moderationRoutes.use("*", requireAuth);
+// Mounted at `/v1` (app.ts), so a blanket `use("*", requireAuth)` here would
+// also gate every anonymous `/v1` route registered after it (share-link
+// previews, game-share resolve, webhooks). Attach auth per route instead.
 
 // --- POST /v1/users/:id/block ---
 
 moderationRoutes.post(
   "/users/:id/block",
+  requireAuth,
   rateLimit({
     family: "v1.users.block",
     limit: 60,
@@ -106,7 +109,7 @@ moderationRoutes.post(
 
 // --- DELETE /v1/users/:id/block — unblock (friendship is NOT restored) ---
 
-moderationRoutes.delete("/users/:id/block", async (c) => {
+moderationRoutes.delete("/users/:id/block", requireAuth, async (c) => {
   const userId = c.get("userId");
   const target = uuidSchema.safeParse(c.req.param("id"));
   if (!target.success) return err(c, "NOT_FOUND", "user not found");
@@ -118,7 +121,7 @@ moderationRoutes.delete("/users/:id/block", async (c) => {
 
 // --- GET /v1/users/me/blocks — who I've blocked, newest first ---
 
-moderationRoutes.get("/users/me/blocks", async (c) => {
+moderationRoutes.get("/users/me/blocks", requireAuth, async (c) => {
   const userId = c.get("userId");
   const rows = await getDb()
     .select({
@@ -144,6 +147,7 @@ moderationRoutes.get("/users/me/blocks", async (c) => {
 
 moderationRoutes.post(
   "/reports",
+  requireAuth,
   rateLimit({
     family: "v1.reports.create",
     limit: 30,

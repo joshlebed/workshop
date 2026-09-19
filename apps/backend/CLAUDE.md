@@ -8,7 +8,12 @@ Hono app. Runs both as a Lambda handler (`src/lambda.ts`) and a local Node serve
 1. Handler at `src/routes/<area>.ts`.
 2. Mount in `src/app.ts` (`app.route("/area", areaRoutes)`).
 3. If auth is required, put `app.use("*", requireAuth)` at the top of the sub-router
-   (see `routes/watchlist.ts`).
+   (see `routes/watchlist.ts`) — **only if the router is mounted under its own prefix**.
+   A router mounted at bare `/v1` (`moderationRoutes`, `publicListRoutes`, `webhookRoutes`,
+   `inviteRoutes`) shares that prefix with every router registered after it, so a blanket
+   `use("*", requireAuth)` there 401s the anonymous crawler routes too (share-link previews,
+   `/v1/game-share/:token`, webhooks). Attach `requireAuth` per route on `/v1` routers;
+   `app.test.ts` ("anonymous /v1 routes") pins this.
 4. If request/response types are shared with the client, add them to
    `packages/shared/src/types.ts`.
 5. Add a vitest beside the file if the logic is non-trivial.

@@ -6,6 +6,7 @@ import {
   buildFriendOgImageHtml,
   buildGameShareMetaTags,
   buildGameShareOgImageHtml,
+  buildGameShareThumbnailTitle,
   buildMetaTagsRaw,
   HIGH_SCORE_OG_DESCRIPTION,
   HIGH_SCORE_OG_TITLE,
@@ -52,11 +53,37 @@ describe("HighScore Open Graph helpers", () => {
       { sharerName: "Alex" },
       "https://highscore.live/icon-source.png",
     );
-    expect(tags).toContain("Play games with Alex on HighScore");
+    expect(tags).toContain('og:title" content="Play daily games on HighScore"');
+    expect(tags).toContain("Alex is playing daily games on HighScore");
     expect(tags).not.toContain("Workshop.dev");
-    expect(image).toContain("Join me and play games on HighScore");
+    expect(image).toContain("Play daily games with Alex");
     expect(image).toContain(`width: ${OG_IMAGE_WIDTH}px`);
     expect(image).toContain(`height: ${OG_IMAGE_HEIGHT}px`);
+  });
+
+  it("renders the play-link card as app icon + one first-name line, no subtitle", () => {
+    const image = buildGameShareOgImageHtml(
+      { sharerName: "Josh Lebedinsky" },
+      "https://highscore.live/icon-source.png",
+    );
+    expect(image).toContain('data-brand-icon="highscore"');
+    expect(image).not.toContain("🎮");
+    expect(image).toContain(">Play daily games with Josh<");
+    expect(image).not.toContain("Lebedinsky");
+    expect(image).toContain("font-size: 56px");
+    // Exactly one text line: the 36px subtitle row is gone.
+    expect(image).not.toContain("font-size: 36px");
+    expect(image).not.toContain("Join me");
+
+    const anonymous = buildGameShareOgImageHtml(null, "https://highscore.live/icon-source.png");
+    expect(anonymous).toContain(">Play daily games on HighScore<");
+    expect(anonymous).not.toContain("font-size: 36px");
+    expect(buildGameShareThumbnailTitle({ sharerName: "  " })).toBe(
+      "Play daily games on HighScore",
+    );
+    expect(buildGameShareThumbnailTitle({ sharerName: "Bartholomew-Christopherson Q" })).toBe(
+      "Play daily games with Bartholomew-Christo…",
+    );
   });
 
   it("rebrands friend-invite tags and artwork", () => {
