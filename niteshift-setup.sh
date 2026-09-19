@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Niteshift setup for joshlebed/workshop
-# - If the sandbox has a remote DATABASE_URL injected (e.g. a Neon branch from
-#   Niteshift's database-branches integration), use it directly and skip the
-#   local docker postgres. Otherwise start PostgreSQL 16 in a docker container
-#   using host networking (Niteshift DinD bridge networking is broken, so
-#   --network=host is required).
+# - Database: local PostgreSQL in docker, hydrated from a pg_dump of prod on
+#   first boot. Local means sub-millisecond queries (a remote Neon branch costs
+#   0.5-2s per read and has been seen to take 13s on a write); dumping prod
+#   means the sandbox still has prod-shaped data, which a hand-written seed
+#   can't match. Container uses host networking because Niteshift DinD bridge
+#   networking is broken.
+#   An injected remote DATABASE_URL (Niteshift's database-branches integration)
+#   still takes precedence when it is actually reachable, so turning that
+#   integration on or off is a settings decision, not a code change.
 # - Installs pnpm deps, writes apps/backend/.env from sandbox env, runs Drizzle
 #   migrations, then runs the Hono backend (:8787) AND the Expo web app (:8081)
 #   side-by-side via `concurrently`. The web app is the primary preview surface
@@ -86,24 +90,52 @@ for entry in "apps/backend/.env" ".claude/"; do
 done
 
 # ---------------------------------------------------------------------------
-# 2) Start Postgres 16 (idempotent, host networking) — unless Niteshift has
-#    already injected a remote DATABASE_URL (e.g. a Neon branch from the
-#    database-branches integration). The injected URL takes precedence; a
-#    localhost-shaped value means we're running standalone and need docker.
+# 2) Database.
+#
+#    Order of preference:
+#      a) an injected remote DATABASE_URL that actually answers   -> use it
+#      b) local docker postgres hydrated from a pg_dump of prod   -> default
+#      c) local docker postgres + the dev seed fixtures           -> fallback
+#
+#    (a) is probed rather than trusted. Niteshift's database-branches
+#    integration hands the sandbox a per-task Neon branch, and that branch can
+#    be reclaimed underneath a *running* sandbox — migrations succeed at boot,
+#    then every later query fails `28P01 password authentication failed` and
+#    the app surfaces it as "can't sign in". Probing turns that into a visible
+#    line in the setup log and a working local database instead of a dead one.
+#
+#    Override with WORKSHOP_DB_SOURCE=prod|seed|remote.
 # ---------------------------------------------------------------------------
 PG_CONTAINER="workshop-pg"
-USE_REMOTE_DB=0
-case "${DATABASE_URL:-}" in
-  ""|*localhost*|*127.0.0.1*) USE_REMOTE_DB=0 ;;
-  *) USE_REMOTE_DB=1 ;;
-esac
+# Match prod: Neon runs PostgreSQL 17, and pg_dump refuses to dump a server
+# newer than itself ("aborting because of server version mismatch").
+PG_IMAGE="postgres:17"
+LOCAL_DATABASE_URL="postgres://postgres:postgres@localhost:5432/workshop"
+DB_SOURCE="${WORKSHOP_DB_SOURCE:-auto}"
 
-if [ "$USE_REMOTE_DB" = "1" ]; then
-  log "remote DATABASE_URL detected — skipping local postgres container"
-else
+db_answers() {
+  # Cheap liveness probe. Uses the pinned postgres image so we never depend on
+  # a psql client being installed on the host. The URL goes in via the
+  # environment, never argv, so it stays out of the container's process list.
+  docker run --rm -e PGURL="$1" "$PG_IMAGE" \
+    sh -c 'psql "$PGURL" -tAc "select 1"' >/dev/null 2>&1
+}
+
+start_local_pg() {
   if ! docker info >/dev/null 2>&1; then
     log "docker not available" >&2
     exit 1
+  fi
+
+  # Recreate the container if it predates a PG_IMAGE bump — a PG16 data
+  # directory will not start under a PG17 binary.
+  if docker ps -a --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
+    local have
+    have="$(docker inspect -f '{{.Config.Image}}' "$PG_CONTAINER" 2>/dev/null || true)"
+    if [ "$have" != "$PG_IMAGE" ]; then
+      log "postgres container is $have, want $PG_IMAGE — recreating"
+      docker rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
+    fi
   fi
 
   if docker ps -a --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
@@ -114,7 +146,7 @@ else
       log "postgres container already running"
     fi
   else
-    log "creating postgres container ($PG_CONTAINER) with host networking"
+    log "creating postgres container ($PG_CONTAINER, $PG_IMAGE) with host networking"
     docker run -d \
       --name "$PG_CONTAINER" \
       --network=host \
@@ -122,14 +154,14 @@ else
       -e POSTGRES_PASSWORD=postgres \
       -e POSTGRES_USER=postgres \
       -e POSTGRES_DB=workshop \
-      postgres:16 >/dev/null
+      "$PG_IMAGE" >/dev/null
   fi
 
   log "waiting for postgres to accept connections"
   for i in $(seq 1 60); do
     if docker exec "$PG_CONTAINER" pg_isready -U postgres -h 127.0.0.1 -p 5432 >/dev/null 2>&1; then
       log "postgres ready"
-      break
+      return 0
     fi
     if [ "$i" = 60 ]; then
       log "postgres did not become ready in 30s" >&2
@@ -138,9 +170,82 @@ else
     fi
     sleep 0.5
   done
+}
 
-  # No injected DATABASE_URL — fall back to the local docker container.
-  : "${DATABASE_URL:=postgres://postgres:postgres@localhost:5432/workshop}"
+local_db_is_empty() {
+  local n
+  n="$(docker exec "$PG_CONTAINER" psql -U postgres -d workshop -tAc \
+    "select count(*) from information_schema.tables where table_schema = 'public'" 2>/dev/null || echo 0)"
+  [ "${n:-0}" -eq 0 ]
+}
+
+# Read-only. pg_dump cannot write, and nothing here ever opens prod for write.
+hydrate_from_prod() {
+  local prod_url
+  prod_url="$(aws ssm get-parameter \
+    --name /workshop-prod/db/url --with-decryption \
+    --query 'Parameter.Value' --output text 2>/dev/null || true)"
+  if [ -z "$prod_url" ] || [ "$prod_url" = "None" ]; then
+    log "no prod DATABASE_URL in SSM (need the sandbox AWS role) — using dev seed instead"
+    return 1
+  fi
+
+  log "hydrating local postgres from a prod dump (read-only pg_dump)"
+  # Dump and restore inside the container: one hop, version-matched client,
+  # and no copy of production data left on the sandbox filesystem.
+  if docker exec -e PGURL="$prod_url" "$PG_CONTAINER" sh -c \
+      'set -o pipefail; pg_dump --no-owner --no-acl "$PGURL" | psql -U postgres -d workshop -q -v ON_ERROR_STOP=1' \
+      >/dev/null 2>/tmp/workshop-pg-hydrate.err; then
+    log "prod dump restored"
+    return 0
+  fi
+  log "prod dump failed — using dev seed instead. Last lines:" >&2
+  tail -5 /tmp/workshop-pg-hydrate.err >&2 || true
+  # Leave a clean slate so the seed path isn't restoring onto a half dump.
+  docker exec "$PG_CONTAINER" psql -U postgres -d workshop -q -c \
+    'drop schema if exists public cascade; create schema public;' >/dev/null 2>&1 || true
+  docker exec "$PG_CONTAINER" psql -U postgres -d workshop -q -c \
+    'drop schema if exists drizzle cascade;' >/dev/null 2>&1 || true
+  return 1
+}
+
+USE_REMOTE_DB=0
+HYDRATED_FROM_PROD=0
+
+case "${DATABASE_URL:-}" in
+  ""|*localhost*|*127.0.0.1*) : ;;
+  *)
+    if [ "$DB_SOURCE" = "remote" ] || [ "$DB_SOURCE" = "auto" ]; then
+      if ! docker info >/dev/null 2>&1; then
+        # No docker means there is no local fallback to fall back *to*, and the
+        # probe itself needs it — trust the injected URL, as the pre-probe code
+        # always did.
+        log "docker unavailable — using injected remote DATABASE_URL unprobed"
+        USE_REMOTE_DB=1
+      elif log "probing injected remote DATABASE_URL" && db_answers "$DATABASE_URL"; then
+        log "remote DATABASE_URL is reachable — using it, skipping local postgres"
+        USE_REMOTE_DB=1
+      else
+        log "remote DATABASE_URL did NOT answer — falling back to local postgres." >&2
+        log "  (a per-task Neon branch reclaimed mid-session looks exactly like this;" >&2
+        log "   see docs/recovery-runbook.md 'sandbox database stops authenticating')" >&2
+      fi
+    fi
+    ;;
+esac
+
+if [ "$USE_REMOTE_DB" = "0" ]; then
+  start_local_pg
+  if local_db_is_empty; then
+    case "$DB_SOURCE" in
+      seed) log "WORKSHOP_DB_SOURCE=seed — skipping the prod dump" ;;
+      *)    hydrate_from_prod && HYDRATED_FROM_PROD=1 ;;
+    esac
+  else
+    log "local postgres already has data — leaving it alone"
+    HYDRATED_FROM_PROD=1
+  fi
+  DATABASE_URL="$LOCAL_DATABASE_URL"
   export DATABASE_URL
 fi
 
@@ -190,19 +295,20 @@ pnpm --filter @workshop/backend run db:migrate
 #    lists so the agent or human lands on a non-empty UI on first load. Set
 #    SEED_DEV_DATA=0 to skip (e.g. when reproducing an empty-state bug).
 #
-#    Default off when running against a remote DB (e.g. a Neon branch forked
-#    from prod) — the branch already has real-shaped data, and adding the
-#    preview-user fixtures on top would muddy it. Set SEED_DEV_DATA=1 to force.
+#    Default off whenever the database already holds prod-shaped data — a
+#    reachable remote branch, or a local database hydrated from the prod dump.
+#    The fixtures cover 2 games; prod covers 17, with a different share format
+#    each, so layering fixtures on top only muddies it. SEED_DEV_DATA=1 forces.
 # ---------------------------------------------------------------------------
 SEED_DEFAULT=1
-if [ "$USE_REMOTE_DB" = "1" ]; then
+if [ "$USE_REMOTE_DB" = "1" ] || [ "$HYDRATED_FROM_PROD" = "1" ]; then
   SEED_DEFAULT=0
 fi
 if [ "${SEED_DEV_DATA:-$SEED_DEFAULT}" = "1" ]; then
   log "seeding dev data"
   pnpm --filter @workshop/backend run db:seed
 else
-  log "skipping dev data seed (remote DB or SEED_DEV_DATA=0)"
+  log "skipping dev data seed (database already has prod-shaped data, or SEED_DEV_DATA=0)"
 fi
 
 # ---------------------------------------------------------------------------

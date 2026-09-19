@@ -262,6 +262,37 @@ If they differ, follow the rotation playbook in `docs/manual-setup.md` §10.1.
 
 ## Local dev
 
+### Symptom: sandbox suddenly can't sign in; backend 500s with `28P01 password authentication failed`
+
+**Cause**: The sandbox was using a per-task Neon branch (Niteshift's database-branches
+integration) and that branch got reclaimed underneath the running sandbox. The tell is that
+setup looked healthy — migrations ran fine at boot — and only later did every query start
+failing. In the app it surfaces as "can't sign in", because `POST /v1/auth/refresh` is the
+first thing to touch the database.
+
+```bash
+grep -c '28P01' "$NITESHIFT_LOG_FILE"            # confirm the cause
+grep '^DATABASE_URL=' apps/backend/.env          # which endpoint it is pointed at
+```
+
+**Fix**: Re-run setup. `niteshift-setup.sh` probes an injected remote `DATABASE_URL` before
+trusting it, and falls back to a local docker Postgres hydrated from a prod dump:
+
+```bash
+bash niteshift-setup.sh
+```
+
+To skip the remote entirely for the rest of the session:
+
+```bash
+WORKSHOP_DB_SOURCE=prod bash niteshift-setup.sh   # local docker + prod dump
+WORKSHOP_DB_SOURCE=seed bash niteshift-setup.sh   # local docker + dev fixtures
+```
+
+Permanently: turn the Database integration off in Niteshift (Settings → Repositories →
+`joshlebed/workshop` → Database). With no `DATABASE_URL` injected, setup uses local Postgres
+by default and this failure mode cannot happen.
+
 ### Symptom: `pnpm dev` fails because Postgres container doesn't start
 
 **Cause**: Docker Desktop isn't running, or port 5432 is already taken.
