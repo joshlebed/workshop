@@ -57,8 +57,13 @@ interface ImageVariant {
   accent: string;
   emoji: string;
   title: string;
-  subtitle: string;
+  /** Second text line. Omit for a single-line card. */
+  subtitle?: string;
+  /** Render the HighScore app icon instead of the emoji medallion. */
   brandMark?: boolean;
+  /** Title size in px (default 84) and the character cap before an ellipsis. */
+  titleSize?: number;
+  titleMax?: number;
 }
 
 const DEFAULT_IMAGE_VARIANT: ImageVariant = {
@@ -75,7 +80,10 @@ const FRIEND_OG_FALLBACK_TITLE = "Add a friend on HighScore";
 
 const GAME_SHARE_OG_EMOJI = "🎮";
 const GAME_SHARE_OG_ACCENT = "#F5A524";
-const GAME_SHARE_OG_FALLBACK_TITLE = "Play daily games on HighScore";
+/** The link title shown under the thumbnail. Kept name-free on purpose. */
+const GAME_SHARE_OG_TITLE = "Play daily games on HighScore";
+/** Longest first name the single-line card will render before an ellipsis. */
+const GAME_SHARE_NAME_MAX = 20;
 
 export function escapeXml(input: string): string {
   return input
@@ -156,9 +164,8 @@ export function buildFriendMetaTags(
   });
 }
 
-export function buildGameShareOgTitle(preview: GameSharePreview | null): string {
-  const name = gameSharerName(preview);
-  return name ? `Play games with ${name} on HighScore` : GAME_SHARE_OG_FALLBACK_TITLE;
+export function buildGameShareOgTitle(_preview: GameSharePreview | null): string {
+  return GAME_SHARE_OG_TITLE;
 }
 
 export function buildGameShareOgDescription(preview: GameSharePreview | null): string {
@@ -185,20 +192,37 @@ function gameSharerName(preview: GameSharePreview | null): string | null {
   return name && name.length > 0 ? name : null;
 }
 
+/** First whitespace-delimited word of the sharer's display name. */
+function gameSharerFirstName(preview: GameSharePreview | null): string | null {
+  const name = gameSharerName(preview);
+  if (!name) return null;
+  const [first] = name.split(/\s+/);
+  return first && first.length > 0 ? truncate(first, GAME_SHARE_NAME_MAX) : null;
+}
+
+/** The single text line rendered inside the play-link thumbnail. */
+export function buildGameShareThumbnailTitle(preview: GameSharePreview | null): string {
+  const first = gameSharerFirstName(preview);
+  return first ? `Play daily games with ${first}` : GAME_SHARE_OG_TITLE;
+}
+
 function renderImageHtml(variant: ImageVariant, iconUrl: string): string {
   const emoji = escapeXml(variant.emoji);
-  const title = escapeXml(truncate(variant.title, 28));
-  const subtitle = escapeXml(variant.subtitle);
+  const titleSize = variant.titleSize ?? 84;
+  const title = escapeXml(truncate(variant.title, variant.titleMax ?? 28));
   const leading = variant.brandMark
     ? renderBrandIconHtml(iconUrl, 220)
     : `<div style="display: flex; width: 200px; height: 200px; border-radius: 44px; background: ${variant.accent}; align-items: center; justify-content: center; font-size: 132px; line-height: 1;">${emoji}</div>`;
+  const subtitle =
+    variant.subtitle === undefined
+      ? ""
+      : `\n    <div style="display: flex; font-size: 36px; font-weight: 500; color: #A7A29E; line-height: 1.2;">${escapeXml(variant.subtitle)}</div>`;
 
   return `
 <div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0E0C0B; color: #F2F0ED; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box;">
   <div style="display: flex; flex-direction: column; justify-content: center; gap: 24px; flex: 1;">
     ${leading}
-    <div style="display: flex; font-size: 84px; font-weight: 700; letter-spacing: -2px; line-height: 1.05;">${title}</div>
-    <div style="display: flex; font-size: 36px; font-weight: 500; color: #A7A29E; line-height: 1.2;">${subtitle}</div>
+    <div style="display: flex; font-size: ${titleSize}px; font-weight: 700; letter-spacing: -2px; line-height: 1.05;">${title}</div>${subtitle}
   </div>
 </div>`.trim();
 }
@@ -233,15 +257,16 @@ export function buildGameShareOgImageHtml(
   preview: GameSharePreview | null,
   iconUrl: string,
 ): string {
-  const name = gameSharerName(preview);
+  // App icon + one line ("Play daily games with <first name>"), sized between
+  // the 84px hero title and the 36px subtitle the other cards use. No subtitle.
   return renderImageHtml(
     {
       accent: GAME_SHARE_OG_ACCENT,
       emoji: GAME_SHARE_OG_EMOJI,
-      title: name ?? "Play daily games",
-      subtitle: name
-        ? "Join me and play games on HighScore"
-        : "Play daily games together on HighScore",
+      title: buildGameShareThumbnailTitle(preview),
+      brandMark: true,
+      titleSize: 56,
+      titleMax: 64,
     },
     iconUrl,
   );
