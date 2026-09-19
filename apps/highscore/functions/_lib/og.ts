@@ -33,6 +33,21 @@ export const OG_META_SELECTORS = [
   'meta[name="description"]',
 ] as const;
 
+/** Same-origin static assets the card renderer draws. */
+export function ogAssetsFor(requestUrl: string): OgAssets {
+  return {
+    iconUrl: new URL("/icon-source.png", requestUrl).toString(),
+    backgroundUrl: new URL("/og-bg.png", requestUrl).toString(),
+  };
+}
+
+export interface OgAssets {
+  /** `/icon-source.png` — the app icon artwork. */
+  iconUrl: string;
+  /** `/og-bg.png` — pre-rendered background (scripts/build-og-background.mjs). */
+  backgroundUrl: string;
+}
+
 export interface PagesEnv {
   EXPO_PUBLIC_API_URL?: string;
   ASSETS: { fetch: (request: Request | string) => Promise<Response> };
@@ -60,12 +75,6 @@ interface ImageVariant {
   /** Character cap before an ellipsis. */
   titleMax?: number;
 }
-
-// Icon palette (apps/highscore/assets/icon-source.png): arcade cabinet in
-// purple / magenta / cyan with a yellow Pac-Man and a red joystick ball.
-const ICON_PURPLE = "#6B3BD6";
-const ICON_MAGENTA = "#E5307A";
-const ICON_CYAN = "#12B3CF";
 
 const DEFAULT_IMAGE_VARIANT: ImageVariant = {
   title: HIGH_SCORE_OG_TITLE,
@@ -216,7 +225,7 @@ function fitTitleSize(text: string): number {
   return Math.round(Math.min(TITLE_MAX_PX, Math.max(TITLE_MIN_PX, fit)));
 }
 
-function renderImageHtml(variant: ImageVariant, iconUrl: string): string {
+function renderImageHtml(variant: ImageVariant, assets: OgAssets): string {
   const title = escapeXml(truncate(variant.title, variant.titleMax ?? 28));
   // A two-line card has to leave room for the subtitle under a 300px icon.
   const titleSize = Math.min(fitTitleSize(title), variant.subtitle === undefined ? Infinity : 92);
@@ -225,13 +234,14 @@ function renderImageHtml(variant: ImageVariant, iconUrl: string): string {
       ? ""
       : `\n    <div style="display: flex; flex-shrink: 0; margin-top: 14px; font-size: 40px; font-weight: 500; color: #C9C4BF; line-height: 1.2;">${escapeXml(variant.subtitle)}</div>`;
 
+  // The background is a pre-rendered raster (OKLab-blended, dithered) rather
+  // than CSS gradients: Satori/resvg interpolate gradients in sRGB with no
+  // dither, which bands and greys out on a dark card.
   return `
-<div style="display: flex; position: relative; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: linear-gradient(135deg, #14101C 0%, #0E0C0B 55%, #120B10 100%); color: #F5F2EE; font-family: 'Inter', sans-serif; overflow: hidden;">
-  <div style="display: flex; position: absolute; top: -260px; right: -180px; width: 820px; height: 820px; border-radius: 410px; background: radial-gradient(circle, ${ICON_PURPLE} 0%, ${ICON_PURPLE}00 62%); opacity: 0.55;"></div>
-  <div style="display: flex; position: absolute; bottom: -420px; left: 260px; width: 900px; height: 900px; border-radius: 450px; background: radial-gradient(circle, ${ICON_MAGENTA} 0%, ${ICON_MAGENTA}00 60%); opacity: 0.38;"></div>
-  <div style="display: flex; position: absolute; top: -140px; left: -220px; width: 600px; height: 600px; border-radius: 300px; background: radial-gradient(circle, ${ICON_CYAN} 0%, ${ICON_CYAN}00 60%); opacity: 0.18;"></div>
+<div style="display: flex; position: relative; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0F0D14; color: #F5F2EE; font-family: 'Inter', sans-serif; overflow: hidden;">
+  <img data-og-background src="${escapeXml(assets.backgroundUrl)}" width="${OG_IMAGE_WIDTH}" height="${OG_IMAGE_HEIGHT}" style="position: absolute; top: 0; left: 0; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px;" />
   <div style="display: flex; flex-direction: column; justify-content: center; position: absolute; top: 0; left: 0; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; padding: ${CARD_PADDING}px; box-sizing: border-box;">
-    ${renderBrandIconHtml(iconUrl, ICON_SIZE)}
+    ${renderBrandIconHtml(assets.iconUrl, ICON_SIZE)}
     <div style="display: flex; flex-shrink: 0; margin-top: ${ICON_TEXT_GAP}px; font-size: ${titleSize}px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.05;">${title}</div>${subtitle}
   </div>
 </div>`.trim();
@@ -241,13 +251,13 @@ function renderBrandIconHtml(iconUrl: string, size: number): string {
   return `<img data-brand-icon="highscore" src="${escapeXml(iconUrl)}" width="${size}" height="${size}" style="width: ${size}px; height: ${size}px; flex-shrink: 0; object-fit: contain;" />`;
 }
 
-export function buildDefaultOgImageHtml(iconUrl: string): string {
-  return renderImageHtml(DEFAULT_IMAGE_VARIANT, iconUrl);
+export function buildDefaultOgImageHtml(assets: OgAssets): string {
+  return renderImageHtml(DEFAULT_IMAGE_VARIANT, assets);
 }
 
 export function buildFriendOgImageHtml(
   preview: FriendInvitePreview | null,
-  iconUrl: string,
+  assets: OgAssets,
 ): string {
   const name = friendName(preview);
   return renderImageHtml(
@@ -255,13 +265,13 @@ export function buildFriendOgImageHtml(
       title: name ? `${truncate(name, 20)} wants to be friends` : "Add a friend on HighScore",
       titleMax: 48,
     },
-    iconUrl,
+    assets,
   );
 }
 
 export function buildGameShareOgImageHtml(
   preview: GameSharePreview | null,
-  iconUrl: string,
+  assets: OgAssets,
 ): string {
   // App icon + one line ("Play games with <first name>"). No subtitle.
   return renderImageHtml(
@@ -269,7 +279,7 @@ export function buildGameShareOgImageHtml(
       title: buildGameShareThumbnailTitle(preview),
       titleMax: 64,
     },
-    iconUrl,
+    assets,
   );
 }
 

@@ -1,5 +1,10 @@
 import { ImageResponse, loadGoogleFont } from "workers-og";
-import { buildDefaultOgImageHtml, OG_IMAGE_HEIGHT, OG_IMAGE_WIDTH } from "../_lib/og.js";
+import {
+  buildDefaultOgImageHtml,
+  OG_IMAGE_HEIGHT,
+  OG_IMAGE_WIDTH,
+  ogAssetsFor,
+} from "../_lib/og.js";
 
 interface PagesContext {
   params: { name?: string | string[] };
@@ -19,8 +24,8 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
     loadGoogleFont({ family: "Inter", weight: 600, text: TEXT_GLYPHS }),
   ]);
 
-  const iconUrl = new URL("/icon-source.png", context.request.url).toString();
-  return new ImageResponse(buildDefaultOgImageHtml(iconUrl), {
+  const assets = ogAssetsFor(context.request.url);
+  return new ImageResponse(buildDefaultOgImageHtml(assets), {
     width: OG_IMAGE_WIDTH,
     height: OG_IMAGE_HEIGHT,
     format: "png",
