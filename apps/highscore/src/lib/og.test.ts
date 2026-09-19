@@ -56,7 +56,7 @@ describe("HighScore Open Graph helpers", () => {
     expect(tags).toContain('og:title" content="Play daily games on HighScore"');
     expect(tags).toContain("Alex is playing daily games on HighScore");
     expect(tags).not.toContain("Workshop.dev");
-    expect(image).toContain("Play daily games with Alex");
+    expect(image).toContain("Play games with Alex");
     expect(image).toContain(`width: ${OG_IMAGE_WIDTH}px`);
     expect(image).toContain(`height: ${OG_IMAGE_HEIGHT}px`);
   });
@@ -68,21 +68,21 @@ describe("HighScore Open Graph helpers", () => {
     );
     expect(image).toContain('data-brand-icon="highscore"');
     expect(image).not.toContain("🎮");
-    expect(image).toContain(">Play daily games with Josh<");
+    expect(image).toContain(">Play games with Josh<");
     expect(image).not.toContain("Lebedinsky");
-    expect(image).toContain("font-size: 56px");
-    // Exactly one text line: the 36px subtitle row is gone.
-    expect(image).not.toContain("font-size: 36px");
+    expect(image).toContain("radial-gradient");
+    // Exactly one text line: no subtitle row.
+    expect(image).not.toContain("font-size: 40px");
     expect(image).not.toContain("Join me");
 
     const anonymous = buildGameShareOgImageHtml(null, "https://highscore.live/icon-source.png");
     expect(anonymous).toContain(">Play daily games on HighScore<");
-    expect(anonymous).not.toContain("font-size: 36px");
+    expect(anonymous).not.toContain("font-size: 40px");
     expect(buildGameShareThumbnailTitle({ sharerName: "  " })).toBe(
       "Play daily games on HighScore",
     );
     expect(buildGameShareThumbnailTitle({ sharerName: "Bartholomew-Christopherson Q" })).toBe(
-      "Play daily games with Bartholomew-Christo…",
+      "Play games with Bartholomew-Christo…",
     );
   });
 
@@ -100,7 +100,8 @@ describe("HighScore Open Graph helpers", () => {
     );
     expect(tags).toContain("Alex invited you to HighScore");
     expect(tags).not.toContain("Workshop.dev");
-    expect(image).toContain("wants to be friends on HighScore");
+    expect(image).toContain(">Alex wants to be friends<");
+    expect(image).toContain('data-brand-icon="highscore"');
   });
 
   it("renders a branded default PNG surface", () => {
@@ -114,6 +115,6 @@ describe("HighScore Open Graph helpers", () => {
     expect(image).not.toContain("<span>HighScore</span>");
     expect(image).not.toContain("data-score-grid");
     expect(image).toContain("#0E0C0B");
-    expect(image).not.toContain("linear-gradient");
+    expect(image).toContain("radial-gradient");
   });
 });
