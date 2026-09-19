@@ -6,9 +6,15 @@
 // in sRGB with two hard stops and no blur, dither, or grain — which is exactly
 // the recipe for grey halos and 8-bit banding on a dark card. Doing it here
 // lets us (1) blend in OKLab so mid-tones stay clean, (2) use a Gaussian
-// falloff so blobs have no visible edge, (3) dither before quantising so a
-// 200-level dark ramp doesn't band, and (4) add a whisper of grain. The
-// function then just draws this PNG full-bleed under the icon and text.
+// falloff so blobs have no visible edge, and (3) dither before quantising so
+// a 200-level dark ramp doesn't band. The function then just draws this PNG
+// full-bleed under the icon and text.
+//
+// The dither is an 8x8 Bayer (ordered) pattern rather than random noise on
+// purpose: it hides banding just as well at 1 LSB, but the pattern repeats,
+// so both this file and the final card PNG (which resvg re-encodes on every
+// render) deflate ~2x smaller than with random dither, and ~5x smaller than
+// with film grain. The card's byte size is most of its cold-load time.
 //
 // Zero dependencies on purpose (same as build-icon.mjs): the PNG encoder is
 // ~30 lines over node:zlib.
@@ -37,10 +43,13 @@ const BLOBS = [
 ];
 // Keep "mostly dark": cap how far any pixel can climb in OKLab lightness.
 const MAX_LIGHTNESS = 0.33;
-// Grain: triangular-PDF dither at ±1 LSB kills banding invisibly; the extra
-// luminance grain is ~1.5% and reads as texture, not noise, at OG sizes.
-const DITHER_LSB = 1.0;
-const GRAIN_LSB = 1.6;
+// 8x8 Bayer threshold matrix, normalised to [-0.5, 0.5) — one LSB of ordered
+// dither, applied per channel before rounding.
+const BAYER = [
+  0, 32, 8, 40, 2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44, 4, 36, 14, 46, 6, 38, 60, 28,
+  52, 20, 62, 30, 54, 22, 3, 35, 11, 43, 1, 33, 9, 41, 51, 19, 59, 27, 49, 17, 57, 25, 15, 47, 7,
+  39, 13, 45, 5, 37, 63, 31, 55, 23, 61, 29, 53, 21,
+].map((v) => (v + 0.5) / 64 - 0.5);
 
 // --- colour ---------------------------------------------------------------
 
@@ -84,22 +93,6 @@ function oklabToRgb([L, a, b]) {
   ];
 }
 
-// --- deterministic noise ----------------------------------------------------
-
-// Small xorshift so the output is byte-identical across runs (reviewable diffs).
-let seed = 0x9e3779b9;
-function rand() {
-  seed ^= seed << 13;
-  seed ^= seed >>> 17;
-  seed ^= seed << 5;
-  return ((seed >>> 0) % 1_000_000) / 1_000_000;
-}
-// Triangular PDF in [-1, 1): the standard dither distribution — no visible
-// pattern, and the error is independent of signal level.
-function triangular() {
-  return rand() - rand();
-}
-
 // --- render ----------------------------------------------------------------
 
 function render() {
@@ -131,18 +124,18 @@ function render() {
         L = MAX_LIGHTNESS + (L - MAX_LIGHTNESS) * 0.25;
       }
       const [r, g, b] = oklabToRgb([L, A, B]);
-      const grain = triangular() * GRAIN_LSB;
+      const threshold = BAYER[(y & 7) * 8 + (x & 7)];
       const offset = (y * WIDTH + x) * 3;
-      rgb[offset] = quantise(r * 255 + grain);
-      rgb[offset + 1] = quantise(g * 255 + grain);
-      rgb[offset + 2] = quantise(b * 255 + grain);
+      rgb[offset] = quantise(r * 255 + threshold);
+      rgb[offset + 1] = quantise(g * 255 + threshold);
+      rgb[offset + 2] = quantise(b * 255 + threshold);
     }
   }
   return rgb;
 }
 
 function quantise(value) {
-  return Math.min(255, Math.max(0, Math.round(value + triangular() * DITHER_LSB)));
+  return Math.min(255, Math.max(0, Math.round(value)));
 }
 
 // --- PNG ------------------------------------------------------------------
