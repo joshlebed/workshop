@@ -59,8 +59,6 @@ interface ImageVariant {
   subtitle?: string;
   /** Character cap before an ellipsis. */
   titleMax?: number;
-  /** Two icon-palette colors that tint the dark background. */
-  glow: [string, string];
 }
 
 // Icon palette (apps/highscore/assets/icon-source.png): arcade cabinet in
@@ -68,18 +66,14 @@ interface ImageVariant {
 const ICON_PURPLE = "#6B3BD6";
 const ICON_MAGENTA = "#E5307A";
 const ICON_CYAN = "#12B3CF";
-const ICON_YELLOW = "#F5C81E";
 
 const DEFAULT_IMAGE_VARIANT: ImageVariant = {
   title: HIGH_SCORE_OG_TITLE,
   subtitle: HIGH_SCORE_OG_DESCRIPTION,
-  glow: [ICON_PURPLE, ICON_CYAN],
 };
 
 const FRIEND_OG_FALLBACK_TITLE = "Add a friend on HighScore";
-const FRIEND_OG_GLOW: [string, string] = [ICON_PURPLE, ICON_MAGENTA];
 
-const GAME_SHARE_OG_GLOW: [string, string] = [ICON_MAGENTA, ICON_YELLOW];
 /** The link title shown under the thumbnail. Kept name-free on purpose. */
 const GAME_SHARE_OG_TITLE = "Play daily games on HighScore";
 /** Longest first name the single-line card will render before an ellipsis. */
@@ -226,7 +220,6 @@ function renderImageHtml(variant: ImageVariant, iconUrl: string): string {
   const title = escapeXml(truncate(variant.title, variant.titleMax ?? 28));
   // A two-line card has to leave room for the subtitle under a 300px icon.
   const titleSize = Math.min(fitTitleSize(title), variant.subtitle === undefined ? Infinity : 92);
-  const [glowA, glowB] = variant.glow;
   const subtitle =
     variant.subtitle === undefined
       ? ""
@@ -234,8 +227,8 @@ function renderImageHtml(variant: ImageVariant, iconUrl: string): string {
 
   return `
 <div style="display: flex; position: relative; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: linear-gradient(135deg, #14101C 0%, #0E0C0B 55%, #120B10 100%); color: #F5F2EE; font-family: 'Inter', sans-serif; overflow: hidden;">
-  <div style="display: flex; position: absolute; top: -260px; right: -180px; width: 820px; height: 820px; border-radius: 410px; background: radial-gradient(circle, ${glowA} 0%, ${glowA}00 62%); opacity: 0.55;"></div>
-  <div style="display: flex; position: absolute; bottom: -420px; left: 260px; width: 900px; height: 900px; border-radius: 450px; background: radial-gradient(circle, ${glowB} 0%, ${glowB}00 60%); opacity: 0.38;"></div>
+  <div style="display: flex; position: absolute; top: -260px; right: -180px; width: 820px; height: 820px; border-radius: 410px; background: radial-gradient(circle, ${ICON_PURPLE} 0%, ${ICON_PURPLE}00 62%); opacity: 0.55;"></div>
+  <div style="display: flex; position: absolute; bottom: -420px; left: 260px; width: 900px; height: 900px; border-radius: 450px; background: radial-gradient(circle, ${ICON_MAGENTA} 0%, ${ICON_MAGENTA}00 60%); opacity: 0.38;"></div>
   <div style="display: flex; position: absolute; top: -140px; left: -220px; width: 600px; height: 600px; border-radius: 300px; background: radial-gradient(circle, ${ICON_CYAN} 0%, ${ICON_CYAN}00 60%); opacity: 0.18;"></div>
   <div style="display: flex; flex-direction: column; justify-content: center; position: absolute; top: 0; left: 0; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; padding: ${CARD_PADDING}px; box-sizing: border-box;">
     ${renderBrandIconHtml(iconUrl, ICON_SIZE)}
@@ -261,7 +254,6 @@ export function buildFriendOgImageHtml(
     {
       title: name ? `${truncate(name, 20)} wants to be friends` : "Add a friend on HighScore",
       titleMax: 48,
-      glow: FRIEND_OG_GLOW,
     },
     iconUrl,
   );
@@ -276,7 +268,6 @@ export function buildGameShareOgImageHtml(
     {
       title: buildGameShareThumbnailTitle(preview),
       titleMax: 64,
-      glow: GAME_SHARE_OG_GLOW,
     },
     iconUrl,
   );
