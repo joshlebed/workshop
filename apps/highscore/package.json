@@ -9,6 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web --port 8082",
     "icon:build": "node scripts/build-icon.mjs",
+    "og:background": "node scripts/build-og-background.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prebuild": "expo prebuild",

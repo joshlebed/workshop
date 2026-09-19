@@ -33,6 +33,21 @@ export const OG_META_SELECTORS = [
   'meta[name="description"]',
 ] as const;
 
+/** Same-origin static assets the card renderer draws. */
+export function ogAssetsFor(requestUrl: string): OgAssets {
+  return {
+    iconUrl: new URL("/icon-source.png", requestUrl).toString(),
+    backgroundUrl: new URL("/og-bg.png", requestUrl).toString(),
+  };
+}
+
+export interface OgAssets {
+  /** `/icon-source.png` — the app icon artwork. */
+  iconUrl: string;
+  /** `/og-bg.png` — pre-rendered background (scripts/build-og-background.mjs). */
+  backgroundUrl: string;
+}
+
 export interface PagesEnv {
   EXPO_PUBLIC_API_URL?: string;
   ASSETS: { fetch: (request: Request | string) => Promise<Response> };
@@ -54,32 +69,20 @@ export interface OgMetaValues {
 }
 
 interface ImageVariant {
-  accent: string;
-  emoji: string;
   title: string;
   /** Second text line. Omit for a single-line card. */
   subtitle?: string;
-  /** Render the HighScore app icon instead of the emoji medallion. */
-  brandMark?: boolean;
-  /** Title size in px (default 84) and the character cap before an ellipsis. */
-  titleSize?: number;
+  /** Character cap before an ellipsis. */
   titleMax?: number;
 }
 
 const DEFAULT_IMAGE_VARIANT: ImageVariant = {
-  accent: "#F5A524",
-  emoji: HIGH_SCORE_OG_EMOJI,
   title: HIGH_SCORE_OG_TITLE,
   subtitle: HIGH_SCORE_OG_DESCRIPTION,
-  brandMark: true,
 };
 
-const FRIEND_OG_EMOJI = "👋";
-const FRIEND_OG_ACCENT = "#A78BFA";
 const FRIEND_OG_FALLBACK_TITLE = "Add a friend on HighScore";
 
-const GAME_SHARE_OG_EMOJI = "🎮";
-const GAME_SHARE_OG_ACCENT = "#F5A524";
 /** The link title shown under the thumbnail. Kept name-free on purpose. */
 const GAME_SHARE_OG_TITLE = "Play daily games on HighScore";
 /** Longest first name the single-line card will render before an ellipsis. */
@@ -203,72 +206,80 @@ function gameSharerFirstName(preview: GameSharePreview | null): string | null {
 /** The single text line rendered inside the play-link thumbnail. */
 export function buildGameShareThumbnailTitle(preview: GameSharePreview | null): string {
   const first = gameSharerFirstName(preview);
-  return first ? `Play daily games with ${first}` : GAME_SHARE_OG_TITLE;
+  return first ? `Play games with ${first}` : GAME_SHARE_OG_TITLE;
 }
 
-function renderImageHtml(variant: ImageVariant, iconUrl: string): string {
-  const emoji = escapeXml(variant.emoji);
-  const titleSize = variant.titleSize ?? 84;
+const CARD_PADDING = 80;
+const CONTENT_WIDTH = OG_IMAGE_WIDTH - CARD_PADDING * 2;
+const ICON_SIZE = 300;
+const ICON_TEXT_GAP = 56;
+// Inter Bold averages ~0.56em per glyph at letter-spacing -0.02em; size the
+// title so one line spans the content width, within [64, 112]px.
+const TITLE_EM_PER_CHAR = 0.56;
+const TITLE_MIN_PX = 64;
+const TITLE_MAX_PX = 112;
+
+function fitTitleSize(text: string): number {
+  const chars = Math.max(1, Array.from(text).length);
+  const fit = CONTENT_WIDTH / (chars * TITLE_EM_PER_CHAR);
+  return Math.round(Math.min(TITLE_MAX_PX, Math.max(TITLE_MIN_PX, fit)));
+}
+
+function renderImageHtml(variant: ImageVariant, assets: OgAssets): string {
   const title = escapeXml(truncate(variant.title, variant.titleMax ?? 28));
-  const leading = variant.brandMark
-    ? renderBrandIconHtml(iconUrl, 220)
-    : `<div style="display: flex; width: 200px; height: 200px; border-radius: 44px; background: ${variant.accent}; align-items: center; justify-content: center; font-size: 132px; line-height: 1;">${emoji}</div>`;
+  // A two-line card has to leave room for the subtitle under a 300px icon.
+  const titleSize = Math.min(fitTitleSize(title), variant.subtitle === undefined ? Infinity : 92);
   const subtitle =
     variant.subtitle === undefined
       ? ""
-      : `\n    <div style="display: flex; font-size: 36px; font-weight: 500; color: #A7A29E; line-height: 1.2;">${escapeXml(variant.subtitle)}</div>`;
+      : `\n    <div style="display: flex; flex-shrink: 0; margin-top: 14px; font-size: 40px; font-weight: 500; color: #C9C4BF; line-height: 1.2;">${escapeXml(variant.subtitle)}</div>`;
 
+  // The background is a pre-rendered raster (OKLab-blended, dithered) rather
+  // than CSS gradients: Satori/resvg interpolate gradients in sRGB with no
+  // dither, which bands and greys out on a dark card.
   return `
-<div style="display: flex; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0E0C0B; color: #F2F0ED; font-family: 'Inter', sans-serif; padding: 80px; box-sizing: border-box;">
-  <div style="display: flex; flex-direction: column; justify-content: center; gap: 24px; flex: 1;">
-    ${leading}
-    <div style="display: flex; font-size: ${titleSize}px; font-weight: 700; letter-spacing: -2px; line-height: 1.05;">${title}</div>${subtitle}
+<div style="display: flex; position: relative; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; background: #0F0D14; color: #F5F2EE; font-family: 'Inter', sans-serif; overflow: hidden;">
+  <img data-og-background src="${escapeXml(assets.backgroundUrl)}" width="${OG_IMAGE_WIDTH}" height="${OG_IMAGE_HEIGHT}" style="position: absolute; top: 0; left: 0; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px;" />
+  <div style="display: flex; flex-direction: column; justify-content: center; position: absolute; top: 0; left: 0; width: ${OG_IMAGE_WIDTH}px; height: ${OG_IMAGE_HEIGHT}px; padding: ${CARD_PADDING}px; box-sizing: border-box;">
+    ${renderBrandIconHtml(assets.iconUrl, ICON_SIZE)}
+    <div style="display: flex; flex-shrink: 0; margin-top: ${ICON_TEXT_GAP}px; font-size: ${titleSize}px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.05;">${title}</div>${subtitle}
   </div>
 </div>`.trim();
 }
 
 function renderBrandIconHtml(iconUrl: string, size: number): string {
-  return `<img data-brand-icon="highscore" src="${escapeXml(iconUrl)}" width="${size}" height="${size}" style="width: ${size}px; height: ${size}px; object-fit: contain;" />`;
+  return `<img data-brand-icon="highscore" src="${escapeXml(iconUrl)}" width="${size}" height="${size}" style="width: ${size}px; height: ${size}px; flex-shrink: 0; object-fit: contain;" />`;
 }
 
-export function buildDefaultOgImageHtml(iconUrl: string): string {
-  return renderImageHtml(DEFAULT_IMAGE_VARIANT, iconUrl);
+export function buildDefaultOgImageHtml(assets: OgAssets): string {
+  return renderImageHtml(DEFAULT_IMAGE_VARIANT, assets);
 }
 
 export function buildFriendOgImageHtml(
   preview: FriendInvitePreview | null,
-  iconUrl: string,
+  assets: OgAssets,
 ): string {
   const name = friendName(preview);
   return renderImageHtml(
     {
-      accent: FRIEND_OG_ACCENT,
-      emoji: FRIEND_OG_EMOJI,
-      title: name ?? "Add a friend",
-      subtitle: name
-        ? "wants to be friends on HighScore"
-        : "Compare your daily game scores on HighScore",
+      title: name ? `${truncate(name, 20)} wants to be friends` : "Add a friend on HighScore",
+      titleMax: 48,
     },
-    iconUrl,
+    assets,
   );
 }
 
 export function buildGameShareOgImageHtml(
   preview: GameSharePreview | null,
-  iconUrl: string,
+  assets: OgAssets,
 ): string {
-  // App icon + one line ("Play daily games with <first name>"), sized between
-  // the 84px hero title and the 36px subtitle the other cards use. No subtitle.
+  // App icon + one line ("Play games with <first name>"). No subtitle.
   return renderImageHtml(
     {
-      accent: GAME_SHARE_OG_ACCENT,
-      emoji: GAME_SHARE_OG_EMOJI,
       title: buildGameShareThumbnailTitle(preview),
-      brandMark: true,
-      titleSize: 56,
       titleMax: 64,
     },
-    iconUrl,
+    assets,
   );
 }
 

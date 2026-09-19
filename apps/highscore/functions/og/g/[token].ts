@@ -4,6 +4,7 @@ import {
   fetchGameSharePreview,
   OG_IMAGE_HEIGHT,
   OG_IMAGE_WIDTH,
+  ogAssetsFor,
   type PagesEnv,
 } from "../../_lib/og.js";
 
@@ -23,8 +24,8 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
 
   const token = captured.replace(/\.(png|webp|jpg|jpeg)$/i, "");
   const preview = await fetchGameSharePreview(token, context.env);
-  const iconUrl = new URL("/icon-source.png", context.request.url).toString();
-  const html = buildGameShareOgImageHtml(preview, iconUrl);
+  const assets = ogAssetsFor(context.request.url);
+  const html = buildGameShareOgImageHtml(preview, assets);
   const glyphs = `${BASE_GLYPHS}${preview?.sharerName ?? ""}`;
   const [bold, semibold] = await Promise.all([
     loadGoogleFont({ family: "Inter", weight: 700, text: glyphs }),
