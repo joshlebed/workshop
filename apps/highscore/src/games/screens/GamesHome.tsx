@@ -62,6 +62,7 @@ import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { localDateKey } from "../lib/gameDate";
+import { prewarmGameShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
@@ -289,6 +290,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         const link = await createGameShareLink(token);
         url = link.url;
         setScoreShareUrl(url);
+        prewarmGameShareCard(url);
       }
       const summary = buildTodaysGameScoresSummary({
         shareUrl: url,

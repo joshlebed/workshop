@@ -1,42 +1,31 @@
-import { ImageResponse, loadGoogleFont } from "workers-og";
+import { ImageResponse } from "workers-og";
+import { loadOgFonts, OG_CARD_CACHE_CONTROL } from "../_lib/fonts.js";
 import {
   buildDefaultOgImageHtml,
   OG_IMAGE_HEIGHT,
   OG_IMAGE_WIDTH,
   ogAssetsFor,
+  type PagesEnv,
 } from "../_lib/og.js";
 
 interface PagesContext {
+  env: PagesEnv;
   params: { name?: string | string[] };
   request: Request;
 }
-
-const TEXT_GLYPHS =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,!?:;'\"-…·&/+()[]@#%*=";
 
 export const onRequestGet = async (context: PagesContext): Promise<Response> => {
   const raw = context.params.name;
   const captured = Array.isArray(raw) ? raw[0] : raw;
   if (!captured) return new Response("not found", { status: 404 });
 
-  const [bold, semibold] = await Promise.all([
-    loadGoogleFont({ family: "Inter", weight: 700, text: TEXT_GLYPHS }),
-    loadGoogleFont({ family: "Inter", weight: 600, text: TEXT_GLYPHS }),
-  ]);
-
+  const fonts = await loadOgFonts(context.env, context.request.url);
   const assets = ogAssetsFor(context.request.url);
   return new ImageResponse(buildDefaultOgImageHtml(assets), {
     width: OG_IMAGE_WIDTH,
     height: OG_IMAGE_HEIGHT,
     format: "png",
-    fonts: [
-      { name: "Inter", data: bold, weight: 700, style: "normal" },
-      { name: "Inter", data: semibold, weight: 600, style: "normal" },
-      { name: "Inter", data: semibold, weight: 500, style: "normal" },
-    ],
-    emoji: "twemoji",
-    headers: {
-      "Cache-Control": "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
-    },
+    fonts,
+    headers: { "Cache-Control": OG_CARD_CACHE_CONTROL },
   });
 };

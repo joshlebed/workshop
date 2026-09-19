@@ -96,3 +96,27 @@ web). The previous 250ms hold / 4px distance swallowed hesitant taps and trackpa
 "tapping a game or a leaderboard row sometimes doesn't open the board until the second tap". Don't
 hard-code a new `delayLongPress` or sensor constraint on these surfaces; read it from the constant,
 and keep the native long-press and the web `TouchSensor` delay equal.
+
+## Open Graph cards (`functions/og/**`)
+
+Three cards — default, `/og/g/:token` (play link), `/og/friend/:token` — share one renderer in
+`functions/_lib/og.ts`. Two things are deliberately **not** done at request time:
+
+- **The background is a pre-rendered raster**, `public/og-bg.png`, from
+  `pnpm --filter highscore-app run og:background` (`scripts/build-og-background.mjs`, zero deps).
+  Satori/resvg interpolate CSS gradients in sRGB with no dither, which greys out and bands on a
+  dark card. The script blends icon-palette colour fields in OKLab and applies a 1-LSB Bayer
+  dither. Keep it ordered dither, not random noise or grain: the card PNG is re-encoded by resvg
+  on every render, and its byte size is most of a cold card's end-to-end time (random dither ≈2x,
+  grain ≈5x the bytes for no visible gain at OG sizes).
+- **Fonts are self-hosted** (`public/fonts/Inter-{500,700}.ttf`, OFL) and loaded through the
+  ASSETS binding by `functions/_lib/fonts.ts`, memoised per isolate. Don't reintroduce
+  `loadGoogleFont`: it keys its cache on the glyph subset (so on the sharer's name), re-fetches
+  the TTF every request, and leaves the colo.
+
+The remaining cold cost (~0.6s) is resvg PNG-encoding a full-entropy 1200x630 image and is not
+tunable from workers-og. So the cards carry a 1-day `s-maxage` + 30-day `stale-while-revalidate`
+(`OG_CARD_CACHE_CONTROL`), and the app **pre-warms** the play card the moment a link is minted
+(`prewarmGameShareCard` in `src/games/lib/prewarmShareCard.ts`). iMessage builds the preview on the sender's
+device, so that fetch lands the crawler on the same colo's warm cache. If you add a new share
+surface, pre-warm its card the same way.
