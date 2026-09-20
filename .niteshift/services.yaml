@@ -1,0 +1,51 @@
+# Supervised long-running processes. `web` is first so the preview panel
+# defaults to the Workshop.dev web app. Setup lives in .niteshift/setup.
+services:
+  # Workshop.dev web (react-native-web via Expo CLI). Primary preview surface.
+  # With EXPO_PUBLIC_DEV_AUTH=1 the bundle auto-signs-in as the seeded
+  # joshlebed@gmail.com user on boot, so no preview `auth` block is needed.
+  - name: web
+    command: .niteshift/files/expo-web.sh workshop-app
+    port: 8081
+    environment:
+      - name: EXPO_PUBLIC_DEV_AUTH
+        value: "1"
+      # dev-api-proxy.js falls back to $PORT for the backend port; pin it so
+      # the /api proxy doesn't loop back to the web server itself.
+      - name: DEV_API_PROXY_PORT
+        value: "8787"
+      - name: EXPO_NO_TELEMETRY
+        value: "1"
+
+  # Hono backend. Reads apps/backend/.env (written by setup) via the wrapper.
+  - name: backend
+    command: .niteshift/files/backend.sh
+    port: 8787
+
+  # HighScore web (:8082) against the same backend. On demand:
+  #   ns services start highscore
+  - name: highscore
+    command: .niteshift/files/expo-web.sh highscore-app
+    port: 8082
+    autostart: false
+    environment:
+      - name: EXPO_PUBLIC_DEV_AUTH
+        value: "1"
+      - name: DEV_API_PROXY_PORT
+        value: "8787"
+      - name: EXPO_NO_TELEMETRY
+        value: "1"
+
+  # Local Postgres 16, only when no remote DATABASE_URL is injected (the
+  # Niteshift Database integration normally provides a per-task Neon branch).
+  # Started by .niteshift/setup / .niteshift/resume, not by `ns services up`.
+  # Host networking: Niteshift DinD bridge networking is broken.
+  - name: postgres
+    command: |
+      docker rm -f workshop-pg >/dev/null 2>&1 || true
+      exec docker run --rm --name workshop-pg --network=host \
+        -v workshop-pg-data:/var/lib/postgresql/data \
+        -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=workshop \
+        postgres:16
+    autostart: false
+    stopGracePeriod: 30s

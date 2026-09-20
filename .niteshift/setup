@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Niteshift setup for joshlebed/workshop — finite, idempotent fresh-sandbox work.
+# Long-running processes (backend, Expo web, optional HighScore web, optional
+# local postgres) are declared in .niteshift/services.yaml and supervised by
+# `ns services`; this script only installs, migrates, and seeds.
+set -euo pipefail
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_DIR"
+log() { printf '[niteshift-setup] %s\n' "$*"; }
+
+# 1) Pinned toolchain (node 20.19 / pnpm 10.19 via mise).
+# shellcheck disable=SC1091
+source "$REPO_DIR/.niteshift/files/toolchain.sh"
+log "installing pinned toolchain via mise"
+workshop_ensure_toolchain "$REPO_DIR"
+
+# 2) Keep the working tree clean — exclude files this lifecycle generates.
+EXCLUDE_FILE=".git/info/exclude"
+for entry in "apps/backend/.env" ".claude/"; do
+  if ! grep -qxF "$entry" "$EXCLUDE_FILE" 2>/dev/null; then
+    printf '%s\n' "$entry" >> "$EXCLUDE_FILE"
+  fi
+done
+
+# 3) Database: injected Neon branch, or the local `postgres` service.
+# shellcheck disable=SC1091
+source "$REPO_DIR/.niteshift/files/db.sh"
+workshop_resolve_database_url
+if [ "$WORKSHOP_LOCAL_DB" = "1" ]; then
+  log "no remote DATABASE_URL — starting local postgres service"
+  workshop_ensure_local_postgres
+else
+  log "remote DATABASE_URL detected — skipping local postgres"
+fi
+
+# 4) Dependencies.
+log "pnpm install"
+pnpm install --prefer-offline
+# Playwright browser for `pnpm e2e`, pinned by the lockfile's @playwright/test.
+log "playwright install chromium"
+pnpm exec playwright install chromium
+
+# 5) apps/backend/.env — the single place the resolved DATABASE_URL lands.
+#    The `backend` service sources it (services don't receive setup's
+#    repository variables), and drizzle-kit / seed tooling read it directly.
+#    Dev auth is on by default: the web bundle auto-signs-in as the seeded
+#    joshlebed@gmail.com user, so the preview lands signed in with no login.
+: "${SESSION_SECRET:?SESSION_SECRET must be provided as a repository environment variable}"
+log "writing apps/backend/.env"
+umask 077
+cat > apps/backend/.env <<ENV
+STAGE=${STAGE:-local}
+DATABASE_URL=${DATABASE_URL}
+SESSION_SECRET=${SESSION_SECRET}
+SES_FROM_ADDRESS=${SES_FROM_ADDRESS:-noreply@example.com}
+AWS_REGION=${AWS_REGION:-us-east-1}
+LOG_LEVEL=${LOG_LEVEL:-debug}
+PORT=8787
+DEV_AUTH_ENABLED=${DEV_AUTH_ENABLED:-1}
+ENV
+umask 022
+
+# 6) Drizzle migrations.
+log "running db migrations"
+pnpm --filter @workshop/backend run db:migrate
+
+# 7) Dev seed — idempotent. Default on for a local DB, off for a remote
+#    (prod-forked) Neon branch so fixtures don't smear over real data.
+#    SEED_DEV_DATA=1 forces it, SEED_DEV_DATA=0 skips it.
+SEED_DEFAULT=1
+if [ "$WORKSHOP_LOCAL_DB" = "0" ]; then
+  SEED_DEFAULT=0
+fi
+if [ "${SEED_DEV_DATA:-$SEED_DEFAULT}" = "1" ]; then
+  log "seeding dev data"
+  pnpm --filter @workshop/backend run db:seed
+else
+  log "skipping dev data seed (remote DB or SEED_DEV_DATA=0)"
+fi
+
+log "setup complete"

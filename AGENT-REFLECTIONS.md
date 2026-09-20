@@ -33,7 +33,7 @@ trail.
 --web` start logs `[FATAL:electron/shell/app/electron_main_delegate.cc:290] Running as
 root without --no-sandbox is not supported`. The dev server still serves fine — DevTools
   is the only thing broken — but the `FATAL` line triggers false positives when grepping
-  `$NITESHIFT_LOG_FILE` for errors. **Fix:** in `niteshift-setup.sh`, set an env var that
+  `ns services logs web` for errors. **Fix:** in `.niteshift/files/expo-web.sh`, set an env var that
   disables the DevTools auto-install before launching `expo start --web` (verify against
   Expo SDK 55 — candidates: `EXPO_NO_DEVTOOLS`, `CI=1`). If no such flag exists, file an
   `expo-cli` issue: in root/CI/sandbox environments the install attempt should silently
@@ -51,7 +51,7 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
   canonical dev account. ~1h.
 
 - **Dev-auth env-var matrix is undocumented.** `pnpm dev` (local `.env`),
-  `niteshift-setup.sh` (sandbox), and `scripts/e2e.sh` (e2e) each set `DEV_AUTH_ENABLED` /
+  `.niteshift/setup` + `services.yaml` (sandbox), and `scripts/e2e.sh` (e2e) each set `DEV_AUTH_ENABLED` /
   `EXPO_PUBLIC_DEV_AUTH` independently. There's no single source of truth telling the
   next agent which mode enables which capability via which var. **Fix:** 8-line table
   in `apps/workshop/CLAUDE.md` listing the three modes × two vars. The sandbox already

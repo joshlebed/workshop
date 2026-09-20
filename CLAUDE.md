@@ -635,8 +635,8 @@ includes `http://localhost:8081` (Workshop) and `http://localhost:8082` (HighSco
 Local `pnpm dev` uses docker postgres. Niteshift sandbox can use docker OR a per-task Neon
 branch, depending on the repo's Niteshift Database integration (Settings → Repositories →
 `joshlebed/workshop` → Database). When enabled: fresh Neon branch on task start with
-`DATABASE_URL` injected, reused on resume, GC'd on archive. `niteshift-setup.sh` detects
-shape — non-localhost `DATABASE_URL` skips docker. Migrations still run. Dev seed is
+`DATABASE_URL` injected, reused on resume, GC'd on archive. `.niteshift/setup` detects
+shape — non-localhost `DATABASE_URL` skips the docker `postgres` service. Migrations still run. Dev seed is
 **skipped by default** against remote DBs to avoid smearing fixtures over real data; force
 with `SEED_DEV_DATA=1`.
 
@@ -650,7 +650,7 @@ Point at a scrubbed staging branch if that's not OK.
 `friend@workshop.local` (Alex) is added on a few shared lists, plus recent `game_scores`
 rows and a friend graph (Alex + Casey as friends, mutuals Sam/Riley/Quinn, a pending
 inbound request from Quinn) for the friends/mutuals/profile surfaces. Both `dev.sh` and
-`niteshift-setup.sh` run `pnpm --filter @workshop/backend run db:seed`. Idempotent,
+`.niteshift/setup` run `pnpm --filter @workshop/backend run db:seed`. Idempotent,
 hard-guarded against non-local stages. `SEED_DEV_DATA=0` to skip. To re-seed, follow the
 header comment in `seed.ts` — a bare `DELETE FROM users …` fails on the non-cascade
 `activity_events.actor_id` FK; clear `activity_events` and `lists` for those users first.
@@ -674,9 +674,32 @@ grep -iE "error|warn" /tmp/workshop-dev.log
 grep "<request_id>" /tmp/workshop-dev.log       # trace one request
 ```
 
-In the Niteshift sandbox, `~/.niteshift/niteshift-setup.sh` starts backend + web directly
-via `concurrently`; output goes to `$NITESHIFT_LOG_FILE` (`/root/.niteshift/task-<id>.log`).
-Same prefixes, same grep patterns.
+In the Niteshift sandbox, backend + web are separate supervised services (see
+"Niteshift sandbox lifecycle" below): `ns services logs backend -n 200` /
+`ns services logs web -n 200`. `$NITESHIFT_LOG_FILE` only covers `.niteshift/setup`.
+
+### Niteshift sandbox lifecycle — `.niteshift/`
+
+Committed config that Niteshift replays on every task. `.niteshift/setup` (finite: mise
+toolchain, `pnpm install`, Playwright chromium, `apps/backend/.env`, migrations, seed) runs
+once per fresh sandbox; `.niteshift/resume` runs on every resume; `.niteshift/services.yaml`
+declares the supervised processes. `ns services status` shows them; `ns services up`
+re-applies the manifest after you edit it; `ns services validate` checks it.
+
+| Service     | Port | Autostart | Notes                                                               |
+| ----------- | ---- | --------- | ------------------------------------------------------------------- |
+| `web`       | 8081 | yes       | Workshop.dev Expo web. Primary preview. `EXPO_PUBLIC_DEV_AUTH=1`.   |
+| `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).           |
+| `highscore` | 8082 | no        | `ns services start highscore` — HighScore web against same backend. |
+| `postgres`  | —    | no        | Docker PG16, host networking. Only when no Neon `DATABASE_URL`.     |
+
+Gotchas: services get **platform env + manifest `environment` + `PORT` only**, never the
+repository variables setup sees — that's why `backend` goes through
+`.niteshift/files/backend.sh` and the dotenv. `dev-api-proxy.js` falls back to `$PORT` for
+the backend port, so the web services pin `DEV_API_PROXY_PORT=8787` (otherwise `/api` loops
+back into Metro). `.niteshift/files/expo-web.sh` derives the per-port preview origin for
+Expo CLI's CORS allow-list from `NITESHIFT_PORT_<port>_URL` / the preview URL template and
+exports it as `EXPO_DEV_SERVER_ALLOWED_ORIGIN` (read by each app's `app.config.ts`).
 
 ### Known sandbox gotcha: CORS preflight via the preview proxy
 
