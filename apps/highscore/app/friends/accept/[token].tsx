@@ -1,3 +1,5 @@
-import FriendAccept from "../../../src/games/screens/FriendAccept";
+import { UxRoute } from "../../../src/ux/routes";
 
-export default FriendAccept;
+export default function FriendAcceptScreen() {
+  return <UxRoute name="friendAccept" />;
+}

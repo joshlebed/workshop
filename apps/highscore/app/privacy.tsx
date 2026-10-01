@@ -1,3 +1,5 @@
-import Privacy from "../src/screens/legal/Privacy";
+import { UxRoute } from "../src/ux/routes";
 
-export default Privacy;
+export default function PrivacyScreen() {
+  return <UxRoute name="privacy" />;
+}

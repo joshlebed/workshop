@@ -49,8 +49,12 @@ describe("public routes", () => {
     expect(layout).toContain("if (onPublicRoute) return;");
     expect(layout).toContain('if (status === "loading" && !onPublicRoute) {');
     expect(layout).toContain('if (status === "unavailable" && !onPublicRoute) {');
+    // The UX playground moved the root navigator out of `app/_layout.tsx` into
+    // `RootStack` (it needs the active variant's screen animations), so that is
+    // where both public URLs have to be registered.
+    const rootStack = readFileSync(join(__dirname, "..", "ux", "shells.tsx"), "utf8");
     for (const route of PUBLIC_ROUTES) {
-      expect(layout).toContain(`<Stack.Screen name="${route.slice(1)}"`);
+      expect(rootStack).toContain(`<Stack.Screen name="${route.slice(1)}"`);
     }
   });
 

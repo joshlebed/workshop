@@ -1,3 +1,5 @@
-import Support from "../src/screens/legal/Support";
+import { UxRoute } from "../src/ux/routes";
 
-export default Support;
+export default function SupportScreen() {
+  return <UxRoute name="support" />;
+}

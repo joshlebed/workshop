@@ -1,5 +1,11 @@
 # apps/highscore — coding agent guide
 
+> **This branch is the UX playground.** `apps/highscore` currently hosts all five competing UX
+> explorations side by side behind an in-app toggle. Read
+> [`UX-PLAYGROUND.md`](./UX-PLAYGROUND.md) before touching `app/`, `src/ux/` or
+> `src/variants/`. Draft only — it is not meant to merge, and the notes below describe the
+> shipped app, which still lives under `src/` minus the variant namespaces.
+
 HighScore owns its complete frontend under `app/` and `src/games/`. Style, layout, branding, and
 client behavior should be implemented locally so they cannot change Workshop users. Do not move
 presentation code back into a shared package.

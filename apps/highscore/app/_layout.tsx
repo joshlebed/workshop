@@ -1,13 +1,36 @@
+// Root layout for the UX playground.
+//
+// Everything above the active variant lives here, and it is deliberately the
+// *union* of what the five variant branches each had in their own root layout.
+// Those branches differed only in two ways:
+//
+//   · which of their own providers they added (ux1's DeckNav, ux4's Flight +
+//     Peek, ux5's Dock, and each one's own ToastProvider) — those moved into
+//     `VariantProviders`, keyed on the variant; and
+//   · their `Stack.Screen` animations — those moved into `RootStack` /
+//     `VariantGroupLayout`.
+//
+// The rest — `configureApiClient`, the OTA-on-arrival hook, Press Start 2P font
+// loading, the gesture/keyboard/safe-area/query/auth/games-runtime providers,
+// the share-intent redirect and the whole AuthGate (redirects, stashed-invite
+// resolution, the loading and "can't connect" interstitials) — was byte-for-byte
+// identical on all five, so one copy serves all five. Verified by diffing the
+// five `app/_layout.tsx` files against each other.
+//
+// `key={variant}` on `VariantProviders` is load-bearing: switching variants must
+// tear the whole router subtree down, or deck panels / sheet stacks / dock
+// registrations from one variant leak into the next and the comparison lies.
+
+import { PressStart2P_400Regular, useFonts } from "@expo-google-fonts/press-start-2p";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
-import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
-import { type Href, Stack, useRouter, useSegments } from "expo-router";
+import { type Href, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
 import { type ReactNode, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
@@ -19,6 +42,10 @@ import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
+import { CHROME } from "../src/ux/chrome";
+import { RootStack, VariantCanvas, VariantProviders } from "../src/ux/shells";
+import { UxChip } from "../src/ux/UxChip";
+import { UxVariantProvider, useUxVariant } from "../src/ux/variant";
 
 configureApiClient({ client: "highscore" });
 
@@ -74,11 +101,12 @@ function useShareIntentRedirect(status: ReturnType<typeof useAuth>["status"]) {
 
 function AuthGate() {
   const { status, refresh } = useAuth();
+  const variant = useUxVariant();
   useShareIntentRedirect(status);
   // Widen to `string[]` so index access typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
-  // generated in CI. Group segments (`(tabs)`) are stripped so the route
-  // checks below match URL-shaped paths.
+  // generated in CI. Group segments (`(app)`) are stripped so the route checks
+  // below match URL-shaped paths.
   const rawSegments: string[] = useSegments();
   const segments = rawSegments.filter((segment) => !segment.startsWith("("));
   const router = useRouter();
@@ -127,27 +155,29 @@ function AuthGate() {
 
   if (status === "loading" && !onPublicRoute) {
     return (
-      <View style={centered}>
-        <ActivityIndicator color={tokens.accent.default} />
+      <View style={styles.centered}>
+        <ActivityIndicator color={CHROME.primary} />
       </View>
     );
   }
 
   if (status === "unavailable" && !onPublicRoute) {
     return (
-      <SafeAreaView
-        edges={["top", "bottom"]}
-        style={{ flex: 1, backgroundColor: tokens.bg.canvas }}
-      >
-        <View style={{ ...centered, paddingHorizontal: tokens.space.xl }}>
-          <View style={{ width: "100%", maxWidth: 340, gap: tokens.space.md }}>
-            <Text variant="heading" style={{ textAlign: "center" }}>
-              Can’t connect
-            </Text>
-            <Text tone="secondary" style={{ textAlign: "center" }}>
+      <SafeAreaView edges={["top", "bottom"]} style={styles.interstitial}>
+        <View style={[styles.centered, styles.interstitialBody]}>
+          <View style={styles.interstitialColumn}>
+            <Text style={styles.interstitialTitle}>Can’t connect</Text>
+            <Text style={styles.interstitialBlurb}>
               Your session is still saved. Check your connection and try again.
             </Text>
-            <Button label="Try again" size="lg" onPress={() => void refresh()} />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Try again"
+              onPress={() => void refresh()}
+              style={styles.interstitialButton}
+            >
+              <Text style={styles.interstitialButtonLabel}>Try again</Text>
+            </Pressable>
           </View>
         </View>
       </SafeAreaView>
@@ -155,63 +185,75 @@ function AuthGate() {
   }
 
   return (
-    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: tokens.bg.canvas },
-          gestureEnabled: true,
-          fullScreenGestureEnabled: true,
-        }}
-      >
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="games/[id]" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/[userId]" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/accept/[token]" />
-        <Stack.Screen name="g/[token]" />
-        <Stack.Screen name="share/index" />
-        <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="profile" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="support" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="privacy" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="sign-in" />
-        <Stack.Screen name="onboarding/display-name" />
-      </Stack>
-    </SafeAreaView>
+    <VariantCanvas>
+      <SafeAreaView edges={["top"]} style={styles.stackHost}>
+        <VariantProviders key={variant} variant={variant}>
+          <RootStack />
+        </VariantProviders>
+      </SafeAreaView>
+    </VariantCanvas>
   );
 }
-
-const centered = {
-  flex: 1,
-  alignItems: "center",
-  justifyContent: "center",
-  backgroundColor: tokens.bg.canvas,
-} as const;
 
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
-  const colorScheme = useColorScheme();
-  const isLight = colorScheme === "light";
+  // HighScore is dark-only (DESIGN.md): no ThemeProvider, no useColorScheme.
+  // Press Start 2P is heading/score-only on all five variants, so blocking on it
+  // briefly is a dark canvas, not a blank app; render proceeds on load error too.
+  const [fontsLoaded, fontError] = useFonts({ PressStart2P_400Regular });
+  if (!fontsLoaded && !fontError) return <View style={styles.centered} />;
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={styles.root}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <ThemeProvider>
-            <StatusBar style={isLight ? "dark" : "light"} />
+          <StatusBar style="light" />
+          <UxVariantProvider>
             <QueryClientProvider client={queryClient}>
-              <ToastProvider>
-                <AuthProvider>
-                  <GamesRuntimeBridge>
+              <AuthProvider>
+                <GamesRuntimeBridge>
+                  <View style={styles.root}>
                     <AuthGate />
-                  </GamesRuntimeBridge>
-                </AuthProvider>
-              </ToastProvider>
+                    {/* Outside the Stack, so the toggle is reachable from every
+                        screen including sign-in and the legal pages. */}
+                    <UxChip />
+                  </View>
+                </GamesRuntimeBridge>
+              </AuthProvider>
             </QueryClientProvider>
-          </ThemeProvider>
+          </UxVariantProvider>
         </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: CHROME.ink },
+  centered: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: CHROME.ink,
+  },
+  stackHost: { flex: 1 },
+  interstitial: { flex: 1, backgroundColor: CHROME.ink },
+  interstitialBody: { paddingHorizontal: 24 },
+  interstitialColumn: { width: "100%", maxWidth: 340, gap: 12 },
+  interstitialTitle: {
+    color: CHROME.textPrimary,
+    fontSize: 20,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  interstitialBlurb: { color: CHROME.textSecondary, fontSize: 14, textAlign: "center" },
+  interstitialButton: {
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: CHROME.bezel,
+    borderColor: CHROME.border,
+    backgroundColor: CHROME.surface2,
+  },
+  interstitialButtonLabel: { color: CHROME.textPrimary, fontSize: 15, fontWeight: "600" },
+});

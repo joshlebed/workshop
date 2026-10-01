@@ -1,3 +1,5 @@
-import GameShareLanding from "../../src/games/screens/GameShareLanding";
+import { UxRoute } from "../../src/ux/routes";
 
-export default GameShareLanding;
+export default function GameShareScreen() {
+  return <UxRoute name="gameShare" />;
+}

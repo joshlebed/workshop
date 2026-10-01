@@ -1,3 +1,5 @@
-import PickGame from "../../src/games/screens/PickGame";
+import { UxRoute } from "../../src/ux/routes";
 
-export default PickGame;
+export default function SharePickGameScreen() {
+  return <UxRoute name="sharePickGame" />;
+}

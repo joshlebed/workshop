@@ -1,5 +1,9 @@
 # HighScore (`apps/highscore`)
 
+> **Draft branch: UX playground.** This checkout carries all five competing UX explorations at
+> once, behind an in-app toggle chip (and `?ux=ux1`…`?ux=ux5`). See
+> [`UX-PLAYGROUND.md`](./UX-PLAYGROUND.md). Not for merge.
+
 Expo app for **HighScore** (`highscore.live`) — the daily-games half of the split described
 in [`docs/highscore-migration-plan.md`](../../docs/highscore-migration-plan.md). Builds web
 and iOS from one component tree via `react-native-web`, exactly like `apps/workshop`.
