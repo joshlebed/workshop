@@ -70,3 +70,37 @@ describe("audience config parsing", () => {
     expect(googleAudiences()).toEqual([]);
   });
 });
+
+describe("OpenAI teach config", () => {
+  const OPENAI_ENV = [
+    "OPENAI_API_KEY",
+    "OPENAI_TEACH_TARGETS_MODEL",
+    "OPENAI_TEACH_CODEGEN_MODEL",
+  ] as const;
+  const clear = () => {
+    for (const key of OPENAI_ENV) delete process.env[key];
+    resetConfigForTesting();
+  };
+  beforeEach(clear);
+  afterEach(clear);
+
+  it("boots with no key and defaults both step models", () => {
+    const config = getConfig();
+    expect(config.openaiApiKey).toBe("");
+    expect(config.openaiTeachTargetsModel).toBe("gpt-6.1-sol");
+    expect(config.openaiTeachCodegenModel).toBe("gpt-6.1-sol");
+  });
+
+  it("treats a blank dotenv value as unset", () => {
+    process.env.OPENAI_TEACH_TARGETS_MODEL = "  ";
+    resetConfigForTesting();
+    expect(getConfig().openaiTeachTargetsModel).toBe("gpt-6.1-sol");
+  });
+
+  it("lets each step's model be overridden independently", () => {
+    process.env.OPENAI_TEACH_CODEGEN_MODEL = "gpt-6-luna";
+    resetConfigForTesting();
+    expect(getConfig().openaiTeachTargetsModel).toBe("gpt-6.1-sol");
+    expect(getConfig().openaiTeachCodegenModel).toBe("gpt-6-luna");
+  });
+});
