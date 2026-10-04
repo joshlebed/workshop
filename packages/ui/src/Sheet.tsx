@@ -15,6 +15,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { ToastOverlay } from "./Toast";
 import { tokens } from "./theme";
 
 export interface SheetProps {
@@ -103,6 +104,7 @@ export function Sheet({
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
           <Animated.View pointerEvents="box-none" style={sheetStyle}>
+            <ToastOverlay />
             <View style={[styles.sheet, contentStyle]}>
               <View style={styles.handle} />
               {children}
