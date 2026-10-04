@@ -45,5 +45,19 @@ workshop_ensure_toolchain() {
     workshop_install_mise_pinned
   fi
   mise trust --quiet "$repo_root/.mise.toml"
-  mise install --quiet
+  # mise resolves pnpm/terraform/actionlint/gitleaks through the GitHub
+  # releases API. Anonymous calls share the sandbox egress IP's 60/hour limit
+  # and fail with `403 rate limit exceeded`. Niteshift injects GH_TOKEN, but
+  # this mise release only reads MISE_GITHUB_TOKEN / GITHUB_TOKEN — so hand it
+  # over for the install only (not exported to services).
+  local gh_token="${MISE_GITHUB_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
+  if MISE_GITHUB_TOKEN="$gh_token" mise install --quiet; then
+    return 0
+  fi
+  # node + pnpm are what setup and the services need; terraform / actionlint /
+  # gitleaks are lint-time extras (lefthook skips gitleaks when absent). Don't
+  # fail the whole sandbox over those.
+  echo "[toolchain] mise install failed; retrying with node + pnpm only" >&2
+  MISE_GITHUB_TOKEN="$gh_token" mise install --quiet node pnpm || return 1
+  echo "[toolchain] WARNING: terraform/actionlint/gitleaks may be missing — run 'mise install' to retry" >&2
 }

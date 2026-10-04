@@ -715,6 +715,14 @@ back into Metro). `.niteshift/files/expo-web.sh` derives the per-port preview or
 Expo CLI's CORS allow-list from `NITESHIFT_PORT_<port>_URL` / the preview URL template and
 exports it as `EXPO_DEV_SERVER_ALLOWED_ORIGIN` (read by each app's `app.config.ts`).
 
+`mise install` resolves pnpm/terraform/actionlint/gitleaks through the GitHub releases API,
+and the pinned mise only reads `MISE_GITHUB_TOKEN` / `GITHUB_TOKEN` — not the `GH_TOKEN` the
+sandbox injects. `toolchain.sh` bridges the two; without it, calls are anonymous and the
+shared egress IP's 60/hour limit fails setup with `403 rate limit exceeded`. **Don't re-run
+`.niteshift/setup` by hand from an agent shell**: the shell lacks setup's repository variables
+(`DATABASE_URL`, `SESSION_SECRET`), so it falls back to local postgres and rewrites
+`apps/backend/.env` away from the Neon branch. Run the individual step instead.
+
 ### Known sandbox gotcha: CORS preflight via the preview proxy
 
 The Niteshift preview proxy (`https://ns-<port>-<id>.preview.niteshift.dev`) rejects
