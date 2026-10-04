@@ -134,6 +134,27 @@ export interface UpsertGameScoreResponse {
   score: GameScore;
 }
 
+/** Which evidence recognized a pasted score's game, cheapest first. */
+export type GameRecognitionMethod = "url" | "label" | "fingerprint" | "jev";
+
+/** `POST /v1/games/recognize` — which game is this pasted text a score for? */
+export interface RecognizeGameRequest {
+  text: string;
+}
+
+export interface RecognizedGame {
+  game: Game;
+  /** False when the game is in the catalog but not yet in the caller's My Games. */
+  inMyGames: boolean;
+  /** 0–1. The server only returns matches it is confident enough to surface. */
+  confidence: number;
+  method: GameRecognitionMethod;
+}
+
+export interface RecognizeGameResponse {
+  match: RecognizedGame | null;
+}
+
 /** `PUT /v1/games/:id/score-spec` — teach a non-registry game its parser. */
 export interface SetGameScoreSpecResponse {
   game: Game;
