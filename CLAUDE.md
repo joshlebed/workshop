@@ -554,6 +554,8 @@ the matching GH secret in the same PR.
 `value` (`Member must have length greater than or equal to 1`), so the apply fails. Create the
 parameter first with `aws ssm put-parameter --type SecureString`, then add an `import` block
 beside the resource so the apply adopts it (see `typesafe_api_key` in `infra/ssm.tf`). The
+PR's advisory `terraform plan` fails on that import — the plan role lacks
+`ssm:DescribeParameters` — while the apply role can do it. The
 Lambda's env references every parameter, so one missing parameter blocks all Lambda env
 updates through Terraform. Until the apply is green, set a Lambda env var directly with
 `aws lambda update-function-configuration` (merge into the existing map; it replaces the whole
