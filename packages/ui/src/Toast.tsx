@@ -1,5 +1,13 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
 import { CopyIcon } from "./CopyIcon";
 import { copyToClipboard } from "./clipboard";
 import { Text } from "./Text";
@@ -29,6 +37,16 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+// Separate from ToastContext so `useToast()` callers don't re-render on every
+// toast. Read by `ToastOverlay` to re-host the toasts inside an RN `Modal`.
+interface ToastStateContextValue {
+  toasts: Toast[];
+  dismiss: (id: number) => void;
+  registerOverlay: () => () => void;
+}
+
+const ToastStateContext = createContext<ToastStateContextValue | null>(null);
+
 // Default toasts auto-dismiss after a short read. Danger toasts hang around
 // 10s because the user usually needs them long enough to copy the message
 // and report it.
@@ -37,7 +55,13 @@ const DANGER_DURATION_MS = 10_000;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [overlayCount, setOverlayCount] = useState(0);
   const idRef = useRef(0);
+
+  const registerOverlay = useCallback(() => {
+    setOverlayCount((n) => n + 1);
+    return () => setOverlayCount((n) => n - 1);
+  }, []);
 
   const dismiss = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -58,19 +82,49 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(() => ({ showToast }), [showToast]);
+  const stateValue = useMemo(
+    () => ({ toasts, dismiss, registerOverlay }),
+    [toasts, dismiss, registerOverlay],
+  );
 
   return (
     <ToastContext.Provider value={value}>
-      {children}
-      <ToastViewport toasts={toasts} dismiss={dismiss} />
+      <ToastStateContext.Provider value={stateValue}>
+        {children}
+        {overlayCount === 0 ? (
+          <ToastViewport toasts={toasts} dismiss={dismiss} style={styles.viewport} />
+        ) : null}
+      </ToastStateContext.Provider>
     </ToastContext.Provider>
   );
 }
 
-function ToastViewport({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
+/**
+ * Hosts the toasts inside an RN `Modal` (see `Sheet`). A `Modal` presents
+ * above the root view, so the provider's own viewport would be hidden behind
+ * it; while an overlay is mounted the provider yields to it. Renders in flow,
+ * so the parent decides where the toasts sit.
+ */
+export function ToastOverlay() {
+  const state = useContext(ToastStateContext);
+  const registerOverlay = state?.registerOverlay;
+  useEffect(() => registerOverlay?.(), [registerOverlay]);
+  if (!state) return null;
+  return <ToastViewport toasts={state.toasts} dismiss={state.dismiss} style={styles.overlay} />;
+}
+
+function ToastViewport({
+  toasts,
+  dismiss,
+  style,
+}: {
+  toasts: Toast[];
+  dismiss: (id: number) => void;
+  style: ViewStyle;
+}) {
   if (toasts.length === 0) return null;
   return (
-    <View pointerEvents="box-none" style={styles.viewport}>
+    <View pointerEvents="box-none" style={style}>
       {toasts.map((t) => (
         <ToastRow key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
       ))}
@@ -155,6 +209,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.sm,
     paddingHorizontal: tokens.space.lg,
+  },
+  overlay: {
+    alignItems: "center",
+    gap: tokens.space.sm,
+    paddingHorizontal: tokens.space.lg,
+    paddingBottom: tokens.space.sm,
   },
   row: {
     flexDirection: "row",
