@@ -378,8 +378,11 @@ The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
 `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
 `GOOGLE_BOOKS_API_KEY`, `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `ENABLE_GAMES`, `SPOTIFY_CLIENT_ID`,
 `SPOTIFY_CLIENT_SECRET`, `DISCORD_NOTIFY_WEBHOOK_URL`, `LOG_LEVEL` from env vars set by Terraform.
-`OPENAI_TEACH_TARGETS_MODEL` / `OPENAI_TEACH_CODEGEN_MODEL` are optional overrides that Terraform
-does not set; both default to `gpt-6.1-sol` in `lib/config.ts`.
+`OPENAI_TEACH_TARGETS_MODEL` / `OPENAI_TEACH_CODEGEN_MODEL` and `OPENAI_TEACH_TARGETS_EFFORT` /
+`OPENAI_TEACH_CODEGEN_EFFORT` are optional overrides that Terraform does not set; `lib/config.ts`
+defaults both steps to `gpt-6-luna` at reasoning effort `none` (picked for latency under the 15s
+Lambda timeout). Efforts are model-specific — `gpt-6.1-sol` rejects `none` — so change a step's
+model and effort together.
 `aws lambda get-function-configuration` shows what's running.
 
 ## Admin runbook
