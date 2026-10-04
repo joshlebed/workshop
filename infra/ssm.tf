@@ -81,6 +81,22 @@ resource "aws_ssm_parameter" "tmdb_api_key" {
   }
 }
 
+# Created out of band, like typesafe_api_key below.
+import {
+  to = aws_ssm_parameter.openai_api_key
+  id = "/workshop-prod/openai_api_key"
+}
+
+resource "aws_ssm_parameter" "openai_api_key" {
+  name  = "/${local.prefix}/openai_api_key"
+  type  = "SecureString"
+  value = var.openai_api_key
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 # Created out of band with `aws ssm put-parameter` (SSM rejects the empty
 # default on create), so Terraform adopts it instead of creating it.
 import {

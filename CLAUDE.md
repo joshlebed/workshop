@@ -376,8 +376,10 @@ curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)
 The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
 `APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`,
 `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
-`GOOGLE_BOOKS_API_KEY`, `TYPESAFE_API_KEY`, `ENABLE_GAMES`, `SPOTIFY_CLIENT_ID`, `SPOTIFY_CLIENT_SECRET`,
-`DISCORD_NOTIFY_WEBHOOK_URL`, `LOG_LEVEL` from env vars set by Terraform.
+`GOOGLE_BOOKS_API_KEY`, `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `ENABLE_GAMES`, `SPOTIFY_CLIENT_ID`,
+`SPOTIFY_CLIENT_SECRET`, `DISCORD_NOTIFY_WEBHOOK_URL`, `LOG_LEVEL` from env vars set by Terraform.
+`OPENAI_TEACH_TARGETS_MODEL` / `OPENAI_TEACH_CODEGEN_MODEL` are optional overrides that Terraform
+does not set; both default to `gpt-6.1-sol` in `lib/config.ts`.
 `aws lambda get-function-configuration` shows what's running.
 
 ## Admin runbook
@@ -553,7 +555,8 @@ the matching GH secret in the same PR.
 **A new SSM parameter can't be created from an empty default.** SSM rejects a zero-length
 `value` (`Member must have length greater than or equal to 1`), so the apply fails. Create the
 parameter first with `aws ssm put-parameter --type SecureString`, then add an `import` block
-beside the resource so the apply adopts it (see `typesafe_api_key` in `infra/ssm.tf`). The
+beside the resource so the apply adopts it (see `typesafe_api_key` and `openai_api_key` in
+`infra/ssm.tf`). Merge only after the parameter exists, or the import itself fails. The
 PR's advisory `terraform plan` fails on that import — the plan role lacks
 `ssm:DescribeParameters` — while the apply role can do it. The
 Lambda's env references every parameter, so one missing parameter blocks all Lambda env

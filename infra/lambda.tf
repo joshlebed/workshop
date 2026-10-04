@@ -62,6 +62,7 @@ resource "aws_lambda_function" "api" {
       TMDB_API_KEY               = aws_ssm_parameter.tmdb_api_key.value
       GOOGLE_BOOKS_API_KEY       = aws_ssm_parameter.google_books_api_key.value
       TYPESAFE_API_KEY           = aws_ssm_parameter.typesafe_api_key.value
+      OPENAI_API_KEY             = aws_ssm_parameter.openai_api_key.value
       ENABLE_GAMES               = "1"
       SPOTIFY_CLIENT_ID          = aws_ssm_parameter.spotify_client_id.value
       SPOTIFY_CLIENT_SECRET      = aws_ssm_parameter.spotify_client_secret.value
