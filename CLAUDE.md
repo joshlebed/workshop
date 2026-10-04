@@ -743,6 +743,16 @@ This is where the iOS Safari URL-bar/home-indicator tint (`<meta name="theme-col
 `viewport-fit=cover`, and html/body `background-color` lock live. If you switch to
 `output: "static"` someday, port these into `+html.tsx` in the same PR.
 
+## Agent skills
+
+Third-party skills are vendored with the `skills` CLI, not installed as Claude Code plugins:
+the files live in `.agents/skills/<name>/`, `.claude/skills/<name>` is a symlink to them, and
+`skills-lock.json` records source + hash. Currently `impeccable` and `typesafe-ai`. Add one with
+`npx skills add <owner>/<repo> --skill <name> -a claude-code -y`, then move the copy it drops in
+`.claude/skills/` to `.agents/skills/` and symlink it back. **`.niteshift/setup` puts `.claude/`
+in `.git/info/exclude`**, so a new skill never shows in `git status` in the sandbox — stage it
+with `git add -f .claude/skills/<name>`.
+
 ## Per-area guides
 
 - `apps/backend/CLAUDE.md` — Hono + Drizzle patterns, Lambda bundling
