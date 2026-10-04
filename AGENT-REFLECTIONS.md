@@ -171,3 +171,11 @@ root without --no-sandbox is not supported`. The dev server still serves fine โ€
   in `ci-docs.yml`") but nothing fails the build when someone forgets. **Fix:** a tiny
   script in CI that diffs the job names between the two workflows and fails on
   mismatch. ~30m.
+
+- **`terraform apply` on `main` has been red since #400 (2026-08-30).** `apple_team_id`,
+  `apple_key_id`, and `apple_private_key` are declared with empty defaults, and SSM rejects an
+  empty `value` on create, so the three parameters were never created and every apply exits 1.
+  The Lambda env references them, so Terraform cannot update the Lambda env at all (prod is
+  missing `APPLE_*` revocation vars and `LOG_LEVEL` changes would not land). **Fix:** operator
+  creates the three with `aws ssm put-parameter` (real values, manual-setup.md ยง5), then a PR
+  adds `import` blocks like `typesafe_api_key` in `infra/ssm.tf`. ~15m once the `.p8` exists.
