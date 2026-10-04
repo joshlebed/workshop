@@ -8,6 +8,28 @@ import {
 } from "./games.js";
 
 describe("normalizeGameUrl", () => {
+  it("unwraps a Facebook link shim to the real game URL", () => {
+    expect(
+      normalizeGameUrl(
+        "https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.dailytens.com%2F%3Ffbclid%3Dabc&h=AT0x",
+      ),
+    ).toBe("dailytens.com");
+    expect(normalizeGameUrl("lm.facebook.com/l.php?u=https%3A%2F%2Ftravle.earth%2Fusa")).toBe(
+      "travle.earth/usa",
+    );
+    expect(normalizeGameUrl("https://l.instagram.com/?u=https%3A%2F%2Fframed.wtf%2F&e=x")).toBe(
+      "framed.wtf",
+    );
+  });
+
+  it("rejects a link shim with no usable target", () => {
+    expect(normalizeGameUrl("https://l.facebook.com/l.php")).toBeNull();
+    expect(normalizeGameUrl("https://l.facebook.com/l.php?u=javascript%3Aalert(1)")).toBeNull();
+    expect(
+      normalizeGameUrl("https://l.facebook.com/l.php?u=https%3A%2F%2Fl.facebook.com%2Fl.php"),
+    ).toBeNull();
+  });
+
   it("strips the referral query string (the dailytens.com/?ref= junk case)", () => {
     expect(normalizeGameUrl("https://dailytens.com/?ref=abc123")).toBe("dailytens.com");
   });

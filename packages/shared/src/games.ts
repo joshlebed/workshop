@@ -208,16 +208,55 @@ export interface GameShareLinkPreview {
   viewer?: { isSelf: boolean; isFriend: boolean };
 }
 
+// Meta's outbound-link shims (`l.facebook.com/l.php?u=<target>`): a link
+// tapped inside Facebook / Instagram / Messenger is rewritten to one of these,
+// with the real destination in the `u` query param.
+const LINK_SHIM_HOSTS = new Set([
+  "l.facebook.com",
+  "lm.facebook.com",
+  "l.instagram.com",
+  "l.messenger.com",
+]);
+
+/**
+ * Unwrap a Meta link-shim URL to the destination it redirects to. Returns the
+ * input unchanged when it isn't a shim, and null for a shim with no usable
+ * target (a bare `l.facebook.com/l.php` is never a game). Without this the
+ * normalizer drops the query string and every Facebook-opened game collapses
+ * onto one junk `l.facebook.com/l.php` catalog row.
+ */
+export function unwrapLinkShim(input: string): string | null {
+  const trimmed = input.trim();
+  let url: URL;
+  try {
+    url = new URL(/^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`);
+  } catch {
+    return input;
+  }
+  if (!LINK_SHIM_HOSTS.has(url.host.toLowerCase())) return input;
+  const target = url.searchParams.get("u")?.trim();
+  if (!target || !/^https?:\/\//i.test(target)) return null;
+  try {
+    if (LINK_SHIM_HOSTS.has(new URL(target).host.toLowerCase())) return null;
+  } catch {
+    return null;
+  }
+  return target;
+}
+
 /**
  * Normalize a game URL into the global catalog's dedup key: lowercase host,
  * strip `www.`, drop query + fragment (the `dailytens.com/?ref=<id>` junk),
  * trim trailing slash(es), keep the path (and any non-default port). The
  * scheme is dropped so http/https variants collapse. Accepts scheme-less
- * input ("wordle.com"). Returns null when the input isn't a usable
+ * input ("wordle.com"). Meta link shims are unwrapped to their destination
+ * first (see `unwrapLinkShim`). Returns null when the input isn't a usable
  * http(s) URL with a dotted host.
  */
 export function normalizeGameUrl(input: string): string | null {
-  const trimmed = input.trim();
+  const unwrapped = unwrapLinkShim(input);
+  if (unwrapped === null) return null;
+  const trimmed = unwrapped.trim();
   if (trimmed.length === 0) return null;
   // Anything that already carries a scheme (mailto:, ftp:, https:) is parsed
   // as-is so non-http schemes get rejected below; the `(?![0-9])` keeps a

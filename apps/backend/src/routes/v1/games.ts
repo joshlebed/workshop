@@ -23,6 +23,7 @@ import {
   isReactionEmoji,
   normalizeGameUrl,
   shiftPeriodKey,
+  unwrapLinkShim,
 } from "@workshop/shared/games";
 import { parseScoreWithSpec, scoreSpecSchema } from "@workshop/shared/scoreParsing";
 import { evaluateSummarySpec, summarySpecSchema } from "@workshop/shared/summarySpec";
@@ -508,11 +509,16 @@ gameRoutes.post(
     const parsed = await parseJsonBody(c, addGameSchema);
     if (!parsed.ok) return parsed.response;
 
-    const normalized = normalizeGameUrl(parsed.data.url);
-    if (!normalized) return err(c, "VALIDATION", "url is not a valid http(s) game URL");
+    // A link opened from Facebook/Instagram arrives wrapped in Meta's redirect
+    // shim; identify + preview the real destination, not the shim.
+    const inputUrl = unwrapLinkShim(parsed.data.url);
+    const normalized = inputUrl ? normalizeGameUrl(inputUrl) : null;
+    if (!inputUrl || !normalized) {
+      return err(c, "VALIDATION", "url is not a valid http(s) game URL");
+    }
 
-    const game = await findOrCreateGame(parsed.data.url, normalized, getDb(), () =>
-      previewHintsFor(parsed.data.url, normalized),
+    const game = await findOrCreateGame(inputUrl, normalized, getDb(), () =>
+      previewHintsFor(inputUrl, normalized),
     );
     const membership = await addToMyGames(userId, game.id);
     if (membership.created) await notifyGameAdded(userId, game.title);
