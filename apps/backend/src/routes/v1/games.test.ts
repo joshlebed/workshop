@@ -144,6 +144,18 @@ describe("POST /v1/games — find-or-create by normalized URL", () => {
     expect(memberships[0]?.n).toBe(1);
   });
 
+  it("a Facebook link-shim URL resolves to the wrapped game, never a shim row", async () => {
+    const direct = await addGame("https://www.dailytens.com/");
+    const shimmed = await addGame(
+      "https://l.facebook.com/l.php?u=https%3A%2F%2Fdailytens.com%2F%3Ffbclid%3Dabc&h=AT0x",
+    );
+    expect(shimmed.game.id).toBe(direct.game.id);
+    const shimRows = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM games WHERE normalized_url LIKE '%facebook.com%'`,
+    );
+    expect(shimRows[0]?.n).toBe(0);
+  });
+
   it("a known game pasted under a variant path collapses onto the seeded catalog row", async () => {
     const res = await addGame("https://globle-game.com/game?utm_source=share");
     const seeded = await rows<{ id: string }>(
