@@ -58,6 +58,8 @@ const configSchema = z.object({
   // 503 with a clear error until populated. SSM wires the real values in 0c-2.
   tmdbApiKey: z.string().optional().default(""),
   googleBooksApiKey: z.string().optional().default(""),
+  // TypeSafe (Jev) API key. Server-side only — never ship it to a client bundle.
+  typesafeApiKey: z.string().optional().default(""),
   // Dev-only sign-in route for E2E tests. Must be explicitly opted in —
   // treated as a production footgun otherwise. See routes/v1/auth.ts.
   devAuthEnabled: z
@@ -106,6 +108,7 @@ export function getConfig(): Config {
     applePrivateKey: process.env.APPLE_PRIVATE_KEY,
     tmdbApiKey: process.env.TMDB_API_KEY,
     googleBooksApiKey: process.env.GOOGLE_BOOKS_API_KEY,
+    typesafeApiKey: process.env.TYPESAFE_API_KEY,
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,
     gamesEnabled: process.env.ENABLE_GAMES,
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,

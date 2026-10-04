@@ -53,6 +53,13 @@ variable "tmdb_api_key" {
   description = "TMDB API key for movie/TV search enrichment (Phase 2). Empty default lets infra apply before the key is obtained."
 }
 
+variable "typesafe_api_key" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "TypeSafe (Jev) API key for System One judgments. Empty default lets infra apply before the key is set in SSM."
+}
+
 variable "google_books_api_key" {
   type        = string
   default     = ""

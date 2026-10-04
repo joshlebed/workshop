@@ -81,6 +81,16 @@ resource "aws_ssm_parameter" "tmdb_api_key" {
   }
 }
 
+resource "aws_ssm_parameter" "typesafe_api_key" {
+  name  = "/${local.prefix}/typesafe_api_key"
+  type  = "SecureString"
+  value = var.typesafe_api_key
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 resource "aws_ssm_parameter" "google_books_api_key" {
   name  = "/${local.prefix}/google_books_api_key"
   type  = "SecureString"
