@@ -81,6 +81,13 @@ resource "aws_ssm_parameter" "tmdb_api_key" {
   }
 }
 
+# Created out of band with `aws ssm put-parameter` (SSM rejects the empty
+# default on create), so Terraform adopts it instead of creating it.
+import {
+  to = aws_ssm_parameter.typesafe_api_key
+  id = "/workshop-prod/typesafe_api_key"
+}
+
 resource "aws_ssm_parameter" "typesafe_api_key" {
   name  = "/${local.prefix}/typesafe_api_key"
   type  = "SecureString"
