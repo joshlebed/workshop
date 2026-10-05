@@ -76,6 +76,8 @@ describe("OpenAI teach config", () => {
     "OPENAI_API_KEY",
     "OPENAI_TEACH_TARGETS_MODEL",
     "OPENAI_TEACH_CODEGEN_MODEL",
+    "OPENAI_TEACH_TARGETS_EFFORT",
+    "OPENAI_TEACH_CODEGEN_EFFORT",
   ] as const;
   const clear = () => {
     for (const key of OPENAI_ENV) delete process.env[key];
@@ -84,23 +86,37 @@ describe("OpenAI teach config", () => {
   beforeEach(clear);
   afterEach(clear);
 
-  it("boots with no key and defaults both step models", () => {
+  it("boots with no key and defaults both steps to Luna with reasoning off", () => {
     const config = getConfig();
     expect(config.openaiApiKey).toBe("");
-    expect(config.openaiTeachTargetsModel).toBe("gpt-6.1-sol");
-    expect(config.openaiTeachCodegenModel).toBe("gpt-6.1-sol");
+    expect(config.openaiTeachTargetsModel).toBe("gpt-6-luna");
+    expect(config.openaiTeachCodegenModel).toBe("gpt-6-luna");
+    expect(config.openaiTeachTargetsEffort).toBe("none");
+    expect(config.openaiTeachCodegenEffort).toBe("none");
   });
 
   it("treats a blank dotenv value as unset", () => {
     process.env.OPENAI_TEACH_TARGETS_MODEL = "  ";
     resetConfigForTesting();
-    expect(getConfig().openaiTeachTargetsModel).toBe("gpt-6.1-sol");
+    expect(getConfig().openaiTeachTargetsModel).toBe("gpt-6-luna");
   });
 
-  it("lets each step's model be overridden independently", () => {
-    process.env.OPENAI_TEACH_CODEGEN_MODEL = "gpt-6-luna";
+  it("lets each step's model and effort be overridden independently", () => {
+    process.env.OPENAI_TEACH_CODEGEN_MODEL = "gpt-6.1-sol";
+    process.env.OPENAI_TEACH_CODEGEN_EFFORT = "low";
     resetConfigForTesting();
-    expect(getConfig().openaiTeachTargetsModel).toBe("gpt-6.1-sol");
-    expect(getConfig().openaiTeachCodegenModel).toBe("gpt-6-luna");
+    const config = getConfig();
+    expect(config.openaiTeachTargetsModel).toBe("gpt-6-luna");
+    expect(config.openaiTeachTargetsEffort).toBe("none");
+    expect(config.openaiTeachCodegenModel).toBe("gpt-6.1-sol");
+    expect(config.openaiTeachCodegenEffort).toBe("low");
+  });
+
+  it("falls back to the default effort on a blank or unrecognised value", () => {
+    process.env.OPENAI_TEACH_TARGETS_EFFORT = "";
+    process.env.OPENAI_TEACH_CODEGEN_EFFORT = "minimal";
+    resetConfigForTesting();
+    expect(getConfig().openaiTeachTargetsEffort).toBe("none");
+    expect(getConfig().openaiTeachCodegenEffort).toBe("none");
   });
 });
