@@ -300,6 +300,67 @@ friend's reaction on a shared friend's score never reveals who they are. The emo
 validated by `isReactionEmoji` (`@workshop/shared/games`). When you add a new code path that
 builds `GameStandingsEntry`, populate `reactions` (it's a required field now).
 
+## Game-score recognition (`lib/gameRecognition.ts`) — which game is this paste for?
+
+`recognizeGame(raw, candidates, { loadExamples, judge })` → `{ gameId, confidence, method } | null`.
+Nothing is taught: every stored `game_scores.score_raw` is a labelled example of its game, so a
+user-added game is recognizable from its first score. Evidence runs cheapest-first and stops at the
+first answer: **url** (the text contains the game's host/path) → **label** (its title, or the name a
+wholly-owned domain carries) → **fingerprint** (the tokens most of its stored examples share,
+digit-blind and order-blind; needs ≥3 examples) → **jev** (one TypeSafe Choice over a
+fingerprint-ranked shortlist of 8 plus "none", `lib/jev.ts`). The module is pure — the Jev call and
+the example loader are injected — so the eval harness, the endpoint and the shadow log run the same
+code; `lib/gameRecognitionService.ts` adds the DB side (candidates = My Games + catalog games the
+text names; examples = the 20 most recent distinct usable scores, any player's).
+
+- **Its queries must stay index-bounded — it runs on every score post in shadow mode.**
+  Candidates are two probes: `user_games` by user, and `games` by exact `normalized_url` for the
+  URLs the text links (`gameUrlKeysIn`) plus the registry games it names. Examples are one
+  `LIMIT`ed backward scan per game on the existing `game_scores (game_id, period_key)` index
+  ("recent" = latest puzzle day, which is why no `created_at` index was added). Never filter
+  `games` by an expression on title/url or window over a game's whole score history: at 20k games
+  / 1.2M scores those cost 5 ms and 840 ms per post.
+- **Everything runs inside a time budget** (`SHADOW_BUDGET_MS` = 400 on a score post, 2.5 s on the
+  endpoint). Each DB step runs in a transaction with `SET LOCAL statement_timeout` (150 ms), so a
+  stuck query is cancelled by Postgres and settles instead of being abandoned on the container's
+  one connection; Jev gets whatever time is left; a final `Promise.race` cap logs
+  `outcome: "capped"` for the one case those can't reach (a socket that stops answering). PGlite
+  does not enforce `statement_timeout`, so the tests exercise the cap, not the cancel.
+
+- **Games beta accounts get it regardless of the flag.** `lib/gamesBeta.ts` hardcodes a short
+  allowlist of `users.id`s (ids only — no emails or names in code) and `isGamesBetaUser(userId)`;
+  it is deliberately not recognition-specific, so gate other pre-release Games features on it
+  too. Hardcoded because an env-var list would have to travel through Terraform. The mode in
+  force for a user is `recognitionModeFor(userId)` — `on` for beta accounts, else the global
+  flag — and every gate reads that, never `getConfig().gameRecognition`. Pass `c.get("userId")`:
+  during an admin impersonation that is the impersonated account, so the admin sees what that
+  user sees. `GET /v1/games` reports the result as `capabilities.recognition`; clients read
+  that instead of probing the endpoint, so a caller without the feature never requests it.
+- **Flag: `GAME_RECOGNITION` = `off` (default) | `shadow` | `on`** (`var.game_recognition` in
+  Terraform) is the mode for everyone else. `shadow` logs one `kind: "game_recognition_shadow"` line per score post — predicted vs
+  the game the user chose, `outcome: agree | disagree | none` — and changes nothing; `on` also
+  serves `POST /v1/games/recognize` (404 otherwise), which returns a match only at or above
+  `RECOGNITION_SURFACE_THRESHOLD`. Query shadow results with
+  `./scripts/logs.sh --filter game_recognition_shadow`.
+- **It must never make posting depend on Jev.** `lib/jev.ts` is one attempt with a 1.5s timeout and
+  returns null on any failure; every caller treats null as "no detection". Don't add retries, and
+  don't swap in `@typesafe-ai/sdk` without overriding its 10s × 3-attempt default.
+- **Re-measure before changing a threshold, the prompt or the Jev model**
+  (`JEV_MODEL` is pinned on purpose):
+  `EVAL_DATABASE_URL=<read-only prod/branch url> pnpm --filter @workshop/backend exec tsx scripts/eval-game-recognition.ts`.
+  It opens the DB read-only, holds each stored score out, and prints precision/recall per method,
+  the threshold curve, confusable pairs, and Jev latency/cost. `--save-snapshot` / `--snapshot`
+  reuse one export; the snapshot is real users' score text — keep it out of the repo.
+- **Known limit:** sister games with one layout (GeoSports / GeoHistory) are only separable by name
+  or link. A paste with both stripped is genuinely ambiguous and Jev will pick one confidently.
+  `linksElsewhere` rejects a pick when the text links a site that game's shares never carry.
+- **Examples are any player's scores, including players the caller has blocked.** They are sent
+  to Jev as examples and never returned to the caller, so the block rules don't apply — but if
+  examples ever become visible to users, filter with `blockedEitherWay` first.
+- **A catalog game outside My Games is matched by its link always, by its name only if it is a
+  registry game** (`catalogGameNamedBy`). Titles of user-added games are user-controlled; one named
+  "Final Score" must not claim everyone's MapTap pastes.
+
 ## `GameStandings.viewerStreak` — the Games-home streak flame
 
 `GameStandings` carries `viewerStreak` (required): the viewer's consecutive-day play streak

@@ -64,6 +64,7 @@ resource "aws_lambda_function" "api" {
       TYPESAFE_API_KEY           = aws_ssm_parameter.typesafe_api_key.value
       OPENAI_API_KEY             = aws_ssm_parameter.openai_api_key.value
       ENABLE_GAMES               = "1"
+      GAME_RECOGNITION           = var.game_recognition
       SPOTIFY_CLIENT_ID          = aws_ssm_parameter.spotify_client_id.value
       SPOTIFY_CLIENT_SECRET      = aws_ssm_parameter.spotify_client_secret.value
       DISCORD_NOTIFY_WEBHOOK_URL = aws_ssm_parameter.discord_notify_webhook_url.value

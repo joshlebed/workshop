@@ -112,9 +112,21 @@ export interface MyGame extends UserGame {
   standings: GameStandings;
 }
 
+/**
+ * Which optional Games features the server has on for this caller. A client
+ * reads these before using a feature's endpoints, so a caller without one
+ * never requests it (and never sees its 404).
+ */
+export interface GamesCapabilities {
+  /** `POST /v1/games/recognize` answers for this caller. */
+  recognition: boolean;
+}
+
 export interface GamesResponse {
   periodKey: string;
   games: MyGame[];
+  /** Absent from servers that predate capabilities — treat that as all off. */
+  capabilities?: GamesCapabilities;
 }
 
 /** `GET /v1/games/:id/leaderboard?period=` */
@@ -132,6 +144,27 @@ export interface AddGameResponse {
 
 export interface UpsertGameScoreResponse {
   score: GameScore;
+}
+
+/** Which evidence recognized a pasted score's game, cheapest first. */
+export type GameRecognitionMethod = "url" | "label" | "fingerprint" | "jev";
+
+/** `POST /v1/games/recognize` — which game is this pasted text a score for? */
+export interface RecognizeGameRequest {
+  text: string;
+}
+
+export interface RecognizedGame {
+  game: Game;
+  /** False when the game is in the catalog but not yet in the caller's My Games. */
+  inMyGames: boolean;
+  /** 0–1. The server only returns matches it is confident enough to surface. */
+  confidence: number;
+  method: GameRecognitionMethod;
+}
+
+export interface RecognizeGameResponse {
+  match: RecognizedGame | null;
 }
 
 /** `PUT /v1/games/:id/score-spec` — teach a non-registry game its parser. */

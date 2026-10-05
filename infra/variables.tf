@@ -67,6 +67,17 @@ variable "typesafe_api_key" {
   description = "TypeSafe (Jev) API key for System One judgments. Empty default lets infra apply before the key is set in SSM."
 }
 
+variable "game_recognition" {
+  type        = string
+  default     = "off"
+  description = "Game-score recognition rollout: off | shadow (log predictions on score posts, change nothing) | on (also serve POST /v1/games/recognize)."
+
+  validation {
+    condition     = contains(["off", "shadow", "on"], var.game_recognition)
+    error_message = "game_recognition must be off, shadow or on."
+  }
+}
+
 variable "google_books_api_key" {
   type        = string
   default     = ""

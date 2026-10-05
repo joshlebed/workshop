@@ -108,6 +108,14 @@ const configSchema = z.object({
     .string()
     .optional()
     .transform((v) => v === "1" || v === "true"),
+  // Game-score recognition (lib/gameRecognition.ts). `off` (default, and what
+  // any unrecognized value means): nothing runs. `shadow`: every score post is
+  // also run through recognition and the prediction is logged against the game
+  // the user chose — behaviour is unchanged and POST /v1/games/recognize stays
+  // 404. `on`: the endpoint answers, and the shadow log keeps running.
+  // This is the mode for everyone; Games beta accounts (lib/gamesBeta.ts) get
+  // `on` regardless — read it through `recognitionModeFor(userId)`.
+  gameRecognition: z.enum(["off", "shadow", "on"]).catch("off"),
   // Spotify Web API app credentials (Client Credentials flow). Used by the
   // Album Shelf feature to read public playlists with an app-level token —
   // no per-user OAuth. Empty defaults so the rest of the API still boots
@@ -150,6 +158,7 @@ export function getConfig(): Config {
     openaiTeachCodegenEffort: process.env.OPENAI_TEACH_CODEGEN_EFFORT,
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,
     gamesEnabled: process.env.ENABLE_GAMES,
+    gameRecognition: process.env.GAME_RECOGNITION,
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
     discordNotifyWebhookUrl: process.env.DISCORD_NOTIFY_WEBHOOK_URL,

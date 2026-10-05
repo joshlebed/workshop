@@ -13,6 +13,7 @@ import type {
   GameStandingsEntry,
   GamesResponse,
   MyGame,
+  RecognizeGameResponse,
   ScoreReactionSummary,
   SetGameScoreSpecResponse,
   SetScoreReactionResponse,
@@ -56,6 +57,12 @@ import {
   specForGame,
 } from "../../lib/gameCatalog.js";
 import { moveUserGamePosition } from "../../lib/gamePositions.js";
+import { RECOGNITION_SURFACE_THRESHOLD } from "../../lib/gameRecognition.js";
+import {
+  recognitionModeFor,
+  recognizeGameForUser,
+  shadowRecognizePostedScore,
+} from "../../lib/gameRecognitionService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import {
   notifyFirstScore,
@@ -95,6 +102,8 @@ const setScoreSpecSchema = z.object({
    */
   summarySpec: summarySpecSchema.nullish(),
 });
+
+const recognizeGameSchema = z.object({ text: scoreRawSchema });
 
 const moveGameSchema = z.object({
   beforeGameId: z.union([z.string().uuid(), z.null()]).optional(),
@@ -356,7 +365,11 @@ gameRoutes.get("/", async (c) => {
     };
   });
 
-  const response: GamesResponse = { periodKey, games: myGames };
+  const response: GamesResponse = {
+    periodKey,
+    games: myGames,
+    capabilities: { recognition: recognitionModeFor(userId) === "on" },
+  };
   return ok(c, response);
 });
 
@@ -535,6 +548,45 @@ gameRoutes.post(
   },
 );
 
+/**
+ * POST /v1/games/recognize — which game is this pasted/shared text a score
+ * for? The paste sheet and share flow call it to offer "Detected <game> score
+ * — post?". Answers only when recognition is confident enough to show the
+ * user; anything else (including Jev being slow or down) is `match: null`,
+ * and the caller falls back to its own registry detection. 404 unless
+ * recognition is on for the caller (`recognitionModeFor`); clients check
+ * `capabilities.recognition` on `GET /v1/games` instead of probing for it.
+ */
+gameRoutes.post(
+  "/recognize",
+  rateLimit({
+    family: "v1.games.recognize",
+    limit: 60,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const userId = c.get("userId");
+    if (recognitionModeFor(userId) !== "on") return err(c, "NOT_FOUND", "not found");
+    const parsed = await parseJsonBody(c, recognizeGameSchema);
+    if (!parsed.ok) return parsed.response;
+
+    const { result, match } = await recognizeGameForUser(userId, parsed.data.text);
+    const response: RecognizeGameResponse = {
+      match:
+        result && match && result.confidence >= RECOGNITION_SURFACE_THRESHOLD
+          ? {
+              game: toGameShape(match.game),
+              inMyGames: match.inMyGames,
+              confidence: result.confidence,
+              method: result.method,
+            }
+          : null,
+    };
+    return ok(c, response);
+  },
+);
+
 gameRoutes.delete("/:id", async (c) => {
   const userId = c.get("userId");
   const gameId = uuidSchema.safeParse(c.req.param("id"));
@@ -641,6 +693,16 @@ gameRoutes.put(
     // membership prerequisite, idempotent if it's already there.
     await addToMyGames(userId, game.id);
     if (isFirstScore) await notifyFirstScore(userId, game.title);
+    // Shadow-mode recognition: logs what it would have detected for this
+    // paste. No-op when the flag is off. Awaited (Lambda freezes anything
+    // left running) but bounded: it can neither fail the post nor hold this
+    // response for more than SHADOW_BUDGET_MS.
+    await shadowRecognizePostedScore({
+      userId,
+      gameId: game.id,
+      periodKey: parsed.data.periodKey,
+      scoreRaw: parsed.data.scoreRaw,
+    });
 
     const response: UpsertGameScoreResponse = { score: toScoreShape(row) };
     return ok(c, response);
