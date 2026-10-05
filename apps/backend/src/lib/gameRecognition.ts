@@ -207,7 +207,7 @@ export function textContainsGameUrl(textLower: string, normalizedUrl: string): b
 const HOST_IN_TEXT = /(?:[a-z0-9-]+\.)+[a-z]{2,}/g;
 
 /** Host-like tokens in a text, lowercased, without a leading `www.`. */
-export function hostsIn(text: string): string[] {
+function hostsIn(text: string): string[] {
   return (text.toLowerCase().match(HOST_IN_TEXT) ?? []).map((h) => h.replace(/^www\./, ""));
 }
 
