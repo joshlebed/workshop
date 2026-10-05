@@ -16,12 +16,14 @@ import {
 } from "react-native";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
+import { recognizedGameLabel, recognizedGameTarget } from "../lib/recognition";
 import {
   detectSharedScore,
   isResultlessShare,
   pickSuggestedGameTarget,
   type ShareGameTarget,
 } from "../lib/shareScoreDetection";
+import { useRecognizedGame } from "../lib/useRecognizedGame";
 import { useGamesRuntime } from "../runtime";
 
 // The Games-surface score picker for the share flow (the leaderboard-list
@@ -55,13 +57,23 @@ export default function PickGame() {
   });
   const myGames = myGamesQuery.data?.games ?? [];
 
+  // Server-side recognition, for accounts that have it: it knows every game
+  // with stored scores, including ones the registry has never heard of. Null
+  // for everyone else and whenever it has no answer (yet) — the registry
+  // detection above stays the behaviour then.
+  const recognized = useRecognizedGame(scoreDraft);
+  const detected = recognized ? { gameLabel: recognizedGameLabel(recognized) } : detectedScore;
+
   // Where a detected score posts: the matching My Games row when there is one,
-  // otherwise the registry's canonical URL (find-or-create on post).
+  // otherwise the game's URL (find-or-create on post).
   const suggestion = useMemo(
-    () => pickSuggestedGameTarget(detectedScore, myGames),
-    [detectedScore, myGames],
+    () =>
+      recognized
+        ? recognizedGameTarget(recognized)
+        : pickSuggestedGameTarget(detectedScore, myGames),
+    [recognized, detectedScore, myGames],
   );
-  const suggestionLoading = !!detectedScore && !!token && myGamesQuery.isPending && !suggestion;
+  const suggestionLoading = !!detected && !!token && myGamesQuery.isPending && !suggestion;
 
   const submitScore = useMutation({
     mutationFn: async (target: ShareGameTarget) => {
@@ -125,8 +137,8 @@ export default function PickGame() {
           <View style={styles.payloadPill} testID="share-game-payload">
             <View style={styles.payloadDot} />
             <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
-              {detectedScore
-                ? `${detectedScore.gameLabel} ${resultlessDraft ? "link" : "score"} detected`
+              {detected
+                ? `${detected.gameLabel} ${resultlessDraft ? "link" : "score"} detected`
                 : "Score share"}
             </Text>
           </View>
@@ -138,9 +150,9 @@ export default function PickGame() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        {detectedScore ? (
+        {detected ? (
           <DetectedScoreSuggestion
-            label={detectedScore.gameLabel}
+            label={detected.gameLabel}
             suggestion={suggestion}
             loading={suggestionLoading}
             pending={submitScore.isPending}
