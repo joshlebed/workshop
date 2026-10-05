@@ -383,6 +383,11 @@ The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
 defaults both steps to `gpt-6-luna` at reasoning effort `none` (picked for latency under the 15s
 Lambda timeout). Efforts are model-specific — `gpt-6.1-sol` rejects `none` — so change a step's
 model and effort together.
+**The write-code prompt must include this sentence:** "Numbers in a share may contain thousands
+separators (1,000) and surrounding whitespace; handle them." Without it Luna's generated parsers
+scored 12/15 in the benchmark (PR #436), reading GeoSports `1,000 / 1,000` as `0` or `null`; with it
+15/15. Fallback if that regresses: `OPENAI_TEACH_CODEGEN_MODEL=gpt-6.1-sol` with
+`OPENAI_TEACH_CODEGEN_EFFORT=low` (15/15 unprompted, ~2.7s median, 6.8s worst).
 `aws lambda get-function-configuration` shows what's running.
 
 ## Admin runbook
