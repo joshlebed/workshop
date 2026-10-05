@@ -688,7 +688,9 @@ gameRoutes.put(
     await addToMyGames(userId, game.id);
     if (isFirstScore) await notifyFirstScore(userId, game.title);
     // Shadow-mode recognition: logs what it would have detected for this
-    // paste. No-op when the flag is off; never affects the post.
+    // paste. No-op when the flag is off. Awaited (Lambda freezes anything
+    // left running) but bounded: it can neither fail the post nor hold this
+    // response for more than SHADOW_BUDGET_MS.
     await shadowRecognizePostedScore({
       userId,
       gameId: game.id,

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildFingerprint,
   catalogGameNamedBy,
+  compileMatcher,
   fitToBudget,
   isUsableExample,
   type JudgeRequest,
@@ -151,6 +152,37 @@ describe("matchByUrlOrLabel", () => {
       sports,
     ]);
     expect(match.result?.gameId).toBe("sports");
+  });
+});
+
+describe("compileMatcher", () => {
+  it("finds exactly the links the plain per-game check finds", () => {
+    const odd = [
+      ...ALL,
+      game("port", "Port Game", "localhost.dev:8080/play"),
+      game("ip", "IP Game", "10.0.0.7/daily"),
+      game("sub", "Sub Game", "play.example.co.uk"),
+      game("parent", "Parent Game", "example.co.uk/arcade"),
+    ];
+    const match = compileMatcher(odd);
+    const texts = [
+      MAPTAP_SHARE,
+      "https://www.nytimes.com/crosswords/game/mini and https://www.nytimes.com/games/wordle 3/6",
+      "score 4 at http://localhost.dev:8080/play/",
+      "score 4 at 10.0.0.7/daily today",
+      "5 pts https://play.example.co.uk/x and https://www.example.co.uk/arcade!",
+      "bigmaptap.gg maptap.gg.evil.com maptap.ggg 3",
+      "see WWW.MAPTAP.GG. 9",
+      "no links here 7",
+    ];
+    for (const text of texts) {
+      const lower = text.toLowerCase();
+      const plain = odd.filter((g) => textContainsGameUrl(lower, g.normalizedUrl)).map((g) => g.id);
+      const labels = odd
+        .filter((g) => matchByUrlOrLabel(text, [g]).hits.length > 0)
+        .map((g) => g.id);
+      expect(match(text).hits.sort(), text).toEqual([...new Set([...plain, ...labels])].sort());
+    }
   });
 });
 

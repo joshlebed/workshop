@@ -8,6 +8,7 @@ import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetConfigForTesting } from "../../lib/config.js";
 import type { JudgeRequest, JudgeVerdict } from "../../lib/gameRecognition.js";
+import { SHADOW_BUDGET_MS } from "../../lib/gameRecognitionService.js";
 import { logger } from "../../lib/logger.js";
 import { signSession } from "../../lib/session.js";
 
@@ -20,9 +21,13 @@ vi.mock("./link-preview.js", () => ({
   resolveLinkPreview: () => Promise.reject(new Error("network disabled in tests")),
 }));
 
-const judgeMock = vi.fn<(request: JudgeRequest) => Promise<JudgeVerdict | null>>();
+const judgeMock =
+  vi.fn<
+    (request: JudgeRequest, options?: { timeoutMs?: number }) => Promise<JudgeVerdict | null>
+  >();
 vi.mock("../../lib/jev.js", () => ({
-  jevRecognitionJudge: (request: JudgeRequest) => judgeMock(request),
+  jevRecognitionJudge: (request: JudgeRequest, options?: { timeoutMs?: number }) =>
+    judgeMock(request, options),
 }));
 
 import { gameRoutes } from "./games.js";
@@ -72,6 +77,11 @@ async function recognize(text: string, asUser = userId) {
 type Match = { game: { id: string; title: string }; inMyGames: boolean; method: string } | null;
 const matchOf = async (res: Response) => ((await res.json()) as { match: Match }).match;
 
+function setJevKey(key: string) {
+  process.env.TYPESAFE_API_KEY = key;
+  resetConfigForTesting();
+}
+
 function setMode(mode: "off" | "shadow" | "on" | undefined) {
   if (mode === undefined) delete process.env.GAME_RECOGNITION;
   else process.env.GAME_RECOGNITION = mode;
@@ -83,9 +93,13 @@ const HEADERLESS_MAPTAP = "98🎯 95🏅 92🏆 91👑 99🎯\nFinal score: 947"
 const mini = (date: string, time: string) =>
   `I solved the ${date} New York Times Mini Crossword in ${time}!`;
 
+const geo = (name: string, site: string, score: number) =>
+  `${name} · Oct 2nd\n${score} / 1,000\n🟢🟡🟡🟢🟡\n${site}`;
+
 let maptapId: string;
 let miniId: string;
 let krillionId: string;
+let geoHistoryId: string;
 
 beforeAll(async () => {
   process.env.STAGE = "local";
@@ -114,6 +128,20 @@ beforeAll(async () => {
   await postScore(miniId, "2026-05-21", mini("5/21/2026", "1:02"), friendId);
   await postScore(miniId, "2026-05-22", mini("5/22/2026", "0:48"), friendId);
   await postScore(maptapId, "2026-05-27", MAPTAP, friendId);
+
+  // GeoHistory is user-added; its sister GeoSports is a registry game this
+  // user has NOT added. The two shares differ only by name and domain.
+  geoHistoryId = await addGame("https://www.geohistory.gg");
+  await rows(`UPDATE games SET title = 'GeoHistory' WHERE id = $1`, [geoHistoryId]);
+  await addGame("https://www.geohistory.gg", friendId);
+  await postScore(
+    geoHistoryId,
+    "2026-10-01",
+    geo("GeoHistory", "www.geohistory.gg", 887),
+    friendId,
+  );
+  // A game only the friend plays, with a page-title-less (hostname) title.
+  await addGame("https://shrimpdle.io", friendId);
 }, 60_000);
 
 beforeEach(() => {
@@ -122,6 +150,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  setJevKey("test-key");
   setMode(undefined);
   vi.restoreAllMocks();
 });
@@ -190,6 +219,67 @@ describe("POST /v1/games/recognize", () => {
 
     judgeMock.mockImplementation(async () => ({ probabilities: { [maptapId]: 0.7 } }));
     expect(await matchOf(await recognize(HEADERLESS_MAPTAP))).toBeNull();
+  });
+
+  it("finds a user-added game outside My Games by its link, but not by its name", async () => {
+    setMode("on");
+    const byLink = await matchOf(
+      await recognize("Shrimpdle #4 🦐 312\nhttps://shrimpdle.io/?ref=1"),
+    );
+    expect(byLink).toMatchObject({
+      game: { title: "shrimpdle.io" },
+      inMyGames: false,
+      method: "url",
+    });
+    // Anyone can title a catalog game anything, so a name alone proves nothing.
+    expect(await matchOf(await recognize("Shrimpdle #4 🦐 312"))).toBeNull();
+  });
+
+  it("keeps sister games apart: a GeoSports share is never offered as GeoHistory", async () => {
+    setMode("on");
+    // Same layout as the GeoHistory this user plays; names GeoSports, which they don't.
+    expect(
+      await matchOf(await recognize(geo("GeoSports", "www.geosports.app", 616))),
+    ).toMatchObject({
+      game: { title: "GeoSports" },
+      inMyGames: false,
+      method: "url",
+    });
+    expect(
+      await matchOf(await recognize(geo("GeoHistory", "www.geohistory.gg", 703))),
+    ).toMatchObject({
+      game: { id: geoHistoryId },
+      inMyGames: true,
+      method: "url",
+    });
+    expect(judgeMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects Jev's pick when the share links a site that game's shares never carry", async () => {
+    setMode("on");
+    // A third sister game nobody has added: only Jev could claim it for GeoHistory.
+    judgeMock.mockImplementation(async () => ({ probabilities: { [geoHistoryId]: 0.92 } }));
+    const res = await recognize(geo("GeoScience", "www.geoscience.example", 640));
+    expect(await matchOf(res)).toBeNull();
+    expect(judgeMock).toHaveBeenCalledTimes(1);
+    // With the name and link stripped the paste is genuinely ambiguous: Jev decides.
+    expect(await matchOf(await recognize("917 / 1,000\n🟢📜🟡🟡🟢"))).toMatchObject({
+      game: { id: geoHistoryId },
+      method: "jev",
+    });
+  });
+
+  it("works without a TypeSafe key: deterministic steps answer, Jev is never called", async () => {
+    setJevKey("");
+    setMode("on");
+    expect(await matchOf(await recognize(MAPTAP))).toMatchObject({ method: "url" });
+    expect(await matchOf(await recognize(mini("6/02/2026", "0:41")))).toMatchObject({
+      method: "fingerprint",
+    });
+    const res = await recognize(HEADERLESS_MAPTAP);
+    expect(res.status).toBe(200);
+    expect(await matchOf(res)).toBeNull();
+    expect(judgeMock).not.toHaveBeenCalled();
   });
 
   it("answers 'no match' when Jev fails — never an error", async () => {
@@ -268,6 +358,59 @@ describe("shadow mode on score posts", () => {
     await postScore(krillionId, "2026-06-04", gridOnly);
     const sent = judgeMock.mock.calls[0]?.[0];
     expect(sent?.games.find((g) => g.id === krillionId)?.examples).not.toContain(gridOnly);
+  });
+
+  it("gives Jev only the time left in the shadow budget", async () => {
+    setMode("shadow");
+    judgeMock.mockImplementation(async () => ({ probabilities: {} }));
+    await postScore(krillionId, "2026-06-06", "🐟🦑🫧🏮 288 points");
+    const timeoutMs = judgeMock.mock.calls[0]?.[1]?.timeoutMs;
+    expect(timeoutMs).toBeGreaterThan(0);
+    expect(timeoutMs).toBeLessThanOrEqual(SHADOW_BUDGET_MS);
+  });
+
+  it("returns the saved score promptly when Jev never answers", async () => {
+    setMode("shadow");
+    judgeMock.mockImplementation(() => new Promise(() => {}));
+    const warn = vi.spyOn(logger, "warn");
+    const startedAt = Date.now();
+    await postScore(krillionId, "2026-06-07", "🦑🦑🫧🏮 301 points");
+    expect(Date.now() - startedAt).toBeLessThan(SHADOW_BUDGET_MS + 400);
+    expect(shadowLines(warn)).toEqual([
+      expect.objectContaining({ outcome: "capped", actual_game_id: krillionId }),
+    ]);
+    const stored = await rows(
+      `SELECT 1 FROM game_scores WHERE game_id = $1 AND user_id = $2 AND period_key = '2026-06-07'`,
+      [krillionId, userId],
+    );
+    expect(stored).toHaveLength(1);
+  });
+
+  it("returns the saved score promptly when the recognition queries hang", async () => {
+    setMode("shadow");
+    // Only recognition opens a transaction on this path; the post's own writes don't.
+    vi.spyOn(testDb, "transaction").mockImplementation(() => new Promise(() => {}));
+    const warn = vi.spyOn(logger, "warn");
+    const startedAt = Date.now();
+    await postScore(maptapId, "2026-06-08", MAPTAP);
+    expect(Date.now() - startedAt).toBeLessThan(SHADOW_BUDGET_MS + 400);
+    expect(shadowLines(warn)).toEqual([expect.objectContaining({ outcome: "capped" })]);
+    expect(judgeMock).not.toHaveBeenCalled();
+    const stored = await rows(
+      `SELECT 1 FROM game_scores WHERE game_id = $1 AND user_id = $2 AND period_key = '2026-06-08'`,
+      [maptapId, userId],
+    );
+    expect(stored).toHaveLength(1);
+  });
+
+  it("logs without calling Jev when no TypeSafe key is configured", async () => {
+    setJevKey("");
+    setMode("shadow");
+    const info = vi.spyOn(logger, "info");
+    // Nothing deterministic can place this; with a key it would go to Jev.
+    await postScore(krillionId, "2026-06-09", "got it in 7 tries today");
+    expect(shadowLines(info)[0]).toMatchObject({ outcome: "none", judge_called: false });
+    expect(judgeMock).not.toHaveBeenCalled();
   });
 
   it("still saves the score and answers 200 when recognition blows up", async () => {

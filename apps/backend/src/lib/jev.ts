@@ -8,7 +8,7 @@
 
 import { z } from "zod";
 import { getConfig } from "./config.js";
-import type { JudgeRequest, JudgeVerdict, RecognitionJudge } from "./gameRecognition.js";
+import type { JudgeRequest, JudgeVerdict } from "./gameRecognition.js";
 import { logger } from "./logger.js";
 
 const SYSTEM_ONE_URL = "https://api.typesafe.ai/v1/systemone";
@@ -126,12 +126,18 @@ export function buildRecognitionChoice(request: JudgeRequest): {
   };
 }
 
-/** The production judge: one Jev Choice over the shortlist plus "none". */
-export const jevRecognitionJudge: RecognitionJudge = async (
+/**
+ * The production judge: one Jev Choice over the shortlist plus "none".
+ * `timeoutMs` shortens (never lengthens) the default timeout — a caller with
+ * a time budget passes what it has left.
+ */
+export async function jevRecognitionJudge(
   request: JudgeRequest,
-): Promise<JudgeVerdict | null> => {
+  options: { timeoutMs?: number } = {},
+): Promise<JudgeVerdict | null> {
   const { state, question, optionToGameId } = buildRecognitionChoice(request);
-  const response = await systemOne(state, { game: question });
+  const timeoutMs = Math.min(options.timeoutMs ?? JEV_TIMEOUT_MS, JEV_TIMEOUT_MS);
+  const response = await systemOne(state, { game: question }, { timeoutMs });
   const answer = response?.answers.game;
   if (answer?.type !== "choice") return null;
   const probabilities: Record<string, number> = {};
@@ -139,4 +145,4 @@ export const jevRecognitionJudge: RecognitionJudge = async (
     probabilities[gameId] = answer.probabilities[option] ?? 0;
   }
   return { probabilities };
-};
+}

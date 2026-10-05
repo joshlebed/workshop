@@ -263,7 +263,11 @@ class World {
 
   constructor(readonly snap: Snapshot) {
     this.gameById = new Map(snap.games.map((g) => [g.id, g]));
-    for (const s of [...snap.scores].sort((a, b) => b.createdAt - a.createdAt)) {
+    // Most recent puzzle day first — the order the service's example query uses.
+    const newestFirst = [...snap.scores].sort(
+      (a, b) => b.periodKey.localeCompare(a.periodKey) || b.createdAt - a.createdAt,
+    );
+    for (const s of newestFirst) {
       if (!this.scoresByGame.has(s.gameId)) this.scoresByGame.set(s.gameId, []);
       (this.scoresByGame.get(s.gameId) as ScoreRow[]).push(s);
     }

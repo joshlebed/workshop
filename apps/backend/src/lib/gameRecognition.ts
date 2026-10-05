@@ -52,7 +52,7 @@ export interface JudgeVerdict {
   probabilities: Record<string, number>;
 }
 
-export type RecognitionJudge = (request: JudgeRequest) => Promise<JudgeVerdict | null>;
+type RecognitionJudge = (request: JudgeRequest) => Promise<JudgeVerdict | null>;
 
 /** Stored example score texts per candidate game id, most recent first. */
 export type ExampleLoader = (gameIds: string[]) => Promise<Map<string, string[]>>;
@@ -243,57 +243,82 @@ interface CheapMatch {
   hits: string[];
 }
 
+/** Steps 1 + 2 for one fixed candidate set, applied to a text. */
+type CandidateMatcher = (text: string) => CheapMatch;
+
+/**
+ * Prepare steps 1 + 2 for a candidate set. Each candidate's names are derived
+ * once here rather than once per text: example selection runs the match over
+ * every stored score of every candidate, and that added up to ~70ms for a
+ * player with 50 games.
+ */
+export function compileMatcher(candidates: readonly RecognitionCandidate[]): CandidateMatcher {
+  const byLabel = new Map<string, RecognitionCandidate[]>();
+  for (const game of candidates) {
+    for (const label of labelsForGame(game)) {
+      const games = byLabel.get(label);
+      if (games) games.push(game);
+      else byLabel.set(label, [game]);
+    }
+  }
+
+  return (text) => {
+    const textLower = text.toLowerCase();
+    const urlHits = candidates.filter((g) => textContainsGameUrl(textLower, g.normalizedUrl));
+
+    let labelHits: Array<{ game: RecognitionCandidate; label: string }> = [];
+    if (byLabel.size > 0 && LOOKS_LIKE_RESULT.test(text)) {
+      const words = wordsOf(text);
+      // Every run of up to 4 consecutive words, joined — so the label
+      // `dailytens` matches "Daily Tens" and "DailyTens" alike, on word
+      // boundaries ("was at least" never matches `satle`). A game is hit by
+      // the longest of its names the text carries.
+      const longestLabel = new Map<RecognitionCandidate, string>();
+      for (let i = 0; i < words.length; i++) {
+        let joined = "";
+        for (let n = 0; n < 4 && i + n < words.length; n++) {
+          joined += words[i + n];
+          for (const game of byLabel.get(joined) ?? []) {
+            if (joined.length > (longestLabel.get(game)?.length ?? 0))
+              longestLabel.set(game, joined);
+          }
+        }
+      }
+      labelHits = candidates
+        .filter((game) => longestLabel.has(game))
+        .map((game) => ({ game, label: longestLabel.get(game) as string }));
+      // "Connections Sports Edition" also contains "Connections": the more
+      // specific name wins when it contains every other matched name.
+      if (labelHits.length > 1) {
+        const [longest, ...rest] = [...labelHits].sort((a, b) => b.label.length - a.label.length);
+        if (
+          longest &&
+          rest.every((h) => h.label !== longest.label && longest.label.includes(h.label))
+        ) {
+          labelHits = [longest];
+        }
+      }
+    }
+
+    const hits = [...new Set([...urlHits, ...labelHits.map((h) => h.game)].map((g) => g.id))];
+    if (hits.length !== 1) return { result: null, hits };
+    const gameId = hits[0] as string;
+    return {
+      result:
+        urlHits.length === 1
+          ? { gameId, confidence: URL_CONFIDENCE, method: "url" }
+          : { gameId, confidence: LABEL_CONFIDENCE, method: "label" },
+      hits,
+    };
+  };
+}
+
 /** Steps 1 + 2. Pure and synchronous — microseconds for a My Games list. */
 export function matchByUrlOrLabel(
   text: string,
   candidates: readonly RecognitionCandidate[],
 ): CheapMatch {
-  const textLower = text.toLowerCase();
-  const urlHits = candidates.filter((g) => textContainsGameUrl(textLower, g.normalizedUrl));
-
-  let labelHits: Array<{ game: RecognitionCandidate; label: string }> = [];
-  if (LOOKS_LIKE_RESULT.test(text)) {
-    const words = wordsOf(text);
-    // Every run of up to 4 consecutive words, joined — so the label
-    // `dailytens` matches "Daily Tens" and "DailyTens" alike, on word
-    // boundaries ("was at least" never matches `satle`).
-    const joins = new Set<string>();
-    for (let i = 0; i < words.length; i++) {
-      let joined = "";
-      for (let n = 0; n < 4 && i + n < words.length; n++) {
-        joined += words[i + n];
-        joins.add(joined);
-      }
-    }
-    for (const game of candidates) {
-      const label = labelsForGame(game)
-        .filter((l) => joins.has(l))
-        .sort((a, b) => b.length - a.length)[0];
-      if (label) labelHits.push({ game, label });
-    }
-    // "Connections Sports Edition" also contains "Connections": the more
-    // specific name wins when it contains every other matched name.
-    if (labelHits.length > 1) {
-      const [longest, ...rest] = [...labelHits].sort((a, b) => b.label.length - a.label.length);
-      if (
-        longest &&
-        rest.every((h) => h.label !== longest.label && longest.label.includes(h.label))
-      ) {
-        labelHits = [longest];
-      }
-    }
-  }
-
-  const hits = [...new Set([...urlHits, ...labelHits.map((h) => h.game)].map((g) => g.id))];
-  if (hits.length !== 1) return { result: null, hits };
-  const gameId = hits[0] as string;
-  return {
-    result:
-      urlHits.length === 1
-        ? { gameId, confidence: URL_CONFIDENCE, method: "url" }
-        : { gameId, confidence: LABEL_CONFIDENCE, method: "label" },
-    hits,
-  };
+  return compileMatcher(candidates)(text);
 }
 
 /**
@@ -452,16 +477,17 @@ export function isUsableExample(raw: string): boolean {
 export function selectExamples(
   game: RecognitionCandidate,
   storedScores: readonly string[],
-  candidates: readonly RecognitionCandidate[],
+  candidates: readonly RecognitionCandidate[] | CandidateMatcher,
   limit = MAX_EXAMPLES_PER_GAME,
 ): string[] {
+  const match = typeof candidates === "function" ? candidates : compileMatcher(candidates);
   const seen = new Set<string>();
   const examples: string[] = [];
   for (const raw of storedScores) {
     const text = raw.trim();
     if (!isUsableExample(text) || seen.has(text)) continue;
     seen.add(text);
-    const named = matchByUrlOrLabel(text, candidates).result;
+    const named = match(text).result;
     if (named && named.gameId !== game.id) continue;
     examples.push(text.length > EXAMPLE_MAX_CHARS ? text.slice(0, EXAMPLE_MAX_CHARS) : text);
     if (examples.length >= limit) break;
@@ -486,7 +512,8 @@ export async function recognizeGame(
   const text = raw.trim();
   if (!text || candidates.length === 0) return null;
 
-  const cheap = matchByUrlOrLabel(text, candidates);
+  const match = compileMatcher(candidates);
+  const cheap = match(text);
   trace.cheapHits = cheap.hits;
   if (cheap.result) return cheap.result;
   if (!options.loadExamples) return null;
@@ -505,7 +532,7 @@ export async function recognizeGame(
   trace.examplesLoaded = true;
   const examplesByGame = new Map<string, string[]>();
   for (const game of pool) {
-    examplesByGame.set(game.id, selectExamples(game, stored.get(game.id) ?? [], candidates));
+    examplesByGame.set(game.id, selectExamples(game, stored.get(game.id) ?? [], match));
   }
 
   // A text with nothing result-like in it ("hi", "Gave up") is not a score
