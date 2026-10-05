@@ -22,9 +22,19 @@ import {
   type RecognitionTrace,
   recognizeGame,
 } from "./gameRecognition.js";
+import { isGamesBetaUser } from "./gamesBeta.js";
 import { jevRecognitionJudge } from "./jev.js";
 import { logger } from "./logger.js";
 import { type DbClient, executeRows } from "./sql.js";
+
+/**
+ * The recognition mode in force for one user: `on` for Games beta accounts,
+ * otherwise whatever `GAME_RECOGNITION` says. Every gate goes through this,
+ * so a user outside the beta gets exactly the global flag's behaviour.
+ */
+export function recognitionModeFor(userId: string): "off" | "shadow" | "on" {
+  return isGamesBetaUser(userId) ? "on" : getConfig().gameRecognition;
+}
 
 interface RecognitionCandidateRow {
   game: DbGame;
@@ -282,7 +292,7 @@ export async function shadowRecognizePostedScore(input: {
   periodKey: string;
   scoreRaw: string;
 }): Promise<void> {
-  if (getConfig().gameRecognition === "off") return;
+  if (recognitionModeFor(input.userId) === "off") return;
   const startedAt = Date.now();
   const base = {
     kind: "game_recognition_shadow",

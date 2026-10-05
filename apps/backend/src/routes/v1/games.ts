@@ -59,6 +59,7 @@ import {
 import { moveUserGamePosition } from "../../lib/gamePositions.js";
 import { RECOGNITION_SURFACE_THRESHOLD } from "../../lib/gameRecognition.js";
 import {
+  recognitionModeFor,
   recognizeGameForUser,
   shadowRecognizePostedScore,
 } from "../../lib/gameRecognitionService.js";
@@ -364,7 +365,11 @@ gameRoutes.get("/", async (c) => {
     };
   });
 
-  const response: GamesResponse = { periodKey, games: myGames };
+  const response: GamesResponse = {
+    periodKey,
+    games: myGames,
+    capabilities: { recognition: recognitionModeFor(userId) === "on" },
+  };
   return ok(c, response);
 });
 
@@ -549,7 +554,8 @@ gameRoutes.post(
  * — post?". Answers only when recognition is confident enough to show the
  * user; anything else (including Jev being slow or down) is `match: null`,
  * and the caller falls back to its own registry detection. 404 unless
- * `GAME_RECOGNITION=on`.
+ * recognition is on for the caller (`recognitionModeFor`); clients check
+ * `capabilities.recognition` on `GET /v1/games` instead of probing for it.
  */
 gameRoutes.post(
   "/recognize",
@@ -560,8 +566,8 @@ gameRoutes.post(
     key: (c) => c.get("userId") ?? null,
   }),
   async (c) => {
-    if (getConfig().gameRecognition !== "on") return err(c, "NOT_FOUND", "not found");
     const userId = c.get("userId");
+    if (recognitionModeFor(userId) !== "on") return err(c, "NOT_FOUND", "not found");
     const parsed = await parseJsonBody(c, recognizeGameSchema);
     if (!parsed.ok) return parsed.response;
 

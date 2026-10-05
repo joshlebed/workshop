@@ -96,6 +96,8 @@ const configSchema = z.object({
   // also run through recognition and the prediction is logged against the game
   // the user chose — behaviour is unchanged and POST /v1/games/recognize stays
   // 404. `on`: the endpoint answers, and the shadow log keeps running.
+  // This is the mode for everyone; Games beta accounts (lib/gamesBeta.ts) get
+  // `on` regardless — read it through `recognitionModeFor(userId)`.
   gameRecognition: z.enum(["off", "shadow", "on"]).catch("off"),
   // Spotify Web API app credentials (Client Credentials flow). Used by the
   // Album Shelf feature to read public playlists with an app-level token —

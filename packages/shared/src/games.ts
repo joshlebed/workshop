@@ -112,9 +112,21 @@ export interface MyGame extends UserGame {
   standings: GameStandings;
 }
 
+/**
+ * Which optional Games features the server has on for this caller. A client
+ * reads these before using a feature's endpoints, so a caller without one
+ * never requests it (and never sees its 404).
+ */
+export interface GamesCapabilities {
+  /** `POST /v1/games/recognize` answers for this caller. */
+  recognition: boolean;
+}
+
 export interface GamesResponse {
   periodKey: string;
   games: MyGame[];
+  /** Absent from servers that predate capabilities — treat that as all off. */
+  capabilities?: GamesCapabilities;
 }
 
 /** `GET /v1/games/:id/leaderboard?period=` */

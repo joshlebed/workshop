@@ -327,8 +327,17 @@ text names; examples = the 20 most recent distinct usable scores, any player's).
   `outcome: "capped"` for the one case those can't reach (a socket that stops answering). PGlite
   does not enforce `statement_timeout`, so the tests exercise the cap, not the cancel.
 
+- **Games beta accounts get it regardless of the flag.** `lib/gamesBeta.ts` hardcodes a short
+  allowlist of `users.id`s (ids only — no emails or names in code) and `isGamesBetaUser(userId)`;
+  it is deliberately not recognition-specific, so gate other pre-release Games features on it
+  too. Hardcoded because an env-var list would have to travel through Terraform. The mode in
+  force for a user is `recognitionModeFor(userId)` — `on` for beta accounts, else the global
+  flag — and every gate reads that, never `getConfig().gameRecognition`. Pass `c.get("userId")`:
+  during an admin impersonation that is the impersonated account, so the admin sees what that
+  user sees. `GET /v1/games` reports the result as `capabilities.recognition`; clients read
+  that instead of probing the endpoint, so a caller without the feature never requests it.
 - **Flag: `GAME_RECOGNITION` = `off` (default) | `shadow` | `on`** (`var.game_recognition` in
-  Terraform). `shadow` logs one `kind: "game_recognition_shadow"` line per score post — predicted vs
+  Terraform) is the mode for everyone else. `shadow` logs one `kind: "game_recognition_shadow"` line per score post — predicted vs
   the game the user chose, `outcome: agree | disagree | none` — and changes nothing; `on` also
   serves `POST /v1/games/recognize` (404 otherwise), which returns a match only at or above
   `RECOGNITION_SURFACE_THRESHOLD`. Query shadow results with

@@ -34,12 +34,15 @@ import { gameRoutes } from "./games.js";
 
 const userId = "00000000-0000-4000-8000-0000000000a1";
 const friendId = "00000000-0000-4000-8000-0000000000a2";
+// On the Games beta allowlist (lib/gamesBeta.ts): recognition is on for this
+// account whatever GAME_RECOGNITION says.
+const betaUserId = "b9a84203-b2c6-47a6-9fba-e41c2e10cffd";
 
-function authHeaders(asUser = userId): Record<string, string> {
-  return {
-    Authorization: `Bearer ${signSession(asUser)}`,
-    "Content-Type": "application/json",
-  };
+function authHeaders(asUser = userId, impersonatedBy?: string): Record<string, string> {
+  const session = impersonatedBy
+    ? signSession(asUser, { impersonatorUserId: impersonatedBy })
+    : signSession(asUser);
+  return { Authorization: `Bearer ${session}`, "Content-Type": "application/json" };
 }
 
 async function rows<T = Record<string, unknown>>(query: string, params: unknown[] = []) {
@@ -66,12 +69,18 @@ async function postScore(gameId: string, periodKey: string, scoreRaw: string, as
   expect(res.status).toBe(200);
 }
 
-async function recognize(text: string, asUser = userId) {
+async function recognize(text: string, asUser = userId, impersonatedBy?: string) {
   return gameRoutes.request("/recognize", {
     method: "POST",
-    headers: authHeaders(asUser),
+    headers: authHeaders(asUser, impersonatedBy),
     body: JSON.stringify({ text }),
   });
+}
+
+async function capabilities(asUser = userId, impersonatedBy?: string) {
+  const res = await gameRoutes.request("/", { headers: authHeaders(asUser, impersonatedBy) });
+  expect(res.status).toBe(200);
+  return ((await res.json()) as { capabilities?: { recognition: boolean } }).capabilities;
 }
 
 type Match = { game: { id: string; title: string }; inMyGames: boolean; method: string } | null;
@@ -112,8 +121,9 @@ beforeAll(async () => {
   await rows(
     `INSERT INTO users (id, email, display_name) VALUES
        ($1, 'recognizer@example.com', 'Recognizer'),
-       ($2, 'friend@example.com', 'Friend')`,
-    [userId, friendId],
+       ($2, 'friend@example.com', 'Friend'),
+       ($3, 'beta@example.com', 'Beta Tester')`,
+    [userId, friendId, betaUserId],
   );
 
   maptapId = await addGame("https://maptap.gg");
@@ -142,6 +152,7 @@ beforeAll(async () => {
   );
   // A game only the friend plays, with a page-title-less (hostname) title.
   await addGame("https://shrimpdle.io", friendId);
+  await addGame("https://maptap.gg", betaUserId);
 }, 60_000);
 
 beforeEach(() => {
@@ -423,5 +434,61 @@ describe("shadow mode on score posts", () => {
       judge_called: true,
       judge_failed: true,
     });
+  });
+});
+
+describe("Games beta accounts", () => {
+  const shadowLines = (spy: ReturnType<typeof vi.spyOn>) =>
+    spy.mock.calls
+      .filter(([msg]) => msg === "game recognition shadow")
+      .map(([, fields]) => fields as Record<string, unknown>);
+
+  it("get recognition with the global flag off; everyone else gets flag-off behaviour", async () => {
+    // GAME_RECOGNITION is unset here, i.e. off — what prod runs.
+    const res = await recognize(MAPTAP, betaUserId);
+    expect(res.status).toBe(200);
+    expect(await matchOf(res)).toMatchObject({ game: { id: maptapId }, method: "url" });
+    expect((await recognize(MAPTAP, userId)).status).toBe(404);
+    expect((await recognize(MAPTAP, friendId)).status).toBe(404);
+  });
+
+  it("are told so on GET /v1/games, and everyone else is told it is off", async () => {
+    expect(await capabilities(betaUserId)).toEqual({ recognition: true });
+    expect(await capabilities(userId)).toEqual({ recognition: false });
+    setMode("shadow");
+    expect(await capabilities(userId)).toEqual({ recognition: false });
+    setMode("on");
+    expect(await capabilities(userId)).toEqual({ recognition: true });
+  });
+
+  it("have their score posts shadow-logged with the global flag off", async () => {
+    const info = vi.spyOn(logger, "info");
+    await postScore(maptapId, "2026-07-01", MAPTAP, betaUserId);
+    expect(shadowLines(info)).toEqual([
+      expect.objectContaining({ user_id: betaUserId, outcome: "agree", method: "url" }),
+    ]);
+  });
+
+  it("leave everyone else's score post untouched: no log line, no recognition query", async () => {
+    const info = vi.spyOn(logger, "info");
+    const warn = vi.spyOn(logger, "warn");
+    // Every recognition DB step opens a transaction; the post itself opens none.
+    const transaction = vi.spyOn(testDb, "transaction");
+    await postScore(maptapId, "2026-07-02", HEADERLESS_MAPTAP, userId);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(judgeMock).not.toHaveBeenCalled();
+    expect([...shadowLines(info), ...shadowLines(warn)]).toEqual([]);
+
+    await postScore(maptapId, "2026-07-02", MAPTAP, betaUserId);
+    expect(transaction).toHaveBeenCalled();
+  });
+
+  it("follow the account the session acts as during an impersonation", async () => {
+    // A beta admin impersonating a non-beta user sees what that user sees: off.
+    expect((await recognize(MAPTAP, userId, betaUserId)).status).toBe(404);
+    expect(await capabilities(userId, betaUserId)).toEqual({ recognition: false });
+    // Impersonating a beta user: on, whoever the impersonator is.
+    expect((await recognize(MAPTAP, betaUserId, friendId)).status).toBe(200);
+    expect(await capabilities(betaUserId, friendId)).toEqual({ recognition: true });
   });
 });
