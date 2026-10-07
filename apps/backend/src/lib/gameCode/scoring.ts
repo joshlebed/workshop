@@ -7,14 +7,18 @@ import { formatShareBodyFallback } from "@workshop/shared/gameRegistry";
 import { KILLED_DETAIL, runFormat, runParse } from "./runtime.js";
 import type { FormatResult, ParseResult } from "./types.js";
 
-type ParseStatus = "score" | "no_result" | "failed";
+export type ParseStatus = "score" | "no_result" | "failed";
+
+export function isParseStatus(value: unknown): value is ParseStatus {
+  return value === "score" || value === "no_result" || value === "failed";
+}
 
 export interface GameCode {
   parseCode: string | null;
   formatCode: string | null;
 }
 
-interface CodeScore {
+export interface CodeScore {
   parseStatus: ParseStatus;
   /** Set only when `parseStatus` is `score`. */
   scoreValue: number | null;
@@ -64,4 +68,39 @@ export async function scoreWithGameCode(code: GameCode, raw: string): Promise<Co
     parse,
     format,
   };
+}
+
+/**
+ * How the stored code's reading of a share relates to the legacy parser's.
+ * Shared by the shadow log and scripts/compare-game-code.ts so "disagree"
+ * means the same thing in both.
+ */
+export const PARSE_CHANGES = [
+  "same_score",
+  "null_to_no_result",
+  "null_to_failed",
+  "null_to_score",
+  "score_to_failed",
+  "score_to_no_result",
+  "score_changed",
+] as const;
+export type ParseChange = (typeof PARSE_CHANGES)[number];
+
+export function classifyParseChange(
+  legacyValue: number | null,
+  parseStatus: ParseStatus,
+  scoreValue: number | null,
+): ParseChange {
+  if (legacyValue === null) {
+    if (parseStatus === "score") return "null_to_score";
+    return parseStatus === "no_result" ? "null_to_no_result" : "null_to_failed";
+  }
+  if (parseStatus === "failed") return "score_to_failed";
+  if (parseStatus === "no_result") return "score_to_no_result";
+  return scoreValue === legacyValue ? "same_score" : "score_changed";
+}
+
+/** Old and new agree when both read the same number or neither reads one. */
+export function parseChangeAgrees(change: ParseChange): boolean {
+  return change === "same_score" || change === "null_to_no_result" || change === "null_to_failed";
 }

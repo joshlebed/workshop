@@ -116,6 +116,15 @@ const configSchema = z.object({
   // This is the mode for everyone; Games beta accounts (lib/gamesBeta.ts) get
   // `on` regardless — read it through `recognitionModeFor(userId)`.
   gameRecognition: z.enum(["off", "shadow", "on"]).catch("off"),
+  // Score parsing by stored game code (lib/gameCode). `off` (default, and what
+  // any unrecognized value means): the legacy parser alone, nothing else runs.
+  // `shadow`: every score post also runs the game's stored code in the
+  // sandbox and logs how it compares — what is stored and returned does not
+  // change. `on`: the stored code is authoritative; `parse_status` and
+  // `score_summary` are written and returned.
+  // This is the mode for everyone; Games beta accounts (lib/gamesBeta.ts) get
+  // `on` regardless — read it through `codeParsingModeFor(userId)`.
+  gameCodeParsing: z.enum(["off", "shadow", "on"]).catch("off"),
   // Spotify Web API app credentials (Client Credentials flow). Used by the
   // Album Shelf feature to read public playlists with an app-level token —
   // no per-user OAuth. Empty defaults so the rest of the API still boots
@@ -159,6 +168,7 @@ export function getConfig(): Config {
     devAuthEnabled: process.env.DEV_AUTH_ENABLED,
     gamesEnabled: process.env.ENABLE_GAMES,
     gameRecognition: process.env.GAME_RECOGNITION,
+    gameCodeParsing: process.env.GAME_CODE_PARSING,
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
     discordNotifyWebhookUrl: process.env.DISCORD_NOTIFY_WEBHOOK_URL,

@@ -129,7 +129,8 @@ lone legacy "Geo games" row is hidden from `GET /v1/lists`. The legacy `item_sco
 was **dropped** (migration `0038`, applied to prod) once it was proven 100% mirrored into
 `game_scores`; `rescore-game.ts` now operates on `game_scores` only.
 **Changing a game's scoring rule only fixes new posts** unless you also run
-`scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first)
+`scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first;
+it rewrites only rows the legacy parser wrote and skips any row with a `parse_status`)
 — it replays the current parser over stored `score_raw` in both `game_scores` and legacy
 `item_scores`, importing the real parser so it can't drift. The client mirrors the same
 distillation for _display_: Games standings rows and the Games clipboard recap render through
@@ -215,6 +216,65 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   and legacy display text vs new summary, with every class of difference. The sandbox's
   local Postgres is the dev seed (6 scores), not prod — use `--snapshot` / `--save-snapshot`
   with a read-only export, and keep the snapshot (real users' text) out of the repo.
+
+### The write path: `GAME_CODE_PARSING` = `off` (default) | `shadow` | `on`
+
+`lib/gameCodeService.ts` is the only bridge between the score routes and the sandbox.
+
+- **The mode in force for a user is `codeParsingModeFor(userId)`** — `on` for Games beta
+  accounts (`lib/gamesBeta.ts`), else the global flag (`var.game_code_parsing`). Same shape and
+  same rule as `recognitionModeFor`: every gate reads it, never `getConfig().gameCodeParsing`.
+- **`off`**: the legacy parser alone. No sandbox, no log line, and the response carries no
+  new fields — byte-for-byte what it was. **`shadow`**: stores and returns exactly what `off`
+  does; the game's code also runs and one `kind: "game_code_shadow"` line records
+  `legacy_value` / `code_status` / `code_value` / `change` / `outcome: agree | disagree`.
+  **`on`**: the stored code is authoritative — `parse_status`, `score_value`,
+  `score_summary`, `code_version` are written, and `parseStatus` / `scoreSummary` are returned
+  on `GameScore`, standings entries and friend-profile scores (`scoreCodeFields`).
+  `./scripts/logs.sh --filter game_code_shadow` reads the shadow results; the log never
+  contains the share text or a thrown message (those can quote it).
+- **Response fields appear only on rows stored code parsed.** One board can mix both kinds
+  (a beta account next to everyone else), so clients fall back per row, not per response. If
+  you add a path that returns a score, spread `scoreCodeFields(row)` into it.
+- **A post never fails or hangs on the sandbox.** `resolvePostedScore` waits at most
+  `GAME_CODE_BUDGET_MS` (1.5 s; a warm run is ~1 ms). The upsert sets every score column on
+  every write, so a re-post under a different mode can't leave a stale status behind.
+- **A sandbox failure is not a code failure, and they store different things.** If the code
+  gave a verdict — threw, returned junk, ran out of its budget, had to be killed — the row is
+  `failed`. If the SANDBOX never answered (`sandbox_unavailable`, or over the 1.5 s cap) and
+  the game has a legacy spec (registry or taught), the spec's reading is kept instead of
+  being thrown away: a legacy-shaped row (no status, no summary, no source) with
+  `code_version = 0`, plus one `kind: "game_code_unavailable"` error line. With no legacy spec
+  the row is `failed`. `parseFirstNumber` is never used on this path — `legacySpecReading`
+  goes to `evaluateScoreSpec` directly because `parseScoreValue` would fall back to it.
+- **`code_version` on a score reads three ways:** NULL = code parsing was not in play; `0`
+  with no status = it was on but the sandbox was down and the legacy spec's value was kept;
+  otherwise the code version that read the row (`0` with `failed` = the game had no code).
+  `score_source` is `parsed` on every row stored code read, NULL otherwise.
+- **`POST /v1/games/:id/scores/preview`** is the paste sheet's dry run (same code, same
+  budget, stores nothing); 404 unless the caller's mode is `on`. Clients read
+  `capabilities.codeParsing` on `GET /v1/games` instead of probing.
+- **`lambda.ts` pre-starts the worker at init when the global flag is not `off`**, because
+  init runs at full CPU and a request at 0.29 vCPU (worker start: ~75 ms vs ~300–700 ms).
+  With the flag off, beta accounts pay that once per cold container on their first post.
+- **`PUT /:id/score-spec` (the old teach flow) also writes code**: the compiled spec, a
+  bumped `code_version` and a `game_code_revisions` row, in the same transaction as the spec.
+  Its "first teach is open" rule now means "no spec AND no parse code": a game an operator
+  gave code to is admin-only to re-teach, or any user's first paste would replace that code.
+  Migration `0044` converts any spec taught between `0043` and that release.
+- **Operators change a game's code with `admin:game-code`** (`scripts/set-game-code.ts`;
+  `--show`, `--dry`, `--parse=<file>`, `--format=<file>`, `--revert=<version>`). It refuses to
+  write unless the code reproduces every stored score with a known result — rows stored code
+  parsed, and legacy rows that hold a number; a legacy NULL is "loss or unread" and constrains
+  nothing. `--accept-changes=<id>` is the escape hatch for a game whose stored values were
+  wrong (Krillion's puzzle numbers): run `--dry`, read the list, pass the id it prints. The id
+  is a hash of the exact differences (rows, text, old and new reading), so a score posted or
+  edited between the dry run and the write invalidates it. `--by` must be an admin account.
+  The yes/no is `decideGameCodeChange` in `lib/gameCode/admin.ts` (the teach flow should
+  call the same function): a sandbox that could not run the code is never a yes, because an
+  empty mismatch list from a validation that did not run proves nothing.
+  **It never re-parses history** — rows keep their values and `code_version` shows which code
+  read them. Whether and how history is re-parsed is a product decision not yet made.
 
 ## Migration journal `when` values must be monotonic
 

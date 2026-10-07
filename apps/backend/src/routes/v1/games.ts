@@ -13,6 +13,7 @@ import type {
   GameStandingsEntry,
   GamesResponse,
   MyGame,
+  PreviewGameScoreResponse,
   RecognizeGameResponse,
   ScoreReactionSummary,
   SetGameScoreSpecResponse,
@@ -33,6 +34,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import {
+  gameCodeRevisions,
   gameScoreReactions,
   gameScores,
   gameSpecRevisions,
@@ -53,9 +55,14 @@ import {
   findOrCreateGame,
   type GameMetadataHints,
   normalizeScoreDirection,
-  parseScoreValue,
-  specForGame,
 } from "../../lib/gameCatalog.js";
+import { compileScoreSpec, compileSummarySpec } from "../../lib/gameCode/specCode.js";
+import {
+  codeParsingModeFor,
+  previewScore,
+  resolvePostedScore,
+  scoreCodeFields,
+} from "../../lib/gameCodeService.js";
 import { moveUserGamePosition } from "../../lib/gamePositions.js";
 import { RECOGNITION_SURFACE_THRESHOLD } from "../../lib/gameRecognition.js";
 import {
@@ -105,6 +112,8 @@ const setScoreSpecSchema = z.object({
 
 const recognizeGameSchema = z.object({ text: scoreRawSchema });
 
+const previewScoreSchema = z.object({ scoreRaw: scoreRawSchema });
+
 const moveGameSchema = z.object({
   beforeGameId: z.union([z.string().uuid(), z.null()]).optional(),
   afterGameId: z.union([z.string().uuid(), z.null()]).optional(),
@@ -122,6 +131,8 @@ function toScoreShape(row: {
   periodKey: string;
   scoreValue: string | null;
   scoreRaw: string;
+  parseStatus: string | null;
+  scoreSummary: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 }): GameScore {
@@ -131,6 +142,7 @@ function toScoreShape(row: {
     periodKey: row.periodKey,
     scoreValue: row.scoreValue === null ? null : Number(row.scoreValue),
     scoreRaw: row.scoreRaw,
+    ...scoreCodeFields(row),
     createdAt: toIsoString(row.createdAt),
     updatedAt: toIsoString(row.updatedAt),
   };
@@ -219,6 +231,8 @@ async function loadStandingsByGame(
       userId: gameScores.userId,
       scoreRaw: gameScores.scoreRaw,
       scoreValue: gameScores.scoreValue,
+      parseStatus: gameScores.parseStatus,
+      scoreSummary: gameScores.scoreSummary,
       updatedAt: gameScores.updatedAt,
       displayName: users.displayName,
     })
@@ -238,6 +252,7 @@ async function loadStandingsByGame(
       displayName: r.displayName,
       scoreRaw: r.scoreRaw,
       scoreValue: r.scoreValue === null ? null : Number(r.scoreValue),
+      ...scoreCodeFields(r),
       rank: null,
       updatedAt: toIsoOrNull(r.updatedAt),
       reactions: [],
@@ -368,7 +383,10 @@ gameRoutes.get("/", async (c) => {
   const response: GamesResponse = {
     periodKey,
     games: myGames,
-    capabilities: { recognition: recognitionModeFor(userId) === "on" },
+    capabilities: {
+      recognition: recognitionModeFor(userId) === "on",
+      codeParsing: codeParsingModeFor(userId) === "on",
+    },
   };
   return ok(c, response);
 });
@@ -660,7 +678,23 @@ gameRoutes.put(
     const [game] = await db.select().from(games).where(eq(games.id, gameId.data)).limit(1);
     if (!game) return err(c, "NOT_FOUND", "game not found");
 
-    const value = parseScoreValue(parsed.data.scoreRaw, specForGame(game));
+    // Legacy parser, stored game code, or both — decided by the caller's
+    // code-parsing mode. Bounded and fail-soft: a slow or broken parser makes
+    // the score `failed`, never the request.
+    const scored = await resolvePostedScore({
+      userId,
+      game,
+      periodKey: parsed.data.periodKey,
+      scoreRaw: parsed.data.scoreRaw,
+    });
+    const scoreColumns = {
+      scoreRaw: parsed.data.scoreRaw,
+      scoreValue: scored.scoreValue === null ? null : String(scored.scoreValue),
+      parseStatus: scored.parseStatus,
+      scoreSummary: scored.scoreSummary,
+      scoreSource: scored.scoreSource,
+      codeVersion: scored.codeVersion,
+    };
 
     // Capture activation state BEFORE the upsert — false means this is the
     // user's first score ever (see userHasAnyScore for the tables it spans).
@@ -674,17 +708,14 @@ gameRoutes.put(
         gameId: game.id,
         userId,
         periodKey: parsed.data.periodKey,
-        scoreRaw: parsed.data.scoreRaw,
-        scoreValue: value === null ? null : String(value),
+        ...scoreColumns,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: [gameScores.gameId, gameScores.userId, gameScores.periodKey],
-        set: {
-          scoreRaw: parsed.data.scoreRaw,
-          scoreValue: value === null ? null : String(value),
-          updatedAt: now,
-        },
+        // All of them, every time: a re-post under a different mode must not
+        // leave the previous post's status or summary behind.
+        set: { ...scoreColumns, updatedAt: now },
       })
       .returning();
     if (!row) return err(c, "INTERNAL", "score upsert returned no row");
@@ -705,6 +736,41 @@ gameRoutes.put(
     });
 
     const response: UpsertGameScoreResponse = { score: toScoreShape(row) };
+    return ok(c, response);
+  },
+);
+
+/**
+ * POST /v1/games/:id/scores/preview — what posting this text to this game
+ * would store, without storing it: the paste sheet's "Score: 280" / "no
+ * result" / "couldn't read this". Runs the same stored code, under the same
+ * budget, as the real post. 404 unless code parsing is on for the caller
+ * (`codeParsingModeFor`); clients check `capabilities.codeParsing` on
+ * `GET /v1/games` instead of probing for it.
+ */
+gameRoutes.post(
+  "/:id/scores/preview",
+  rateLimit({
+    family: "v1.games.scores.preview",
+    limit: 120,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const userId = c.get("userId");
+    if (codeParsingModeFor(userId) !== "on") return err(c, "NOT_FOUND", "not found");
+    const gameId = uuidSchema.safeParse(c.req.param("id"));
+    if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+    const parsed = await parseJsonBody(c, previewScoreSchema);
+    if (!parsed.ok) return parsed.response;
+
+    const db = getDb();
+    const [game] = await db.select().from(games).where(eq(games.id, gameId.data)).limit(1);
+    if (!game) return err(c, "NOT_FOUND", "game not found");
+
+    const response: PreviewGameScoreResponse = {
+      preview: await previewScore(game, parsed.data.scoreRaw),
+    };
     return ok(c, response);
   },
 );
@@ -965,7 +1031,10 @@ gameRoutes.put(
     // tap-the-score flow surfaced on a game's first paste. Registry games are
     // read-only for everyone (handled just above). A non-admin who pasted a
     // bad first spec can't silently re-teach over it; an admin fixes it.
-    if (game.scoreSpec !== null) {
+    // "Already taught" includes a game whose code came from somewhere other
+    // than this endpoint (an operator's `admin:game-code`): it has parse code
+    // and no spec, and a first-teach here would silently replace that code.
+    if (game.scoreSpec !== null || game.parseCode !== null) {
       const [actor] = await db
         .select({ email: users.email })
         .from(users)
@@ -988,6 +1057,12 @@ gameRoutes.put(
       return err(c, "VALIDATION", "summary spec produces nothing on the example");
     }
 
+    // The taught spec is also the game's stored code (the spec as data plus a
+    // fixed interpreter — lib/gameCode/specCode.ts), so a game taught here is
+    // parsed by the sandbox like any other. Written and versioned in the same
+    // transaction as the spec it came from.
+    const parseCode = compileScoreSpec(parsed.data.spec);
+    const formatCode = summarySpec ? compileSummarySpec(summarySpec) : null;
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(games)
@@ -995,6 +1070,9 @@ gameRoutes.put(
           scoreSpec: parsed.data.spec,
           scoreDirection: parsed.data.scoreDirection,
           summarySpec,
+          parseCode,
+          formatCode,
+          codeVersion: sql`${games.codeVersion} + 1`,
         })
         .where(eq(games.id, game.id))
         .returning();
@@ -1007,12 +1085,22 @@ gameRoutes.put(
         summarySpec,
         exampleRaw: parsed.data.exampleRaw,
       });
+      await tx.insert(gameCodeRevisions).values({
+        gameId: game.id,
+        version: row.codeVersion,
+        parseCode,
+        formatCode,
+        source: "spec",
+        authoredBy: userId,
+        note: "Taught through the tap-the-score flow.",
+        examples: [{ raw: parsed.data.exampleRaw, expected: parsed.data.expectedValue }],
+      });
       return row;
     });
     if (!updated) return err(c, "INTERNAL", "score spec update returned no row");
 
     await notifyScoreSpecTaught(userId, game.title, {
-      replacedExisting: game.scoreSpec !== null,
+      replacedExisting: game.scoreSpec !== null || game.parseCode !== null,
       scoreDirection: parsed.data.scoreDirection,
       hasSummarySpec: summarySpec !== null,
     });

@@ -233,15 +233,20 @@ export async function runFormat(code: string, raw: string): Promise<FormatResult
 }
 
 /** One labelled share: what `parse` (and optionally `format`) must produce on it. */
-interface CodeExample {
+export interface CodeExample {
   raw: string;
-  /** The score `parse` must return; `null` = it must return "no result". */
-  expected: number | null;
+  /**
+   * The score `parse` must return; `null` = it must return "no result".
+   * Omitted = nobody knows what this share should parse to (an old row whose
+   * stored value can't be trusted): `parse` may return anything, and the
+   * share still counts for the "`format` must not fail" check.
+   */
+  expected?: number | null;
   /** When set, the exact summary `format` must return (`null` = it must defer). */
   expectedSummary?: string | null;
 }
 
-interface CodeMismatch {
+export interface CodeMismatch {
   /** Index into the `examples` array. */
   index: number;
   step: "parse" | "format";
@@ -292,7 +297,8 @@ function wasKilled(result: ParseResult | FormatResult): boolean {
   return result.kind === "failed" && result.detail === KILLED_DETAIL;
 }
 
-function parseMatches(expected: number | null, actual: ParseResult): boolean {
+function parseMatches(expected: number | null | undefined, actual: ParseResult): boolean {
+  if (expected === undefined) return loads(actual);
   if (expected === null) return actual.kind === "noResult";
   return actual.kind === "score" && actual.value === expected;
 }
@@ -342,7 +348,8 @@ export async function validateCode(
 
   let kills = 0;
   for (const [index, example] of examples.entries()) {
-    const { raw, expected } = example;
+    const raw = example.raw;
+    const expected = example.expected ?? null;
     if (kills >= MAX_KILLS_PER_VALIDATION) {
       const actual = failed("timeout", "validation stopped after repeated timeouts");
       mismatches.push({ index, step: "parse", raw, expected, actual });
@@ -351,7 +358,7 @@ export async function validateCode(
     const parsed = await runParse(code.parse, raw);
     if (sandboxWasUnavailable(parsed)) return unavailable(index);
     if (wasKilled(parsed)) kills += 1;
-    if (!parseMatches(expected, parsed)) {
+    if (!parseMatches(example.expected, parsed)) {
       mismatches.push({ index, step: "parse", raw, expected, actual: parsed });
     }
     if (formatCode === null) continue;

@@ -453,12 +453,12 @@ describe("Games beta accounts", () => {
   });
 
   it("are told so on GET /v1/games, and everyone else is told it is off", async () => {
-    expect(await capabilities(betaUserId)).toEqual({ recognition: true });
-    expect(await capabilities(userId)).toEqual({ recognition: false });
+    expect(await capabilities(betaUserId)).toMatchObject({ recognition: true });
+    expect(await capabilities(userId)).toMatchObject({ recognition: false });
     setMode("shadow");
-    expect(await capabilities(userId)).toEqual({ recognition: false });
+    expect(await capabilities(userId)).toMatchObject({ recognition: false });
     setMode("on");
-    expect(await capabilities(userId)).toEqual({ recognition: true });
+    expect(await capabilities(userId)).toMatchObject({ recognition: true });
   });
 
   it("have their score posts shadow-logged with the global flag off", async () => {
@@ -486,9 +486,9 @@ describe("Games beta accounts", () => {
   it("follow the account the session acts as during an impersonation", async () => {
     // A beta admin impersonating a non-beta user sees what that user sees: off.
     expect((await recognize(MAPTAP, userId, betaUserId)).status).toBe(404);
-    expect(await capabilities(userId, betaUserId)).toEqual({ recognition: false });
+    expect(await capabilities(userId, betaUserId)).toMatchObject({ recognition: false });
     // Impersonating a beta user: on, whoever the impersonator is.
     expect((await recognize(MAPTAP, betaUserId, friendId)).status).toBe(200);
-    expect(await capabilities(betaUserId, friendId)).toEqual({ recognition: true });
+    expect(await capabilities(betaUserId, friendId)).toMatchObject({ recognition: true });
   });
 });

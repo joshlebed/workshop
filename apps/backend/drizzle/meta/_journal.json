@@ -309,6 +309,13 @@
       "when": 1791357966931,
       "tag": "0043_seed_game_code",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1791358073319,
+      "tag": "0044_convert_taught_specs_to_code",
+      "breakpoints": true
     }
   ]
 }

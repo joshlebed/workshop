@@ -377,7 +377,8 @@ The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
 `APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`,
 `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
 `GOOGLE_BOOKS_API_KEY`, `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `ENABLE_GAMES`, `GAME_RECOGNITION`
-(`off` | `shadow` | `on` — see `apps/backend/CLAUDE.md`), `SPOTIFY_CLIENT_ID`,
+and `GAME_CODE_PARSING` (each `off` | `shadow` | `on` — see `apps/backend/CLAUDE.md`),
+`SPOTIFY_CLIENT_ID`,
 `SPOTIFY_CLIENT_SECRET`, `DISCORD_NOTIFY_WEBHOOK_URL`, `LOG_LEVEL` from env vars set by Terraform.
 `OPENAI_TEACH_TARGETS_MODEL` / `OPENAI_TEACH_CODEGEN_MODEL` and `OPENAI_TEACH_TARGETS_EFFORT` /
 `OPENAI_TEACH_CODEGEN_EFFORT` are optional overrides that Terraform does not set; `lib/config.ts`
@@ -919,6 +920,6 @@ ship prod, dropping the wrangler step changed nothing about deploys.
 pnpm run typecheck     # ~12s
 pnpm run lint          # ~1s
 pnpm run test          # ~2s
-pnpm run knip          # ~2s — non-blocking in CI while baseline tunes
+pnpm run knip          # ~2s — blocks CI: an export with no consumer in the same PR fails Quality
 cd infra && terraform fmt -check -recursive && terraform validate
 ```
