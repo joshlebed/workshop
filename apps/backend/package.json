@@ -15,7 +15,8 @@
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
     "admin:eject": "tsx scripts/eject-user.ts",
-    "admin:game-code": "tsx scripts/set-game-code.ts"
+    "admin:game-code": "tsx scripts/set-game-code.ts",
+    "admin:reread-scores": "tsx scripts/reread-scores.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.0.0",

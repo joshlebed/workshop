@@ -293,7 +293,21 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   call the same function): a sandbox that could not run the code is never a yes, because an
   empty mismatch list from a validation that did not run proves nothing.
   **It never re-parses history** — rows keep their values and `code_version` shows which code
-  read them. Whether and how history is re-parsed is a product decision not yet made.
+  read them.
+- **History is re-read by `admin:reread-scores`** (`scripts/reread-scores.ts`, core in
+  `lib/gameCode/reread.ts`) — the spec's one-off re-read and the successor to
+  `rescore-game.ts`. Dry run by default; `--apply` is an operator decision, never something to
+  run because a diff looks clean. It only decides LEGACY rows (no `parse_status`): it never
+  touches a row stored code already read or one whose value was `picked`, writes only the
+  reading (`score_value`, `parse_status`, `score_summary`, `score_source = 'parsed'`,
+  `code_version`) so no date or row count moves and streaks cannot change, guards each write
+  on the row still being the one it read, and leaves a row undecided — not `failed` — when
+  the sandbox was unavailable. **Order matters:** a game with no parse code has every legacy
+  row turned to `failed`, losing whatever number it stored (correct for Krillion's puzzle
+  numbers — but this script will not visit those rows again, since they are no longer
+  legacy rows; re-reading `failed` rows after a teach is the teach flow's job). Teach or fix
+  a game's code first, or pass `--skip-untaught` / `--game=`. Use `--public` for any output that leaves the sandbox: the repo is public, and
+  the default report prints user ids and full share text.
 
 ## Migration journal `when` values must be monotonic
 
