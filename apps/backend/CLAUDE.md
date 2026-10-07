@@ -303,7 +303,7 @@ text names the game by label or URL — becomes a confirmed example the game's p
 re-taught from. Two LLM steps, both OpenAI Responses API via plain `fetch` (`openai.ts`: one
 POST, one timeout, strict JSON schema out, zod on the way back in, never throws):
 
-1. **find targets** (`findTargets.ts`, 2s budget) labels the candidates and names the likely
+1. **find targets** (`findTargets.ts`, 2.5s budget) labels the candidates and names the likely
    score. It answers with candidate _numbers_ only; values are never the model's.
 2. **write code** (`writeCode.ts`, 5s per call, at most two calls per teach) writes `parse(raw)`.
    Its prompt quotes `contract.ts`, a verbatim copy of the README sections
@@ -374,6 +374,14 @@ POST, one timeout, strict JSON schema out, zod on the way back in, never throws)
 pick_conflict | direction_change | game_recognition | sandbox_failure | parser_rollback`,
   each with request id, user, game, day and parser version. `parser_accept` also carries the
   generated code, the failed gate, token counts and `llm_ms` / `gates_ms`.
+- **Model latency is on the log lines — read it there, don't re-sample.** Both steps log
+  `step`, `llm_ms`, `llm_budget_ms`, `llm_timed_out` and `elapsed_ms`: step 1 on
+  `kind: "teach_targets"` (one line per label call; budget 2.5 s, which only decides whether
+  labels arrive — the chips are already on screen), step 2 on each `kind: "parser_accept"`
+  attempt (6.5 s per call inside the 12 s teach budget). In CloudWatch Logs Insights on
+  `/aws/lambda/workshop-prod-api`:
+  `filter kind = "teach_targets" | stats count(*), pct(llm_ms, 50), pct(llm_ms, 95) by llm_timed_out`
+  — swap in `kind = "parser_accept" and ispresent(llm_ms)` for step 2.
 - **Code is written through `applyGameCodeChange`** (`lib/gameCode/admin.ts`, source
   `teach`), inside the transaction that also re-reads rows and settles picks, after a
   `SELECT … FOR UPDATE` check that `code_version` has not moved. Teach does **not** use

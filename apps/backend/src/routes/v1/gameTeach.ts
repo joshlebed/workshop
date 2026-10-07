@@ -371,17 +371,27 @@ export function registerGameTeachRoutes(router: Hono): void {
       if (candidates.length === 0) return ok(c, response);
       // The global daily cap on model calls: once spent, chips stay unlabelled.
       if (!(await claimTeachLlmCall("find_targets", context))) return ok(c, response);
+      const requestStartedAt = Date.now();
       const found = await findTargets(
         { gameTitle: game.title, raw: scoreRaw, features: candidates },
         { timeoutMs: FIND_TARGETS_TIMEOUT_MS },
       );
+      // Step 1's latency, under the same field names step 2 uses on
+      // `parser_accept`, so one CloudWatch query reads p50/p95 for either.
       logger.info("teach_targets", {
         kind: "teach_targets",
+        step: "find_targets",
         request_id: context.requestId,
         user_id: context.userId,
         game_id: game.id,
         model: found.model,
         outcome: found.ok ? "labelled" : found.reason,
+        llm_ms: found.durationMs,
+        llm_budget_ms: FIND_TARGETS_TIMEOUT_MS,
+        llm_timed_out: !found.ok && found.reason === "timeout",
+        // The model call plus the budget claim's wait — what the picker waited.
+        elapsed_ms: Date.now() - requestStartedAt,
+        // Kept for anything already reading it; same value as `llm_ms`.
         duration_ms: found.durationMs,
         input_tokens: found.ok ? found.usage.inputTokens : null,
         output_tokens: found.ok ? found.usage.outputTokens : null,
