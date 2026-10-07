@@ -125,6 +125,12 @@ const configSchema = z.object({
   // This is the mode for everyone; Games beta accounts (lib/gamesBeta.ts) get
   // `on` regardless — read it through `codeParsingModeFor(userId)`.
   gameCodeParsing: z.enum(["off", "shadow", "on"]).catch("off"),
+  // Teach v2 (lib/teach): score previews, the candidate picker, picks and
+  // LLM-written parser code. `off` (default, and what any unrecognized value
+  // means): every teach endpoint 404s and score posts behave as before. `on`:
+  // enabled for everyone. Games beta accounts (lib/gamesBeta.ts) get `on`
+  // regardless — read it through `teachModeFor(userId)`.
+  gameTeach: z.enum(["off", "on"]).catch("off"),
   // Spotify Web API app credentials (Client Credentials flow). Used by the
   // Album Shelf feature to read public playlists with an app-level token —
   // no per-user OAuth. Empty defaults so the rest of the API still boots
@@ -169,6 +175,7 @@ export function getConfig(): Config {
     gamesEnabled: process.env.ENABLE_GAMES,
     gameRecognition: process.env.GAME_RECOGNITION,
     gameCodeParsing: process.env.GAME_CODE_PARSING,
+    gameTeach: process.env.GAME_TEACH,
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
     discordNotifyWebhookUrl: process.env.DISCORD_NOTIFY_WEBHOOK_URL,

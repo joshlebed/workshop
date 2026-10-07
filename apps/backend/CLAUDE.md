@@ -294,6 +294,98 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   **It never re-parses history** — rows keep their values and `code_version` shows which code
   read them. Whether and how history is re-parsed is a product decision not yet made.
 
+## Teach v2 (`lib/teach/`, `routes/v1/gameTeach.ts`) — picks, previews and LLM-written parsers
+
+Product spec: `docs/highscore-score-validation-spec.md`. A user who disagrees with (or has no)
+parse taps a **computed candidate**; that pick always fixes their own score, and — when the
+text names the game by label or URL — becomes a confirmed example the game's parser is
+re-taught from. Two LLM steps, both OpenAI Responses API via plain `fetch` (`openai.ts`: one
+POST, one timeout, strict JSON schema out, zod on the way back in, never throws):
+
+1. **find targets** (`findTargets.ts`, 2s budget) labels the candidates and names the likely
+   score. It answers with candidate _numbers_ only; values are never the model's.
+2. **write code** (`writeCode.ts`, 5s per call, at most two calls per teach) writes `parse(raw)`.
+   Its prompt quotes `contract.ts`, a verbatim copy of the README sections
+   (`contract.test.ts` fails on drift) and must keep the thousands-separator sentence.
+
+- **Gate everything on `teachModeFor(userId)`** (`gate.ts`): `on` for Games beta accounts,
+  else only when `GAME_TEACH` (`off` default | `on`; not in Terraform yet) **and**
+  `GAME_CODE_PARSING` are both `on`. Clients read
+  `capabilities.teach` on `GET /v1/games`. With it on, the two handlers in `games.ts` hand
+  over before reading the body: `PUT /v1/games/:id/scores` to `handleScoreUpsertV2` (edge-input
+  gate, `scoreShareWithinBudget`, status / source / version stored, optional pick) and
+  `POST …/scores/preview` to `handleScorePreviewV2` (the code-parsing preview plus a `teach`
+  block: candidates, derivation, wrong-game match, same-text day). With it off both run
+  exactly as the code-parsing layer wrote them. Teach assumes stored-code parsing: a caller it
+  is on for is parsed by code whatever `GAME_CODE_PARSING` says.
+- **The model is called only by `POST …/scores/candidates` and `POST …/parser/teach`** — never
+  by a preview or a post. Both are rate-limited per user per minute and per day. Don't add a
+  model call to `previewScore` / `saveScore`.
+- **A pick never carries a value.** The client sends a feature id; the server recomputes
+  `computeScoreFeatures(raw)` (`@workshop/shared/scoreCandidates`) and reads the value itself.
+  `parser/teach` takes only a `periodKey` and learns from the caller's own stored pick.
+- **Acceptance gates, in order** (`acceptance.ts`, run through the real sandbox): sandbox
+  limits → alteration test (`alteration.ts`: nudge the picked number / swap one grid cell / add
+  a row / move the marker, and the result must follow — on the teaching example _and_ every
+  older confirmed pick, which is what defeats code that special-cases one text) → reproduces
+  every confirmed pick in the 30-day window → leaves other users' read scores unchanged. Then
+  unread rows in the window are re-read. `decide()` turns the evaluation into
+  `accept | switch | conflict | reject`. Only `accept` and `switch` write code, and **only a
+  `switch` may move another user's read score**. A switch needs at least two **correcting**
+  users who outnumber the contradicted ones, where a correcting user is one whose confirmed
+  pick the new code reproduces and the _current_ parser does not — a pick that merely still
+  parses is not a vote, and one user correcting twice is one vote. It holds against any
+  parser, confirmed by a pick or not: two players correcting a seeded or operator-written
+  parser the same way replace it (that is how a Worldle-style breakage gets repaired without
+  an admin). One correction alone is a `conflict` when it contradicts a confirmed pick (the
+  game is flagged, `games.parse_conflict_at`, one `pick_conflict` log line) and a plain
+  `reject` otherwise. On a switch only rows the **outvoted version itself** read are re-read
+  (`rowsReadByOutvoted`: `game_scores.code_version` equals the game's current version); rows
+  from earlier versions and rows holding a user's own pick keep their values. The
+  `parser_accept` line carries `rows_changed` and `rows_differing_kept`, and the Discord ping
+  the count re-read.
+- **A teach is bounded in time and in sandbox runs.** `evaluateCode` takes `deadlineMs` and
+  ends with `noVerdict` (`deadline` or `sandbox_unavailable`) rather than a verdict it did not
+  reach — the teach then reports `unavailable`, never an accept. It stops at the first
+  `sandbox_limit`. `sampleWindow` cuts the window to the newest 200 distinct texts plus the
+  newest 40 confirmed picks (rows past the cut are neither checked nor rewritten; the log
+  line says `window_truncated`). `worstCaseSandboxRuns` in `teach.ts` is the arithmetic —
+  995 runs for a whole teach — and `teach.test.ts` pins it: change a cap and that test tells
+  you the new number.
+- **Model spend has a global daily cap**: `claimTeachLlmCall` (`budget.ts`) counts every call
+  of both steps in one `rate_limits` row per UTC day (`teach.llm.global`, 500/day). Spent or
+  unreadable means no call — it fails closed and logs `kind: "teach_llm_budget"`. Any new
+  model call in teach must claim from it first.
+- **"Read" is defined by `isRead`**: a row with a `parse_status` was read by code; a legacy
+  row (no status) counts only if the game's _current_ code reproduces its stored value. A
+  game with no code has no read rows — its legacy first-number values never block a teach.
+- **Rows holding a pick keep their value** when the parser changes; only `pick_adjusted`
+  (the "adjusted" label) is re-derived by `recomputeAdjusted` after every version change.
+  "Adjusted" means the parser read the text and got something else (`isAdjusted`): an unread
+  text, or a game with no parser, is never adjusted.
+  If you add another path that writes `games.parse_code`, call it there too.
+- **Stored scores of accounts teach is off for are never rewritten** by a teach
+  (`mayRewrite` in `applyNewCode`) — the foundation's one-off re-read covers them.
+- **Discord pings only for an accepted parser or direction change** (`parser_taught`,
+  `direction_changed`). Conflicts, rejected attempts, sandbox failures, rollbacks and unread
+  posts are log lines: one per event through `logTeachEvent` (`log.ts`), `kind` =
+  `score_parse | score_preview | score_input_rejected | score_pick | parser_accept |
+pick_conflict | direction_change | game_recognition | sandbox_failure | parser_rollback`,
+  each with request id, user, game, day and parser version. `parser_accept` also carries the
+  generated code, the failed gate, token counts and `llm_ms` / `gates_ms`.
+- **Code is written through `applyGameCodeChange`** (`lib/gameCode/admin.ts`, source
+  `teach`), inside the transaction that also re-reads rows and settles picks, after a
+  `SELECT … FOR UPDATE` check that `code_version` has not moved. Teach does **not** use
+  `planGameCodeChange`: that validates against every stored score ever, the spec's gates are
+  the 30-day window above.
+- **Rollback** is `POST /v1/games/:id/parser/rollback { version }` (admin only): the old code
+  is written back as a new version with its own `game_code_revisions` row (source `operator`),
+  the same thing `admin:game-code --revert` does, plus the `pick_adjusted` recompute.
+- **Live check** (real OpenAI, skipped in CI):
+  `cd apps/backend && set -a && . ./.env && set +a && TEACH_LIVE=1 pnpm exec vitest run
+src/routes/v1/gameTeach.live.test.ts` — prints step latencies, tokens and gate results.
+  Re-run it before changing either prompt or model.
+
 ## Migration journal `when` values must be monotonic
 
 The drizzle migrator records each migration's journal `when` as `created_at` and only

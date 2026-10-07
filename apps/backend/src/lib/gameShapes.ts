@@ -26,6 +26,7 @@ export function toGameShape(row: DbGame): Game {
     // score-spec endpoint, but old/hand-edited rows must not crash the shape.
     scoreSpec: safeParseScoreSpec(row.scoreSpec),
     summarySpec: safeParseSummarySpec(row.summarySpec),
+    hasParser: row.parseCode !== null,
     createdAt: toIsoString(row.createdAt),
   };
 }

@@ -110,6 +110,49 @@ export function buildScoreSpecTaughtNotification(
   };
 }
 
+/**
+ * Teach v2: new parser code was accepted for a game — a first teach, a
+ * correction, or a switch after a second user agreed. The only teach event
+ * that pings; conflicts and rejected attempts are log lines.
+ */
+export function buildParserTaughtNotification(
+  user: string,
+  opts: {
+    gameTitle: string;
+    version: number;
+    kind: "first" | "reteach" | "switch";
+    /** One line: the share it was taught from and the value picked. */
+    example: string;
+    rowsNewlyRead: number;
+    rowsChanged: number;
+    direction: "asc" | "desc" | null;
+  },
+): Notification {
+  const verb = opts.kind === "first" ? "taught" : opts.kind === "switch" ? "switched" : "re-taught";
+  const extras = [
+    opts.direction ? (opts.direction === "asc" ? "lower is better" : "higher is better") : null,
+    opts.rowsNewlyRead > 0 ? `${opts.rowsNewlyRead} unread now read` : null,
+    opts.rowsChanged > 0 ? `${opts.rowsChanged} re-read` : null,
+  ].filter(Boolean);
+  const tail = extras.length > 0 ? ` (${extras.join(", ")})` : "";
+  return {
+    content: `🧑‍🏫 parser ${verb} — ${user} ${verb} "${opts.gameTitle}" → v${opts.version}${tail}\n> ${opts.example}`,
+    kind: "parser_taught",
+  };
+}
+
+/** Teach v2: a game's score direction changed (its setter, or two users agreeing). */
+export function buildDirectionChangedNotification(
+  user: string,
+  opts: { gameTitle: string; from: "asc" | "desc"; to: "asc" | "desc" },
+): Notification {
+  const words = (d: "asc" | "desc") => (d === "asc" ? "lower is better" : "higher is better");
+  return {
+    content: `↕️ score direction changed — ${user} set "${opts.gameTitle}" to ${words(opts.to)} (was ${words(opts.from)})`,
+    kind: "direction_changed",
+  };
+}
+
 /** Tier 3: a user signed out of every device (session revocation). */
 export function buildSessionsRevokedNotification(user: string): Notification {
   return {
@@ -299,6 +342,22 @@ export async function notifyScoreSpecTaught(
 ): Promise<void> {
   await safeNotify(async () =>
     buildScoreSpecTaughtNotification(await loadUserLabel(userId), gameTitle, opts),
+  );
+}
+
+export async function notifyParserTaught(
+  userId: string,
+  opts: Parameters<typeof buildParserTaughtNotification>[1],
+): Promise<void> {
+  await safeNotify(async () => buildParserTaughtNotification(await loadUserLabel(userId), opts));
+}
+
+export async function notifyDirectionChanged(
+  userId: string,
+  opts: Parameters<typeof buildDirectionChangedNotification>[1],
+): Promise<void> {
+  await safeNotify(async () =>
+    buildDirectionChangedNotification(await loadUserLabel(userId), opts),
   );
 }
 

@@ -83,9 +83,12 @@ import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
+import { teachModeFor } from "../../lib/teach/gate.js";
+import { scorePickFields } from "../../lib/teach/scores.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
+import { handleScorePreviewV2, handleScoreUpsertV2, registerGameTeachRoutes } from "./gameTeach.js";
 import { resolveLinkPreview } from "./link-preview.js";
 
 const addGameSchema = z.object({
@@ -225,6 +228,8 @@ async function loadStandingsByGame(
   if (gameIds.length === 0) return byGame;
   const db = getDb();
   const visibleIds = await visibleUserIds(viewerId);
+  // Teach v2 fields ride along only for a viewer who has it on.
+  const teachOn = teachModeFor(viewerId) === "on";
   const rows = await db
     .select({
       gameId: gameScores.gameId,
@@ -235,6 +240,8 @@ async function loadStandingsByGame(
       scoreSummary: gameScores.scoreSummary,
       updatedAt: gameScores.updatedAt,
       displayName: users.displayName,
+      scoreSource: gameScores.scoreSource,
+      pickAdjusted: gameScores.pickAdjusted,
     })
     .from(gameScores)
     .leftJoin(users, eq(users.id, gameScores.userId))
@@ -256,6 +263,7 @@ async function loadStandingsByGame(
       rank: null,
       updatedAt: toIsoOrNull(r.updatedAt),
       reactions: [],
+      ...(teachOn ? scorePickFields(r) : {}),
     });
     byGame.set(r.gameId, entries);
   }
@@ -360,6 +368,7 @@ gameRoutes.get("/", async (c) => {
     loadViewerStreaksByGame(userId, gameIds, periodKey),
   ]);
 
+  const teachOn = teachModeFor(userId) === "on";
   const myGames: MyGame[] = rows.map((r) => {
     const entries = rankEntries(
       standingsByGame.get(r.game.id) ?? [],
@@ -386,6 +395,7 @@ gameRoutes.get("/", async (c) => {
     capabilities: {
       recognition: recognitionModeFor(userId) === "on",
       codeParsing: codeParsingModeFor(userId) === "on",
+      teach: teachOn,
     },
   };
   return ok(c, response);
@@ -666,6 +676,9 @@ gameRoutes.put(
     const userId = c.get("userId");
     const gameId = uuidSchema.safeParse(c.req.param("id"));
     if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+    // Teach v2 callers post through the code-parsing write path (edge-input
+    // gate, status / source / parser version, optional pick).
+    if (teachModeFor(userId) === "on") return handleScoreUpsertV2(c, gameId.data);
 
     const parsed = await parseJsonBody(c, upsertScoreSchema);
     if (!parsed.ok) return parsed.response;
@@ -758,9 +771,12 @@ gameRoutes.post(
   }),
   async (c) => {
     const userId = c.get("userId");
-    if (codeParsingModeFor(userId) !== "on") return err(c, "NOT_FOUND", "not found");
     const gameId = uuidSchema.safeParse(c.req.param("id"));
     if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+    // Teach v2 callers get the same preview plus candidates, any wrong-game
+    // match and any same-text day, behind the edge-input gate.
+    if (teachModeFor(userId) === "on") return handleScorePreviewV2(c, gameId.data);
+    if (codeParsingModeFor(userId) !== "on") return err(c, "NOT_FOUND", "not found");
     const parsed = await parseJsonBody(c, previewScoreSchema);
     if (!parsed.ok) return parsed.response;
 
@@ -1109,3 +1125,6 @@ gameRoutes.put(
     return ok(c, response);
   },
 );
+
+// Teach v2: previews, picks, parser teaching, direction (see gameTeach.ts).
+registerGameTeachRoutes(gameRoutes);

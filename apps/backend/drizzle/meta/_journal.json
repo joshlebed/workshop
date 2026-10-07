@@ -316,6 +316,13 @@
       "when": 1791358073319,
       "tag": "0044_convert_taught_specs_to_code",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1791358619683,
+      "tag": "0045_game_teach",
+      "breakpoints": true
     }
   ]
 }

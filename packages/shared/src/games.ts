@@ -4,6 +4,7 @@
 // re-exports, so the client must import this file directly —
 // `import { normalizeGameUrl } from "@workshop/shared/games"`.
 
+import type { ScoreFeature, ScoreFeatureRole, ScorePick } from "./scoreCandidates.js";
 import type { ScoreSpec } from "./scoreParsing.js";
 import type { SummarySpec } from "./summarySpec.js";
 
@@ -33,6 +34,13 @@ export interface Game {
    * `formatShareBody` formatters live in code.
    */
   summarySpec: SummarySpec | null;
+  /**
+   * The game has stored parse code — from the registry seed, a taught spec,
+   * an operator, or teach v2. A client must not offer the old first-teach
+   * flow for such a game even when `scoreSpec` is null: the server refuses a
+   * non-admin teach over existing code. Absent from older servers.
+   */
+  hasParser?: boolean;
   createdAt: string;
 }
 
@@ -66,8 +74,21 @@ export interface ScoreCodeFields {
   scoreSummary?: string | null;
 }
 
+/** Where a score's value came from: the game's parser, or the player's own pick. */
+export type ScoreSource = "parsed" | "picked";
+
+/**
+ * Teach v2's additions to a score, present only for a caller it is on for.
+ * `parseStatus: "failed"` is what the product calls *unread*.
+ */
+export interface ScorePickFields {
+  scoreSource?: ScoreSource;
+  /** The player picked this score and the game's parser reads the text differently. */
+  adjusted?: boolean;
+}
+
 /** One posted score: `(gameId, userId, periodKey)` is the identity. */
-export interface GameScore extends ScoreCodeFields {
+export interface GameScore extends ScoreCodeFields, ScorePickFields {
   gameId: string;
   userId: string;
   periodKey: string;
@@ -100,12 +121,16 @@ export interface ScoreReactionSummary {
  * One row of a game's standings for a period. Covers the viewer and their
  * friends (G2a); the entry shape is the same either way.
  */
-export interface GameStandingsEntry extends ScoreCodeFields {
+export interface GameStandingsEntry extends ScoreCodeFields, ScorePickFields {
   userId: string;
   displayName: string | null;
   scoreRaw: string | null;
   scoreValue: number | null;
-  /** Standard competition rank (1, 2, 2, 4); null when no numeric score. */
+  /**
+   * Standard competition rank (1, 2, 2, 4); null when no numeric score. With
+   * teach v2 on for the viewer, a `no_result` row ranks in last place and only
+   * a `failed` (unread) row has no rank.
+   */
   rank: number | null;
   updatedAt: string | null;
   /**
@@ -149,6 +174,11 @@ export interface GamesCapabilities {
    * predate it — treat that as off.
    */
   codeParsing?: boolean;
+  /**
+   * Teach v2 is on for this caller: score previews with candidates, the
+   * picker, "Fix score" and the teach endpoints. Absent from older servers.
+   */
+  teach?: boolean;
 }
 
 export interface GamesResponse {
@@ -173,17 +203,152 @@ export interface AddGameResponse {
 
 export interface UpsertGameScoreResponse {
   score: GameScore;
+  /** Present when the request carried a pick (teach v2). */
+  teach?: ScoreTeachHint;
+}
+
+// ---------------------------------------------------------------------------
+// Teach v2 — previews, the candidate picker, picks and parser teaching. Every
+// endpoint 404s unless `capabilities.teach` is true for the caller.
+// ---------------------------------------------------------------------------
+
+/** Why the server refused a score text before running any code. */
+export type ScoreInputRejection = "empty" | "url_only" | "title_only" | "too_long" | "future_day";
+
+/** `details` of the 400 a rejected score text gets (`code: "VALIDATION"`). */
+export interface ScoreInputRejectedDetails {
+  code: "SCORE_INPUT_REJECTED";
+  reason: ScoreInputRejection;
+}
+
+/** Where a preview was asked from — logged, never changes the answer. */
+export type ScoreEntryPoint = "paste" | "share" | "fix";
+
+/** What teach v2 adds to a score preview (`GameScorePreview.teach`). */
+export interface ScorePreviewTeach {
+  /** How a computed value was derived ("counted 🏆"); null for a literal number. */
+  derivation: string | null;
+  /** Everything in the text that could be the score, computed by the server. */
+  candidates: ScoreFeature[];
+  /** Set when the text positively matches a different game. */
+  wrongGame: { game: Game; inMyGames: boolean } | null;
+  /** Another day the caller already posted this exact text to this game. */
+  sameTextPeriodKey: string | null;
+  /** False when the game has no parser yet — a pick here is its first teach. */
+  hasParser: boolean;
+}
+
+/** `POST /v1/games/score-preview` — the share flow: text with no game chosen yet. */
+export interface SharePreviewRequest {
+  scoreRaw: string;
+  periodKey: string;
+}
+
+export interface SharePreviewResponse {
+  match: RecognizedGame | null;
+  /** The preview for the recognised game; null when no game was recognised. */
+  preview: GameScorePreview | null;
+}
+
+/** `POST /v1/games/:id/scores/candidates` — the picker's role labels (LLM step 1). */
+export interface ScoreCandidatesResponse {
+  candidates: ScoreFeature[];
+  /** Role per candidate id; empty when the labels did not arrive in time. */
+  roles: Record<string, ScoreFeatureRole>;
+  /** The candidate to pre-select, when the labels named one. */
+  scoreId: string | null;
+  labelled: boolean;
+}
+
+/** `PUT /v1/games/:id/scores` body. `pick` and the rest are teach v2 only. */
+export interface UpsertGameScoreRequest {
+  periodKey: string;
+  scoreRaw: string;
+  pick?: ScorePick;
+  /** The role label the player overrode ("That looks like the puzzle number. Use it anyway?"). */
+  overrodeRole?: ScoreFeatureRole;
+  /** Whether the player saw a preview before posting. */
+  previewSeen?: boolean;
+  /** The wrong-game warning the player answered, if one was shown. */
+  wrongGame?: { gameId: string; choice: "here" | "there" };
+}
+
+/** `POST /v1/games/:id/scores/:periodKey/pick` — "Fix score" on the caller's own row. */
+export interface ApplyScorePickRequest {
+  pick: ScorePick;
+  overrodeRole?: ScoreFeatureRole;
+}
+
+export interface ApplyScorePickResponse {
+  score: GameScore;
+  teach: ScoreTeachHint;
+}
+
+/** What the client should do after a pick was stored. */
+export interface ScoreTeachHint {
+  /** The pick can teach the game's parser: call `POST /v1/games/:id/parser/teach`. */
+  eligible: boolean;
+  /** The game has no parser yet, so this teach also sets which way scores rank. */
+  needsDirection: boolean;
+  suggestedDirection: GameScoreDirection | null;
+}
+
+/** `POST /v1/games/:id/parser/teach` — teach from the caller's own picked score. */
+export interface TeachParserRequest {
+  periodKey: string;
+  /** Confirmed by the player on a first teach. */
+  scoreDirection?: GameScoreDirection;
+}
+
+export type TeachOutcome =
+  /** New parser code passed every gate and is live. */
+  | "accepted"
+  /** A second user agreed: the parser switched over an earlier conflicting pick. */
+  | "switched"
+  /** Contradicts another player's confirmed pick; the game is flagged, nothing changed. */
+  | "conflict"
+  /** No code passed the gates; the game is unchanged. */
+  | "rejected"
+  /** The model was unreachable or slow; the game is unchanged. */
+  | "unavailable"
+  /** The parser already reads this pick; nothing to do. */
+  | "not_needed"
+  /** This pick cannot train the parser (the text does not name the game). */
+  | "not_eligible";
+
+export interface TeachParserResponse {
+  outcome: TeachOutcome;
+  game: Game;
+  /** The caller's score after the teach (unchanged unless the parser now agrees with it). */
+  score: GameScore;
+}
+
+/** `PUT /v1/games/:id/score-direction` — from the game's "…" menu. */
+export interface SetScoreDirectionRequest {
+  scoreDirection: GameScoreDirection;
+}
+
+export interface SetScoreDirectionResponse {
+  game: Game;
+  /** False when the change is held until a second user asks for the same one. */
+  applied: boolean;
 }
 
 /** `POST /v1/games/:id/scores/preview` — what posting this text would store. */
 export interface PreviewGameScoreRequest {
   scoreRaw: string;
+  /** Teach v2: the day being posted to (same-text and future-day checks). Defaults to today. */
+  periodKey?: string;
+  /** Teach v2: where the preview was asked from — logged, never changes the answer. */
+  entry?: ScoreEntryPoint;
 }
 
 export interface GameScorePreview {
   parseStatus: ScoreParseStatus;
   scoreValue: number | null;
   scoreSummary: string | null;
+  /** Present only when teach v2 is on for the caller. */
+  teach?: ScorePreviewTeach;
 }
 
 export interface PreviewGameScoreResponse {
