@@ -269,7 +269,7 @@ interface CodeValidation {
 // A validation run that keeps getting its worker killed is hostile or broken
 // code; stop paying a thread restart per example.
 const MAX_KILLS_PER_VALIDATION = 2;
-const KILLED_DETAIL = "wall-clock budget exhausted";
+export const KILLED_DETAIL = "wall-clock budget exhausted";
 
 // Failures that mean "this code can never work", whatever the input.
 // `sandbox_unavailable` is deliberately not one: it is a fact about the
