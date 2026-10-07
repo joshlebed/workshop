@@ -41,7 +41,11 @@ const RAW = "Wordle 1,127 4/6\n\n⬛🟨⬛⬛⬛\n⬛⬛🟨🟩⬛\n🟩⬛�
 
 function startWorker() {
   const startedAt = performance.now();
-  const worker = new Worker(workerFile, { env: {} });
+  // Same thread options as src/lib/gameCode/runtime.ts.
+  const worker = new Worker(workerFile, {
+    env: {},
+    resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 16, stackSizeMb: 64 },
+  });
   let nextId = 1;
   const waiting = new Map();
   const ready = new Promise((resolveReady, reject) => {

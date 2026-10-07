@@ -56,10 +56,23 @@ let modulePromise: Promise<QuickJSWASMModule> | null = null;
  * threads right after start; on a 512 MB Lambda (0.29 vCPU) those threads
  * starve the sandbox, and the first real job after a cold start took ~410 ms
  * against a 250 ms kill timer. Baseline-only makes it ~1.5 ms, starts the
- * worker ~40% sooner, and costs ~0.2 ms per warm run. V8 flags are
- * process-wide: this is fine because QuickJS is the only WASM the backend
- * loads. Re-run scripts/bench-game-code.mjs when the Node runtime changes —
- * if a future V8 ignores the flag, the first-job number is what regresses.
+ * worker ~40% sooner, and costs ~0.2 ms per warm run.
+ *
+ * Node documents `v8.setFlagsFromString` after VM start as "may result in
+ * unpredictable behavior … or it may simply do nothing". Why it is acceptable
+ * here:
+ * - The flag is only read when a WASM module is compiled, and nothing in the
+ *   process has compiled one yet — this runs immediately before the first
+ *   compile. It changes no state that already exists (unlike heap or GC
+ *   flags, which is what that warning is about).
+ * - It is process-wide, and QuickJS is the only WASM the backend loads.
+ * - "Does nothing" is a safe failure: the sandbox is just slower to settle
+ *   after a cold start, and that is visible — `warm_up_ms` on the
+ *   `game_code_sandbox_started` log line, and the first-job row of
+ *   scripts/bench-game-code.mjs. Measured effective on Node 20.20 and 22.19;
+ *   re-run the benchmark when the Node runtime changes.
+ * It lives here rather than at the worker's startup so that no code path can
+ * compile the module without it.
  */
 export function loadQuickJS(): Promise<QuickJSWASMModule> {
   if (!modulePromise) {
@@ -90,16 +103,44 @@ const INTRINSICS: Intrinsics = {
 };
 
 // Runs before the stored code. Removes what is left of nondeterminism after
-// INTRINSICS: random numbers, and GC-observable references.
+// INTRINSICS (random numbers, GC-observable references), and every way to
+// compile code at run time: `eval`, and the four function constructors
+// reachable through `(function () {}).constructor` and its generator / async
+// siblings. Stored code has no use for them, and they are how a program would
+// hand QuickJS's parser source nested deeper than the code-size cap allows —
+// see STACK_LIMIT_BYTES in limits.ts for why that depth has to be bounded.
+// (`evalCode` on the host side does not go through the `eval` global.)
 const PRELUDE = `
 delete Math.random;
 delete globalThis.WeakRef;
 delete globalThis.FinalizationRegistry;
 delete globalThis.performance;
 delete globalThis.queueMicrotask;
+[
+  Function.prototype,
+  Object.getPrototypeOf(function* () {}),
+  Object.getPrototypeOf(async function () {}),
+  Object.getPrototypeOf(async function* () {}),
+].forEach(function (proto) { delete proto.constructor; });
+delete globalThis.eval;
+delete globalThis.Function;
 `;
 
 const DETAIL_MAX = 200;
+
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/**
+ * Replace lone surrogates with U+FFFD before text enters the VM. The string
+ * crosses into WASM as UTF-8, which cannot carry half a surrogate pair: left
+ * alone, one arrives intact in some positions and swallows the rest of the
+ * text in others (`"x\uDFC6\uD83Cy"` reached the code as two characters).
+ * A well-formed string is the only input the code can read predictably — and
+ * Postgres would not have stored the lone surrogate either.
+ */
+function toWellFormed(text: string): string {
+  return text.replace(LONE_SURROGATE, "\uFFFD");
+}
 
 function failed(reason: GameCodeFailureReason, detail?: string): GameCodeFailure {
   return detail === undefined
@@ -224,7 +265,7 @@ export function runJob(quickjs: QuickJSWASMModule, job: SandboxJob): SandboxJobR
         return failed("missing_function", `code does not define ${job.fn}(raw)`);
       }
 
-      const raw = scope.manage(context.newString(job.raw));
+      const raw = scope.manage(context.newString(toWellFormed(job.raw)));
       const called = context.callFunction(fn, context.undefined, raw);
       if (called.error) {
         return classifyThrown(context, scope.manage(called.error), budget, "threw");

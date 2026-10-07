@@ -32,7 +32,9 @@ function parse(raw) {
 ```
 
 `raw` is the share text exactly as the player pasted it: a string of up to 4000 UTF-16 code
-units that may contain emoji, `\r\n`, URLs, and things the player typed by hand.
+units that may contain emoji, `\r\n`, URLs, and things the player typed by hand. It is always
+well-formed: a lone surrogate (half an emoji, from a bad copy) is replaced with `U+FFFD`
+before the code sees it.
 
 | `parse` does this                                                                     | Meaning                  | Stored as   |
 | ------------------------------------------------------------------------------------- | ------------------------ | ----------- |
@@ -79,6 +81,8 @@ A game with no format code always shows the cleaned raw text.
 - **Not there:** `Date`, `Math.random`, timers, `console`, `fetch`, `require` / `import`,
   `process`, `Proxy`, typed arrays, `BigInt`, `WeakRef`. The code must be deterministic:
   the same text always gives the same answer.
+- **No code generation at run time:** `eval`, `new Function(...)` and
+  `(function () {}).constructor(...)` all throw. Write the logic out.
 - **`async` is a failure.** `Promise` exists but nothing ever awaits one.
 
 ### Things generated code gets wrong
@@ -87,23 +91,25 @@ A game with no format code always shows the cleaned raw text.
   whitespace; handle them.
 - Anchor on labels (`Final score:`), not on line positions. Games reorder lines
   (GeoSports swapped its emoji and score lines between July and August).
-- An emoji is two UTF-16 code units and a keycap digit (`1️⃣`) is three code points. Use the
-  `u` flag in a character class (`/[🏆❌]/gu`), or count with `raw.split("🏆").length - 1`.
+- Emoji are not one "character" each, and not all the same size: `🏆` is two UTF-16 code
+  units, `❌` is one, `⬜️` may or may not carry an invisible variation selector, and a
+  keycap digit (`1️⃣`) is three code points. Never index or slice by position. Use the `u`
+  flag in a character class (`/[🏆❌]/gu`), or count with `raw.split("🏆").length - 1`.
 - Lines may end in `\r\n` and may carry leading spaces used to align a grid.
 
 ## Limits
 
 Enforced on every run. Values and reasoning are in `limits.ts`.
 
-| Limit              | Value        | When exceeded                                        |
-| ------------------ | ------------ | ---------------------------------------------------- |
-| Code size          | 16,000 chars | `failed` / `too_large`, nothing runs                 |
-| Input size         | 4,000 chars  | `failed` / `too_large`, nothing runs                 |
-| Summary size       | 2,000 chars  | `failed` / `too_large`                               |
-| Memory             | 2 MB heap    | `failed` / `out_of_memory`                           |
-| Stack              | 256 KB       | `failed` / `threw` (`InternalError: stack overflow`) |
-| Instruction budget | 200 ticks    | `failed` / `timeout` — about 10 ms of a tight loop   |
-| Wall clock         | 250 ms       | the worker thread is killed; `failed` / `timeout`    |
+| Limit              | Value        | When exceeded                                                                                     |
+| ------------------ | ------------ | ------------------------------------------------------------------------------------------------- |
+| Code size          | 16,000 chars | `failed` / `too_large`, nothing runs                                                              |
+| Input size         | 4,000 chars  | `failed` / `too_large`, nothing runs                                                              |
+| Summary size       | 2,000 chars  | `failed` / `too_large`                                                                            |
+| Memory             | 2 MB heap    | `failed` / `out_of_memory`                                                                        |
+| Stack              | 256 KB       | `failed` with `stack overflow` (`threw`, or `invalid_code` when the source itself nests too deep) |
+| Instruction budget | 200 ticks    | `failed` / `timeout` — about 10 ms of a tight loop                                                |
+| Wall clock         | 250 ms       | the worker thread is killed; `failed` / `timeout`                                                 |
 
 Two timers, because they stop different things:
 
@@ -114,6 +120,25 @@ Two timers, because they stop different things:
 - **The wall clock** exists because QuickJS built-ins run to completion without ticking:
   `("a".repeat(2e5) + "b").indexOf("a".repeat(1e5) + "c")` never yields. Only killing the
   thread stops it. The next run starts a new thread (~75 ms; ~300 ms on a throttled Lambda).
+
+**The stack limit is two numbers that have to agree.** The 256 KB cap is QuickJS's own
+count. Some of its recursion (the source parser on nested `(`, `[`, `{`; `JSON.parse`) uses
+the worker thread's native stack instead, which QuickJS cannot see; if that ran out first
+the WASM module would trap and the worker would have to be restarted. So the worker gets a
+64 MB native stack (`WORKER_STACK_MB`; Node's default 4 MB does trap), and stored code
+cannot compile more source at run time, which keeps nesting depth bounded by the code-size
+cap. `sandbox.test.ts` runs the deepest nesting the caps allow and checks no worker is lost.
+
+**Worst-case latency of one call:**
+
+| Situation                                                   | Bound                                         |
+| ----------------------------------------------------------- | --------------------------------------------- |
+| Warm worker, any code                                       | 250 ms (the wall clock)                       |
+| Cold worker that starts normally                            | start (75–700 ms measured) + 250 ms           |
+| Worker that never comes up                                  | 2 s start timeout, then `sandbox_unavailable` |
+| Worker that comes up at the last moment, then needs killing | 2.25 s — the absolute ceiling                 |
+
+A request path should not wait that long: `gameCodeService.ts` puts its own cap on top.
 
 Isolation: every run gets a new QuickJS runtime and context, so globals and prototype
 changes never carry over. No host function is ever exposed to the VM, and the input is
@@ -129,7 +154,7 @@ runParse(code, raw): Promise<ParseResult>
 runFormat(code, raw): Promise<FormatResult>
 //  { kind: "summary", text } | { kind: "none" } | { kind: "failed", reason, detail? }
 
-validateCode({ parse, format? }, examples): Promise<{ ok, checked, mismatches }>
+validateCode({ parse, format? }, examples): Promise<{ ok, unavailable, checked, mismatches }>
 //  examples: [{ raw, expected: number | null, expectedSummary?: string | null }]
 ```
 
@@ -141,6 +166,20 @@ None of them throws or rejects for anything the code does. `reason` is one of
 (`null` means it must return "no result"), and `format`, when given, must not fail on any
 example and must match every `expectedSummary` that is set. With no examples it still
 proves each block loads and defines its function.
+
+It has three outcomes, and callers must treat them differently:
+
+| Result                            | Meaning                                                                                                | What to do                                          |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `ok: true`                        | Every example ran and matched.                                                                         | Store the code.                                     |
+| `ok: false`, `unavailable: false` | The code is wrong; `mismatches` says how.                                                              | Reject it, or ask for a rewrite.                    |
+| `ok: false`, `unavailable: true`  | **The sandbox could not run the code** (worker failed to start, or died). Says nothing about the code. | Retry or fail soft. Never report the code as wrong. |
+
+On `unavailable`, validation stops at the first run it could not do; `checked` is how many
+examples were completed before that and `mismatches` holds only what those established.
+
+A single `runParse` / `runFormat` reports the same condition as
+`{ kind: "failed", reason: "sandbox_unavailable" }`.
 
 ## Measured cost
 

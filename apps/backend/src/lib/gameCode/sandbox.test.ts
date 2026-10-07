@@ -3,7 +3,8 @@
 // `failed` result within the wall-clock budget, and none may leave anything
 // behind for the next run.
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { logger } from "../logger.js";
 import { HARD_TIMEOUT_MS, MAX_CODE_CHARS, MAX_INPUT_CHARS, MAX_SUMMARY_CHARS } from "./limits.js";
 import {
   runFormat,
@@ -157,11 +158,44 @@ describe("unicode", () => {
     expect(await runFormat(normalized, "é")).toEqual({ kind: "summary", text: "é" });
   });
 
-  it("round-trips emoji, ZWJ sequences and lone surrogates unchanged", async () => {
+  it("round-trips emoji, ZWJ sequences, flags, keycaps and CRLF unchanged", async () => {
     const echo = formatBody("return raw;");
     for (const text of ["🟩🟨⬛ 3/6", "👩‍👩‍👧‍👦 🇨🇦 1️⃣", "tab\tand\r\nCRLF"]) {
       expect(await runFormat(echo, text)).toEqual({ kind: "summary", text });
     }
+  });
+
+  it("hands the code well-formed text: a lone surrogate in the input becomes U+FFFD", async () => {
+    // Half a surrogate pair cannot cross into the VM as UTF-8. Replacing it
+    // up front is what makes the code see the same text every time.
+    const echo = formatBody("return raw;");
+    const describe = parseBody("return raw.length * 100000 + raw.charCodeAt(1);");
+    const cases: Array<[string, string]> = [
+      ["\uD83C", "\uFFFD"],
+      ["a\uD83Cb", "a\uFFFDb"],
+      ["a\uDFC6b", "a\uFFFDb"],
+      // Reversed halves: two lone surrogates, not a pair.
+      ["x\uDFC6\uD83Cy", "x\uFFFD\uFFFDy"],
+      // A real pair is left alone.
+      ["a\uD83C\uDFC6b", "a🏆b"],
+    ];
+    for (const [raw, seen] of cases) {
+      expect(await runFormat(echo, raw)).toEqual({ kind: "summary", text: seen });
+    }
+    // What `parse` sees: 3 code units, the middle one U+FFFD (65533).
+    expect(await runParse(describe, "a\uD83Cb")).toEqual({ kind: "score", value: 365533 });
+    expect(await runParse(describe, "a\uD83C\uDFC6b")).toEqual({
+      kind: "score",
+      value: 4 * 100000 + 0xd83c,
+    });
+  });
+
+  it("never returns a lone surrogate the code made: it comes back as replacement characters", async () => {
+    const result = await runFormat(
+      formatBody(`return "a" + String.fromCharCode(0xD83C) + "b";`),
+      "x",
+    );
+    expect(result).toEqual({ kind: "summary", text: "a\uFFFD\uFFFD\uFFFDb" });
   });
 });
 
@@ -204,6 +238,92 @@ describe("resource limits", () => {
       detail: "InternalError: stack overflow",
     });
   });
+
+  it("reports native-heavy recursion as an error without losing the worker", async () => {
+    // QuickJS's stack cap only counts its own stack; the parser and JSON.parse
+    // burn the thread's native stack instead. Each of these, at the deepest
+    // nesting the limits allow, must come back as an ordinary failure — a
+    // WASM trap would cost a worker restart on every hostile post.
+    const info = vi.spyOn(logger, "info");
+    const room = MAX_CODE_CHARS - 80;
+    const nested = (open: string, inner: string, close: string) => {
+      const depth = Math.floor((room - inner.length) / (open.length + close.length));
+      return `function parse(raw) { return 1; }\nvar x = ${open.repeat(depth)}${inner}${close.repeat(depth)};`;
+    };
+    const programs: Array<[label: string, code: string]> = [
+      ["nested parentheses in the source", nested("(", "1", ")")],
+      ["nested array literals in the source", nested("[", "", "]")],
+      ["nested object literals in the source", nested("{a:", "1", "}")],
+      [
+        "nested calls in the source",
+        `function f(a) { return a; }\n${nested("f(", "1", ")")}`.slice(0, MAX_CODE_CHARS),
+      ],
+      [
+        "nested blocks in the source",
+        `function parse(raw) { return 1; }\n${"{".repeat(room / 2)}${"}".repeat(room / 2)}`,
+      ],
+      [
+        "nested unary operators in the source",
+        `function parse(raw) { return 1; }\nvar x = ${"!".repeat(room)}1;`,
+      ],
+      [
+        "nested arrow functions in the source",
+        `function parse(raw) { return 1; }\nvar x = ${"()=>".repeat(room / 4)}1;`,
+      ],
+      [
+        "JSON.parse of deeply nested arrays",
+        parseBody(`return JSON.parse("[".repeat(400000) + "]".repeat(400000)).length;`),
+      ],
+      [
+        "JSON.parse of deeply nested objects",
+        parseBody(`return JSON.parse('{"a":'.repeat(200000) + "1" + "}".repeat(200000)).a;`),
+      ],
+      [
+        "a regex with deeply nested groups",
+        parseBody(
+          `return new RegExp("(?:".repeat(300000) + "a" + ")".repeat(300000)).test("a") ? 1 : 0;`,
+        ),
+      ],
+      [
+        "flat() over deeply nested arrays",
+        parseBody(
+          "var o = []; var c = o; for (var i = 0; i < 20000; i++) { var n = []; c.push(n); c = n; } return o.flat(Infinity).length;",
+        ),
+      ],
+      [
+        "a JSON reviver that recurses",
+        parseBody(
+          `function f() { return JSON.parse("[1]", function () { return f(); }); } return f();`,
+        ),
+      ],
+      [
+        "a sort comparator that recurses",
+        parseBody("function f() { return [2, 1].sort(function () { return f(); }); } return f();"),
+      ],
+      ["a getter that recurses", parseBody("var o = { get x() { return this.x; } }; return o.x;")],
+    ];
+    for (const [label, code] of programs) {
+      expect(code.length, label).toBeLessThanOrEqual(MAX_CODE_CHARS);
+      const { result, ms } = await timed(() => runParse(code, "x"));
+      // Any ordinary verdict is fine (some of these are legal programs that
+      // just run); what must never happen is the sandbox going away.
+      if (result.kind === "failed") {
+        expect(result.reason, label).not.toBe("sandbox_unavailable");
+      }
+      expect(ms, label).toBeLessThan(KILL_BUDGET_MS);
+    }
+    // The four source-nesting shapes that trapped on Node's default 4 MB
+    // worker stack now fail (or run) inside the VM.
+    expect(await runParse(programs[0]?.[1] ?? "", "x")).toEqual({
+      kind: "failed",
+      reason: "invalid_code",
+      detail: "SyntaxError: stack overflow",
+    });
+    // No run above cost a worker: nothing started since the suite's warm-up.
+    expect(info.mock.calls.filter((call) => call[0] === "game code sandbox started")).toEqual([]);
+    expect(await runParse(parseBody("return 7;"), "x")).toEqual({ kind: "score", value: 7 });
+    info.mockRestore();
+  }, 20_000);
 
   it("caps memory: an allocation bomb fails instead of growing the process", async () => {
     for (const body of [
@@ -264,6 +384,8 @@ describe("isolation", () => {
       "SharedArrayBuffer",
       "WeakRef",
       "FinalizationRegistry",
+      "eval",
+      "Function",
     ];
     const code = formatBody(
       `return ${JSON.stringify(names)}.filter(function (n) { return typeof globalThis[n] !== "undefined"; }).join(",");`,
@@ -295,20 +417,32 @@ describe("isolation", () => {
     for (let i = 0; i < 5; i++) expect(await runParse(code, "hello world 🏆")).toEqual(first);
   });
 
-  it("cannot reach the host through constructor chains or eval", async () => {
-    const escapes = [
-      `return typeof globalThis.constructor.constructor("return this")().process;`,
-      `return typeof (function () {}).constructor("return typeof process === 'undefined' ? undefined : process")();`,
-      `return typeof (0, eval)("this").require;`,
-      `return typeof Object.getPrototypeOf(function () {}).constructor("return this.process")();`,
-      `try { null.x; } catch (e) { return typeof e.constructor.constructor("return this")().process; }`,
+  it("cannot compile code at run time: eval and every function constructor are gone", async () => {
+    // The classic sandbox escapes all go through one of these. Here there is
+    // nothing on the other side to reach either — but removing them is also
+    // what bounds how deeply nested the source the parser sees can be.
+    const attempts = [
+      `return eval("1");`,
+      `return (0, eval)("this");`,
+      `return globalThis.constructor.constructor("return this")();`,
+      `return (function () {}).constructor("return 1")();`,
+      `return Object.getPrototypeOf(function () {}).constructor("return this.process")();`,
+      `return Object.getPrototypeOf(function* () {}).constructor("yield 1")();`,
+      `return Object.getPrototypeOf(async function () {}).constructor("return 1")();`,
+      `return Object.getPrototypeOf(async function* () {}).constructor("yield 1")();`,
+      `try { null.x; } catch (e) { return e.constructor.constructor("return this")(); }`,
+      `return new Function("return 1")();`,
+      `return Reflect.construct(Object.getPrototypeOf(function () {}).constructor, ["return 1"])();`,
     ];
-    for (const body of escapes) {
-      expect(await runFormat(formatBody(body), "x")).toEqual({
-        kind: "summary",
-        text: "undefined",
-      });
+    for (const body of attempts) {
+      const result = await runParse(parseBody(body), "x");
+      expect(result, body).toMatchObject({ kind: "failed", reason: "threw" });
     }
+    // Ordinary functions, closures and methods are untouched.
+    const ordinary = parseBody(
+      "var add = function (a) { return function (b) { return a + b; }; }; return [1, 2].map(add(1)).reduce(function (x, y) { return x + y; }, 0);",
+    );
+    expect(await runParse(ordinary, "x")).toEqual({ kind: "score", value: 5 });
   });
 
   it("starts every run from a clean global: pollution does not carry over", async () => {
@@ -388,7 +522,7 @@ describe("validateCode", () => {
       { raw: "Wordle 1,127 3/6", expected: 3 },
       { raw: "Wordle 1,128 X/6", expected: null },
     ]);
-    expect(report).toEqual({ ok: true, checked: 2, mismatches: [] });
+    expect(report).toEqual({ ok: true, unavailable: false, checked: 2, mismatches: [] });
   });
 
   it("reports each mismatch with what the code actually produced", async () => {

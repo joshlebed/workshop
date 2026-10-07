@@ -159,6 +159,15 @@ stored code must satisfy, every limit, and the measured latency are in
   handler. Don't move execution onto the request thread: an in-thread run cannot be stopped.
 - **Fresh runtime + context per run, no host functions, input passed as a value.** If you
   ever expose a host function to the VM, that function is the new attack surface.
+- **The stack limit is two numbers sized together** (`STACK_LIMIT_BYTES`, `WORKER_STACK_MB`
+  in `limits.ts`). QuickJS's cap can't see the native stack its parser and `JSON.parse`
+  recurse on; on Node's default 4 MB worker stack, source nested to the code-size cap trapped
+  the WASM module and cost a worker restart per hit. The worker gets 64 MB, and the prelude
+  removes `eval` and the function constructors so depth stays bounded by `MAX_CODE_CHARS`.
+  Raising the code cap, or giving stored code a way to compile source, means re-measuring.
+- **`sandbox_unavailable` is about the sandbox, never the code.** `validateCode` returns
+  `unavailable: true` for it instead of a mismatch; anything that gates on validation must
+  retry or fail soft on that, not reject the code.
 - **The sandbox is its own bundle file.** `scripts/bundle.mjs` emits
   `dist/gameCodeWorker.cjs` (QuickJS WASM embedded, ~890 KB) beside `lambda.js` and tells
   `runtime.ts` where it is through an esbuild `define`; from source (tsx, vitest) `runtime.ts`
