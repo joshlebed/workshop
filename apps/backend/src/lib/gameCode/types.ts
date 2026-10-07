@@ -19,7 +19,9 @@ export type GameCodeFailureReason =
   /** The code, the input or the output was over its size cap. */
   | "too_large"
   /** The sandbox itself could not run the code (worker failed to start, crashed). */
-  | "sandbox_unavailable";
+  | "sandbox_unavailable"
+  /** The game has no code to run — nobody has taught it yet. */
+  | "no_code";
 
 export interface GameCodeFailure {
   kind: "failed";
