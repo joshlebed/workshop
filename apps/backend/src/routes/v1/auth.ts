@@ -221,7 +221,7 @@ async function upsertIdentity({
 }
 
 // Build the operator-channel message for a sign-in. A genuinely new user gets
-// the high-signal ":wave: new signup" copy; a returning user — including one
+// the high-signal "👋 new signup" copy; a returning user — including one
 // linking a second provider to a known email (`createdUser: false`) — gets a
 // quieter "signed in" line. Label falls back display name → email → id. Pure so
 // it's unit-tested without a DB or Discord (see auth.test.ts).
@@ -232,8 +232,8 @@ export function buildSignInNotification(
 ): { content: string; kind: string } {
   const label = userLabel(user);
   return createdUser
-    ? { content: `:wave: new signup — ${label} via ${provider}`, kind: "signup" }
-    : { content: `:bust_in_silhouette: signed in — ${label} via ${provider}`, kind: "signin" };
+    ? { content: `👋 new signup — ${label} via ${provider}`, kind: "signup" }
+    : { content: `👤 signed in — ${label} via ${provider}`, kind: "signin" };
 }
 
 export function buildImpersonationNotification(
@@ -241,7 +241,7 @@ export function buildImpersonationNotification(
   target: Pick<DbUser, "id" | "email" | "displayName">,
 ): { content: string; kind: string } {
   return {
-    content: `:mag: impersonation started: ${auditUserLabel(admin)} -> ${auditUserLabel(target)}`,
+    content: `🔍 impersonation started: ${auditUserLabel(admin)} -> ${auditUserLabel(target)}`,
     kind: "impersonation",
   };
 }

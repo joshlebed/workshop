@@ -233,7 +233,7 @@ function buildNewListNotification(
   const kindLabel = list.itemKind ?? "any";
   const lead = duplicated ? "new list (duplicated)" : "new list";
   return {
-    content: `:clipboard: ${lead} — "${list.name}" (${kindLabel}${modulesLabel ? `, ${modulesLabel}` : ""}) by ${actorLabel}`,
+    content: `📋 ${lead} — "${list.name}" (${kindLabel}${modulesLabel ? `, ${modulesLabel}` : ""}) by ${actorLabel}`,
     kind: duplicated ? "new_list_duplicate" : "new_list",
   };
 }

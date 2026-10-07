@@ -21,6 +21,7 @@
 
 import { getConfig } from "./config.js";
 import { logger } from "./logger.js";
+import { describeRequestClient } from "./requestContext.js";
 
 const TIMEOUT_MS = 1500;
 // One retry on a transient failure (429 rate-limit, 5xx, network/timeout). An
@@ -36,6 +37,21 @@ interface NotifyOptions {
   kind?: string;
   /** Injectable fetch for tests. */
   fetcher?: typeof fetch;
+  /**
+   * Append the requesting client (`Workshop · iOS 1.4.0`) read from the
+   * per-request AsyncLocalStorage context. Default on — every operator ping
+   * should say which app/platform/build did the thing. Pass `false` for
+   * messages with no human client behind them.
+   */
+  withClient?: boolean;
+}
+
+/**
+ * Suffix a message with the requesting client, when known. Exported so the
+ * format is unit-testable without a webhook; `notifyDiscord` applies it.
+ */
+export function withClientSuffix(content: string, client = describeRequestClient()): string {
+  return client ? `${content} · ${client}` : content;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -45,20 +61,21 @@ function isRetryableStatus(status: number): boolean {
 }
 
 export async function notifyDiscord(content: string, opts: NotifyOptions = {}): Promise<void> {
-  const { kind = "generic", fetcher = fetch } = opts;
+  const { kind = "generic", fetcher = fetch, withClient = true } = opts;
   const url = getConfig().discordNotifyWebhookUrl;
   if (!url) {
     // Expected in local dev; a real clue in prod (webhook env unset/cleared).
     logger.info("discord notify skipped: webhook not configured", { kind });
     return;
   }
+  const message = withClient ? withClientSuffix(content) : content;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
       const res = await fetcher(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content: message }),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (res.ok) {

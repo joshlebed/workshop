@@ -41,7 +41,7 @@ describe("buildNewListNotification", () => {
         false,
       ),
     ).toEqual({
-      content: ':clipboard: new list — "Movie Watchlist" (movie, todo · ranking) by Josh',
+      content: '📋 new list — "Movie Watchlist" (movie, todo · ranking) by Josh',
       kind: "new_list",
     });
   });
@@ -53,7 +53,7 @@ describe("buildNewListNotification", () => {
       true,
     );
     expect(out.content).toBe(
-      ':clipboard: new list (duplicated) — "Movie Watchlist (copy)" (movie, todo) by Josh',
+      '📋 new list (duplicated) — "Movie Watchlist (copy)" (movie, todo) by Josh',
     );
     expect(out.kind).toBe("new_list_duplicate");
   });
@@ -62,7 +62,7 @@ describe("buildNewListNotification", () => {
     expect(
       buildNewListNotification({ name: "Blank", itemKind: null, modules: [] }, "a@b.test", false)
         .content,
-    ).toBe(':clipboard: new list — "Blank" (any) by a@b.test');
+    ).toBe('📋 new list — "Blank" (any) by a@b.test');
   });
 });
 

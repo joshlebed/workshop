@@ -35,7 +35,7 @@ type Notification = { content: string; kind: string };
 /** Tier 1: a directed friend request was sent (no edge formed yet). */
 export function buildFriendRequestSentNotification(sender: string, target: string): Notification {
   return {
-    content: `:envelope_with_arrow: friend request — ${sender} → ${target}`,
+    content: `📨 friend request — ${sender} → ${target}`,
     kind: "friend_request",
   };
 }
@@ -46,7 +46,7 @@ export function buildFriendRequestSentNotification(sender: string, target: strin
  * "mutual request" (both sides requested → auto-accept).
  */
 export function buildFriendshipFormedNotification(a: string, b: string, via: string): Notification {
-  return { content: `:handshake: new friendship — ${a} ↔ ${b} (${via})`, kind: "friend_added" };
+  return { content: `🤝 new friendship — ${a} ↔ ${b} (${via})`, kind: "friend_added" };
 }
 
 /** Tier 1: someone joined a shared list. `via` = "share link" or "invite link". */
@@ -56,7 +56,7 @@ export function buildListJoinedNotification(
   via: string,
 ): Notification {
   return {
-    content: `:inbox_tray: list joined — ${user} joined "${listName}" (${via})`,
+    content: `📥 list joined — ${user} joined "${listName}" (${via})`,
     kind: "list_joined",
   };
 }
@@ -64,7 +64,7 @@ export function buildListJoinedNotification(
 /** Tier 2: a user posted their first-ever score (activation signal). */
 export function buildFirstScoreNotification(user: string, gameTitle: string): Notification {
   return {
-    content: `:dart: first score — ${user} posted their first score (${gameTitle})`,
+    content: `🎯 first score — ${user} posted their first score (${gameTitle})`,
     kind: "first_score",
   };
 }
@@ -77,7 +77,7 @@ export function buildLetterboxdConnectedNotification(
 ): Notification {
   const films = filmCount === 1 ? "film" : "films";
   return {
-    content: `:clapper: Letterboxd connected — ${user} linked @${username} (${filmCount} ${films})`,
+    content: `🎬 Letterboxd connected — ${user} linked @${username} (${filmCount} ${films})`,
     kind: "letterboxd_connected",
   };
 }
@@ -85,7 +85,7 @@ export function buildLetterboxdConnectedNotification(
 /** Tier 2: a user added a game to My Games. */
 export function buildGameAddedNotification(user: string, gameTitle: string): Notification {
   return {
-    content: `:video_game: game added — ${user} added "${gameTitle}" to My Games`,
+    content: `🎮 game added — ${user} added "${gameTitle}" to My Games`,
     kind: "game_added",
   };
 }
@@ -105,7 +105,7 @@ export function buildScoreSpecTaughtNotification(
   const direction = opts.scoreDirection === "asc" ? "lower is better" : "higher is better";
   const summary = opts.hasSummarySpec ? ", with recap trim" : "";
   return {
-    content: `:teacher: score spec ${verb} — ${user} ${verb} "${gameTitle}" (${direction}${summary})`,
+    content: `🧑‍🏫 score spec ${verb} — ${user} ${verb} "${gameTitle}" (${direction}${summary})`,
     kind: "score_spec_taught",
   };
 }
@@ -113,7 +113,7 @@ export function buildScoreSpecTaughtNotification(
 /** Tier 3: a user signed out of every device (session revocation). */
 export function buildSessionsRevokedNotification(user: string): Notification {
   return {
-    content: `:lock: all sessions signed out — ${user} signed out of every device`,
+    content: `🔒 all sessions signed out — ${user} signed out of every device`,
     kind: "sessions_revoked",
   };
 }
@@ -121,7 +121,7 @@ export function buildSessionsRevokedNotification(user: string): Notification {
 /** Tier 3: a list was archived (owner-only soft-delete). */
 export function buildListArchivedNotification(user: string, listName: string): Notification {
   return {
-    content: `:wastebasket: list archived — ${user} archived "${listName}"`,
+    content: `🗑️ list archived — ${user} archived "${listName}"`,
     kind: "list_archived",
   };
 }
@@ -133,7 +133,7 @@ export function buildOwnershipTransferredNotification(
   toUser: string,
 ): Notification {
   return {
-    content: `:crown: ownership transferred — "${listName}" ${fromUser} → ${toUser}`,
+    content: `👑 ownership transferred — "${listName}" ${fromUser} → ${toUser}`,
     kind: "ownership_transferred",
   };
 }
@@ -145,7 +145,7 @@ export function buildSourceWebhookNotification(
   addedCount: number,
 ): Notification {
   return {
-    content: `:satellite: source webhook — "${kind}" fired (slug ${slug}, +${addedCount} items)`,
+    content: `📡 source webhook — "${kind}" fired (slug ${slug}, +${addedCount} items)`,
     kind: "source_webhook",
   };
 }
@@ -166,7 +166,7 @@ export function buildContentReportNotification(
   const what = contentKind === "score" ? "a score post" : "their profile";
   const quoted = snapshot ? ` — "${snapshot.replace(/\s+/g, " ").slice(0, 120)}"` : "";
   return {
-    content: `:rotating_light: content report — ${reporter} reported ${target} (${what}, ${reason})${quoted} · target id ${targetId} · act within 24h: docs/moderation-runbook.md`,
+    content: `🚨 content report — ${reporter} reported ${target} (${what}, ${reason})${quoted} · target id ${targetId} · act within 24h: docs/moderation-runbook.md`,
     kind: "content_report",
   };
 }
@@ -178,7 +178,7 @@ export function buildUserBlockedNotification(
   blockedId: string,
 ): Notification {
   return {
-    content: `:no_entry: user blocked — ${blocker} blocked ${blocked} · blocked id ${blockedId}`,
+    content: `⛔ user blocked — ${blocker} blocked ${blocked} · blocked id ${blockedId}`,
     kind: "user_blocked",
   };
 }

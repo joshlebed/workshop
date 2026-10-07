@@ -281,7 +281,7 @@ userRoutes.delete("/me", async (c) => {
     userId,
   });
   await notifyDiscord(
-    `:bomb: account deleted — ${userLabel(user)} (${describeRevocations(providerRevocations)})`,
+    `💣 account deleted — ${userLabel(user)} (${describeRevocations(providerRevocations)})`,
     { kind: "account_deleted" },
   );
 

@@ -1,5 +1,9 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { logger } from "../lib/logger.js";
+import {
+  requestClientContextFromHeaders,
+  runWithRequestClientContext,
+} from "../lib/requestContext.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -54,8 +58,12 @@ export const requestLog: MiddlewareHandler = async (c, next) => {
     c.req.header("x-amzn-trace-id") ?? c.req.header("x-request-id") ?? crypto.randomUUID();
   c.set("requestId", requestId);
 
+  // Enter the per-request client context (app / platform / version) so deep
+  // helpers like the operator notifier can read it without `c` being threaded.
+  const clientContext = requestClientContextFromHeaders((name) => c.req.header(name));
+
   try {
-    await next();
+    await runWithRequestClientContext(clientContext, () => next());
   } finally {
     const userAgent = c.req.header("user-agent");
     const platformHeader = c.req.header("x-workshop-platform");

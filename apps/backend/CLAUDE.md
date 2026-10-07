@@ -482,9 +482,9 @@ new list — then one of: `discord notify sent` (delivered), `discord notify non
 `discord notify threw` (Discord rejected — auto-retried once on 429/5xx/network), or
 `discord notify skipped: webhook not configured` (the `DISCORD_NOTIFY_WEBHOOK_URL` Lambda
 env is empty). **Every sign-in pings** (`notifySignIn`): a genuinely new user
-(`createdUser: true`) emits `new signup` + the `:wave:` / `kind: "signup"` message, a
+(`createdUser: true`) emits `new signup` + the `👋` / `kind: "signup"` message, a
 returning user (incl. a known email linking a second provider, `createdUser: false`) emits
-`sign-in` + the `:bust_in_silhouette:` / `kind: "signin"` message. The dev auth route
+`sign-in` + the `👤` / `kind: "signin"` message. The dev auth route
 (`/v1/auth/dev`) is deliberately silent — it's the sandbox/E2E auto-sign-in. **Every admin
 impersonation start pings** (`kind: "impersonation"`); the signed session stores
 `impersonatorUserId`, `/v1/auth/me` reflects it, and `/v1/auth/impersonation/stop` mints a
@@ -519,6 +519,19 @@ when no webhook is set. Tiers + kinds:
   `source_webhook` (verified inbound webhook — scaffolding surface, no traffic yet).
   When you add a new gated-by-newness ping, return a created/newly-X boolean from the writer
   (see `addFriendship` / `addToMyGames`) rather than re-querying — and add a builder + test here.
+
+**Every ping ends with the requesting client — `· HighScore · iOS 1.4.0`.** `notifyDiscord`
+appends `describeRequestClient()` (`src/lib/requestContext.ts`), which reads
+`X-Workshop-Client` / `X-Workshop-Platform` / `X-Workshop-App-Version` off an
+`AsyncLocalStorage` store that the `requestLog` middleware enters for the lifetime of each
+request — so `notify*` wrappers deep in `opsNotifications.ts` need no `c` threaded through.
+A request with none of the three headers (inbound source webhooks, curl, crawlers) gets no
+suffix; a pre-header client shows `unknown app`. Pass `withClient: false` for a message with
+no human client behind it. If you spawn work outside the request's async chain
+(`setTimeout`, a detached promise), the store is gone — resolve the label first.
+
+**Use real Unicode emoji in ping text, never Discord `:shortcodes:`.** Discord renders
+`:wave:` in-app but the iOS push notification preview shows the literal `:wave:` text.
 
 ```bash
 AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 720h --filter '?"new signup" ?"sign-in" ?"discord notify"' --no-follow
