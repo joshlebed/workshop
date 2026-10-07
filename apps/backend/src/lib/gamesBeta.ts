@@ -12,6 +12,7 @@ const GAMES_BETA_USER_IDS: ReadonlySet<string> = new Set([
   "b9a84203-b2c6-47a6-9fba-e41c2e10cffd", // Josh
   "a75a758c-e3cd-46a4-ae0e-7f4e67ea1c5e", // Dag
   "36d0153a-9db0-475c-8347-905628f6591a", // Paloma
+  "6a735cdf-136d-4321-bee1-162930e05fc8", // Renata
 ]);
 
 /**
