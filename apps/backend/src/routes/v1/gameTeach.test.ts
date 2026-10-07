@@ -83,6 +83,8 @@ const llm = {
     percentile?: number[];
   } | null,
   fail: null as "http" | "timeout" | null,
+  /** How long the model takes to answer; it gives up when the caller's budget runs out. */
+  delayMs: 0,
   calls: [] as { schema: string; input: string }[],
 };
 
@@ -90,6 +92,7 @@ function resetLlm() {
   llm.code = [];
   llm.targets = null;
   llm.fail = null;
+  llm.delayMs = 0;
   llm.calls = [];
 }
 
@@ -101,6 +104,15 @@ const fetchMock = vi.fn(async (_url: string | URL | Request, init?: RequestInit)
   };
   const schema = body.text.format.name;
   llm.calls.push({ schema, input: body.input });
+  if (llm.delayMs > 0) {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(resolve, llm.delayMs);
+      init?.signal?.addEventListener("abort", () => {
+        clearTimeout(timer);
+        reject(init.signal?.reason);
+      });
+    });
+  }
   if (llm.fail === "timeout") throw new DOMException("timed out", "TimeoutError");
   if (llm.fail === "http") return new Response("upstream down", { status: 503 });
   const answer =
@@ -203,6 +215,25 @@ async function taughtGame(): Promise<string> {
 }
 
 const teachPings = () => discord.mock.calls.filter(([, opts]) => opts?.kind === "parser_taught");
+
+/** The structured log lines of one `kind` emitted while `run` executes. */
+async function logged(kind: string, run: () => Promise<unknown>) {
+  const lines: Record<string, unknown>[] = [];
+  const spy = vi.spyOn(console, "log").mockImplementation((line?: unknown) => {
+    try {
+      const entry = JSON.parse(String(line)) as Record<string, unknown>;
+      if (entry.kind === kind) lines.push(entry);
+    } catch {
+      // Not one of ours.
+    }
+  });
+  try {
+    await run();
+  } finally {
+    spy.mockRestore();
+  }
+  return lines;
+}
 
 beforeAll(async () => {
   process.env.STAGE = "local";
@@ -433,6 +464,42 @@ describe("candidates — step 1 labels", () => {
     }
   });
 
+  it("waits 2.5s for the labels: an answer at 2.2s is used, one at 2.7s is not", async () => {
+    const gameId = await newGame();
+    llm.targets = { score: 2, puzzle_number: [1] };
+    const ask = () =>
+      call<ScoreCandidatesResponse>(josh, "POST", `/${gameId}/scores/candidates`, {
+        scoreRaw: krillion(81, 415),
+      });
+
+    llm.delayMs = 2200;
+    let res: Awaited<ReturnType<typeof ask>> | undefined;
+    const [inTime] = await logged("teach_targets", async () => {
+      res = await ask();
+    });
+    expect(res?.body.labelled).toBe(true);
+    expect(inTime).toMatchObject({
+      step: "find_targets",
+      outcome: "labelled",
+      llm_budget_ms: 2500,
+      llm_timed_out: false,
+    });
+    expect(inTime?.llm_ms).toBeGreaterThanOrEqual(2150);
+    expect(inTime?.elapsed_ms).toBeGreaterThanOrEqual(Number(inTime?.llm_ms));
+
+    llm.delayMs = 2700;
+    const [late] = await logged("teach_targets", async () => {
+      res = await ask();
+    });
+    // The chips are still there; only the labels are missing.
+    expect(res?.body).toMatchObject({ labelled: false, scoreId: null });
+    expect(res?.body.candidates.length).toBeGreaterThan(0);
+    expect(late).toMatchObject({ outcome: "timeout", llm_budget_ms: 2500, llm_timed_out: true });
+    // Gave up at the budget, not when the model would have answered.
+    expect(late?.llm_ms).toBeGreaterThanOrEqual(2450);
+    expect(late?.llm_ms).toBeLessThan(2690);
+  }, 15_000);
+
   it("drops a pre-selection that is not one of the computed candidates", async () => {
     const gameId = await newGame();
     llm.targets = { score: 99, puzzle_number: [] };
@@ -582,6 +649,44 @@ describe("teaching the parser from a pick", () => {
     );
     expect(request.instructions).toContain("No-result rule");
     expect(request.max_output_tokens).toBeLessThanOrEqual(1000);
+  });
+
+  it("logs step 2's latency on every attempt, including one that timed out", async () => {
+    const gameId = await newGame();
+    await post(josh, gameId, today, krillion(81, 415), { pick: scorePick });
+    llm.code = [CONSTANT, READS_SCORE];
+    const attempts = await logged("parser_accept", () =>
+      teach(josh, gameId, today, { scoreDirection: "desc" }),
+    );
+    expect(attempts.map((a) => [a.attempt, a.outcome])).toEqual([
+      [1, "reject"],
+      [2, "accept"],
+    ]);
+    for (const attempt of attempts) {
+      expect(attempt).toMatchObject({ step: "write_code", llm_timed_out: false });
+      expect(typeof attempt.llm_ms).toBe("number");
+      expect(typeof attempt.gates_ms).toBe("number");
+      expect(Number(attempt.elapsed_ms)).toBeGreaterThanOrEqual(Number(attempt.llm_ms));
+    }
+    // The first call gets the full budget; the retry gets what the teach has left.
+    expect(attempts[0]?.llm_budget_ms).toBe(6500);
+    expect(Number(attempts[1]?.llm_budget_ms)).toBeLessThanOrEqual(6500);
+
+    const other = await newGame();
+    await post(josh, other, today, krillion(81, 415), { pick: scorePick });
+    llm.fail = "timeout";
+    const failed = await logged("parser_accept", () =>
+      teach(josh, other, today, { scoreDirection: "desc" }),
+    );
+    expect(failed.length).toBeGreaterThan(0);
+    for (const attempt of failed) {
+      expect(attempt).toMatchObject({
+        step: "write_code",
+        outcome: "unavailable",
+        llm_timed_out: true,
+      });
+      expect(typeof attempt.llm_ms).toBe("number");
+    }
   });
 
   it("retries once with the gate failure fed back, and accepts the corrected code", async () => {

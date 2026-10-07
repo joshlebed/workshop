@@ -346,7 +346,11 @@ export async function teachFromPick(input: {
         model: written.model,
         outcome: "unavailable",
         reason: written.reason,
+        step: "write_code",
         llm_ms: written.durationMs,
+        llm_budget_ms: timeoutMs,
+        llm_timed_out: written.reason === "timeout",
+        elapsed_ms: Date.now() - startedAt,
         raw: example.raw,
       });
       // A slow or failed call gets the one remaining attempt, with the same prompt.
@@ -395,8 +399,14 @@ export async function teachFromPick(input: {
       window_checked: window.length,
       window_truncated: truncated,
       sandbox_runs: evaluation.runs,
+      // Step 2's latency for this attempt: the model call, the budget it was
+      // given, the gates, and how far into the teach request this line is.
+      step: "write_code",
       llm_ms: written.durationMs,
+      llm_budget_ms: timeoutMs,
+      llm_timed_out: false,
       gates_ms: Date.now() - gatesStartedAt,
+      elapsed_ms: Date.now() - startedAt,
       input_tokens: written.usage.inputTokens,
       output_tokens: written.usage.outputTokens,
       code: written.code,
