@@ -295,6 +295,20 @@
       "when": 1789494753518,
       "tag": "0041_user_blocks_and_content_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1791357965658,
+      "tag": "0042_game_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1791357966931,
+      "tag": "0043_seed_game_code",
+      "breakpoints": true
     }
   ]
 }

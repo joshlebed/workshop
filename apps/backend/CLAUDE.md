@@ -178,6 +178,44 @@ stored code must satisfy, every limit, and the measured latency are in
   Lambda, past the kill timer. Re-run `scripts/bench-game-code.mjs` (see its header for the
   Lambda-like docker invocation) after changing a limit or the Node runtime.
 
+### Where the code lives: `games.parse_code` / `format_code`, versioned
+
+- **The database is the source of truth.** `games.parse_code`, `games.format_code` and
+  `games.code_version` hold what runs; every write appends a `game_code_revisions` row
+  (`version`, both code blocks, `source` = `seed` | `spec` | `operator` | `teach`,
+  `authored_by`, `note`, the `examples` it was validated against). Revert = write the
+  previous version's code back as a new version. `parse_code IS NULL` means untaught: its
+  scores are `failed` (reason `no_code`), never a guessed number.
+- **`lib/gameCode/builtin.ts` is the seed, not the source of truth.** It holds the registry
+  games' `spec` + `formatShareBody` ported to stored code; migration `0043` (generated from
+  it by `scripts/generate-game-code-seed.ts`, pinned by `seed.test.ts`) installed it. Editing
+  it after `0043` has shipped fails that test on purpose — change a game in the DB, or write a
+  new migration. `builtin.parity.test.ts` checks every fixture in the legacy parser/formatter
+  test files against the registry, so adding a fixture there tests the stored code too.
+- **Taught specs become code through `lib/gameCode/specCode.ts`**: `var SPEC = <json>;` plus
+  a fixed interpreter. `0043` builds the same text in SQL for specs taught before it. If you
+  change an interpreter, existing rows keep the old text (they are data now).
+- **A registry game has its code from the moment its row exists.** Rows that existed when
+  `0043` ran were seeded by it; every row created later goes through `findOrCreateGame`,
+  which writes `builtinGameCodeFor(...)` and a `seed` revision in the same transaction. The
+  one path that bypasses it is a catalog-row migration (the `0036` shape, a raw `INSERT`):
+  that migration must set `parse_code` / `format_code` / `code_version = 1` and insert the
+  `game_code_revisions` row itself (copy a statement pair from `0043`), and the game needs an
+  entry in `builtin.ts`.
+- **`game_scores.parse_status`** (`score` | `no_result` | `failed`, CHECK-constrained),
+  **`score_summary`**, **`code_version`** and **`score_source`** (`parsed` | `picked`,
+  CHECK-constrained; nothing writes `picked` yet — it is for the correction flow in
+  `docs/highscore-score-validation-spec.md`) record what the code made of each row at upload.
+  All NULL = written by the legacy parser; `score_value` NULL then means "loss or unread",
+  indistinguishably. `lib/gameCode/scoring.ts` (`scoreWithGameCode`) is the one function that
+  turns sandbox results into those three values — use it, don't re-derive them.
+- **Re-check against real data before changing a game's code:**
+  `EVAL_DATABASE_URL=<read-only prod/branch url> pnpm --filter @workshop/backend exec tsx
+scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs stored code
+  and legacy display text vs new summary, with every class of difference. The sandbox's
+  local Postgres is the dev seed (6 scores), not prod — use `--snapshot` / `--save-snapshot`
+  with a read-only export, and keep the snapshot (real users' text) out of the repo.
+
 ## Migration journal `when` values must be monotonic
 
 The drizzle migrator records each migration's journal `when` as `created_at` and only
