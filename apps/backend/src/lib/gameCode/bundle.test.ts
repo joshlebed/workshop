@@ -40,6 +40,15 @@ describe("Lambda bundle", () => {
     expect(worker).not.toMatch(/require\(["']@jitl\//);
   });
 
+  it("points the handler at the worker file it ships with", () => {
+    // runtime.ts starts `join(__dirname, <this name>)` in the bundle; if the
+    // define were missing it would try to bundle the worker from source,
+    // which the Lambda cannot do.
+    const handler = readFileSync(join(outDir, "lambda.js"), "utf8");
+    expect(handler).toContain('"gameCodeWorker.cjs"');
+    expect(handler).not.toContain("__GAME_CODE_WORKER_FILE__");
+  });
+
   it("runs a parse job in the bundled worker", async () => {
     const worker = new Worker(join(outDir, "gameCodeWorker.cjs"), { env: {} });
     try {

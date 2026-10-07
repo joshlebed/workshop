@@ -15,7 +15,7 @@ import { findOrCreateGame } from "../gameCatalog.js";
 import type { DbClient } from "../sql.js";
 import { BUILTIN_GAME_CODE } from "./builtin.js";
 import { runFormat, runParse, shutdownGameCodeSandbox } from "./runtime.js";
-import { buildGameCodeSeedSql } from "./seedSql.js";
+import { buildGameCodeSeedSql, buildTaughtSpecCatchUpSql } from "./seedSql.js";
 import {
   compileScoreSpec,
   compileSummarySpec,
@@ -26,6 +26,7 @@ import {
 
 const DRIZZLE_DIR = fileURLToPath(new URL("../../../drizzle/", import.meta.url));
 const SEED_TAG = "0043_seed_game_code";
+const CATCH_UP_TAG = "0044_convert_taught_specs_to_code";
 const BREAKPOINT = "--> statement-breakpoint";
 
 interface JournalEntry {
@@ -216,6 +217,38 @@ describe("taught games", () => {
     const game = await gameByUrl("krillion.io");
     expect(game).toMatchObject({ parse_code: null, format_code: null, code_version: 0 });
     expect(await revisionsFor(game.id)).toEqual([]);
+  });
+});
+
+describe("catch-up migration (0044)", () => {
+  it("is exactly what the generator produces", () => {
+    expect(migrationSql(CATCH_UP_TAG)).toBe(buildTaughtSpecCatchUpSql());
+  });
+
+  it("converts a spec taught after the seed ran, and nothing else", async () => {
+    // Taught through the old endpoint between 0043 and the release that
+    // made it write code: a spec, and no code.
+    await db.query(
+      `INSERT INTO games (normalized_url, url, title, score_spec)
+       VALUES ('late.example', 'https://late.example', 'Late', $1)`,
+      [JSON.stringify(geozeeSpec)],
+    );
+    const geoHistoryBefore = await gameByUrl("geohistory.gg");
+    const revisionsBefore = await db.query("SELECT count(*)::int AS n FROM game_code_revisions");
+
+    await applyMigration(db, CATCH_UP_TAG);
+    await applyMigration(db, CATCH_UP_TAG);
+
+    const late = await gameByUrl("late.example");
+    expect(late.code_version).toBe(1);
+    expect(late.parse_code?.startsWith(SPEC_CODE_PREFIX)).toBe(true);
+    expect((await revisionsFor(late.id)).map((r) => r.source)).toEqual(["spec"]);
+    expect(await gameByUrl("geohistory.gg")).toEqual(geoHistoryBefore);
+    expect(await gameByUrl("krillion.io")).toMatchObject({ parse_code: null, code_version: 0 });
+    const revisionsAfter = await db.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM game_code_revisions",
+    );
+    expect(revisionsAfter.rows[0]?.n).toBe((revisionsBefore.rows[0] as { n: number }).n + 1);
   });
 });
 

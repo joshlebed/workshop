@@ -14,7 +14,8 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:studio": "drizzle-kit studio",
     "db:push": "drizzle-kit push",
-    "admin:eject": "tsx scripts/eject-user.ts"
+    "admin:eject": "tsx scripts/eject-user.ts",
+    "admin:game-code": "tsx scripts/set-game-code.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.0.0",

@@ -31,7 +31,14 @@ import postgres from "postgres";
 import { parseScoreValue, specForGame } from "../src/lib/gameCatalog.js";
 import { builtinGameCodeFor } from "../src/lib/gameCode/builtin.js";
 import { shutdownGameCodeSandbox } from "../src/lib/gameCode/runtime.js";
-import { type GameCode, scoreWithGameCode } from "../src/lib/gameCode/scoring.js";
+import {
+  classifyParseChange,
+  type GameCode,
+  PARSE_CHANGES,
+  type ParseChange,
+  parseChangeAgrees,
+  scoreWithGameCode,
+} from "../src/lib/gameCode/scoring.js";
 import { compileScoreSpec, compileSummarySpec } from "../src/lib/gameCode/specCode.js";
 
 const args = new Map(
@@ -146,31 +153,26 @@ function legacySummary(game: GameRow, raw: string): string | null {
   return fallback && fallback.trim().length > 0 ? fallback : null;
 }
 
-const PARSE_CLASSES = [
-  "same score",
-  "null → no result",
-  "null → failed",
-  "null → score",
-  "score → failed",
-  "score → no result",
-  "score changed",
-] as const;
-type ParseClass = (typeof PARSE_CLASSES)[number];
-// Old and new agree whenever both read the same number or neither reads one.
-const AGREEING: ReadonlySet<ParseClass> = new Set<ParseClass>([
-  "same score",
-  "null → no result",
-  "null → failed",
-]);
+const PARSE_LABELS: Record<ParseChange, string> = {
+  same_score: "same score",
+  null_to_no_result: "null → no result",
+  null_to_failed: "null → failed",
+  null_to_score: "null → score",
+  score_to_failed: "score → failed",
+  score_to_no_result: "score → no result",
+  score_changed: "score changed",
+};
 
-function classify(old: number | null, status: string, value: number | null): ParseClass {
-  if (old === null) {
-    if (status === "score") return "null → score";
-    return status === "no_result" ? "null → no result" : "null → failed";
-  }
-  if (status === "failed") return "score → failed";
-  if (status === "no_result") return "score → no result";
-  return value === old ? "same score" : "score changed";
+function emptyCounts(): Record<ParseChange, number> {
+  return {
+    same_score: 0,
+    null_to_no_result: 0,
+    null_to_failed: 0,
+    null_to_score: 0,
+    score_to_failed: 0,
+    score_to_no_result: 0,
+    score_changed: 0,
+  };
 }
 
 interface Example {
@@ -184,20 +186,20 @@ interface GameReport {
   gameKey: string | null;
   codeSource: string;
   rows: number;
-  parse: Record<ParseClass, number>;
+  parse: Record<ParseChange, number>;
   parseAgree: number;
   /**
    * The same classification against the value the database holds today. It
    * differs from `parse` only where rows predate the current legacy parser
    * and were never rescored.
    */
-  stored: Record<ParseClass, number>;
+  stored: Record<ParseChange, number>;
   /** Rows whose stored value is not what the legacy parser returns today. */
   storedStale: number;
   formatSame: number;
   formatDifferent: number;
   failureReasons: Record<string, number>;
-  parseExamples: Partial<Record<ParseClass, Example[]>>;
+  parseExamples: Partial<Record<ParseChange, Example[]>>;
   formatExamples: Example[];
 }
 
@@ -234,9 +236,9 @@ async function main() {
             ? "taught spec"
             : "registry port",
       rows: scores.length,
-      parse: Object.fromEntries(PARSE_CLASSES.map((c) => [c, 0])) as Record<ParseClass, number>,
+      parse: emptyCounts(),
       parseAgree: 0,
-      stored: Object.fromEntries(PARSE_CLASSES.map((c) => [c, 0])) as Record<ParseClass, number>,
+      stored: emptyCounts(),
       storedStale: 0,
       formatSame: 0,
       formatDifferent: 0,
@@ -250,17 +252,17 @@ async function main() {
       const next = await scoreWithGameCode(code, score.raw);
 
       if (oldValue !== score.storedValue) report.storedStale += 1;
-      report.stored[classify(score.storedValue, next.parseStatus, next.scoreValue)] += 1;
-      const cls = classify(oldValue, next.parseStatus, next.scoreValue);
+      report.stored[classifyParseChange(score.storedValue, next.parseStatus, next.scoreValue)] += 1;
+      const cls = classifyParseChange(oldValue, next.parseStatus, next.scoreValue);
       report.parse[cls] += 1;
-      if (AGREEING.has(cls)) report.parseAgree += 1;
+      if (parseChangeAgrees(cls)) report.parseAgree += 1;
       if (next.parse.kind === "failed") {
         const reason = next.parse.detail
           ? `${next.parse.reason}: ${next.parse.detail}`
           : next.parse.reason;
         report.failureReasons[reason] = (report.failureReasons[reason] ?? 0) + 1;
       }
-      if (cls !== "same score") {
+      if (cls !== "same_score") {
         const list = report.parseExamples[cls] ?? [];
         if (list.length < EXAMPLES) {
           const example: Example = { raw: score.raw, old: oldValue, new: next.scoreValue };
@@ -289,10 +291,10 @@ async function main() {
     `${reports.length} games, ${rows} scores, code from: ${codeMode === "db" ? "database columns" : "the seed (simulated)"}\n`,
   );
 
-  const differing = PARSE_CLASSES.filter((c) => !AGREEING.has(c));
+  const differing = PARSE_CHANGES.filter((c) => !parseChangeAgrees(c));
   if (args.has("markdown")) {
     console.log(
-      `| Game | Rows | Parse agrees | ${differing.join(" | ")} | null → no result | null → failed | Summary identical |`,
+      `| Game | Rows | Parse agrees | ${differing.map((c) => PARSE_LABELS[c]).join(" | ")} | null → no result | null → failed | Summary identical |`,
     );
     console.log(
       `| --- | ---: | ---: | ${differing.map(() => "---:").join(" | ")} | ---: | ---: | ---: |`,
@@ -303,7 +305,7 @@ async function main() {
           .map((c) => r.parse[c] || "")
           .join(
             " | ",
-          )} | ${r.parse["null → no result"] || ""} | ${r.parse["null → failed"] || ""} | ${pct(r.formatSame, r.rows)} |`,
+          )} | ${r.parse.null_to_no_result || ""} | ${r.parse.null_to_failed || ""} | ${pct(r.formatSame, r.rows)} |`,
       );
     }
     console.log(
@@ -311,8 +313,8 @@ async function main() {
         total((r) => r.parseAgree),
         rows,
       )} | ${differing.map((c) => total((r) => r.parse[c]) || "").join(" | ")} | ${total(
-        (r) => r.parse["null → no result"],
-      )} | ${total((r) => r.parse["null → failed"])} | ${pct(
+        (r) => r.parse.null_to_no_result,
+      )} | ${total((r) => r.parse.null_to_failed)} | ${pct(
         total((r) => r.formatSame),
         rows,
       )} |`,
@@ -322,9 +324,9 @@ async function main() {
       console.log(
         `${r.title.slice(0, 26).padEnd(26)} ${String(r.rows).padStart(4)} rows  code: ${r.codeSource.padEnd(15)} parse agrees ${pct(r.parseAgree, r.rows).padStart(6)}  summary identical ${pct(r.formatSame, r.rows).padStart(6)}`,
       );
-      for (const c of PARSE_CLASSES) {
-        if (c === "same score" || r.parse[c] === 0) continue;
-        console.log(`    ${c.padEnd(18)} ${r.parse[c]}`);
+      for (const c of PARSE_CHANGES) {
+        if (c === "same_score" || r.parse[c] === 0) continue;
+        console.log(`    ${PARSE_LABELS[c].padEnd(18)} ${r.parse[c]}`);
         for (const e of r.parseExamples[c] ?? []) {
           console.log(
             `        old=${e.old} new=${e.new}${e.detail ? ` (${e.detail})` : ""}  ${JSON.stringify(e.raw.slice(0, 90))}`,
@@ -332,8 +334,8 @@ async function main() {
         }
       }
       if (r.storedStale > 0) {
-        const vsStored = PARSE_CLASSES.filter((c) => r.stored[c] > 0)
-          .map((c) => `${c} ${r.stored[c]}`)
+        const vsStored = PARSE_CHANGES.filter((c) => r.stored[c] > 0)
+          .map((c) => `${PARSE_LABELS[c]} ${r.stored[c]}`)
           .join(", ");
         console.log(
           `    ${r.storedStale} stored values are not what the legacy parser returns today; against stored: ${vsStored}`,
@@ -358,9 +360,9 @@ async function main() {
       )}`,
     );
     console.log("    vs the legacy parser / vs the values stored today");
-    for (const c of PARSE_CLASSES) {
+    for (const c of PARSE_CHANGES) {
       console.log(
-        `    ${c.padEnd(18)} ${String(total((r) => r.parse[c])).padStart(5)} ${String(total((r) => r.stored[c])).padStart(5)}`,
+        `    ${PARSE_LABELS[c].padEnd(18)} ${String(total((r) => r.parse[c])).padStart(5)} ${String(total((r) => r.stored[c])).padStart(5)}`,
       );
     }
   }

@@ -43,8 +43,31 @@ export interface UserGame {
   addedAt: string;
 }
 
+/**
+ * What a game's stored parse code made of a score's text: a number
+ * (`scoreValue`), a real share with no score — a loss (`no_result`), or text
+ * the code could not read (`failed`; the row is unranked).
+ */
+export type ScoreParseStatus = "score" | "no_result" | "failed";
+
+/**
+ * The server-computed reading of a score. Present only on scores the server
+ * parsed with the game's stored code; absent on scores the legacy parser
+ * wrote, where a null `scoreValue` can mean a loss or an unread share and
+ * the client still formats `scoreRaw` itself.
+ */
+export interface ScoreCodeFields {
+  parseStatus?: ScoreParseStatus;
+  /**
+   * The text to show for this score — the game's formatter output, or the
+   * cleaned raw text when it has none. Null = nothing worth showing (a
+   * URL-only share). Only meaningful when `parseStatus` is present.
+   */
+  scoreSummary?: string | null;
+}
+
 /** One posted score: `(gameId, userId, periodKey)` is the identity. */
-export interface GameScore {
+export interface GameScore extends ScoreCodeFields {
   gameId: string;
   userId: string;
   periodKey: string;
@@ -77,7 +100,7 @@ export interface ScoreReactionSummary {
  * One row of a game's standings for a period. Covers the viewer and their
  * friends (G2a); the entry shape is the same either way.
  */
-export interface GameStandingsEntry {
+export interface GameStandingsEntry extends ScoreCodeFields {
   userId: string;
   displayName: string | null;
   scoreRaw: string | null;
@@ -120,6 +143,12 @@ export interface MyGame extends UserGame {
 export interface GamesCapabilities {
   /** `POST /v1/games/recognize` answers for this caller. */
   recognition: boolean;
+  /**
+   * The server parses this caller's scores with stored game code, and
+   * `POST /v1/games/:id/scores/preview` answers. Absent from servers that
+   * predate it — treat that as off.
+   */
+  codeParsing?: boolean;
 }
 
 export interface GamesResponse {
@@ -144,6 +173,21 @@ export interface AddGameResponse {
 
 export interface UpsertGameScoreResponse {
   score: GameScore;
+}
+
+/** `POST /v1/games/:id/scores/preview` — what posting this text would store. */
+export interface PreviewGameScoreRequest {
+  scoreRaw: string;
+}
+
+export interface GameScorePreview {
+  parseStatus: ScoreParseStatus;
+  scoreValue: number | null;
+  scoreSummary: string | null;
+}
+
+export interface PreviewGameScoreResponse {
+  preview: GameScorePreview;
 }
 
 /** Which evidence recognized a pasted score's game, cheapest first. */

@@ -3,7 +3,7 @@
 // subpath (like `./games`): the barrel's `.js` re-exports don't resolve under
 // Metro, so the client imports this file directly.
 
-import type { Game } from "./games.js";
+import type { Game, ScoreCodeFields } from "./games.js";
 
 /** One friend edge as seen from the viewer's side. */
 export interface FriendSummary {
@@ -92,7 +92,7 @@ export interface FriendProfileGame {
   /** Whether the viewer already has this game in My Games (gates quick-add). */
   viewerHasGame: boolean;
   /** The profile subject's score for `periodKey`; null when unplayed. */
-  score: { scoreRaw: string; scoreValue: number | null } | null;
+  score: ({ scoreRaw: string; scoreValue: number | null } & ScoreCodeFields) | null;
 }
 
 /** `GET /v1/friends/users/:userId` */

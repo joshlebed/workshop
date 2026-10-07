@@ -78,6 +78,17 @@ variable "game_recognition" {
   }
 }
 
+variable "game_code_parsing" {
+  type        = string
+  default     = "off"
+  description = "Score parsing by stored game code: off | shadow (run the code on score posts and log how it compares, change nothing) | on (stored code is authoritative; parse_status and score_summary are written and returned)."
+
+  validation {
+    condition     = contains(["off", "shadow", "on"], var.game_code_parsing)
+    error_message = "game_code_parsing must be off, shadow or on."
+  }
+}
+
 variable "google_books_api_key" {
   type        = string
   default     = ""

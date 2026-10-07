@@ -38,6 +38,7 @@ import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
+import { scoreCodeFields } from "../../lib/gameCodeService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { resolveGameShareLink } from "../../lib/gameShareLinks.js";
 import { notifyFriendRequestSent, notifyFriendshipFormed } from "../../lib/opsNotifications.js";
@@ -790,6 +791,8 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
               gameId: gameScores.gameId,
               scoreRaw: gameScores.scoreRaw,
               scoreValue: gameScores.scoreValue,
+              parseStatus: gameScores.parseStatus,
+              scoreSummary: gameScores.scoreSummary,
             })
             .from(gameScores)
             .where(
@@ -812,6 +815,7 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
           ? {
               scoreRaw: score.scoreRaw,
               scoreValue: score.scoreValue === null ? null : Number(score.scoreValue),
+              ...scoreCodeFields(score),
             }
           : null,
       };

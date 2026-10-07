@@ -216,6 +216,49 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   local Postgres is the dev seed (6 scores), not prod — use `--snapshot` / `--save-snapshot`
   with a read-only export, and keep the snapshot (real users' text) out of the repo.
 
+### The write path: `GAME_CODE_PARSING` = `off` (default) | `shadow` | `on`
+
+`lib/gameCodeService.ts` is the only bridge between the score routes and the sandbox.
+
+- **The mode in force for a user is `codeParsingModeFor(userId)`** — `on` for Games beta
+  accounts (`lib/gamesBeta.ts`), else the global flag (`var.game_code_parsing`). Same shape and
+  same rule as `recognitionModeFor`: every gate reads it, never `getConfig().gameCodeParsing`.
+- **`off`**: the legacy parser alone. No sandbox, no log line, and the response carries no
+  new fields — byte-for-byte what it was. **`shadow`**: stores and returns exactly what `off`
+  does; the game's code also runs and one `kind: "game_code_shadow"` line records
+  `legacy_value` / `code_status` / `code_value` / `change` / `outcome: agree | disagree`.
+  **`on`**: the stored code is authoritative — `parse_status`, `score_value`,
+  `score_summary`, `code_version` are written, and `parseStatus` / `scoreSummary` are returned
+  on `GameScore`, standings entries and friend-profile scores (`scoreCodeFields`).
+  `./scripts/logs.sh --filter game_code_shadow` reads the shadow results; the log never
+  contains the share text or a thrown message (those can quote it).
+- **Response fields appear only on rows stored code parsed.** One board can mix both kinds
+  (a beta account next to everyone else), so clients fall back per row, not per response. If
+  you add a path that returns a score, spread `scoreCodeFields(row)` into it.
+- **A post never fails or hangs on the sandbox.** `resolvePostedScore` waits at most
+  `GAME_CODE_BUDGET_MS` (1.5 s; a warm run is ~1 ms) and past that stores `failed` with the
+  cleaned raw text. The upsert sets all four columns on every write, so a re-post under a
+  different mode can't leave a stale status behind.
+- **`POST /v1/games/:id/scores/preview`** is the paste sheet's dry run (same code, same
+  budget, stores nothing); 404 unless the caller's mode is `on`. Clients read
+  `capabilities.codeParsing` on `GET /v1/games` instead of probing.
+- **`lambda.ts` pre-starts the worker at init when the global flag is not `off`**, because
+  init runs at full CPU and a request at 0.29 vCPU (worker start: ~75 ms vs ~300–700 ms).
+  With the flag off, beta accounts pay that once per cold container on their first post.
+- **`PUT /:id/score-spec` (the old teach flow) also writes code**: the compiled spec, a
+  bumped `code_version` and a `game_code_revisions` row, in the same transaction as the spec.
+  Its "first teach is open" rule now means "no spec AND no parse code": a game an operator
+  gave code to is admin-only to re-teach, or any user's first paste would replace that code.
+  Migration `0044` converts any spec taught between `0043` and that release.
+- **Operators change a game's code with `admin:game-code`** (`scripts/set-game-code.ts`;
+  `--show`, `--dry`, `--parse=<file>`, `--format=<file>`, `--revert=<version>`). It refuses to
+  write unless the code reproduces every stored score with a known result — rows stored code
+  parsed, and legacy rows that hold a number; a legacy NULL is "loss or unread" and constrains
+  nothing. `--expect-changes=<n>` is the escape hatch for a game whose stored values were
+  wrong (Krillion's puzzle numbers): run `--dry`, read the list, pass the exact count.
+  **It never re-parses history** — rows keep their values and `code_version` shows which code
+  read them. Whether and how history is re-parsed is a product decision not yet made.
+
 ## Migration journal `when` values must be monotonic
 
 The drizzle migrator records each migration's journal `when` as `created_at` and only

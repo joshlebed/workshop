@@ -155,7 +155,7 @@ runFormat(code, raw): Promise<FormatResult>
 //  { kind: "summary", text } | { kind: "none" } | { kind: "failed", reason, detail? }
 
 validateCode({ parse, format? }, examples): Promise<{ ok, unavailable, checked, mismatches }>
-//  examples: [{ raw, expected: number | null, expectedSummary?: string | null }]
+//  examples: [{ raw, expected?: number | null, expectedSummary?: string | null }]
 ```
 
 None of them throws or rejects for anything the code does. `reason` is one of
@@ -163,8 +163,9 @@ None of them throws or rejects for anything the code does. `reason` is one of
 `too_large`, `sandbox_unavailable`.
 
 `validateCode` is the gate for storing code: `parse` must reproduce every `expected`
-(`null` means it must return "no result"), and `format`, when given, must not fail on any
-example and must match every `expectedSummary` that is set. With no examples it still
+(`null` means it must return "no result"; an example with no `expected` only has to load),
+and `format`, when given, must not fail on any example and must match every
+`expectedSummary` that is set. With no examples it still
 proves each block loads and defines its function.
 
 It has three outcomes, and callers must treat them differently:
