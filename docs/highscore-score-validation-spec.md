@@ -1,7 +1,8 @@
 # HighScore: invalid, misfiled and unreadable scores
 
 **Status:** decided with Josh on 2026-10-07. Not implemented. This is a product spec for the
-parse, teach and recognition workstreams of the score-parsing overhaul.
+parse, teach and recognition workstreams of the score-parsing overhaul. The observability
+section applies to all of them.
 
 **Scope:** what happens when a pasted score is invalid, lands in the wrong game, or can't be
 read, and who may change a game's parser. HighScore only; Workshop's `legacyGames` is frozen.
@@ -69,7 +70,7 @@ Why no owner: four games have a single score ever, so the owner would be whoever
 Orphaned games would fall back to the operator, and ownership needs notification and transfer
 surfaces. Admin-only re-teach is what left Worldle and Geozee broken.
 
-### 4. Bad teaches: prevent at pick time, repair by the next tap, escalate on conflict
+### 4. Bad teaches: prevent at pick time, repair by the next tap, a second user settles conflicts
 
 - **Overfit code.** Before code is accepted, the server alters the example and requires the
   result to follow: swap a picked number for another number, or add or remove one symbol for a
@@ -78,12 +79,15 @@ surfaces. Admin-only re-teach is what left Worldle and Geozee broken.
   streak). The picker pre-selects the top score candidate and asks for confirmation on a
   mismatch. A user can always overturn their own earlier pick.
 - **Conflicting picks.** When a correction conflicts with another user's confirmed pick, the
-  corrector's own score is fixed, the game is flagged, and the operator is pinged. When a
+  corrector's own score is fixed, the game is flagged, and the conflict is logged. When a
   second user makes a matching correction, the parser switches and rows read by the outvoted
   version are re-read. Rows holding a user's own pick keep that value.
 
-Score direction (lower or higher wins) follows the same rule. The LLM is not a tiebreak vote:
-pasted text can steer it.
+The LLM is not a tiebreak vote: pasted text can steer it.
+
+**Score direction** (lower or higher wins) is corrected from the game's "…" menu under the same
+rule. The user who set the direction can change it. A change requested by anyone else is
+recorded and takes effect when a second user requests the same change.
 
 ### 5. Format changes are ordinary corrections
 
@@ -93,8 +97,8 @@ pasted text can steer it.
   transition. Older examples stop constraining the code.
 - Stored values never move on a format change. Each score records the parser version that
   produced it.
-- The operator is pinged when three consecutive posts from two or more users are unread with no
-  accepted re-teach in between.
+- Repeated unread posts and failed re-teaches are log events, not pings. That includes a
+  single-player game whose re-teach keeps failing.
 
 ### 6. Trust: users choose what counts in their own text, nothing more
 
@@ -183,13 +187,17 @@ no rank.
 - Acceptance of new code, in order: sandbox limits; the alteration test; reproduces every
   confirmed pick in the 30-day window; returns the stored value for every other read score in
   the window. Then re-read unread rows in the window.
-- On a conflict: keep the corrector's value, flag the game, ping. On a second agreeing user:
+- On a conflict: keep the corrector's value, flag the game, log it. On a second agreeing user:
   switch, re-read rows produced by the outvoted version, keep stored values where the new code
-  is unread, drop the outvoted example, ping.
+  is unread, and drop the outvoted example.
+- Direction changes go through the same acceptance path and the game's "…" menu.
+- Ping Discord on every accepted parser or direction change, and on nothing else (see Operator
+  notifications).
 - A pick is stored as a confirmed example even if code generation fails or finishes after the
   post.
-- Every version is kept with its author and example (`game_spec_revisions` today), and rollback
-  restores a prior version.
+- Every version of code is retained with its author, example and timestamp
+  (`game_spec_revisions` or its successor) and is never deleted. Rollback restores a prior
+  version and writes a new revision.
 
 ### Recognition workstream
 
@@ -202,9 +210,45 @@ no rank.
 - The preview must not wait on the classifier: a cheap-match warning is immediate, and a
   classifier result that misses the 1.5-second budget is dropped.
 
-## Not decided
+## Operator notifications
 
-- Where a user corrects score direction after the first teach.
-- Practice-mode shares such as `#travle_practice +2` (two rows in prod).
-- Whether routine, accepted teaches still ping the operator. Today every teach does.
-- A single-player game whose re-teach keeps failing never reaches the two-user ping.
+- **Discord pings for every teach and re-teach:** each accepted parser or direction change,
+  routine or not. That covers a first teach, a correction that changes the parser, a switch
+  after a second user agrees, and a direction change.
+- **Nothing else pings.** Conflicts between picks, unread posts, failed or rejected re-teaches,
+  sandbox failures, wrong-game warnings and the one-off re-read are log events only.
+
+## Observability
+
+Discord only announces teaches, so the logs must let an operator reconstruct any bug report
+without asking the user.
+
+- Use `logger` from `apps/backend/src/lib/logger.ts`: one structured line per event with a
+  `kind` field.
+- Every event carries the request id, user id, game id, period key and parser version, where
+  they exist.
+- Raw score text may be logged. It is already stored in `game_scores.score_raw`.
+
+| `kind`                 | Emitted                                | Fields beyond the common ones                                                                                                                                     |
+| ---------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `score_parse`          | Every parse at upload                  | Status (`score`, `no_result`, `unread`), value, unread reason (no parser, threw, timed out, memory, invalid return), source, duration, whether a preview was seen |
+| `score_preview`        | Every dry run                          | Entry point, what was returned: status, value, derivation label, candidates, wrong-game match, same-text day; whether the classifier answered in budget           |
+| `score_input_rejected` | Every rejection by the edge-input gate | Reason (empty, URL-only, title-only, too long, future day)                                                                                                        |
+| `score_pick`           | Every pick or correction               | Candidate kind and value, previous status and value, label-mismatch confirmation, whether it became a training example and why not                                |
+| `parser_accept`        | Every attempt to accept new code       | Trigger, model, outcome, the gate that failed (sandbox limit, alteration test, 30-day reproduction, changes other read scores), rows changed and rows newly read  |
+| `pick_conflict`        | Picks from two users conflict          | Both users, both examples and values, the flag set; later, the resolution                                                                                         |
+| `direction_change`     | Every direction request                | From, to, held or applied                                                                                                                                         |
+| `game_recognition`     | Every recognition decision             | Method (label, URL, domain, classifier), confidence, candidates considered, game chosen, warning shown, the user's choice                                         |
+| `sandbox_failure`      | Every sandbox failure                  | Reason, limits, duration, which code (parser, candidate, formatter)                                                                                               |
+| `score_reread`         | The one-off re-read, per changed row   | Dry run or applied, old and new status, value and parser version; plus one summary line                                                                           |
+| `parser_rollback`      | Every rollback                         | From version, to version                                                                                                                                          |
+
+Lookup is CloudWatch (`/aws/lambda/workshop-prod-api`) through
+`scripts/logs.sh --filter <request_id>`. Retention is 30 days, so anything older is
+reconstructed from the retained code versions and the per-score status, source and parser
+version.
+
+## Known gaps
+
+- Practice-mode shares such as `#travle_practice +2` (two rows in prod) are out of scope.
+  Revisit if volume grows.
