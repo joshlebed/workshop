@@ -239,7 +239,8 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
 - **Standings order is authored by `rankEntries` (`lib/ranking.ts`), and the client renders
   it as-is:** scores by direction; then `no_result` rows in last place, all sharing the rank
   after the last score (three scores → each loss is 4th); then `failed` rows and legacy rows
-  with no value, unranked. A row with no `parse_status` ranks exactly as it did before stored
+  with no value, unranked. On a day with no scores at all, losses are unranked too — "last
+  place" needs a score to be behind, and rank 1 would give every loss the top-rank badge. A row with no `parse_status` ranks exactly as it did before stored
   code — a legacy null is "loss or unread, nobody recorded which", so it is never ranked.
 - **The HighScore client shows the server's text and formats nothing when it has it.**
   `summarizeGameScoreBody` (`apps/highscore/src/games/lib/scoresSummary.ts`) returns

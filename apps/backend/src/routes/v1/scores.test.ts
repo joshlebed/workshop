@@ -331,19 +331,39 @@ describe("rankEntries (helper)", () => {
     ]);
   });
 
-  it("with no scores on the board, every loss is tied at 1 and unread rows stay unranked", () => {
-    const ranked = rankEntries(
-      [
-        { userId: "unread", scoreValue: null, parseStatus: "failed" },
-        { userId: "loss-1", scoreValue: null, parseStatus: "no_result" },
-        { userId: "loss-2", scoreValue: null, parseStatus: "no_result" },
-      ],
+  it("with no scores on the board, a loss has no rank — it never takes first place", () => {
+    // "Last place" needs someone to be behind. Ranking these 1 would give
+    // every loss the top-rank badge.
+    for (const direction of ["asc", "desc"] as const) {
+      const ranked = rankEntries(
+        [
+          { userId: "unread", scoreValue: null, parseStatus: "failed" },
+          { userId: "loss-1", scoreValue: null, parseStatus: "no_result" },
+          { userId: "legacy-null", scoreValue: null },
+          { userId: "loss-2", scoreValue: null, parseStatus: "no_result" },
+        ],
+        direction,
+      );
+      expect(ranked.map((r) => [r.userId, r.rank])).toEqual([
+        // Losses still come before unread rows; nobody is ranked.
+        ["loss-1", null],
+        ["loss-2", null],
+        ["unread", null],
+        ["legacy-null", null],
+      ]);
+    }
+  });
+
+  it("a single loss alone on the board is unranked; one score is enough to place it", () => {
+    const loss = { userId: "loss", scoreValue: null, parseStatus: "no_result" };
+    expect(rankEntries([loss], "asc")).toEqual([{ ...loss, rank: null }]);
+    const withScore = rankEntries(
+      [loss, { userId: "six", scoreValue: 6, parseStatus: "score" }],
       "asc",
     );
-    expect(ranked.map((r) => [r.userId, r.rank])).toEqual([
-      ["loss-1", 1],
-      ["loss-2", 1],
-      ["unread", null],
+    expect(withScore.map((r) => [r.userId, r.rank])).toEqual([
+      ["six", 1],
+      ["loss", 2],
     ]);
   });
 

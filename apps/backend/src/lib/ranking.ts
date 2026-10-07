@@ -9,7 +9,9 @@
  * 2. Entries the game's stored code read as `no_result` — a real result with
  *    no score, i.e. a loss. They rank LAST: every one of them gets the rank
  *    after all the scores (three scores → each loss is 4th), tied with each
- *    other.
+ *    other. "Last place" only exists when someone has a score: on a day with
+ *    no scores at all, losses are unranked (`rank: null`) — otherwise they
+ *    would all be tied at 1 and wear the top-rank badge.
  * 3. Everything else with no score, unranked (`rank: null`): `failed` rows
  *    (the code could not read the text) and rows the legacy parser wrote with
  *    no value, where a loss and an unread share were never told apart.
@@ -44,7 +46,7 @@ export function rankEntries<T extends { scoreValue: number | null; parseStatus?:
     lastRank = rank;
     return { ...e, rank };
   });
-  const lastPlace = played.length + 1;
+  const lastPlace = played.length > 0 ? played.length + 1 : null;
   return [
     ...ranked,
     ...lost.map((e) => ({ ...e, rank: lastPlace })),
