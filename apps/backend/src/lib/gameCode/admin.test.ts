@@ -5,10 +5,16 @@
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { DbClient } from "../sql.js";
-import { applyGameCodeChange, gameCodeAtVersion, planGameCodeChange } from "./admin.js";
+import {
+  applyGameCodeChange,
+  decideGameCodeChange,
+  gameCodeAtVersion,
+  planGameCodeChange,
+} from "./admin.js";
 import { BUILTIN_GAME_CODE } from "./builtin.js";
+import * as runtime from "./runtime.js";
 import { shutdownGameCodeSandbox } from "./runtime.js";
 
 let pglite: PGlite;
@@ -92,6 +98,7 @@ describe("planGameCodeChange", () => {
     );
     expect(plan).toMatchObject({
       ok: true,
+      unavailable: false,
       storedScores: 5,
       storedWithExpectation: 3,
       storedMismatches: [],
@@ -196,6 +203,70 @@ describe("planGameCodeChange", () => {
     await expect(
       planGameCodeChange(db, { id: krillion }, { parseCode: null, formatCode: null }),
     ).rejects.toThrow(/cannot be removed/);
+  });
+});
+
+describe("decideGameCodeChange", () => {
+  const krillion = () => gameId("krillion.io");
+
+  it("writes a clean plan, and a plan whose differences were declared by exact count", async () => {
+    const id = await krillion();
+    await seedScores(id, [
+      [0, "Krillion #77 🦐\n305\n\n🏮🐟🫧", 77, null],
+      [1, "Krillion #78 🦐\n315\n\n🦑🫧🏮", 78, null],
+    ]);
+    const plan = await planGameCodeChange(
+      db,
+      { id },
+      { parseCode: krillionCode, formatCode: null },
+    );
+    expect(decideGameCodeChange(plan)).toEqual({ write: false, reason: "changes_stored_scores" });
+    expect(decideGameCodeChange(plan, 1)).toEqual({
+      write: false,
+      reason: "changes_stored_scores",
+    });
+    expect(decideGameCodeChange(plan, 2)).toEqual({ write: true, acceptedChanges: 2 });
+    await seedScores(id, []);
+    const clean = await planGameCodeChange(
+      db,
+      { id },
+      { parseCode: krillionCode, formatCode: null },
+    );
+    expect(decideGameCodeChange(clean)).toEqual({ write: true, acceptedChanges: 0 });
+  });
+
+  it("never writes when the sandbox could not run the code — an empty mismatch list proves nothing", async () => {
+    const id = await krillion();
+    await seedScores(id, [[0, "Krillion #77 🦐\n305\n\n🏮🐟🫧", 77, null]]);
+    const validate = vi
+      .spyOn(runtime, "validateCode")
+      .mockResolvedValue({ ok: false, unavailable: true, checked: 0, mismatches: [] });
+    const plan = await planGameCodeChange(
+      db,
+      { id },
+      { parseCode: krillionCode, formatCode: null },
+      [{ raw: "Krillion #81 🦐\n415", expected: 415 }],
+    );
+    // Asked once: the examples are not sent to a sandbox that just went away.
+    expect(validate).toHaveBeenCalledTimes(1);
+    validate.mockRestore();
+
+    expect(plan).toMatchObject({ unavailable: true, ok: false, storedMismatches: [] });
+    expect(decideGameCodeChange(plan)).toEqual({ write: false, reason: "sandbox_unavailable" });
+    // Not even with the count an operator might have declared.
+    expect(decideGameCodeChange(plan, 0)).toEqual({ write: false, reason: "sandbox_unavailable" });
+    await seedScores(id, []);
+  });
+
+  it("refuses code that fails the operator's examples whatever was declared", async () => {
+    const id = await krillion();
+    const plan = await planGameCodeChange(
+      db,
+      { id },
+      { parseCode: krillionCode, formatCode: null },
+      [{ raw: "Krillion #83 🦐\n77", expected: 83 }],
+    );
+    expect(decideGameCodeChange(plan, 1)).toEqual({ write: false, reason: "fails_examples" });
   });
 });
 

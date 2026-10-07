@@ -48,8 +48,35 @@ interface GameCodePlan {
   storedMismatches: Array<CodeMismatch & { userId: string; periodKey: string }>;
   /** Operator-supplied examples the candidate gets wrong. */
   exampleMismatches: CodeMismatch[];
+  /**
+   * True when the sandbox could not run the candidate at all (see
+   * `validateCode`). Nothing was established about the code: the mismatch
+   * lists are incomplete, and the change must not be written OR reported as
+   * wrong — try again.
+   */
+  unavailable: boolean;
   /** True when the candidate could be stored with no further acknowledgement. */
   ok: boolean;
+}
+
+type GameCodeDecision =
+  | { write: true; acceptedChanges: number }
+  | { write: false; reason: "sandbox_unavailable" | "fails_examples" | "changes_stored_scores" };
+
+/**
+ * Whether a planned change may be written. `expectChanges` is the number of
+ * stored scores the author has declared wrong (0 unless they said otherwise):
+ * the change goes through only if exactly that many read differently. An
+ * unavailable sandbox is never a yes — an empty mismatch list from a
+ * validation that did not run proves nothing.
+ */
+export function decideGameCodeChange(plan: GameCodePlan, expectChanges = 0): GameCodeDecision {
+  if (plan.unavailable) return { write: false, reason: "sandbox_unavailable" };
+  if (plan.exampleMismatches.length > 0) return { write: false, reason: "fails_examples" };
+  if (plan.storedMismatches.length !== expectChanges) {
+    return { write: false, reason: "changes_stored_scores" };
+  }
+  return { write: true, acceptedChanges: plan.storedMismatches.length };
 }
 
 /**
@@ -80,7 +107,10 @@ export async function planGameCodeChange(
 
   const storedExamples = stored.map((score) => ({ raw: score.scoreRaw, ...expectationFor(score) }));
   const storedReport = await validateCode(code, storedExamples);
-  const exampleReport = await validateCode(code, extraExamples);
+  // Don't ask a sandbox that just went away to do the second half.
+  const exampleReport = storedReport.unavailable
+    ? storedReport
+    : await validateCode(code, extraExamples);
   const storedMismatches = storedReport.mismatches.map((mismatch) => {
     const score = stored[mismatch.index];
     return { ...mismatch, userId: score?.userId ?? "", periodKey: score?.periodKey ?? "" };
@@ -89,7 +119,8 @@ export async function planGameCodeChange(
     storedScores: stored.length,
     storedWithExpectation: storedExamples.filter((e) => e.expected !== undefined).length,
     storedMismatches,
-    exampleMismatches: exampleReport.mismatches,
+    exampleMismatches: storedReport.unavailable ? [] : exampleReport.mismatches,
+    unavailable: storedReport.unavailable || exampleReport.unavailable,
     ok: storedReport.ok && exampleReport.ok,
   };
 }

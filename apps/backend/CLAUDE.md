@@ -256,6 +256,9 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   parsed, and legacy rows that hold a number; a legacy NULL is "loss or unread" and constrains
   nothing. `--expect-changes=<n>` is the escape hatch for a game whose stored values were
   wrong (Krillion's puzzle numbers): run `--dry`, read the list, pass the exact count.
+  The yes/no is `decideGameCodeChange` in `lib/gameCode/admin.ts` (the teach flow should
+  call the same function): a sandbox that could not run the code is never a yes, because an
+  empty mismatch list from a validation that did not run proves nothing.
   **It never re-parses history** — rows keep their values and `code_version` shows which code
   read them. Whether and how history is re-parsed is a product decision not yet made.
 

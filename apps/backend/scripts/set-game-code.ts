@@ -37,6 +37,7 @@ import { type DbGame, gameCodeRevisions, games, users } from "../src/db/schema.j
 import {
   applyGameCodeChange,
   type CandidateCode,
+  decideGameCodeChange,
   gameCodeAtVersion,
   planGameCodeChange,
 } from "../src/lib/gameCode/admin.js";
@@ -171,23 +172,23 @@ async function main() {
   printMismatches("examples the new code gets wrong", plan.exampleMismatches);
 
   const expectChanges = Number(arg("--expect-changes") ?? 0);
-  const acceptable =
-    plan.exampleMismatches.length === 0 && plan.storedMismatches.length === expectChanges;
-  if (plan.ok) console.log("validation passed");
-  else if (acceptable) {
-    console.log(
-      `\n${expectChanges} stored scores read differently, as declared by --expect-changes`,
-    );
-  } else {
-    console.log(
-      plan.exampleMismatches.length > 0
-        ? "\nrefusing to write: the code fails its examples"
-        : `\nrefusing to write: ${plan.storedMismatches.length} stored scores read differently` +
-            ` (pass --expect-changes=${plan.storedMismatches.length} if every one of them is a stored value that was wrong)`,
-    );
+  const decision = decideGameCodeChange(plan, expectChanges);
+  if (!decision.write) {
+    const why = {
+      sandbox_unavailable:
+        "the sandbox could not run the code (worker failed to start or died) — nothing was checked; this says nothing about the code, try again",
+      fails_examples: "the code fails its examples",
+      changes_stored_scores: `${plan.storedMismatches.length} stored scores read differently (pass --expect-changes=${plan.storedMismatches.length} if every one of them is a stored value that was wrong)`,
+    }[decision.reason];
+    console.log(`\nrefusing to write: ${why}`);
     process.exitCode = 1;
     return;
   }
+  console.log(
+    decision.acceptedChanges === 0
+      ? "validation passed"
+      : `\n${decision.acceptedChanges} stored scores read differently, as declared by --expect-changes`,
+  );
   if (flag("--dry")) return console.log("--dry: nothing written");
 
   const email = arg("--by");
