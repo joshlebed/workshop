@@ -140,6 +140,35 @@ friend-invite or list link. The paste sheet previews the parse client-side
 (`apps/highscore/src/games/lib/scoreSpecs.ts` mirrors the backend chain) — keep the two chains in
 sync. Workshop's `src/legacyGames` versions are frozen snapshots, not the live mirror.
 
+## Game code sandbox (`lib/gameCode/`) — stored JS runs in QuickJS, in a worker thread
+
+The runtime for per-game `parse(raw)` / `format(raw)` code stored in the DB. The code is
+untrusted (LLM-written from pasted text, or operator-written). Call it only through
+`lib/gameCode/runtime.ts` (`runParse`, `runFormat`, `validateCode`) — those never throw or
+reject for anything the code does and always settle within a bounded time. The contract the
+stored code must satisfy, every limit, and the measured latency are in
+`lib/gameCode/README.md`; the teach prompt is written from that file, so keep it exact.
+
+- **Parse is tri-state and the three must stay distinct**: `score` (a number), `noResult`
+  (`parse` returned `null` — a legitimate loss), `failed` (threw, timed out, returned
+  anything else). Never collapse `noResult` and `failed` into one null, and never add a
+  "first number in the text" fallback.
+- **Two timers.** An instruction budget inside QuickJS (deterministic; stops loops and regex
+  backtracking in 10–70 ms) and a 250 ms wall clock enforced by **killing the worker
+  thread**, because QuickJS built-ins (`indexOf`, `repeat`) never yield to the interrupt
+  handler. Don't move execution onto the request thread: an in-thread run cannot be stopped.
+- **Fresh runtime + context per run, no host functions, input passed as a value.** If you
+  ever expose a host function to the VM, that function is the new attack surface.
+- **The sandbox is its own bundle file.** `scripts/bundle.mjs` emits
+  `dist/gameCodeWorker.cjs` (QuickJS WASM embedded, ~890 KB) beside `lambda.js` and tells
+  `runtime.ts` where it is through an esbuild `define`; from source (tsx, vitest) `runtime.ts`
+  bundles the worker in memory with esbuild instead. `bundle.test.ts` runs the real bundler
+  and executes a job in the output, so a broken worker build fails CI, not a deploy.
+- **QuickJS is compiled with `--liftoff-only`** (set process-wide in `loadQuickJS`). With
+  V8's default WASM tiering the first run after a cold start took ~410 ms on a throttled
+  Lambda, past the kill timer. Re-run `scripts/bench-game-code.mjs` (see its header for the
+  Lambda-like docker invocation) after changing a limit or the Node runtime.
+
 ## Migration journal `when` values must be monotonic
 
 The drizzle migrator records each migration's journal `when` as `created_at` and only
@@ -471,6 +500,10 @@ Lambda env refresh — not a code or Terraform change.
   single file.
 - AWS SDK v3 is marked `external` (provided by the Lambda runtime) to shrink the zip.
 - `postgres` (the pg driver) is bundled because there's no built-in.
+- A second entry, `dist/gameCodeWorker.cjs`, is the game-code sandbox's worker thread (see
+  "Game code sandbox" above). It is loaded lazily on first use, so it adds nothing to init.
+- The build shells out to `zip`; the Niteshift sandbox image doesn't ship it
+  (`apt-get install -y zip`). `--out-dir=<dir> --no-zip` builds without it.
 - Cold start ~300–500ms for a bundled Node.js 20 Hono handler.
 
 ## Discord operator notifications are observable — grep the logs first

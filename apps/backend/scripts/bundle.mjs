@@ -8,8 +8,24 @@ import { build } from "esbuild";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
 
+// The game-code sandbox runs in a worker thread (src/lib/gameCode), which
+// needs its own entry file next to the handler. The QuickJS WASM binary is
+// embedded in the JS (the "singlefile" variant), so this one file is the whole
+// sandbox — nothing else to copy into the zip.
+const GAME_CODE_WORKER_FILE = "gameCodeWorker.cjs";
+
+// `--out-dir=<dir>` builds somewhere other than dist/ and `--no-zip` skips
+// lambda.zip — the bundle test (src/lib/gameCode/bundle.test.ts) uses both to
+// check the real build without touching the deployable artifacts.
+const flags = new Map(
+  process.argv.slice(2).map((arg) => {
+    const [key, ...value] = arg.replace(/^--/, "").split("=");
+    return [key, value.join("=")];
+  }),
+);
+
 async function run() {
-  const outDir = resolve(projectRoot, "dist");
+  const outDir = resolve(projectRoot, flags.get("out-dir") || "dist");
   await rm(outDir, { recursive: true, force: true });
   await mkdir(outDir, { recursive: true });
 
@@ -30,6 +46,23 @@ async function run() {
     banner: {
       js: "// Bundled Lambda handler for workshop/backend",
     },
+    // Tells gameCode/runtime.ts to start the prebuilt worker instead of
+    // bundling it from source (a branch that reads `import.meta.url`, which
+    // CommonJS output doesn't have — hence the silenced warning).
+    define: { __GAME_CODE_WORKER_FILE__: JSON.stringify(GAME_CODE_WORKER_FILE) },
+    logOverride: { "empty-import-meta": "silent" },
+    logLevel: "info",
+  });
+
+  await build({
+    entryPoints: [resolve(projectRoot, "src/lib/gameCode/sandboxWorker.ts")],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    outfile: resolve(outDir, GAME_CODE_WORKER_FILE),
+    sourcemap: false,
+    minify: false,
     logLevel: "info",
   });
 
@@ -39,6 +72,7 @@ async function run() {
     // drizzle dir may not exist yet on a fresh repo; that's fine.
   });
 
+  if (flags.has("no-zip")) return;
   const zipPath = resolve(projectRoot, "lambda.zip");
   await rm(zipPath, { force: true });
   await zipDir(outDir, zipPath);
