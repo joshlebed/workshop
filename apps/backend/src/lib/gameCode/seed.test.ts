@@ -9,7 +9,10 @@ import { PGlite } from "@electric-sql/pglite";
 import { CATALOG_GAME_DEFINITIONS } from "@workshop/shared/gameRegistry";
 import { evaluateScoreSpec, type ScoreSpec } from "@workshop/shared/scoreParsing";
 import { evaluateSummarySpec, type SummarySpec } from "@workshop/shared/summarySpec";
+import { drizzle } from "drizzle-orm/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { findOrCreateGame } from "../gameCatalog.js";
+import type { DbClient } from "../sql.js";
 import { BUILTIN_GAME_CODE } from "./builtin.js";
 import { runFormat, runParse, shutdownGameCodeSandbox } from "./runtime.js";
 import { buildGameCodeSeedSql } from "./seedSql.js";
@@ -232,5 +235,64 @@ describe("idempotence", () => {
     expect(wordle).toMatchObject({ parse_code: edited, code_version: 2 });
     const tradle = await gameByUrl("tradle.net");
     expect(tradle.parse_code).toBe(BUILTIN_GAME_CODE.tradle?.parse);
+  });
+});
+
+// Migration 0043 only reaches rows that existed when it ran. A registry game
+// whose row is created later — nobody had added it yet, or a fresh database
+// lost the row — must come into being with the same code and revision.
+describe("registry games created after the seed", () => {
+  const client = () => drizzle(db) as unknown as DbClient;
+
+  it("a catalog game's new row is created with its builtin code and a seed revision", async () => {
+    await db.query("DELETE FROM games WHERE game_key = 'strands'");
+    const game = await findOrCreateGame(
+      "https://www.nytimes.com/games/strands",
+      undefined,
+      client(),
+    );
+    expect(game).toMatchObject({
+      gameKey: "strands",
+      parseCode: BUILTIN_GAME_CODE.strands?.parse,
+      formatCode: null,
+      codeVersion: 1,
+    });
+    expect(await revisionsFor(game.id)).toEqual([
+      { version: 1, source: "seed", parse_code: BUILTIN_GAME_CODE.strands?.parse },
+    ]);
+    // The code it was created with actually runs.
+    expect(await runParse(game.parseCode ?? "", "Strands #100\n🔵💡🔵🟡")).toEqual({
+      kind: "score",
+      value: 1,
+    });
+  });
+
+  it("finding the row again changes nothing", async () => {
+    const first = await findOrCreateGame(
+      "https://www.nytimes.com/games/strands",
+      undefined,
+      client(),
+    );
+    const again = await findOrCreateGame("https://nytimes.com/games/strands/", undefined, client());
+    expect(again.id).toBe(first.id);
+    expect(await revisionsFor(first.id)).toHaveLength(1);
+  });
+
+  it("a detection-only registry game added by URL gets its builtin code too", async () => {
+    await db.query("DELETE FROM games WHERE normalized_url = 'hbd.gg/play'");
+    const game = await findOrCreateGame("https://hbd.gg/play", undefined, client());
+    expect(game).toMatchObject({
+      gameKey: null,
+      parseCode: BUILTIN_GAME_CODE.ethnoguessr?.parse,
+      formatCode: BUILTIN_GAME_CODE.ethnoguessr?.format,
+      codeVersion: 1,
+    });
+    expect((await revisionsFor(game.id)).map((r) => r.source)).toEqual(["seed"]);
+  });
+
+  it("an unknown game is created with no code, version 0 and no revision", async () => {
+    const game = await findOrCreateGame("https://brand-new-game.example", undefined, client());
+    expect(game).toMatchObject({ parseCode: null, formatCode: null, codeVersion: 0 });
+    expect(await revisionsFor(game.id)).toEqual([]);
   });
 });

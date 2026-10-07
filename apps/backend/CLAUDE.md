@@ -195,12 +195,17 @@ stored code must satisfy, every limit, and the measured latency are in
 - **Taught specs become code through `lib/gameCode/specCode.ts`**: `var SPEC = <json>;` plus
   a fixed interpreter. `0043` builds the same text in SQL for specs taught before it. If you
   change an interpreter, existing rows keep the old text (they are data now).
-- **A new registry game needs its code seeded too.** Besides the registry entry and the
-  catalog-row migration, the same migration must set `parse_code` / `format_code` /
-  `code_version = 1` and insert the `game_code_revisions` row (copy a statement pair from
-  `0043`), or the game is "untaught" under code parsing.
+- **A registry game has its code from the moment its row exists.** Rows that existed when
+  `0043` ran were seeded by it; every row created later goes through `findOrCreateGame`,
+  which writes `builtinGameCodeFor(...)` and a `seed` revision in the same transaction. The
+  one path that bypasses it is a catalog-row migration (the `0036` shape, a raw `INSERT`):
+  that migration must set `parse_code` / `format_code` / `code_version = 1` and insert the
+  `game_code_revisions` row itself (copy a statement pair from `0043`), and the game needs an
+  entry in `builtin.ts`.
 - **`game_scores.parse_status`** (`score` | `no_result` | `failed`, CHECK-constrained),
-  **`score_summary`** and **`code_version`** record what the code made of each row at upload.
+  **`score_summary`**, **`code_version`** and **`score_source`** (`parsed` | `picked`,
+  CHECK-constrained; nothing writes `picked` yet — it is for the correction flow in
+  `docs/highscore-score-validation-spec.md`) record what the code made of each row at upload.
   All NULL = written by the legacy parser; `score_value` NULL then means "loss or unread",
   indistinguishably. `lib/gameCode/scoring.ts` (`scoreWithGameCode`) is the one function that
   turns sandbox results into those three values — use it, don't re-derive them.

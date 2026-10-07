@@ -25,12 +25,11 @@ import {
   identifyGame,
   matchShareText,
 } from "@workshop/shared/gameRegistry";
-import { normalizeGameUrl } from "@workshop/shared/games";
 import { safeParseScoreSpec } from "@workshop/shared/scoreParsing";
 import { evaluateSummarySpec, safeParseSummarySpec } from "@workshop/shared/summarySpec";
 import postgres from "postgres";
 import { parseScoreValue, specForGame } from "../src/lib/gameCatalog.js";
-import { BUILTIN_GAMES } from "../src/lib/gameCode/builtin.js";
+import { builtinGameCodeFor } from "../src/lib/gameCode/builtin.js";
 import { shutdownGameCodeSandbox } from "../src/lib/gameCode/runtime.js";
 import { type GameCode, scoreWithGameCode } from "../src/lib/gameCode/scoring.js";
 import { compileScoreSpec, compileSummarySpec } from "../src/lib/gameCode/specCode.js";
@@ -117,12 +116,8 @@ async function loadSnapshot(): Promise<Snapshot> {
 
 /** The code the seed migration installs for a game (mirrors seedSql.ts). */
 function seedCodeFor(game: GameRow): GameCode {
-  const builtin = BUILTIN_GAMES.find(({ def }) =>
-    def.catalog
-      ? game.gameKey === def.key
-      : game.gameKey === null && game.normalizedUrl === normalizeGameUrl(def.canonicalUrl),
-  );
-  if (builtin) return { parseCode: builtin.code.parse, formatCode: builtin.code.format };
+  const builtin = builtinGameCodeFor(game);
+  if (builtin) return { parseCode: builtin.parse, formatCode: builtin.format };
   const scoreSpec = safeParseScoreSpec(game.scoreSpec);
   if (!scoreSpec) return { parseCode: null, formatCode: null };
   const summarySpec = safeParseSummarySpec(game.summarySpec);

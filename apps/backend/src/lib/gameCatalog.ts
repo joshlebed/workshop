@@ -22,7 +22,8 @@ import {
 } from "@workshop/shared/scoreParsing";
 import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { type DbGame, games, items } from "../db/schema.js";
+import { type DbGame, gameCodeRevisions, games, items } from "../db/schema.js";
+import { builtinGameCodeFor } from "./gameCode/builtin.js";
 import { googleFaviconUrl } from "./link-preview/image-validation.js";
 import type { DbClient } from "./sql.js";
 
@@ -169,7 +170,34 @@ export async function findOrCreateGame(
           scoreDirection: "desc" as const,
         };
 
-  const [inserted] = await db.insert(games).values(values).onConflictDoNothing().returning();
+  // A registry game gets its parse / format code the moment its row exists,
+  // with the revision that says where the code came from — the same thing
+  // migration 0043 did for rows that existed when it ran. Without this, a
+  // registry game first added after that migration would have no code and
+  // every score for it would be stored as unreadable.
+  const builtin = builtinGameCodeFor(values);
+  const inserted = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(games)
+      .values(
+        builtin
+          ? { ...values, parseCode: builtin.parse, formatCode: builtin.format, codeVersion: 1 }
+          : values,
+      )
+      .onConflictDoNothing()
+      .returning();
+    if (row && builtin) {
+      await tx.insert(gameCodeRevisions).values({
+        gameId: row.id,
+        version: 1,
+        parseCode: builtin.parse,
+        formatCode: builtin.format,
+        source: "seed",
+        note: "Ported from the game registry (installed when the game's row was created).",
+      });
+    }
+    return row;
+  });
   if (inserted) return inserted;
   const raced = await lookup(values.normalizedUrl);
   if (!raced) throw new Error("game find-or-create failed");

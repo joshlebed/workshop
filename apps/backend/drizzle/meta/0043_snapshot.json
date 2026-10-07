@@ -1,6 +1,6 @@
 {
-  "id": "8dd595ad-3bd6-4880-aced-b2ab7d821b3f",
-  "prevId": "ce57eace-c62d-48c9-b524-559673afba3a",
+  "id": "bcf69d71-6b75-4b77-844f-25bf41f6aa09",
+  "prevId": "1b4c0be6-6609-4126-8844-666c27977cdb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -953,6 +953,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "score_source": {
+          "name": "score_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "code_version": {
           "name": "code_version",
           "type": "integer",
@@ -1041,6 +1047,10 @@
         "game_scores_parse_status_check": {
           "name": "game_scores_parse_status_check",
           "value": "\"game_scores\".\"parse_status\" IN ('score', 'no_result', 'failed')"
+        },
+        "game_scores_score_source_check": {
+          "name": "game_scores_score_source_check",
+          "value": "\"game_scores\".\"score_source\" IN ('parsed', 'picked')"
         }
       },
       "isRLSEnabled": false

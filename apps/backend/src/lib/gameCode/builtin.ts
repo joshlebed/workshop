@@ -21,6 +21,7 @@
 // biome-ignore-all lint/complexity/noUselessStringRaw: every block is String.raw so a regex added later keeps its backslashes
 
 import { GAME_REGISTRY, type GameKey } from "@workshop/shared/gameRegistry";
+import { normalizeGameUrl } from "@workshop/shared/games";
 
 /** Join code fragments into one stored block. */
 function block(...parts: string[]): string {
@@ -461,3 +462,24 @@ export const BUILTIN_GAMES = GAME_REGISTRY.flatMap((def) => {
   const code = BUILTIN_GAME_CODE[def.key];
   return code ? [{ def, code }] : [];
 });
+
+/**
+ * The builtin code for a `games` row, if the registry has any for it. A
+ * catalog game is matched by its `game_key`. A detection-only game
+ * (EthnoGuessr) has no key on its row — a player added it by URL — so it is
+ * matched by its canonical URL. The seed migration applies the same two
+ * rules in SQL (seedSql.ts), and `findOrCreateGame` applies them to every
+ * row created afterwards, so a registry game has its code whenever its row
+ * came into being.
+ */
+export function builtinGameCodeFor(game: {
+  gameKey: string | null;
+  normalizedUrl: string;
+}): BuiltinGameCode | null {
+  const match = BUILTIN_GAMES.find(({ def }) =>
+    def.catalog
+      ? game.gameKey === def.key
+      : game.gameKey === null && game.normalizedUrl === normalizeGameUrl(def.canonicalUrl),
+  );
+  return match?.code ?? null;
+}

@@ -667,6 +667,14 @@ export const gameScores = pgTable(
      * = nothing worth showing (a URL-only share); NULL without = not computed.
      */
     scoreSummary: text("score_summary"),
+    /**
+     * Where `score_value` came from, for rows stored code is authoritative
+     * for: `parsed` (the game's `parse` code read it) or `picked` (the poster
+     * chose it — the correction flow; nothing writes this yet). NULL on rows
+     * the legacy parser wrote. A row is "adjusted" when this is `picked` and
+     * the current code reads the text differently — derived, never stored.
+     */
+    scoreSource: text("score_source"),
     /** `games.code_version` at the time this row was parsed. NULL = legacy. */
     codeVersion: integer("code_version"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
@@ -678,6 +686,10 @@ export const gameScores = pgTable(
     parseStatusCheck: check(
       "game_scores_parse_status_check",
       sql`${t.parseStatus} IN ('score', 'no_result', 'failed')`,
+    ),
+    scoreSourceCheck: check(
+      "game_scores_score_source_check",
+      sql`${t.scoreSource} IN ('parsed', 'picked')`,
     ),
   }),
 );
