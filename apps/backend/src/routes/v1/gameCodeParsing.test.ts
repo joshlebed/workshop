@@ -318,12 +318,15 @@ describe("GAME_CODE_PARSING=on", () => {
       parseStatus: "score",
       scoreSummary: "🟩 3·5 2/6",
     });
+    // The loss ranks last — after the one score — and comes before the
+    // unread row in the response order, which the client renders as-is.
     expect(byUser.get(friendId)).toMatchObject({
-      rank: null,
+      rank: 2,
       scoreValue: null,
       parseStatus: "no_result",
       scoreSummary: "🟩 3·4 X/6",
     });
+    expect(entries.map((e) => e.userId)).toEqual([userId, friendId, betaUserId]);
     expect(byUser.get(betaUserId)).toMatchObject({
       rank: null,
       scoreValue: null,

@@ -155,7 +155,15 @@ const profileGameSchema = z.object({
     createdAt: z.string(),
   }),
   viewerHasGame: z.boolean(),
-  score: z.object({ scoreRaw: z.string(), scoreValue: z.number().nullable() }).nullable(),
+  score: z
+    .object({
+      scoreRaw: z.string(),
+      scoreValue: z.number().nullable(),
+      // Present only on scores the server parsed with stored game code.
+      parseStatus: z.enum(["score", "no_result", "failed"]).optional(),
+      scoreSummary: z.string().nullable().optional(),
+    })
+    .nullable(),
 });
 
 const friendProfileResponseSchema = z.object({

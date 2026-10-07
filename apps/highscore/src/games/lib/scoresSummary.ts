@@ -4,7 +4,7 @@
 // Item/Game adapters that pick which registry entry formats a given row.
 
 import { formatShareBodyFallback, gameDefinitionForKey } from "@workshop/shared/gameRegistry";
-import type { MyGame } from "@workshop/shared/games";
+import type { MyGame, ScoreCodeFields } from "@workshop/shared/games";
 import { evaluateSummarySpec, type SummarySpec } from "@workshop/shared/summarySpec";
 import {
   type DetectedSharedScoreKind,
@@ -19,6 +19,21 @@ interface BuildGameSummaryParams {
   dateKey: string;
 }
 
+/** A score as a row needs it: the raw share, plus the server's reading when it has one. */
+type SummarizableScore = { scoreValue: number | null; scoreRaw: string | null } & ScoreCodeFields;
+
+/**
+ * The server's summary for a score, when the server parsed it with the
+ * game's stored code (`parseStatus` present). `undefined` means it did not —
+ * the row was written by the legacy parser, or the server predates stored
+ * code — and the caller formats `scoreRaw` itself. A server summary of
+ * `null` is an answer ("nothing worth showing"), not a miss.
+ */
+function serverSummary(entry: SummarizableScore): string | null | undefined {
+  if (entry.parseStatus === undefined) return undefined;
+  return entry.scoreSummary?.trim() ? entry.scoreSummary : null;
+}
+
 /**
  * Render `scoreRaw` (and `scoreValue` as a last resort) into the body shown
  * under a `• <title>` bullet in the Games clipboard recap and the per-row
@@ -28,11 +43,17 @@ interface BuildGameSummaryParams {
  * recap preview) stands in for a hand-written `formatShareBody`; everything
  * else falls back to a cleaned copy of the raw text, and finally to the
  * numeric scoreValue if even that yields nothing.
+ *
+ * All of that is the fallback. When the server already computed the row's
+ * text (`entry.parseStatus` is present) it is used as-is and nothing here
+ * parses or formats: one board can mix both kinds of row.
  */
 export function summarizeGameScoreBody(
   game: { title: string; url: string | null; summarySpec?: SummarySpec | null },
-  entry: { scoreValue: number | null; scoreRaw: string | null },
+  entry: SummarizableScore,
 ): string | null {
+  const fromServer = serverSummary(entry);
+  if (fromServer !== undefined) return fromServer;
   return summarizeBody(
     (raw) =>
       detectSharedScore(raw)?.kind ?? detectGameKindForText(`${game.title} ${game.url ?? ""}`),
