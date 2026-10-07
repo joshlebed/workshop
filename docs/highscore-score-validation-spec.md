@@ -164,7 +164,9 @@ no rank.
 ### Parse workstream
 
 - Parser output is `score` with a number, `no_result`, or failure. Store per score: the value,
-  a status (`score`, `no_result`, `unread`), a source (`parsed`, `picked`), the parser version,
+  a status (`score`, `no_result`, `failed` — "unread" in this document and in UI copy is the
+  `failed` status; the storage and API name stays `failed`), a source (`parsed`, `picked`), the
+  parser version,
   and the formatted summary.
 - `adjusted` is derived: source is `picked` and the current parser's result for the stored text
   differs. Recompute it when the parser version changes; return it on standings entries.
