@@ -33,12 +33,18 @@ import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
+import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
+import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { ScoreReactions } from "../components/ScoreReactions";
 import { useScoreReactions } from "../hooks/useScoreReactions";
+import { askScoreDirection } from "../lib/askScoreDirection";
 import { formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
+import { pickedScoreLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
+import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
+import { type ScorePostExtras, useScoreCheck, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
 
 /**
@@ -67,6 +73,9 @@ export default function GameBoard() {
   );
   const [draft, setDraft] = useState("");
   const [editingScore, setEditingScore] = useState(false);
+  // Teach v2: "Fix score" on my own row. Absent without the capability.
+  const teachAvailable = useTeachAvailable();
+  const [fixTarget, setFixTarget] = useState<FixScoreTarget | null>(null);
 
   // The catalog row (title / URL) comes from the My Games query — there's no
   // standalone `GET /v1/games/:id`. Navigation always arrives from the home
@@ -89,30 +98,63 @@ export default function GameBoard() {
     mutationFn: ({
       scoreRaw,
       periodKey,
+      extras,
+      postTo,
     }: {
       scoreRaw: string;
       periodKey: string;
       isEdit: boolean;
+      /** Teach v2: the pick and what the user answered about the preview. */
+      extras?: ScorePostExtras;
+      /** Teach v2: "Post to <other game>" on a wrong-game warning. */
+      postTo?: { id: string; title: string };
     }) => {
-      if (!gameId) throw new Error("missing game id");
-      return upsertGameScore(gameId, { periodKey, scoreRaw }, token);
+      const target = postTo?.id ?? gameId;
+      if (!target) throw new Error("missing game id");
+      return upsertGameScore(target, { periodKey, scoreRaw, ...extras?.body }, token);
     },
-    onSuccess: async (_data, variables) => {
+    onSuccess: async (data, variables) => {
       haptics.medium();
       setDraft("");
       setEditingScore(false);
       // The home card + streak ride on today's My Games query even when the
       // score landed on a past day, so both get refreshed.
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.games.leaderboard(gameId ?? "", variables.periodKey),
-        }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) }),
-      ]);
+      const refresh = () =>
+        Promise.all([
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.games.leaderboard(gameId ?? "", variables.periodKey),
+          }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) }),
+        ]);
+      await refresh();
       showToast({
-        message: variables.isEdit ? "Score updated" : "Score posted",
+        message: variables.postTo
+          ? `Posted to ${variables.postTo.title}`
+          : variables.isEdit
+            ? "Score updated"
+            : "Score posted",
         tone: "success",
       });
+      // A pick that can teach the game does so once the post has landed.
+      const taughtGameId = variables.postTo?.id ?? gameId;
+      if (!taughtGameId) return;
+      const taught = await teachAfterPost({
+        gameId: taughtGameId,
+        periodKey: variables.periodKey,
+        hint: data.teach,
+        scoreDirection: variables.extras?.scoreDirection ?? null,
+        askDirection: askScoreDirection(variables.postTo?.title ?? game?.title ?? "this game"),
+        token,
+      });
+      if (taught) {
+        // A taught game reads texts differently: cached previews are stale.
+        await Promise.all([
+          refresh(),
+          queryClient.invalidateQueries({ queryKey: ["game-score-check"] }),
+        ]);
+      }
+      const message = teachOutcomeMessage(taught, variables.postTo?.title ?? game?.title ?? "");
+      if (message) showToast({ message, tone: "success" });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" });
@@ -226,10 +268,15 @@ export default function GameBoard() {
     setEditingScore(false);
   };
 
-  const onSubmit = () => {
+  const onSubmit = (extras?: ScorePostExtras) => {
     const trimmed = draft.trim();
     if (trimmed.length === 0) return;
-    upsertMutation.mutate({ scoreRaw: trimmed, periodKey: date, isEdit: editingScore });
+    upsertMutation.mutate({
+      scoreRaw: trimmed,
+      periodKey: date,
+      isEdit: editingScore,
+      ...(extras ? { extras } : {}),
+    });
   };
 
   return (
@@ -344,7 +391,24 @@ export default function GameBoard() {
                   draft={draft}
                   baseline={myScore ?? ""}
                   onChangeDraft={setDraft}
+                  gameId={gameId ?? null}
+                  periodKey={date}
+                  today={today}
                   onSubmit={onSubmit}
+                  onPostToOther={(other) => {
+                    const trimmed = draft.trim();
+                    if (trimmed.length === 0) return;
+                    upsertMutation.mutate({
+                      scoreRaw: trimmed,
+                      periodKey: date,
+                      isEdit: false,
+                      postTo: other,
+                      extras: {
+                        body: { wrongGame: { gameId: gameId ?? other.id, choice: "there" } },
+                        scoreDirection: null,
+                      },
+                    });
+                  }}
                   onCancel={() => {
                     setDraft("");
                     setEditingScore(false);
@@ -362,6 +426,17 @@ export default function GameBoard() {
                     setDraft(myEntry.scoreRaw ?? "");
                     setEditingScore(true);
                   }}
+                  {...(teachAvailable && myScore && gameId
+                    ? {
+                        onFix: () =>
+                          setFixTarget({
+                            gameId,
+                            gameTitle: game.title,
+                            periodKey: date,
+                            scoreRaw: myScore,
+                          }),
+                      }
+                    : {})}
                   onClear={async () => {
                     const ok = await confirm({
                       title: isToday
@@ -415,6 +490,7 @@ export default function GameBoard() {
           }}
         />
         <ReportSheet target={reportFlow.target} token={token} onClose={reportFlow.close} />
+        <FixScoreSheet target={fixTarget} today={today} onClose={() => setFixTarget(null)} />
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -426,6 +502,8 @@ interface EntryRowProps {
   isMe: boolean;
   onEdit?: () => void;
   onClear?: () => void;
+  /** Teach v2 "Fix score" — the poster's own row only. */
+  onFix?: () => void;
   onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
   onOpenReactionPicker?: (userId: string) => void;
 }
@@ -436,6 +514,7 @@ function EntryRow({
   isMe,
   onEdit,
   onClear,
+  onFix,
   onReact,
   onOpenReactionPicker,
 }: EntryRowProps) {
@@ -443,6 +522,10 @@ function EntryRow({
   // Same distillation as the home card (and the Lists clipboard recap): a
   // URL-only share formats to nothing → show "Played" rather than the link.
   const body = summarizeGameScoreBody(game, entry);
+  // "adjusted": the player picked this score and the game's parser reads the
+  // text differently. Tapping it shows the text as it was posted.
+  const [showOriginal, setShowOriginal] = useState(false);
+  const picked = pickedScoreLabel(entry);
   // You react to friends' scores, not your own — so the controls only wire up
   // on other people's rows; your own row shows others' reactions read-only.
   const canReact = !isMe && !!onOpenReactionPicker;
@@ -475,8 +558,23 @@ function EntryRow({
             </Text>
           ) : null}
         </View>
-        {onEdit || onClear ? (
+        {onEdit || onClear || onFix ? (
           <View style={styles.scoreActions}>
+            {onFix ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Fix your score"
+                onPress={onFix}
+                testID="game-board-fix-score"
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.scoreActionButton,
+                  pressed && styles.editScorePressed,
+                ]}
+              >
+                <Text style={styles.editScoreLabel}>Fix score</Text>
+              </Pressable>
+            ) : null}
             {onEdit ? (
               <Pressable
                 accessibilityRole="button"
@@ -518,6 +616,36 @@ function EntryRow({
           >
             {body ?? "Played"}
           </Text>
+          {/* A picked score is not necessarily legible in the text above, so
+              say what counts — and flag it while the parser reads otherwise. */}
+          {picked ? (
+            <View style={styles.pickedRow}>
+              <Text variant="label" testID={`game-board-picked-${entry.userId}`}>
+                {picked}
+              </Text>
+              {entry.adjusted ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Adjusted score. Show the original text"
+                  onPress={() => setShowOriginal((shown) => !shown)}
+                  hitSlop={8}
+                  testID={`game-board-adjusted-${entry.userId}`}
+                >
+                  <Text variant="caption" tone="muted" style={styles.adjustedLabel}>
+                    adjusted
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+          {entry.adjusted && showOriginal ? (
+            <Text
+              style={[styles.scoreText, styles.scoreTextMuted]}
+              testID={`game-board-original-${entry.userId}`}
+            >
+              {entry.scoreRaw}
+            </Text>
+          ) : null}
         </View>
         {showReactions ? (
           <ScoreReactions
@@ -545,7 +673,13 @@ interface ScoreComposerProps {
   draft: string;
   baseline: string;
   onChangeDraft: (v: string) => void;
-  onSubmit: () => void;
+  gameId: string | null;
+  /** The day the paste is filed under. */
+  periodKey: string;
+  today: string;
+  /** `extras` is set for a teach v2 account. */
+  onSubmit: (extras?: ScorePostExtras) => void;
+  onPostToOther: (other: { id: string; title: string }) => void;
   onCancel: () => void;
   pending: boolean;
   userName: string | null;
@@ -563,7 +697,11 @@ function ScoreComposer({
   draft,
   baseline,
   onChangeDraft,
+  gameId,
+  periodKey,
+  today,
   onSubmit,
+  onPostToOther,
   onCancel,
   pending,
   userName,
@@ -573,7 +711,12 @@ function ScoreComposer({
   const trimmed = draft.trim();
   const empty = trimmed.length === 0;
   const unchanged = isEdit && trimmed === baseline.trim();
-  const canSubmit = !empty && !unchanged && !pending;
+  // Teach v2: what the post will record, and the picker when nothing read it.
+  // Off (and silent) for an account without the capability.
+  const check = useScoreCheck({ gameId, text: draft, periodKey, entry: "paste", today });
+  const blocked = check.available && !check.canPost;
+  const canSubmit = !empty && !unchanged && !pending && !blocked;
+  const submit = () => onSubmit(check.available ? check.extras() : undefined);
   // On web, Enter posts — results arrive via paste, so a newline keystroke is
   // almost never intentional (Shift+Enter still inserts one). RN-Web's
   // TextInput overwrites any custom onKeyDown with its own handler, which only
@@ -583,7 +726,7 @@ function ScoreComposer({
       ? {
           blurOnSubmit: true,
           onSubmitEditing: () => {
-            if (canSubmit) onSubmit();
+            if (canSubmit) submit();
           },
         }
       : {};
@@ -623,6 +766,11 @@ function ScoreComposer({
         style={styles.pasteInput}
         {...webProps}
       />
+      <ScoreCheckPanel
+        check={check}
+        testID="game-board-check"
+        onPostToOther={(id, title) => onPostToOther({ id, title })}
+      />
       <View style={styles.pasteActions}>
         {isEdit ? (
           <Button
@@ -637,7 +785,7 @@ function ScoreComposer({
         <Button
           label={isEdit ? "Save" : "Post score"}
           size="md"
-          onPress={onSubmit}
+          onPress={submit}
           disabled={!canSubmit}
           loading={pending}
           testID="game-board-paste-submit"
@@ -649,6 +797,13 @@ function ScoreComposer({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas, paddingTop: tokens.space.xl },
+  adjustedLabel: { fontStyle: "italic", textDecorationLine: "underline" },
+  pickedRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: tokens.space.sm,
+    marginTop: tokens.space.xs,
+  },
   headerNav: {
     flexDirection: "row",
     alignItems: "center",

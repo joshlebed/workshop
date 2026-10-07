@@ -245,7 +245,11 @@ from one component tree; shared code lives in `packages/*`. HighScore owns its G
   value import crashes. Pure-runtime constants live in `packages/shared/src/constants.ts`,
   exported via `"./constants"`. Import with
   `import { SHARED_TYPES_VERSION } from "@workshop/shared/constants"`. Add new runtime exports
-  to `constants.ts` (or another non-barrel subpath).
+  to `constants.ts` (or another non-barrel subpath). **A subpath module a client imports must
+  not value-import a sibling** (`import { x } from "./scoreParsing.js"`): Metro fails with
+  `Unable to resolve "./scoreParsing.js"`, while tsc, vitest and the backend are all happy, so
+  only the Metro bundle check (or loading the app) catches it. `import type` from a sibling is
+  fine. `scoreCandidates.ts` carries its own copy of the number tokenizer for this reason.
 - **Shared client code lives in `packages/ui` + `packages/api-client`, not `apps/workshop/src`.**
   `@workshop/ui` is the design system (theme tokens, `Text`/`AnimatedText`, `Sheet`, `Screen`,
   `TagEditor`, `Toast`, `clipboard`) — barrel export, plus focused `./clipboard`, `./navigation`,

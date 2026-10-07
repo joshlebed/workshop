@@ -56,17 +56,23 @@ import {
   setGameScoreSpec,
   upsertGameScore,
 } from "../api/games";
+import { setScoreDirection } from "../api/teach";
 import { DayRail } from "../components/DayRail";
+import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
+import { askScoreDirection } from "../lib/askScoreDirection";
 import { localDateKey } from "../lib/gameDate";
 import { prewarmGameShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
+import { pickedScoreLabel } from "../lib/scoreCheck";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
+import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
+import { type ScorePostExtras, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
 import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
 import { AddGameSheet } from "./games/AddGameSheet";
@@ -114,6 +120,10 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 
   const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
+  // Teach v2: "Fix score" on my own unread row, and the direction control in
+  // the card menu. Both are absent for an account without the capability.
+  const teachAvailable = useTeachAvailable();
+  const [fixTarget, setFixTarget] = useState<FixScoreTarget | null>(null);
   // Admin "Re-teach scoring": remembered while the kebab menu sheet animates
   // out, then handed to the paste sheet in the menu's `onClosed` — never open
   // the second Sheet in the same tick (two stacked Modals wedge iOS).
@@ -374,31 +384,75 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const upsertMutation = useMutation({
     // `taught` (the tap-the-score flow, see GameScorePasteSheet) stores the
     // learned parser on the game first, so this very post parses with it.
+    // `extras` is the teach v2 equivalent: the pick rides on the post itself.
     mutationFn: async ({
       game,
       scoreRaw,
       taught,
+      extras,
     }: {
-      game: Game;
+      game: Pick<Game, "id" | "title">;
       scoreRaw: string;
       taught?: TaughtScoreSpec;
+      extras?: ScorePostExtras;
     }) => {
       if (taught) await setGameScoreSpec(game.id, taught, token);
-      return upsertGameScore(game.id, { periodKey: todayKey, scoreRaw }, token);
+      return upsertGameScore(game.id, { periodKey: todayKey, scoreRaw, ...extras?.body }, token);
     },
-    onSuccess: async (_data, { game }) => {
+    onSuccess: async (data, { game, extras }) => {
       haptics.medium();
       dismiss();
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: gamesKey }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.games.leaderboard(game.id, todayKey),
-        }),
-      ]);
+      const refresh = () =>
+        Promise.all([
+          queryClient.invalidateQueries({ queryKey: gamesKey }),
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.games.leaderboard(game.id, todayKey),
+          }),
+        ]);
+      await refresh();
       showToast({ message: "Score posted", tone: "success" });
+      // A pick that can teach the game does so after the post has landed:
+      // the score is already saved whatever comes of it.
+      const taught = await teachAfterPost({
+        gameId: game.id,
+        periodKey: todayKey,
+        hint: data.teach,
+        scoreDirection: extras?.scoreDirection ?? null,
+        askDirection: askScoreDirection(game.title),
+        token,
+      });
+      if (taught) {
+        // A taught game reads texts differently: cached previews are stale.
+        await Promise.all([
+          refresh(),
+          queryClient.invalidateQueries({ queryKey: ["game-score-check"] }),
+        ]);
+      }
+      const message = teachOutcomeMessage(taught, game.title);
+      if (message) showToast({ message, tone: "success" });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't save score"), tone: "danger" });
+    },
+  });
+
+  // Teach v2: whoever set a game's direction changes it outright; anyone
+  // else's request waits for a second player asking for the same thing.
+  const directionMutation = useMutation({
+    mutationFn: ({ game, to }: { game: Game; to: "asc" | "desc" }) =>
+      setScoreDirection(game.id, to, token),
+    onSuccess: async (data, { game }) => {
+      setMenuGame(null);
+      if (data.applied) await queryClient.invalidateQueries({ queryKey: ["games"] });
+      showToast({
+        message: data.applied
+          ? `${game.title} now ranks ${data.game.scoreDirection === "asc" ? "lower" : "higher"} scores first.`
+          : "Noted. It changes when one more player asks for the same.",
+        tone: "success",
+      });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't change the ranking"), tone: "danger" });
     },
   });
 
@@ -438,6 +492,20 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         rank: entry.rank,
         body: summarizeGameScoreBody(mg.game, entry),
         reactions: entry.reactions,
+        ...(entry.adjusted ? { adjusted: true } : {}),
+        ...(pickedScoreLabel(entry) ? { picked: pickedScoreLabel(entry) ?? "" } : {}),
+        // Only the poster sees "Fix score", and only on a score nothing read.
+        ...(teachAvailable && entry.userId === user?.id && entry.parseStatus === "failed"
+          ? {
+              onFix: () =>
+                setFixTarget({
+                  gameId: mg.gameId,
+                  gameTitle: mg.game.title,
+                  periodKey: viewDate,
+                  scoreRaw: entry.scoreRaw ?? "",
+                }),
+            }
+          : {}),
       }));
       return (
         <StandingsCard
@@ -482,6 +550,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     },
     [
       user?.id,
+      teachAvailable,
       router,
       markPlaying,
       openPasteFor,
@@ -615,8 +684,35 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         // gets the teach chips on a game's first paste (no spec yet). Registry
         // games are read-only for all (mirrors the backend score-spec gate).
         canReteach={!!user?.isAdmin && pasteTarget != null && isGameReteachable(pasteTarget)}
-        onTeach={(game, scoreRaw, taught) => upsertMutation.mutate({ game, scoreRaw, taught })}
-        onSubmit={(game, scoreRaw) => upsertMutation.mutate({ game, scoreRaw })}
+        // The old tap-the-score teach writes a spec; the server refuses that
+        // over a game that already has parse code (taught some other way), so
+        // it is only offered where it can succeed.
+        {...(pasteTarget && (!pasteTarget.hasParser || user?.isAdmin)
+          ? {
+              onTeach: (game: Game, scoreRaw: string, taught: TaughtScoreSpec) =>
+                upsertMutation.mutate({ game, scoreRaw, taught }),
+            }
+          : {})}
+        periodKey={todayKey}
+        onSubmit={(game, scoreRaw, extras) =>
+          upsertMutation.mutate({ game, scoreRaw, ...(extras ? { extras } : {}) })
+        }
+        onPostToOther={(other, scoreRaw) => {
+          // The warning named a game; post there instead. A game outside My
+          // Games is added by the post itself.
+          upsertMutation.mutate({
+            game: other,
+            scoreRaw,
+            ...(pasteTarget
+              ? {
+                  extras: {
+                    body: { wrongGame: { gameId: pasteTarget.id, choice: "there" } },
+                    scoreDirection: null,
+                  },
+                }
+              : {}),
+          });
+        }}
         onClose={dismiss}
       />
 
@@ -641,6 +737,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         }}
       />
       <ReportSheet target={reportFlow.target} token={token} onClose={reportFlow.close} />
+      <FixScoreSheet target={fixTarget} today={todayKey} onClose={() => setFixTarget(null)} />
 
       {/* Card menu — Open game / (admin) Re-teach scoring / Remove. */}
       <Sheet
@@ -672,7 +769,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
                   openExternalUrl(menuGame.game.url);
                 }}
               />
-              {user?.isAdmin && isGameReteachable(menuGame.game) ? (
+              {/* The v1 admin re-teach; teach v2 accounts correct a score instead. */}
+              {user?.isAdmin && !teachAvailable && isGameReteachable(menuGame.game) ? (
                 <>
                   <View style={styles.sheetDivider} />
                   <Button
@@ -685,6 +783,32 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
                       setReteachAfterMenu(menuGame);
                       setMenuGame(null);
                     }}
+                  />
+                </>
+              ) : null}
+              {teachAvailable ? (
+                <>
+                  <View style={styles.sheetDivider} />
+                  <Text variant="caption" tone="muted" testID="game-menu-direction-current">
+                    {menuGame.game.scoreDirection === "asc"
+                      ? "Ranking: lower is better."
+                      : "Ranking: higher is better."}
+                  </Text>
+                  <Button
+                    testID="game-menu-direction"
+                    variant="ghost"
+                    label={
+                      menuGame.game.scoreDirection === "asc"
+                        ? "Change to higher is better"
+                        : "Change to lower is better"
+                    }
+                    loading={directionMutation.isPending}
+                    onPress={() =>
+                      directionMutation.mutate({
+                        game: menuGame.game,
+                        to: menuGame.game.scoreDirection === "asc" ? "desc" : "asc",
+                      })
+                    }
                   />
                 </>
               ) : null}
