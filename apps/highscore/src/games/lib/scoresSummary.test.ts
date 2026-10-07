@@ -282,6 +282,74 @@ describe("summarizeGameScoreBody — per-game formatting", () => {
   });
 });
 
+// Scores the server parsed with the game's stored code arrive with their
+// display text already computed. The client shows it as-is and formats
+// nothing — rows without it (legacy rows, older servers) take the path above.
+describe("summarizeGameScoreBody with a server-computed summary", () => {
+  const tradle = game("g-tradle", "Tradle", "https://tradle.net");
+  const raw = "#Tradle #1558 2/6\n🟩🟩🟩⬜⬜\n🟩🟩🟩🟩🟩\nhttps://tradle.net/";
+
+  it("uses the server's summary instead of formatting the raw text", () => {
+    const body = summarizeGameScoreBody(tradle, {
+      scoreRaw: raw,
+      scoreValue: 2,
+      parseStatus: "score",
+      scoreSummary: "server says 2/6",
+    });
+    expect(body).toBe("server says 2/6");
+  });
+
+  it("shows a failed row's cleaned text, whatever the local formatter would have made of it", () => {
+    // A MapTap share posted to Tradle: locally it would render through the
+    // MapTap formatter; the server stored the cleaned text and no rank.
+    const mapTap = "www.maptap.gg June 11\n94🎉 96🔥 95🏅 91👑 95🏆\nFinal score: 938";
+    const body = summarizeGameScoreBody(tradle, {
+      scoreRaw: mapTap,
+      scoreValue: null,
+      parseStatus: "failed",
+      scoreSummary: mapTap,
+    });
+    expect(body).toBe(mapTap);
+  });
+
+  it("treats a null or blank server summary as nothing to show — not as a miss", () => {
+    for (const scoreSummary of [null, "", "  \n "]) {
+      expect(
+        summarizeGameScoreBody(tradle, {
+          scoreRaw: raw,
+          scoreValue: null,
+          parseStatus: "failed",
+          scoreSummary,
+        }),
+      ).toBe(null);
+    }
+  });
+
+  it("falls back to local formatting when the server sent no parse status", () => {
+    // `scoreSummary` alone is not a server reading; `parseStatus` is the marker.
+    expect(summarizeGameScoreBody(tradle, { scoreRaw: raw, scoreValue: 2 })).toBe("🟩 3·5 2/6");
+    expect(
+      summarizeGameScoreBody(tradle, { scoreRaw: raw, scoreValue: 2, scoreSummary: "stray" }),
+    ).toBe("🟩 3·5 2/6");
+  });
+
+  it("the clipboard recap carries the server's summary", () => {
+    const mine: GameStandingsEntry = {
+      ...entry("me", raw, 2),
+      parseStatus: "score",
+      scoreSummary: "🟩 3·5 2/6 (server)",
+    };
+    const theirs = entry("friend", raw, 2);
+    const recap = buildTodaysGameScoresSummary({
+      shareUrl: SHARE_URL,
+      games: [myGame("g-tradle", "Tradle", "https://tradle.net", [mine, theirs])],
+      selfId: "me",
+      dateKey: "2026-05-27",
+    });
+    expect(recap).toContain("• Tradle\n🟩 3·5 2/6 (server)\n");
+  });
+});
+
 describe("summarizeGameScoreBody with a taught summarySpec", () => {
   const SQUARDLE_RAW = "Squardle #512\nStreak: 14 🔥\n🟩🟩🟨⬜⬜\n🟩🟩🟩🟩🟩\n3/6";
   const taughtSummary = {

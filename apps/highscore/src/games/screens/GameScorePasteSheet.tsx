@@ -46,7 +46,9 @@ import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { WrongGameNotice } from "../components/WrongGameNotice";
+import { pasteSheetCaption } from "../lib/scorePreview";
 import { previewScore } from "../lib/scoreSpecs";
+import { useScorePreview } from "../lib/useScorePreview";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
 export interface TaughtScoreSpec {
@@ -125,10 +127,21 @@ export function GameScorePasteSheet<T extends PasteTarget>({
   const visible = !!item;
   const empty = draft.trim().length === 0;
 
+  // The server's dry run of this draft (`unavailable` for accounts whose
+  // scores the legacy parser handles). When it reads the share, the game is
+  // already taught as far as the server is concerned — even if the client
+  // knows no spec for it — so first-teach is not offered; and while the
+  // answer is still out, neither the chips nor a local guess are shown.
+  const server = useScorePreview(visible ? snapshot?.id : null, draft);
+  const serverPreview = server.state === "ready" ? server.preview : null;
+  const serverUndecided = server.state === "pending";
+  const serverReads = serverPreview !== null && serverPreview.parseStatus !== "failed";
+
   // Teach mode: a game with no parser (first teach — open to everyone) OR an
   // admin re-teaching an existing one (`canReteach`). The caller must also be
   // able to store the result (`onTeach`).
-  const teachable = (!spec || !!canReteach) && !!onTeach && !empty;
+  const firstTeach = !spec && !serverReads && !serverUndecided;
+  const teachable = (firstTeach || !!canReteach) && !!onTeach && !empty;
   const candidates = useMemo(
     () => (teachable ? tokenizeScoreCandidates(draft).slice(0, MAX_CANDIDATES) : []),
     [teachable, draft],
@@ -144,6 +157,9 @@ export function GameScorePasteSheet<T extends PasteTarget>({
     () => (empty || !spec || showTeach ? null : previewScore(draft, spec)),
     [draft, empty, spec, showTeach],
   );
+  // The server's answer, when there is one, is what the post will store; the
+  // local read above is the fallback, and nothing shows while it is still out.
+  const previewCaption = pasteSheetCaption({ server, local: preview, empty, showTeach });
   // A draft edit invalidates the previous tap (offsets moved) — see
   // `editDraft` on the TextInput.
   const learnedSpec = useMemo(
@@ -261,11 +277,9 @@ export function GameScorePasteSheet<T extends PasteTarget>({
           {/* Before the preview and the teach chips: "this looks like another
               game's score" has to be read before "tap your score to rank it". */}
           <WrongGameNotice text={draft} gameId={snapshot.id} gameTitle={snapshot.title} />
-          {preview ? (
+          {previewCaption ? (
             <Text variant="caption" tone="muted" testID="game-paste-preview">
-              {preview.value !== null
-                ? `Recording score: ${preview.value}`
-                : "Couldn't read a score in this. It'll post as “Played”."}
+              {previewCaption}
             </Text>
           ) : null}
           {showTeach ? (

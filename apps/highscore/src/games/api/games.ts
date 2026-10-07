@@ -8,6 +8,7 @@ import type {
   GameDiscoveryResponse,
   GameLeaderboardResponse,
   GameScoreDirection,
+  GameScorePreview,
   GameShareLinkPreview,
   GameShareLinkResponse,
   GamesResponse,
@@ -104,6 +105,38 @@ export function upsertGameScore(
     body,
     token,
   });
+}
+
+const gameScorePreviewResponseSchema = z.object({
+  preview: z.object({
+    parseStatus: z.enum(["score", "no_result", "failed"]),
+    scoreValue: z.number().nullable(),
+    scoreSummary: z.string().nullable(),
+  }),
+});
+
+/**
+ * `POST /v1/games/:id/scores/preview` — what posting this text would store,
+ * without storing it. Only callable when the server says so
+ * (`capabilities.codeParsing` on `GET /v1/games`); it 404s otherwise. Null
+ * when the response isn't the shape we expect: a preview must never be the
+ * thing that breaks posting.
+ */
+export async function previewGameScore(
+  gameId: string,
+  scoreRaw: string,
+  token: string | null,
+  signal?: AbortSignal,
+): Promise<GameScorePreview | null> {
+  const raw = await apiRequest<unknown>({
+    method: "POST",
+    path: `/v1/games/${gameId}/scores/preview`,
+    body: { scoreRaw },
+    token,
+    ...(signal ? { signal } : {}),
+  });
+  const parsed = gameScorePreviewResponseSchema.safeParse(raw);
+  return parsed.success ? parsed.data.preview : null;
 }
 
 /** `DELETE /v1/games/:id/scores/:periodKey` — clear your score for that day. */

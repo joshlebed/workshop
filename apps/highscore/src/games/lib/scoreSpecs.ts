@@ -6,6 +6,7 @@
 
 import type { Item } from "@workshop/shared";
 import { gameDefinitionForKey } from "@workshop/shared/gameRegistry";
+import type { GameScorePreview } from "@workshop/shared/games";
 import {
   evaluateScoreSpec,
   parseFirstNumber,
@@ -60,4 +61,30 @@ export function previewScore(raw: string, spec: ScoreSpec | null): ScorePreview 
     if (result.hadValidRule) return { value: result.value, fromSpec: true };
   }
   return { value: parseFirstNumber(raw), fromSpec: false };
+}
+
+/**
+ * The one-line "what will this post record" caption under the paste input.
+ * `server` is the server's dry run (present only for accounts whose scores
+ * are parsed by stored game code); `local` is the client-side mirror of the
+ * legacy parser. The server's answer wins when there is one: it is what the
+ * post will actually store, and it can tell a loss from an unread share.
+ */
+export function scorePreviewCaption(
+  server: GameScorePreview | null,
+  local: ScorePreview | null,
+): string | null {
+  if (server) {
+    if (server.parseStatus === "score" && server.scoreValue !== null) {
+      return `Recording score: ${server.scoreValue}`;
+    }
+    // A loss ranks last; a share the game's code could not read has no rank.
+    return server.parseStatus === "no_result"
+      ? "No score today. This posts and ranks last."
+      : "Couldn't read a score in this. It'll post without a rank.";
+  }
+  if (!local) return null;
+  return local.value !== null
+    ? `Recording score: ${local.value}`
+    : "Couldn't read a score in this. It'll post as “Played”.";
 }

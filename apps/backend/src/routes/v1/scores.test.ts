@@ -283,6 +283,86 @@ describe("rankEntries (helper)", () => {
     expect(ranked.map((r) => r.userId)).toEqual(["b", "a", "u"]);
   });
 
+  // Rows the game's stored code read carry a `parseStatus`; the order is
+  // scores, then losses in last place, then unread rows with no rank
+  // (docs/highscore-score-validation-spec.md, "Standings order").
+  it("a mixed day: scores by direction, losses ranked last, unread rows unranked", () => {
+    const ranked = rankEntries(
+      [
+        { userId: "unread", scoreValue: null, parseStatus: "failed" },
+        { userId: "loss-1", scoreValue: null, parseStatus: "no_result" },
+        { userId: "four", scoreValue: 4, parseStatus: "score" },
+        { userId: "legacy-null", scoreValue: null },
+        { userId: "two", scoreValue: 2, parseStatus: "score" },
+        { userId: "loss-2", scoreValue: null, parseStatus: "no_result" },
+        { userId: "legacy-three", scoreValue: 3 },
+      ],
+      "asc",
+    );
+    expect(ranked.map((r) => [r.userId, r.rank])).toEqual([
+      ["two", 1],
+      ["legacy-three", 2],
+      ["four", 3],
+      // Both losses share last place: the rank after the three scores.
+      ["loss-1", 4],
+      ["loss-2", 4],
+      // Unread, and a legacy row whose null was never classified: no rank,
+      // in the order they came in.
+      ["unread", null],
+      ["legacy-null", null],
+    ]);
+  });
+
+  it("ranks a loss last whichever direction wins", () => {
+    const entries = [
+      { userId: "loss", scoreValue: null, parseStatus: "no_result" },
+      { userId: "low", scoreValue: 10, parseStatus: "score" },
+      { userId: "high", scoreValue: 900, parseStatus: "score" },
+    ];
+    expect(rankEntries(entries, "desc").map((r) => [r.userId, r.rank])).toEqual([
+      ["high", 1],
+      ["low", 2],
+      ["loss", 3],
+    ]);
+    expect(rankEntries(entries, "asc").map((r) => [r.userId, r.rank])).toEqual([
+      ["low", 1],
+      ["high", 2],
+      ["loss", 3],
+    ]);
+  });
+
+  it("with no scores on the board, every loss is tied at 1 and unread rows stay unranked", () => {
+    const ranked = rankEntries(
+      [
+        { userId: "unread", scoreValue: null, parseStatus: "failed" },
+        { userId: "loss-1", scoreValue: null, parseStatus: "no_result" },
+        { userId: "loss-2", scoreValue: null, parseStatus: "no_result" },
+      ],
+      "asc",
+    );
+    expect(ranked.map((r) => [r.userId, r.rank])).toEqual([
+      ["loss-1", 1],
+      ["loss-2", 1],
+      ["unread", null],
+    ]);
+  });
+
+  it("rows with no parseStatus rank exactly as before stored code existed", () => {
+    // A legacy null is "loss or unread, nobody recorded which": never ranked.
+    const legacy = [
+      { userId: "a", scoreValue: 100 },
+      { userId: "b", scoreValue: null },
+      { userId: "c", scoreValue: 50 },
+      { userId: "d", scoreValue: null },
+    ];
+    expect(rankEntries(legacy, "desc").map((r) => [r.userId, r.rank])).toEqual([
+      ["a", 1],
+      ["c", 2],
+      ["b", null],
+      ["d", null],
+    ]);
+  });
+
   it("ties keep their incoming relative order (stable sort for SQL tiebreaks)", () => {
     const ranked = rankEntries(
       [

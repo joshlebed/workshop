@@ -236,6 +236,24 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
 - **Response fields appear only on rows stored code parsed.** One board can mix both kinds
   (a beta account next to everyone else), so clients fall back per row, not per response. If
   you add a path that returns a score, spread `scoreCodeFields(row)` into it.
+- **Standings order is authored by `rankEntries` (`lib/ranking.ts`), and the client renders
+  it as-is:** scores by direction; then `no_result` rows in last place, all sharing the rank
+  after the last score (three scores → each loss is 4th); then `failed` rows and legacy rows
+  with no value, unranked. A row with no `parse_status` ranks exactly as it did before stored
+  code — a legacy null is "loss or unread, nobody recorded which", so it is never ranked.
+- **The HighScore client shows the server's text and formats nothing when it has it.**
+  `summarizeGameScoreBody` (`apps/highscore/src/games/lib/scoresSummary.ts`) returns
+  `scoreSummary` as-is whenever `parseStatus` is present — standings rows, the board, the
+  friend profile and the clipboard recap all go through it — and only otherwise runs the
+  local registry / summary-spec / cleaned-text chain. `parseStatus` is the marker, not
+  `scoreSummary`: a null summary with a status means "nothing to show" ("Played"). The paste
+  sheet asks the preview endpoint through `useScorePreview` and shows no caption while that
+  is in flight, rather than the local parser's guess. Everything that decides that behaviour
+  is in the React-free `lib/scorePreview.ts`; the app has no component test renderer, so
+  `scorePreview.test.ts` drives it with a real `QueryClient` + `QueryObserver` and only the
+  network call mocked. Put new preview logic there, not in the hook. The friend-profile fields pass through
+  a zod schema in `packages/api-client/src/friends.ts`; a new score field must be added
+  there or it is silently stripped.
 - **A post never fails or hangs on the sandbox.** `resolvePostedScore` waits at most
   `GAME_CODE_BUDGET_MS` (1.5 s; a warm run is ~1 ms). The upsert sets every score column on
   every write, so a re-post under a different mode can't leave a stale status behind.
