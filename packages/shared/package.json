@@ -12,6 +12,8 @@
     "./gameRegistry": "./src/gameRegistry.ts",
     "./linkContent": "./src/linkContent.ts",
     "./scoreParsing": "./src/scoreParsing.ts",
+    "./scoreCandidates": "./src/scoreCandidates.ts",
+    "./scoreShapeFixtures": "./src/scoreShapeFixtures.ts",
     "./summarySpec": "./src/summarySpec.ts",
     "./friends": "./src/friends.ts",
     "./og": "./src/og.ts",

@@ -151,6 +151,11 @@ export async function resolvePostedScore(input: {
   game: DbGame;
   periodKey: string;
   scoreRaw: string;
+  /**
+   * The sandbox's reading of this exact text, when the caller already has it
+   * (the teach write path): used instead of running the code again.
+   */
+  scored?: BudgetedScore;
 }): Promise<PostedScoreColumns> {
   const { game, scoreRaw } = input;
   const legacyValue = parseScoreValue(scoreRaw, specForGame(game));
@@ -164,7 +169,7 @@ export async function resolvePostedScore(input: {
   const mode = codeParsingModeFor(input.userId);
   if (mode === "off") return legacy;
 
-  const scored = await scoreShareWithinBudget(game, scoreRaw);
+  const scored = input.scored ?? (await scoreShareWithinBudget(game, scoreRaw));
   const change = classifyParseChange(legacyValue, scored.parseStatus, scored.scoreValue);
   const common = {
     mode,

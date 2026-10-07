@@ -277,6 +277,19 @@ describe("idempotence", () => {
 describe("registry games created after the seed", () => {
   const client = () => drizzle(db) as unknown as DbClient;
 
+  // These go through the app's query layer, which selects every column the
+  // schema has today — so the database needs the migrations that came after
+  // the two this file is about.
+  beforeAll(async () => {
+    const journal = JSON.parse(readFileSync(`${DRIZZLE_DIR}meta/_journal.json`, "utf8")) as {
+      entries: JournalEntry[];
+    };
+    const catchUpIdx = journal.entries.find((e) => e.tag === CATCH_UP_TAG)?.idx ?? 0;
+    for (const entry of journal.entries) {
+      if (entry.idx > catchUpIdx) await applyMigration(db, entry.tag);
+    }
+  });
+
   it("a catalog game's new row is created with its builtin code and a seed revision", async () => {
     await db.query("DELETE FROM games WHERE game_key = 'strands'");
     const game = await findOrCreateGame(

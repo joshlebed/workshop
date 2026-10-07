@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetConfigForTesting } from "./config.js";
 import {
   buildContentReportNotification,
+  buildDirectionChangedNotification,
   buildFirstScoreNotification,
   buildFriendRequestSentNotification,
   buildFriendshipFormedNotification,
@@ -10,6 +11,7 @@ import {
   buildListArchivedNotification,
   buildListJoinedNotification,
   buildOwnershipTransferredNotification,
+  buildParserTaughtNotification,
   buildScoreSpecTaughtNotification,
   buildSessionsRevokedNotification,
   buildSourceWebhookNotification,
@@ -159,5 +161,55 @@ describe("opsNotificationsEnabled", () => {
   it("is true when the webhook is configured", () => {
     process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
     expect(opsNotificationsEnabled()).toBe(true);
+  });
+});
+
+describe("teach v2 notifications", () => {
+  const base = {
+    gameTitle: "Krillion",
+    version: 3,
+    example: "Krillion #81 🦐 415 🦑🏮🫧 → 415",
+    rowsNewlyRead: 0,
+    rowsChanged: 0,
+    direction: null,
+  } as const;
+
+  it("names who taught which game, the new version, and the example", () => {
+    const n = buildParserTaughtNotification("Josh", { ...base, kind: "reteach" });
+    expect(n.kind).toBe("parser_taught");
+    expect(n.content).toBe(
+      '🧑‍🏫 parser re-taught — Josh re-taught "Krillion" → v3\n> Krillion #81 🦐 415 🦑🏮🫧 → 415',
+    );
+  });
+
+  it("says first teach, direction and how many rows it read", () => {
+    const n = buildParserTaughtNotification("Josh", {
+      ...base,
+      kind: "first",
+      version: 1,
+      direction: "desc",
+      rowsNewlyRead: 4,
+    });
+    expect(n.content).toContain(
+      'Josh taught "Krillion" → v1 (higher is better, 4 unread now read)',
+    );
+  });
+
+  it("marks a switch after a second user agreed", () => {
+    const n = buildParserTaughtNotification("Dag", { ...base, kind: "switch", rowsChanged: 2 });
+    expect(n.content).toContain('Dag switched "Krillion" → v3 (2 re-read)');
+  });
+
+  it("announces a direction change", () => {
+    const n = buildDirectionChangedNotification("Josh", {
+      gameTitle: "Krillion",
+      from: "desc",
+      to: "asc",
+    });
+    expect(n).toEqual({
+      kind: "direction_changed",
+      content:
+        '↕️ score direction changed — Josh set "Krillion" to lower is better (was higher is better)',
+    });
   });
 });

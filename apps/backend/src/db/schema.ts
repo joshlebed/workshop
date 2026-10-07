@@ -488,8 +488,43 @@ export const games = pgTable("games", {
    * `code_version` is lower was parsed by older code.
    */
   codeVersion: integer("code_version").notNull().default(0),
+  /**
+   * Set when two users' confirmed picks contradict each other and no parser
+   * satisfies both (teach v2). Cleared when a later teach or a second agreeing
+   * user settles it. NULL = no open conflict.
+   */
+  parseConflictAt: timestamp("parse_conflict_at", { withTimezone: true }),
+  /**
+   * Who chose `score_direction`. That user may change it outright; anyone
+   * else's change waits for a second user asking for the same one
+   * (`game_direction_requests`). NULL = seeded, or set before teach v2.
+   */
+  directionSetBy: uuid("direction_set_by").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
 });
+
+/**
+ * Direction changes waiting for a second user (teach v2): one row per user
+ * who asked to flip a game's `score_direction` and was not the one who set
+ * it. Two users asking for the same direction apply it; the rows are then
+ * deleted. Cascades on user delete — a request dies with its requester.
+ */
+export const gameDirectionRequests = pgTable(
+  "game_direction_requests",
+  {
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    direction: text("direction").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.gameId, t.userId] }),
+  }),
+);
 
 /**
  * Append-only history of a game's parse / format code: one row per write,
@@ -677,19 +712,39 @@ export const gameScores = pgTable(
     scoreSource: text("score_source"),
     /** `games.code_version` at the time this row was parsed. NULL = legacy. */
     codeVersion: integer("code_version"),
+    /**
+     * The player's pick, when `score_source` is `picked`:
+     * `{ kind: "feature", feature }` (a `ScoreFeature` the server computed from
+     * `score_raw`) or `{ kind: "no_result" }`. Never a client-supplied value.
+     */
+    pick: jsonb("pick"),
+    /**
+     * The pick is a confirmed training example: its text positively matches
+     * the game by label or URL. New parser code must reproduce every such
+     * pick from the last 30 days. Other picks only fix their own row.
+     */
+    pickIsExample: boolean("pick_is_example").notNull().default(false),
+    /**
+     * A stored copy of a derived fact: the row is picked and the game's
+     * current parser returns something else for `score_raw` — friends see
+     * "adjusted". Kept so standings do not run the sandbox per row; re-derived
+     * by `recomputeAdjusted` whenever the pick or the parser version changes.
+     * Never true for an "I didn't finish" pick.
+     */
+    pickAdjusted: boolean("pick_adjusted").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.gameId, t.userId, t.periodKey] }),
     gamePeriodIdx: index("game_scores_game_period_idx").on(t.gameId, t.periodKey),
-    parseStatusCheck: check(
-      "game_scores_parse_status_check",
-      sql`${t.parseStatus} IN ('score', 'no_result', 'failed')`,
-    ),
     scoreSourceCheck: check(
       "game_scores_score_source_check",
       sql`${t.scoreSource} IN ('parsed', 'picked')`,
+    ),
+    parseStatusCheck: check(
+      "game_scores_parse_status_check",
+      sql`${t.parseStatus} IN ('score', 'no_result', 'failed')`,
     ),
   }),
 );
