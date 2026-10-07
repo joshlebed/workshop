@@ -27,6 +27,12 @@
 //   synthesized into a SummarySpec (`@workshop/shared/summarySpec`) — the
 //   taught equivalent of a registry `formatShareBody` — and stored alongside
 //   the parser.
+//
+// For an account with teach v2 (`capabilities.teach`) both of those are
+// replaced by `ScoreCheckPanel`: the server's dry run of the draft ("Score:
+// 944", "No score today…", a wrong-game or same-text warning) and, when
+// nothing read the score, server-computed candidate chips plus "I didn't
+// finish". The pick rides along on the post (`onSubmit`'s `extras`).
 
 import type { GameScoreDirection } from "@workshop/shared/games";
 import {
@@ -45,9 +51,11 @@ import {
 import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { WrongGameNotice } from "../components/WrongGameNotice";
 import { pasteSheetCaption } from "../lib/scorePreview";
 import { previewScore } from "../lib/scoreSpecs";
+import { type ScorePostExtras, useScoreCheck } from "../lib/useScoreCheck";
 import { useScorePreview } from "../lib/useScorePreview";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -89,7 +97,12 @@ interface GameScorePasteSheetProps<T extends PasteTarget> {
    * the default "first teach only" behavior.
    */
   canReteach?: boolean;
-  onSubmit: (item: T, scoreRaw: string) => void;
+  /** The day the paste is filed under (teach v2's same-text and day checks). */
+  periodKey: string;
+  /** `extras` is set for a teach v2 account: the pick and what the user answered. */
+  onSubmit: (item: T, scoreRaw: string, extras?: ScorePostExtras) => void;
+  /** Teach v2's "Post to <other game>" on a wrong-game warning. */
+  onPostToOther?: (game: { id: string; title: string }, scoreRaw: string) => void;
   onClose: () => void;
 }
 
@@ -103,7 +116,9 @@ export function GameScorePasteSheet<T extends PasteTarget>({
   spec,
   onTeach,
   canReteach,
+  periodKey,
   onSubmit,
+  onPostToOther,
   onClose,
 }: GameScorePasteSheetProps<T>) {
   const [snapshot, setSnapshot] = useState<T | null>(item);
@@ -132,7 +147,17 @@ export function GameScorePasteSheet<T extends PasteTarget>({
   // already taught as far as the server is concerned — even if the client
   // knows no spec for it — so first-teach is not offered; and while the
   // answer is still out, neither the chips nor a local guess are shown.
-  const server = useScorePreview(visible ? snapshot?.id : null, draft);
+  // Teach v2: the server's dry run plus the candidate picker. When it is on
+  // for the account it owns everything under the input, and the legacy
+  // preview / teach chips below stay off (and make no requests).
+  const check = useScoreCheck({
+    gameId: visible ? snapshot?.id : null,
+    text: draft,
+    periodKey,
+    entry: "paste",
+    today: periodKey,
+  });
+  const server = useScorePreview(visible && !check.available ? snapshot?.id : null, draft);
   const serverPreview = server.state === "ready" ? server.preview : null;
   const serverUndecided = server.state === "pending";
   const serverReads = serverPreview !== null && serverPreview.parseStatus !== "failed";
@@ -141,7 +166,7 @@ export function GameScorePasteSheet<T extends PasteTarget>({
   // admin re-teaching an existing one (`canReteach`). The caller must also be
   // able to store the result (`onTeach`).
   const firstTeach = !spec && !serverReads && !serverUndecided;
-  const teachable = (firstTeach || !!canReteach) && !!onTeach && !empty;
+  const teachable = (firstTeach || !!canReteach) && !!onTeach && !empty && !check.available;
   const candidates = useMemo(
     () => (teachable ? tokenizeScoreCandidates(draft).slice(0, MAX_CANDIDATES) : []),
     [teachable, draft],
@@ -159,7 +184,10 @@ export function GameScorePasteSheet<T extends PasteTarget>({
   );
   // The server's answer, when there is one, is what the post will store; the
   // local read above is the fallback, and nothing shows while it is still out.
-  const previewCaption = pasteSheetCaption({ server, local: preview, empty, showTeach });
+  // Teach v2 accounts get `ScoreCheckPanel` instead of this caption.
+  const previewCaption = check.available
+    ? null
+    : pasteSheetCaption({ server, local: preview, empty, showTeach });
   // A draft edit invalidates the previous tap (offsets moved) — see
   // `editDraft` on the TextInput.
   const learnedSpec = useMemo(
@@ -224,9 +252,11 @@ export function GameScorePasteSheet<T extends PasteTarget>({
     setLineOverrides({});
   };
 
+  const blocked = check.available && !check.canPost;
   const submit = () => {
-    if (!snapshot || empty || pending) return;
-    if (taught && onTeach) onTeach(snapshot, draft.trim(), taught);
+    if (!snapshot || empty || pending || blocked) return;
+    if (check.available) onSubmit(snapshot, draft.trim(), check.extras());
+    else if (taught && onTeach) onTeach(snapshot, draft.trim(), taught);
     else onSubmit(snapshot, draft.trim());
   };
 
@@ -276,7 +306,20 @@ export function GameScorePasteSheet<T extends PasteTarget>({
           />
           {/* Before the preview and the teach chips: "this looks like another
               game's score" has to be read before "tap your score to rank it". */}
-          <WrongGameNotice text={draft} gameId={snapshot.id} gameTitle={snapshot.title} />
+          {check.available ? (
+            <ScoreCheckPanel
+              check={check}
+              testID="game-paste-check"
+              {...(onPostToOther
+                ? {
+                    onPostToOther: (id: string, title: string) =>
+                      onPostToOther({ id, title }, draft.trim()),
+                  }
+                : {})}
+            />
+          ) : (
+            <WrongGameNotice text={draft} gameId={snapshot.id} gameTitle={snapshot.title} />
+          )}
           {previewCaption ? (
             <Text variant="caption" tone="muted" testID="game-paste-preview">
               {previewCaption}
@@ -362,7 +405,7 @@ export function GameScorePasteSheet<T extends PasteTarget>({
             <Button
               label="Post score"
               onPress={submit}
-              disabled={empty || pending}
+              disabled={empty || pending || blocked}
               loading={pending}
               testID="game-paste-submit"
             />

@@ -15,6 +15,8 @@ import {
   View,
 } from "react-native";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
+import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
+import { askScoreDirection } from "../lib/askScoreDirection";
 import { localDateKey } from "../lib/gameDate";
 import { recognizedGameLabel, recognizedGameTarget } from "../lib/recognition";
 import {
@@ -23,7 +25,15 @@ import {
   pickSuggestedGameTarget,
   type ShareGameTarget,
 } from "../lib/shareScoreDetection";
+import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { useRecognizedGame } from "../lib/useRecognizedGame";
+import {
+  type ScoreCheck,
+  type ScorePostExtras,
+  useScoreCheck,
+  useTeachAvailable,
+} from "../lib/useScoreCheck";
+import { useSharePreview } from "../lib/useSharePreview";
 import { useGamesRuntime } from "../runtime";
 
 // The Games-surface score picker for the share flow (the leaderboard-list
@@ -61,7 +71,17 @@ export default function PickGame() {
   // with stored scores, including ones the registry has never heard of. Null
   // for everyone else and whenever it has no answer (yet) — the registry
   // detection above stays the behaviour then.
-  const recognized = useRecognizedGame(scoreDraft);
+  //
+  // Teach v2 accounts ask once for both the game and what posting there would
+  // record (`POST /v1/games/score-preview`); recognition is not asked again.
+  const teachAvailable = useTeachAvailable();
+  const shared = useSharePreview(scoreDraft, today);
+  const recognizedAlone = useRecognizedGame(teachAvailable ? "" : scoreDraft);
+  const recognized = teachAvailable
+    ? shared?.kind === "preview"
+      ? shared.match
+      : null
+    : recognizedAlone;
   const detected = recognized ? { gameLabel: recognizedGameLabel(recognized) } : detectedScore;
 
   // Where a detected score posts: the matching My Games row when there is one,
@@ -74,25 +94,59 @@ export default function PickGame() {
     [recognized, detectedScore, myGames],
   );
   const suggestionLoading = !!detected && !!token && myGamesQuery.isPending && !suggestion;
+  // Teach v2: what the one-tap post will record, and the picker when nothing
+  // read the score. Checked against the catalog game even when it is not in
+  // My Games yet (posting adds it).
+  const check = useScoreCheck({
+    gameId: recognized?.game.id ?? suggestion?.gameId ?? null,
+    text: scoreDraft,
+    periodKey: today,
+    entry: "share",
+    today,
+  });
+  // The server refused the text (a link or a title with no result in it).
+  const serverResultless = shared?.kind === "rejected";
 
   const submitScore = useMutation({
-    mutationFn: async (target: ShareGameTarget) => {
+    mutationFn: async (target: ShareGameTarget & { extras?: ScorePostExtras }) => {
       const gameId = target.gameId ?? (await addGame(target.url, token)).game.id;
-      return upsertGameScore(gameId, { periodKey: today, scoreRaw: scoreDraft.trim() }, token);
+      const result = await upsertGameScore(
+        gameId,
+        { periodKey: today, scoreRaw: scoreDraft.trim(), ...target.extras?.body },
+        token,
+      );
+      return { result, gameId };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ result, gameId }, target) => {
       haptics.medium();
       await queryClient.invalidateQueries({ queryKey: ["games"] });
       showToast({ message: "Score posted", tone: "success" });
       router.replace(routes.home as Href);
+      // A pick that can teach the game does so after the post has landed.
+      const taught = await teachAfterPost({
+        gameId,
+        periodKey: today,
+        hint: result.teach,
+        scoreDirection: target.extras?.scoreDirection ?? null,
+        askDirection: askScoreDirection(target.title),
+        token,
+      });
+      if (taught) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["games"] }),
+          queryClient.invalidateQueries({ queryKey: ["game-score-check"] }),
+        ]);
+      }
+      const message = teachOutcomeMessage(taught, target.title);
+      if (message) showToast({ message, tone: "success" });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't post score"), tone: "danger" });
     },
   });
 
-  const postScore = (target: ShareGameTarget) => {
-    if (isResultlessShare(scoreDraft)) {
+  const postScore = (target: ShareGameTarget & { extras?: ScorePostExtras }) => {
+    if (isResultlessShare(scoreDraft) || serverResultless) {
       showToast({
         message: "That's just a link. Paste your result text to post a score.",
         tone: "danger",
@@ -156,9 +210,11 @@ export default function PickGame() {
             suggestion={suggestion}
             loading={suggestionLoading}
             pending={submitScore.isPending}
-            resultless={resultlessDraft}
+            resultless={resultlessDraft || serverResultless}
+            check={check}
             onPost={() => {
-              if (suggestion) postScore(suggestion);
+              if (!suggestion) return;
+              postScore(check.available ? { ...suggestion, extras: check.extras() } : suggestion);
             }}
           />
         ) : null}
@@ -249,6 +305,7 @@ function DetectedScoreSuggestion({
   loading,
   pending,
   resultless,
+  check,
   onPost,
 }: {
   label: string;
@@ -256,6 +313,8 @@ function DetectedScoreSuggestion({
   loading: boolean;
   pending: boolean;
   resultless: boolean;
+  /** Teach v2: the dry run of this post and the picker. Renders nothing without it. */
+  check: ScoreCheck;
   onPost: () => void;
 }) {
   // The share carried the game's link but not the result text. Don't offer
@@ -312,12 +371,13 @@ function DetectedScoreSuggestion({
         <Button
           label="Post"
           size="md"
-          disabled={pending}
+          disabled={pending || (check.available && !check.canPost)}
           loading={pending}
           onPress={onPost}
           testID="share-game-post-suggestion"
         />
       </View>
+      <ScoreCheckPanel check={check} testID="share-game-check" />
     </View>
   );
 }

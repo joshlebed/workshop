@@ -45,6 +45,12 @@ export interface StandingsRow {
   body: string | null;
   /** Emoji reactions on this score (Games surface only). Undefined → none rendered. */
   reactions?: ScoreReactionSummary[];
+  /** The player picked this score and the game's parser reads the text differently. */
+  adjusted?: boolean;
+  /** "Score: 80" / "Didn't finish" when the score is the player's own pick. */
+  picked?: string;
+  /** "Fix score" — set only on the viewer's own row that nothing could read. */
+  onFix?: () => void;
 }
 
 export interface StandingsFace {
@@ -390,12 +396,28 @@ function PlayerRow({
         >
           {row.body ?? "Played"}
         </Text>
+        {row.picked || row.adjusted ? (
+          <Text style={styles.adjusted} testID={`game-card-adjusted-${row.userId}`}>
+            {[row.picked, row.adjusted ? "adjusted" : null].filter(Boolean).join(" · ")}
+          </Text>
+        ) : null}
         {isMe ? (
           <View style={styles.youPill}>
             <Text style={styles.youPillText}>you</Text>
           </View>
         ) : null}
       </Pressable>
+      {row.onFix ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={row.onFix}
+          hitSlop={8}
+          style={styles.fixLink}
+          testID={`game-card-fix-${row.userId}`}
+        >
+          <Text style={styles.fixLinkText}>Fix score</Text>
+        </Pressable>
+      ) : null}
       {showReactions ? (
         <View style={styles.reactionsWrap}>
           <ScoreReactions
@@ -601,6 +623,17 @@ const styles = StyleSheet.create({
   // Reactions ride to the right of the score on the same line — no extra row
   // height. They keep their natural width; the score line flexes to fill.
   reactionsWrap: { flexShrink: 0 },
+  adjusted: {
+    fontSize: tokens.font.size.xs,
+    color: tokens.text.muted,
+    fontStyle: "italic",
+  },
+  fixLink: { flexShrink: 0, paddingHorizontal: tokens.space.xs },
+  fixLinkText: {
+    fontSize: tokens.font.size.sm,
+    color: tokens.accent.default,
+    textDecorationLine: "underline",
+  },
   playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
   rankSlot: {
     width: RANK_SLOT,

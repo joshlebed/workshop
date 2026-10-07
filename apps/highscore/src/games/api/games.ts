@@ -14,6 +14,7 @@ import type {
   GamesResponse,
   SetGameScoreSpecResponse,
   SetScoreReactionResponse,
+  UpsertGameScoreRequest,
   UpsertGameScoreResponse,
 } from "@workshop/shared/games";
 import type { ScoreSpec } from "@workshop/shared/scoreParsing";
@@ -96,7 +97,10 @@ export function moveGame(
 
 export function upsertGameScore(
   gameId: string,
-  body: { periodKey: string; scoreRaw: string },
+  // `pick` and the rest are teach v2 only; a server without it ignores them.
+  body: { periodKey: string; scoreRaw: string } & Partial<
+    Omit<UpsertGameScoreRequest, "periodKey" | "scoreRaw">
+  >,
   token: string | null,
 ): Promise<UpsertGameScoreResponse> {
   return apiRequest<UpsertGameScoreResponse>({
