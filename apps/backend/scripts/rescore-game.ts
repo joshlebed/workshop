@@ -10,6 +10,13 @@
  * old `backfill-score-regex.ts`, which carried its own (drifted) copy of the
  * parser; this one imports the real parser, so it cannot drift.
  *
+ * It only touches rows the LEGACY parser wrote (`parse_status IS NULL`). A row
+ * with a `parse_status` was read by the game's stored code (lib/gameCode):
+ * its value, status, summary and code version describe one reading, and
+ * overwriting the value alone from the legacy parser would leave them
+ * contradicting each other. Those rows are counted and skipped; re-reading
+ * them is the job of the stored-code path, not this script.
+ *
  * Idempotent — re-running won't double-write. Safe to point at prod.
  *
  *   AWS_PROFILE=workshop-prod DATABASE_URL=$(./scripts/db-url.sh) \
@@ -32,6 +39,8 @@ interface Tally {
   updated: number;
   unchanged: number;
   cleared: number;
+  /** Rows read by stored game code — never rewritten here. */
+  skipped: number;
 }
 
 function arg(name: string): string | null {
@@ -56,12 +65,17 @@ async function rescoreGame(
       periodKey: gameScores.periodKey,
       scoreRaw: gameScores.scoreRaw,
       scoreValue: gameScores.scoreValue,
+      parseStatus: gameScores.parseStatus,
     })
     .from(gameScores)
     .where(eq(gameScores.gameId, game.id));
   console.log(`[rescore] ${game.gameKey ?? game.title}: ${rows.length} game_scores rows`);
 
   for (const row of rows) {
+    if (row.parseStatus !== null) {
+      tally.skipped++;
+      continue;
+    }
     const parsed = parseScoreValue(row.scoreRaw, spec);
     const existing = row.scoreValue === null ? null : Number(row.scoreValue);
     if (parsed === existing) {
@@ -96,7 +110,7 @@ async function main() {
   if (dryRun) console.log("[rescore] dry run — no writes will happen");
 
   const db = getDb();
-  const tally: Tally = { updated: 0, unchanged: 0, cleared: 0 };
+  const tally: Tally = { updated: 0, unchanged: 0, cleared: 0, skipped: 0 };
 
   const targets = await (gameKey
     ? db.select().from(games).where(eq(games.gameKey, gameKey))
@@ -116,7 +130,7 @@ async function main() {
   }
 
   console.log(
-    `[rescore] done: updated=${tally.updated} cleared=${tally.cleared} unchanged=${tally.unchanged}`,
+    `[rescore] done: updated=${tally.updated} cleared=${tally.cleared} unchanged=${tally.unchanged} skipped(read by stored code)=${tally.skipped}`,
   );
 }
 

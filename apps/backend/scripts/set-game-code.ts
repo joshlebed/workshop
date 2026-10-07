@@ -22,10 +22,12 @@
  *   --revert=<version>      use the code that version held, as a new version
  *   --examples=<file.json>  extra labelled shares: [{ "raw", "expected", "expectedSummary"? }]
  *   --dry                   validate and report; write nothing
- *   --expect-changes=<n>    write even though exactly <n> stored scores read differently —
- *                           for a game whose stored values are known to be wrong. Run
- *                           --dry first, read the list, then pass the count it printed.
- *   --by=<email>            your account email (recorded as the author)
+ *   --accept-changes=<id>   write even though some stored scores read differently — for a
+ *                           game whose stored values are known to be wrong. Run --dry
+ *                           first, read the list, then pass the id it printed. The id
+ *                           names that exact set of differences: if a score is posted or
+ *                           edited in between, it no longer matches and nothing is written.
+ *   --by=<email>            your account email (recorded as the author; must be an admin)
  *   --note="<why>"          recorded on the revision
  */
 
@@ -34,6 +36,7 @@ import { desc, eq, or } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../src/db/client.js";
 import { type DbGame, gameCodeRevisions, games, users } from "../src/db/schema.js";
+import { isAdminUser } from "../src/lib/admin.js";
 import {
   applyGameCodeChange,
   type CandidateCode,
@@ -171,14 +174,22 @@ async function main() {
   printMismatches("stored scores the new code reads differently", plan.storedMismatches);
   printMismatches("examples the new code gets wrong", plan.exampleMismatches);
 
-  const expectChanges = Number(arg("--expect-changes") ?? 0);
-  const decision = decideGameCodeChange(plan, expectChanges);
+  const accepted = arg("--accept-changes");
+  const decision = decideGameCodeChange(plan, accepted);
   if (!decision.write) {
+    const differing = plan.storedMismatches.length;
+    const staleAcceptance =
+      differing === 0
+        ? "--accept-changes was given, but no stored score reads differently any more — re-run --dry"
+        : `the stored scores that read differently are not the set you accepted (it is now --accept-changes=${plan.storedMismatchFingerprint}) — review the list above again`;
     const why = {
       sandbox_unavailable:
         "the sandbox could not run the code (worker failed to start or died) — nothing was checked; this says nothing about the code, try again",
       fails_examples: "the code fails its examples",
-      changes_stored_scores: `${plan.storedMismatches.length} stored scores read differently (pass --expect-changes=${plan.storedMismatches.length} if every one of them is a stored value that was wrong)`,
+      changes_stored_scores:
+        accepted === null
+          ? `${differing} stored scores read differently (if every one of them is a stored value that was wrong, pass --accept-changes=${plan.storedMismatchFingerprint})`
+          : staleAcceptance,
     }[decision.reason];
     console.log(`\nrefusing to write: ${why}`);
     process.exitCode = 1;
@@ -187,15 +198,20 @@ async function main() {
   console.log(
     decision.acceptedChanges === 0
       ? "validation passed"
-      : `\n${decision.acceptedChanges} stored scores read differently, as declared by --expect-changes`,
+      : `\n${decision.acceptedChanges} stored scores read differently, as accepted by --accept-changes`,
   );
   if (flag("--dry")) return console.log("--dry: nothing written");
 
   const email = arg("--by");
   const note = arg("--note");
   if (!email || !note) fail('writing needs --by=<your account email> and --note="<why>"');
-  const [author] = await getDb().select({ id: users.id }).from(users).where(eq(users.email, email));
+  const [author] = await getDb()
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(eq(users.email, email));
   if (!author) fail(`no user with email ${email}`);
+  // The revision names its author; only an admin account may be one.
+  if (!isAdminUser(author)) fail(`${email} is not an admin account`);
 
   const { version } = await applyGameCodeChange(getDb(), {
     gameId: game.id,

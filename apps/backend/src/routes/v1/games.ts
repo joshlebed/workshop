@@ -692,6 +692,7 @@ gameRoutes.put(
       scoreValue: scored.scoreValue === null ? null : String(scored.scoreValue),
       parseStatus: scored.parseStatus,
       scoreSummary: scored.scoreSummary,
+      scoreSource: scored.scoreSource,
       codeVersion: scored.codeVersion,
     };
 

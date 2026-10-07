@@ -129,7 +129,8 @@ lone legacy "Geo games" row is hidden from `GET /v1/lists`. The legacy `item_sco
 was **dropped** (migration `0038`, applied to prod) once it was proven 100% mirrored into
 `game_scores`; `rescore-game.ts` now operates on `game_scores` only.
 **Changing a game's scoring rule only fixes new posts** unless you also run
-`scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first)
+`scripts/rescore-game.ts` (`--game-key=<key>` / `--game-id=<uuid>` / `--all`; `--dry` first;
+it rewrites only rows the legacy parser wrote and skips any row with a `parse_status`)
 — it replays the current parser over stored `score_raw` in both `game_scores` and legacy
 `item_scores`, importing the real parser so it can't drift. The client mirrors the same
 distillation for _display_: Games standings rows and the Games clipboard recap render through
@@ -236,9 +237,20 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   (a beta account next to everyone else), so clients fall back per row, not per response. If
   you add a path that returns a score, spread `scoreCodeFields(row)` into it.
 - **A post never fails or hangs on the sandbox.** `resolvePostedScore` waits at most
-  `GAME_CODE_BUDGET_MS` (1.5 s; a warm run is ~1 ms) and past that stores `failed` with the
-  cleaned raw text. The upsert sets all four columns on every write, so a re-post under a
-  different mode can't leave a stale status behind.
+  `GAME_CODE_BUDGET_MS` (1.5 s; a warm run is ~1 ms). The upsert sets every score column on
+  every write, so a re-post under a different mode can't leave a stale status behind.
+- **A sandbox failure is not a code failure, and they store different things.** If the code
+  gave a verdict — threw, returned junk, ran out of its budget, had to be killed — the row is
+  `failed`. If the SANDBOX never answered (`sandbox_unavailable`, or over the 1.5 s cap) and
+  the game has a legacy spec (registry or taught), the spec's reading is kept instead of
+  being thrown away: a legacy-shaped row (no status, no summary, no source) with
+  `code_version = 0`, plus one `kind: "game_code_unavailable"` error line. With no legacy spec
+  the row is `failed`. `parseFirstNumber` is never used on this path — `legacySpecReading`
+  goes to `evaluateScoreSpec` directly because `parseScoreValue` would fall back to it.
+- **`code_version` on a score reads three ways:** NULL = code parsing was not in play; `0`
+  with no status = it was on but the sandbox was down and the legacy spec's value was kept;
+  otherwise the code version that read the row (`0` with `failed` = the game had no code).
+  `score_source` is `parsed` on every row stored code read, NULL otherwise.
 - **`POST /v1/games/:id/scores/preview`** is the paste sheet's dry run (same code, same
   budget, stores nothing); 404 unless the caller's mode is `on`. Clients read
   `capabilities.codeParsing` on `GET /v1/games` instead of probing.
@@ -254,8 +266,10 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   `--show`, `--dry`, `--parse=<file>`, `--format=<file>`, `--revert=<version>`). It refuses to
   write unless the code reproduces every stored score with a known result — rows stored code
   parsed, and legacy rows that hold a number; a legacy NULL is "loss or unread" and constrains
-  nothing. `--expect-changes=<n>` is the escape hatch for a game whose stored values were
-  wrong (Krillion's puzzle numbers): run `--dry`, read the list, pass the exact count.
+  nothing. `--accept-changes=<id>` is the escape hatch for a game whose stored values were
+  wrong (Krillion's puzzle numbers): run `--dry`, read the list, pass the id it prints. The id
+  is a hash of the exact differences (rows, text, old and new reading), so a score posted or
+  edited between the dry run and the write invalidates it. `--by` must be an admin account.
   The yes/no is `decideGameCodeChange` in `lib/gameCode/admin.ts` (the teach flow should
   call the same function): a sandbox that could not run the code is never a yes, because an
   empty mismatch list from a validation that did not run proves nothing.

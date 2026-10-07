@@ -209,30 +209,70 @@ describe("planGameCodeChange", () => {
 describe("decideGameCodeChange", () => {
   const krillion = () => gameId("krillion.io");
 
-  it("writes a clean plan, and a plan whose differences were declared by exact count", async () => {
+  it("writes a clean plan, and a plan whose exact differences the author accepted", async () => {
     const id = await krillion();
+    const candidate = { parseCode: krillionCode, formatCode: null };
     await seedScores(id, [
       [0, "Krillion #77 🦐\n305\n\n🏮🐟🫧", 77, null],
       [1, "Krillion #78 🦐\n315\n\n🦑🫧🏮", 78, null],
     ]);
-    const plan = await planGameCodeChange(
-      db,
-      { id },
-      { parseCode: krillionCode, formatCode: null },
-    );
+    const plan = await planGameCodeChange(db, { id }, candidate);
+    const reviewed = plan.storedMismatchFingerprint;
+    expect(reviewed).toMatch(/^[0-9a-f]{12}$/);
     expect(decideGameCodeChange(plan)).toEqual({ write: false, reason: "changes_stored_scores" });
-    expect(decideGameCodeChange(plan, 1)).toEqual({
+    expect(decideGameCodeChange(plan, "000000000000")).toEqual({
       write: false,
       reason: "changes_stored_scores",
     });
-    expect(decideGameCodeChange(plan, 2)).toEqual({ write: true, acceptedChanges: 2 });
+    expect(decideGameCodeChange(plan, reviewed)).toEqual({ write: true, acceptedChanges: 2 });
+    // The same plan made again has the same id: it names the set, not the run.
+    const again = await planGameCodeChange(db, { id }, candidate);
+    expect(again.storedMismatchFingerprint).toBe(reviewed);
+
     await seedScores(id, []);
-    const clean = await planGameCodeChange(
-      db,
-      { id },
-      { parseCode: krillionCode, formatCode: null },
-    );
+    const clean = await planGameCodeChange(db, { id }, candidate);
+    expect(clean.storedMismatchFingerprint).toBe(null);
     expect(decideGameCodeChange(clean)).toEqual({ write: true, acceptedChanges: 0 });
+    // An acceptance for differences that are no longer there is stale.
+    expect(decideGameCodeChange(clean, reviewed)).toEqual({
+      write: false,
+      reason: "changes_stored_scores",
+    });
+  });
+
+  it("an acceptance does not carry over to a different set of the same size", async () => {
+    // Between the operator's --dry and their write, one player's row goes
+    // and another player posts: still two differing rows, not the two that
+    // were reviewed.
+    const id = await krillion();
+    const candidate = { parseCode: krillionCode, formatCode: null };
+    await seedScores(id, [
+      [0, "Krillion #77 🦐\n305\n\n🏮🐟🫧", 77, null],
+      [1, "Krillion #78 🦐\n315\n\n🦑🫧🏮", 78, null],
+    ]);
+    const reviewed = (await planGameCodeChange(db, { id }, candidate)).storedMismatchFingerprint;
+
+    await seedScores(id, [
+      [0, "Krillion #77 🦐\n305\n\n🏮🐟🫧", 77, null],
+      [2, "Krillion #79 🦐\n990\n\n🦑", 79, null],
+    ]);
+    const differentRow = await planGameCodeChange(db, { id }, candidate);
+    expect(differentRow.storedMismatches).toHaveLength(2);
+    expect(differentRow.storedMismatchFingerprint).not.toBe(reviewed);
+    expect(decideGameCodeChange(differentRow, reviewed)).toEqual({
+      write: false,
+      reason: "changes_stored_scores",
+    });
+
+    // Same rows, but one player edited their text: also not what was reviewed.
+    await seedScores(id, [
+      [0, "Krillion #77 🦐\n306\n\n🏮🐟🫧", 77, null],
+      [1, "Krillion #78 🦐\n315\n\n🦑🫧🏮", 78, null],
+    ]);
+    const editedText = await planGameCodeChange(db, { id }, candidate);
+    expect(editedText.storedMismatches).toHaveLength(2);
+    expect(editedText.storedMismatchFingerprint).not.toBe(reviewed);
+    await seedScores(id, []);
   });
 
   it("never writes when the sandbox could not run the code — an empty mismatch list proves nothing", async () => {
@@ -253,12 +293,16 @@ describe("decideGameCodeChange", () => {
 
     expect(plan).toMatchObject({ unavailable: true, ok: false, storedMismatches: [] });
     expect(decideGameCodeChange(plan)).toEqual({ write: false, reason: "sandbox_unavailable" });
-    // Not even with the count an operator might have declared.
-    expect(decideGameCodeChange(plan, 0)).toEqual({ write: false, reason: "sandbox_unavailable" });
+    // Not even with an acceptance the operator made earlier.
+    expect(plan.storedMismatchFingerprint).toBe(null);
+    expect(decideGameCodeChange(plan, "abcdef012345")).toEqual({
+      write: false,
+      reason: "sandbox_unavailable",
+    });
     await seedScores(id, []);
   });
 
-  it("refuses code that fails the operator's examples whatever was declared", async () => {
+  it("refuses code that fails the operator's examples whatever was accepted", async () => {
     const id = await krillion();
     const plan = await planGameCodeChange(
       db,
@@ -266,7 +310,10 @@ describe("decideGameCodeChange", () => {
       { parseCode: krillionCode, formatCode: null },
       [{ raw: "Krillion #83 🦐\n77", expected: 83 }],
     );
-    expect(decideGameCodeChange(plan, 1)).toEqual({ write: false, reason: "fails_examples" });
+    expect(decideGameCodeChange(plan, plan.storedMismatchFingerprint)).toEqual({
+      write: false,
+      reason: "fails_examples",
+    });
   });
 });
 

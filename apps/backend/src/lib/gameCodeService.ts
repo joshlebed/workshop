@@ -4,6 +4,7 @@
 
 import { formatShareBodyFallback } from "@workshop/shared/gameRegistry";
 import type { GameScorePreview, ScoreCodeFields } from "@workshop/shared/games";
+import { evaluateScoreSpec } from "@workshop/shared/scoreParsing";
 import type { DbGame } from "../db/schema.js";
 import { getConfig } from "./config.js";
 import { parseScoreValue, specForGame } from "./gameCatalog.js";
@@ -90,7 +91,40 @@ interface PostedScoreColumns {
   /** NULL unless stored code was authoritative for this post. */
   parseStatus: ParseStatus | null;
   scoreSummary: string | null;
+  /** `parsed` when stored code read the row; NULL on legacy-shaped rows. */
+  scoreSource: "parsed" | null;
+  /**
+   * The game's code version when stored code read the row; 0 when code
+   * parsing was on but the sandbox was unavailable and the legacy spec's
+   * reading was kept instead; NULL when code parsing was not in play.
+   */
   codeVersion: number | null;
+}
+
+/**
+ * What the game's legacy SPEC (registry or taught) reads from a share — and
+ * only the spec: `undefined` when the game has none (or its rules are all
+ * malformed). Unlike `parseScoreValue`, this never falls back to the first
+ * number in the text; that guess must not reach a row written with code
+ * parsing on.
+ */
+function legacySpecReading(game: DbGame, scoreRaw: string): number | null | undefined {
+  const spec = specForGame(game);
+  if (!spec) return undefined;
+  const result = evaluateScoreSpec(spec, scoreRaw);
+  return result.hadValidRule ? result.value : undefined;
+}
+
+/**
+ * True when the stored code never got to give a verdict: the sandbox could
+ * not run it, or did not answer inside the budget. A verdict the code DID
+ * give — it threw, ran out of budget, returned junk — is not this.
+ */
+function sandboxFailedToAnswer(scored: BudgetedScore): boolean {
+  return (
+    scored.capped ||
+    (scored.parse.kind === "failed" && scored.parse.reason === "sandbox_unavailable")
+  );
 }
 
 /**
@@ -101,6 +135,13 @@ interface PostedScoreColumns {
  *   one `kind: "game_code_shadow"` line records how it compares.
  * - `on`: the stored code is authoritative — its status, value and summary
  *   are stored (the legacy parser still runs, for the same log line).
+ *
+ * One exception under `on`: if the SANDBOX failed (unavailable, or over
+ * budget) rather than the code, a good reading is not thrown away. A game
+ * with a legacy spec keeps that spec's value, stored as a legacy-shaped row
+ * (`code_version` 0, no status) and logged as `game_code_unavailable`; a game
+ * with no legacy spec is stored unread. Failures of the code itself always
+ * store `failed`.
  *
  * Never throws for anything the stored code does, and waits at most
  * `GAME_CODE_BUDGET_MS` for it. The raw text never goes to the logs.
@@ -117,6 +158,7 @@ export async function resolvePostedScore(input: {
     scoreValue: legacyValue,
     parseStatus: null,
     scoreSummary: null,
+    scoreSource: null,
     codeVersion: null,
   };
   const mode = codeParsingModeFor(input.userId);
@@ -124,15 +166,21 @@ export async function resolvePostedScore(input: {
 
   const scored = await scoreShareWithinBudget(game, scoreRaw);
   const change = classifyParseChange(legacyValue, scored.parseStatus, scored.scoreValue);
-  const log = parseChangeAgrees(change) && !scored.capped ? logger.info : logger.warn;
-  log("game code shadow", {
-    kind: "game_code_shadow",
+  const common = {
     mode,
     user_id: input.userId,
     game_id: game.id,
     game_key: game.gameKey,
     period_key: input.periodKey,
     code_version: game.codeVersion,
+    capped: scored.capped,
+    duration_ms: scored.durationMs,
+    raw_length: scoreRaw.length,
+  };
+  const log = parseChangeAgrees(change) && !scored.capped ? logger.info : logger.warn;
+  log("game code shadow", {
+    kind: "game_code_shadow",
+    ...common,
     legacy_value: legacyValue,
     code_status: scored.parseStatus,
     code_value: scored.scoreValue,
@@ -142,16 +190,36 @@ export async function resolvePostedScore(input: {
     failure_reason: scored.parse.kind === "failed" ? scored.parse.reason : null,
     format: scored.format?.kind ?? "absent",
     format_failure_reason: scored.format?.kind === "failed" ? scored.format.reason : null,
-    capped: scored.capped,
-    duration_ms: scored.durationMs,
-    raw_length: scoreRaw.length,
   });
   if (mode === "shadow") return legacy;
+
+  if (sandboxFailedToAnswer(scored)) {
+    const specValue = legacySpecReading(game, scoreRaw);
+    // Its own event, at error level: this is the sandbox being down for a
+    // live post, not a parser disagreeing.
+    logger.error("game code unavailable for a score post", {
+      kind: "game_code_unavailable",
+      ...common,
+      failure_reason: scored.capped ? "over_budget" : "sandbox_unavailable",
+      stored: specValue === undefined ? "unread" : "legacy_spec_value",
+      legacy_spec_value: specValue ?? null,
+    });
+    if (specValue !== undefined) {
+      return {
+        scoreValue: specValue,
+        parseStatus: null,
+        scoreSummary: null,
+        scoreSource: null,
+        codeVersion: 0,
+      };
+    }
+  }
 
   return {
     scoreValue: scored.scoreValue,
     parseStatus: scored.parseStatus,
     scoreSummary: scored.scoreSummary,
+    scoreSource: "parsed",
     codeVersion: game.codeVersion,
   };
 }

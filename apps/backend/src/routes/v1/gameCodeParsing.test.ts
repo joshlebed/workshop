@@ -105,6 +105,14 @@ async function stored(gameId: string, asUser = userId, periodKey = DAY): Promise
   return row;
 }
 
+async function sourceOf(gameId: string, asUser = userId, periodKey = DAY) {
+  const [row] = await rows<{ score_source: string | null }>(
+    "SELECT score_source FROM game_scores WHERE game_id = $1 AND user_id = $2 AND period_key = $3",
+    [gameId, asUser, periodKey],
+  );
+  return row?.score_source;
+}
+
 function shadowLines(spy: ReturnType<typeof vi.spyOn>): Array<Record<string, unknown>> {
   return spy.mock.calls
     .filter((call) => call[0] === "game code shadow")
@@ -270,6 +278,12 @@ describe("GAME_CODE_PARSING=on", () => {
       score_summary: WORLDLE_SUMMARY,
       code_version: 1,
     });
+    // Read by the game's code, not picked by the poster.
+    expect(await sourceOf(worldle)).toBe("parsed");
+    // A legacy row has no source at all.
+    setMode("off");
+    await post(worldle, WORLDLE, friendId);
+    expect(await sourceOf(worldle, friendId)).toBe(null);
   });
 
   it("keeps a loss, a failure and a score distinct — in storage, standings and ranks", async () => {
@@ -378,6 +392,35 @@ describe("GAME_CODE_PARSING=on", () => {
   });
 });
 
+describe("a registry game whose row did not exist when the seed migration ran", () => {
+  it("is created with its code, so a beta account's first post to it is read", async () => {
+    // Nobody had added Satle: no row for migration 0043 to seed.
+    await rows("DELETE FROM games WHERE game_key = 'satle'");
+    const satle = await addGame("https://satle.ca", betaUserId);
+    expect(
+      await rows(
+        "SELECT game_key, code_version, parse_code IS NOT NULL AS coded FROM games WHERE id = $1",
+        [satle],
+      ),
+    ).toEqual([{ game_key: "satle", code_version: 1, coded: true }]);
+    expect(
+      await rows("SELECT version, source FROM game_code_revisions WHERE game_id = $1", [satle]),
+    ).toEqual([{ version: 1, source: "seed" }]);
+
+    // The flag is off; the beta allowlist is what turns stored code on.
+    const score = await post(satle, "🛰Satle #449 5/6\n🟥🟥🟥🟥🟩⬜\nhttps://satle.ca", betaUserId);
+    expect(score).toMatchObject({
+      parseStatus: "score",
+      scoreValue: 5,
+      scoreSummary: "🟥🟥🟥🟥🟩⬜ 5/6",
+    });
+    expect(await stored(satle, betaUserId)).toMatchObject({
+      parse_status: "score",
+      code_version: 1,
+    });
+  });
+});
+
 describe("Games beta accounts", () => {
   it("get stored-code parsing with the flag off; everyone else does not", async () => {
     const beta = await post(worldle, WORLDLE, betaUserId);
@@ -449,16 +492,114 @@ describe("POST /v1/games/:id/scores/preview", () => {
 });
 
 describe("the sandbox can never fail or hang a post", () => {
-  it("stores failed with the cleaned text when scoring rejects", async () => {
+  const unavailableLines = (spy: ReturnType<typeof vi.spyOn>) =>
+    spy.mock.calls
+      .filter((call) => call[0] === "game code unavailable for a score post")
+      .map((call) => call[1] as Record<string, unknown>);
+
+  it("keeps the legacy spec's reading when the sandbox — not the code — fails", async () => {
     setMode("on");
     vi.spyOn(scoring, "scoreWithGameCode").mockRejectedValue(new Error("sandbox exploded"));
-    vi.spyOn(logger, "error").mockImplementation(() => {});
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+
+    const score = await post(tradle, "#Tradle #1558 2/6\n🟩🟩🟩🟩🟩\nhttps://tradle.net/");
+
+    // A good value is not thrown away because of an infrastructure failure…
+    expect(score.scoreValue).toBe(2);
+    // …and the row is honest about where it came from: legacy-shaped (the
+    // client formats it), with code_version 0 marking "code parsing was on,
+    // the sandbox was not".
+    expect("parseStatus" in score).toBe(false);
+    expect(await stored(tradle)).toEqual({
+      score_value: "2",
+      parse_status: null,
+      score_summary: null,
+      code_version: 0,
+    });
+    expect(await sourceOf(tradle)).toBe(null);
+    expect(unavailableLines(error)).toEqual([
+      expect.objectContaining({
+        kind: "game_code_unavailable",
+        mode: "on",
+        game_key: "tradle",
+        failure_reason: "over_budget",
+        stored: "legacy_spec_value",
+        legacy_spec_value: 2,
+      }),
+    ]);
+  });
+
+  it("does the same when the sandbox answers that it is unavailable", async () => {
+    setMode("on");
+    vi.spyOn(scoring, "scoreWithGameCode").mockResolvedValue({
+      parseStatus: "failed",
+      scoreValue: null,
+      scoreSummary: "x",
+      parse: { kind: "failed", reason: "sandbox_unavailable", detail: "worker did not start" },
+      format: null,
+    });
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+    // A loss: the legacy spec reads "no number", and that is what is kept.
     const score = await post(tradle, TRADLE_LOSS);
+    expect(score.scoreValue).toBe(null);
+    expect(await stored(tradle)).toEqual({
+      score_value: null,
+      parse_status: null,
+      score_summary: null,
+      code_version: 0,
+    });
+    expect(unavailableLines(error)[0]).toMatchObject({
+      failure_reason: "sandbox_unavailable",
+      stored: "legacy_spec_value",
+      legacy_spec_value: null,
+    });
+  });
+
+  it("stores unread — never the first number — when the sandbox fails and the game has no legacy spec", async () => {
+    setMode("on");
+    const krillion = await addGame("https://no-spec-krill.example");
+    await rows("UPDATE games SET parse_code = $1, code_version = 3 WHERE id = $2", [
+      "function parse(raw) { return 415; }",
+      krillion,
+    ]);
+    vi.spyOn(scoring, "scoreWithGameCode").mockRejectedValue(new Error("sandbox exploded"));
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+
+    const score = await post(krillion, KRILLION);
+
     expect(score).toMatchObject({
       parseStatus: "failed",
       scoreValue: null,
-      scoreSummary: "#Tradle #1557 X/6\n🟩🟩🟩⬜⬜\n🟩🟩🟩🟩🟨",
+      scoreSummary: "Krillion #81 🦐\n415\n🦑🫧🏮🐟🦑🦑🫧",
     });
+    expect((await stored(krillion)).code_version).toBe(3);
+    expect(unavailableLines(error)[0]).toMatchObject({ stored: "unread", legacy_spec_value: null });
+  });
+
+  it("a failure of the CODE is still failed, even when the legacy spec could read the share", async () => {
+    setMode("on");
+    const error = vi.spyOn(logger, "error").mockImplementation(() => {});
+    const [original] = await rows<{ parse_code: string }>(
+      "SELECT parse_code FROM games WHERE id = $1",
+      [tradle],
+    );
+    try {
+      for (const broken of [
+        `function parse(raw) { throw new Error("bug"); }`,
+        `function parse(raw) { return "2"; }`,
+        "function parse(raw) { for (;;) {} }",
+      ]) {
+        await rows("UPDATE games SET parse_code = $1 WHERE id = $2", [broken, tradle]);
+        const score = await post(tradle, "#Tradle #1558 2/6\n🟩🟩🟩🟩🟩\nhttps://tradle.net/");
+        // The legacy spec reads 2 here. It is not consulted: the game's code
+        // gave its verdict, and the verdict is that it could not read this.
+        expect(score, broken).toMatchObject({ parseStatus: "failed", scoreValue: null });
+        expect((await stored(tradle)).code_version).toBe(1);
+      }
+    } finally {
+      await rows("UPDATE games SET parse_code = $1 WHERE id = $2", [original?.parse_code, tradle]);
+    }
+    expect(unavailableLines(error)).toEqual([]);
   });
 
   it("gives up at the budget when scoring never answers", async () => {

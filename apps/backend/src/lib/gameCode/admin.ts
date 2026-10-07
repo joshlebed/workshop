@@ -4,6 +4,7 @@
 // (scripts/set-game-code.ts) is a thin CLI over this; the teach flow will
 // call the same two functions.
 
+import { createHash } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { type DbGame, gameCodeRevisions, gameScores, games } from "../../db/schema.js";
 import type { DbClient } from "../sql.js";
@@ -39,13 +40,31 @@ function expectationFor(score: StoredScore): Pick<CodeExample, "expected"> {
   return score.scoreValue === null ? {} : { expected: Number(score.scoreValue) };
 }
 
+type StoredMismatch = CodeMismatch & { userId: string; periodKey: string };
+
+function fingerprintOf(mismatches: ReadonlyArray<StoredMismatch>): string | null {
+  if (mismatches.length === 0) return null;
+  const lines = mismatches
+    .map((m) => JSON.stringify([m.userId, m.periodKey, m.step, m.raw, m.expected, m.actual]))
+    .sort();
+  return createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 12);
+}
+
 interface GameCodePlan {
   /** Stored scores the candidate was run against. */
   storedScores: number;
   /** How many of those have a known expected result. */
   storedWithExpectation: number;
   /** Stored scores the candidate reads differently from what is known. */
-  storedMismatches: Array<CodeMismatch & { userId: string; periodKey: string }>;
+  storedMismatches: StoredMismatch[];
+  /**
+   * Identifies exactly this set of differences — which rows, their text, what
+   * was expected and what the candidate returns. Null when there are none.
+   * An author who has reviewed the list accepts it by quoting this back; a
+   * score posted or edited in between changes it, so what gets written is
+   * what was reviewed, not merely the same number of rows.
+   */
+  storedMismatchFingerprint: string | null;
   /** Operator-supplied examples the candidate gets wrong. */
   exampleMismatches: CodeMismatch[];
   /**
@@ -64,16 +83,20 @@ type GameCodeDecision =
   | { write: false; reason: "sandbox_unavailable" | "fails_examples" | "changes_stored_scores" };
 
 /**
- * Whether a planned change may be written. `expectChanges` is the number of
- * stored scores the author has declared wrong (0 unless they said otherwise):
- * the change goes through only if exactly that many read differently. An
- * unavailable sandbox is never a yes — an empty mismatch list from a
+ * Whether a planned change may be written. `acceptedFingerprint` is the
+ * `storedMismatchFingerprint` of a plan the author has reviewed (null when
+ * they accepted nothing): the change goes through only if THIS plan's
+ * differences are exactly those — same rows, same text, same new readings.
+ * An unavailable sandbox is never a yes — an empty mismatch list from a
  * validation that did not run proves nothing.
  */
-export function decideGameCodeChange(plan: GameCodePlan, expectChanges = 0): GameCodeDecision {
+export function decideGameCodeChange(
+  plan: GameCodePlan,
+  acceptedFingerprint: string | null = null,
+): GameCodeDecision {
   if (plan.unavailable) return { write: false, reason: "sandbox_unavailable" };
   if (plan.exampleMismatches.length > 0) return { write: false, reason: "fails_examples" };
-  if (plan.storedMismatches.length !== expectChanges) {
+  if (plan.storedMismatchFingerprint !== acceptedFingerprint) {
     return { write: false, reason: "changes_stored_scores" };
   }
   return { write: true, acceptedChanges: plan.storedMismatches.length };
@@ -119,6 +142,7 @@ export async function planGameCodeChange(
     storedScores: stored.length,
     storedWithExpectation: storedExamples.filter((e) => e.expected !== undefined).length,
     storedMismatches,
+    storedMismatchFingerprint: storedReport.unavailable ? null : fingerprintOf(storedMismatches),
     exampleMismatches: storedReport.unavailable ? [] : exampleReport.mismatches,
     unavailable: storedReport.unavailable || exampleReport.unavailable,
     ok: storedReport.ok && exampleReport.ok,
