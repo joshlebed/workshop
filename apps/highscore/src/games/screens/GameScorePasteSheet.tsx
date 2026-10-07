@@ -258,6 +258,9 @@ export function GameScorePasteSheet<T extends PasteTarget>({
             style={styles.input}
             {...webProps}
           />
+          {/* Before the preview and the teach chips: "this looks like another
+              game's score" has to be read before "tap your score to rank it". */}
+          <WrongGameNotice text={draft} gameId={snapshot.id} gameTitle={snapshot.title} />
           {preview ? (
             <Text variant="caption" tone="muted" testID="game-paste-preview">
               {preview.value !== null
@@ -336,7 +339,6 @@ export function GameScorePasteSheet<T extends PasteTarget>({
               ) : null}
             </View>
           ) : null}
-          <WrongGameNotice text={draft} gameId={snapshot.id} gameTitle={snapshot.title} />
           {/* Guideline 5.1.2: say where the score goes before the upload. */}
           <Text variant="caption" tone="muted" testID="game-paste-consent">
             Posting uploads this result and shows it to your friends on HighScore.
