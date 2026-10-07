@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetConfigForTesting } from "./config.js";
-import { notifyDiscord } from "./discord.js";
+import { notifyDiscord, withClientSuffix } from "./discord.js";
+import { runWithRequestClientContext } from "./requestContext.js";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -72,5 +73,39 @@ describe("notifyDiscord", () => {
     await expect(
       notifyDiscord("hello", { fetcher: fetcher as unknown as typeof fetch }),
     ).resolves.toBeUndefined();
+  });
+
+  it("appends the requesting client when a request context is active", async () => {
+    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await runWithRequestClientContext(
+      { client: "highscore", platform: "ios", appVersion: "1.4.0" },
+      () =>
+        notifyDiscord("👋 new signup — Ada via apple", {
+          fetcher: fetcher as unknown as typeof fetch,
+        }),
+    );
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body as string)).toEqual({
+      content: "👋 new signup — Ada via apple · HighScore · iOS 1.4.0",
+    });
+  });
+
+  it("omits the client suffix when asked, or when no request context exists", async () => {
+    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    await runWithRequestClientContext(
+      { client: "workshop", platform: "web", appVersion: "1.0.0" },
+      () => notifyDiscord("x", { fetcher: fetcher as unknown as typeof fetch, withClient: false }),
+    );
+    await notifyDiscord("y", { fetcher: fetcher as unknown as typeof fetch });
+    expect(JSON.parse(fetcher.mock.calls[0]![1].body as string)).toEqual({ content: "x" });
+    expect(JSON.parse(fetcher.mock.calls[1]![1].body as string)).toEqual({ content: "y" });
+  });
+});
+
+describe("withClientSuffix", () => {
+  it("joins with a middle dot and passes through when the client is unknown", () => {
+    expect(withClientSuffix("hello", "Workshop · iOS 1.0.0")).toBe("hello · Workshop · iOS 1.0.0");
+    expect(withClientSuffix("hello", null)).toBe("hello");
   });
 });

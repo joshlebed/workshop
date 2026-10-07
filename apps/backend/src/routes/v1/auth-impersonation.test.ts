@@ -66,7 +66,7 @@ describe("buildImpersonationNotification", () => {
         { id: targetId, email: "target@example.com", displayName: "Target User" },
       ),
     ).toEqual({
-      content: `:mag: impersonation started: Josh, joshlebed@gmail.com, ${adminId} -> Target User, target@example.com, ${targetId}`,
+      content: `🔍 impersonation started: Josh, joshlebed@gmail.com, ${adminId} -> Target User, target@example.com, ${targetId}`,
       kind: "impersonation",
     });
   });

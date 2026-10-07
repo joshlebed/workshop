@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetConfigForTesting } from "../lib/config.js";
+import { getRequestClientContext } from "../lib/requestContext.js";
 import { requestLog } from "./request-log.js";
 
 function buildAppForTest() {
@@ -13,6 +14,10 @@ function buildAppForTest() {
   });
   app.get("/boom", () => {
     throw new Error("kaboom");
+  });
+  app.get("/client", async (c) => {
+    await Promise.resolve();
+    return c.json(getRequestClientContext());
   });
   app.onError((_e, c) => c.json({ error: "INTERNAL" }, 500));
   return app;
@@ -96,5 +101,17 @@ describe("requestLog middleware", () => {
       path: "/boom",
       status: 500,
     });
+  });
+
+  it("exposes the client headers to downstream handlers via the request context", async () => {
+    const res = await buildAppForTest().request("/client", {
+      headers: {
+        "X-Workshop-Client": "highscore",
+        "X-Workshop-Platform": "ios",
+        "X-Workshop-App-Version": "1.4.0",
+      },
+    });
+    expect(await res.json()).toEqual({ client: "highscore", platform: "ios", appVersion: "1.4.0" });
+    expect(getRequestClientContext()).toBeNull();
   });
 });
