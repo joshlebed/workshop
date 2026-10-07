@@ -10,6 +10,9 @@
  * old `backfill-score-regex.ts`, which carried its own (drifted) copy of the
  * parser; this one imports the real parser, so it cannot drift.
  *
+ * This replays the LEGACY parser. To move history onto the games' stored code
+ * (status, summary, code version) use scripts/reread-scores.ts instead.
+ *
  * It only touches rows the LEGACY parser wrote (`parse_status IS NULL`). A row
  * with a `parse_status` was read by the game's stored code (lib/gameCode):
  * its value, status, summary and code version describe one reading, and
