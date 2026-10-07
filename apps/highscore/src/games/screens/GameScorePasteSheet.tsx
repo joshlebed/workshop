@@ -45,6 +45,7 @@ import {
 import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { WrongGameNotice } from "../components/WrongGameNotice";
 import { previewScore } from "../lib/scoreSpecs";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
@@ -57,7 +58,11 @@ export interface TaughtScoreSpec {
   summarySpec: SummarySpec | null;
 }
 
-interface GameScorePasteSheetProps<T extends { title: string }> {
+// `id` is optional so non-catalog targets still fit; with one, the sheet can
+// warn when the pasted text is recognizably another game's score.
+type PasteTarget = { title: string; id?: string };
+
+interface GameScorePasteSheetProps<T extends PasteTarget> {
   /** Target game, or `null` when the sheet should be closed. */
   item: T | null;
   userName: string | null;
@@ -88,7 +93,7 @@ interface GameScorePasteSheetProps<T extends { title: string }> {
 
 const MAX_CANDIDATES = 6;
 
-export function GameScorePasteSheet<T extends { title: string }>({
+export function GameScorePasteSheet<T extends PasteTarget>({
   item,
   userName,
   userAvatarUrl,
@@ -253,6 +258,9 @@ export function GameScorePasteSheet<T extends { title: string }>({
             style={styles.input}
             {...webProps}
           />
+          {/* Before the preview and the teach chips: "this looks like another
+              game's score" has to be read before "tap your score to rank it". */}
+          <WrongGameNotice text={draft} gameId={snapshot.id} gameTitle={snapshot.title} />
           {preview ? (
             <Text variant="caption" tone="muted" testID="game-paste-preview">
               {preview.value !== null
