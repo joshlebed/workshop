@@ -602,6 +602,33 @@ export const gameSpecRevisions = pgTable(
 );
 
 /**
+ * Append-only log of operator changes to `games.score_direction`
+ * (`admin:game-direction`): who flipped which game from what to what, when,
+ * and why. Written in the same transaction as the `games` update. A wrong
+ * direction reorders every board of the game, so the change must be
+ * explainable and reversible. `authored_by` is SET NULL on user delete so the
+ * history outlives the author.
+ */
+export const gameDirectionRevisions = pgTable(
+  "game_direction_revisions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    fromDirection: text("from_direction").notNull(),
+    toDirection: text("to_direction").notNull(),
+    authoredBy: uuid("authored_by").references(() => users.id, { onDelete: "set null" }),
+    /** Why the change was made — free text from the author. */
+    note: text("note").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    gameCreatedIdx: index("game_direction_revisions_game_created_idx").on(t.gameId, t.createdAt),
+  }),
+);
+
+/**
  * "My Games" — a per-user ordered selection of catalog games. Same sparse
  * `position` scheme as `items.position` (see `lib/positions.ts` /
  * `lib/gamePositions.ts`); NULL positions sort last until first dragged.

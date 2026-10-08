@@ -313,10 +313,23 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   on the row still being the one it read, and leaves a row undecided — not `failed` — when
   the sandbox was unavailable. **Order matters:** a game with no parse code has every legacy
   row turned to `failed`, losing whatever number it stored (correct for Krillion's puzzle
-  numbers — but this script will not visit those rows again, since they are no longer
-  legacy rows; re-reading `failed` rows after a teach is the teach flow's job). Teach or fix
-  a game's code first, or pass `--skip-untaught` / `--game=`. Use `--public` for any output that leaves the sandbox: the repo is public, and
-  the default report prints user ids and full share text.
+  numbers — but a plain run will not visit those rows again, since they are no longer
+  legacy rows). Teach or fix a game's code first, or pass `--skip-untaught` / `--game=`.
+  `--include-failed` also re-reads `failed` rows that an OLDER code version read — the way to
+  recover rows after a game's code is fixed (Geozee's 10-07 row, 2026-10-08). A `failed` row
+  the current version read is skipped (same code, same text, same answer), which is what makes
+  a second run a no-op; rows holding a score or a no-result are never re-read. Use `--public`
+  for any output that leaves the sandbox: the repo is public, and the default report prints
+  user ids and full share text.
+- **Operators set a game's direction with `admin:game-direction`**
+  (`scripts/set-game-direction.ts`, core in `lib/gameDirectionAdmin.ts`). Dry run by default
+  (prints before → after and on how many contested days the winner changes); `--by` must be an
+  admin (id or email) even for a dry run, and `--apply` needs `--note`. It writes
+  `games.score_direction` and a `game_direction_revisions` row (from, to, author, note) in one
+  transaction, guarded on the game still having the old direction, clears pending two-user
+  requests and leaves `direction_set_by` NULL. No score moves; boards re-rank on read. In-app
+  changes (`lib/teach/direction.ts`) do not write that table — they are logged as
+  `direction_change` events.
 
 ## Teach v2 (`lib/teach/`, `routes/v1/gameTeach.ts`) — picks, previews and LLM-written parsers
 

@@ -1,13 +1,15 @@
 // The one-off re-read of history (docs/highscore-score-validation-spec.md,
 // section 8): every score the LEGACY parser wrote — a row with no
 // `parse_status` — is run through its game's stored code, so it gets a
-// status, a summary and a code version like a score posted today.
+// status, a summary and a code version like a score posted today. With
+// `includeFailed`, so is every `failed` row an older version of the game's
+// code read: the current code may do better.
 //
 // The operator script (scripts/reread-scores.ts) is a thin CLI over this.
 // Everything here works on plain rows, so a dry run can be made from a
 // read-only export as well as from a live database.
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { gameScores } from "../../db/schema.js";
 import type { DbClient } from "../sql.js";
 import { KILLED_DETAIL } from "./runtime.js";
@@ -36,6 +38,8 @@ export interface RereadScore {
   scoreValue: number | null;
   parseStatus: string | null;
   scoreSource: string | null;
+  /** The game code version that read the row; null for a legacy row. */
+  codeVersion?: number | null;
 }
 
 /** What the stored code makes of one legacy row, next to what the row holds today. */
@@ -43,6 +47,9 @@ export interface RereadRow {
   userId: string;
   periodKey: string;
   scoreRaw: string;
+  /** What the row held when it was read: the write only lands if it still does. */
+  oldStatus: string | null;
+  oldCodeVersion: number | null;
   oldValue: number | null;
   newValue: number | null;
   newStatus: ParseStatus;
@@ -56,7 +63,12 @@ export interface GameReread {
   game: RereadGame;
   /** Rows the legacy parser wrote — the ones a re-read is for. */
   legacyRows: number;
-  /** Rows stored code already read: never touched. */
+  /** `failed` rows an older code version read, re-read with `includeFailed`. */
+  failedRows: number;
+  /**
+   * Rows stored code already read: never touched. A `failed` row the current
+   * code version read is one of these — same code, same text, same answer.
+   */
   skippedAlreadyRead: number;
   /** Rows whose value the poster picked: never touched, whatever else is true. */
   skippedPicked: number;
@@ -80,6 +92,8 @@ export interface GameReread {
 interface RereadOptions {
   /** Leave the rows of a game with no parse code as they are. */
   skipUntaught?: boolean;
+  /** Also re-read `failed` rows that an older version of the game's code read. */
+  includeFailed?: boolean;
   /** Rows read (and, on apply, written) per batch. */
   batchSize?: number;
   /** Called with each decided batch, in order. Apply writes from here. */
@@ -113,6 +127,7 @@ export async function rereadGame(
   const result: GameReread = {
     game,
     legacyRows: 0,
+    failedRows: 0,
     skippedAlreadyRead: 0,
     skippedPicked: 0,
     skippedUntaught: 0,
@@ -125,10 +140,19 @@ export async function rereadGame(
   const legacy: RereadScore[] = [];
   for (const score of scores) {
     if (score.scoreSource === "picked") result.skippedPicked += 1;
-    else if (score.parseStatus !== null) result.skippedAlreadyRead += 1;
-    else legacy.push(score);
+    else if (score.parseStatus === null) {
+      result.legacyRows += 1;
+      legacy.push(score);
+    } else if (
+      options.includeFailed &&
+      score.parseStatus === "failed" &&
+      game.parseCode !== null &&
+      (score.codeVersion ?? -1) < game.codeVersion
+    ) {
+      result.failedRows += 1;
+      legacy.push(score);
+    } else result.skippedAlreadyRead += 1;
   }
-  result.legacyRows = legacy.length;
   if (game.parseCode === null && options.skipUntaught) {
     result.skippedUntaught = legacy.length;
     return result;
@@ -157,6 +181,8 @@ export async function rereadGame(
         userId: score.userId,
         periodKey: score.periodKey,
         scoreRaw: score.scoreRaw,
+        oldStatus: score.parseStatus,
+        oldCodeVersion: score.codeVersion ?? null,
         oldValue: score.scoreValue,
         newValue: read.scoreValue,
         newStatus: read.parseStatus,
@@ -178,8 +204,9 @@ export async function rereadGame(
 
 /**
  * Write one batch of re-read rows, in one transaction. Each row is written
- * only if it is still the row that was read: still a legacy row, still the
- * same text, not picked. A score re-posted or corrected while the re-read was
+ * only if it is still the row that was read: same status and code version
+ * (still a legacy row, or still the same `failed` reading), same text, not
+ * picked. A score re-posted or corrected while the re-read was
  * running is left as its owner made it and counted in `changedSinceRead`.
  *
  * Only the reading changes. `period_key`, `created_at` and `updated_at` are
@@ -208,7 +235,8 @@ export async function writeRereadBatch(
             eq(gameScores.gameId, game.id),
             eq(gameScores.userId, row.userId),
             eq(gameScores.periodKey, row.periodKey),
-            isNull(gameScores.parseStatus),
+            sql`${gameScores.parseStatus} IS NOT DISTINCT FROM ${row.oldStatus}`,
+            sql`${gameScores.codeVersion} IS NOT DISTINCT FROM ${row.oldCodeVersion}`,
             eq(gameScores.scoreRaw, row.scoreRaw),
             sql`${gameScores.scoreSource} IS DISTINCT FROM 'picked'`,
           ),
@@ -231,6 +259,7 @@ export function rereadLogFields(reread: GameReread, mode: "dry_run" | "applied")
     code_version: reread.game.codeVersion,
     has_code: reread.game.parseCode !== null,
     legacy_rows: reread.legacyRows,
+    failed_rows: reread.failedRows,
     unchanged: reread.counts.same_score,
     gains_value: reread.counts.null_to_score,
     value_changes: reread.counts.score_changed,

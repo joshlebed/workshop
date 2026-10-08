@@ -81,6 +81,7 @@ async function scoresOf(gameId: string): Promise<RereadScore[]> {
     scoreValue: s.score_value === null ? null : Number(s.score_value),
     parseStatus: s.parse_status,
     scoreSource: s.score_source,
+    codeVersion: s.code_version,
   }));
 }
 
@@ -322,6 +323,94 @@ describe("apply", () => {
   });
 });
 
+describe("failed rows (includeFailed)", () => {
+  // A share an older version of the game's code could not read, one the
+  // current version also cannot, and one the current version already read.
+  const GEOZEE_PARSE = `function parse(raw) {
+    var m = raw.match(/^Geozee #[\\d,]+ \u2014 ([\\d,]+)\\/[\\d,]+/m);
+    if (!m) throw new Error("not a Geozee share");
+    return Number(m[1].replace(/,/g, ""));
+  }`;
+
+  async function geozee(): Promise<RereadGame> {
+    await rows(
+      `INSERT INTO games (normalized_url, url, title, parse_code, code_version)
+       VALUES ('geozee.earth', 'https://geozee.earth', 'Geozee', $1, 2)
+       ON CONFLICT (normalized_url) DO UPDATE SET parse_code = $1, code_version = 2`,
+      [GEOZEE_PARSE],
+    );
+    const game = await loadGame("normalized_url", "geozee.earth");
+    await seed(game.id, [
+      [0, "Geozee #91 \u2014 676/798 \u00b7 top 47% 🌍", null, "failed", "parsed"],
+      [1, "🌎 Jul 26, 2026 🌍\n🟥🟨🟥🟥🟥🟩 = 6", null, "failed", "parsed"],
+      [2, "Geozee #90 \u2014 894/894 \u00b7 top 1% 🌍", null, "failed", "parsed"],
+      [3, "Geozee #89 \u2014 670/794 \u00b7 top 37% 🌍", 670, "score", "parsed"],
+    ]);
+    // Rows 0 and 1 were read by version 1; row 2 by the current version 2.
+    await rows("UPDATE game_scores SET code_version = 1 WHERE game_id = $1", [game.id]);
+    await rows(
+      "UPDATE game_scores SET code_version = 2 WHERE game_id = $1 AND user_id IN ($2, $3)",
+      [game.id, players[2], players[3]],
+    );
+    return game;
+  }
+
+  it("are left alone without the option", async () => {
+    const game = await geozee();
+    const reread = await rereadGame(game, await scoresOf(game.id));
+    expect(reread).toMatchObject({ legacyRows: 0, failedRows: 0, skippedAlreadyRead: 4, rows: [] });
+  });
+
+  it("re-reads only those an older code version read, and a second run finds nothing", async () => {
+    const game = await geozee();
+    const before = await stored(game.id);
+    const reread = await rereadGame(game, await scoresOf(game.id), {
+      includeFailed: true,
+      onBatch: apply(game),
+    });
+    expect(reread).toMatchObject({ failedRows: 2, skippedAlreadyRead: 2, written: 2 });
+    expect(reread.rows.map((r) => [r.userId, r.newValue, r.newStatus, r.change])).toEqual([
+      [players[0], 676, "score", "null_to_score"],
+      [players[1], null, "failed", "null_to_failed"],
+    ]);
+
+    const after = await stored(game.id);
+    const reading = (i: number) => {
+      const s = after.find((r) => r.user_id === players[i]);
+      return s && [s.score_value, s.parse_status, s.code_version];
+    };
+    expect(reading(0)).toEqual(["676", "score", 2]);
+    expect(reading(1)).toEqual([null, "failed", 2]);
+    // Read by the current version already, and a row holding a score: untouched.
+    expect(after[2]).toEqual(before[2]);
+    expect(after[3]).toEqual(before[3]);
+
+    const again = await rereadGame(game, await scoresOf(game.id), {
+      includeFailed: true,
+      onBatch: apply(game),
+    });
+    expect(again).toMatchObject({ failedRows: 0, skippedAlreadyRead: 4, written: 0 });
+    expect(await stored(game.id)).toEqual(after);
+  });
+
+  it("does not write over a failed row that was re-posted while it was being read", async () => {
+    const game = await geozee();
+    const reread = await rereadGame(game, await scoresOf(game.id), {
+      includeFailed: true,
+      onBatch: async (batch) => {
+        await rows(
+          "UPDATE game_scores SET parse_status = 'score', score_value = 700, code_version = 2 WHERE game_id = $1 AND user_id = $2",
+          [game.id, players[0]],
+        );
+        return writeRereadBatch(db, game, batch);
+      },
+    });
+    expect(reread).toMatchObject({ written: 1, changedSinceRead: 1 });
+    const row = (await stored(game.id)).find((r) => r.user_id === players[0]);
+    expect([row?.score_value, row?.parse_status]).toEqual(["700", "score"]);
+  });
+});
+
 describe("when the sandbox, not the code, is the problem", () => {
   it("does not decide the row: it stays a legacy row for the next run", async () => {
     const tradle = await loadGame("game_key", "tradle");
@@ -385,6 +474,7 @@ describe("rereadLogFields", () => {
       code_version: 1,
       has_code: true,
       legacy_rows: 5,
+      failed_rows: 0,
       unchanged: 1,
       gains_value: 1,
       value_changes: 1,

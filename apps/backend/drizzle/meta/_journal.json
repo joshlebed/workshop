@@ -330,6 +330,13 @@
       "when": 1791418538606,
       "tag": "0046_auth_sessions_last_used_refresh_version",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1791430660370,
+      "tag": "0047_game_direction_revisions",
+      "breakpoints": true
     }
   ]
 }
