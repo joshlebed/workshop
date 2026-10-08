@@ -80,7 +80,7 @@ export const GameResultRow = memo(function GameResultRow({
             <PixelIcon name="gamepad" size={16} color={tokens.text.secondary} />
           </View>
         )}
-        <View style={styles.titleText}>
+        <View style={styles.titleText} testID={`game-row-title-${gameId}`}>
           <Text variant="heading" numberOfLines={1} style={styles.title}>
             {title}
           </Text>

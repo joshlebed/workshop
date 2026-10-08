@@ -127,3 +127,14 @@ tunable from workers-og. So the cards carry a 1-day `s-maxage` + 30-day `stale-w
 (`prewarmGameShareCard` in `src/games/lib/prewarmShareCard.ts`). iMessage builds the preview on the sender's
 device, so that fetch lands the crawler on the same colo's warm cache. If you add a new share
 surface, pre-warm its card the same way.
+
+## UX r2 branch: the day is the document
+
+`src/theme/` is the app-owned DESIGN.md theme (tokens, `Text`, `Button`, `Sheet`, `PixelIcon`, …);
+visual tokens never come from `@workshop/ui` any more (only `haptics`, `confirm`,
+`openExternalUrl`, `formatRelative`, reorder constants, `PullToRefresh`, `GoogleSignInButton`).
+`components/DayHeader.tsx` is the one time control, over the shared `state/viewDay` — home,
+game board and profile all read the same day; never add a second day picker to a surface. Home
+mirrors the day as `/?d=YYYY-MM-DD`, boards as `?date=`. The home row (`GameResultRow`) must not
+carry `accessibilityRole="button"`: it contains real buttons and RN-Web would nest `<button>`s.
+See `UX-EXPLORATION.md` for the model and the `TODO(api)` list.
