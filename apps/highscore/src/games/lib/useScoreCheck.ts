@@ -6,7 +6,7 @@ import {
   type ScoreFeatureRole,
   type ScorePick,
 } from "@workshop/shared/scoreCandidates";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchCandidateLabels, type PreviewAnswer, previewTeachScore } from "../api/teach";
 import { useGamesRuntime } from "../runtime";
 import {
@@ -23,13 +23,13 @@ import {
   livePick,
   pickerIsOpen,
   type ScorePostExtras,
+  serverPartPending,
+  settleDelayMs,
   shouldPreselect,
   teachAvailableIn,
   teachRequestsAllowed,
 } from "./scorePicker";
 
-// Typing settles before we ask; a paste (the usual input) waits this once.
-const DEBOUNCE_MS = 300;
 /** Past this the user can post without the preview (spec §2). */
 const PREVIEW_WAIT_MS = 1500;
 const MAX_CHIPS = 12;
@@ -62,6 +62,8 @@ export interface ScoreCheck {
   view: ScoreCheckView;
   /** "This is the same result you posted yesterday. Post anyway?" */
   sameTextWarning: string | null;
+  /** The chips are up and the server still owes the dry run or the labels. */
+  serverPending: boolean;
   /** The candidate chips are showing. */
   pickerOpen: boolean;
   candidates: ScoreFeature[];
@@ -115,6 +117,9 @@ export function useScoreCheck(input: {
 
   const [settled, setSettled] = useState(trimmed);
   const [waitedOut, setWaitedOut] = useState(false);
+  // Starts empty so a box that opens with text in it (a share, Fix score)
+  // counts as a paste.
+  const lastText = useRef("");
   const [pickerAsked, setPickerAsked] = useState(false);
   const [pick, setPick] = useState<ScorePick | null>(null);
   const [touched, setTouched] = useState(false);
@@ -137,8 +142,10 @@ export function useScoreCheck(input: {
     setMismatchId(null);
     setDirectionChoice(null);
     setWrongGameDismissed(false);
-    const debounce = setTimeout(() => setSettled(trimmed), DEBOUNCE_MS);
-    const wait = setTimeout(() => setWaitedOut(true), DEBOUNCE_MS + PREVIEW_WAIT_MS);
+    const delay = settleDelayMs(lastText.current, trimmed);
+    lastText.current = trimmed;
+    const debounce = setTimeout(() => setSettled(trimmed), delay);
+    const wait = setTimeout(() => setWaitedOut(true), delay + PREVIEW_WAIT_MS);
     return () => {
       clearTimeout(debounce);
       clearTimeout(wait);
@@ -166,9 +173,16 @@ export function useScoreCheck(input: {
   const view = useMemo(
     () =>
       available
-        ? resolveScoreCheck({ empty, answer, waitedOut, wrongGameDismissed })
+        ? resolveScoreCheck({
+            empty,
+            answer,
+            waitedOut,
+            wrongGameDismissed,
+            // No parser, so nothing to wait for: the chips show with the text.
+            knownUntaught: parserListed === false,
+          })
         : ({ kind: "none" } as const),
-    [available, empty, answer, waitedOut, wrongGameDismissed],
+    [available, empty, answer, waitedOut, wrongGameDismissed, parserListed],
   );
 
   // Instant chips from the same function the server runs; the server's list
@@ -192,6 +206,8 @@ export function useScoreCheck(input: {
     queryKey: ["game-score-labels", gameId, settled],
     queryFn: ({ signal }) => fetchCandidateLabels(gameId ?? "", settled, token, signal),
     // Only when the picker is actually open: this is the one model call here.
+    // It does not wait for the preview — for a game with no parser the picker
+    // opens with the text, so the two requests go out together.
     enabled: offered && pickerOpen && settled === trimmed && candidates.length > 0,
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
@@ -230,6 +246,13 @@ export function useScoreCheck(input: {
     available,
     view,
     sameTextWarning: sameDay && view.kind !== "wrong_game" ? sameTextCopy(sameDay, today) : null,
+    serverPending: serverPartPending({
+      pickerOpen,
+      offered,
+      previewOut: answer === undefined,
+      waitedOut,
+      labelsFetching: labelsQuery.isFetching,
+    }),
     pickerOpen,
     candidates,
     roles,

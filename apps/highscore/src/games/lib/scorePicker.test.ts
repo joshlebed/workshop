@@ -7,6 +7,8 @@ import {
   listedHasParser,
   livePick,
   pickerIsOpen,
+  serverPartPending,
+  settleDelayMs,
   shouldPreselect,
   teachAvailableIn,
   teachRequestsAllowed,
@@ -36,6 +38,44 @@ const extras = (over: Partial<Parameters<typeof buildPostExtras>[0]> = {}) =>
     direction: null,
     ...over,
   });
+
+describe("the chips never wait for the server", () => {
+  const pending = (over: Partial<Parameters<typeof serverPartPending>[0]> = {}) =>
+    serverPartPending({
+      pickerOpen: true,
+      offered: true,
+      previewOut: false,
+      waitedOut: false,
+      labelsFetching: false,
+      ...over,
+    });
+
+  it("a paste is asked about at once; typing is debounced", () => {
+    expect(settleDelayMs("", RAW)).toBe(0);
+    expect(settleDelayMs(RAW, "")).toBe(0);
+    expect(settleDelayMs("41", "415")).toBe(300);
+    expect(settleDelayMs(RAW, RAW)).toBe(300);
+  });
+
+  it("the picker is open on the text alone for a game with no parser", () => {
+    // `unread` is what a game known to have no parser resolves to before any
+    // answer (see scoreCheck.test.ts) — no request has finished here.
+    expect(open({ view: "unread" })).toBe(true);
+    expect(local.length).toBeGreaterThan(0);
+  });
+
+  it('says "Checking…" while the dry run or the labels are out, and only then', () => {
+    expect(pending({ previewOut: true })).toBe(true);
+    expect(pending({ labelsFetching: true })).toBe(true);
+    expect(pending({ previewOut: true, labelsFetching: true })).toBe(true);
+    expect(pending()).toBe(false);
+    // A preview past its wait is no longer waited for; labels still are.
+    expect(pending({ previewOut: true, waitedOut: true })).toBe(false);
+    expect(pending({ previewOut: true, waitedOut: true, labelsFetching: true })).toBe(true);
+    expect(pending({ pickerOpen: false, labelsFetching: true })).toBe(false);
+    expect(pending({ offered: false, previewOut: true })).toBe(false);
+  });
+});
 
 describe("pickerIsOpen", () => {
   it("opens by itself when nothing read the score or no preview came", () => {

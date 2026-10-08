@@ -29,6 +29,7 @@ export const SCORE_COPY = {
   noResultText: "We got the link but not your result. Paste your result to post a score.",
   notRight: "Not right?",
   didNotFinish: "I didn't finish",
+  checking: "Checking…",
   pickAnother: "Pick another",
   useAnyway: "Use it anyway",
   fixScore: "Fix score",
@@ -106,10 +107,18 @@ export function resolveScoreCheck(input: {
   waitedOut: boolean;
   /** The user chose "Post here anyway". */
   wrongGameDismissed: boolean;
+  /**
+   * The games list already says this game has no parser. Nothing can read its
+   * texts, so there is nothing to wait for: the picker's state is known the
+   * moment there is text, whatever the network is doing.
+   */
+  knownUntaught?: boolean;
 }): ScoreCheckView {
   if (input.empty) return { kind: "none" };
-  if (input.answer === undefined)
+  if (input.answer === undefined) {
+    if (input.knownUntaught) return { kind: "unread", copy: SCORE_COPY.unread };
     return input.waitedOut ? { kind: "no_preview" } : { kind: "checking" };
+  }
   if (input.answer === null) return { kind: "no_preview" };
   if (input.answer.kind === "rejected") return rejectedView(input.answer.reason);
 
@@ -134,18 +143,37 @@ export function resolveScoreCheck(input: {
 }
 
 /**
- * What a row says when its score is the player's own pick: the text on the
- * row may not show the number at all (a count, a pick the parser disagrees
- * with). Null for a parsed row — its text already is the reading.
+ * The line that states a row's score in words ("Score: 270"), or null when
+ * the row needs none.
+ *
+ * - A picked row always says it: the text on the row may not show the number
+ *   at all (a count, a pick the parser disagrees with).
+ * - In a game with no formatter every read row says it, however the row came
+ *   to be read (at upload, by the re-read after a teach, by the one-off
+ *   re-read). Without a formatter a row's text is only the cleaned share, so
+ *   two rows of one board must not differ by who happened to pick.
+ * - In a game with a formatter the row's text already is the score.
+ *
+ * `everyRow` is the account's teach capability: without it only picked rows
+ * get the line, as before.
  */
-export function pickedScoreLabel(entry: {
-  scoreSource?: string | undefined;
-  parseStatus?: string | undefined;
-  scoreValue: number | null;
-}): string | null {
-  if (entry.scoreSource !== "picked") return null;
-  if (entry.parseStatus === "no_result") return "Didn't finish";
-  return entry.scoreValue === null ? null : `Score: ${entry.scoreValue}`;
+export function scoreLineLabel(
+  entry: {
+    scoreSource?: string | undefined;
+    parseStatus?: string | undefined;
+    scoreValue: number | null;
+  },
+  game: { hasFormatter?: boolean | undefined },
+  everyRow: boolean,
+): string | null {
+  if (entry.scoreSource === "picked") {
+    if (entry.parseStatus === "no_result") return "Didn't finish";
+    return entry.scoreValue === null ? null : `Score: ${entry.scoreValue}`;
+  }
+  if (!everyRow || game.hasFormatter !== false) return null;
+  if (entry.parseStatus === "no_result") return "No score";
+  if (entry.parseStatus !== "score" || entry.scoreValue === null) return null;
+  return `Score: ${entry.scoreValue}`;
 }
 
 /** States in which the Post button waits: there is a question to answer first. */

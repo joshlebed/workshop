@@ -10,13 +10,19 @@ import { getConfig } from "../config.js";
 import { type OpenAiFailureReason, type OpenAiUsage, openAiJson } from "./openai.js";
 
 /**
- * What a person waits for the labels; past this the chips stay unlabelled.
- * The chips themselves are computed without the model and are already on
- * screen, so this only decides whether labels arrive. Measured over 38 live
- * calls: p50 1.27s, p95 2.21s, max 2.60s — 2s missed 11% of them, 2.5s one.
- * Re-read `llm_ms` on `kind: "teach_targets"` in CloudWatch before moving it.
+ * How long the label call may take; past this the chips stay unlabelled. The
+ * chips are computed without the model and are on screen before this request
+ * is even sent, so the budget only decides whether labels and the
+ * pre-selection arrive — never how long anyone waits to tap.
+ *
+ * From the sandbox, 38 calls ran p50 1.27s, p95 2.21s, max 2.60s. In prod the
+ * first two real calls both ran past 2.5s (cut off, so how far past is not
+ * known), and isolated calls from the sandbox after an idle hour took 2.9s and
+ * 3.2s: a call made rarely is slower than one made in a burst. 4s covers
+ * everything seen so far. Read `llm_ms` on `kind: "teach_targets"` in
+ * CloudWatch before moving it again.
  */
-export const FIND_TARGETS_TIMEOUT_MS = 2500;
+export const FIND_TARGETS_TIMEOUT_MS = 4000;
 /** A handful of small integers; measured ~30 tokens. The cap bounds a runaway answer. */
 const FIND_TARGETS_MAX_OUTPUT_TOKENS = 200;
 

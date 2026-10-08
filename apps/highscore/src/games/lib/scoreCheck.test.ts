@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { PreviewAnswer, TeachPreview } from "../api/teach";
 import {
   blocksPosting,
-  pickedScoreLabel,
   resolveScoreCheck,
   roleMismatchCopy,
   SCORE_COPY,
   sameTextCopy,
+  scoreLineLabel,
   scoreReadCopy,
 } from "./scoreCheck";
 
@@ -29,6 +29,29 @@ const preview = (over: Partial<TeachPreview> = {}, teach = {}): PreviewAnswer =>
 });
 const resolve = (answer: PreviewAnswer | null | undefined, over = {}) =>
   resolveScoreCheck({ empty: false, answer, waitedOut: false, wrongGameDismissed: false, ...over });
+
+describe("resolveScoreCheck — a game known to have no parser never waits", () => {
+  it("is unread, with the picker, before any answer and whatever the wait says", () => {
+    const unread = { kind: "unread", copy: SCORE_COPY.unread };
+    expect(resolve(undefined, { knownUntaught: true })).toEqual(unread);
+    expect(resolve(undefined, { knownUntaught: true, waitedOut: true })).toEqual(unread);
+    expect(blocksPosting(resolve(undefined, { knownUntaught: true }))).toBe(false);
+  });
+
+  it("still waits when the game has a parser or nobody has said", () => {
+    expect(resolve(undefined).kind).toBe("checking");
+    expect(resolve(undefined, { knownUntaught: false }).kind).toBe("checking");
+    expect(resolve(undefined, { waitedOut: true }).kind).toBe("no_preview");
+  });
+
+  it("the server's answer wins once it is here", () => {
+    expect(resolve(preview(), { knownUntaught: true }).kind).toBe("score");
+    expect(resolve({ kind: "rejected", reason: "url_only" }, { knownUntaught: true }).kind).toBe(
+      "no_result_text",
+    );
+    expect(resolve(undefined, { knownUntaught: true, empty: true }).kind).toBe("none");
+  });
+});
 
 describe("resolveScoreCheck — the spec's states and copy", () => {
   it("score read: the value, with its derivation when it was computed", () => {
@@ -138,17 +161,50 @@ describe("copy", () => {
   });
 });
 
-describe("pickedScoreLabel", () => {
-  it("names what counts on a picked row, and nothing on a parsed one", () => {
-    expect(pickedScoreLabel({ scoreSource: "picked", parseStatus: "score", scoreValue: 80 })).toBe(
-      "Score: 80",
+describe("scoreLineLabel — every read row of a board is shown the same way", () => {
+  // Krillion on 2026-10-08: no formatter, Josh picked 270, Dag's row was read
+  // by the code Josh's pick taught. Both are read rows; both say their score.
+  const untaughtFormat = { hasFormatter: false };
+  const picked = { scoreSource: "picked", parseStatus: "score", scoreValue: 270 };
+  const reread = { scoreSource: "parsed", parseStatus: "score", scoreValue: 415 };
+
+  it("a picked row and a parsed or re-read row both state their score", () => {
+    expect(scoreLineLabel(picked, untaughtFormat, true)).toBe("Score: 270");
+    expect(scoreLineLabel(reread, untaughtFormat, true)).toBe("Score: 415");
+    // A re-read row carries no source of its own on an older server.
+    expect(scoreLineLabel({ parseStatus: "score", scoreValue: 415 }, untaughtFormat, true)).toBe(
+      "Score: 415",
     );
+  });
+
+  it("a row with no result says so, and an unread row says nothing", () => {
     expect(
-      pickedScoreLabel({ scoreSource: "picked", parseStatus: "no_result", scoreValue: null }),
+      scoreLineLabel(
+        { scoreSource: "picked", parseStatus: "no_result", scoreValue: null },
+        untaughtFormat,
+        true,
+      ),
     ).toBe("Didn't finish");
     expect(
-      pickedScoreLabel({ scoreSource: "parsed", parseStatus: "score", scoreValue: 4 }),
+      scoreLineLabel({ parseStatus: "no_result", scoreValue: null }, untaughtFormat, true),
+    ).toBe("No score");
+    expect(
+      scoreLineLabel({ parseStatus: "failed", scoreValue: null }, untaughtFormat, true),
     ).toBeNull();
-    expect(pickedScoreLabel({ scoreValue: 4 })).toBeNull();
+    // A row from before code parsing: the client's own summary stands.
+    expect(scoreLineLabel({ scoreValue: 4 }, untaughtFormat, true)).toBeNull();
+  });
+
+  it("a game with a formatter already shows the score: only a pick adds the line", () => {
+    const formatted = { hasFormatter: true };
+    expect(scoreLineLabel(reread, formatted, true)).toBeNull();
+    expect(scoreLineLabel(picked, formatted, true)).toBe("Score: 270");
+    // A server that predates the field: unchanged.
+    expect(scoreLineLabel(reread, {}, true)).toBeNull();
+  });
+
+  it("changes nothing for an account without teach", () => {
+    expect(scoreLineLabel(reread, untaughtFormat, false)).toBeNull();
+    expect(scoreLineLabel(picked, untaughtFormat, false)).toBe("Score: 270");
   });
 });

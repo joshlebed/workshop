@@ -26,6 +26,8 @@ export interface WindowScore {
   source: "parsed" | "picked";
   /** `games.code_version` when the row was parsed; null on a row from before code parsing. */
   codeVersion: number | null;
+  /** The stored display text; null on a row from before code parsing (or with nothing to show). */
+  summary: string | null;
   /** Present when `source` is `picked`. */
   pick: StoredPick | null;
   /**

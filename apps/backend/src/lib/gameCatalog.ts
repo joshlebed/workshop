@@ -101,6 +101,18 @@ export function specForGame(game: {
 }
 
 /**
+ * Whether the game had a real legacy parser — a registry spec or a taught
+ * `score_spec` with at least one usable rule. Without one, every value stored
+ * before code parsing is the "first number anywhere" guess (for most shares,
+ * the puzzle number), which is not a reading of the score.
+ */
+export function hasLegacySpec(game: { gameKey: string | null; scoreSpec?: unknown }): boolean {
+  const spec = specForGame(game);
+  // A rule's validity does not depend on the text it is run over.
+  return spec !== null && evaluateScoreSpec(spec, "").hadValidRule;
+}
+
+/**
  * Pull a numeric score out of pasted share text. With a spec, the spec
  * decides — including "this share has no result" (null). Without one, fall
  * back to "first number anywhere" so legacy/custom games keep their historical

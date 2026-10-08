@@ -41,7 +41,7 @@ import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
-import { pickedScoreLabel } from "../lib/scoreCheck";
+import { scoreLineLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useScoreCheck, useTeachAvailable } from "../lib/useScoreCheck";
@@ -421,6 +421,7 @@ export default function GameBoard() {
                 <EntryRow
                   entry={myEntry}
                   game={game}
+                  teachAvailable={teachAvailable}
                   isMe
                   onEdit={() => {
                     setDraft(myEntry.scoreRaw ?? "");
@@ -456,6 +457,7 @@ export default function GameBoard() {
                   key={entry.userId}
                   entry={entry}
                   game={game}
+                  teachAvailable={teachAvailable}
                   isMe={false}
                   onReact={(userId, emoji, currentlyReacted) =>
                     reactionCtl.react(gameId, userId, emoji, currentlyReacted)
@@ -498,7 +500,9 @@ export default function GameBoard() {
 
 interface EntryRowProps {
   entry: GameStandingsEntry;
-  game: Pick<Game, "title" | "url" | "summarySpec">;
+  game: Pick<Game, "title" | "url" | "summarySpec" | "hasFormatter">;
+  /** Teach v2 is on for the viewer: every read row states its score. */
+  teachAvailable: boolean;
   isMe: boolean;
   onEdit?: () => void;
   onClear?: () => void;
@@ -511,6 +515,7 @@ interface EntryRowProps {
 function EntryRow({
   entry,
   game,
+  teachAvailable,
   isMe,
   onEdit,
   onClear,
@@ -525,7 +530,7 @@ function EntryRow({
   // "adjusted": the player picked this score and the game's parser reads the
   // text differently. Tapping it shows the text as it was posted.
   const [showOriginal, setShowOriginal] = useState(false);
-  const picked = pickedScoreLabel(entry);
+  const picked = scoreLineLabel(entry, game, teachAvailable);
   // You react to friends' scores, not your own — so the controls only wire up
   // on other people's rows; your own row shows others' reactions read-only.
   const canReact = !isMe && !!onOpenReactionPicker;
