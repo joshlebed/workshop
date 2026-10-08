@@ -229,7 +229,9 @@ from one component tree; shared code lives in `packages/*`. HighScore owns its G
     the plan role can't read WILL fail plan — expand the role in the same PR or split.
 
   Canonical merge: `gh pr merge <PR> --auto --squash --delete-branch`. Verify with
-  `gh pr view <PR> --json state` — armed ≠ merged. Updating the required-check list is a
+  `gh pr view <PR> --json state` — armed ≠ merged. **"Ship it" means run that merge**, not
+  "open a PR and stop": merge to `main` is what deploys (OTA ~60s, Pages auto-build,
+  Terraform apply). Open the PR, confirm checks, arm auto-merge, report the state. Updating the required-check list is a
   GitHub admin action (Settings → Branches); keep the bullets above in sync.
 
 - **If your PR adds a new CI check that should block merge, flag it in the PR description.**
