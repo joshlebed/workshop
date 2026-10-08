@@ -3,6 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
+import { STREAK_MIN_DAYS } from "@workshop/shared/games";
 import {
   Avatar,
   Button,
@@ -17,7 +18,7 @@ import {
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -39,13 +40,14 @@ import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { ScoreReactions } from "../components/ScoreReactions";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
+import { daysBack, formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
 import { scoreLineLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useScoreCheck, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
+import { useViewDay } from "../state/viewDay";
 
 /**
  * Per-game board (G1b) — history for one game in My Games. The home card
@@ -66,13 +68,24 @@ export default function GameBoard() {
   const { showToast } = useToast();
 
   const today = localDateKey();
-  // `?date=` carries the home rail's selection so drilling in from
-  // "Yesterday" opens on yesterday; anything the rail can't show → today.
-  const [date, setDate] = useState(() =>
-    resolveRailDate(params.date, today, DAY_RAIL_DEFAULT_LENGTH),
-  );
+  // The selected day lives in the shared view-day state (state/viewDay.tsx),
+  // so it sticks in both directions: arrive on the day home was showing, and
+  // leave home on the day you paged to here. `?date=` (home card taps and
+  // deep links) overrides the shared value once on mount; anything the rail
+  // can't show → today.
+  const { viewDate: date, setViewDate } = useViewDay();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only param sync
+  useEffect(() => {
+    if (params.date != null) {
+      setViewDate(resolveRailDate(params.date, today, DAY_RAIL_DEFAULT_LENGTH));
+    }
+  }, []);
   const [draft, setDraft] = useState("");
   const [editingScore, setEditingScore] = useState(false);
+  // "Earlier" pages the rail back a week at a time; the rail also grows to
+  // cover a selection inherited from home (never shrinks below it).
+  const [railPages, setRailPages] = useState(1);
+  const railLength = Math.max(railPages * DAY_RAIL_DEFAULT_LENGTH, daysBack(date, today) + 1);
   // Teach v2: "Fix score" on my own row. Absent without the capability.
   const teachAvailable = useTeachAvailable();
   const [fixTarget, setFixTarget] = useState<FixScoreTarget | null>(null);
@@ -253,17 +266,14 @@ export default function GameBoard() {
   const showComposer = !myScore || editingScore;
   const composerMode: "new" | "edit" = myScore ? "edit" : "new";
   const dateLabel = formatGameDateLabel(date, today);
-  const host = (() => {
-    if (!game.url) return null;
-    try {
-      return new URL(game.url).host.replace(/^www\./, "");
-    } catch {
-      return game.url;
-    }
-  })();
+  const streak = myGame?.standings.viewerStreak ?? 0;
+  // One quiet line says where you are and how busy the day was — the rail's
+  // selected chip already restates the day, so no big day heading.
+  const turnout =
+    entries.length === 0 ? (isToday ? "No plays yet" : "No plays") : `${entries.length} played`;
 
   const onDate = (key: string) => {
-    setDate(key);
+    setViewDate(key);
     setDraft("");
     setEditingScore(false);
   };
@@ -285,6 +295,9 @@ export default function GameBoard() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Screen testID="game-board">
+        {/* Compact pinned header: back · icon · title (+streak) · open-game.
+            The day rail below never scrolls away — it's the screen's primary
+            control. */}
         <View style={styles.headerNav}>
           <Pressable
             accessibilityRole="button"
@@ -296,6 +309,55 @@ export default function GameBoard() {
           >
             <Text style={styles.navGlyph}>‹</Text>
           </Pressable>
+          {game.iconUrl ? (
+            <Image
+              source={{ uri: game.iconUrl }}
+              style={styles.titleBadge}
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
+              <Text style={styles.titleBadgeGlyph}>🎮</Text>
+            </View>
+          )}
+          <View style={styles.titleText}>
+            <Text variant="heading" numberOfLines={1} style={styles.titleName}>
+              {game.title}
+            </Text>
+          </View>
+          {streak >= STREAK_MIN_DAYS ? (
+            <View style={styles.streak} testID="game-board-streak">
+              <Text style={styles.streakFlame}>🔥</Text>
+              <Text style={styles.streakCount}>{streak}</Text>
+            </View>
+          ) : null}
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Open ${game.title} in your browser`}
+            onPress={() => openExternalUrl(game.url)}
+            testID="game-board-title-link"
+            hitSlop={6}
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+          >
+            <Text style={styles.titleOpenGlyph}>↗</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.dayRail}>
+          <DayRail
+            selectedDate={date}
+            today={today}
+            onSelectDate={onDate}
+            length={railLength}
+            onExtend={() => setRailPages((p) => p + 1)}
+            testIDPrefix="game-board-day"
+          />
+        </View>
+
+        <View style={styles.dayHeader}>
+          <Text variant="caption" tone="muted" testID="game-board-turnout">
+            {boardQuery.isPending ? dateLabel : `${dateLabel} · ${turnout}`}
+          </Text>
         </View>
 
         <ScrollView
@@ -303,62 +365,6 @@ export default function GameBoard() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={`Open ${game.title}`}
-            accessibilityHint="Opens the game in your browser"
-            onPress={() => openExternalUrl(game.url)}
-            testID="game-board-title-link"
-            style={({ pressed }) => [styles.titleBlock, pressed && styles.titleBlockPressed]}
-          >
-            {game.iconUrl ? (
-              <Image
-                source={{ uri: game.iconUrl }}
-                style={styles.titleBadge}
-                accessibilityIgnoresInvertColors
-              />
-            ) : (
-              <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
-                <Text style={styles.titleBadgeGlyph}>🎮</Text>
-              </View>
-            )}
-            <View style={styles.titleText}>
-              <Text variant="title" numberOfLines={2} style={styles.titleName}>
-                {game.title}
-              </Text>
-              {host ? (
-                <Text variant="caption" tone="secondary" numberOfLines={1}>
-                  {host}
-                </Text>
-              ) : null}
-            </View>
-            <View style={styles.titleOpenAffordance}>
-              <Text style={styles.titleOpenGlyph}>↗</Text>
-            </View>
-          </Pressable>
-
-          <DayRail
-            selectedDate={date}
-            today={today}
-            onSelectDate={onDate}
-            testIDPrefix="game-board-day"
-          />
-
-          <View style={styles.dayHeader}>
-            <Text variant="heading" style={styles.dayTitle}>
-              {formatGameDateLabel(date, today)}
-            </Text>
-            {boardQuery.isPending ? null : (
-              <Text variant="caption" tone="muted">
-                {entries.length === 0
-                  ? isToday
-                    ? "No plays yet."
-                    : "No plays."
-                  : `${entries.length} played`}
-              </Text>
-            )}
-          </View>
-
           {boardQuery.isPending ? (
             <View style={styles.center}>
               <ActivityIndicator color={tokens.accent.default} />
@@ -416,6 +422,9 @@ export default function GameBoard() {
                   pending={upsertMutation.isPending}
                   userName={user?.displayName ?? null}
                   userAvatarUrl={user?.avatarUrl ?? null}
+                  {...(composerMode === "new" && isToday && game.url
+                    ? { onPlay: () => openExternalUrl(game.url) }
+                    : {})}
                 />
               ) : myEntry ? (
                 <EntryRow
@@ -689,6 +698,8 @@ interface ScoreComposerProps {
   pending: boolean;
   userName: string | null;
   userAvatarUrl?: string | null;
+  /** Today-only: opens the game so there's a result to paste. */
+  onPlay?: () => void;
 }
 
 // The my-slot in compose mode — posting a first result ("new") or fixing a
@@ -711,6 +722,7 @@ function ScoreComposer({
   pending,
   userName,
   userAvatarUrl,
+  onPlay,
 }: ScoreComposerProps) {
   const isEdit = mode === "edit";
   const trimmed = draft.trim();
@@ -777,6 +789,15 @@ function ScoreComposer({
         onPostToOther={(id, title) => onPostToOther({ id, title })}
       />
       <View style={styles.pasteActions}>
+        {onPlay ? (
+          <Button
+            label="Play"
+            variant="secondary"
+            size="md"
+            onPress={onPlay}
+            testID="game-board-play"
+          />
+        ) : null}
         {isEdit ? (
           <Button
             label="Cancel"
@@ -812,8 +833,10 @@ const styles = StyleSheet.create({
   headerNav: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
+    gap: tokens.space.sm,
+    paddingLeft: tokens.space.sm,
+    paddingRight: tokens.space.md,
+    paddingBottom: tokens.space.md,
   },
   navButton: {
     width: 40,
@@ -825,47 +848,48 @@ const styles = StyleSheet.create({
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
   navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   body: {
+    paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl * 2,
-    gap: tokens.space.lg,
   },
-  titleBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.md,
-    marginHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.lg,
-  },
-  titleBlockPressed: { backgroundColor: tokens.bg.surface },
   titleBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.elevated,
-  },
-  titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
-  titleBadgeGlyph: { fontSize: 28, lineHeight: 32 },
-  titleText: { flex: 1, minWidth: 0, gap: 4 },
-  titleName: { letterSpacing: -0.5, fontSize: 28, lineHeight: 32 },
-  titleOpenAffordance: {
     width: 32,
     height: 32,
     borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
   },
+  titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
+  // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
+  // glyph to the inherited line box otherwise (see app CLAUDE.md).
+  titleBadgeGlyph: { fontSize: 18, lineHeight: 22 },
+  titleText: { flex: 1, minWidth: 0 },
+  titleName: { letterSpacing: -0.3 },
   titleOpenGlyph: {
     color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
+    fontSize: tokens.font.size.lg,
+    lineHeight: tokens.font.size.lg + 2,
   },
-  dayHeader: {
-    paddingHorizontal: tokens.space.xl,
-    gap: 2,
+  // Streak pill mirrors the home card's (StandingsCard) so the flame reads as
+  // the same signal on both surfaces; static here — Play lives in the my-slot.
+  streak: {
+    flexShrink: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 1,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: `${tokens.accent.default}1F`,
   },
-  dayTitle: { letterSpacing: -0.2 },
+  streakFlame: { fontSize: 12, lineHeight: 16 },
+  streakCount: {
+    fontSize: tokens.font.size.xs,
+    lineHeight: 16,
+    fontWeight: tokens.font.weight.bold,
+    color: tokens.accent.default,
+    fontVariant: ["tabular-nums"],
+  },
+  dayRail: { paddingBottom: tokens.space.sm },
+  dayHeader: { paddingHorizontal: tokens.space.xl },
   helper: {
     paddingVertical: tokens.space.lg,
     textAlign: "center",
