@@ -8,8 +8,9 @@ import type { DiscoveryGame } from "@workshop/shared/games";
 import { Avatar, Button, Card, haptics, Text, tokens } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { addGame, fetchGameDiscovery } from "../api/games";
+import { useOpenProfile } from "../hooks/useOpenProfile";
 import { localDateKey } from "../lib/gameDate";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../lib/inviteStash";
 import { useGamesRuntime } from "../runtime";
@@ -39,6 +40,7 @@ export default function AcceptFriendInvite() {
   const inviteToken = Array.isArray(params.token) ? params.token[0] : params.token;
   const { status, token: authToken, user, routes } = useGamesRuntime();
   const router = useRouter();
+  const openProfile = useOpenProfile();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [acceptedFriend, setAcceptedFriend] = useState<{
@@ -193,15 +195,23 @@ export default function AcceptFriendInvite() {
     <Centered testID="friend-accept">
       <Card style={styles.card} elevated>
         <View style={styles.inviterBlock}>
-          <Avatar
-            name={preview.inviter.displayName}
-            imageUrl={userAvatarImageUrl(preview.inviter.userId)}
-            size="lg"
-            testID="friend-accept-avatar"
-          />
-          <Text variant="title" style={styles.inviterTitle}>
-            {inviterName} wants to be friends
-          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`View ${inviterName}'s profile`}
+            onPress={() => openProfile(preview.inviter.userId)}
+            style={({ pressed }) => [styles.identity, pressed && styles.identityPressed]}
+            testID="friend-accept-inviter"
+          >
+            <Avatar
+              name={preview.inviter.displayName}
+              imageUrl={userAvatarImageUrl(preview.inviter.userId)}
+              size="lg"
+              testID="friend-accept-avatar"
+            />
+            <Text variant="title" style={styles.inviterTitle}>
+              {inviterName} wants to be friends
+            </Text>
+          </Pressable>
           <Text tone="secondary" style={styles.inviterCaption}>
             Accept to start comparing daily scores. You'll see each other on shared games.
           </Text>
@@ -243,6 +253,7 @@ function PostAcceptPicker({
   onDone: () => void;
 }) {
   const queryClient = useQueryClient();
+  const openProfile = useOpenProfile();
   const name = friend.displayName?.trim() || "Your friend";
   const [adding, setAdding] = useState<string[]>([]);
   const [added, setAdded] = useState<string[]>([]);
@@ -298,14 +309,22 @@ function PostAcceptPicker({
     <Centered testID="friend-accept-picker">
       <Card style={styles.card} elevated>
         <View style={styles.inviterBlock}>
-          <Avatar
-            name={friend.displayName}
-            imageUrl={userAvatarImageUrl(friend.userId)}
-            size="lg"
-          />
-          <Text variant="title" style={styles.inviterTitle}>
-            You're friends with {name}
-          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`View ${name}'s profile`}
+            onPress={() => openProfile(friend.userId)}
+            style={({ pressed }) => [styles.identity, pressed && styles.identityPressed]}
+            testID="friend-accept-friend"
+          >
+            <Avatar
+              name={friend.displayName}
+              imageUrl={userAvatarImageUrl(friend.userId)}
+              size="lg"
+            />
+            <Text variant="title" style={styles.inviterTitle}>
+              You're friends with {name}
+            </Text>
+          </Pressable>
         </View>
 
         {discoveryQuery.isLoading ? (
@@ -387,6 +406,8 @@ const styles = StyleSheet.create({
     alignSelf: "center",
   },
   inviterBlock: { alignItems: "center", gap: tokens.space.sm },
+  identity: { alignItems: "center", gap: tokens.space.sm },
+  identityPressed: { opacity: 0.6 },
   inviterTitle: { textAlign: "center" },
   inviterCaption: { textAlign: "center" },
   loadingText: { textAlign: "center" },

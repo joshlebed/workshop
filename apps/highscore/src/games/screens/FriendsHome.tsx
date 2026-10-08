@@ -27,9 +27,9 @@ import {
   tokens,
   useToast,
 } from "@workshop/ui";
-import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { useOpenProfile } from "../hooks/useOpenProfile";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
 import { useGamesRuntime } from "../runtime";
@@ -57,7 +57,6 @@ export function mutualLine(m: MutualSummary): string {
 
 export default function FriendsScreen() {
   const { token, routes } = useGamesRuntime();
-  const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const livePoll = useLivePollingInterval();
@@ -244,7 +243,7 @@ export default function FriendsScreen() {
     if (ok === "copied") showToast({ message: "Invite link copied", tone: "success" });
   };
 
-  const openProfile = (userId: string) => router.push(routes.friendProfile(userId) as Href);
+  const openProfile = useOpenProfile();
 
   return (
     <Screen testID="friends-screen">
