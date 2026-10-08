@@ -94,8 +94,6 @@ const DraggableCard = memo(function DraggableCard({ game, render }: DraggableCar
 
 const styles = StyleSheet.create({
   listContent: {
-    paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: homeLayout.contentTopGap,
     paddingBottom: homeLayout.bottomInset,
   },
 });

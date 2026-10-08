@@ -7,8 +7,8 @@
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { Text, tokens } from "../../theme";
 import { shiftDateKey } from "../lib/gameDate";
 
 /** Days the rail spans by default, today inclusive. */

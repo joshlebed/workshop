@@ -79,3 +79,31 @@ export function resolveRailDate(
   // Reject calendar-invalid keys like 2026-02-31 (they'd never match a chip).
   return shiftDateKey(value, 0) === value ? value : today;
 }
+
+/**
+ * The day heading the `DayHeader` strip shows: a short pixel-face line
+ * ("TODAY", "YESTERDAY", "WED OCT 1") and a long system-face line with the
+ * full date, so "which day am I looking at" reads at a glance and in full.
+ */
+export function formatDayHeading(
+  date: string,
+  today: string = localDateKey(),
+): { short: string; long: string } {
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return { short: date, long: date };
+  const dt = new Date(y, m - 1, d);
+  const long = dt.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: dt.getFullYear() === new Date().getFullYear() ? undefined : "numeric",
+  });
+  if (date === today) return { short: "Today", long };
+  if (date === shiftDateKey(today, -1)) return { short: "Yesterday", long };
+  const short = dt.toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+  return { short, long };
+}

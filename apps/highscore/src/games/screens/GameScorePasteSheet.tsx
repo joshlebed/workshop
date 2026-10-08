@@ -48,9 +48,9 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Avatar, Button, Chip, Sheet, Text, tokens } from "../../theme";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { WrongGameNotice } from "../components/WrongGameNotice";
 import { pasteSheetCaption } from "../lib/scorePreview";
@@ -427,7 +427,6 @@ const styles = StyleSheet.create({
     minHeight: 120,
     borderWidth: 1,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
@@ -447,7 +446,6 @@ const styles = StyleSheet.create({
   summaryBox: {
     borderWidth: 1,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     backgroundColor: tokens.bg.canvas,

@@ -3,7 +3,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
@@ -18,6 +17,7 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "../theme";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -354,7 +354,6 @@ const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 14,
     color: tokens.text.primary,
@@ -376,7 +375,6 @@ const dangerStyles = StyleSheet.create({
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.md,
     borderWidth: 1,
     borderColor: tokens.status.danger,
     backgroundColor: tokens.bg.surface,

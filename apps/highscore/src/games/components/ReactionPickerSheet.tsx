@@ -5,9 +5,9 @@
 // current emoji is highlighted and a Remove row is offered.
 
 import { isReactionEmoji, REACTION_QUICK_EMOJIS } from "@workshop/shared/games";
-import { Button, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Button, Sheet, Text, tokens } from "../../theme";
 
 export interface ReactionPickerSheetProps {
   visible: boolean;
@@ -157,7 +157,6 @@ const styles = StyleSheet.create({
     height: 48,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.elevated,
@@ -179,7 +178,6 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderWidth: 1,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     color: tokens.text.primary,
     fontSize: tokens.font.size.lg,
@@ -191,7 +189,6 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xs,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
   },
   moreLinkHover: { backgroundColor: tokens.bg.elevated },
   moreLinkText: { textDecorationLine: "underline" },
@@ -200,7 +197,6 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tokens.border.subtle,
   },
@@ -210,7 +206,6 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.sm,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
   },
   reportLabel: { textDecorationLine: "underline" },
   removeLabel: {

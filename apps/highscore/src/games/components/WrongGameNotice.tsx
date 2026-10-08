@@ -1,5 +1,5 @@
-import { Text, tokens } from "@workshop/ui";
 import { StyleSheet, View } from "react-native";
+import { Text, tokens } from "../../theme";
 import { recognizedGameLabel, wrongGameMatch } from "../lib/recognition";
 import { useRecognizedGame } from "../lib/useRecognizedGame";
 
@@ -36,7 +36,6 @@ const styles = StyleSheet.create({
     gap: 2,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
     borderWidth: 1,
     borderColor: tokens.status.warning,
     backgroundColor: tokens.bg.surface,

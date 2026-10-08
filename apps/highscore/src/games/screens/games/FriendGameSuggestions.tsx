@@ -6,8 +6,8 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { Text, tokens } from "../../../theme";
 
 /** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
 function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
@@ -122,7 +122,6 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
     borderWidth: 1,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.surface,
@@ -130,7 +129,6 @@ const styles = StyleSheet.create({
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
     backgroundColor: `${tokens.accent.default}1F`,
     alignItems: "center",
     justifyContent: "center",
@@ -144,7 +142,6 @@ const styles = StyleSheet.create({
     minWidth: 64,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
@@ -162,7 +159,6 @@ const styles = StyleSheet.create({
     minWidth: 64,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
     alignItems: "center",
     justifyContent: "center",
   },

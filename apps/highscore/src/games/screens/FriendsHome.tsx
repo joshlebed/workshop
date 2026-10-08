@@ -15,20 +15,11 @@ import {
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
-import {
-  Avatar,
-  Button,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics } from "@workshop/ui";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { BottomBar } from "../../components/BottomBar";
+import { Avatar, Button, Notice, PixelIcon, Screen, Text, tokens, useToast } from "../../theme";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
@@ -256,9 +247,11 @@ export default function FriendsScreen() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>‹</Text>
+          <PixelIcon name="arrow-left" size={24} color={tokens.text.primary} />
         </Pressable>
-        <Text variant="title">Friends</Text>
+        <Text variant="title" style={styles.navTitle}>
+          Friends
+        </Text>
         <View style={styles.navButton} />
       </View>
 
@@ -326,7 +319,7 @@ export default function FriendsScreen() {
         {/* Pending inbound requests. */}
         {inbound.length > 0 ? (
           <View style={styles.list} testID="friend-requests-section">
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
+            <Text variant="heading" style={styles.listLabel}>
               {inbound.length === 1 ? "1 friend request" : `${inbound.length} friend requests`}
             </Text>
             {inbound.map((request) => {
@@ -400,7 +393,7 @@ export default function FriendsScreen() {
           </View>
         ) : friendsQuery.isError ? (
           <View style={styles.center}>
-            <EmptyState
+            <Notice
               title="Couldn't load friends"
               description={errorMessage(friendsQuery.error)}
               action={
@@ -410,14 +403,14 @@ export default function FriendsScreen() {
           </View>
         ) : friends.length === 0 ? (
           <View style={styles.center}>
-            <EmptyState
+            <Notice
               title="No friends yet"
               description="Share an invite link to start comparing daily scores with friends."
             />
           </View>
         ) : (
           <View style={styles.list}>
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
+            <Text variant="heading" style={styles.listLabel}>
               {friends.length === 1 ? "1 friend" : `${friends.length} friends`}
             </Text>
             {friends.map((friend) => (
@@ -462,7 +455,7 @@ export default function FriendsScreen() {
         {/* People you may know — friends of friends, most-connected first. */}
         {mutuals.length > 0 ? (
           <View style={styles.list} testID="friend-mutuals-section">
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
+            <Text variant="heading" style={styles.listLabel}>
               People you may know
             </Text>
             {mutuals.map((mutual) => {
@@ -523,6 +516,7 @@ export default function FriendsScreen() {
           </View>
         ) : null}
       </ScrollView>
+      <BottomBar active="friends" friendRequests={inbound.length} />
     </Screen>
   );
 }
@@ -541,10 +535,9 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
+  navTitle: { flex: 1, textAlign: "center", fontSize: 13, lineHeight: 20 },
   body: {
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
@@ -553,9 +546,8 @@ const styles = StyleSheet.create({
   inviteCard: {
     gap: tokens.space.md,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   inviteTitle: { letterSpacing: -0.2 },
@@ -569,8 +561,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.canvas,
   },
@@ -591,16 +582,15 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xl,
   },
   list: { gap: tokens.space.sm },
-  listLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
+  listLabel: { fontSize: 11, lineHeight: 18 },
   friendRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   friendRowHover: { backgroundColor: tokens.bg.elevated },
@@ -609,7 +599,6 @@ const styles = StyleSheet.create({
   removeBtn: {
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 6,
-    borderRadius: tokens.radius.sm,
   },
   removeBtnPressed: { backgroundColor: `${tokens.status.danger}1A` },
   removeLabel: {
@@ -620,10 +609,8 @@ const styles = StyleSheet.create({
   acceptBtn: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   acceptBtnHover: { backgroundColor: `${tokens.accent.default}33` },
   acceptLabel: {
@@ -634,12 +621,10 @@ const styles = StyleSheet.create({
   addBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
   addBtnBusy: { opacity: 0.8 },
@@ -652,7 +637,6 @@ const styles = StyleSheet.create({
   requestedPill: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.md,
   },
   requestedText: {
     fontSize: tokens.font.size.sm,

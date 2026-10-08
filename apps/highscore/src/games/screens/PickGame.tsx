@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Button, Notice, PixelIcon, Screen, Text, tokens, useToast } from "../../theme";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { askScoreDirection } from "../lib/askScoreDirection";
@@ -186,7 +187,7 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>x</Text>
+          <PixelIcon name="close" size={24} color={tokens.text.primary} />
         </Pressable>
         <View style={styles.headerTitleBlock}>
           <Text variant="title" style={styles.title}>
@@ -256,7 +257,7 @@ export default function PickGame() {
             <ActivityIndicator color={tokens.accent.default} />
           </View>
         ) : myGamesQuery.isError ? (
-          <EmptyState
+          <Notice
             title="Couldn't load your games"
             description={errorMessage(myGamesQuery.error)}
             action={
@@ -264,7 +265,7 @@ export default function PickGame() {
             }
           />
         ) : myGames.length === 0 ? (
-          <EmptyState
+          <Notice
             title="No games yet"
             description={
               suggestion
@@ -493,16 +494,10 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
   headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
-  title: { fontSize: tokens.font.size.xl },
+  title: { fontSize: 13, lineHeight: 20 },
   payloadPill: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -510,7 +505,6 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 4,
-    borderRadius: tokens.radius.pill,
     backgroundColor: tokens.bg.surface,
     borderWidth: 1,
     borderColor: tokens.border.subtle,
@@ -532,7 +526,6 @@ const styles = StyleSheet.create({
   suggestionBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
     backgroundColor: tokens.bg.surface,
     borderWidth: 1,
     borderColor: tokens.border.default,
@@ -547,7 +540,6 @@ const styles = StyleSheet.create({
   scoreBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
     backgroundColor: tokens.bg.surface,
     borderWidth: 1,
     borderColor: tokens.border.default,
@@ -562,7 +554,6 @@ const styles = StyleSheet.create({
     minHeight: 116,
     borderWidth: 1,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     color: tokens.text.primary,
@@ -578,7 +569,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
     borderWidth: 1,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.canvas,
@@ -596,7 +586,6 @@ const styles = StyleSheet.create({
   gameThumb: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.md,
     backgroundColor: tokens.bg.elevated,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },
