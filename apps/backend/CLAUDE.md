@@ -790,7 +790,7 @@ Lambda env refresh — not a code or Terraform change.
 message is missing" is triageable from CloudWatch without guessing. An event emits its
 call-site line — `new signup` / `sign-in` (`routes/v1/auth.ts`), or nothing extra for a
 new list — then one of: `discord notify sent` (delivered), `discord notify non-2xx` /
-`discord notify threw` (Discord rejected — auto-retried once on 429/5xx/network), or
+`discord notify threw` (Discord rejected — retried once only when the first attempt provably didn't post: 429/500/502/503 or a connect failure; a timeout is never retried, since Discord may have accepted it and webhooks have no idempotency key), or
 `discord notify skipped: webhook not configured` (the `DISCORD_NOTIFY_WEBHOOK_URL` Lambda
 env is empty). **Every sign-in pings** (`notifySignIn`): a genuinely new user
 (`createdUser: true`) emits `new signup` + the `👋` / `kind: "signup"` message, a

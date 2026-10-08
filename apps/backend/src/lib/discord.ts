@@ -24,11 +24,13 @@ import { logger } from "./logger.js";
 import { describeRequestClient } from "./requestContext.js";
 
 const TIMEOUT_MS = 1500;
-// One retry on a transient failure (429 rate-limit, 5xx, network/timeout). An
-// operator notification is a low-volume, high-value event; a single transient
-// hiccup shouldn't silently drop the only record of it. Non-transient
-// rejections (4xx other than 429 — e.g. a deleted webhook) aren't retried since
-// they'd just fail again.
+// One retry, but only when the first attempt provably did NOT post: a 429 /
+// 500 / 502 / 503 answer, or a failure to even connect. Discord webhooks have
+// no idempotency key, so retrying an attempt whose outcome is unknown — our
+// timeout firing, a reset mid-response, a 504 — duplicates the message when
+// the first one actually landed (2026-10-08: a first-score ping took >1.5s,
+// was delivered, then re-sent by the retry). An ambiguous failure is logged
+// and dropped instead: a rare missing ping beats a routine duplicate.
 const MAX_ATTEMPTS = 2;
 const RETRY_BACKOFF_MS = 400;
 
@@ -57,7 +59,24 @@ export function withClientSuffix(content: string, client = describeRequestClient
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function isRetryableStatus(status: number): boolean {
-  return status === 429 || status >= 500;
+  return status === 429 || status === 500 || status === 502 || status === 503;
+}
+
+// Connection-phase errors: the request body never left this host. undici's
+// fetch throws `TypeError("fetch failed")` with the socket error as `cause`.
+const NOT_SENT_CODES = new Set([
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ECONNREFUSED",
+  "ENETUNREACH",
+  "EHOSTUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+function isNotSentError(error: unknown): boolean {
+  const cause = error instanceof Error ? error.cause : undefined;
+  const code = cause && typeof cause === "object" && "code" in cause ? cause.code : undefined;
+  return typeof code === "string" && NOT_SENT_CODES.has(code);
 }
 
 export async function notifyDiscord(content: string, opts: NotifyOptions = {}): Promise<void> {
@@ -93,7 +112,7 @@ export async function notifyDiscord(content: string, opts: NotifyOptions = {}): 
       });
       if (!retryable) return;
     } catch (error) {
-      const willRetry = attempt < MAX_ATTEMPTS;
+      const willRetry = isNotSentError(error) && attempt < MAX_ATTEMPTS;
       logger.warn("discord notify threw", { kind, error, attempt, willRetry });
       if (!willRetry) return;
     }
