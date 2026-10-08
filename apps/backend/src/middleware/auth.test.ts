@@ -112,6 +112,20 @@ describe("requireAuth middleware", () => {
     });
   });
 
+  it("forwards the access token's refresh version to the managed session check", async () => {
+    const sessionId = "00000000-0000-4000-8000-000000000124";
+    const token = signSession("user-abc", { sessionId, sessionVersion: 4 });
+    const res = await buildAppForTest().request("/protected", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(isSessionRevoked).toHaveBeenCalledWith("user-abc", expect.any(Number), {
+      sessionId,
+      subjectUserId: "user-abc",
+      sessionVersion: 4,
+    });
+  });
+
   it("rejects an impersonated token when the admin session is revoked", async () => {
     vi.mocked(isSessionRevoked).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const token = signSession("target-user", { impersonatorUserId: "admin-user" });

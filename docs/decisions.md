@@ -113,8 +113,9 @@ per-device revocation mechanism.
 refresh credentials extend a 180-day inactivity window up to a one-year absolute cap. Native stores
 both credentials in SecureStore. Web stores only the access token in memory and receives the refresh
 credential as a first-party HttpOnly, Secure, SameSite=Lax cookie through the Cloudflare Pages
-`/api/*` proxy. Reuse of an old refresh credential outside a short concurrency grace window revokes
-that device session. Normal signout revokes the current device; the existing sign-out-all cutoff also
+`/api/*` proxy. Reuse of an old refresh credential revokes that device session — except inside a
+short concurrency grace window, or while the newer credential's access token has never been used
+(the client lost the rotation response; the current credential is re-issued instead). Normal signout revokes the current device; the existing sign-out-all cutoff also
 revokes every managed session owned by the user.
 
 **Rollout**: Requests advertise managed-session support with `X-Workshop-Session-Version: 2`.

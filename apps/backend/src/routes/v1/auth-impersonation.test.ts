@@ -206,6 +206,78 @@ describe("managed auth routes", () => {
     expect(rejected.status).toBe(401);
   });
 
+  it("re-issues a lost rotation response, and pings ops only on a real replay", async () => {
+    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
+    resetConfigForTesting();
+    try {
+      const upgradeRes = await authRoutes.request("/session", {
+        method: "POST",
+        headers: {
+          ...authHeaders(otherId),
+          "X-Workshop-Session-Version": "2",
+          "X-Workshop-Platform": "ios",
+        },
+      });
+      const upgraded = (await upgradeRes.json()) as AuthResponse;
+      const sessionId = verifySession(upgraded.token)?.sessionId;
+      expect(verifySession(upgraded.token)?.sessionVersion).toBe(1);
+
+      const firstRes = await authRoutes.request("/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Workshop-Platform": "ios" },
+        body: JSON.stringify({ refreshToken: upgraded.refreshToken }),
+      });
+      expect(firstRes.status).toBe(200);
+      const first = (await firstRes.json()) as AuthResponse;
+      expect(verifySession(first.token)?.sessionVersion).toBe(2);
+
+      // Simulate a lost response: the client still holds the pre-rotation
+      // token and nothing has used v2. Must succeed with the same credential.
+      await rows(
+        "UPDATE auth_sessions SET rotated_at = rotated_at - interval '1 hour' WHERE id = $1",
+        [sessionId],
+      );
+      const retryRes = await authRoutes.request("/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Workshop-Platform": "ios" },
+        body: JSON.stringify({ refreshToken: upgraded.refreshToken }),
+      });
+      expect(retryRes.status).toBe(200);
+      const retry = (await retryRes.json()) as AuthResponse;
+      expect(retry.refreshToken).toBe(first.refreshToken);
+      expect(notifyDiscord).not.toHaveBeenCalled();
+
+      // Now v2's access token gets used (the middleware records this in prod;
+      // here the revocation helper is globally mocked, so set it directly).
+      await rows("UPDATE auth_sessions SET last_used_refresh_version = 2 WHERE id = $1", [
+        sessionId,
+      ]);
+      const replayRes = await authRoutes.request("/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Workshop-Platform": "ios" },
+        body: JSON.stringify({ refreshToken: upgraded.refreshToken }),
+      });
+      expect(replayRes.status).toBe(401);
+      expect(notifyDiscord).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "🚩 refresh replay — Other User's device session was revoked from ios",
+        ),
+        { kind: "refresh_replay_revoked" },
+      );
+
+      // The session is gone for the legitimate holder too.
+      const afterRes = await authRoutes.request("/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Workshop-Platform": "ios" },
+        body: JSON.stringify({ refreshToken: first.refreshToken }),
+      });
+      expect(afterRes.status).toBe(401);
+    } finally {
+      process.env.DISCORD_NOTIFY_WEBHOOK_URL = "";
+      resetConfigForTesting();
+    }
+  });
+
   it("keeps the browser refresh credential in an HttpOnly cookie", async () => {
     const browserHeaders = {
       ...authHeaders(otherId),

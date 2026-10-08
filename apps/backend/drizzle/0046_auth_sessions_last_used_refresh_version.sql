@@ -1,0 +1,1 @@
+ALTER TABLE "auth_sessions" ADD COLUMN "last_used_refresh_version" integer;

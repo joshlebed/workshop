@@ -153,6 +153,25 @@ export function buildDirectionChangedNotification(
   };
 }
 
+/**
+ * Tier 3 (security): a refresh credential that had already been rotated — and
+ * whose successor had already been used — was presented again, so the device
+ * session was revoked and the user will be asked to sign in. After the
+ * lost-response re-issue path (`rotateDeviceSession`), this only fires when
+ * two parties really hold the same credential, so it reads as a theft signal
+ * and explains the "signed in" ping that follows it.
+ */
+export function buildRefreshReplayRevokedNotification(
+  user: string,
+  platform: string | null,
+): Notification {
+  const where = platform ? ` from ${platform}` : "";
+  return {
+    content: `🚩 refresh replay — ${user}'s device session was revoked${where} (an already-rotated refresh token was presented again); they'll be asked to sign in`,
+    kind: "refresh_replay_revoked",
+  };
+}
+
 /** Tier 3: a user signed out of every device (session revocation). */
 export function buildSessionsRevokedNotification(user: string): Notification {
   return {
@@ -358,6 +377,15 @@ export async function notifyDirectionChanged(
 ): Promise<void> {
   await safeNotify(async () =>
     buildDirectionChangedNotification(await loadUserLabel(userId), opts),
+  );
+}
+
+export async function notifyRefreshReplayRevoked(
+  userId: string,
+  platform: string | null,
+): Promise<void> {
+  await safeNotify(async () =>
+    buildRefreshReplayRevokedNotification(await loadUserLabel(userId), platform),
   );
 }
 

@@ -19,6 +19,7 @@ import { logger } from "../../lib/logger.js";
 import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
 import { verifyGoogleIdentityToken } from "../../lib/oauth/google.js";
 import { OAuthVerifyError, type VerifiedClaims } from "../../lib/oauth/jwks.js";
+import { notifyRefreshReplayRevoked } from "../../lib/opsNotifications.js";
 import { rememberAppleAuthorizationCode } from "../../lib/providerRevocation.js";
 import {
   clearRefreshCredential,
@@ -140,7 +141,10 @@ async function issueSignIn(c: Context, user: DbUser) {
     c,
     authBody({
       user,
-      token: signSession(user.id, { sessionId: created.session.id }),
+      token: signSession(user.id, {
+        sessionId: created.session.id,
+        sessionVersion: created.session.refreshVersion,
+      }),
       refreshToken: isBrowserRequest(c) ? undefined : created.refreshToken,
       impersonation: null,
       sessionMode: "managed",
@@ -441,6 +445,7 @@ authRoutes.post("/session", requireAuth, async (c) => {
       token: signSession(subject.id, {
         impersonatorUserId: impersonation ? owner.id : null,
         sessionId: created.session.id,
+        sessionVersion: created.session.refreshVersion,
       }),
       refreshToken: isBrowserRequest(c) ? undefined : created.refreshToken,
       impersonation,
@@ -465,12 +470,25 @@ authRoutes.post("/refresh", async (c) => {
   } catch (error) {
     if (!(error instanceof DeviceSessionError)) throw error;
     if (error.reason === "reused") {
+      const platform = c.req.header("X-Workshop-Platform") ?? null;
       logger.warn("refresh token replay revoked device session", {
-        platform: c.req.header("X-Workshop-Platform"),
+        platform,
+        userId: error.sessionUserId,
       });
+      if (error.sessionUserId) await notifyRefreshReplayRevoked(error.sessionUserId, platform);
     }
     clearRefreshCredential(c);
     return err(c, "UNAUTHORIZED", "invalid or expired session");
+  }
+  if (rotated.reissued) {
+    // The client presented the previous credential and the current one had
+    // never been used: the last rotation's response was lost in flight. Logged
+    // at info so the rate is visible; a spike means a client is dropping
+    // responses, not that anyone is replaying tokens.
+    logger.info("refresh credential re-issued after lost rotation response", {
+      platform: c.req.header("X-Workshop-Platform"),
+      sessionId: rotated.session.id,
+    });
   }
 
   const owner = await userById(rotated.session.userId);
@@ -492,6 +510,7 @@ authRoutes.post("/refresh", async (c) => {
       token: signSession(subject.id, {
         impersonatorUserId: impersonation ? owner.id : null,
         sessionId: rotated.session.id,
+        sessionVersion: rotated.session.refreshVersion,
       }),
       refreshToken: browser ? undefined : rotated.refreshToken,
       impersonation,
@@ -554,7 +573,11 @@ authRoutes.post("/impersonate", requireAuth, async (c) => {
     c,
     authBody({
       user: target,
-      token: signSession(target.id, { impersonatorUserId: admin.id, sessionId }),
+      token: signSession(target.id, {
+        impersonatorUserId: admin.id,
+        sessionId,
+        sessionVersion: c.get("sessionVersion"),
+      }),
       impersonation: toImpersonationShape(admin),
       sessionMode: sessionId ? "managed" : "legacy",
     }),
@@ -582,7 +605,7 @@ authRoutes.post("/impersonation/stop", requireAuth, async (c) => {
     c,
     authBody({
       user: admin,
-      token: signSession(admin.id, { sessionId }),
+      token: signSession(admin.id, { sessionId, sessionVersion: c.get("sessionVersion") }),
       impersonation: null,
       sessionMode: sessionId ? "managed" : "legacy",
     }),

@@ -8,6 +8,7 @@ declare module "hono" {
     userId: string;
     impersonatorUserId?: string;
     sessionId?: string;
+    sessionVersion?: number;
   }
 }
 
@@ -16,11 +17,13 @@ function isPayloadRevoked(input: {
   subjectUserId: string;
   iatSeconds: number;
   sessionId?: string;
+  sessionVersion?: number;
 }): Promise<boolean> {
   if (!input.sessionId) return isSessionRevoked(input.ownerUserId, input.iatSeconds);
   return isSessionRevoked(input.ownerUserId, input.iatSeconds, {
     sessionId: input.sessionId,
     subjectUserId: input.subjectUserId,
+    ...(input.sessionVersion !== undefined ? { sessionVersion: input.sessionVersion } : {}),
   });
 }
 
@@ -55,6 +58,7 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
         subjectUserId: payload.userId,
         iatSeconds: payload.iat ?? 0,
         ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+        ...(payload.sessionVersion ? { sessionVersion: payload.sessionVersion } : {}),
       })
     ) {
       return err(c, "UNAUTHORIZED", "invalid or expired session");
@@ -66,11 +70,13 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
       subjectUserId: payload.userId,
       iatSeconds: payload.iat ?? 0,
       ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+      ...(payload.sessionVersion ? { sessionVersion: payload.sessionVersion } : {}),
     })
   ) {
     return err(c, "UNAUTHORIZED", "invalid or expired session");
   }
   if (payload.sessionId) c.set("sessionId", payload.sessionId);
+  if (payload.sessionVersion) c.set("sessionVersion", payload.sessionVersion);
   c.set("userId", payload.userId);
   await next();
 };
@@ -98,10 +104,12 @@ export const optionalAuth: MiddlewareHandler = async (c, next) => {
         subjectUserId: payload.userId,
         iatSeconds: payload.iat ?? 0,
         ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
+        ...(payload.sessionVersion ? { sessionVersion: payload.sessionVersion } : {}),
       }));
       if (impersonatorOk && subjectOk && ownerOk) {
         if (impersonator) c.set("impersonatorUserId", impersonator);
         if (payload.sessionId) c.set("sessionId", payload.sessionId);
+        if (payload.sessionVersion) c.set("sessionVersion", payload.sessionVersion);
         c.set("userId", payload.userId);
       }
     }

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, lt, or } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { withDbRetry } from "../db/retry.js";
 import { authSessions, users } from "../db/schema.js";
@@ -6,6 +6,14 @@ import { authSessions, users } from "../db/schema.js";
 interface ManagedSessionCheck {
   sessionId: string;
   subjectUserId: string;
+  /**
+   * Refresh version the access token was minted with (absent on tokens minted
+   * before the claim existed). When present and newer than the row's
+   * `last_used_refresh_version`, the check records it — proof the rotated
+   * credential reached the client, which `rotateDeviceSession` consults before
+   * treating an older token as replay.
+   */
+  sessionVersion?: number | undefined;
 }
 
 /**
@@ -52,6 +60,7 @@ export async function isSessionRevoked(
       idleExpiresAt: authSessions.idleExpiresAt,
       absoluteExpiresAt: authSessions.absoluteExpiresAt,
       revokedAt: authSessions.revokedAt,
+      lastUsedRefreshVersion: authSessions.lastUsedRefreshVersion,
     })
     .from(authSessions)
     .where(and(eq(authSessions.id, managed.sessionId), eq(authSessions.userId, userId)))
@@ -62,7 +71,33 @@ export async function isSessionRevoked(
     return true;
   }
   const expectedSubject = session.impersonatedUserId ?? userId;
-  return expectedSubject !== managed.subjectUserId;
+  if (expectedSubject !== managed.subjectUserId) return true;
+
+  // One UPDATE per rotation per device (the first request after each refresh),
+  // not per request — the guard below keeps the hot path read-only.
+  if (
+    managed.sessionVersion !== undefined &&
+    (session.lastUsedRefreshVersion ?? 0) < managed.sessionVersion
+  ) {
+    await recordAccessTokenUse(managed.sessionId, managed.sessionVersion);
+  }
+  return false;
+}
+
+/** Mark `version`'s access token as seen (monotonic; never moves backwards). */
+async function recordAccessTokenUse(sessionId: string, version: number): Promise<void> {
+  await getDb()
+    .update(authSessions)
+    .set({ lastUsedRefreshVersion: version })
+    .where(
+      and(
+        eq(authSessions.id, sessionId),
+        or(
+          isNull(authSessions.lastUsedRefreshVersion),
+          lt(authSessions.lastUsedRefreshVersion, version),
+        ),
+      ),
+    );
 }
 
 /**

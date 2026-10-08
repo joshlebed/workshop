@@ -14,6 +14,10 @@ const sessionPayloadSchema = z.object({
   iat: z.number().optional(),
   impersonatorUserId: z.string().optional(),
   sessionId: z.string().uuid().optional(),
+  // Refresh version the managed access token was minted with. Lets the auth
+  // middleware record "this rotation's credential reached the client" so a
+  // later refresh can distinguish a lost response from a replayed token.
+  sessionVersion: z.number().int().positive().optional(),
 });
 
 type SessionPayload = z.infer<typeof sessionPayloadSchema>;
@@ -21,6 +25,7 @@ type SessionPayload = z.infer<typeof sessionPayloadSchema>;
 interface SignSessionOptions {
   impersonatorUserId?: string | null | undefined;
   sessionId?: string | null | undefined;
+  sessionVersion?: number | null | undefined;
 }
 
 function b64urlEncode(input: Buffer | string): string {
@@ -47,6 +52,7 @@ export function signSession(userId: string, opts: SignSessionOptions = {}): stri
   };
   if (opts.impersonatorUserId) payload.impersonatorUserId = opts.impersonatorUserId;
   if (opts.sessionId) payload.sessionId = opts.sessionId;
+  if (opts.sessionId && opts.sessionVersion) payload.sessionVersion = opts.sessionVersion;
   const payloadB64 = b64urlEncode(JSON.stringify(payload));
   const sig = createHmac("sha256", sessionSecret).update(payloadB64).digest();
   return `${payloadB64}.${b64urlEncode(sig)}`;

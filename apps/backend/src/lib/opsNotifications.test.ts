@@ -12,6 +12,7 @@ import {
   buildListJoinedNotification,
   buildOwnershipTransferredNotification,
   buildParserTaughtNotification,
+  buildRefreshReplayRevokedNotification,
   buildScoreSpecTaughtNotification,
   buildSessionsRevokedNotification,
   buildSourceWebhookNotification,
@@ -107,6 +108,17 @@ describe("ops notification builders", () => {
       content: '🧑‍🏫 score spec re-taught — Alex re-taught "Squardle" (higher is better)',
       kind: "score_spec_taught",
     });
+  });
+
+  it("builds the refresh-replay notification", () => {
+    expect(buildRefreshReplayRevokedNotification("Josh", "ios")).toEqual({
+      content:
+        "🚩 refresh replay — Josh's device session was revoked from ios (an already-rotated refresh token was presented again); they'll be asked to sign in",
+      kind: "refresh_replay_revoked",
+    });
+    expect(buildRefreshReplayRevokedNotification("Josh", null).content).toContain(
+      "was revoked (an already-rotated",
+    );
   });
 
   it("sessions revoked", () => {
