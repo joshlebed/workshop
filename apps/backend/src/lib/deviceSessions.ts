@@ -27,11 +27,24 @@ interface DeviceMetadata {
 export class DeviceSessionError extends Error {
   constructor(
     readonly reason: "invalid" | "expired" | "reused",
+    /** Owner of the session that was revoked — set for `reused` so the route can ping ops. */
+    readonly sessionUserId: string | null = null,
     message = "invalid or expired session",
   ) {
     super(message);
     this.name = "DeviceSessionError";
   }
+}
+
+interface RotatedDeviceSession {
+  session: DbAuthSession;
+  refreshToken: string;
+  /**
+   * True when the request presented the previous credential, the current one
+   * had never been used, and the current one was re-issued instead of rotating
+   * again — i.e. the client lost the last rotation's response.
+   */
+  reissued: boolean;
 }
 
 function trimMetadata(value: string | null | undefined): string | null {
@@ -116,7 +129,7 @@ export async function createDeviceSession(input: {
 export async function rotateDeviceSession(
   refreshToken: string,
   now = new Date(),
-): Promise<{ session: DbAuthSession; refreshToken: string }> {
+): Promise<RotatedDeviceSession> {
   const parsed = parseRefreshToken(refreshToken);
   if (!parsed) throw new DeviceSessionError("invalid");
 
@@ -164,33 +177,43 @@ export async function rotateDeviceSession(
       return {
         session: rotated,
         refreshToken: refreshTokenFor(rotated.id, rotated.refreshVersion),
+        reissued: false,
       };
     }
   }
 
-  // A second tab/request may race the first rotation. Return the already-
-  // rotated token briefly so normal concurrency does not look like theft.
   const [latest] = await db
     .select()
     .from(authSessions)
     .where(eq(authSessions.id, parsed.sessionId))
     .limit(1);
   if (!latest || !isActive(latest, now)) throw new DeviceSessionError("expired");
-  if (
-    latest.refreshVersion === parsed.version + 1 &&
-    latest.rotatedAt &&
-    now.getTime() - latest.rotatedAt.getTime() <= ROTATION_GRACE_MS
-  ) {
-    return {
-      session: latest,
-      refreshToken: refreshTokenFor(latest.id, latest.refreshVersion),
-    };
+
+  if (latest.refreshVersion === parsed.version + 1) {
+    // A second tab/request may race the first rotation. Return the already-
+    // rotated token briefly so normal concurrency does not look like theft.
+    const withinGrace =
+      latest.rotatedAt !== null && now.getTime() - latest.rotatedAt.getTime() <= ROTATION_GRACE_MS;
+    // Lost response: the previous rotation happened, but no request has ever
+    // carried the access token it minted (`last_used_refresh_version` lags),
+    // so the client most likely never received it — the app was backgrounded
+    // or killed mid-request. Re-issue the current credential rather than
+    // treating the retry as theft. If the newer credential *has* been used,
+    // someone else holds it and the older one really is a replay.
+    const newestUnused = (latest.lastUsedRefreshVersion ?? 0) < latest.refreshVersion;
+    if (withinGrace || newestUnused) {
+      return {
+        session: latest,
+        refreshToken: refreshTokenFor(latest.id, latest.refreshVersion),
+        reissued: !withinGrace,
+      };
+    }
   }
 
   // A valid, older token outside the duplicate-request window is replay.
   if (parsed.version < latest.refreshVersion) {
     await revokeDeviceSession(latest.id, latest.userId, now);
-    throw new DeviceSessionError("reused");
+    throw new DeviceSessionError("reused", latest.userId);
   }
   throw new DeviceSessionError("invalid");
 }

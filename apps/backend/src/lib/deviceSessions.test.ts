@@ -13,6 +13,15 @@ vi.mock("../db/client.js", () => ({
 const { createDeviceSession, rotateDeviceSession, setDeviceSessionImpersonation } = await import(
   "./deviceSessions.js"
 );
+// `sessionRevocation.js` is globally mocked in test-setup, so mark access-token
+// use the way the real `recordAccessTokenUse` does — directly on the row.
+async function recordAccessTokenUse(sessionId: string, version: number) {
+  await sql(
+    `UPDATE auth_sessions SET last_used_refresh_version = $2
+       WHERE id = $1 AND (last_used_refresh_version IS NULL OR last_used_refresh_version < $2)`,
+    [sessionId, version],
+  );
+}
 
 const ownerId = "00000000-0000-4000-8000-000000000501";
 const targetId = "00000000-0000-4000-8000-000000000502";
@@ -76,17 +85,72 @@ describe("managed device sessions", () => {
     expect(duplicate.refreshToken).toBe(first.refreshToken);
   });
 
-  it("revokes the device when an older token is replayed outside the grace window", async () => {
+  it("re-issues the current token when the previous one is presented and the current one was never used", async () => {
+    // The client's refresh succeeded server-side but the response was lost in
+    // flight (app backgrounded / killed). Nothing has used v2's access token,
+    // so a late v1 presentation is the same client retrying, not a replay.
     const created = await createDeviceSession({ userId: ownerId, now: start });
     const rotatedAt = new Date(start.getTime() + 60_000);
     const rotated = await rotateDeviceSession(created.refreshToken, rotatedAt);
+    expect(rotated.reissued).toBe(false);
+
+    const late = await rotateDeviceSession(
+      created.refreshToken,
+      new Date(rotatedAt.getTime() + 24 * 60 * 60 * 1000),
+    );
+    expect(late.reissued).toBe(true);
+    expect(late.refreshToken).toBe(rotated.refreshToken);
+    expect(late.session.refreshVersion).toBe(2);
+    expect(late.session.revokedAt).toBeNull();
+
+    // The re-issued credential then rotates normally.
+    const next = await rotateDeviceSession(
+      late.refreshToken,
+      new Date(rotatedAt.getTime() + 2 * 24 * 60 * 60 * 1000),
+    );
+    expect(next.session.refreshVersion).toBe(3);
+    expect(next.reissued).toBe(false);
+  });
+
+  it("revokes the device when an older token is replayed after the newer one was used", async () => {
+    const created = await createDeviceSession({ userId: ownerId, now: start });
+    const rotatedAt = new Date(start.getTime() + 60_000);
+    const rotated = await rotateDeviceSession(created.refreshToken, rotatedAt);
+    // The holder of v2 made an authenticated request with its access token.
+    await recordAccessTokenUse(rotated.session.id, rotated.session.refreshVersion);
 
     await expect(
       rotateDeviceSession(created.refreshToken, new Date(rotatedAt.getTime() + 10_001)),
-    ).rejects.toMatchObject({ reason: "reused" });
+    ).rejects.toMatchObject({ reason: "reused", sessionUserId: ownerId });
     await expect(
       rotateDeviceSession(rotated.refreshToken, new Date(rotatedAt.getTime() + 10_002)),
     ).rejects.toMatchObject({ reason: "expired" });
+  });
+
+  it("revokes the device when a token two or more versions behind is presented", async () => {
+    const created = await createDeviceSession({ userId: ownerId, now: start });
+    const t1 = new Date(start.getTime() + 60_000);
+    const v2 = await rotateDeviceSession(created.refreshToken, t1);
+    const t2 = new Date(t1.getTime() + 60_000);
+    await rotateDeviceSession(v2.refreshToken, t2);
+
+    // v1 is two behind: the newer credential chain has clearly moved on
+    // without this holder, regardless of access-token usage.
+    await expect(
+      rotateDeviceSession(created.refreshToken, new Date(t2.getTime() + 60_000)),
+    ).rejects.toMatchObject({ reason: "reused", sessionUserId: ownerId });
+  });
+
+  it("records access-token use monotonically", async () => {
+    const created = await createDeviceSession({ userId: ownerId, now: start });
+    await recordAccessTokenUse(created.session.id, 3);
+    await recordAccessTokenUse(created.session.id, 2);
+    const {
+      rows: [row],
+    } = await sql("SELECT last_used_refresh_version FROM auth_sessions WHERE id = $1", [
+      created.session.id,
+    ]);
+    expect(row?.last_used_refresh_version).toBe(3);
   });
 
   it("rejects refresh after the idle or absolute expiry", async () => {

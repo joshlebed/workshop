@@ -34,8 +34,17 @@ Migrations run automatically in CI on merge to `main` (`deploy-backend.yml` → 
 
 `auth_sessions` owns refresh rotation and device revocation. Managed access tokens carry `sessionId`
 and last one hour; refreshes rotate a deterministic HMAC credential, extend the 180-day idle window,
-and stop at the one-year absolute expiry. A previous version is accepted for 10 seconds only to absorb
-parallel tabs/requests; later reuse revokes the row. Never store a raw refresh token. Browser callers
+and stop at the one-year absolute expiry. A previous version is accepted for 10 seconds to absorb
+parallel tabs/requests, **and at any time while the current version's access token has never been
+seen on a request** (`auth_sessions.last_used_refresh_version`, recorded once per rotation by
+`isSessionRevoked` from the `sessionVersion` JWT claim) — that is the lost-response case: the
+rotation committed but the client was backgrounded/killed before the reply arrived, so its retry
+with the old token gets the current credential re-issued (`reissued: true`, logged at info as
+`refresh credential re-issued after lost rotation response`). Only when the newer credential has
+actually been used does an older one count as replay: the row is revoked and `#workshop-admin` gets
+a 🚩 `refresh_replay_revoked` ping naming the user, which is what a following "signed in" ping
+means. Before this, every lost refresh response (one lone `POST /v1/auth/refresh 200` with no
+follow-up requests, then a 401 minutes later) forced a re-login. Never store a raw refresh token. Browser callers
 are identified by `Origin` (with the platform header as a compatibility fallback), receive the token
 only as an HttpOnly cookie, and reach the API through the Pages `/api/*` proxy. Preserve the
 `X-Workshop-Session-Version: 2` negotiation and legacy sign-in path: removing it logs out older native

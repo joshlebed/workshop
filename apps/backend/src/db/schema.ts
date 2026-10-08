@@ -120,6 +120,11 @@ export const authSessions = pgTable(
     absoluteExpiresAt: timestamp("absolute_expires_at", { withTimezone: true }).notNull(),
     rotatedAt: timestamp("rotated_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    // Highest refresh_version whose access token has been seen on an
+    // authenticated request. Lets a refresh tell "the client never received
+    // the rotated credential" (newest version unused → re-issue it) apart from
+    // "someone else is using it" (newest version used → replay → revoke).
+    lastUsedRefreshVersion: integer("last_used_refresh_version"),
   },
   (t) => ({
     userIdx: index("auth_sessions_user_idx").on(t.userId),

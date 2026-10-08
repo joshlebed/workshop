@@ -323,6 +323,13 @@
       "when": 1791358619683,
       "tag": "0045_game_teach",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1791418538606,
+      "tag": "0046_auth_sessions_last_used_refresh_version",
+      "breakpoints": true
     }
   ]
 }
