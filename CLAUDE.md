@@ -381,7 +381,9 @@ The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
 `APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`,
 `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
 `GOOGLE_BOOKS_API_KEY`, `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `ENABLE_GAMES`, `GAME_RECOGNITION`
-and `GAME_CODE_PARSING` (each `off` | `shadow` | `on` — see `apps/backend/CLAUDE.md`),
+and `GAME_CODE_PARSING` (each `off` | `shadow` | `on`) and `GAME_TEACH` (`off` | `on`) — all
+**default to `on` since the 2026-10-08 rollout to everyone**; set `off` as a kill switch (see
+`apps/backend/CLAUDE.md`),
 `SPOTIFY_CLIENT_ID`,
 `SPOTIFY_CLIENT_SECRET`, `DISCORD_NOTIFY_WEBHOOK_URL`, `LOG_LEVEL` from env vars set by Terraform.
 `OPENAI_TEACH_TARGETS_MODEL` / `OPENAI_TEACH_CODEGEN_MODEL` and `OPENAI_TEACH_TARGETS_EFFORT` /

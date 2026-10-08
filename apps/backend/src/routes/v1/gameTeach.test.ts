@@ -241,7 +241,11 @@ beforeAll(async () => {
   process.env.SESSION_SECRET = "x".repeat(32);
   process.env.OPENAI_API_KEY = "test-key";
   process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.test/webhook";
-  delete process.env.GAME_TEACH;
+  // Unset means `on` since the 2026-10-08 rollout; these tests exercise the beta
+  // gate, so pin the global flags to the kill switch and let the allowlist open them.
+  process.env.GAME_TEACH = "off";
+  process.env.GAME_CODE_PARSING = "off";
+  process.env.GAME_RECOGNITION = "off";
   delete process.env.TYPESAFE_API_KEY;
   resetConfigForTesting();
   vi.stubGlobal("fetch", fetchMock);

@@ -69,7 +69,7 @@ variable "typesafe_api_key" {
 
 variable "game_recognition" {
   type        = string
-  default     = "off"
+  default     = "on"
   description = "Game-score recognition rollout: off | shadow (log predictions on score posts, change nothing) | on (also serve POST /v1/games/recognize)."
 
   validation {
@@ -80,12 +80,23 @@ variable "game_recognition" {
 
 variable "game_code_parsing" {
   type        = string
-  default     = "off"
+  default     = "on"
   description = "Score parsing by stored game code: off | shadow (run the code on score posts and log how it compares, change nothing) | on (stored code is authoritative; parse_status and score_summary are written and returned)."
 
   validation {
     condition     = contains(["off", "shadow", "on"], var.game_code_parsing)
     error_message = "game_code_parsing must be off, shadow or on."
+  }
+}
+
+variable "game_teach" {
+  type        = string
+  default     = "on"
+  description = "Teach v2 (score previews, candidate picker, LLM-written parsers): off | on. Set off as a kill switch."
+
+  validation {
+    condition     = contains(["off", "on"], var.game_teach)
+    error_message = "game_teach must be off or on."
   }
 }
 

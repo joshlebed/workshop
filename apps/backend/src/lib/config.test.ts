@@ -120,3 +120,24 @@ describe("OpenAI teach config", () => {
     expect(getConfig().openaiTeachCodegenEffort).toBe("none");
   });
 });
+
+describe("Games feature flags", () => {
+  it("default to on when unset (2026-10-08 rollout) and honour off as the kill switch", () => {
+    for (const k of ["GAME_RECOGNITION", "GAME_CODE_PARSING", "GAME_TEACH"]) delete process.env[k];
+    resetConfigForTesting();
+    let cfg = getConfig();
+    expect(cfg.gameRecognition).toBe("on");
+    expect(cfg.gameCodeParsing).toBe("on");
+    expect(cfg.gameTeach).toBe("on");
+    process.env.GAME_RECOGNITION = "off";
+    process.env.GAME_CODE_PARSING = "shadow";
+    process.env.GAME_TEACH = "off";
+    resetConfigForTesting();
+    cfg = getConfig();
+    expect(cfg.gameRecognition).toBe("off");
+    expect(cfg.gameCodeParsing).toBe("shadow");
+    expect(cfg.gameTeach).toBe("off");
+    for (const k of ["GAME_RECOGNITION", "GAME_CODE_PARSING", "GAME_TEACH"]) delete process.env[k];
+    resetConfigForTesting();
+  });
+});
