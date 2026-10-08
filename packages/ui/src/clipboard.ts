@@ -29,3 +29,32 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+const WEB_READ_TIMEOUT_MS = 800;
+
+/**
+ * Best-effort clipboard read, for a paste affordance that pre-fills a field
+ * on tap. Must be called from a user gesture: on web `readText` is gated on
+ * one (and Firefox denies it outright), on iOS a read outside a tap shows the
+ * system paste prompt. Returns null when nothing is there or the read is
+ * refused — callers fall back to an empty, focused field.
+ */
+export async function readClipboardText(): Promise<string | null> {
+  try {
+    if (Platform.OS === "web" && typeof navigator !== "undefined") {
+      const clip = navigator.clipboard;
+      if (!clip || typeof clip.readText !== "function") return null;
+      // A pending permission prompt the user never answers would otherwise
+      // hold the tap forever; past this the caller proceeds with nothing.
+      const text = await Promise.race([
+        clip.readText(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), WEB_READ_TIMEOUT_MS)),
+      ]);
+      return text?.trim() ? text : null;
+    }
+    const text = await Clipboard.getStringAsync();
+    return text.trim() ? text : null;
+  } catch {
+    return null;
+  }
+}

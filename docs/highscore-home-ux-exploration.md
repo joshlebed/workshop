@@ -1,6 +1,6 @@
 # HighScore home: paste-first primary action (UX exploration)
 
-Status: proposal · 2026-10-08 · Owner: @joshlebed
+Status: implemented in the same PR (see "What shipped") · 2026-10-08 · Owner: @joshlebed
 
 ## The problem
 
@@ -144,7 +144,21 @@ Classifier miss, brand-new game
 - **"Next up" ordering.** First unplayed game in My Games order is predictable; a "most friends
   played today" sort is tempting but surprises users who ordered their list.
 
-## Suggested rollout
+## What shipped
+
+All three rollout steps below landed together, with two deviations from the text above:
+
+- **URL add is a header `+` icon**, not an overflow menu — one tap, no new menu, and it still
+  opens the same `AddGameSheet` (URL field plus the full discovery list, so "See all" from the
+  strip has somewhere to go).
+- **`AddGameSheet` keeps its discovery list.** The strip shows the top three unowned games;
+  the sheet is the full ranked list.
+
+Pieces: `PostScoreForm` (extracted from `PickGame`), `PostScoreSheet` (docked bar's sheet,
+clipboard pre-fill, "Next up"), `FriendsPlayingStrip` (card-list footer), `readClipboardText`
+in `@workshop/ui/clipboard`, `footer` / `bottomInset` on `GameCardList`.
+
+## Suggested rollout (as planned)
 
 1. **PR-1 (no new UI):** extract `PickGame`'s body into a `PostScoreSheet` component; mount it
    from home behind the existing FAB with clipboard pre-fill; FAB label becomes "Paste a score".

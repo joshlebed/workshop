@@ -10,8 +10,15 @@
 //
 // Empty state is the friends-first onboarding (G3, #293) — `GamesOnboarding`
 // pushes "Add friends" when you have none, or your friends' games as one-tap
-// suggestions when you do. The + sheet carries the same discovery suggestions
-// above its URL field; the home card list itself stays purely your own games.
+// suggestions when you do.
+//
+// Primary action is the docked "Paste a score" bar (`PostScoreSheet`): it
+// reads the clipboard inside the tap and lets the classifier name the game —
+// the usual session starts with a share text copied elsewhere and no game in
+// mind. Growing My Games moved down a level: the "Friends are playing" strip
+// at the foot of the list (discovery, one-tap add) and the header's + button
+// (`AddGameSheet`, URL + the full discovery list). See
+// docs/highscore-home-ux-exploration.md.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
@@ -41,6 +48,7 @@ import {
   tokens,
   useToast,
 } from "@workshop/ui";
+import { readClipboardText } from "@workshop/ui/clipboard";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
@@ -78,9 +86,16 @@ import { useGamesRuntime } from "../runtime";
 import { useViewDay } from "../state/viewDay";
 import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
 import { AddGameSheet } from "./games/AddGameSheet";
+import { FriendsPlayingStrip } from "./games/FriendsPlayingStrip";
 import { GameCardList } from "./games/GameCardList";
 import { GamesOnboarding } from "./games/GamesOnboarding";
 import type { GameReorderEvent } from "./games/gameCardListProps";
+import { PostScoreSheet } from "./PostScoreSheet";
+
+// Height of the docked "Paste a score" bar plus its bottom inset; the card
+// list pads by this so the last card scrolls clear of it.
+const DOCK_BAR_HEIGHT = 52;
+const DOCK_CLEARANCE = DOCK_BAR_HEIGHT + homeLayout.horizontalInset;
 
 function hasScore(entry: GameStandingsEntry): boolean {
   return entry.scoreRaw != null && entry.scoreRaw.length > 0;
@@ -127,6 +142,13 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const railLength = Math.max(DAY_RAIL_DEFAULT_LENGTH, daysBack(viewDate, todayKey) + 1);
 
   const [addOpen, setAddOpen] = useState(false);
+  // "Paste a score" sheet. `postDraft` is the clipboard read in the opening
+  // tap. `afterPostClosed` chains what happens once the sheet has animated
+  // out — opening the add-game sheet, or playing the "Next up" game — never
+  // in the same tick (two stacked Modals wedge iOS).
+  const [postOpen, setPostOpen] = useState(false);
+  const [postDraft, setPostDraft] = useState("");
+  const [afterPostClosed, setAfterPostClosed] = useState<(() => void) | null>(null);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
   // Teach v2: "Fix score" on my own unread row, and the direction control in
   // the card menu. Both are absent for an account without the capability.
@@ -213,11 +235,12 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 
   // `includeOwned` so the + sheet shows the full ranked list of what friends
   // play — including games already in My Games (rendered non-addable). The
-  // empty state shares this query but has no owned games, so it's unaffected.
+  // "Friends are playing" strip filters owned games out; the empty state has
+  // none. Always on: the strip is part of the home.
   const discoveryQuery = useQuery({
     queryKey: queryKeys.games.discovery(),
     queryFn: () => fetchGameDiscovery(token, { includeOwned: true }),
-    enabled: !!token && (addOpen || isEmpty),
+    enabled: !!token,
     refetchInterval: livePoll,
   });
   const discovery = discoveryQuery.data?.games ?? [];
@@ -388,6 +411,15 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const pasteTarget: Game | null =
     (promptItemId ? myGames.find((g) => g.gameId === promptItemId)?.game : null) ?? null;
+
+  // The docked bar: read the clipboard inside the tap (a user gesture — no
+  // system prompt on iOS, allowed on web), then open the sheet pre-filled.
+  // Nothing readable just opens it with the box focused.
+  const onPasteScore = async () => {
+    const text = await readClipboardText();
+    setPostDraft(text ?? "");
+    setPostOpen(true);
+  };
 
   const upsertMutation = useMutation({
     // `taught` (the tap-the-score flow, see GameScorePasteSheet) stores the
@@ -589,6 +621,19 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           <>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Add a game"
+              onPress={() => setAddOpen(true)}
+              testID="games-add-game"
+              hitSlop={8}
+              style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                styles.headerIconBtn,
+                (pressed || hovered) && styles.headerIconBtnHover,
+              ]}
+            >
+              <Text style={styles.headerPlus}>+</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               accessibilityLabel="Copy today's scores to clipboard"
               onPress={onCopyScores}
               disabled={copyingScores}
@@ -659,26 +704,64 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               onReorder={onReorder}
               refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
               onRefresh={() => gamesQuery.refetch()}
+              bottomInset={DOCK_CLEARANCE}
+              footer={
+                <FriendsPlayingStrip
+                  discovery={discovery}
+                  addingGameIds={addingDiscoveryIds}
+                  addedGameIds={addedDiscoveryIds}
+                  onAdd={(game) => addDiscoveryMutation.mutate(game)}
+                  onSeeAll={() => setAddOpen(true)}
+                />
+              }
             />
           </>
         )}
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Add a game"
-        onPress={() => setAddOpen(true)}
-        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-          styles.fab,
-          hovered && styles.fabHovered,
-          pressed && styles.fabPressed,
-        ]}
-        testID="fab-add-game"
-      >
-        <Text style={styles.fabGlyph} tone="onAccent">
-          +
-        </Text>
-      </Pressable>
+      {gamesQuery.isPending ? null : (
+        <View style={styles.dock} pointerEvents="box-none">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Paste a score"
+            onPress={onPasteScore}
+            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+              styles.dockBar,
+              hovered && styles.dockBarHovered,
+              pressed && styles.dockBarPressed,
+            ]}
+            testID="paste-score-bar"
+          >
+            <Text style={styles.dockLabel} tone="onAccent">
+              Paste a score
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      <PostScoreSheet
+        visible={postOpen}
+        initialDraft={postDraft}
+        games={myGames}
+        onClose={() => setPostOpen(false)}
+        onClosed={() => {
+          if (afterPostClosed) {
+            const run = afterPostClosed;
+            setAfterPostClosed(null);
+            run();
+          }
+        }}
+        onRequestAddGame={() => {
+          setAfterPostClosed(() => () => setAddOpen(true));
+          setPostOpen(false);
+        }}
+        onPlayNext={(game) => {
+          // Arm return-to-paste for the next game once this sheet is gone,
+          // so the paste prompt on return has no modal to fight.
+          setAfterPostClosed(() => () => markPlaying({ id: game.gameId, url: game.game.url }));
+          setPostOpen(false);
+        }}
+      />
 
       <AddGameSheet
         visible={addOpen}
@@ -878,13 +961,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: tokens.space.lg,
   },
-  fab: {
+  headerPlus: {
+    color: tokens.text.primary,
+    fontSize: 26,
+    fontWeight: tokens.font.weight.semibold,
+    lineHeight: 30,
+  },
+  dock: {
     position: "absolute",
+    left: homeLayout.horizontalInset,
     right: homeLayout.horizontalInset,
     bottom: homeLayout.horizontalInset,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  },
+  dockBar: {
+    height: DOCK_BAR_HEIGHT,
+    borderRadius: DOCK_BAR_HEIGHT / 2,
     backgroundColor: tokens.accent.default,
     alignItems: "center",
     justifyContent: "center",
@@ -892,12 +983,9 @@ const styles = StyleSheet.create({
     boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
     elevation: 5,
   },
-  fabHovered: {
-    backgroundColor: tokens.accent.hover,
-    transform: [{ scale: 1.04 }],
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
+  dockBarHovered: { backgroundColor: tokens.accent.hover },
+  dockBarPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.98 }] },
+  dockLabel: { fontSize: tokens.font.size.md, fontWeight: tokens.font.weight.semibold },
   sheetHeader: { gap: 4 },
   sheetActions: { gap: tokens.space.sm },
   sheetDivider: {

@@ -3,7 +3,7 @@
 // implementations of the Games-home card container.
 
 import type { MyGame } from "@workshop/shared/games";
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 
 export interface GameReorderEvent {
   fromIndex: number;
@@ -22,4 +22,8 @@ export interface GameCardListProps {
   onReorder: (event: GameReorderEvent) => void;
   refreshing: boolean;
   onRefresh: () => void;
+  /** Rendered after the last card, inside the scroll (the friends strip). */
+  footer?: ReactElement | null;
+  /** Extra bottom padding so the docked primary action never covers a card. */
+  bottomInset?: number;
 }

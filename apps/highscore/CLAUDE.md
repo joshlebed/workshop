@@ -12,6 +12,18 @@ HighScore. Only an explicitly requested critical-fix backport may touch both cop
 Friends remain a shared product concept backed by the same graph and `@workshop/api-client/friends`,
 but each app owns its screen implementation so either frontend can evolve independently.
 
+## Posting a score: one form, two hosts
+
+`src/games/screens/PostScoreForm.tsx` is the contextless "paste a score" form — paste box,
+classifier-detected game with one-tap Post, My Games rows as the fallback. It is rendered by the
+share route (`PickGame`, full screen, goes home after posting) **and** by the home's docked
+"Paste a score" bar (`PostScoreSheet`, which reads the clipboard inside the tap and turns into a
+"Next up" card after a post). Change the posting behaviour in the form, not in a host. Follow-ups
+from the sheet (add-game sheet, playing "Next up") run from `PostScoreSheet`'s `onClosed`, never
+in the same tick — see the Sheet-stacking note in the root CLAUDE.md. The home's `+` is now a
+header icon (`games-add-game`); discovery lives in the "Friends are playing" strip at the foot of
+the card list (`FriendsPlayingStrip`). Rationale: `docs/highscore-home-ux-exploration.md`.
+
 ## Share flow
 
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so

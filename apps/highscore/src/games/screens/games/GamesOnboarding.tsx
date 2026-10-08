@@ -169,7 +169,9 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: tokens.space.xxl,
-    paddingBottom: homeLayout.bottomInset,
+    // Clears the docked "Paste a score" bar, which shows on the empty state
+    // too: a first score creates the game.
+    paddingBottom: homeLayout.bottomInset * 2,
     gap: tokens.space.lg,
   },
   intro: { gap: tokens.space.sm, maxWidth: 420 },
