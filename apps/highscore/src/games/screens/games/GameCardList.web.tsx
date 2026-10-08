@@ -27,6 +27,8 @@ export function GameCardList({
   onReorder,
   refreshing,
   onRefresh,
+  footer,
+  bottomInset = 0,
 }: GameCardListProps) {
   // Two sensors, never one with mixed activation (see ItemList.web.tsx):
   // MouseSensor stays snappy on desktop; TouchSensor's delay+tolerance lets
@@ -62,12 +64,19 @@ export function GameCardList({
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
       <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
-        <ScrollView contentContainerStyle={styles.listContent} testID="games-home-list">
+        <ScrollView
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: homeLayout.bottomInset + bottomInset },
+          ]}
+          testID="games-home-list"
+        >
           <SortableContext items={ids} strategy={verticalListSortingStrategy}>
             {games.map((game) => (
               <SortableCard key={game.gameId} game={game} render={renderCard} />
             ))}
           </SortableContext>
+          {footer}
         </ScrollView>
       </PullToRefresh>
     </DndContext>
