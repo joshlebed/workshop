@@ -12,6 +12,21 @@ HighScore. Only an explicitly requested critical-fix backport may touch both cop
 Friends remain a shared product concept backed by the same graph and `@workshop/api-client/friends`,
 but each app owns its screen implementation so either frontend can evolve independently.
 
+## Theme and the day spine (UX r2)
+
+Visual tokens and primitives live in `src/theme/` (vendored from the round-1 playground; spec in
+`DESIGN.md` on `joshlebed/highscore-design-brief`). Nothing in HighScore imports a _visual_
+export from `@workshop/ui` any more — only behaviour (`confirm`, `haptics`, `openExternalUrl`,
+`formatRelative`, `shareOrCopyLink`, `GoogleSignInButton`). The shared `ThemeProvider` is still
+mounted (pinned dark) for that Google button only. Press Start 2P loads in `app/_layout.tsx` via
+`@expo-google-fonts/press-start-2p`; `expo-font` is its peer and is knip-ignored for that reason.
+
+The selected day is global (`src/games/state/viewDay.tsx`) and the one control that sets it is
+`src/day/DaySpine.tsx`, mounted on Home, the game board and profiles. Data for the strip comes
+from `src/games/hooks/useDayWindow.ts` (one `GET /v1/games?period=` per day in the window, long
+staleTime). The profile week grid additionally fans out `GET /v1/friends/users/:id?period=` per
+day — there is no range endpoint yet (see `UX-EXPLORATION.md` §6).
+
 ## Share flow
 
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so

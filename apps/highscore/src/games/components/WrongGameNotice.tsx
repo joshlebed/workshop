@@ -1,5 +1,5 @@
-import { Text, tokens } from "@workshop/ui";
 import { StyleSheet, View } from "react-native";
+import { Text, tokens } from "../../theme";
 import { recognizedGameLabel, wrongGameMatch } from "../lib/recognition";
 import { useRecognizedGame } from "../lib/useRecognizedGame";
 
