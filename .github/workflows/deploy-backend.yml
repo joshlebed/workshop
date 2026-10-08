@@ -139,10 +139,15 @@ jobs:
         env:
           LAMBDA_NAME: ${{ needs.terraform.outputs.lambda_name }}
         run: |
+          # The response is the full function configuration, including every
+          # environment variable in plaintext. Actions logs on this repo are
+          # public, so print only the non-secret fields.
           aws lambda update-function-code \
             --function-name "$LAMBDA_NAME" \
             --zip-file fileb://apps/backend/lambda.zip \
-            --publish
+            --publish \
+            --query '{Version: Version, CodeSha256: CodeSha256, LastModified: LastModified}' \
+            --output json
           aws lambda wait function-updated \
             --function-name "$LAMBDA_NAME"
 
