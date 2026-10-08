@@ -5,10 +5,11 @@ import { acceptFriendRequest, fetchFriendRequestPreview } from "@workshop/api-cl
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Avatar, Button, Card, haptics, Text, tokens } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Avatar, Button, Card, Text, tokens } from "../../theme";
 import { addGame, fetchGameDiscovery } from "../api/games";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { localDateKey } from "../lib/gameDate";

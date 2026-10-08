@@ -8,10 +8,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import type { ReportReason } from "@workshop/shared/moderation";
-import { Button, Chip, Sheet, Text, tokens, useToast } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { createReport } from "../api/moderation";
+import { Button, Chip, Sheet, Text, tokens, useToast } from "../theme";
 
 export interface ReportTarget {
   userId: string;
