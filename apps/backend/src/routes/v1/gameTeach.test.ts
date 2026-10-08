@@ -64,6 +64,11 @@ const READS_PUZZLE_NUMBER = `function parse(raw) {
 const CONSTANT = "function parse(raw) { return 415; }";
 // Right for a "Total 415" share and for the classic one; wrong for any share
 // with a number after the score.
+const READS_SCORE_OR_TOTAL = `function parse(raw) {
+  var m = raw.match(/^\\s*(?:Total\\s+)?([\\d,]+)\\s*$/m);
+  if (!m) throw new Error("no score line");
+  return Number(m[1].replace(/,/g, ""));
+}`;
 const READS_LAST_NUMBER = `function parse(raw) {
   var all = raw.match(/\\d[\\d,]*/g);
   if (!all) throw new Error("no number");
@@ -190,6 +195,7 @@ async function scoreRow(gameId: string, userId: string, periodKey: string) {
     parse_status: string | null;
     score_source: string | null;
     code_version: number | null;
+    score_summary: string | null;
     pick_is_example: boolean;
     pick_adjusted: boolean;
   }>(`SELECT * FROM game_scores WHERE game_id = $1 AND user_id = $2 AND period_key = $3`, [
@@ -745,18 +751,106 @@ describe("teaching the parser from a pick", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("only rewrites stored scores of accounts teach is on for", async () => {
-    const gameId = await newGame();
-    // Legacy path: stored 80 by the first-number fallback.
-    await post(outsider, gameId, day(1), krillion(80, 390));
-    await post(josh, gameId, today, krillion(81, 415), { pick: scorePick });
-    llm.code = [READS_SCORE];
-    expect((await teach(josh, gameId, today, { scoreDirection: "desc" })).body.outcome).toBe(
-      "accepted",
+  // Krillion in prod, 2026-10-08: other players' rows from before code parsing
+  // held the puzzle number (83, 82, 79) and the first teach left them there.
+  const legacyRow = (
+    gameId: string,
+    userId: string,
+    periodKey: string,
+    raw: string,
+    value: number,
+  ) =>
+    rows(
+      `INSERT INTO game_scores (game_id, user_id, period_key, score_raw, score_value) VALUES ($1, $2, $3, $4, $5)`,
+      [gameId, userId, periodKey, raw, value],
     );
+
+  it("a first teach re-reads other players' first-number rows on a game that had no parser", async () => {
+    const gameId = await newGame();
+    // Stored by the first-number fallback: the puzzle number, no status.
+    await legacyRow(gameId, outsider, day(1), krillion(83, 265), 83);
+    await legacyRow(gameId, paloma, day(1), krillion(83, 240), 83);
+    await legacyRow(gameId, outsider, day(3), krillion(82, 310), 82);
+    await post(josh, gameId, today, krillion(84, 270), { pick: scorePick });
+    llm.code = [READS_SCORE];
+    const attempts = await logged("parser_accept", () =>
+      teach(josh, gameId, today, { scoreDirection: "desc" }),
+    );
+    expect(attempts[0]).toMatchObject({
+      outcome: "accept",
+      rows_newly_read: 3,
+      rows_legacy_newly_read: 3,
+    });
+
+    expect(await gameRow(gameId)).toMatchObject({ parse_code: READS_SCORE, code_version: 1 });
+    // `outsider` is not a teach account in this suite: the owner does not matter.
+    for (const [userId, periodKey, value] of [
+      [outsider, day(1), "265"],
+      [paloma, day(1), "240"],
+      [outsider, day(3), "310"],
+    ] as const) {
+      const row = await scoreRow(gameId, userId, periodKey);
+      expect(row).toMatchObject({
+        score_value: value,
+        parse_status: "score",
+        score_source: "parsed",
+        code_version: 1,
+      });
+      expect(row.score_summary).toContain(value);
+    }
+  });
+
+  it("re-reads them on a later teach too, when the first one could not", async () => {
+    // Krillion as it stands in prod: taught, with the puzzle-number rows still there.
+    const gameId = await taughtGame();
+    await legacyRow(gameId, outsider, day(1), krillion(83, 265), 83);
+    const total = "Krillion #86 🦐\nTotal 501\n\n🦑🏮🫧🦑🫧🏮";
+    await post(josh, gameId, today, total, {
+      pick: { kind: "feature", featureId: `number@${"Krillion #86 🦐\nTotal ".length}` },
+    });
+    llm.code = [READS_SCORE_OR_TOTAL];
+    expect((await teach(josh, gameId, today)).body.outcome).toBe("accepted");
     expect(await scoreRow(gameId, outsider, day(1))).toMatchObject({
-      score_value: "80",
-      parse_status: null,
+      score_value: "265",
+      parse_status: "score",
+      code_version: 2,
+    });
+  });
+
+  it.each([
+    ["a registry spec", `UPDATE games SET game_key = 'maptap' WHERE id = $1`],
+    [
+      "a taught score_spec",
+      `UPDATE games SET score_spec = '{"rules":[{"kind":"capture","pattern":"#(\\\\d+)"}]}'::jsonb WHERE id = $1`,
+    ],
+  ])("leaves legacy rows alone on a game that had %s", async (_name, giveSpec) => {
+    const gameId = await newGame();
+    await rows(giveSpec, [gameId]);
+    // What that spec stored: a real reading, even though no code exists yet.
+    await legacyRow(gameId, outsider, day(1), krillion(83, 265), 83);
+    await legacyRow(gameId, paloma, day(2), krillion(82, 310), 82);
+    await post(josh, gameId, today, krillion(84, 270), { pick: scorePick });
+    llm.code = [READS_SCORE, READS_SCORE];
+    const res = await teach(josh, gameId, today, { scoreDirection: "desc" });
+
+    // One player's teach cannot move another's read score: the code is refused.
+    expect(res.body.outcome).toBe("rejected");
+    expect(await gameRow(gameId)).toMatchObject({ parse_code: null, code_version: 0 });
+    for (const [userId, periodKey, value] of [
+      [outsider, day(1), "83"],
+      [paloma, day(2), "82"],
+    ] as const) {
+      expect(await scoreRow(gameId, userId, periodKey)).toMatchObject({
+        score_value: value,
+        parse_status: null,
+        score_source: null,
+        code_version: null,
+        score_summary: null,
+      });
+    }
+    expect(await scoreRow(gameId, josh, today)).toMatchObject({
+      score_value: "270",
+      score_source: "picked",
     });
   });
 });
@@ -860,16 +954,16 @@ describe("a re-read row is shown like any other read row", () => {
     expect(game(formatted)).toMatchObject({ hasParser: true, hasFormatter: true });
   });
 
-  it("logs how many rows it wrote, apart from rows of accounts teach is off for", async () => {
+  it("logs how many rows it wrote and how many were from before code parsing", async () => {
     const gameId = await newGame();
     await legacyRow(gameId, dag, day(2), krillion(80, 390));
-    await legacyRow(gameId, outsider, day(3), krillion(79, 402));
+    await post(paloma, gameId, day(1), krillion(79, 402));
     await post(josh, gameId, today, krillion(81, 415), { pick: scorePick });
     llm.code = [READS_SCORE];
     const [attempt] = await logged("parser_accept", () =>
       teach(josh, gameId, today, { scoreDirection: "desc" }),
     );
-    expect(attempt).toMatchObject({ rows_newly_read: 1, rows_readable_not_rewritten: 1 });
+    expect(attempt).toMatchObject({ rows_newly_read: 2, rows_legacy_newly_read: 1 });
   });
 });
 

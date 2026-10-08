@@ -12,6 +12,7 @@ import type { GameScoreDirection, TeachOutcome } from "@workshop/shared/games";
 import { and, desc, eq, gte, isNull, or } from "drizzle-orm";
 import { getDb } from "../../db/client.js";
 import { type DbGame, type DbGameScore, gameScores, games } from "../../db/schema.js";
+import { hasLegacySpec } from "../gameCatalog.js";
 import { applyGameCodeChange, gameCodeAtVersion } from "../gameCode/admin.js";
 import { runFormat, runParse } from "../gameCode/runtime.js";
 import type { ParseResult } from "../gameCode/types.js";
@@ -390,6 +391,7 @@ export async function teachFromPick(input: {
     const evaluation = await evaluateCode({
       code: written.code,
       currentCode: game.parseCode,
+      legacySpec: hasLegacySpec(game),
       example,
       window,
       currentResults,
@@ -399,7 +401,6 @@ export async function teachFromPick(input: {
     const decision = decide(evaluation);
     attempts.push({ code: written.code, evaluation, decision });
     const firstFailure = evaluation.failures[0];
-    const rereadable = evaluation.rereads.filter((r) => teachModeFor(r.userId) === "on").length;
     const rereadOnSwitch = rowsReadByOutvoted(evaluation, game).filter(
       (r) => teachModeFor(r.userId) === "on",
     ).length;
@@ -423,10 +424,10 @@ export async function teachFromPick(input: {
       rows_changed: decision === "switch" ? rereadOnSwitch : 0,
       rows_differing_kept:
         decision === "switch" ? evaluation.changedReads.length - rereadOnSwitch : 0,
-      // Rows this teach will write a new reading to — and rows the code can
-      // also read that belong to accounts teach is off for, left as they are.
-      rows_newly_read: rereadable,
-      rows_readable_not_rewritten: evaluation.rereads.length - rereadable,
+      // Unread rows this teach will write a reading to, whoever owns them —
+      // and how many of those are rows from before code parsing.
+      rows_newly_read: evaluation.rereads.length,
+      rows_legacy_newly_read: evaluation.rereads.filter((r) => r.legacy).length,
       correcting_users: evaluation.correctingUsers,
       conflicting_users: evaluation.conflictingUsers,
       window_rows: all.length,
@@ -581,11 +582,14 @@ async function applyNewCode(input: {
   // the direction endpoint's two-user rule.
   const directionSet =
     game.parseCode === null && input.scoreDirection ? input.scoreDirection : null;
-  // Stored scores of accounts outside the teach rollout stay exactly as they
-  // are until the flag is on for them (the one-off re-read covers them).
-  const mayRewrite = (reading: RowReading) => teachModeFor(reading.userId) === "on";
-  const rereads = evaluation.rereads.filter(mayRewrite);
-  const changed = switched ? rowsReadByOutvoted(evaluation, game).filter(mayRewrite) : [];
+  // An unread row has nothing to protect — a failed read, or the first-number
+  // guess on a game that had no parser — so it takes the new reading whoever
+  // owns it. A switch moves real readings: those stay put for accounts teach
+  // is off for (only possible while the kill switch is set).
+  const rereads = evaluation.rereads;
+  const changed = switched
+    ? rowsReadByOutvoted(evaluation, game).filter((r) => teachModeFor(r.userId) === "on")
+    : [];
   const dropped = [...evaluation.overturnedPicks, ...(switched ? evaluation.conflictingPicks : [])];
   // Computed before the transaction opens: it may run the formatter.
   const summaries = await summariesFor(game, [...rereads, ...changed], input.deadlineMs);

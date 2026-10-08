@@ -318,6 +318,45 @@ describe("gate 4 — other read scores stay as they are", () => {
     });
     expect(taught.failedGate).toBe("changes_other_read_scores");
   });
+
+  it("with no code, a pre-code row is a real reading only if the game had a legacy spec", async () => {
+    const example = scorePick();
+    const legacy = parsed(B, "2026-10-05", krillion(80, 390), 80, null);
+    // No spec either: 80 is the first-number guess. Unread, and re-read.
+    const guessed = await evaluateCode({
+      code: KRILLION_SCORE,
+      currentCode: null,
+      legacySpec: false,
+      example,
+      window: [legacy, example],
+    });
+    expect(guessed.failedGate).toBeNull();
+    expect(guessed.rereads).toMatchObject([
+      { userId: B, legacy: true, result: { kind: "score", value: 390 } },
+    ]);
+
+    // A registry or taught spec read it: the new code may not move it…
+    const specced = await evaluateCode({
+      code: KRILLION_SCORE,
+      currentCode: null,
+      legacySpec: true,
+      example,
+      window: [legacy, example],
+    });
+    expect(specced.failedGate).toBe("changes_other_read_scores");
+    expect(specced.rereads).toHaveLength(0);
+
+    // …and code that agrees with the spec passes, writing nothing to the row.
+    const agreeing = await evaluateCode({
+      code: KRILLION_SCORE,
+      currentCode: null,
+      legacySpec: true,
+      example,
+      window: [parsed(B, "2026-10-05", krillion(80, 390), 390, null), example],
+    });
+    expect(agreeing.failedGate).toBeNull();
+    expect(agreeing.rereads).toHaveLength(0);
+  });
 });
 
 describe("after the gates — unread rows are re-read", () => {

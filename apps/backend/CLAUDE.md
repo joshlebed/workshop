@@ -380,18 +380,24 @@ POST, one timeout, strict JSON schema out, zod on the way back in, never throws)
   of both steps in one `rate_limits` row per UTC day (`teach.llm.global`, 500/day). Spent or
   unreadable means no call — it fails closed and logs `kind: "teach_llm_budget"`. Any new
   model call in teach must claim from it first.
-- **"Read" is defined by `isRead`**: a row with a `parse_status` was read by code; a legacy
-  row (no status) counts only if the game's _current_ code reproduces its stored value. A
-  game with no code has no read rows — its legacy first-number values never block a teach.
+- **"Read" is defined by `isRead`**: a row with a `parse_status` was read by code. A legacy
+  row (no status) counts only if the game's _current_ code reproduces its stored value; with
+  no code, it counts only if the game had a legacy spec (`hasLegacySpec`: registry or taught
+  `score_spec`) — that spec produced the value, so a first teach may not move it. A game
+  with neither has no read rows: its legacy values are the first-number guess (Krillion's
+  83 was the puzzle number), they never block a teach, and an accepted teach re-reads them.
 - **Rows holding a pick keep their value** when the parser changes; only `pick_adjusted`
   (the "adjusted" label) is re-derived by `recomputeAdjusted` after every version change.
   "Adjusted" means the parser read the text and got something else (`isAdjusted`): an unread
   text, or a game with no parser, is never adjusted.
   If you add another path that writes `games.parse_code`, call it there too.
-- **Stored scores of accounts teach is off for are never rewritten** by a teach
-  (`mayRewrite` in `applyNewCode`) — the foundation's one-off re-read covers them. The
-  `parser_accept` line counts them apart: `rows_newly_read` is rows written,
-  `rows_readable_not_rewritten` is rows the new code reads but left alone.
+- **An accepted teach re-reads every unread row in the window, whoever owns it** — failed
+  reads and the legacy first-number rows above — writing value, status, summary,
+  `score_source = 'parsed'` and `code_version`. The owner's teach mode is not consulted: an
+  unread row has nothing to protect. (It was, until the first prod teach left other players'
+  Krillion rows on the puzzle number.) `parser_accept` logs `rows_newly_read` and, of those,
+  `rows_legacy_newly_read`. Only a **switch**, which moves real readings, still skips rows
+  of accounts teach is off for — reachable only while the kill switch is set.
 - **A row a teach re-reads gets a summary in the same write** (`summariesFor` in `teach.ts`:
   the game's formatter if it has one, else `formatShareBodyFallback`; a summary already
   stored is kept). A status with a NULL `score_summary` reaches the client as "nothing to

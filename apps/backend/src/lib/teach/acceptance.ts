@@ -38,6 +38,8 @@ export interface RowReading {
   /** The row's text and stored display text, for writing a summary it lacks. */
   raw: string;
   storedSummary: string | null;
+  /** The row is from before code parsing (no status): its value was the legacy chain's. */
+  legacy: boolean;
   result: { kind: "score"; value: number } | { kind: "noResult" };
 }
 
@@ -112,6 +114,12 @@ interface EvaluateInput {
   code: string;
   /** The game's current code, or null when it has none. */
   currentCode: string | null;
+  /**
+   * The game has a legacy spec (registry or taught `score_spec`) — see
+   * `hasLegacySpec`. Only consulted when there is no current code: it decides
+   * whether rows from before code parsing hold real readings.
+   */
+  legacySpec?: boolean;
   /** The pick being taught from — a confirmed training example. */
   example: WindowScore;
   /** The scores to check the code against: the 30-day window, or the caller's sample of it. */
@@ -199,6 +207,7 @@ async function runGates(input: EvaluateInput, evaluation: CodeEvaluation): Promi
     readByVersion: row.codeVersion,
     raw: row.raw,
     storedSummary: row.summary,
+    legacy: row.status === null,
   });
   const expectedOfExample = example.pick ? pickValue(example.pick) : example.value;
 
@@ -328,7 +337,7 @@ async function runGates(input: EvaluateInput, evaluation: CodeEvaluation): Promi
     }
 
     const reads = actual.kind === "score" || actual.kind === "noResult";
-    const read = await isRead(row, parseCurrent);
+    const read = await isRead(row, parseCurrent, input.legacySpec === true);
     if (!read) {
       if (reads) evaluation.rereads.push({ ...reading(row), result: actual });
     } else if (!storedMatches(row, actual)) {
@@ -355,15 +364,22 @@ async function runGates(input: EvaluateInput, evaluation: CodeEvaluation): Promi
  * Whether a parsed row counts as "already read". A row with a status was read
  * by code. A row from before code-based parsing (no status) holds whatever the
  * legacy chain produced — including the first-number fallback this overhaul
- * removes — so it only counts when the game's current code reproduces it. A
- * game with no code has no read rows: it is unread until taught.
+ * removes:
+ *
+ * - With current code, it counts only when that code reproduces it.
+ * - With no code but a legacy spec (registry or taught), the spec produced
+ *   it: a real reading, which a first teach must not move.
+ * - With neither, it is the first-number guess — for most shares the puzzle
+ *   number. Unread: the gates ignore it and an accepted teach re-reads it.
  */
 async function isRead(
   row: WindowScore,
   parseCurrent: ((raw: string) => Promise<ParseResult>) | null,
+  legacySpec: boolean,
 ): Promise<boolean> {
   if (row.status === "score" || row.status === "no_result") return true;
-  if (row.status === "failed" || row.value === null || parseCurrent === null) return false;
+  if (row.status === "failed" || row.value === null) return false;
+  if (parseCurrent === null) return legacySpec;
   const current = await parseCurrent(row.raw);
   return current.kind === "score" && current.value === row.value;
 }
