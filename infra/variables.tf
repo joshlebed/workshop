@@ -28,6 +28,27 @@ variable "apple_bundle_id" {
   description = "Apple iOS bundle ID(s) — the accepted `aud` values for native Sign in with Apple tokens. Comma-separated list; one entry per client app (e.g. \"dev.josh.workshop,live.highscore.app\"). A single value with no comma behaves exactly as before. Empty string is allowed so `terraform apply` works before portal config; backend rejects verification until this is set."
 }
 
+variable "apple_team_id" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Apple Developer Team ID for Sign in with Apple token revocation. Empty default: the SSM value is set out of band and ignored on apply."
+}
+
+variable "apple_key_id" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "Key ID of the Sign in with Apple .p8 key. Empty default: SSM value set out of band."
+}
+
+variable "apple_private_key" {
+  type        = string
+  default     = ""
+  sensitive   = true
+  description = "PEM contents of the Sign in with Apple .p8 key. Empty default: SSM value set out of band."
+}
+
 variable "apple_services_id" {
   type        = string
   default     = ""
