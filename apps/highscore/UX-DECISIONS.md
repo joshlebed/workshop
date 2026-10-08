@@ -28,9 +28,10 @@ fastest way to re-check any claim below. Each variant's own rationale is at
 
 ## Status board
 
-| #   | Area                                                | Decision                        | Status      |
-| --- | --------------------------------------------------- | ------------------------------- | ----------- |
-| 1   | Visual language — palette, type, theme layer, icons | **Keep. Ship a version of it.** | Not started |
+| #   | Area                                                | Decision                        | Status          |
+| --- | --------------------------------------------------- | ------------------------------- | --------------- |
+| 1   | Visual language — palette, type, theme layer, icons | **Keep. Ship a version of it.** | Not started     |
+| 2   | Navigation / structure — all five round-1 models    | **Scrap. Re-run as round 2.**   | Round 2 running |
 
 ---
 
@@ -123,3 +124,42 @@ Four PRs, stacked, each independently reviewable:
 
 Open questions to settle before (2): which spacing scale (recommend 4/8), which motion
 constant, and which of the three cabinet drawings.
+
+## 2. Navigation and structure — all five round-1 models
+
+**Decision: scrap all five. None ships, none is a starting point.** Owner's verdict on 2026-10-08:
+none of the five make sense or introduce a useful concept. Each one is a navigation gimmick —
+a swipeable cartridge deck, a row that expands while the others squeeze into spines, a sheet
+stack over a timeline, a matrix that flips between games and players, a morphing gesture dock —
+and each makes the ordinary jobs harder rather than easier.
+
+What they got wrong, in a sentence: they optimised for a novel way to _move_, not for the five
+things a user actually comes to do. The playground (#426) stays open as a reference and as the
+host for the visual language in entry 1, but nothing structural from it carries forward.
+
+### Round 2
+
+Three independent first-principles redesigns on Fable 5.1 (medium effort), all from `main`,
+each told explicitly what round 1 got wrong and given the same brief: the app is one
+**day × game × player → score** dataset and the design must make these five hot paths fast and
+obvious —
+
+1. today, all games, my friends (home);
+2. today, one game, full leaderboard;
+3. one person's profile;
+4. a past day, all games;
+5. a past day, one game.
+
+The visual language from entry 1 is fixed input, not something to re-explore. Each agent was
+seeded with a different starting hypothesis to stress-test, and told to abandon it if the
+analysis says so:
+
+| Key | Hypothesis                                       | Task                                                                            | Branch                           |
+| --- | ------------------------------------------------ | ------------------------------------------------------------------------------- | -------------------------------- |
+| A   | The **day** is the global object (Apple Fitness) | [task](https://niteshift.dev/repo/joshlebed/workshop/task_int_2uhs0sgtebwrqdgr) | `joshlebed/hs-ux-r2-day-spine`   |
+| B   | **Games** are the objects (sports scoreboard)    | [task](https://niteshift.dev/repo/joshlebed/workshop/task_int_ccntp9n74yezstb4) | `joshlebed/hs-ux-r2-scoreboard`  |
+| C   | **People** are the social object (Strava feed)   | [task](https://niteshift.dev/repo/joshlebed/workshop/task_int_78ssu3uubr8kg4y4) | `joshlebed/hs-ux-r2-people-feed` |
+
+Each delivers a draft PR implemented in place in `apps/highscore` (no toggle, no parallel copy),
+an `UX-EXPLORATION.md` with the mental model and a tap-counted walk-through of the five paths,
+screenshots of each path, and a demo recording. Feedback on those lands here as entry 3+.
