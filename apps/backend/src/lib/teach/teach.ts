@@ -7,12 +7,13 @@
 // and nothing here can undo that: when the model is down, slow, or writes
 // code that fails a gate, the game simply stays as it was.
 
+import { formatShareBodyFallback } from "@workshop/shared/gameRegistry";
 import type { GameScoreDirection, TeachOutcome } from "@workshop/shared/games";
 import { and, desc, eq, gte, isNull, or } from "drizzle-orm";
 import { getDb } from "../../db/client.js";
 import { type DbGame, type DbGameScore, gameScores, games } from "../../db/schema.js";
 import { applyGameCodeChange, gameCodeAtVersion } from "../gameCode/admin.js";
-import { runParse } from "../gameCode/runtime.js";
+import { runFormat, runParse } from "../gameCode/runtime.js";
 import type { ParseResult } from "../gameCode/types.js";
 import { logger } from "../logger.js";
 import { notifyParserTaught } from "../opsNotifications.js";
@@ -75,8 +76,10 @@ export const worstCaseSandboxRuns = {
   perEvaluation: 1 + MAX_WINDOW_TEXTS + MAX_WINDOW_PICKS * 3,
   currentCode: 1 + MAX_PROMPT_PROBES + MAX_WINDOW_TEXTS + MAX_WINDOW_PICKS,
   adjusted: MAX_ADJUSTED_ROWS,
+  /** Format runs for re-read rows that had no summary — only for a game with format code. */
+  summaries: MAX_WINDOW_TEXTS,
   get total() {
-    return this.perEvaluation * MAX_MODEL_CALLS + this.currentCode + this.adjusted;
+    return this.perEvaluation * MAX_MODEL_CALLS + this.currentCode + this.adjusted + this.summaries;
   },
 };
 
@@ -96,6 +99,7 @@ function toWindowScore(row: DbGameScore): WindowScore {
     // it never constrains new code and is never rewritten.
     source: row.scoreSource === "picked" ? "picked" : "parsed",
     codeVersion: row.codeVersion,
+    summary: row.scoreSummary,
     pick,
     isExample: row.pickIsExample && pick !== null,
   };
@@ -158,6 +162,32 @@ export function sampleWindow(
  */
 function rowsReadByOutvoted(evaluation: CodeEvaluation, game: DbGame): RowReading[] {
   return evaluation.changedReads.filter((r) => r.readByVersion === game.codeVersion);
+}
+
+/**
+ * The display text for re-read rows that have none. A row stored by code
+ * parsing already has its summary (teach never changes format code); a row
+ * from before code parsing does not, and a status with no summary reads to a
+ * client as "nothing to show". The game's formatter writes it when there is
+ * one and time allows; otherwise it is the cleaned share text, the same thing
+ * an ordinary post stores for a game with no formatter.
+ */
+async function summariesFor(
+  game: DbGame,
+  rows: readonly RowReading[],
+  deadlineMs: number,
+): Promise<Map<string, string | null>> {
+  const byRaw = new Map<string, string | null>();
+  for (const row of rows) {
+    if (row.storedSummary !== null || byRaw.has(row.raw)) continue;
+    let summary = formatShareBodyFallback(row.raw);
+    if (game.formatCode !== null && Date.now() < deadlineMs) {
+      const formatted = await runFormat(game.formatCode, row.raw);
+      if (formatted.kind === "summary") summary = formatted.text;
+    }
+    byRaw.set(row.raw, summary);
+  }
+  return byRaw;
 }
 
 function matchesPick(pick: StoredPick, parse: ParseResult): boolean {
@@ -369,6 +399,7 @@ export async function teachFromPick(input: {
     const decision = decide(evaluation);
     attempts.push({ code: written.code, evaluation, decision });
     const firstFailure = evaluation.failures[0];
+    const rereadable = evaluation.rereads.filter((r) => teachModeFor(r.userId) === "on").length;
     const rereadOnSwitch = rowsReadByOutvoted(evaluation, game).filter(
       (r) => teachModeFor(r.userId) === "on",
     ).length;
@@ -392,7 +423,10 @@ export async function teachFromPick(input: {
       rows_changed: decision === "switch" ? rereadOnSwitch : 0,
       rows_differing_kept:
         decision === "switch" ? evaluation.changedReads.length - rereadOnSwitch : 0,
-      rows_newly_read: evaluation.rereads.length,
+      // Rows this teach will write a new reading to — and rows the code can
+      // also read that belong to accounts teach is off for, left as they are.
+      rows_newly_read: rereadable,
+      rows_readable_not_rewritten: evaluation.rereads.length - rereadable,
       correcting_users: evaluation.correctingUsers,
       conflicting_users: evaluation.conflictingUsers,
       window_rows: all.length,
@@ -474,6 +508,7 @@ export async function teachFromPick(input: {
     example,
     pick,
     scoreDirection: input.scoreDirection,
+    deadlineMs: deadline,
   });
   if (!applied) {
     // Someone else changed the parser while this was being written.
@@ -533,6 +568,8 @@ async function applyNewCode(input: {
   example: WindowScore;
   pick: StoredPick;
   scoreDirection: GameScoreDirection | undefined;
+  /** Past this the formatter is not run for missing summaries; the cleaned text is used. */
+  deadlineMs: number;
 }): Promise<{
   game: DbGame;
   rowsNewlyRead: number;
@@ -550,6 +587,8 @@ async function applyNewCode(input: {
   const rereads = evaluation.rereads.filter(mayRewrite);
   const changed = switched ? rowsReadByOutvoted(evaluation, game).filter(mayRewrite) : [];
   const dropped = [...evaluation.overturnedPicks, ...(switched ? evaluation.conflictingPicks : [])];
+  // Computed before the transaction opens: it may run the formatter.
+  const summaries = await summariesFor(game, [...rereads, ...changed], input.deadlineMs);
 
   return input.db.transaction(async (tx) => {
     // Lock the game row and make sure nobody changed its code while this
@@ -590,6 +629,10 @@ async function applyNewCode(input: {
           parseStatus: reading.result.kind === "score" ? "score" : "no_result",
           codeVersion: game.codeVersion + 1,
           scoreSource: "parsed",
+          // Only for a row that had none; a stored summary stays as it is.
+          ...(reading.storedSummary === null
+            ? { scoreSummary: summaries.get(reading.raw) ?? null }
+            : {}),
         })
         .where(
           and(

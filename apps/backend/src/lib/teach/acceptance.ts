@@ -35,6 +35,9 @@ export interface RowReading {
   periodKey: string;
   /** The parser version that produced the row's stored value; null before code parsing. */
   readByVersion: number | null;
+  /** The row's text and stored display text, for writing a summary it lacks. */
+  raw: string;
+  storedSummary: string | null;
   result: { kind: "score"; value: number } | { kind: "noResult" };
 }
 
@@ -191,7 +194,12 @@ async function runGates(input: EvaluateInput, evaluation: CodeEvaluation): Promi
   const isExampleRow = (row: WindowScore) =>
     row.userId === example.userId && row.periodKey === example.periodKey;
   const ref = (row: WindowScore): RowRef => ({ userId: row.userId, periodKey: row.periodKey });
-  const reading = (row: WindowScore) => ({ ...ref(row), readByVersion: row.codeVersion });
+  const reading = (row: WindowScore) => ({
+    ...ref(row),
+    readByVersion: row.codeVersion,
+    raw: row.raw,
+    storedSummary: row.summary,
+  });
   const expectedOfExample = example.pick ? pickValue(example.pick) : example.value;
 
   // Gate 1 — sandbox limits, on the text the code was written for.

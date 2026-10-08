@@ -10,6 +10,7 @@ const row = (over: Partial<WindowScore>): WindowScore => ({
   value: 1,
   source: "parsed",
   codeVersion: 1,
+  summary: "Final score: 1",
   pick: null,
   isExample: false,
   ...over,
@@ -59,13 +60,15 @@ describe("sampleWindow", () => {
 });
 
 describe("worstCaseSandboxRuns", () => {
-  it("bounds one teach at under a thousand sandbox runs", () => {
+  it("bounds one teach at about twelve hundred sandbox runs", () => {
     // Per evaluation: the example, 200 window texts, 40 picks x (text + 2 alterations).
     expect(worstCaseSandboxRuns.perEvaluation).toBe(321);
     // Current code: the up-front check, 12 prompt probes, 200 texts, 40 picks.
     expect(worstCaseSandboxRuns.currentCode).toBe(253);
     expect(worstCaseSandboxRuns.adjusted).toBe(100);
+    // Format runs for re-read rows with no summary (a game with format code only).
+    expect(worstCaseSandboxRuns.summaries).toBe(200);
     // Two model calls at most, so two evaluations.
-    expect(worstCaseSandboxRuns.total).toBe(995);
+    expect(worstCaseSandboxRuns.total).toBe(1195);
   });
 });

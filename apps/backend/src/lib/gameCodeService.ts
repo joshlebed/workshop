@@ -250,9 +250,17 @@ export async function previewScore(
 export function scoreCodeFields(row: {
   parseStatus: string | null;
   scoreSummary: string | null;
+  scoreRaw?: string | null;
 }): ScoreCodeFields {
   if (!isParseStatus(row.parseStatus)) return {};
-  return { parseStatus: row.parseStatus, scoreSummary: row.scoreSummary };
+  // A row can have a status and no stored summary: it was given its status by
+  // a re-read that did not write one (teach's, before it did). To a client a
+  // status with a null summary means "nothing worth showing", so such a row
+  // rendered as "Played". Fall back to the cleaned text — which is exactly what
+  // the write path stores for a game with no formatter, and is still null for
+  // the share that really has nothing to show (a bare link).
+  const summary = row.scoreSummary ?? (row.scoreRaw ? formatShareBodyFallback(row.scoreRaw) : null);
+  return { parseStatus: row.parseStatus, scoreSummary: summary };
 }
 
 /**

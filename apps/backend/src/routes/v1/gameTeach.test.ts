@@ -468,7 +468,7 @@ describe("candidates — step 1 labels", () => {
     }
   });
 
-  it("waits 2.5s for the labels: an answer at 2.2s is used, one at 2.7s is not", async () => {
+  it("waits 4s for the labels: an answer at 2.7s is used, one at 4.2s is not", async () => {
     const gameId = await newGame();
     llm.targets = { score: 2, puzzle_number: [1] };
     const ask = () =>
@@ -476,7 +476,7 @@ describe("candidates — step 1 labels", () => {
         scoreRaw: krillion(81, 415),
       });
 
-    llm.delayMs = 2200;
+    llm.delayMs = 2700;
     let res: Awaited<ReturnType<typeof ask>> | undefined;
     const [inTime] = await logged("teach_targets", async () => {
       res = await ask();
@@ -485,24 +485,24 @@ describe("candidates — step 1 labels", () => {
     expect(inTime).toMatchObject({
       step: "find_targets",
       outcome: "labelled",
-      llm_budget_ms: 2500,
+      llm_budget_ms: 4000,
       llm_timed_out: false,
     });
-    expect(inTime?.llm_ms).toBeGreaterThanOrEqual(2150);
+    expect(inTime?.llm_ms).toBeGreaterThanOrEqual(2650);
     expect(inTime?.elapsed_ms).toBeGreaterThanOrEqual(Number(inTime?.llm_ms));
 
-    llm.delayMs = 2700;
+    llm.delayMs = 4200;
     const [late] = await logged("teach_targets", async () => {
       res = await ask();
     });
     // The chips are still there; only the labels are missing.
     expect(res?.body).toMatchObject({ labelled: false, scoreId: null });
     expect(res?.body.candidates.length).toBeGreaterThan(0);
-    expect(late).toMatchObject({ outcome: "timeout", llm_budget_ms: 2500, llm_timed_out: true });
+    expect(late).toMatchObject({ outcome: "timeout", llm_budget_ms: 4000, llm_timed_out: true });
     // Gave up at the budget, not when the model would have answered.
-    expect(late?.llm_ms).toBeGreaterThanOrEqual(2450);
-    expect(late?.llm_ms).toBeLessThan(2690);
-  }, 15_000);
+    expect(late?.llm_ms).toBeGreaterThanOrEqual(3950);
+    expect(late?.llm_ms).toBeLessThan(4190);
+  }, 20_000);
 
   it("drops a pre-selection that is not one of the computed candidates", async () => {
     const gameId = await newGame();
@@ -758,6 +758,118 @@ describe("teaching the parser from a pick", () => {
       score_value: "80",
       parse_status: null,
     });
+  });
+});
+
+describe("a re-read row is shown like any other read row", () => {
+  // What prod held after the first real teach: rows written before code
+  // parsing (no status, no summary) that the teach gave a value to.
+  const legacyRow = (gameId: string, userId: string, periodKey: string, raw: string) =>
+    rows(
+      `INSERT INTO game_scores (game_id, user_id, period_key, score_raw, score_value) VALUES ($1, $2, $3, $4, 80)`,
+      [gameId, userId, periodKey, raw],
+    );
+  const summaryOf = async (gameId: string, userId: string, periodKey: string) =>
+    (
+      await rows<{ score_summary: string | null }>(
+        `SELECT score_summary FROM game_scores WHERE game_id = $1 AND user_id = $2 AND period_key = $3`,
+        [gameId, userId, periodKey],
+      )
+    )[0]?.score_summary;
+
+  it("writes the display text when a teach re-reads a row that had none", async () => {
+    const gameId = await newGame();
+    await legacyRow(gameId, dag, day(2), `${krillion(80, 390)}\nhttps://krillion.io/share`);
+    await post(josh, gameId, today, krillion(81, 415), { pick: scorePick });
+    llm.code = [READS_SCORE];
+    const attempts = await logged("parser_accept", () =>
+      teach(josh, gameId, today, { scoreDirection: "desc" }),
+    );
+    expect(attempts[0]).toMatchObject({ outcome: "accept", rows_newly_read: 1 });
+
+    expect(await scoreRow(gameId, dag, day(2))).toMatchObject({
+      score_value: "390",
+      parse_status: "score",
+    });
+    // The cleaned share text — what an ordinary post stores for this game.
+    expect(await summaryOf(gameId, dag, day(2))).toBe("Krillion #80 🦐\n390\n🦑🏮🫧🦑🫧🏮");
+  });
+
+  it("uses the game's formatter for that text when it has one", async () => {
+    const gameId = await newGame();
+    await rows(`UPDATE games SET format_code = $2 WHERE id = $1`, [
+      gameId,
+      'function format(raw) { var m = raw.match(/^\\s*(\\d+)\\s*$/m); return m ? "🦐 " + m[1] : null; }',
+    ]);
+    await legacyRow(gameId, dag, day(2), krillion(80, 390));
+    await post(josh, gameId, today, krillion(81, 415), { pick: scorePick });
+    llm.code = [READS_SCORE];
+    expect((await teach(josh, gameId, today, { scoreDirection: "desc" })).body.outcome).toBe(
+      "accepted",
+    );
+    expect(await summaryOf(gameId, dag, day(2))).toBe("🦐 390");
+  });
+
+  it("leaves a stored summary alone when it re-reads a row that has one", async () => {
+    const gameId = await newGame();
+    // Posted through code parsing while the game was untaught: unread, with its text.
+    await post(dag, gameId, day(1), `${krillion(80, 390)}\nnice one`);
+    const before = await summaryOf(gameId, dag, day(1));
+    expect(before).toContain("nice one");
+    await post(josh, gameId, today, krillion(81, 415), { pick: scorePick });
+    llm.code = [READS_SCORE];
+    await teach(josh, gameId, today, { scoreDirection: "desc" });
+    expect(await scoreRow(gameId, dag, day(1))).toMatchObject({ score_value: "390" });
+    expect(await summaryOf(gameId, dag, day(1))).toBe(before);
+  });
+
+  it("serves the cleaned text for a row already re-read without a summary", async () => {
+    const gameId = await taughtGame();
+    await rows(
+      `INSERT INTO friendships (user_low, user_high) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [josh, dag].sort(),
+    );
+    // Exactly the rows the first prod teach left behind.
+    await rows(
+      `INSERT INTO game_scores (game_id, user_id, period_key, score_raw, score_value, parse_status, score_source, code_version)
+       VALUES ($1, $2, $3, $4, 390, 'score', 'parsed', 1)`,
+      [gameId, dag, day(2), `${krillion(80, 390)}\nhttps://krillion.io/share`],
+    );
+    const res = await call<{ entries: { userId: string; scoreSummary: string | null }[] }>(
+      josh,
+      "GET",
+      `/${gameId}/leaderboard?period=${day(2)}`,
+    );
+    expect(res.body.entries.find((e) => e.userId === dag)?.scoreSummary).toBe(
+      "Krillion #80 🦐\n390\n🦑🏮🫧🦑🫧🏮",
+    );
+  });
+
+  it("tells the client whether a game has a formatter", async () => {
+    const plain = await taughtGame();
+    const formatted = await taughtGame();
+    await rows(
+      `UPDATE games SET format_code = 'function format(raw) { return null; }' WHERE id = $1`,
+      [formatted],
+    );
+    await post(josh, plain, today, krillion(90, 500));
+    await post(josh, formatted, today, krillion(90, 500));
+    const mine = await call<GamesResponse>(josh, "GET", "/");
+    const game = (id: string) => mine.body.games.find((g) => g.gameId === id)?.game;
+    expect(game(plain)).toMatchObject({ hasParser: true, hasFormatter: false });
+    expect(game(formatted)).toMatchObject({ hasParser: true, hasFormatter: true });
+  });
+
+  it("logs how many rows it wrote, apart from rows of accounts teach is off for", async () => {
+    const gameId = await newGame();
+    await legacyRow(gameId, dag, day(2), krillion(80, 390));
+    await legacyRow(gameId, outsider, day(3), krillion(79, 402));
+    await post(josh, gameId, today, krillion(81, 415), { pick: scorePick });
+    llm.code = [READS_SCORE];
+    const [attempt] = await logged("parser_accept", () =>
+      teach(josh, gameId, today, { scoreDirection: "desc" }),
+    );
+    expect(attempt).toMatchObject({ rows_newly_read: 1, rows_readable_not_rewritten: 1 });
   });
 });
 
@@ -1042,7 +1154,8 @@ describe("standings", () => {
   it("orders scores by direction, then no-result in last place, then unread with no rank", async () => {
     const gameId = await taughtGame();
     await rows(
-      `INSERT INTO friendships (user_low, user_high) VALUES ($1, $2), ($3, $4), ($5, $6)`,
+      `INSERT INTO friendships (user_low, user_high) VALUES ($1, $2), ($3, $4), ($5, $6)
+       ON CONFLICT DO NOTHING`,
       [...[josh, dag].sort(), ...[josh, paloma].sort(), ...[dag, paloma].sort()],
     );
     await post(josh, gameId, today, krillion(90, 500));

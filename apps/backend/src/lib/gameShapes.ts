@@ -27,6 +27,7 @@ export function toGameShape(row: DbGame): Game {
     scoreSpec: safeParseScoreSpec(row.scoreSpec),
     summarySpec: safeParseSummarySpec(row.summarySpec),
     hasParser: row.parseCode !== null,
+    hasFormatter: row.formatCode !== null,
     createdAt: toIsoString(row.createdAt),
   };
 }

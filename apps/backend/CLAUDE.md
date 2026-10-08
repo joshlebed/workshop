@@ -326,7 +326,7 @@ text names the game by label or URL — becomes a confirmed example the game's p
 re-taught from. Two LLM steps, both OpenAI Responses API via plain `fetch` (`openai.ts`: one
 POST, one timeout, strict JSON schema out, zod on the way back in, never throws):
 
-1. **find targets** (`findTargets.ts`, 2.5s budget) labels the candidates and names the likely
+1. **find targets** (`findTargets.ts`, 4s budget) labels the candidates and names the likely
    score. It answers with candidate _numbers_ only; values are never the model's.
 2. **write code** (`writeCode.ts`, 5s per call, at most two calls per teach) writes `parse(raw)`.
    Its prompt quotes `contract.ts`, a verbatim copy of the README sections
@@ -374,7 +374,7 @@ POST, one timeout, strict JSON schema out, zod on the way back in, never throws)
   `sandbox_limit`. `sampleWindow` cuts the window to the newest 200 distinct texts plus the
   newest 40 confirmed picks (rows past the cut are neither checked nor rewritten; the log
   line says `window_truncated`). `worstCaseSandboxRuns` in `teach.ts` is the arithmetic —
-  995 runs for a whole teach — and `teach.test.ts` pins it: change a cap and that test tells
+  1195 runs for a whole teach — and `teach.test.ts` pins it: change a cap and that test tells
   you the new number.
 - **Model spend has a global daily cap**: `claimTeachLlmCall` (`budget.ts`) counts every call
   of both steps in one `rate_limits` row per UTC day (`teach.llm.global`, 500/day). Spent or
@@ -389,7 +389,16 @@ POST, one timeout, strict JSON schema out, zod on the way back in, never throws)
   text, or a game with no parser, is never adjusted.
   If you add another path that writes `games.parse_code`, call it there too.
 - **Stored scores of accounts teach is off for are never rewritten** by a teach
-  (`mayRewrite` in `applyNewCode`) — the foundation's one-off re-read covers them.
+  (`mayRewrite` in `applyNewCode`) — the foundation's one-off re-read covers them. The
+  `parser_accept` line counts them apart: `rows_newly_read` is rows written,
+  `rows_readable_not_rewritten` is rows the new code reads but left alone.
+- **A row a teach re-reads gets a summary in the same write** (`summariesFor` in `teach.ts`:
+  the game's formatter if it has one, else `formatShareBodyFallback`; a summary already
+  stored is kept). A status with a NULL `score_summary` reaches the client as "nothing to
+  show" → "Played", so never write one without the other. Rows that already are in that
+  state are covered at read time: `scoreCodeFields` falls back to the cleaned text when you
+  pass it `scoreRaw`. The client states the number itself ("Score: 415") on every read row
+  of a game with no formatter, which it learns from `Game.hasFormatter` (`toGameShape`).
 - **Discord pings only for an accepted parser or direction change** (`parser_taught`,
   `direction_changed`). Conflicts, rejected attempts, sandbox failures, rollbacks and unread
   posts are log lines: one per event through `logTeachEvent` (`log.ts`), `kind` =
@@ -399,8 +408,9 @@ pick_conflict | direction_change | game_recognition | sandbox_failure | parser_r
   generated code, the failed gate, token counts and `llm_ms` / `gates_ms`.
 - **Model latency is on the log lines — read it there, don't re-sample.** Both steps log
   `step`, `llm_ms`, `llm_budget_ms`, `llm_timed_out` and `elapsed_ms`: step 1 on
-  `kind: "teach_targets"` (one line per label call; budget 2.5 s, which only decides whether
-  labels arrive — the chips are already on screen), step 2 on each `kind: "parser_accept"`
+  `kind: "teach_targets"` (one line per label call; budget 4 s, which only decides whether
+  labels arrive — the chips are already on screen and the client starts this call alongside
+  the preview, not after it), step 2 on each `kind: "parser_accept"`
   attempt (6.5 s per call inside the 12 s teach budget). In CloudWatch Logs Insights on
   `/aws/lambda/workshop-prod-api`:
   `filter kind = "teach_targets" | stats count(*), pct(llm_ms, 50), pct(llm_ms, 95) by llm_timed_out`

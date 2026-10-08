@@ -41,6 +41,13 @@ export interface Game {
    * non-admin teach over existing code. Absent from older servers.
    */
   hasParser?: boolean;
+  /**
+   * The game has stored format code, so a row's `scoreSummary` is a recap
+   * written for display and carries the score itself. Without one the summary
+   * is just the cleaned share text — the client then says "Score: N" on the
+   * row, for every player alike. Absent from older servers.
+   */
+  hasFormatter?: boolean;
   createdAt: string;
 }
 

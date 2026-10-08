@@ -39,6 +39,7 @@ function picked(userId: string, periodKey: string, raw: string, featureId: strin
     value: feature.value,
     source: "picked",
     codeVersion: 1,
+    summary: raw,
     pick: { kind: "feature", feature },
     isExample: true,
   };
@@ -59,6 +60,7 @@ function parsed(
     value,
     source: "parsed",
     codeVersion: status === null ? null : 1,
+    summary: status === null ? null : raw,
     pick: null,
     isExample: false,
   };
@@ -228,6 +230,7 @@ describe("gate 3 — reproduces every confirmed pick in the window", () => {
       value: null,
       source: "picked",
       codeVersion: 1,
+      summary: "Wordle 1,572 X/6",
       pick: { kind: "no_result" },
       isExample: true,
     };
@@ -262,7 +265,7 @@ describe("gate 4 — other read scores stay as they are", () => {
       window: [other, example],
     });
     expect(result.failedGate).toBe("changes_other_read_scores");
-    expect(result.changedReads).toEqual([
+    expect(result.changedReads).toMatchObject([
       {
         userId: B,
         periodKey: "2026-10-05",
@@ -284,7 +287,7 @@ describe("gate 4 — other read scores stay as they are", () => {
       window: [mine, example],
     });
     expect(result.failedGate).toBeNull();
-    expect(result.rereads).toEqual([
+    expect(result.rereads).toMatchObject([
       {
         userId: A,
         periodKey: "2026-10-05",
@@ -329,7 +332,7 @@ describe("after the gates — unread rows are re-read", () => {
       window: [unread, junk, example],
     });
     expect(decide(result)).toBe("accept");
-    expect(result.rereads).toEqual([
+    expect(result.rereads).toMatchObject([
       {
         userId: B,
         periodKey: "2026-10-05",
@@ -356,7 +359,7 @@ describe("a second agreeing user switches the parser", () => {
     expect(result.correctingUsers.sort()).toEqual([A, B]);
     expect(result.conflictingUsers).toEqual([C]);
     expect(result.conflictingPicks).toEqual([{ userId: C, periodKey: "2026-10-04" }]);
-    expect(result.changedReads).toEqual([
+    expect(result.changedReads).toMatchObject([
       {
         userId: C,
         periodKey: "2026-10-05",
@@ -471,7 +474,7 @@ describe("one user cannot move another user's read score", () => {
       window: [bystanderPick, readRow, example],
     });
     expect(result.failedGate).toBe("changes_other_read_scores");
-    expect(result.changedReads).toEqual([
+    expect(result.changedReads).toMatchObject([
       {
         userId: C,
         periodKey: "2026-10-05",
@@ -531,7 +534,7 @@ describe("two matching corrections against a parser nobody confirmed", () => {
     expect(result.correctingUsers.sort()).toEqual([A, B]);
     expect(result.conflictingUsers).toEqual([]);
     expect(result.conflictingPicks).toEqual([]);
-    expect(result.changedReads).toEqual([
+    expect(result.changedReads).toMatchObject([
       {
         userId: C,
         periodKey: "2026-10-05",

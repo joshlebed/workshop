@@ -1,6 +1,6 @@
 import type { GameScoreDirection } from "@workshop/shared/games";
 import { Button, Chip, Text, tokens } from "@workshop/ui";
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { ROLE_TAG, SCORE_COPY } from "../lib/scoreCheck";
 import type { ScoreCheck } from "../lib/useScoreCheck";
 
@@ -21,7 +21,18 @@ export function ScoreCheckPanel({
   testID?: string;
 }) {
   const { view } = check;
-  if (!check.available || view.kind === "none" || view.kind === "checking") return null;
+  if (!check.available || view.kind === "none") return null;
+
+  // The server's reading is on its way. One quiet line where the reading will
+  // go, so there is never an empty gap and nothing moves when "Score: 944"
+  // replaces it.
+  if (view.kind === "checking") {
+    return (
+      <View style={styles.root} testID={testID}>
+        <CheckingNote visible testID={`${testID}-checking`} />
+      </View>
+    );
+  }
 
   if (view.kind === "no_result_text") {
     return (
@@ -111,11 +122,16 @@ function Picker({ check, testID }: { check: ScoreCheck; testID: string }) {
   const selectedId = check.pick?.kind === "feature" ? check.pick.featureId : null;
   return (
     <View style={styles.picker} testID={`${testID}-picker`}>
-      <Text variant="caption" tone="muted">
-        {check.view.kind === "score" || check.view.kind === "no_result"
-          ? "Tap your score:"
-          : SCORE_COPY.unread}
-      </Text>
+      <View style={styles.pickerHeader}>
+        <Text variant="caption" tone="muted" style={styles.pickerCaption}>
+          {check.view.kind === "score" || check.view.kind === "no_result"
+            ? "Tap your score:"
+            : SCORE_COPY.unread}
+        </Text>
+        {/* The chips below are already tappable; this only says the server
+            part (the dry run, the labels) is still coming. */}
+        <CheckingNote visible={check.serverPending} testID={`${testID}-checking`} />
+      </View>
       <View style={styles.chips}>
         {check.candidates.map((feature) => {
           const tag = ROLE_TAG[check.roles[feature.id] ?? "other"];
@@ -169,6 +185,28 @@ function Picker({ check, testID }: { check: ScoreCheck; testID: string }) {
   );
 }
 
+/**
+ * "Checking…" with a small spinner. In the picker it keeps its place when it
+ * is done (invisible, not removed), so nothing shifts when the answer lands.
+ */
+function CheckingNote({ visible, testID }: { visible: boolean; testID: string }) {
+  return (
+    <View
+      style={[styles.checking, visible ? null : styles.checkingDone]}
+      // Absent from the tree's test ids and from assistive tech once done.
+      {...(visible ? { testID, accessibilityRole: "progressbar" as const } : {})}
+      accessibilityElementsHidden={!visible}
+      importantForAccessibility={visible ? "auto" : "no-hide-descendants"}
+      aria-hidden={!visible}
+    >
+      <ActivityIndicator size="small" color={tokens.text.muted} animating={visible} />
+      <Text variant="caption" tone="muted">
+        {SCORE_COPY.checking}
+      </Text>
+    </View>
+  );
+}
+
 /** "Lower is better" / "Higher is better" — confirmed by the user on a first teach. */
 export function DirectionChips({
   direction,
@@ -206,7 +244,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexWrap: "wrap",
     gap: tokens.space.md,
+    minHeight: 24,
   },
+  // One line high whether it holds "Checking…" or the reading.
+  checking: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm, minHeight: 24 },
+  checkingDone: { opacity: 0 },
+  pickerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: tokens.space.md,
+    minHeight: 24,
+  },
+  pickerCaption: { flexShrink: 1 },
   link: { color: tokens.accent.default, textDecorationLine: "underline" },
   picker: { gap: tokens.space.sm },
   direction: { gap: tokens.space.sm },

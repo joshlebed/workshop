@@ -62,6 +62,38 @@ export function teachRequestsAllowed(input: {
   return input.available && input.signedIn && !!input.gameId && !input.empty;
 }
 
+/** Typing settles for this long before the server is asked. */
+const TYPING_DEBOUNCE_MS = 300;
+/** A change of more than this many characters at once is a paste, not typing. */
+const PASTE_MIN_CHARS = 8;
+
+/**
+ * How long to wait before asking the server about a draft. Typing is
+ * debounced; a paste — the usual way a result arrives — is one change and is
+ * asked about at once.
+ */
+export function settleDelayMs(previous: string, next: string): number {
+  return Math.abs(next.length - previous.length) > PASTE_MIN_CHARS ? 0 : TYPING_DEBOUNCE_MS;
+}
+
+/**
+ * Whether the server still owes this box something while the chips are up:
+ * the dry run (inside its short wait) or the chips' role labels. Drives the
+ * "Checking…" note only — the chips are tappable and the post is open
+ * throughout.
+ */
+export function serverPartPending(input: {
+  pickerOpen: boolean;
+  /** Teach requests are being made for this box at all. */
+  offered: boolean;
+  previewOut: boolean;
+  waitedOut: boolean;
+  labelsFetching: boolean;
+}): boolean {
+  if (!input.pickerOpen || !input.offered) return false;
+  return (input.previewOut && !input.waitedOut) || input.labelsFetching;
+}
+
 /**
  * Whether the chips are showing. They open by themselves when nothing read
  * the score (or no preview came), on "Not right?", and for Fix score — and

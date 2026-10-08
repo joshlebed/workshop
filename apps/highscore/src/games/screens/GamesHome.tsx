@@ -67,7 +67,7 @@ import { askScoreDirection } from "../lib/askScoreDirection";
 import { localDateKey } from "../lib/gameDate";
 import { prewarmGameShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
-import { pickedScoreLabel } from "../lib/scoreCheck";
+import { scoreLineLabel } from "../lib/scoreCheck";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
@@ -485,28 +485,31 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       // games, what order) stays the today-pinned canonical My Games.
       const standings = viewStandings.get(mg.gameId);
       const entries = (standings?.entries ?? []).filter(hasScore);
-      const rows: StandingsRow[] = entries.map((entry) => ({
-        userId: entry.userId,
-        displayName: entry.displayName,
-        avatarUrl: userAvatarImageUrl(entry.userId),
-        rank: entry.rank,
-        body: summarizeGameScoreBody(mg.game, entry),
-        reactions: entry.reactions,
-        ...(entry.adjusted ? { adjusted: true } : {}),
-        ...(pickedScoreLabel(entry) ? { picked: pickedScoreLabel(entry) ?? "" } : {}),
-        // Only the poster sees "Fix score", and only on a score nothing read.
-        ...(teachAvailable && entry.userId === user?.id && entry.parseStatus === "failed"
-          ? {
-              onFix: () =>
-                setFixTarget({
-                  gameId: mg.gameId,
-                  gameTitle: mg.game.title,
-                  periodKey: viewDate,
-                  scoreRaw: entry.scoreRaw ?? "",
-                }),
-            }
-          : {}),
-      }));
+      const rows: StandingsRow[] = entries.map((entry) => {
+        const scoreLine = scoreLineLabel(entry, mg.game, teachAvailable);
+        return {
+          userId: entry.userId,
+          displayName: entry.displayName,
+          avatarUrl: userAvatarImageUrl(entry.userId),
+          rank: entry.rank,
+          body: summarizeGameScoreBody(mg.game, entry),
+          reactions: entry.reactions,
+          ...(entry.adjusted ? { adjusted: true } : {}),
+          ...(scoreLine ? { picked: scoreLine } : {}),
+          // Only the poster sees "Fix score", and only on a score nothing read.
+          ...(teachAvailable && entry.userId === user?.id && entry.parseStatus === "failed"
+            ? {
+                onFix: () =>
+                  setFixTarget({
+                    gameId: mg.gameId,
+                    gameTitle: mg.game.title,
+                    periodKey: viewDate,
+                    scoreRaw: entry.scoreRaw ?? "",
+                  }),
+              }
+            : {}),
+        };
+      });
       return (
         <StandingsCard
           key={mg.gameId}
