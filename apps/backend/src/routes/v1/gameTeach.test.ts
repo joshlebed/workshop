@@ -584,6 +584,48 @@ describe("posting with a pick", () => {
   });
 });
 
+describe("the entry surface — share-panel observability", () => {
+  const entrySource = async (gameId: string, periodKey: string) =>
+    (
+      await rows<{ entry_source: string | null }>(
+        `SELECT entry_source FROM game_scores WHERE game_id = $1 AND user_id = $2 AND period_key = $3`,
+        [gameId, josh, periodKey],
+      )
+    )[0]?.entry_source;
+  const firstShare = async () =>
+    (
+      await rows<{ value: { firstAt?: string } }>(
+        `SELECT value FROM user_flags WHERE user_id = $1 AND key = 'games.share-extension-score'`,
+        [josh],
+      )
+    )[0]?.value.firstAt;
+
+  it("stores it on the teach write path, with a pick, and records the first share-sheet score", async () => {
+    const gameId = await newGame();
+    const shared = await post(josh, gameId, day(2), krillion(81, 415), {
+      pick: scorePick,
+      entrySource: "share_extension",
+    });
+    expect(shared.status).toBe(200);
+    expect(await entrySource(gameId, day(2))).toBe("share_extension");
+    const firstAt = await firstShare();
+    expect(typeof firstAt).toBe("string");
+
+    // Latest write wins on the row; the adoption marker never moves.
+    await post(josh, gameId, day(2), krillion(82, 416), { entrySource: "paste" });
+    expect(await entrySource(gameId, day(2))).toBe("paste");
+    expect(await firstShare()).toBe(firstAt);
+  });
+
+  it("stores NULL for a post without it and 400s an unknown value", async () => {
+    const gameId = await newGame();
+    expect((await post(josh, gameId, day(3), krillion(70, 300))).status).toBe(200);
+    expect(await entrySource(gameId, day(3))).toBeNull();
+    const bad = await post(josh, gameId, day(3), krillion(70, 300), { entrySource: "fax" });
+    expect(bad.status).toBe(400);
+  });
+});
+
 describe("teaching the parser from a pick", () => {
   it("accepts code that passes every gate: new version, revision, direction, re-read, one ping", async () => {
     const gameId = await newGame();

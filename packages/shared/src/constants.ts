@@ -14,3 +14,19 @@ export const SHARED_TYPES_VERSION = "5";
 // the same tuple to validate X-Workshop-Client before choosing a branded URL.
 export const WORKSHOP_CLIENTS = ["workshop", "highscore"] as const;
 export type WorkshopClient = (typeof WORKSHOP_CLIENTS)[number];
+
+// Which surface a game-score write arrived from at PUT /v1/games/:id/scores
+// (`entrySource`). Optional on the wire (older clients omit it → NULL in
+// `game_scores.entry_source`). Not to be confused with `score_source`
+// (`parsed` | `picked`), which is how the stored value was derived.
+export const GAME_SCORE_ENTRY_SOURCES = ["share_extension", "paste"] as const;
+export type GameScoreEntrySource = (typeof GAME_SCORE_ENTRY_SOURCES)[number];
+
+// Canonical `user_flags` keys — shared so backend writers and client readers
+// can't drift. `shareExtensionScore` is written server-side on the first score
+// that arrives with entrySource "share_extension" (value `{ firstAt }`): the only
+// reliable "this user actually set up the share sheet" signal, since iOS has
+// no API to detect share-panel membership.
+export const USER_FLAG_KEYS = {
+  shareExtensionScore: "games.share-extension-score",
+} as const;

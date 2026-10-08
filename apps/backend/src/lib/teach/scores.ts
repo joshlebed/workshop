@@ -3,6 +3,7 @@
 // from here — an ordinary post runs the game's stored code in the sandbox and
 // nothing else.
 
+import type { GameScoreEntrySource } from "@workshop/shared/constants";
 import type {
   Game,
   GameScore,
@@ -437,6 +438,8 @@ export async function saveScore(input: {
   pick?: ScorePick | undefined;
   overrodeRole?: ScoreFeatureRole | undefined;
   previewSeen?: boolean | undefined;
+  /** The surface the post came from; absent (older client) stores NULL. */
+  entrySource?: GameScoreEntrySource | undefined;
   db?: DbClient;
 }): Promise<{ row: DbGameScore; teach: ScoreTeachHint | null }> {
   const { userId, game, periodKey, raw } = input;
@@ -508,12 +511,14 @@ export async function saveScore(input: {
         pickAdjusted: pick?.adjusted ?? false,
         updatedAt: new Date(),
       };
+  // Every write sets it, so a post without it does not keep an older surface.
+  const columns = { ...values, entrySource: input.entrySource ?? null };
   const [row] = await db
     .insert(gameScores)
-    .values({ gameId: game.id, userId, periodKey, ...values })
+    .values({ gameId: game.id, userId, periodKey, ...columns })
     .onConflictDoUpdate({
       target: [gameScores.gameId, gameScores.userId, gameScores.periodKey],
-      set: values,
+      set: columns,
     })
     .returning();
   if (!row) throw new Error("score upsert returned no row");
@@ -528,6 +533,7 @@ export async function saveScore(input: {
     legacy_value: parseScoreValue(raw, specForGame(game)),
     duration_ms: durationMs,
     preview_seen: input.previewSeen ?? null,
+    entry_source: input.entrySource ?? null,
     raw,
   });
   const teach = pick ? teachHint(game, pick) : null;

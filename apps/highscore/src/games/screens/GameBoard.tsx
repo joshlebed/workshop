@@ -124,7 +124,11 @@ export default function GameBoard() {
     }) => {
       const target = postTo?.id ?? gameId;
       if (!target) throw new Error("missing game id");
-      return upsertGameScore(target, { periodKey, scoreRaw, ...extras?.body }, token);
+      return upsertGameScore(
+        target,
+        { periodKey, scoreRaw, entrySource: "paste", ...extras?.body },
+        token,
+      );
     },
     onSuccess: async (data, variables) => {
       haptics.medium();

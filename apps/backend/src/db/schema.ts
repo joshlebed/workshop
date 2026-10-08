@@ -764,6 +764,15 @@ export const gameScores = pgTable(
      * Never true for an "I didn't finish" pick.
      */
     pickAdjusted: boolean("pick_adjusted").notNull().default(false),
+    /**
+     * How the latest write arrived — the score's *entry surface*, a different
+     * fact from `score_source` (how its value was derived): `share_extension`
+     * (iOS share sheet → /share/pick-game) or `paste` (any in-app paste
+     * surface). NULL = written by a client from before entry reporting
+     * shipped. Latest write wins; the first-ever share-sheet score is durably
+     * recorded in `user_flags` instead (see the upsert routes).
+     */
+    entrySource: text("entry_source"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
@@ -778,6 +787,31 @@ export const gameScores = pgTable(
       "game_scores_parse_status_check",
       sql`${t.parseStatus} IN ('score', 'no_result', 'failed')`,
     ),
+  }),
+);
+
+/**
+ * Per-user server-side flags — small durable key/value state that must survive
+ * reinstalls and follow the account across devices (announcement dismissals,
+ * feature-adoption markers). Keyed like `user_activity_reads`: composite PK,
+ * cascade on user deletion (no `ON DELETE restrict`, so `lib/accountDeletion.ts`
+ * needs no edit). Keys are dot-namespaced (`games.share-extension-score`);
+ * canonical key constants live in `@workshop/shared/constants` so client and
+ * backend can't drift. Values are small jsonb blobs (≤2KB, enforced in
+ * `lib/userFlags.ts`).
+ */
+export const userFlags = pgTable(
+  "user_flags",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: jsonb("value").notNull().default(sql`'{}'::jsonb`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.key] }),
   }),
 );
 

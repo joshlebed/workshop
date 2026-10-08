@@ -14,6 +14,7 @@
 // Games beta accounts, or everyone once `GAME_TEACH=on`. The model is only
 // called by `candidates` and `parser/teach` — never by a preview or a post.
 
+import { GAME_SCORE_ENTRY_SOURCES } from "@workshop/shared/constants";
 import type {
   ApplyScorePickResponse,
   PreviewGameScoreResponse,
@@ -66,6 +67,7 @@ import {
   toScoreShape,
 } from "../../lib/teach/scores.js";
 import { rollbackParser, teachFromPick } from "../../lib/teach/teach.js";
+import { recordShareExtensionScore } from "../../lib/userFlags.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 
@@ -97,6 +99,8 @@ const upsertSchema = z.object({
   overrodeRole: roleSchema.optional(),
   previewSeen: z.boolean().optional(),
   wrongGame: z.object({ gameId: z.string().uuid(), choice: z.enum(["here", "there"]) }).optional(),
+  // Same optional entry-surface field as the legacy `upsertScoreSchema`.
+  entrySource: z.enum(GAME_SCORE_ENTRY_SOURCES).optional(),
 });
 const applyPickSchema = z.object({ pick: pickSchema, overrodeRole: roleSchema.optional() });
 const teachSchema = z.object({
@@ -192,10 +196,15 @@ export async function handleScoreUpsertV2(c: Context, gameId: string): Promise<R
       pick: parsed.data.pick,
       overrodeRole: parsed.data.overrodeRole,
       previewSeen: parsed.data.previewSeen,
+      entrySource: parsed.data.entrySource,
     });
   } catch (error) {
     if (error instanceof InvalidPickError) return err(c, "VALIDATION", error.message);
     throw error;
+  }
+  // Durable first-share-sheet marker — same as the legacy write path.
+  if (parsed.data.entrySource === "share_extension") {
+    await recordShareExtensionScore(db, userId, saved.row.updatedAt);
   }
 
   await addToMyGames(userId, game.id);

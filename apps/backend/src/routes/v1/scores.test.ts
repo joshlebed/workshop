@@ -86,6 +86,15 @@ describe("upsertScoreSchema", () => {
     expect(upsertScoreSchema.safeParse({ periodKey: "2026-05-18" }).success).toBe(false);
   });
 
+  it("accepts a known entrySource and rejects an unknown one", () => {
+    const base = { periodKey: "2026-05-18", scoreRaw: "42" };
+    expect(upsertScoreSchema.safeParse({ ...base, entrySource: "share_extension" }).success).toBe(
+      true,
+    );
+    expect(upsertScoreSchema.safeParse({ ...base, entrySource: "paste" }).success).toBe(true);
+    expect(upsertScoreSchema.safeParse({ ...base, entrySource: "telegram" }).success).toBe(false);
+  });
+
   it("rejects an unknown extra field", () => {
     const r = upsertScoreSchema.safeParse({
       periodKey: "2026-05-18",

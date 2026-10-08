@@ -85,6 +85,7 @@ import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/sc
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
 import { teachModeFor } from "../../lib/teach/gate.js";
 import { scorePickFields } from "../../lib/teach/scores.js";
+import { recordShareExtensionScore } from "../../lib/userFlags.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
@@ -707,6 +708,8 @@ gameRoutes.put(
       scoreSummary: scored.scoreSummary,
       scoreSource: scored.scoreSource,
       codeVersion: scored.codeVersion,
+      // Latest write wins: a post without it (an older client) stores NULL.
+      entrySource: parsed.data.entrySource ?? null,
     };
 
     // Capture activation state BEFORE the upsert — false means this is the
@@ -732,6 +735,14 @@ gameRoutes.put(
       })
       .returning();
     if (!row) return err(c, "INTERNAL", "score upsert returned no row");
+
+    // Durable adoption marker: first-ever share-sheet score. Insert-only, so
+    // re-posts never move `firstAt`; the queryable "who set up the share
+    // panel" signal (iOS has no API to detect share-sheet membership). The
+    // teach write path (`handleScoreUpsertV2`) records it the same way.
+    if (parsed.data.entrySource === "share_extension") {
+      await recordShareExtensionScore(db, userId, now);
+    }
 
     // Posting a score auto-adds the game to My Games (spec §3.5) — no
     // membership prerequisite, idempotent if it's already there.
