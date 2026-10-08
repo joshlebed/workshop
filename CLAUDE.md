@@ -85,6 +85,12 @@ from one component tree; shared code lives in `packages/*`. HighScore owns its G
      `gh api repos/<owner>/<repo>/commits/<tag> --jq .sha`.
   2. Never interpolate `${{ … }}` inside a `run:` block — hoist into step `env:` and read
      as `$VAR`. actionlint enforces both.
+- **Actions logs and artifacts on this repo are public — never let an AWS CLI call echo its
+  response.** `aws lambda update-function-code` / `update-function-configuration` /
+  `get-function-configuration` return the whole function config, including every env var in
+  plaintext; GitHub only masks values it knows as secrets. Add `--query` (or `> /dev/null`) to
+  any such call in a workflow. Same class: a `terraform plan` prints a Lambda env value in
+  plaintext when it was set by hand and state doesn't yet mark it sensitive.
 - **`permissions:` blocks aren't least-privilege by default** — `permissions: contents: read`
   matches GitHub's push-event default but blocks PR metadata. Actions needing PR data
   (`dorny/paths-filter`, label/comment on PR) need explicit `pull-requests: read`. Failure is

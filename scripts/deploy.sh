@@ -38,7 +38,9 @@ aws lambda update-function-code \
   --function-name "$FUNCTION" \
   --zip-file fileb://apps/backend/lambda.zip \
   --region "$REGION" \
-  --publish
+  --publish \
+  --query '{Version: Version, CodeSha256: CodeSha256, LastModified: LastModified}' \
+  --output json
 
 aws lambda wait function-updated \
   --function-name "$FUNCTION" \
