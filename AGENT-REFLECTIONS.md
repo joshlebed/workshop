@@ -180,10 +180,8 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
   `aws ssm put-parameter`, then a PR re-declares them with `import` blocks and re-adds the three
   env lines in `infra/lambda.tf`. ~15m once the `.p8` exists.
 
-- **Secrets that were printed to public Actions logs have not been rotated.** Until #453,
-  `Deploy Backend` logged the whole Lambda env on every run (`SESSION_SECRET`, OpenAI, TypeSafe,
-  Spotify, TMDB, Google Books, Discord webhook; `DATABASE_URL` credentials were masked), and
-  Terraform plans logged the hand-set OpenAI and TypeSafe keys. The Terraform logs were deleted;
-  the `Deploy Backend` logs were not. **Fix:** operator decision â€” delete those logs and rotate
-  each secret (`SESSION_SECRET` rotation signs everyone out and breaks `secretBox`-sealed
-  tokens, so plan it).
+- **Leaked-secret rotation is in progress (2026-10-08).** The `Deploy Backend` logs that
+  printed the Lambda env (199 runs, before #453) are deleted, and `SESSION_SECRET` is rotated
+  by `keepers` on `random_password.session_secret`. Still to rotate by the operator, each in its
+  own console then `aws ssm put-parameter --overwrite` + a Lambda env refresh: OpenAI, TypeSafe,
+  Spotify (id + secret), TMDB, Google Books, Discord webhook.
