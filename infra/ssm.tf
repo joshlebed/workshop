@@ -124,13 +124,54 @@ resource "aws_ssm_parameter" "google_books_api_key" {
   }
 }
 
-# The Sign in with Apple revocation key (apple_team_id / apple_key_id /
-# apple_private_key) is deliberately NOT declared yet. #400 declared the three
-# with empty defaults; SSM rejects an empty value on create, which failed every
-# apply for five weeks. Re-add them only after the parameters exist: create
-# them with `aws ssm put-parameter`, then declare each resource with an
-# `import` block (like typesafe_api_key above) and wire it into lambda.tf.
-# See docs/manual-setup.md §5.
+# Sign in with Apple revocation key (account-deletion token revocation). All
+# three were created out of band with `aws ssm put-parameter` (SSM rejects an
+# empty value on create — see CLAUDE.md), so Terraform adopts them via import.
+import {
+  to = aws_ssm_parameter.apple_team_id
+  id = "/workshop-prod/apple_team_id"
+}
+
+resource "aws_ssm_parameter" "apple_team_id" {
+  name  = "/${local.prefix}/apple_team_id"
+  type  = "SecureString"
+  value = var.apple_team_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+import {
+  to = aws_ssm_parameter.apple_key_id
+  id = "/workshop-prod/apple_key_id"
+}
+
+resource "aws_ssm_parameter" "apple_key_id" {
+  name  = "/${local.prefix}/apple_key_id"
+  type  = "SecureString"
+  value = var.apple_key_id
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+import {
+  to = aws_ssm_parameter.apple_private_key
+  id = "/workshop-prod/apple_private_key"
+}
+
+resource "aws_ssm_parameter" "apple_private_key" {
+  name  = "/${local.prefix}/apple_private_key"
+  type  = "SecureString"
+  value = var.apple_private_key
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 resource "aws_ssm_parameter" "spotify_client_id" {
   name  = "/${local.prefix}/spotify_client_id"
   type  = "SecureString"

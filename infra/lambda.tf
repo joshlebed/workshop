@@ -54,6 +54,9 @@ resource "aws_lambda_function" "api" {
       SESSION_SECRET             = random_password.session_secret.result
       APPLE_BUNDLE_ID            = aws_ssm_parameter.apple_bundle_id.value
       APPLE_SERVICES_ID          = aws_ssm_parameter.apple_services_id.value
+      APPLE_TEAM_ID              = aws_ssm_parameter.apple_team_id.value
+      APPLE_KEY_ID               = aws_ssm_parameter.apple_key_id.value
+      APPLE_PRIVATE_KEY          = aws_ssm_parameter.apple_private_key.value
       GOOGLE_IOS_CLIENT_ID       = aws_ssm_parameter.google_ios_client_id.value
       GOOGLE_WEB_CLIENT_ID       = aws_ssm_parameter.google_web_client_id.value
       TMDB_API_KEY               = aws_ssm_parameter.tmdb_api_key.value
