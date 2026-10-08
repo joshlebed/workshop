@@ -16,6 +16,7 @@
     "db:push": "drizzle-kit push",
     "admin:eject": "tsx scripts/eject-user.ts",
     "admin:game-code": "tsx scripts/set-game-code.ts",
+    "admin:game-direction": "tsx scripts/set-game-direction.ts",
     "admin:reread-scores": "tsx scripts/reread-scores.ts"
   },
   "dependencies": {

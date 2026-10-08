@@ -29,6 +29,10 @@
  *                           or EVAL_DATABASE_URL, which are read-only by design)
  *   --yes                   skip the 5 s countdown before --apply writes
  *   --game=<id|key|url>     only this game (repeat or comma-separate for several)
+ *   --include-failed        also re-read `failed` rows that an older version of the
+ *                           game's code read (a row the current version read is
+ *                           skipped: same code, same text, same answer). Rows that
+ *                           hold a score or a no-result are never re-read
  *   --skip-untaught         leave games with no parse code alone. Without this their
  *                           legacy rows become `failed` and LOSE any stored value:
  *                           "a game with no parser is unread until taught" (spec §1)
@@ -118,6 +122,7 @@ function normalize(input: any): Snapshot {
       scoreValue: value === null ? null : Number(value),
       parseStatus: s.parseStatus ?? s.parse_status ?? null,
       scoreSource: s.scoreSource ?? s.score_source ?? null,
+      codeVersion: s.codeVersion ?? s.code_version ?? null,
     });
     scores[gameId] = list;
   }
@@ -164,7 +169,9 @@ const PUBLIC = flag("--public");
 
 function codeLabel(game: RereadGame): string {
   if (game.parseCode === null) return "none (untaught)";
-  return game.parseCode.startsWith("var SPEC = ") ? "taught spec" : "registry port";
+  if (game.parseCode.startsWith("var SPEC = ")) return "taught spec";
+  // Written by an operator or by teach, unless the game is in the registry.
+  return game.gameKey === null ? "written code" : "registry";
 }
 
 function show(value: number | null, status?: string): string {
@@ -196,12 +203,18 @@ function printReport(reports: GameReread[], markdown: boolean): void {
   const total = (pick: (r: GameReread) => number) => reports.reduce((n, r) => n + pick(r), 0);
   const columns: Array<[string, (r: GameReread) => number]> = [
     ["Legacy rows", (r) => r.legacyRows],
+    ...(flag("--include-failed")
+      ? [["Failed rows", (r: GameReread) => r.failedRows] as [string, (r: GameReread) => number]]
+      : []),
     ["Unchanged", (r) => r.counts.same_score],
     ["Gains a value", (r) => r.counts.null_to_score],
     ["Value changes", (r) => r.counts.score_changed],
     ["Loses a value", (r) => r.counts.score_to_failed + r.counts.score_to_no_result],
     ["Becomes no result", (r) => r.counts.null_to_no_result],
-    ["Becomes failed", (r) => r.counts.null_to_failed],
+    [
+      flag("--include-failed") ? "Becomes or stays failed" : "Becomes failed",
+      (r) => r.counts.null_to_failed,
+    ],
     ["Not decided", (r) => r.deferred + r.skippedUntaught],
   ];
 
@@ -307,6 +320,7 @@ async function main() {
     if (scores.length === 0) continue;
     const reread = await rereadGame(game, scores, {
       skipUntaught: flag("--skip-untaught"),
+      includeFailed: flag("--include-failed"),
       batchSize,
       ...(apply ? { onBatch: (rows) => writeRereadBatch(getDb(), game, rows) } : {}),
     });
@@ -314,7 +328,7 @@ async function main() {
     reports.push(reread);
   }
   await shutdownGameCodeSandbox();
-  reports.sort((a, b) => b.legacyRows - a.legacyRows);
+  reports.sort((a, b) => b.legacyRows + b.failedRows - (a.legacyRows + a.failedRows));
 
   printReport(reports, flag("--markdown"));
   const sum = (pick: (r: GameReread) => number) => reports.reduce((n, r) => n + pick(r), 0);
@@ -323,6 +337,7 @@ async function main() {
     mode,
     games: reports.length,
     legacy_rows: sum((r) => r.legacyRows),
+    failed_rows: sum((r) => r.failedRows),
     decided: sum((r) => r.rows.length),
     deferred: sum((r) => r.deferred),
     skipped_untaught: sum((r) => r.skippedUntaught),
@@ -356,6 +371,7 @@ async function currentScores(gameId: string): Promise<RereadScore[]> {
     scoreValue: s.scoreValue === null ? null : Number(s.scoreValue),
     parseStatus: s.parseStatus,
     scoreSource: s.scoreSource,
+    codeVersion: s.codeVersion,
   }));
 }
 
