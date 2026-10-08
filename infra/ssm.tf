@@ -1,6 +1,15 @@
 resource "random_password" "session_secret" {
   length  = 48
   special = false
+
+  # Bump to rotate. Replacing this resource re-issues SESSION_SECRET on the
+  # Lambda and in SSM on the next apply: every session is signed out once and
+  # secretBox-sealed values (Apple refresh tokens) become unreadable, which the
+  # backend treats as "nothing to revoke". 2026-10-08: the previous value had
+  # been printed in public Deploy Backend logs (fixed in #453).
+  keepers = {
+    rotation = "2026-10-08"
+  }
 }
 
 resource "aws_ssm_parameter" "session_secret" {
