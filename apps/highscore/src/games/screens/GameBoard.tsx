@@ -37,6 +37,7 @@ import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet"
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { ScoreReactions } from "../components/ScoreReactions";
+import { useOpenProfile } from "../hooks/useOpenProfile";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
@@ -62,6 +63,7 @@ export default function GameBoard() {
   const params = useLocalSearchParams<{ id: string; date?: string }>();
   const gameId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { token, user, routes } = useGamesRuntime();
+  const openProfile = useOpenProfile();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -423,6 +425,7 @@ export default function GameBoard() {
                   game={game}
                   teachAvailable={teachAvailable}
                   isMe
+                  onPressPlayer={openProfile}
                   onEdit={() => {
                     setDraft(myEntry.scoreRaw ?? "");
                     setEditingScore(true);
@@ -459,6 +462,7 @@ export default function GameBoard() {
                   game={game}
                   teachAvailable={teachAvailable}
                   isMe={false}
+                  onPressPlayer={openProfile}
                   onReact={(userId, emoji, currentlyReacted) =>
                     reactionCtl.react(gameId, userId, emoji, currentlyReacted)
                   }
@@ -510,6 +514,8 @@ interface EntryRowProps {
   onFix?: () => void;
   onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
   onOpenReactionPicker?: (userId: string) => void;
+  /** Tap the avatar or name → that player's profile. */
+  onPressPlayer?: (userId: string) => void;
 }
 
 function EntryRow({
@@ -522,6 +528,7 @@ function EntryRow({
   onFix,
   onReact,
   onOpenReactionPicker,
+  onPressPlayer,
 }: EntryRowProps) {
   const name = entry.displayName ?? "Someone";
   // Same distillation as the home card (and the Lists clipboard recap): a
@@ -545,24 +552,33 @@ function EntryRow({
             </Text>
           </View>
         ) : null}
-        <Avatar name={entry.displayName} imageUrl={userAvatarImageUrl(entry.userId)} size="md" />
-        <View style={styles.entryNameWrap}>
-          <View style={styles.entryNameRow}>
-            <Text variant="label" style={styles.entryName} numberOfLines={1}>
-              {name}
-            </Text>
-            {isMe ? (
-              <View style={styles.youPill}>
-                <Text style={styles.youPillText}>you</Text>
-              </View>
+        <Pressable
+          style={({ pressed }) => [styles.entryIdentity, pressed && styles.entryIdentityPressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`View ${name}'s profile`}
+          onPress={onPressPlayer ? () => onPressPlayer(entry.userId) : undefined}
+          disabled={!onPressPlayer}
+          testID={`game-board-player-${entry.userId}`}
+        >
+          <Avatar name={entry.displayName} imageUrl={userAvatarImageUrl(entry.userId)} size="md" />
+          <View style={styles.entryNameWrap}>
+            <View style={styles.entryNameRow}>
+              <Text variant="label" style={styles.entryName} numberOfLines={1}>
+                {name}
+              </Text>
+              {isMe ? (
+                <View style={styles.youPill}>
+                  <Text style={styles.youPillText}>you</Text>
+                </View>
+              ) : null}
+            </View>
+            {entry.updatedAt ? (
+              <Text variant="caption" tone="muted">
+                Posted {formatRelative(entry.updatedAt)}
+              </Text>
             ) : null}
           </View>
-          {entry.updatedAt ? (
-            <Text variant="caption" tone="muted">
-              Posted {formatRelative(entry.updatedAt)}
-            </Text>
-          ) : null}
-        </View>
+        </Pressable>
         {onEdit || onClear || onFix ? (
           <View style={styles.scoreActions}>
             {onFix ? (
@@ -899,6 +915,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.sm,
   },
+  entryIdentity: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    borderRadius: tokens.radius.sm,
+  },
+  entryIdentityPressed: { opacity: 0.6 },
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },

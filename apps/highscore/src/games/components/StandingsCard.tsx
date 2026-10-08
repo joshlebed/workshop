@@ -91,6 +91,8 @@ export interface StandingsCardProps {
   showCta: boolean;
   /** Tap the title or standings → detail. */
   onPressBody?: () => void;
+  /** Tap a player's avatar → their profile. The rest of the row still opens the board. */
+  onPressPlayer?: (userId: string) => void;
   /**
    * Long-press to reorder (native only; web drags via the wrapper). Wired onto
    * the cover, title, Play, paste and standings rows so the whole card is a
@@ -130,6 +132,7 @@ export const StandingsCard = memo(function StandingsCard({
   emptyFaces,
   showCta,
   onPressBody,
+  onPressPlayer,
   onLongPressBody,
   onMenu,
   onPlay,
@@ -310,6 +313,7 @@ export const StandingsCard = memo(function StandingsCard({
               row={row}
               isMe={row.userId === selfId}
               onPressBody={onPressBody}
+              onPressPlayer={onPressPlayer}
               onLongPressBody={onLongPressBody}
               onReact={onReact}
               onOpenReactionPicker={onOpenReactionPicker}
@@ -322,6 +326,7 @@ export const StandingsCard = memo(function StandingsCard({
                 row={pinnedSelf}
                 isMe
                 onPressBody={onPressBody}
+                onPressPlayer={onPressPlayer}
                 onLongPressBody={onLongPressBody}
                 onReact={onReact}
                 onOpenReactionPicker={onOpenReactionPicker}
@@ -351,6 +356,7 @@ interface PlayerRowProps {
   row: StandingsRow;
   isMe: boolean;
   onPressBody?: () => void;
+  onPressPlayer?: (userId: string) => void;
   onLongPressBody?: () => void;
   onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
   onOpenReactionPicker?: (userId: string) => void;
@@ -360,6 +366,7 @@ function PlayerRow({
   row,
   isMe,
   onPressBody,
+  onPressPlayer,
   onLongPressBody,
   onReact,
   onOpenReactionPicker,
@@ -380,33 +387,52 @@ function PlayerRow({
       style={[styles.playerRow, isMe && styles.playerRowMe]}
       testID={`game-card-row-${row.userId}`}
     >
-      <Pressable
-        style={styles.playerLine}
-        accessibilityRole="button"
-        accessibilityLabel={`${name}${isMe ? " (you)" : ""}: ${row.body ?? "played"}`}
-        onPress={onPressBody}
-        onLongPress={onLongPressBody}
-        delayLongPress={REORDER_ACTIVATION.longPressMs}
-      >
+      <View style={styles.playerLine}>
         <RankMark rank={row.rank} />
-        <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
-        <Text
-          style={[styles.scoreBody, row.body ? null : styles.scoreBodyMuted]}
-          testID={`game-card-score-${row.userId}`}
+        {onPressPlayer ? (
+          // A sibling of the body button, not a child — RN-Web renders both
+          // as <button>, and nested buttons are invalid DOM. Long-press is
+          // forwarded so the avatar stays a drag handle for reorder.
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`View ${name}'s profile`}
+            onPress={() => onPressPlayer(row.userId)}
+            onLongPress={onLongPressBody}
+            delayLongPress={REORDER_ACTIVATION.longPressMs}
+            hitSlop={6}
+            testID={`game-card-avatar-${row.userId}`}
+          >
+            <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
+          </Pressable>
+        ) : (
+          <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
+        )}
+        <Pressable
+          style={styles.playerBody}
+          accessibilityRole="button"
+          accessibilityLabel={`${name}${isMe ? " (you)" : ""}: ${row.body ?? "played"}`}
+          onPress={onPressBody}
+          onLongPress={onLongPressBody}
+          delayLongPress={REORDER_ACTIVATION.longPressMs}
         >
-          {row.body ?? "Played"}
-        </Text>
-        {row.picked || row.adjusted ? (
-          <Text style={styles.adjusted} testID={`game-card-adjusted-${row.userId}`}>
-            {[row.picked, row.adjusted ? "adjusted" : null].filter(Boolean).join(" · ")}
+          <Text
+            style={[styles.scoreBody, row.body ? null : styles.scoreBodyMuted]}
+            testID={`game-card-score-${row.userId}`}
+          >
+            {row.body ?? "Played"}
           </Text>
-        ) : null}
-        {isMe ? (
-          <View style={styles.youPill}>
-            <Text style={styles.youPillText}>you</Text>
-          </View>
-        ) : null}
-      </Pressable>
+          {row.picked || row.adjusted ? (
+            <Text style={styles.adjusted} testID={`game-card-adjusted-${row.userId}`}>
+              {[row.picked, row.adjusted ? "adjusted" : null].filter(Boolean).join(" · ")}
+            </Text>
+          ) : null}
+          {isMe ? (
+            <View style={styles.youPill}>
+              <Text style={styles.youPillText}>you</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
       {row.onFix ? (
         <Pressable
           accessibilityRole="button"
@@ -614,6 +640,13 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   playerLine: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+  },
+  playerBody: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
