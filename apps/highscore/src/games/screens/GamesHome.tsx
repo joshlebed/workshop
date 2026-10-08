@@ -1,54 +1,35 @@
-// Games home (G1b, issue #284) — THE main page of the Games tab: My Games in
-// my order, each rendered as a today's-leaderboard card (shared
-// `StandingsCard`, same chrome as the Lists surface's leaderboard view).
+// Home — the scoreboard. One day (the shared `viewDay`), every game in My
+// Games as a compact card: podium, your placing, turnout. See
+// apps/highscore/UX-EXPLORATION.md for the model; this file owns the data and
+// mutations, `GameScoreCard` owns the pixels.
 //
-// Solo a card shows just you; the standings array fills in as friends land
-// (G2a already widens `GET /v1/games` to viewer ∪ friends — this screen just
-// renders whatever the entries contain). The play→paste loop mirrors the
-// Lists surface: Play opens the game and arms a paste-on-return prompt
-// (`useReturnToPaste`, scope "games"); pasting posts to *today's* bucket.
+// Writes: a card's PASTE opens the paste sheet for that game (today only);
+// the bottom PASTE SCORE button goes to the share flow, which recognises the
+// game from the text. Play→paste still works through `useReturnToPaste`.
+// Posting to a past day lives on the box score.
 //
-// Empty state is the friends-first onboarding (G3, #293) — `GamesOnboarding`
-// pushes "Add friends" when you have none, or your friends' games as one-tap
-// suggestions when you do. The + sheet carries the same discovery suggestions
-// above its URL field; the home card list itself stays purely your own games.
+// Empty state is the friends-first onboarding (`GamesOnboarding`).
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { userAvatarImageUrl } from "@workshop/api-client/avatar";
-import { createFriendInvite, fetchFriends } from "@workshop/api-client/friends";
+import {
+  createFriendInvite,
+  fetchFriendRequests,
+  fetchFriends,
+} from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import type {
-  DiscoveryGame,
-  Game,
-  GameStandingsEntry,
-  GamesResponse,
-  MyGame,
-} from "@workshop/shared/games";
-import {
-  Button,
-  CopyIcon,
-  confirm,
-  EmptyState,
-  HomeHeader,
-  haptics,
-  homeLayout,
-  openExternalUrl,
-  Screen,
-  Sheet,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import type { DiscoveryGame, Game, GamesResponse, MyGame } from "@workshop/shared/games";
+import { confirm, haptics, openExternalUrl, useToast } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
+import { Button, IconButton, PixelIcon, Screen, Sheet, Text, tokens } from "../../theme";
 import {
   addGame,
-  createGameShareLink,
   fetchGameDiscovery,
   fetchMyGames,
   moveGame,
@@ -57,21 +38,20 @@ import {
   upsertGameScore,
 } from "../api/games";
 import { setScoreDirection } from "../api/teach";
-import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
+import { DateBar } from "../components/DateBar";
+import { DayPickerSheet } from "../components/DayPickerSheet";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
+import { GameScoreCard } from "../components/GameScoreCard";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
-import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
+import { useDayRange } from "../hooks/useDayRange";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { daysBack, localDateKey } from "../lib/gameDate";
-import { prewarmGameShareCard } from "../lib/prewarmShareCard";
+import { localDateKey } from "../lib/gameDate";
 import { neighborsForOrderedReorder } from "../lib/reorder";
-import { scoreLineLabel } from "../lib/scoreCheck";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
-import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
-import { copyToClipboard, shareOrCopyLink } from "../lib/share";
+import { shareOrCopyLink } from "../lib/share";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
@@ -81,23 +61,6 @@ import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
 import { GamesOnboarding } from "./games/GamesOnboarding";
 import type { GameReorderEvent } from "./games/gameCardListProps";
-
-function hasScore(entry: GameStandingsEntry): boolean {
-  return entry.scoreRaw != null && entry.scoreRaw.length > 0;
-}
-
-/**
- * Turnout line for the viewed day. Unlike the Lists card there's no roster
- * denominator — the standings only carry players who posted — so the line
- * reads off the played count alone. Past days drop the present tense.
- */
-function turnoutLine(playedCount: number, viewerHasPlayed: boolean, viewingToday: boolean): string {
-  if (playedCount === 0) return viewingToday ? "No one's played yet" : "No one played";
-  if (playedCount === 1 && viewerHasPlayed) {
-    return viewingToday ? "You've played today" : "You played";
-  }
-  return `${playedCount} played${viewingToday ? " today" : ""}`;
-}
 
 export interface GamesHomeProps {
   headerLeft?: ReactNode;
@@ -111,41 +74,24 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const livePoll = useLivePollingInterval();
+  const insets = useSafeAreaInsets();
 
   const todayKey = localDateKey();
   const gamesKey = queryKeys.games.mine(todayKey);
-
-  // The day rail re-dates every card's standings. The home play→paste loop
-  // stays pinned to `todayKey`; only the displayed standings follow
-  // `viewDate`. Posting to a past day lives on the per-game board. The
-  // selection is shared with each game board (state/viewDay.tsx), so paging
-  // days over there leaves home on the same day when you come back.
   const { viewDate, setViewDate } = useViewDay();
   const viewingToday = viewDate === todayKey;
-  // A board's "Earlier" chip can select a day beyond our 7-day rail; grow the
-  // rail to keep the shared selection visible.
-  const railLength = Math.max(DAY_RAIL_DEFAULT_LENGTH, daysBack(viewDate, todayKey) + 1);
 
   const [addOpen, setAddOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
-  // Teach v2: "Fix score" on my own unread row, and the direction control in
-  // the card menu. Both are absent for an account without the capability.
   const teachAvailable = useTeachAvailable();
   const [fixTarget, setFixTarget] = useState<FixScoreTarget | null>(null);
-  // Admin "Re-teach scoring": remembered while the kebab menu sheet animates
-  // out, then handed to the paste sheet in the menu's `onClosed` — never open
-  // the second Sheet in the same tick (two stacked Modals wedge iOS).
   const [reteachAfterMenu, setReteachAfterMenu] = useState<MyGame | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
-  // The copy-scores recap appends a per-day "play with me" link (`/g/:token`),
-  // distinct from the friend-invite link the empty-state "Add friends" CTA uses.
-  const [scoreShareUrl, setScoreShareUrl] = useState<string | null>(null);
-  const [copyingScores, setCopyingScores] = useState(false);
-  // Track in-flight + completed one-tap discovery adds by game id so each row
-  // can show its own spinner / "✓ Added" pill (one mutation, many rows).
   const [addingDiscoveryIds, setAddingDiscoveryIds] = useState<string[]>([]);
   const [addedDiscoveryIds, setAddedDiscoveryIds] = useState<string[]>([]);
 
+  // Today's My Games is canonical: which games, in what order, streaks.
   const gamesQuery = useQuery({
     queryKey: gamesKey,
     queryFn: () => fetchMyGames(todayKey, token),
@@ -155,9 +101,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const myGames = gamesQuery.data?.games ?? [];
   const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
 
-  // Standings for the selected day. When viewing today this shares the
-  // today-pinned query's key, so it costs nothing extra; it only does work
-  // once the rail points at a past day.
+  // Standings for the viewed day. Same key as `gamesKey` on today.
   const viewQuery = useQuery({
     queryKey: queryKeys.games.mine(viewDate),
     queryFn: () => fetchMyGames(viewDate, token),
@@ -169,9 +113,19 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     for (const g of viewQuery.data?.games ?? []) byGameId.set(g.gameId, g.standings);
     return byGameId;
   }, [viewQuery.data]);
+  // Warm the last week so stepping back is instant (and the box score's
+  // strip is already there).
+  useDayRange(todayKey);
 
-  // Emoji reactions on friends' scores (G2c). Targets the displayed day's
-  // standings cache (`viewDate`), which equals `gamesKey` while viewing today.
+  // Friend requests badge on the header's friends button.
+  const requestsQuery = useQuery({
+    queryKey: queryKeys.friends.requests,
+    queryFn: () => fetchFriendRequests(token),
+    enabled: !!token,
+    refetchInterval: livePoll,
+  });
+  const pendingRequests = requestsQuery.data?.inbound.length ?? 0;
+
   const reactionCtl = useScoreReactions<GamesResponse>({
     periodKey: viewDate,
     token,
@@ -200,9 +154,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const reportFlow = useScoreReportFlow(reactionCtl.closePicker);
 
-  // Friends drive which empty-state variant shows; discovery powers both the
-  // friends-but-no-games suggestions and the + sheet's suggestion list. Both
-  // are only needed when the home is empty or the sheet is open.
   const friendsQuery = useQuery({
     queryKey: queryKeys.friends.all,
     queryFn: () => fetchFriends(token),
@@ -211,9 +162,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const friends = friendsQuery.data?.friends ?? [];
 
-  // `includeOwned` so the + sheet shows the full ranked list of what friends
-  // play — including games already in My Games (rendered non-addable). The
-  // empty state shares this query but has no owned games, so it's unaffected.
   const discoveryQuery = useQuery({
     queryKey: queryKeys.games.discovery(),
     queryFn: () => fetchGameDiscovery(token, { includeOwned: true }),
@@ -221,6 +169,13 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     refetchInterval: livePoll,
   });
   const discovery = discoveryQuery.data?.games ?? [];
+  // A game no friend plays: discovery tags owned games with the friends who
+  // play them; owned + zero friends = solo. Only known while the feed is loaded.
+  const soloGameIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const d of discovery) if (d.inMyGames && d.friends.length === 0) ids.add(d.game.id);
+    return ids;
+  }, [discovery]);
 
   const addMutation = useMutation({
     mutationFn: (url: string) => addGame(url, token),
@@ -235,9 +190,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     },
   });
 
-  // One-tap add of a discovery suggestion (sheet + empty state). Unlike the
-  // URL add it keeps the sheet open so the user can add several, and it drops
-  // the added game off the discovery feed.
   const addDiscoveryMutation = useMutation({
     mutationFn: (game: DiscoveryGame) => addGame(game.game.url, token),
     onMutate: (game) => {
@@ -259,9 +211,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     },
   });
 
-  // Empty-state "Add friends": mint a share-link invite and hand it to the
-  // system share sheet (native) / clipboard (web) — same machinery as the
-  // Friends screen.
   const inviteMutation = useMutation({
     mutationFn: () => createFriendInvite(token),
     onSuccess: async (data) => {
@@ -283,51 +232,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     if (!inviteUrl) return;
     const result = await shareOrCopyLink(inviteUrl);
     if (result === "copied") showToast({ message: "Invite link copied", tone: "success" });
-  };
-
-  const onCopyScores = async () => {
-    const selfId = user?.id ?? null;
-    const preview = buildTodaysGameScoresSummary({
-      shareUrl: "",
-      games: myGames,
-      selfId,
-      dateKey: todayKey,
-    });
-    if (!preview) {
-      showToast({
-        message: "No scores from you today yet. Post one to share a recap.",
-        tone: "default",
-      });
-      return;
-    }
-
-    try {
-      setCopyingScores(true);
-      let url = scoreShareUrl;
-      if (!url) {
-        const link = await createGameShareLink(token);
-        url = link.url;
-        setScoreShareUrl(url);
-        prewarmGameShareCard(url);
-      }
-      const summary = buildTodaysGameScoresSummary({
-        shareUrl: url,
-        games: myGames,
-        selfId,
-        dateKey: todayKey,
-      });
-      if (!summary) return;
-      const ok = await copyToClipboard(summary);
-      if (ok) haptics.light();
-      showToast({
-        message: ok ? "Today's scores copied to clipboard" : "Couldn't copy to clipboard",
-        tone: ok ? "success" : "danger",
-      });
-    } catch (e) {
-      showToast({ message: errorMessage(e, "Couldn't create a share link."), tone: "danger" });
-    } finally {
-      setCopyingScores(false);
-    }
   };
 
   const moveMutation = useMutation<
@@ -374,8 +278,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     },
   });
 
-  // Play-then-paste loop, scoped to the Games surface so a pending play
-  // armed here never pops the Lists surface's sheet (and vice versa).
   const hasMyScore = useCallback(
     (gameId: string) =>
       myGames.find((g) => g.gameId === gameId)?.standings.viewerHasPlayed ?? false,
@@ -390,9 +292,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     (promptItemId ? myGames.find((g) => g.gameId === promptItemId)?.game : null) ?? null;
 
   const upsertMutation = useMutation({
-    // `taught` (the tap-the-score flow, see GameScorePasteSheet) stores the
-    // learned parser on the game first, so this very post parses with it.
-    // `extras` is the teach v2 equivalent: the pick rides on the post itself.
     mutationFn: async ({
       game,
       scoreRaw,
@@ -423,8 +322,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         ]);
       await refresh();
       showToast({ message: "Score posted", tone: "success" });
-      // A pick that can teach the game does so after the post has landed:
-      // the score is already saved whatever comes of it.
       const taught = await teachAfterPost({
         gameId: game.id,
         periodKey: todayKey,
@@ -434,7 +331,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         token,
       });
       if (taught) {
-        // A taught game reads texts differently: cached previews are stale.
         await Promise.all([
           refresh(),
           queryClient.invalidateQueries({ queryKey: ["game-score-check"] }),
@@ -448,8 +344,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     },
   });
 
-  // Teach v2: whoever set a game's direction changes it outright; anyone
-  // else's request waits for a second player asking for the same thing.
   const directionMutation = useMutation({
     mutationFn: ({ game, to }: { game: Game; to: "asc" | "desc" }) =>
       setScoreDirection(game.id, to, token),
@@ -491,140 +385,90 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     });
     if (ok) removeMutation.mutate(mg.gameId);
   };
+
   const renderCard = useCallback(
     (mg: MyGame, isDragging: boolean, onLongPressBody?: () => void) => {
-      // Standings follow the rail's selected day; the game list itself (which
-      // games, what order) stays the today-pinned canonical My Games.
       const standings = viewStandings.get(mg.gameId);
-      const entries = (standings?.entries ?? []).filter(hasScore);
-      const rows: StandingsRow[] = entries.map((entry) => {
-        const scoreLine = scoreLineLabel(entry, mg.game, teachAvailable);
-        return {
-          userId: entry.userId,
-          displayName: entry.displayName,
-          avatarUrl: userAvatarImageUrl(entry.userId),
-          rank: entry.rank,
-          body: summarizeGameScoreBody(mg.game, entry),
-          reactions: entry.reactions,
-          ...(entry.adjusted ? { adjusted: true } : {}),
-          ...(scoreLine ? { picked: scoreLine } : {}),
-          // Only the poster sees "Fix score", and only on a score nothing read.
-          ...(teachAvailable && entry.userId === user?.id && entry.parseStatus === "failed"
-            ? {
-                onFix: () =>
-                  setFixTarget({
-                    gameId: mg.gameId,
-                    gameTitle: mg.game.title,
-                    periodKey: viewDate,
-                    scoreRaw: entry.scoreRaw ?? "",
-                  }),
-              }
-            : {}),
-        };
-      });
       return (
-        <StandingsCard
+        <GameScoreCard
           key={mg.gameId}
-          cardId={mg.gameId}
+          gameId={mg.gameId}
           title={mg.game.title}
-          coverImageUrl={mg.game.iconUrl}
-          coverGlyph="🎮"
-          accent={tokens.accent.default}
-          isDragging={isDragging}
-          turnout={turnoutLine(rows.length, standings?.viewerHasPlayed ?? false, viewingToday)}
-          // Streak rides on the today-pinned `mg` (not the rail's viewed day) so
-          // the flame always reflects today's run — a stable "play today" nudge.
-          streak={mg.standings.viewerStreak}
-          rows={rows}
+          iconUrl={mg.game.iconUrl}
+          entries={standings?.entries ?? []}
           selfId={user?.id ?? null}
+          streak={mg.standings.viewerStreak}
+          isToday={viewingToday}
           loading={!viewingToday && viewQuery.isPending}
-          emptyFaces={[]}
-          // The home CTA posts to today only — past days are read-only here
-          // (post a past day from the per-game board), so Play / paste hide
-          // off-today.
-          showCta={viewingToday && !mg.standings.viewerHasPlayed}
-          // Hand the rail's day to the board so "Yesterday" stays selected
-          // when drilling in from a past-day view.
-          onPressBody={() => router.push(routes.game(mg.gameId, viewDate) as Href)}
+          isDragging={isDragging}
+          soloGame={soloGameIds.has(mg.gameId)}
+          onPress={() => router.push(routes.game(mg.gameId, viewDate) as Href)}
           onPressPlayer={openProfile}
-          {...(onLongPressBody ? { onLongPressBody } : {})}
-          onMenu={() => setMenuGame(mg)}
-          onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
           onPaste={() => openPasteFor({ id: mg.gameId, url: mg.game.url })}
-          onReact={(userId, emoji, currentlyReacted) =>
-            reactionCtl.react(mg.gameId, userId, emoji, currentlyReacted)
-          }
-          onOpenReactionPicker={(userId) =>
-            reactionCtl.openPicker(
-              mg.gameId,
-              userId,
-              entries.find((e) => e.userId === userId)?.displayName ?? null,
-            )
-          }
+          onMenu={() => setMenuGame(mg)}
+          {...(onLongPressBody ? { onLongPressBody } : {})}
         />
       );
     },
     [
       user?.id,
-      teachAvailable,
       router,
-      markPlaying,
       openPasteFor,
       viewStandings,
       viewDate,
       viewingToday,
       viewQuery.isPending,
-      reactionCtl.react,
-      reactionCtl.openPicker,
       routes.game,
       openProfile,
+      soloGameIds,
     ],
   );
 
   return (
     <Screen style={styles.root} testID="games-home">
-      <HomeHeader
-        left={headerLeft}
-        right={
-          <>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Copy today's scores to clipboard"
-              onPress={onCopyScores}
-              disabled={copyingScores}
-              testID="games-copy-scores"
-              hitSlop={8}
-              style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                styles.headerIconBtn,
-                (pressed || hovered) && styles.headerIconBtnHover,
-                copyingScores && styles.headerIconBtnDisabled,
-              ]}
-            >
-              {copyingScores ? (
-                <ActivityIndicator size="small" color={tokens.text.primary} />
-              ) : (
-                <CopyIcon size={20} color={tokens.text.primary} />
-              )}
-            </Pressable>
-            {headerTrailing}
-          </>
-        }
-      />
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>{headerLeft}</View>
+        <View style={styles.headerRight}>
+          <IconButton
+            accessibilityLabel={
+              pendingRequests > 0 ? `Friends, ${pendingRequests} requests` : "Friends"
+            }
+            onPress={() => router.push(routes.friends as Href)}
+            testID="games-friends"
+          >
+            <PixelIcon name="users" color={tokens.text.primary} />
+            {pendingRequests > 0 ? (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{pendingRequests > 9 ? "9+" : pendingRequests}</Text>
+              </View>
+            ) : null}
+          </IconButton>
+          {headerTrailing}
+        </View>
+      </View>
+
+      {isEmpty ? null : (
+        <DateBar
+          date={viewDate}
+          today={todayKey}
+          onChange={setViewDate}
+          onOpenPicker={() => setPickerOpen(true)}
+          testIDPrefix="home-date"
+        />
+      )}
 
       <View style={styles.body}>
         {gamesQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={tokens.neon.pink} />
           </View>
         ) : gamesQuery.isError ? (
           <View style={styles.center}>
-            <EmptyState
-              title="Couldn't load your games"
-              description={errorMessage(gamesQuery.error)}
-              action={
-                <Button label="Retry" variant="secondary" onPress={() => gamesQuery.refetch()} />
-              }
-            />
+            <Text variant="heading">COULDN'T LOAD</Text>
+            <Text tone="secondary" style={styles.centerText}>
+              {errorMessage(gamesQuery.error)}
+            </Text>
+            <Button label="Retry" variant="secondary" onPress={() => gamesQuery.refetch()} />
           </View>
         ) : isEmpty ? (
           <GamesOnboarding
@@ -642,43 +486,42 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
             addedGameIds={addedDiscoveryIds}
           />
         ) : (
-          <>
-            <View style={styles.dayRail}>
-              <DayRail
-                selectedDate={viewDate}
-                today={todayKey}
-                onSelectDate={setViewDate}
-                length={railLength}
-                testIDPrefix="games-day"
-                horizontalInset={homeLayout.horizontalInset}
-              />
-            </View>
-            <GameCardList
-              games={myGames}
-              renderCard={renderCard}
-              onReorder={onReorder}
-              refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
-              onRefresh={() => gamesQuery.refetch()}
-            />
-          </>
+          <GameCardList
+            games={myGames}
+            renderCard={renderCard}
+            onReorder={onReorder}
+            refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
+            onRefresh={() => gamesQuery.refetch()}
+          />
         )}
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Add a game"
-        onPress={() => setAddOpen(true)}
-        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-          styles.fab,
-          hovered && styles.fabHovered,
-          pressed && styles.fabPressed,
-        ]}
-        testID="fab-add-game"
-      >
-        <Text style={styles.fabGlyph} tone="onAccent">
-          +
-        </Text>
-      </Pressable>
+      {/* The only two writes, always reachable, one-handed. */}
+      {isEmpty ? null : (
+        <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, tokens.space.md) }]}>
+          <Button
+            label="+ GAME"
+            variant="secondary"
+            onPress={() => setAddOpen(true)}
+            testID="fab-add-game"
+            style={styles.actionSecondary}
+          />
+          <Button
+            label="PASTE SCORE"
+            onPress={() => router.push("/share" as Href)}
+            testID="home-paste-score"
+            style={styles.actionPrimary}
+          />
+        </View>
+      )}
+
+      <DayPickerSheet
+        visible={pickerOpen}
+        selected={viewDate}
+        today={todayKey}
+        onSelect={setViewDate}
+        onClose={() => setPickerOpen(false)}
+      />
 
       <AddGameSheet
         visible={addOpen}
@@ -698,13 +541,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         userAvatarUrl={user?.avatarUrl ?? null}
         pending={upsertMutation.isPending}
         spec={pasteTarget ? specForGame(pasteTarget) : null}
-        // Admins can re-teach a game that already parses; everyone else only
-        // gets the teach chips on a game's first paste (no spec yet). Registry
-        // games are read-only for all (mirrors the backend score-spec gate).
         canReteach={!!user?.isAdmin && pasteTarget != null && isGameReteachable(pasteTarget)}
-        // The old tap-the-score teach writes a spec; the server refuses that
-        // over a game that already has parse code (taught some other way), so
-        // it is only offered where it can succeed.
         {...(pasteTarget && (!pasteTarget.hasParser || user?.isAdmin)
           ? {
               onTeach: (game: Game, scoreRaw: string, taught: TaughtScoreSpec) =>
@@ -716,8 +553,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           upsertMutation.mutate({ game, scoreRaw, ...(extras ? { extras } : {}) })
         }
         onPostToOther={(other, scoreRaw) => {
-          // The warning named a game; post there instead. A game outside My
-          // Games is added by the post itself.
           upsertMutation.mutate({
             game: other,
             scoreRaw,
@@ -757,13 +592,11 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       <ReportSheet target={reportFlow.target} token={token} onClose={reportFlow.close} />
       <FixScoreSheet target={fixTarget} today={todayKey} onClose={() => setFixTarget(null)} />
 
-      {/* Card menu — Open game / (admin) Re-teach scoring / Remove. */}
+      {/* Card menu — Open game / Play / (admin) Re-teach / direction / Remove. */}
       <Sheet
         visible={!!menuGame}
         onRequestClose={() => setMenuGame(null)}
         onClosed={() => {
-          // Chain the paste/teach sheet open only after this one is fully
-          // closed — see `reteachAfterMenu`.
           if (reteachAfterMenu) {
             openPasteFor({ id: reteachAfterMenu.gameId, url: reteachAfterMenu.game.url });
             setReteachAfterMenu(null);
@@ -773,41 +606,41 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       >
         {menuGame ? (
           <>
-            <View style={styles.sheetHeader}>
-              <Text variant="heading" numberOfLines={1}>
-                {menuGame.game.title}
-              </Text>
-            </View>
+            <Text variant="heading" numberOfLines={1}>
+              {menuGame.game.title}
+            </Text>
             <View style={styles.sheetActions}>
               <Button
                 testID="game-menu-open"
-                label="Open game"
+                label="Play now"
+                onPress={() => {
+                  setMenuGame(null);
+                  markPlaying({ id: menuGame.gameId, url: menuGame.game.url });
+                }}
+              />
+              <Button
+                testID="game-menu-open-link"
+                variant="secondary"
+                label="Open game site"
                 onPress={() => {
                   setMenuGame(null);
                   openExternalUrl(menuGame.game.url);
                 }}
               />
-              {/* The v1 admin re-teach; teach v2 accounts correct a score instead. */}
               {user?.isAdmin && !teachAvailable && isGameReteachable(menuGame.game) ? (
-                <>
-                  <View style={styles.sheetDivider} />
-                  <Button
-                    testID="game-menu-reteach"
-                    variant="ghost"
-                    label="Re-teach scoring"
-                    onPress={() => {
-                      // Remember the target, close this sheet; `onClosed` opens
-                      // the paste sheet once the modal has animated away.
-                      setReteachAfterMenu(menuGame);
-                      setMenuGame(null);
-                    }}
-                  />
-                </>
+                <Button
+                  testID="game-menu-reteach"
+                  variant="ghost"
+                  label="Re-teach scoring"
+                  onPress={() => {
+                    setReteachAfterMenu(menuGame);
+                    setMenuGame(null);
+                  }}
+                />
               ) : null}
               {teachAvailable ? (
                 <>
-                  <View style={styles.sheetDivider} />
-                  <Text variant="caption" tone="muted" testID="game-menu-direction-current">
+                  <Text variant="caption" tone="secondary" testID="game-menu-direction-current">
                     {menuGame.game.scoreDirection === "asc"
                       ? "Ranking: lower is better."
                       : "Ranking: higher is better."}
@@ -830,20 +663,31 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
                   />
                 </>
               ) : null}
-              <View style={styles.sheetDivider} />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${menuGame.game.title} from My Games`}
-                onPress={() => onRemove(menuGame)}
+              {teachAvailable && menuGame.standings.viewerHasPlayed ? (
+                <Button
+                  testID="game-menu-fix"
+                  variant="ghost"
+                  label="Fix today's score"
+                  onPress={() => {
+                    const mine = menuGame.standings.entries.find((e) => e.userId === user?.id);
+                    setMenuGame(null);
+                    if (mine) {
+                      setFixTarget({
+                        gameId: menuGame.gameId,
+                        gameTitle: menuGame.game.title,
+                        periodKey: todayKey,
+                        scoreRaw: mine.scoreRaw ?? "",
+                      });
+                    }
+                  }}
+                />
+              ) : null}
+              <Button
                 testID="game-menu-remove"
-                hitSlop={6}
-                style={({ pressed }) => [
-                  styles.sheetDangerRow,
-                  pressed && styles.sheetDangerPressed,
-                ]}
-              >
-                <Text style={styles.sheetDangerLabel}>Remove from My Games</Text>
-              </Pressable>
+                variant="danger"
+                label="Remove from My Games"
+                onPress={() => onRemove(menuGame)}
+              />
             </View>
           </>
         ) : null}
@@ -853,68 +697,54 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.lg,
+  root: { flex: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingLeft: tokens.space.lg,
+    paddingRight: tokens.space.sm,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.xs,
   },
-  body: { flex: 1 },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
+  headerLeft: { flex: 1, minWidth: 0 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  badge: {
+    position: "absolute",
+    top: 4,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 3,
+    backgroundColor: tokens.neon.pink,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
   },
-  headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
-  headerIconBtnDisabled: { opacity: 0.6 },
-  dayRail: {
-    paddingBottom: tokens.space.sm,
+  badgeText: {
+    fontFamily: tokens.font.pixel,
+    fontSize: 8,
+    lineHeight: 12,
+    color: tokens.text.onAccent,
   },
+  body: { flex: 1 },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: tokens.space.lg,
+    gap: tokens.space.md,
+    padding: tokens.space.xl,
   },
-  fab: {
-    position: "absolute",
-    right: homeLayout.horizontalInset,
-    bottom: homeLayout.horizontalInset,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: tokens.accent.default,
-    alignItems: "center",
-    justifyContent: "center",
-    // Calm neutral elevation, not an amber glow (see DESIGN.md "calm by default").
-    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
-    elevation: 5,
+  centerText: { textAlign: "center" },
+  actions: {
+    flexDirection: "row",
+    gap: tokens.space.sm,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.sm,
+    borderTopWidth: tokens.bezel,
+    borderTopColor: tokens.border.default,
+    backgroundColor: tokens.bg.canvas,
   },
-  fabHovered: {
-    backgroundColor: tokens.accent.hover,
-    transform: [{ scale: 1.04 }],
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
-  sheetHeader: { gap: 4 },
+  actionSecondary: { flex: 1 },
+  actionPrimary: { flex: 2 },
   sheetActions: { gap: tokens.space.sm },
-  sheetDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
-    marginVertical: tokens.space.xs,
-  },
-  sheetDangerRow: {
-    paddingVertical: tokens.space.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.md,
-  },
-  sheetDangerPressed: { backgroundColor: `${tokens.status.danger}1A` },
-  sheetDangerLabel: {
-    color: tokens.status.danger,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
-  },
 });

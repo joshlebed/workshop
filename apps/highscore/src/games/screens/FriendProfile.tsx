@@ -1,3 +1,14 @@
+// Person — `/friends/:userId`. Reached from any avatar or name. Viewed
+// through the same day lens as everything else: the shared `DateBar`, their
+// games on that day (with their placing where you share the game), then a
+// seven-day form grid over the games you have in common and a head-to-head
+// tally. Relationship actions, report and block are unchanged.
+//
+// Head-to-head and the grid are composed from the viewer's cached per-day My
+// Games queries (`useDayRange`) — no extra endpoint, but it only covers games
+// you both have. TODO(api): a range parameter on the profile endpoint would
+// cover their games you don't play.
+
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
@@ -11,37 +22,22 @@ import {
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
-import {
-  Avatar,
-  Button,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics, useToast } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { blockUser } from "../../api/moderation";
 import { ReportSheet, type ReportTarget } from "../../moderation/ReportSheet";
+import { Avatar, Button, IconButton, PixelIcon, Screen, Text, tokens } from "../../theme";
 import { addGame } from "../api/games";
-import { localDateKey } from "../lib/gameDate";
+import { DateBar } from "../components/DateBar";
+import { DayPickerSheet } from "../components/DayPickerSheet";
+import { DAY_RANGE_LENGTH, useDayRange } from "../hooks/useDayRange";
+import { calendarLabel, localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
-import { summarizeGameScoreBody } from "../lib/scoresSummary";
+import { ordinal, shortScore } from "../lib/shortScore";
 import { useGamesRuntime } from "../runtime";
-
-/**
- * Friend profile page — `/friends/:userId`. Shows the relationship state with
- * the matching action (add / cancel / accept-decline / remove), mutual
- * friends, and — for friends (or yourself) — their game list with today's
- * score per game and a one-tap add for games you don't have. Non-friends see
- * a locked message instead of games. The backend 404s profiles of users with
- * no relationship and no mutual friends, so this page can't probe strangers.
- */
+import { useViewDay } from "../state/viewDay";
 
 function relationshipLine(profile: FriendProfileResponse): string {
   switch (profile.relationship) {
@@ -67,11 +63,11 @@ function mutualsLine(profile: FriendProfileResponse): string | null {
   return `${label} · ${names.join(", ")}`;
 }
 
+const WEEKDAY_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
+
 export default function FriendProfileScreen() {
   const params = useLocalSearchParams<{ userId?: string; via?: string }>();
   const userId = typeof params.userId === "string" ? params.userId : "";
-  // Play-link vouch token (`/g/:token` → here for a not-yet-friend sharer). Lets
-  // the backend show this profile past the anti-probe 404 so we can add them.
   const via = typeof params.via === "string" ? params.via : undefined;
   const { token, user, routes } = useGamesRuntime();
   const router = useRouter();
@@ -80,16 +76,57 @@ export default function FriendProfileScreen() {
   const livePoll = useLivePollingInterval();
 
   const todayKey = localDateKey();
+  const { viewDate, setViewDate } = useViewDay();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [addingGameIds, setAddingGameIds] = useState<string[]>([]);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   const profileQuery = useQuery({
-    queryKey: queryKeys.friends.profile(userId, todayKey),
-    queryFn: () => fetchFriendProfile(userId, todayKey, token, via),
+    queryKey: queryKeys.friends.profile(userId, viewDate),
+    queryFn: () => fetchFriendProfile(userId, viewDate, token, via),
     enabled: !!token && !!userId,
-    refetchInterval: livePoll,
+    refetchInterval: viewDate === todayKey ? livePoll : false,
   });
   const profile = profileQuery.data;
+
+  // Their placing on the viewed day, and the week grid, from my cached days.
+  const range = useDayRange(todayKey, DAY_RANGE_LENGTH);
+  const viewDay = range.find((d) => d.date === viewDate)?.data;
+  const rankOn = (gameId: string): number | null =>
+    viewDay?.games
+      .find((g) => g.gameId === gameId)
+      ?.standings.entries.find((e) => e.userId === userId)?.rank ?? null;
+
+  const week = useMemo(() => {
+    const games = range.find((d) => d.data)?.data?.games ?? [];
+    const rows = games
+      .map((mg) => ({
+        gameId: mg.gameId,
+        title: mg.game.title,
+        cells: range.map((d) => {
+          const entries =
+            d.data?.games.find((g) => g.gameId === mg.gameId)?.standings.entries ?? [];
+          const theirs = entries.find((e) => e.userId === userId && e.scoreRaw);
+          const mine = entries.find((e) => e.userId === user?.id && e.scoreRaw);
+          return {
+            date: d.date,
+            value: theirs ? shortScore(theirs) : null,
+            won: theirs?.rank === 1,
+            beatMe: !!theirs?.rank && !!mine?.rank && theirs.rank < mine.rank,
+            lostToMe: !!theirs?.rank && !!mine?.rank && theirs.rank > mine.rank,
+          };
+        }),
+      }))
+      .filter((row) => row.cells.some((c) => c.value));
+    let me = 0;
+    let them = 0;
+    for (const row of rows)
+      for (const c of row.cells) {
+        if (c.beatMe) them++;
+        if (c.lostToMe) me++;
+      }
+    return { rows, me, them };
+  }, [range, userId, user?.id]);
 
   const invalidateFriendsAndGames = () =>
     Promise.all([
@@ -113,7 +150,6 @@ export default function FriendProfileScreen() {
       showToast({ message: errorMessage(e, "Couldn't send that request."), tone: "danger" });
     },
   });
-
   const cancelMutation = useMutation({
     mutationFn: () => removeFriendRequest(userId, token),
     onSuccess: async () => {
@@ -123,7 +159,6 @@ export default function FriendProfileScreen() {
       showToast({ message: errorMessage(e, "Couldn't cancel that request."), tone: "danger" });
     },
   });
-
   const acceptMutation = useMutation({
     mutationFn: () => acceptFriendRequestFrom(userId, token),
     onSuccess: async (data) => {
@@ -138,12 +173,9 @@ export default function FriendProfileScreen() {
       showToast({ message: errorMessage(e, "Couldn't accept that request."), tone: "danger" });
     },
   });
-
   const declineMutation = useMutation({
     mutationFn: () => removeFriendRequest(userId, token),
     onSuccess: async () => {
-      // Declining can revoke this page's own visibility (no relationship +
-      // no mutuals = 404), so land back on the friends list.
       await queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
       goBack(routes.friends);
     },
@@ -151,12 +183,10 @@ export default function FriendProfileScreen() {
       showToast({ message: errorMessage(e, "Couldn't decline that request."), tone: "danger" });
     },
   });
-
   const unfriendMutation = useMutation({
     mutationFn: () => unfriend(userId, token),
     onSuccess: async () => {
       haptics.medium();
-      // Same as decline: removing the edge may 404 this profile on refetch.
       await invalidateFriendsAndGames();
       goBack(routes.friends);
     },
@@ -164,9 +194,6 @@ export default function FriendProfileScreen() {
       showToast({ message: errorMessage(e, "Couldn't remove that friend."), tone: "danger" });
     },
   });
-
-  // Guideline 1.2: block drops the friendship server-side and hides the pair
-  // from each other's boards; the profile then 404s, so leave the page.
   const blockMutation = useMutation({
     mutationFn: () => blockUser(userId, token),
     onSuccess: async () => {
@@ -179,7 +206,6 @@ export default function FriendProfileScreen() {
       showToast({ message: errorMessage(e, "Couldn't block that user."), tone: "danger" });
     },
   });
-
   const onBlock = async () => {
     const ok = await confirm({
       title: `Block ${name}?`,
@@ -190,7 +216,6 @@ export default function FriendProfileScreen() {
     });
     if (ok) blockMutation.mutate();
   };
-
   const addGameMutation = useMutation({
     mutationFn: (game: FriendProfileGame) => {
       setAddingGameIds((ids) => [...ids, game.game.id]);
@@ -199,9 +224,8 @@ export default function FriendProfileScreen() {
     onSuccess: async () => {
       haptics.medium();
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(todayKey) }),
-        queryClient.invalidateQueries({ queryKey: ["games", "discovery"] }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.friends.profile(userId, todayKey) }),
+        queryClient.invalidateQueries({ queryKey: ["games"] }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.friends.profile(userId, viewDate) }),
       ]);
     },
     onError: (e) => {
@@ -211,9 +235,7 @@ export default function FriendProfileScreen() {
       setAddingGameIds((ids) => ids.filter((id) => id !== game.game.id));
     },
   });
-
   const onUnfriend = async () => {
-    const name = profile?.user.displayName?.trim() || "this friend";
     const ok = await confirm({
       title: `Remove ${name}?`,
       message: "You'll stop seeing each other's scores. Past scores stay put.",
@@ -226,55 +248,65 @@ export default function FriendProfileScreen() {
   const name = profile?.user.displayName?.trim() || "Someone";
   const mutuals = profile ? mutualsLine(profile) : null;
   const isSelf = profile?.relationship === "self" || (!!user?.id && user.id === userId);
+  const isToday = viewDate === todayKey;
+  const dayGames = profile?.games ?? null;
+  const playedCount = dayGames?.filter((g) => g.score).length ?? 0;
 
   return (
     <Screen testID="friend-profile-screen">
       <View style={styles.headerNav}>
-        <Pressable
-          accessibilityRole="button"
+        <IconButton
           accessibilityLabel="Back"
           onPress={() => goBack(routes.friends)}
           testID="friend-profile-back"
-          hitSlop={10}
-          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>‹</Text>
-        </Pressable>
-        <Text variant="title">Profile</Text>
-        <View style={styles.navButton} />
+          <PixelIcon name="arrow-left" color={tokens.text.primary} />
+        </IconButton>
+        <Text
+          variant="heading"
+          numberOfLines={1}
+          style={styles.headerTitle}
+          testID="friend-profile-name"
+        >
+          {profile ? name : "PROFILE"}
+        </Text>
+        <View style={styles.headerSpacer} />
       </View>
+
+      <DateBar
+        date={viewDate}
+        today={todayKey}
+        onChange={setViewDate}
+        onOpenPicker={() => setPickerOpen(true)}
+        testIDPrefix="profile-date"
+      />
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {profileQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={tokens.neon.pink} />
           </View>
         ) : profileQuery.isError || !profile ? (
           <View style={styles.center}>
-            <EmptyState
-              title="Couldn't load this profile"
-              description={errorMessage(profileQuery.error, "User not found.")}
-              action={
-                <Button label="Back" variant="secondary" onPress={() => goBack(routes.friends)} />
-              }
-            />
+            <Text variant="heading">COULDN'T LOAD</Text>
+            <Text tone="secondary">{errorMessage(profileQuery.error, "User not found.")}</Text>
+            <Button label="Back" variant="secondary" onPress={() => goBack(routes.friends)} />
           </View>
         ) : (
           <>
-            {/* Identity + relationship. */}
-            <View style={styles.identityCard}>
+            <View style={styles.identity}>
               <Avatar
                 name={profile.user.displayName}
                 imageUrl={userAvatarImageUrl(profile.user.userId)}
                 size="lg"
               />
               <View style={styles.identityText}>
-                <Text variant="heading" numberOfLines={1} testID="friend-profile-name">
+                <Text variant="label" style={styles.identityName} numberOfLines={1}>
                   {name}
                 </Text>
                 <Text
                   variant="caption"
-                  tone="muted"
+                  tone="secondary"
                   numberOfLines={1}
                   testID="friend-profile-status"
                 >
@@ -283,7 +315,7 @@ export default function FriendProfileScreen() {
                 {mutuals ? (
                   <Text
                     variant="caption"
-                    tone="muted"
+                    tone="secondary"
                     numberOfLines={2}
                     testID="friend-profile-mutuals"
                   >
@@ -291,9 +323,23 @@ export default function FriendProfileScreen() {
                   </Text>
                 ) : null}
               </View>
+              {profile.relationship === "friends" && week.rows.length > 0 ? (
+                <View style={styles.h2h} testID="friend-profile-h2h">
+                  <Text style={styles.h2hLabel}>7-DAY H2H</Text>
+                  <Text style={styles.h2hScore}>
+                    <Text style={[styles.h2hScore, week.me > week.them && styles.h2hWin]}>
+                      {week.me}
+                    </Text>
+                    {" – "}
+                    <Text style={[styles.h2hScore, week.them > week.me && styles.h2hLose]}>
+                      {week.them}
+                    </Text>
+                  </Text>
+                  <Text style={styles.h2hLabel}>YOU – THEM</Text>
+                </View>
+              ) : null}
             </View>
 
-            {/* Relationship actions. */}
             {profile.relationship === "none" ? (
               <Button
                 label="Add friend"
@@ -316,7 +362,7 @@ export default function FriendProfileScreen() {
             {profile.relationship === "inbound" ? (
               <View style={styles.actionRow}>
                 <Button
-                  label="Accept request"
+                  label="Accept"
                   onPress={() => acceptMutation.mutate()}
                   loading={acceptMutation.isPending}
                   disabled={acceptMutation.isPending || declineMutation.isPending}
@@ -334,18 +380,182 @@ export default function FriendProfileScreen() {
                 />
               </View>
             ) : null}
+
+            {/* Their day. */}
+            {dayGames === null ? (
+              <View style={styles.locked} testID="friend-profile-locked">
+                <PixelIcon name="gamepad" size={24} />
+                <Text variant="heading" style={styles.lockedTitle}>
+                  GAMES ARE FOR FRIENDS
+                </Text>
+                <Text variant="caption" tone="secondary" style={styles.lockedText}>
+                  Add {name} as a friend to see what they play and how they did.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.section} testID="friend-profile-games">
+                <Text style={styles.sectionLabel}>
+                  {calendarLabel(viewDate)} ·{" "}
+                  {dayGames.length === 0
+                    ? "NO GAMES"
+                    : playedCount === 0
+                      ? isToday
+                        ? "NOT PLAYED YET"
+                        : "DIDN'T PLAY"
+                      : `${playedCount} OF ${dayGames.length} PLAYED`}
+                </Text>
+                {dayGames.length === 0 ? (
+                  <Text variant="caption" tone="secondary">
+                    {isSelf ? "You haven't" : `${name} hasn't`} added any games yet.
+                  </Text>
+                ) : null}
+                {dayGames.map((pg) => {
+                  const adding = addingGameIds.includes(pg.game.id);
+                  const rank = rankOn(pg.game.id);
+                  const openable = pg.viewerHasGame;
+                  return (
+                    <Pressable
+                      key={pg.game.id}
+                      onPress={
+                        openable
+                          ? () => router.push(routes.game(pg.game.id, viewDate) as Href)
+                          : undefined
+                      }
+                      accessibilityRole={openable ? "button" : undefined}
+                      accessibilityLabel={pg.game.title}
+                      disabled={!openable}
+                      style={({ pressed }) => [
+                        styles.gameRow,
+                        openable && pressed && styles.pressed,
+                      ]}
+                      testID={`friend-profile-game-${pg.game.id}`}
+                    >
+                      {pg.game.iconUrl ? (
+                        <Image
+                          source={{ uri: pg.game.iconUrl }}
+                          style={styles.gameIcon}
+                          accessibilityIgnoresInvertColors
+                        />
+                      ) : (
+                        <View style={[styles.gameIcon, styles.gameIconFallback]}>
+                          <PixelIcon name="gamepad" size={16} />
+                        </View>
+                      )}
+                      <Text variant="heading" numberOfLines={1} style={styles.gameTitle}>
+                        {pg.game.title}
+                      </Text>
+                      {pg.score ? (
+                        <>
+                          {rank != null ? (
+                            <Text style={[styles.gameRank, rank === 1 && styles.gameRankFirst]}>
+                              {ordinal(rank)}
+                            </Text>
+                          ) : null}
+                          <Text style={styles.gameScore}>{shortScore(pg.score)}</Text>
+                        </>
+                      ) : (
+                        <Text style={styles.gameEmpty}>—</Text>
+                      )}
+                      {!openable && !isSelf ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Add ${pg.game.title}`}
+                          onPress={() => addGameMutation.mutate(pg)}
+                          disabled={adding}
+                          testID={`friend-profile-game-add-${pg.game.id}`}
+                          hitSlop={6}
+                          style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
+                        >
+                          {adding ? (
+                            <ActivityIndicator size="small" color={tokens.neon.pink} />
+                          ) : (
+                            <Text style={styles.addText}>+ ADD</Text>
+                          )}
+                        </Pressable>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Last seven days over the games you share. */}
+            {profile.relationship === "friends" && week.rows.length > 0 ? (
+              <View style={styles.section} testID="friend-profile-week">
+                <Text style={styles.sectionLabel}>LAST 7 DAYS · GAMES YOU SHARE</Text>
+                <View style={styles.gridHead}>
+                  <View style={styles.gridTitleCell} />
+                  {range.map((d) => (
+                    <Pressable
+                      key={d.date}
+                      accessibilityRole="button"
+                      accessibilityLabel={d.date}
+                      onPress={() => setViewDate(d.date)}
+                      style={styles.gridCell}
+                    >
+                      <Text
+                        style={[
+                          styles.gridDay,
+                          d.date === todayKey && styles.gridDayToday,
+                          d.date === viewDate && styles.gridDaySelected,
+                        ]}
+                      >
+                        {WEEKDAY_LETTER[new Date(`${d.date}T12:00:00`).getDay()]}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {week.rows.map((row) => (
+                  <View key={row.gameId} style={styles.gridRow}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={row.title}
+                      onPress={() => router.push(routes.game(row.gameId, viewDate) as Href)}
+                      style={styles.gridTitleCell}
+                    >
+                      <Text style={styles.gridTitle} numberOfLines={1}>
+                        {row.title}
+                      </Text>
+                    </Pressable>
+                    {row.cells.map((c) => (
+                      <Pressable
+                        key={c.date}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${row.title} ${c.date}: ${c.value ?? "not played"}`}
+                        onPress={() => router.push(routes.game(row.gameId, c.date) as Href)}
+                        style={[styles.gridCell, c.date === viewDate && styles.gridCellSelected]}
+                      >
+                        <Text
+                          style={[
+                            styles.gridValue,
+                            !c.value && styles.gridValueEmpty,
+                            c.beatMe && styles.gridValueBeat,
+                            c.lostToMe && styles.gridValueLost,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {c.value ?? "·"}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ))}
+                <Text variant="caption" tone="secondary">
+                  Pink: they beat you. Green: you beat them. Tap a cell for that board.
+                </Text>
+              </View>
+            ) : null}
+
             {profile.relationship === "friends" ? (
               <Button
                 label="Remove friend"
-                variant="danger"
+                variant="ghost"
                 onPress={onUnfriend}
                 loading={unfriendMutation.isPending}
                 disabled={unfriendMutation.isPending}
                 testID="friend-profile-remove"
               />
             ) : null}
-
-            {/* Safety (Guideline 1.2): report this name / photo, or block. */}
             {isSelf ? null : (
               <View style={styles.safetyRow} testID="friend-profile-safety">
                 <Pressable
@@ -356,7 +566,6 @@ export default function FriendProfileScreen() {
                   }
                   testID="friend-profile-report"
                   hitSlop={6}
-                  style={({ pressed }) => [styles.safetyBtn, pressed && styles.safetyBtnPressed]}
                 >
                   <Text variant="caption" tone="secondary" style={styles.safetyLabel}>
                     Report
@@ -369,244 +578,163 @@ export default function FriendProfileScreen() {
                   disabled={blockMutation.isPending}
                   testID="friend-profile-block"
                   hitSlop={6}
-                  style={({ pressed }) => [styles.safetyBtn, pressed && styles.safetyBtnPressed]}
                 >
-                  <Text variant="caption" style={styles.blockLabel}>
+                  <Text variant="caption" tone="danger" style={styles.safetyLabel}>
                     {blockMutation.isPending ? "Blocking…" : "Block"}
                   </Text>
                 </Pressable>
               </View>
             )}
-
-            {/* Games. */}
-            {profile.games === null ? (
-              <View style={styles.lockedCard} testID="friend-profile-locked">
-                <Text style={styles.lockedGlyph}>🎮</Text>
-                <Text variant="label" style={styles.lockedTitle}>
-                  Games are for friends
-                </Text>
-                <Text variant="caption" tone="muted" style={styles.lockedText}>
-                  Add {name} as a friend to see what games they play.
-                </Text>
-              </View>
-            ) : profile.games.length === 0 ? (
-              <View style={styles.list}>
-                <Text variant="caption" tone="muted" style={styles.listLabel}>
-                  Games
-                </Text>
-                <Text variant="caption" tone="muted">
-                  {isSelf ? "You haven't" : `${name} hasn't`} added any games yet.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.list} testID="friend-profile-games">
-                <Text variant="caption" tone="muted" style={styles.listLabel}>
-                  {profile.games.length === 1 ? "1 game" : `${profile.games.length} games`}
-                </Text>
-                {profile.games.map((pg) => {
-                  const adding = addingGameIds.includes(pg.game.id);
-                  const scoreBody = pg.score ? summarizeGameScoreBody(pg.game, pg.score) : null;
-                  const scoreLine = scoreBody
-                    ? `Today: ${scoreBody.split("\n")[0]}`
-                    : pg.score
-                      ? "Played today"
-                      : "Not played today";
-                  return (
-                    <Pressable
-                      key={pg.game.id}
-                      onPress={
-                        pg.viewerHasGame
-                          ? () => router.push(routes.game(pg.game.id) as Href)
-                          : undefined
-                      }
-                      accessibilityLabel={pg.game.title}
-                      disabled={!pg.viewerHasGame}
-                      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                        styles.gameRow,
-                        pg.viewerHasGame && (pressed || hovered) && styles.gameRowHover,
-                      ]}
-                      testID={`friend-profile-game-${pg.game.id}`}
-                    >
-                      <View style={styles.gameCover}>
-                        {pg.game.iconUrl ? (
-                          <Image
-                            source={{ uri: pg.game.iconUrl }}
-                            style={styles.gameCoverImage}
-                            accessibilityIgnoresInvertColors
-                          />
-                        ) : (
-                          <Text style={styles.gameCoverGlyph}>🎮</Text>
-                        )}
-                      </View>
-                      <View style={styles.gameText}>
-                        <Text variant="label" numberOfLines={1} style={styles.gameTitle}>
-                          {pg.game.title}
-                        </Text>
-                        <Text variant="caption" tone="muted" numberOfLines={1}>
-                          {scoreLine}
-                        </Text>
-                      </View>
-                      {pg.viewerHasGame ? (
-                        <Text style={styles.chevron}>›</Text>
-                      ) : isSelf ? null : (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`Add ${pg.game.title}`}
-                          onPress={() => addGameMutation.mutate(pg)}
-                          disabled={adding}
-                          testID={`friend-profile-game-add-${pg.game.id}`}
-                          hitSlop={6}
-                          style={({
-                            pressed,
-                            hovered,
-                          }: {
-                            pressed: boolean;
-                            hovered?: boolean;
-                          }) => [
-                            styles.addBtn,
-                            (pressed || hovered) && styles.addBtnHover,
-                            adding && styles.addBtnBusy,
-                          ]}
-                        >
-                          {adding ? (
-                            <ActivityIndicator size="small" color={tokens.accent.default} />
-                          ) : (
-                            <Text style={styles.addLabel}>Add</Text>
-                          )}
-                        </Pressable>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
           </>
         )}
       </ScrollView>
+      <DayPickerSheet
+        visible={pickerOpen}
+        selected={viewDate}
+        today={todayKey}
+        onSelect={setViewDate}
+        onClose={() => setPickerOpen(false)}
+      />
       <ReportSheet target={reportTarget} token={token} onClose={() => setReportTarget(null)} />
     </Screen>
   );
 }
 
-const COVER = 40;
+const pixelCaption = {
+  fontFamily: tokens.font.pixel,
+  fontSize: 8,
+  lineHeight: 14,
+  letterSpacing: 1,
+  color: tokens.text.secondary,
+} as const;
 
 const styles = StyleSheet.create({
   headerNav: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    gap: tokens.space.sm,
+    paddingHorizontal: tokens.space.xs,
+    paddingVertical: tokens.space.xs,
   },
-  navButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.md,
-  },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
+  headerTitle: { flex: 1, textAlign: "center", fontSize: 12, lineHeight: 18 },
+  headerSpacer: { width: 40 },
   body: {
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
+    paddingVertical: tokens.space.lg,
+    gap: tokens.space.lg,
   },
   center: {
     alignItems: "center",
     justifyContent: "center",
+    gap: tokens.space.md,
     paddingVertical: tokens.space.xl,
   },
-  identityCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.lg,
-    padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-  },
-  identityText: { flex: 1, minWidth: 0, gap: 4 },
-  actionRow: { flexDirection: "row", gap: tokens.space.md },
-  actionFlex: { flex: 1 },
-  safetyRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: tokens.space.lg,
-    marginTop: -tokens.space.sm,
-  },
-  safetyBtn: {
-    paddingVertical: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.sm,
-  },
-  safetyBtnPressed: { backgroundColor: tokens.bg.elevated },
-  safetyLabel: { textDecorationLine: "underline" },
-  blockLabel: { color: tokens.status.danger, textDecorationLine: "underline" },
-  lockedCard: {
-    alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.xxl,
-    paddingHorizontal: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-  },
-  lockedGlyph: { fontSize: 28, lineHeight: 34 },
-  lockedTitle: { color: tokens.text.primary },
-  lockedText: { textAlign: "center" },
-  list: { gap: tokens.space.sm },
-  listLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
-  gameRow: {
+  pressed: { opacity: 0.7 },
+  identity: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    padding: tokens.space.md,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
-  gameRowHover: { backgroundColor: tokens.bg.elevated },
-  gameCover: {
-    width: COVER,
-    height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
+  identityText: { flex: 1, minWidth: 0, gap: 2 },
+  identityName: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
+  h2h: { alignItems: "center", gap: 2 },
+  h2hLabel: pixelCaption,
+  h2hScore: {
+    fontFamily: tokens.font.pixel,
+    fontSize: 16,
+    lineHeight: 24,
+    color: tokens.text.primary,
   },
-  gameCoverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  gameCoverGlyph: { fontSize: 20 },
-  gameText: { flex: 1, minWidth: 0, gap: 2 },
-  gameTitle: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  chevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl * 1.2,
+  h2hWin: { color: tokens.neon.chartreuse },
+  h2hLose: { color: tokens.neon.pink },
+  actionRow: { flexDirection: "row", gap: tokens.space.sm },
+  actionFlex: { flex: 1 },
+  locked: {
+    alignItems: "center",
+    gap: tokens.space.sm,
+    paddingVertical: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+  },
+  lockedTitle: { fontSize: 11, lineHeight: 18 },
+  lockedText: { textAlign: "center" },
+  section: { gap: tokens.space.sm },
+  sectionLabel: pixelCaption,
+  gameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    minHeight: 44,
     paddingHorizontal: tokens.space.sm,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+    backgroundColor: tokens.bg.surface,
+  },
+  gameIcon: { width: 24, height: 24, backgroundColor: tokens.bg.elevated },
+  gameIconFallback: { alignItems: "center", justifyContent: "center" },
+  gameTitle: { flex: 1, minWidth: 0, fontSize: 10, lineHeight: 16 },
+  gameRank: {
+    fontFamily: tokens.font.pixel,
+    fontSize: 9,
+    lineHeight: 14,
+    color: tokens.text.secondary,
+  },
+  gameRankFirst: { color: tokens.neon.yellow },
+  gameScore: {
+    fontFamily: tokens.font.pixel,
+    fontSize: 11,
+    lineHeight: 16,
+    color: tokens.text.primary,
+  },
+  gameEmpty: {
+    fontFamily: tokens.font.pixel,
+    fontSize: 11,
+    lineHeight: 16,
+    color: tokens.text.secondary,
   },
   addBtn: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
+    paddingHorizontal: tokens.space.sm,
+    height: 28,
+    justifyContent: "center",
+  },
+  addText: { fontFamily: tokens.font.pixel, fontSize: 9, lineHeight: 14, color: tokens.neon.pink },
+  gridHead: { flexDirection: "row", alignItems: "center" },
+  gridRow: { flexDirection: "row", alignItems: "center", minHeight: 32 },
+  gridTitleCell: { width: 92, paddingRight: tokens.space.xs },
+  gridTitle: {
+    fontFamily: tokens.font.pixel,
+    fontSize: 8,
+    lineHeight: 12,
+    color: tokens.text.primary,
+  },
+  gridCell: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    minHeight: 28,
+    borderWidth: tokens.bezel,
+    borderColor: "transparent",
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
-  addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+  gridCellSelected: { borderColor: tokens.border.default },
+  gridDay: pixelCaption,
+  gridDayToday: { color: tokens.neon.yellow },
+  gridDaySelected: { textDecorationLine: "underline" },
+  gridValue: {
+    fontFamily: tokens.font.pixel,
+    fontSize: 8,
+    lineHeight: 12,
+    color: tokens.text.primary,
   },
+  gridValueEmpty: { color: tokens.text.secondary, opacity: 0.6 },
+  gridValueBeat: { color: tokens.neon.pink },
+  gridValueLost: { color: tokens.neon.chartreuse },
+  safetyRow: { flexDirection: "row", justifyContent: "center", gap: tokens.space.xl },
+  safetyLabel: { textDecorationLine: "underline" },
 });
