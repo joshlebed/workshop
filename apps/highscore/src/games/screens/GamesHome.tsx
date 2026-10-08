@@ -57,14 +57,14 @@ import {
   upsertGameScore,
 } from "../api/games";
 import { setScoreDirection } from "../api/teach";
-import { DayRail } from "../components/DayRail";
+import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { localDateKey } from "../lib/gameDate";
+import { daysBack, localDateKey } from "../lib/gameDate";
 import { prewarmGameShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
 import { scoreLineLabel } from "../lib/scoreCheck";
@@ -74,6 +74,7 @@ import { copyToClipboard, shareOrCopyLink } from "../lib/share";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
+import { useViewDay } from "../state/viewDay";
 import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
 import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
@@ -114,9 +115,14 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 
   // The day rail re-dates every card's standings. The home play→paste loop
   // stays pinned to `todayKey`; only the displayed standings follow
-  // `viewDate`. Posting to a past day lives on the per-game board.
-  const [viewDate, setViewDate] = useState(todayKey);
+  // `viewDate`. Posting to a past day lives on the per-game board. The
+  // selection is shared with each game board (state/viewDay.tsx), so paging
+  // days over there leaves home on the same day when you come back.
+  const { viewDate, setViewDate } = useViewDay();
   const viewingToday = viewDate === todayKey;
+  // A board's "Earlier" chip can select a day beyond our 7-day rail; grow the
+  // rail to keep the shared selection visible.
+  const railLength = Math.max(DAY_RAIL_DEFAULT_LENGTH, daysBack(viewDate, todayKey) + 1);
 
   const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
@@ -634,6 +640,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
                 selectedDate={viewDate}
                 today={todayKey}
                 onSelectDate={setViewDate}
+                length={railLength}
                 testIDPrefix="games-day"
                 horizontalInset={homeLayout.horizontalInset}
               />
