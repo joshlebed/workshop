@@ -384,7 +384,7 @@ curl -fsS $(cd infra && AWS_PROFILE=workshop-prod terraform output -raw api_url)
 ```
 
 The Lambda reads `STAGE`, `DATABASE_URL`, `SESSION_SECRET`, `APPLE_BUNDLE_ID`,
-`APPLE_SERVICES_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`,
+`APPLE_SERVICES_ID`,
 `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`, `TMDB_API_KEY`,
 `GOOGLE_BOOKS_API_KEY`, `TYPESAFE_API_KEY`, `OPENAI_API_KEY`, `ENABLE_GAMES`, `GAME_RECOGNITION`
 and `GAME_CODE_PARSING` (each `off` | `shadow` | `on`) and `GAME_TEACH` (`off` | `on`) — all
@@ -574,6 +574,12 @@ fetched from SSM at job runtime. `niteshift_external_id` from GH secret. Everyth
 If you add a new required var (no default), wire it into both jobs' env blocks **and** add
 the matching GH secret in the same PR.
 
+**`APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY` are read by the backend but not set by
+Terraform yet**, so Apple token revocation on account deletion reports `unavailable` in prod.
+#400 declared their SSM parameters with empty defaults, which failed every apply from 2026-08-30
+until they were removed. Re-adding them is the import recipe below, after the operator creates
+the key (manual-setup.md §5).
+
 **A new SSM parameter can't be created from an empty default.** SSM rejects a zero-length
 `value` (`Member must have length greater than or equal to 1`), so the apply fails. Create the
 parameter first with `aws ssm put-parameter --type SecureString`, then add an `import` block
@@ -582,9 +588,10 @@ beside the resource so the apply adopts it (see `typesafe_api_key` and `openai_a
 PR's advisory `terraform plan` fails on that import — the plan role lacks
 `ssm:DescribeParameters` — while the apply role can do it. The
 Lambda's env references every parameter, so one missing parameter blocks all Lambda env
-updates through Terraform. Until the apply is green, set a Lambda env var directly with
+updates through Terraform. If an apply is ever red, a Lambda env var can be set directly with
 `aws lambda update-function-configuration` (merge into the existing map; it replaces the whole
-set).
+set) — but a hand-set value is not marked sensitive in state, so `terraform plan` prints it in
+plaintext to the public Actions log until the next green apply. Fix the apply instead.
 
 **Recovery**: `gh run view <run-id> --log` shows failure. Plan failed → fix on a new PR.
 Apply failed partway → HCP locks; next push retries, or run locally with same vars (state in

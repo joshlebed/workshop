@@ -172,10 +172,18 @@ root without --no-sandbox is not supported`. The dev server still serves fine �
   script in CI that diffs the job names between the two workflows and fails on
   mismatch. ~30m.
 
-- **`terraform apply` on `main` has been red since #400 (2026-08-30).** `apple_team_id`,
-  `apple_key_id`, and `apple_private_key` are declared with empty defaults, and SSM rejects an
-  empty `value` on create, so the three parameters were never created and every apply exits 1.
-  The Lambda env references them, so Terraform cannot update the Lambda env at all (prod is
-  missing `APPLE_*` revocation vars and `LOG_LEVEL` changes would not land). **Fix:** operator
-  creates the three with `aws ssm put-parameter` (real values, manual-setup.md §5), then a PR
-  adds `import` blocks like `typesafe_api_key` in `infra/ssm.tf`. ~15m once the `.p8` exists.
+- **Apple token revocation is unprovisioned in prod.** The `apple_team_id` / `apple_key_id` /
+  `apple_private_key` SSM parameters and their Lambda env wiring were removed from `infra/` to
+  get `terraform apply` green (#400 declared them empty, which SSM rejects). `DELETE /v1/users/me`
+  therefore reports Apple revocation as `unavailable`. **Fix:** operator creates the Sign in
+  with Apple key (manual-setup.md §5), the three parameters are created with
+  `aws ssm put-parameter`, then a PR re-declares them with `import` blocks and re-adds the three
+  env lines in `infra/lambda.tf`. ~15m once the `.p8` exists.
+
+- **Secrets that were printed to public Actions logs have not been rotated.** Until #453,
+  `Deploy Backend` logged the whole Lambda env on every run (`SESSION_SECRET`, OpenAI, TypeSafe,
+  Spotify, TMDB, Google Books, Discord webhook; `DATABASE_URL` credentials were masked), and
+  Terraform plans logged the hand-set OpenAI and TypeSafe keys. The Terraform logs were deleted;
+  the `Deploy Backend` logs were not. **Fix:** operator decision — delete those logs and rotate
+  each secret (`SESSION_SECRET` rotation signs everyone out and breaks `secretBox`-sealed
+  tokens, so plan it).

@@ -114,24 +114,23 @@ In SES sandbox mode, you can only send mail to _verified_ addresses. So for solo
       1. <https://developer.apple.com/account/resources/authkeys/list> → **+** → enable
          **Sign in with Apple** → Configure → pick the primary App ID (`dev.josh.workshop`) →
          Continue → Register → download `AuthKey_<KEYID>.p8` (one download only).
-      2. Push all three values into SSM (the params exist with empty defaults and carry
-         `ignore_changes`, so this never drifts Terraform):
+      2. Create the three SSM parameters. They are not declared in Terraform yet, so they
+         must exist before the PR in step 3 merges (SSM rejects an empty value, so Terraform
+         cannot create them from a default):
 
          ```bash
-         AWS_PROFILE=workshop-prod aws ssm put-parameter --overwrite --type SecureString \
+         AWS_PROFILE=workshop-prod aws ssm put-parameter --type SecureString \
            --name /workshop-prod/apple_team_id  --value "<10-char Team ID>"
-         AWS_PROFILE=workshop-prod aws ssm put-parameter --overwrite --type SecureString \
+         AWS_PROFILE=workshop-prod aws ssm put-parameter --type SecureString \
            --name /workshop-prod/apple_key_id   --value "<KEYID from the filename>"
-         AWS_PROFILE=workshop-prod aws ssm put-parameter --overwrite --type SecureString \
+         AWS_PROFILE=workshop-prod aws ssm put-parameter --type SecureString \
            --name /workshop-prod/apple_private_key --value "file://$HOME/Downloads/AuthKey_<KEYID>.p8"
          ```
 
-      3. Refresh the Lambda env so it picks them up (or wait for the next
-         `terraform apply` on merge to `main`):
-
-         ```bash
-         gh workflow run terraform.yml --ref main
-         ```
+      3. Open a PR that declares the three `aws_ssm_parameter` resources in `infra/ssm.tf`,
+         each with an `import` block and `ignore_changes = [value]` (copy `typesafe_api_key`),
+         and adds `APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY` to the Lambda env in
+         `infra/lambda.tf`. Merging applies it and the Lambda picks the values up.
 
       Revocation only has a token to revoke for users who signed in *after* this shipped —
       the client now forwards Apple's one-time `authorizationCode`, which the backend
