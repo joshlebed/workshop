@@ -57,6 +57,8 @@ async function rows<T = Record<string, unknown>>(query: string, params: unknown[
 }
 
 function setMode(mode: "off" | "shadow" | "on" | undefined) {
+  // Unset means `on` since the 2026-10-08 rollout, so "the default" in these tests
+  // is spelled out as "off" — the kill switch — rather than left unset.
   if (mode === undefined) delete process.env.GAME_CODE_PARSING;
   else process.env.GAME_CODE_PARSING = mode;
   resetConfigForTesting();
@@ -126,6 +128,11 @@ beforeAll(async () => {
   process.env.STAGE = "local";
   process.env.DATABASE_URL = "postgres://test";
   process.env.SESSION_SECRET = "x".repeat(32);
+  // Unset means `on` since the 2026-10-08 rollout; this suite isolates one flag,
+  // so pin the others to the kill switch.
+  process.env.GAME_TEACH = "off";
+  process.env.GAME_RECOGNITION = "off";
+  process.env.GAME_CODE_PARSING = "off";
   resetConfigForTesting();
 
   const pglite = new PGlite();
@@ -150,7 +157,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterEach(async () => {
-  setMode(undefined);
+  setMode("off");
   vi.restoreAllMocks();
   await rows("DELETE FROM game_scores");
 });
@@ -159,7 +166,7 @@ afterAll(async () => {
   await shutdownGameCodeSandbox();
 });
 
-describe("GAME_CODE_PARSING=off (the default)", () => {
+describe("GAME_CODE_PARSING=off (the kill switch)", () => {
   it("stores the legacy parser's value and nothing else; the response has no new fields", async () => {
     const info = vi.spyOn(logger, "info");
     const warn = vi.spyOn(logger, "warn");

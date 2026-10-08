@@ -92,6 +92,8 @@ function setJevKey(key: string) {
 }
 
 function setMode(mode: "off" | "shadow" | "on" | undefined) {
+  // Unset means `on` since the 2026-10-08 rollout, so "the default" in these tests
+  // is spelled out as "off" — the kill switch — rather than left unset.
   if (mode === undefined) delete process.env.GAME_RECOGNITION;
   else process.env.GAME_RECOGNITION = mode;
   resetConfigForTesting();
@@ -114,6 +116,11 @@ beforeAll(async () => {
   process.env.STAGE = "local";
   process.env.DATABASE_URL = "postgres://test";
   process.env.SESSION_SECRET = "x".repeat(32);
+  // Unset means `on` since the 2026-10-08 rollout; this suite isolates one flag,
+  // so pin the others to the kill switch.
+  process.env.GAME_TEACH = "off";
+  process.env.GAME_CODE_PARSING = "off";
+  process.env.GAME_RECOGNITION = "off";
   process.env.TYPESAFE_API_KEY = "test-key";
 
   testDb = drizzle(new PGlite());
@@ -162,12 +169,12 @@ beforeEach(() => {
 
 afterEach(() => {
   setJevKey("test-key");
-  setMode(undefined);
+  setMode("off");
   vi.restoreAllMocks();
 });
 
 describe("POST /v1/games/recognize", () => {
-  it("is 404 unless GAME_RECOGNITION=on — off by default, and in shadow", async () => {
+  it("is 404 when GAME_RECOGNITION is off or shadow", async () => {
     expect((await recognize(MAPTAP)).status).toBe(404);
     setMode("shadow");
     expect((await recognize(MAPTAP)).status).toBe(404);

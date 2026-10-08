@@ -66,6 +66,7 @@ resource "aws_lambda_function" "api" {
       ENABLE_GAMES               = "1"
       GAME_RECOGNITION           = var.game_recognition
       GAME_CODE_PARSING          = var.game_code_parsing
+      GAME_TEACH                 = var.game_teach
       SPOTIFY_CLIENT_ID          = aws_ssm_parameter.spotify_client_id.value
       SPOTIFY_CLIENT_SECRET      = aws_ssm_parameter.spotify_client_secret.value
       DISCORD_NOTIFY_WEBHOOK_URL = aws_ssm_parameter.discord_notify_webhook_url.value
