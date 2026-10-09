@@ -385,6 +385,12 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
   note in HighScore's Danger zone). Fixing this properly means migrating the four components to
   RNW's `aria-*` props, which touches every screen in both apps; it hasn't been done.
 
+- **iOS Safari zooms the page when a focused `<input>`/`<textarea>` has font-size < 16px, and
+  never zooms back out.** Any `TextInput` rendered on web must use `tokens.font.size.md` (16) or
+  larger; `sm`/`xs` (13/12) trigger it. `viewport maximum-scale=1` is the only other fix and it
+  blocks pinch-zoom on Android, so fix the font size instead (see `PASTE_INPUT_FONT_SIZE` in
+  HighScore's `GameScorePasteSheet.tsx`).
+
 - **Wrap top-level screens in `Screen` from `@workshop/ui`** when adding a new route.
   No-op on native; on web it constrains content to a ~560px reading column. Without it,
   RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on web.

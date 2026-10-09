@@ -841,6 +841,10 @@ function ScoreComposer({
   );
 }
 
+// iOS Safari zooms the page when a focused input's font-size is under 16px,
+// and never zooms back out on blur. Keep the paste box at 16px on web.
+const PASTE_INPUT_FONT_SIZE = Platform.OS === "web" ? tokens.font.size.md : tokens.font.size.sm;
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas, paddingTop: tokens.space.xl },
   adjustedLabel: { fontStyle: "italic", textDecorationLine: "underline" },
@@ -1046,11 +1050,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
+    fontSize: PASTE_INPUT_FONT_SIZE,
     backgroundColor: tokens.bg.canvas,
     textAlignVertical: "top",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    lineHeight: tokens.font.size.sm + 6,
+    lineHeight: PASTE_INPUT_FONT_SIZE + 6,
   },
   pasteActions: {
     flexDirection: "row",
