@@ -14,6 +14,13 @@ but each app owns its screen implementation so either frontend can evolve indepe
 
 ## Share flow
 
+Score detection and parsing are advisory: `blocksPosting` must not disable Post for
+`checking`, `wrong_game`, or `unread`. This policy is shared by the paste sheet, game board,
+and detected share card. The preview timer only reveals optional correction chips; it is
+never a posting delay. Posting with a wrong-game suggestion sends `wrongGame.choice: "here"`
+even without dismissing the warning. Empty/link-only input and explicit pick-confirmation
+guards still apply; unreadable results are saved and can be corrected after posting.
+
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so
 `_layout.tsx` sends the iOS share intent straight to `/share/pick-game` and `app/share/index.tsx`
 renders the same `PickGame` screen. Every share affordance Workshop puts on its chooser has to live

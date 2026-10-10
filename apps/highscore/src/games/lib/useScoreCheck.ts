@@ -30,7 +30,7 @@ import {
   teachRequestsAllowed,
 } from "./scorePicker";
 
-/** Past this the user can post without the preview (spec §2). */
+/** Past this show optional score picks instead of the checking indicator. */
 const PREVIEW_WAIT_MS = 1500;
 const MAX_CHIPS = 12;
 
@@ -92,8 +92,8 @@ export interface ScoreCheck {
 /**
  * Everything the score box shows about a draft for a teach account: the
  * server's dry run, the candidate picker (instant chips, labels when they
- * arrive), and the answers the user has given so far. Nothing here blocks
- * posting for longer than `PREVIEW_WAIT_MS`.
+ * arrive), and the answers the user has given so far. Detection and parsing
+ * never hold Post; the wait only controls when optional score picks appear.
  */
 export function useScoreCheck(input: {
   gameId: string | null | undefined;
@@ -297,8 +297,7 @@ export function useScoreCheck(input: {
         pick: live.pick,
         overrodeRole,
         previewSeen: answer?.kind === "preview",
-        postedHereDespite:
-          wrongGameChosen && preview?.teach?.wrongGame ? preview.teach.wrongGame.game.id : null,
+        postedHereDespite: preview?.teach?.wrongGame ? preview.teach.wrongGame.game.id : null,
         direction,
       }),
   };

@@ -25,7 +25,7 @@ export type ScoreCheckView =
 
 export const SCORE_COPY = {
   noResult: "No score today. This posts and ranks last.",
-  unread: "Couldn't read a score. Tap yours:",
+  unread: "Couldn't read a score. Post now or tap yours:",
   noResultText: "We got the link but not your result. Paste your result to post a score.",
   notRight: "Not right?",
   didNotFinish: "I didn't finish",
@@ -176,7 +176,7 @@ export function scoreLineLabel(
   return `Score: ${entry.scoreValue}`;
 }
 
-/** States in which the Post button waits: there is a question to answer first. */
+/** Only invalid input blocks posting. Detection and parsing are advisory. */
 export function blocksPosting(view: ScoreCheckView): boolean {
-  return view.kind === "checking" || view.kind === "no_result_text" || view.kind === "wrong_game";
+  return view.kind === "no_result_text";
 }

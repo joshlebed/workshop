@@ -72,7 +72,7 @@ describe("resolveScoreCheck — the spec's states and copy", () => {
   it("unread", () => {
     expect(resolve(preview({ parseStatus: "failed", scoreValue: null }))).toEqual({
       kind: "unread",
-      copy: "Couldn't read a score. Tap yours:",
+      copy: "Couldn't read a score. Post now or tap yours:",
     });
   });
 
@@ -104,7 +104,7 @@ describe("resolveScoreCheck — the spec's states and copy", () => {
     }
   });
 
-  it("waits briefly for the preview, then lets the user post without it", () => {
+  it("shows checking briefly, then falls back to optional score picks", () => {
     expect(resolve(undefined).kind).toBe("checking");
     expect(resolve(undefined, { waitedOut: true }).kind).toBe("no_preview");
     // A failed or malformed preview never blocks either.
@@ -124,14 +124,38 @@ describe("resolveScoreCheck — the spec's states and copy", () => {
 });
 
 describe("blocksPosting", () => {
-  it("only holds Post while checking, with nothing to post, or with a game to choose", () => {
+  it("allows posting before, after, and without a parser response", () => {
     const kinds = (answer: PreviewAnswer | null | undefined, over = {}) =>
       blocksPosting(resolve(answer, over));
-    expect(kinds(undefined)).toBe(true);
+    expect(kinds(undefined)).toBe(false);
     expect(kinds(undefined, { waitedOut: true })).toBe(false);
+    expect(kinds(null)).toBe(false);
     expect(kinds({ kind: "rejected", reason: "url_only" })).toBe(true);
     expect(kinds(preview())).toBe(false);
     expect(kinds(preview({ parseStatus: "failed", scoreValue: null }))).toBe(false);
+    expect(kinds(preview({ parseStatus: "no_result", scoreValue: null }))).toBe(false);
+  });
+
+  it("keeps a different detected game advisory without requiring a dismissal", () => {
+    const view = resolve(
+      preview(
+        {},
+        {
+          wrongGame: {
+            game: { id: "g2", title: "Daily Tens", url: "https://dailytens.com" },
+            inMyGames: true,
+          },
+        },
+      ),
+    );
+    expect(view.kind).toBe("wrong_game");
+    expect(blocksPosting(view)).toBe(false);
+  });
+
+  it("still blocks rejected input", () => {
+    for (const reason of ["url_only", "title_only", "too_long", "future_day"] as const) {
+      expect(blocksPosting(resolve({ kind: "rejected", reason }))).toBe(true);
+    }
   });
 });
 
