@@ -1,0 +1,13 @@
+# Bundled simulator preview of the existing app; no development-client dependency.
+# Rebuild after JS or native changes. The backend is routed to simulator localhost.
+targets:
+  - name: highscore
+    displayName: HighScore
+    bundleId: live.highscore.app
+    platform: ios
+    buildCommands:
+      - >-
+        lim xcode build . --expo-app-dir apps/highscore --configuration Release
+        --env EXPO_PUBLIC_API_URL=http://localhost:8787
+        --env EXPO_PUBLIC_DEV_AUTH=1
+    serviceDependencies: [backend]

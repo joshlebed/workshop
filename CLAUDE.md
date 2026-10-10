@@ -748,6 +748,13 @@ In the Niteshift sandbox, backend + web are separate supervised services (see
 
 ### Niteshift sandbox lifecycle — `.niteshift/`
 
+HighScore's `.niteshift/mobile.yaml` target is a bundled Release **simulator** build,
+with `EXPO_PUBLIC_DEV_AUTH=1` and `EXPO_PUBLIC_API_URL=http://localhost:8787` set only by
+the preview build command. It requires the declared `backend` service, routed to the
+simulator's localhost. There is no `expo-dev-client` dependency or Metro launch URL:
+rebuild with `ns mobile build highscore` after JS changes too. Do not distribute this
+dev-auth binary through TestFlight or the App Store; production still uses EAS.
+
 Committed config that Niteshift replays on every task. `.niteshift/setup` (finite: mise
 toolchain, `pnpm install`, Playwright chromium, `apps/backend/.env`, migrations, seed) runs
 once per fresh sandbox; `.niteshift/resume` runs on every resume; `.niteshift/services.yaml`

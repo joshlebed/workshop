@@ -48,6 +48,13 @@ EXPO_PUBLIC_API_URL=http://localhost:8787 pnpm --filter highscore-app start
 
 Scan the QR with Expo Go on a real phone, or press `i` for the iOS simulator.
 
+In Niteshift, select **HighScore** in the mobile preview. Its simulator target is
+declared in `.niteshift/mobile.yaml`; `ns mobile build highscore` rebuilds it from
+the current checkout. It uses this task's backend and existing automatic dev sign-in.
+The preview bundles JavaScript, so both JS and native changes need a rebuild; it
+does not use Metro live reload. With environment container caching enabled, merging
+the target enables daily builds that future simulators can preinstall.
+
 ## Commands
 
 ```bash
