@@ -51,7 +51,12 @@ export function useAppleSignIn(): AppleSignInState {
         ],
         nonce: hashedNonce,
       });
-      if (!credential.identityToken) return null;
+      // Apple returned a credential with no token — the sheet completed but
+      // nothing usable came back. Surface it rather than fail silently (a
+      // bare `return null` reads to the user as "the button did nothing").
+      if (!credential.identityToken) {
+        throw new Error("Apple didn't return a sign-in token. Please try again.");
+      }
       // Apple hashes the nonce we send and echoes the hash back in the JWT's
       // `nonce` claim. The backend compares the value we forward against
       // `claims.nonce`, so we must forward the hashed value (not the raw).
