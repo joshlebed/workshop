@@ -48,14 +48,40 @@ describe("notifyDiscord", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("retries after a transient throw and succeeds on the second attempt", async () => {
+  it("retries a connect failure (never sent) and succeeds on the second attempt", async () => {
     process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
     const fetcher = vi
       .fn()
-      .mockRejectedValueOnce(new Error("ECONNRESET"))
+      .mockRejectedValueOnce(
+        new TypeError("fetch failed", {
+          cause: Object.assign(new Error("x"), { code: "ECONNREFUSED" }),
+        }),
+      )
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     await notifyDiscord("hello", { fetcher: fetcher as unknown as typeof fetch });
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a timeout — the first POST may have landed (duplicate ping)", async () => {
+    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
+    const timeout = new DOMException("The operation was aborted due to timeout", "TimeoutError");
+    const fetcher = vi.fn().mockRejectedValueOnce(timeout);
+    await notifyDiscord("hello", { fetcher: fetcher as unknown as typeof fetch });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a mid-response reset or a 504", async () => {
+    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
+    const reset = vi.fn().mockRejectedValueOnce(
+      new TypeError("fetch failed", {
+        cause: Object.assign(new Error("x"), { code: "ECONNRESET" }),
+      }),
+    );
+    await notifyDiscord("hello", { fetcher: reset as unknown as typeof fetch });
+    expect(reset).toHaveBeenCalledTimes(1);
+    const gateway = vi.fn().mockResolvedValueOnce(new Response("", { status: 504 }));
+    await notifyDiscord("hello", { fetcher: gateway as unknown as typeof fetch });
+    expect(gateway).toHaveBeenCalledTimes(1);
   });
 
   it("does not retry a non-retryable 4xx (e.g. deleted webhook)", async () => {
