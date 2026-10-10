@@ -269,3 +269,26 @@ Direction to carry into the next pass: keep home's rank · avatar · name · sco
 spine of the detail view too, and let the formatted share text hang _under_ each row as a
 secondary line, so the detail reads as "the home card, expanded" rather than a different
 component. Reactions and edit/clear become row affordances, not card furniture.
+
+## 7. No per-card `PASTE` on home
+
+**Decision: scrap the per-game `PASTE` button on home cards.** Owner, 2026-10-10: "No paste
+per score." The bottom bar's `PASTE SCORE` (entry 4) is the one paste entry point on home;
+the share flow already recognises which game a pasted result belongs to, so a per-game
+button is redundant and it costs a full row on every unplayed card (B's "15 cards reading
+NOBODY YET · PASTE" problem goes away with it). Posting _for a specific game_ still lives on
+the detail view's composer (entry 6).
+
+Applies equally to A's per-row `POST` and C's lit `POST` status cell.
+
+## 8. Pixel font scope — narrow it
+
+**Decision: Press Start 2P is for the `HIGHSCORE` brand mark and game names, and maybe action
+buttons and a few other accents. Not for user names, not for copy.** Owner, 2026-10-10.
+
+This is tighter than `DESIGN.md`'s current rule ("headings + scores"). Scores are the open
+case: DESIGN.md puts hero numerals in the pixel face so columns align; whether that survives
+is folded into the secondary-font choice below. Everything else — names, captions,
+timestamps, body, sheet copy — moves to the secondary face.
+
+**Secondary face: open.** Candidates were put to the owner; the pick gets recorded here.
