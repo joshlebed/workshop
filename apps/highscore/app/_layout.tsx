@@ -36,6 +36,7 @@ const HIGHSCORE_GAMES_ROUTES: GamesRoutes = {
   home: "/",
   signIn: "/sign-in",
   friends: "/friends",
+  share: "/share",
   game: (gameId, date) =>
     `/games/${encodeURIComponent(gameId)}${date ? `?date=${encodeURIComponent(date)}` : ""}`,
   friendProfile: (userId, via) =>
