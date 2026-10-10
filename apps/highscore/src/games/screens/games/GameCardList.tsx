@@ -21,6 +21,7 @@ import {
   PullToRefresh,
   REORDER_ACTIVATION,
   REORDER_AUTOSCROLL,
+  tokens,
 } from "@workshop/ui";
 import { memo } from "react";
 import type { ListRenderItemInfo } from "react-native";
@@ -96,6 +97,8 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: homeLayout.contentTopGap,
-    paddingBottom: homeLayout.bottomInset,
+    // The home action bar sits below the list in normal flow, so the list only
+    // needs breathing room, not FAB clearance.
+    paddingBottom: tokens.space.lg,
   },
 });

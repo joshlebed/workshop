@@ -16,7 +16,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { MyGame } from "@workshop/shared/games";
-import { homeLayout, PullToRefresh, REORDER_ACTIVATION } from "@workshop/ui";
+import { homeLayout, PullToRefresh, REORDER_ACTIVATION, tokens } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { GameCardListProps } from "./gameCardListProps";
@@ -123,6 +123,8 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: homeLayout.contentTopGap,
-    paddingBottom: homeLayout.bottomInset,
+    // The home action bar sits below the list in normal flow, so the list only
+    // needs breathing room, not FAB clearance.
+    paddingBottom: tokens.space.lg,
   },
 });
