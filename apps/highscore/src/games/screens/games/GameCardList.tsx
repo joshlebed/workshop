@@ -71,7 +71,7 @@ interface DraggableCardProps {
 }
 
 // Whole-card reorder target — see ItemList.tsx's DraggableGameCard. The card's
-// own Pressables (cover / Play / paste / title / standings) take
+// own Pressables (cover / Play / title / standings) take
 // `onLongPressBody`; this transparent wrapper catches a long-press on the gaps
 // between them. The kebab menu stays out so a press there opens the menu, not a
 // drag. `accessible={false}` keeps the inner buttons reachable by VoiceOver.

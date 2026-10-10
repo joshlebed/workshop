@@ -549,8 +549,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           selfId={user?.id ?? null}
           loading={!viewingToday && viewQuery.isPending}
           emptyFaces={[]}
-          // The home CTA posts to today only — past days are read-only here
-          // (post a past day from the per-game board), so Play / paste hide
+          // The home Play pill is a today-only nudge — past days are read-only
+          // here (post a past day from the per-game board), so it hides
           // off-today.
           showCta={viewingToday && !mg.standings.viewerHasPlayed}
           // Hand the rail's day to the board so "Yesterday" stays selected
@@ -560,7 +560,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           {...(onLongPressBody ? { onLongPressBody } : {})}
           onMenu={() => setMenuGame(mg)}
           onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
-          onPaste={() => openPasteFor({ id: mg.gameId, url: mg.game.url })}
           onReact={(userId, emoji, currentlyReacted) =>
             reactionCtl.react(mg.gameId, userId, emoji, currentlyReacted)
           }
@@ -579,7 +578,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       teachAvailable,
       router,
       markPlaying,
-      openPasteFor,
       viewStandings,
       viewDate,
       viewingToday,
