@@ -79,3 +79,41 @@ export function resolveRailDate(
   // Reject calendar-invalid keys like 2026-02-31 (they'd never match a chip).
   return shiftDateKey(value, 0) === value ? value : today;
 }
+
+/** "WED OCT 8" — the pixel-caps calendar label for a YYYY-MM-DD key. */
+export function calendarLabel(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  if (!y || !m || !d) return date;
+  const dt = new Date(y, m - 1, d);
+  const sameYear = dt.getFullYear() === new Date().getFullYear();
+  return dt
+    .toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: sameYear ? undefined : "numeric",
+    })
+    .replace(/,/g, "")
+    .toUpperCase();
+}
+
+/**
+ * The two halves of the date bar: a relative word when there is one
+ * ("TODAY" / "YESTERDAY") and the calendar date. Past the first two days the
+ * relative half is the weekday-less count ("3 DAYS AGO") so distance from
+ * today is always stated, not inferred from a calendar.
+ */
+export function dateBarLabel(date: string, today: string): { relative: string; calendar: string } {
+  const back = daysBack(date, today);
+  const calendar = calendarLabel(date);
+  if (back === 0) return { relative: "TODAY", calendar };
+  if (back === 1) return { relative: "YESTERDAY", calendar };
+  return { relative: `${back} DAYS AGO`, calendar };
+}
+
+/** The last `count` days ending at `today` (inclusive), oldest first. */
+export function recentDays(today: string, count: number): string[] {
+  const days: string[] = [];
+  for (let i = count - 1; i >= 0; i--) days.push(shiftDateKey(today, -i));
+  return days;
+}

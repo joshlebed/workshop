@@ -16,9 +16,10 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { MyGame } from "@workshop/shared/games";
-import { homeLayout, PullToRefresh, REORDER_ACTIVATION } from "@workshop/ui";
+import { PullToRefresh, REORDER_ACTIVATION } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { tokens } from "../../../theme";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({
@@ -121,8 +122,9 @@ function stripButtonRole(attributes: unknown): Record<string, unknown> {
 
 const styles = StyleSheet.create({
   listContent: {
-    paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: homeLayout.contentTopGap,
-    paddingBottom: homeLayout.bottomInset,
+    paddingHorizontal: tokens.space.lg,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.xl,
+    gap: tokens.space.sm,
   },
 });
