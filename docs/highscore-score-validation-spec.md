@@ -51,9 +51,11 @@ recognition gate would nag on games with one to three stored examples.
 
 ### 2. One preview in both entry points; posting is never blocked
 
-- The paste sheet and the share flow's detected-score card both show a server dry-run before
-  Post. The share flow stays one tap.
-- If the preview takes longer than about 1.5 seconds, the user can post without it.
+- The paste sheet, game board, and share flow's detected-score card show a server dry-run
+  when available. Post stays enabled while it runs, fails, or suggests another game.
+  The share flow stays one tap; detection and parsing are advisory.
+- After about 1.5 seconds without a preview, show optional score picks. This timer never
+  delays posting. Invalid input and explicit pick-confirmation guards still apply.
 - The poster can fix a score afterwards from **Fix score** on their own row. Only the poster
   sees that action.
 
@@ -144,17 +146,17 @@ unless the user picks the day on the game board.
 
 ## States and copy
 
-| State                     | Where                   | Copy                                                                           | Actions                                  |
-| ------------------------- | ----------------------- | ------------------------------------------------------------------------------ | ---------------------------------------- |
-| Score read                | Paste sheet, share card | "Score: 944" or "Score: 7 (counted 🏆)", with a "Not right?" link              | Post                                     |
-| No result                 | Paste sheet, share card | "No score today. This posts and ranks last."                                   | Post                                     |
-| Unread                    | Paste sheet, share card | "Couldn't read a score. Tap yours:" then candidate chips and "I didn't finish" | Post, with or without a pick             |
-| Wrong game                | Paste sheet, share card | "This looks like a Daily Tens score."                                          | "Post to Daily Tens", "Post here anyway" |
-| No result text            | Paste sheet, share card | "We got the link but not your result. Paste your result to post a score."      | None until text is added                 |
-| Same text as another day  | Paste sheet, share card | "This is the same result you posted yesterday. Post anyway?"                   | Post, Cancel                             |
-| Pick disagrees with label | Candidate picker        | "That looks like the puzzle number. Use it anyway?"                            | Confirm, pick another                    |
-| Unread, own row           | Standings               | Cleaned text, no rank                                                          | "Fix score" (poster only)                |
-| Picked, parser disagrees  | Standings               | "adjusted" beside the score                                                    | Tap to see the original text             |
+| State                     | Where                   | Copy                                                                                       | Actions                                  |
+| ------------------------- | ----------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| Score read                | Paste sheet, share card | "Score: 944" or "Score: 7 (counted 🏆)", with a "Not right?" link                          | Post                                     |
+| No result                 | Paste sheet, share card | "No score today. This posts and ranks last."                                               | Post                                     |
+| Unread                    | Paste sheet, share card | "Couldn't read a score. Post now or tap yours:" then candidate chips and "I didn't finish" | Post, with or without a pick             |
+| Wrong game                | Paste sheet, share card | "This looks like a Daily Tens score."                                                      | "Post to Daily Tens", "Post here anyway" |
+| No result text            | Paste sheet, share card | "We got the link but not your result. Paste your result to post a score."                  | None until text is added                 |
+| Same text as another day  | Paste sheet, share card | "This is the same result you posted yesterday. Post anyway?"                               | Post, Cancel                             |
+| Pick disagrees with label | Candidate picker        | "That looks like the puzzle number. Use it anyway?"                                        | Confirm, pick another                    |
+| Unread, own row           | Standings               | Cleaned text, no rank                                                                      | "Fix score" (poster only)                |
+| Picked, parser disagrees  | Standings               | "adjusted" beside the score                                                                | Tap to see the original text             |
 
 Standings order: scores by direction, then no-result rows in last place, then unread rows with
 no rank.
