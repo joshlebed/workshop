@@ -163,3 +163,41 @@ analysis says so:
 Each delivers a draft PR implemented in place in `apps/highscore` (no toggle, no parallel copy),
 an `UX-EXPLORATION.md` with the mental model and a tap-counted walk-through of the five paths,
 screenshots of each path, and a demo recording. Feedback on those lands here as entry 3+.
+
+## 3. Round 2 — three first-principles models
+
+All three landed on 2026-10-08. Side-by-side comparison page (pitch, demo video, screenshots,
+open questions, live preview per model) was assembled by the liaison task; the durable
+record is the three PRs.
+
+| Key | Model                                | PR                                                     | Branch                           | Seed → verdict                                        |
+| --- | ------------------------------------ | ------------------------------------------------------ | -------------------------------- | ----------------------------------------------------- |
+| A   | Day Spine                            | [#466](https://github.com/joshlebed/workshop/pull/466) | `joshlebed/hs-ux-r2-day-spine`   | day-global → confirmed                                |
+| B   | Scoreboard                           | [#464](https://github.com/joshlebed/workshop/pull/464) | `joshlebed/hs-ux-r2-scoreboard`  | games-as-objects → kept, but added a global day axis  |
+| C   | Day Scoreboard (rank strip of faces) | [#465](https://github.com/joshlebed/workshop/pull/465) | `joshlebed/hs-ux-r2-people-feed` | people feed → rejected; kept people as the rank strip |
+
+### The one finding that is already a decision
+
+**All three independently converged on "the selected day is global state", with one pinned
+day control rendered identically on home, game board and profile.** B started from games and
+C from people; both rejected their seed and arrived at the same place as A. Treat that as
+settled for whatever ships: time is not in the navigation stack, "which day am I on" is
+answered in the same spot on every screen, and TODAY is always one tap.
+
+### Where they actually differ (the real choices)
+
+| Axis                | A — Day Spine                                                   | B — Scoreboard                                                       | C — rank strip                                         |
+| ------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------ |
+| Day control         | 7-cell week strip + headline + TODAY key + month sheet          | one-line `‹ TODAY · THU OCT 8 ›` + 5-week picker, TODAY chip off-day | one-line `‹ day ›` + TODAY chip + calendar sheet       |
+| Home row            | ESPN box-score line; rows split into _To play_ / _Played_       | card: podium + your placing + turnout + streak                       | your status column + a rank strip of faces with scores |
+| Where history lives | profile week grid (rows = games, cols = days; tap cell → board) | 7-day strip of _your_ results on the box score; H2H grid on profile  | 7-day form strip + same-day head-to-head on profile    |
+| Primary write       | POST on each row (backfill allowed for past days)               | bottom bar `+ GAME` / `PASTE SCORE` (today only)                     | bottom bar Board · PASTE · Friends                     |
+| Restyle coverage    | full                                                            | core screens only; sheets/sign-in still `@workshop/ui`               | full                                                   |
+
+Shared caveats: every model fans out seven per-day requests for the history views (no
+multi-day endpoint exists — a `/week` or `/history` endpoint is the obvious backend follow-up
+if any of these ships), and none bumps `app.json` `version`.
+
+### Owner feedback
+
+_Pending._ Entries 4+ record the keep/scrap calls per axis above.
