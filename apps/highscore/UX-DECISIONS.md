@@ -224,3 +224,48 @@ Why it beats the alternatives on the table:
 Carry-forward note for whichever model ships: the bar is independent of the home-row and
 day-control choices, so it ports onto any of A/B/C. Cost is one ~64px row; B's open question
 about collapsing unplayed games on an empty today is unaffected.
+
+## 5. Home card: minimal top-3 leaderboard per game, formatted share text only on detail
+
+**Decision: keep.** Owner, 2026-10-10: B "has a good design for keeping a minimal leaderboard
+top 3 per game on the homepage, and only showing the formatted text on the detail view."
+
+What it is (B, `GameScoreCard` on home): per game, a header line (`6 PLAYED` · `YOU 1ST 902`),
+then up to three ranked rows — rank, avatar, first name, one-token score — with your own row
+highlighted and pinned even when you are outside the cut, then `+3 MORE`. **No share text,
+no emoji grids, no recap on home.** The pasted/formatted result (the `100🎯 93🏆 89🎉 …` line and
+the "Final score" recap) appears only once you open the game.
+
+Why it matters: the home page is a comparative read across games, so each card has to be
+scannable in a glance — three names and three numbers is the density that works at 10+ games
+a day. The share text is the _evidence_, and evidence belongs on the detail view. A's
+box-score line and C's face strip both show less per game (one line) and more (faces) at the
+same time; the owner's pick is the three-row podium.
+
+## 6. Game detail (box score) view — rework
+
+**Decision: the concept stays (full ranking + formatted result per row + your composer), but
+B's current rendering is ugly and needs real design work.** Owner, 2026-10-10.
+
+What is on screen in B today (`/games/:id`, a populated day): header with back + game icon +
+title + external-link; the global DateBar; a 7-cell `S M T W T F S` strip of _your_ results;
+a `WED OCT 7 · 6 PLAYED` caption; then one large bordered card per player — crown/rank, avatar,
+full name, "posted 3d ago", the raw emoji share line in monospace, a `Final score: 902` line, a
+`🙂+` reaction pill, and on your own card `EDIT` / `CLEAR`. Empty day: a composer card
+("Paste your result here", `Play` / `Post score`).
+
+What makes it ugly, as observed — a starting list for the redesign, not a spec:
+
+- Every row is a heavy bordered card (~130px) so six players is two screens; the rank/score
+  columns that make home scannable are lost inside the cards.
+- Three competing type treatments per row (pixel score, system name, monospace share text)
+  plus a duplicated number (`902` big, then `Final score: 902` again).
+- The reaction pill and `EDIT` / `CLEAR` sit as loose text in the card's bottom-left with no
+  hierarchy; the "posted 3d ago" line adds a fourth text size.
+- The 7-cell week strip is unlabelled (single letters, dots for empty days) and visually
+  competes with the DateBar directly above it — two time controls stacked.
+
+Direction to carry into the next pass: keep home's rank · avatar · name · score row as the
+spine of the detail view too, and let the formatted share text hang _under_ each row as a
+secondary line, so the detail reads as "the home card, expanded" rather than a different
+component. Reactions and edit/clear become row affordances, not card furniture.
