@@ -5,11 +5,12 @@
 // auth, no queries, nothing that can fail. `Screen` gives the web reading
 // column; the wordmark doubles as the way back into the app.
 
-import { Button, Card, openExternalUrl, Screen, Text, tokens } from "@workshop/ui";
+import { openExternalUrl } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Wordmark } from "../../components/Wordmark";
 import type { LegalSection } from "../../lib/legal";
+import { Button, Card, Screen, Text, tokens } from "../../theme";
 
 interface LegalScreenProps {
   eyebrow: string;

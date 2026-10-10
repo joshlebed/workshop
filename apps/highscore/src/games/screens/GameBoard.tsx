@@ -4,19 +4,7 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import { STREAK_MIN_DAYS } from "@workshop/shared/games";
-import {
-  Avatar,
-  Button,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  openExternalUrl,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics, openExternalUrl } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -30,10 +18,11 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { DayHeader } from "../../components/DayHeader";
 import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
+import { Avatar, Button, Notice, PixelIcon, Screen, Text, tokens, useToast } from "../../theme";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
-import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
@@ -41,7 +30,7 @@ import { ScoreReactions } from "../components/ScoreReactions";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { daysBack, formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
+import { formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
 import { scoreLineLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
@@ -49,6 +38,9 @@ import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useScoreCheck, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
 import { useViewDay } from "../state/viewDay";
+
+// A `?date=` deep link may name any past day the calendar can reach.
+const DEEP_LINK_MAX_DAYS = 3650;
 
 /**
  * Per-game board (G1b) — history for one game in My Games. The home card
@@ -79,15 +71,17 @@ export default function GameBoard() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only param sync
   useEffect(() => {
     if (params.date != null) {
-      setViewDate(resolveRailDate(params.date, today, DAY_RAIL_DEFAULT_LENGTH));
+      setViewDate(resolveRailDate(params.date, today, DEEP_LINK_MAX_DAYS));
     }
   }, []);
   const [draft, setDraft] = useState("");
   const [editingScore, setEditingScore] = useState(false);
-  // "Earlier" pages the rail back a week at a time; the rail also grows to
-  // cover a selection inherited from home (never shrinks below it).
-  const [railPages, setRailPages] = useState(1);
-  const railLength = Math.max(railPages * DAY_RAIL_DEFAULT_LENGTH, daysBack(date, today) + 1);
+  // The DayHeader moves the shared day; a half-typed paste doesn't follow it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on day change only
+  useEffect(() => {
+    setDraft("");
+    setEditingScore(false);
+  }, [date]);
   // Teach v2: "Fix score" on my own row. Absent without the capability.
   const teachAvailable = useTeachAvailable();
   const [fixTarget, setFixTarget] = useState<FixScoreTarget | null>(null);
@@ -220,7 +214,7 @@ export default function GameBoard() {
   if (!gameId) {
     return (
       <Screen style={styles.center}>
-        <EmptyState title="Missing game id" />
+        <Notice title="Missing game id" />
       </Screen>
     );
   }
@@ -236,7 +230,7 @@ export default function GameBoard() {
   if (myGamesQuery.isError) {
     return (
       <Screen style={styles.center}>
-        <EmptyState
+        <Notice
           title="Couldn't load game"
           description={errorMessage(myGamesQuery.error)}
           action={
@@ -250,7 +244,7 @@ export default function GameBoard() {
   if (!game) {
     return (
       <Screen style={styles.center}>
-        <EmptyState
+        <Notice
           title="Game not found"
           description="This game isn't in My Games."
           action={
@@ -276,13 +270,11 @@ export default function GameBoard() {
   // One quiet line says where you are and how busy the day was — the rail's
   // selected chip already restates the day, so no big day heading.
   const turnout =
-    entries.length === 0 ? (isToday ? "No plays yet" : "No plays") : `${entries.length} played`;
-
-  const onDate = (key: string) => {
-    setViewDate(key);
-    setDraft("");
-    setEditingScore(false);
-  };
+    entries.length === 0
+      ? isToday
+        ? "No plays yet"
+        : "No plays"
+      : `${entries.length} played${isToday ? " today" : ""}`;
 
   const onSubmit = (extras?: ScorePostExtras) => {
     const trimmed = draft.trim();
@@ -301,9 +293,9 @@ export default function GameBoard() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Screen testID="game-board">
-        {/* Compact pinned header: back · icon · title (+streak) · open-game.
-            The day rail below never scrolls away — it's the screen's primary
-            control. */}
+        {/* Title bar: back · cover · title (+streak) · open-game. The
+            DayHeader below is the same control as home's, over the same
+            shared day. */}
         <View style={styles.headerNav}>
           <Pressable
             accessibilityRole="button"
@@ -313,7 +305,7 @@ export default function GameBoard() {
             hitSlop={10}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <Text style={styles.navGlyph}>‹</Text>
+            <PixelIcon name="arrow-left" size={24} color={tokens.text.primary} />
           </Pressable>
           {game.iconUrl ? (
             <Image
@@ -323,18 +315,20 @@ export default function GameBoard() {
             />
           ) : (
             <View style={[styles.titleBadge, styles.titleBadgePlaceholder]}>
-              <Text style={styles.titleBadgeGlyph}>🎮</Text>
+              <PixelIcon name="gamepad" size={16} color={tokens.text.secondary} />
             </View>
           )}
           <View style={styles.titleText}>
-            <Text variant="heading" numberOfLines={1} style={styles.titleName}>
+            <Text variant="title" numberOfLines={1} style={styles.titleName}>
               {game.title}
             </Text>
           </View>
           {streak >= STREAK_MIN_DAYS ? (
             <View style={styles.streak} testID="game-board-streak">
               <Text style={styles.streakFlame}>🔥</Text>
-              <Text style={styles.streakCount}>{streak}</Text>
+              <Text variant="score" tone="success" style={styles.streakCount}>
+                {streak}
+              </Text>
             </View>
           ) : null}
           <Pressable
@@ -345,26 +339,11 @@ export default function GameBoard() {
             hitSlop={6}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <Text style={styles.titleOpenGlyph}>↗</Text>
+            <PixelIcon name="external-link" size={24} color={tokens.neon.pink} />
           </Pressable>
         </View>
 
-        <View style={styles.dayRail}>
-          <DayRail
-            selectedDate={date}
-            today={today}
-            onSelectDate={onDate}
-            length={railLength}
-            onExtend={() => setRailPages((p) => p + 1)}
-            testIDPrefix="game-board-day"
-          />
-        </View>
-
-        <View style={styles.dayHeader}>
-          <Text variant="caption" tone="muted" testID="game-board-turnout">
-            {boardQuery.isPending ? dateLabel : `${dateLabel} · ${turnout}`}
-          </Text>
-        </View>
+        <DayHeader caption={boardQuery.isPending ? null : turnout} testIDPrefix="game-board-day" />
 
         <ScrollView
           contentContainerStyle={styles.body}
@@ -558,13 +537,15 @@ function EntryRow({
   return (
     <View style={[styles.entry, isMe && styles.entryMe]} testID={`game-board-row-${entry.userId}`}>
       <View style={styles.entryHeader}>
-        {entry.rank != null ? (
-          <View style={[styles.rankBadge, entry.rank === 1 && styles.rankBadgeTop1]}>
-            <Text style={[styles.rankBadgeText, entry.rank === 1 && styles.rankBadgeTextTop1]}>
-              {entry.rank}
-            </Text>
-          </View>
-        ) : null}
+        <View style={styles.rankBadge}>
+          <Text
+            variant="score"
+            tone={entry.rank === 1 ? "spotlight" : entry.rank == null ? "muted" : "primary"}
+            style={styles.rankBadgeText}
+          >
+            {entry.rank != null ? `#${entry.rank}` : "–"}
+          </Text>
+        </View>
         <Pressable
           style={({ pressed }) => [styles.entryIdentity, pressed && styles.entryIdentityPressed]}
           accessibilityRole="button"
@@ -846,7 +827,7 @@ function ScoreComposer({
 const PASTE_INPUT_FONT_SIZE = Platform.OS === "web" ? tokens.font.size.md : tokens.font.size.sm;
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: tokens.bg.canvas, paddingTop: tokens.space.xl },
+  root: { flex: 1, backgroundColor: tokens.bg.canvas },
   adjustedLabel: { fontStyle: "italic", textDecorationLine: "underline" },
   pickedRow: {
     flexDirection: "row",
@@ -858,122 +839,63 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
-    paddingLeft: tokens.space.sm,
-    paddingRight: tokens.space.md,
-    paddingBottom: tokens.space.md,
+    paddingLeft: tokens.space.xs,
+    paddingRight: tokens.space.xs,
+    paddingVertical: tokens.space.sm,
   },
-  navButton: {
-    width: 40,
-    height: 40,
+  navButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  navButtonPressed: { backgroundColor: tokens.bg.elevated },
+  body: { paddingTop: tokens.space.md, paddingBottom: tokens.space.xxl * 2 },
+  titleBadge: { width: 32, height: 32, backgroundColor: tokens.bg.elevated },
+  titleBadgePlaceholder: {
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
-  body: {
-    paddingTop: tokens.space.md,
-    paddingBottom: tokens.space.xxl * 2,
-  },
-  titleBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.elevated,
-  },
-  titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
-  // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
-  // glyph to the inherited line box otherwise (see app CLAUDE.md).
-  titleBadgeGlyph: { fontSize: 18, lineHeight: 22 },
   titleText: { flex: 1, minWidth: 0 },
-  titleName: { letterSpacing: -0.3 },
-  titleOpenGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg + 2,
-  },
-  // Streak pill mirrors the home card's (StandingsCard) so the flame reads as
-  // the same signal on both surfaces; static here — Play lives in the my-slot.
-  streak: {
-    flexShrink: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: `${tokens.accent.default}1F`,
-  },
+  titleName: { fontSize: 13, lineHeight: 20 },
+  streak: { flexShrink: 0, flexDirection: "row", alignItems: "center", gap: 3 },
   streakFlame: { fontSize: 12, lineHeight: 16 },
-  streakCount: {
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.accent.default,
-    fontVariant: ["tabular-nums"],
-  },
-  dayRail: { paddingBottom: tokens.space.sm },
-  dayHeader: { paddingHorizontal: tokens.space.xl },
+  streakCount: { fontSize: 11, lineHeight: 16 },
   helper: {
     paddingVertical: tokens.space.lg,
     textAlign: "center",
     paddingHorizontal: tokens.space.xl,
   },
-  scoresErrorBlock: {
-    gap: tokens.space.sm,
-    paddingBottom: tokens.space.md,
-  },
+  scoresErrorBlock: { gap: tokens.space.sm, paddingBottom: tokens.space.md },
   scoresErrorAction: { alignItems: "center" },
-  leaderboard: {
-    paddingHorizontal: tokens.space.xl,
-    gap: tokens.space.md,
-  },
+  leaderboard: { paddingHorizontal: tokens.space.lg, gap: tokens.space.md },
   entry: {
     gap: tokens.space.sm,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
-  entryMe: {
-    // Quiet accent tint as the sole "this is you" signal; the "you" pill
-    // doubles as a textual label so the highlight isn't color-only.
-    backgroundColor: `${tokens.accent.default}14`,
-  },
-  entryHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-  },
+  // Pink bezel is the "this is you" signal; the YOU pill makes it non-colour.
+  entryMe: { borderColor: tokens.neon.pink },
+  entryHeader: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   entryIdentity: {
     flex: 1,
     minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
-    borderRadius: tokens.radius.sm,
   },
   entryIdentityPressed: { opacity: 0.6 },
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
   scoreActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
-  scoreActionButton: {
-    paddingHorizontal: tokens.space.sm,
-    paddingVertical: 4,
-    borderRadius: tokens.radius.sm,
-  },
+  scoreActionButton: { paddingHorizontal: tokens.space.sm, paddingVertical: 4 },
   editScorePressed: { backgroundColor: tokens.accent.muted },
   editScoreLabel: {
     fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
+    color: tokens.neon.pinkTint,
   },
-  // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
-  // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
-  // the control itself stays calm rather than a loud red on a daily screen.
   clearScorePressed: { backgroundColor: tokens.bg.elevated },
   clearScoreLabel: {
     fontSize: tokens.font.size.sm,
@@ -983,70 +905,39 @@ const styles = StyleSheet.create({
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    borderWidth: 1,
+    borderColor: tokens.neon.pink,
   },
   youPillText: {
     fontSize: 10,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: 0.5,
-    color: tokens.accent.default,
+    color: tokens.neon.pinkTint,
     textTransform: "uppercase",
   },
-  // Score box + reactions share one row so reactions sit to the right of the
-  // score instead of below it (no extra row height).
-  scoreRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-  },
+  scoreRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   scoreFrame: {
     flex: 1,
     minWidth: 0,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
     backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
   },
-  rankBadge: {
-    minWidth: 28,
-    height: 28,
-    paddingHorizontal: 6,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-  },
-  rankBadgeTop1: {
-    backgroundColor: tokens.accent.default,
-    borderColor: tokens.accent.default,
-  },
-  rankBadgeText: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.text.secondary,
-    fontVariant: ["tabular-nums"],
-  },
-  rankBadgeTextTop1: { color: tokens.text.onAccent },
+  rankBadge: { minWidth: 36, alignItems: "flex-start", justifyContent: "center" },
+  rankBadgeText: { fontSize: 12, lineHeight: 18, letterSpacing: 0 },
   scoreText: {
     color: tokens.text.primary,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     fontSize: tokens.font.size.sm,
     lineHeight: tokens.font.size.sm + 6,
   },
-  scoreTextMuted: {
-    color: tokens.text.muted,
-    fontStyle: "italic",
-  },
+  scoreTextMuted: { color: tokens.text.muted, fontStyle: "italic" },
   pasteInput: {
     minHeight: 110,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,

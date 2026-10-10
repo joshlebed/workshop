@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import {
@@ -11,28 +11,22 @@ import {
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
-import {
-  Avatar,
-  Button,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { blockUser } from "../../api/moderation";
+import { DayHeader } from "../../components/DayHeader";
 import { ReportSheet, type ReportTarget } from "../../moderation/ReportSheet";
-import { addGame } from "../api/games";
-import { localDateKey } from "../lib/gameDate";
+import { Avatar, Button, Notice, PixelIcon, Screen, Text, tokens, useToast } from "../../theme";
+import { addGame, fetchMyGames } from "../api/games";
+import { formatDayHeading, localDateKey, shiftDateKey } from "../lib/gameDate";
+import { headToHead } from "../lib/headToHead";
 import { goBack } from "../lib/navigation";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
+import { stripScoreLabel } from "../lib/stripScore";
 import { useGamesRuntime } from "../runtime";
+import { useViewDay } from "../state/viewDay";
 
 /**
  * Friend profile page — `/friends/:userId`. Shows the relationship state with
@@ -80,12 +74,15 @@ export default function FriendProfileScreen() {
   const livePoll = useLivePollingInterval();
 
   const todayKey = localDateKey();
+  // The profile reads on the shared day (home / board / here agree), so
+  // "what did Alex do on Tuesday" is the same ‹ › as everywhere else.
+  const { viewDate } = useViewDay();
   const [addingGameIds, setAddingGameIds] = useState<string[]>([]);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   const profileQuery = useQuery({
-    queryKey: queryKeys.friends.profile(userId, todayKey),
-    queryFn: () => fetchFriendProfile(userId, todayKey, token, via),
+    queryKey: queryKeys.friends.profile(userId, viewDate),
+    queryFn: () => fetchFriendProfile(userId, viewDate, token, via),
     enabled: !!token && !!userId,
     refetchInterval: livePoll,
   });
@@ -201,7 +198,7 @@ export default function FriendProfileScreen() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(todayKey) }),
         queryClient.invalidateQueries({ queryKey: ["games", "discovery"] }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.friends.profile(userId, todayKey) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.friends.profile(userId, viewDate) }),
       ]);
     },
     onError: (e) => {
@@ -227,6 +224,53 @@ export default function FriendProfileScreen() {
   const mutuals = profile ? mutualsLine(profile) : null;
   const isSelf = profile?.relationship === "self" || (!!user?.id && user.id === userId);
 
+  const canCompare = !!user?.id && !isSelf && profile?.relationship === "friends";
+
+  // Head-to-head on the viewed day, from my rotation's standings.
+  const dayGamesQuery = useQuery({
+    queryKey: queryKeys.games.mine(viewDate),
+    queryFn: () => fetchMyGames(viewDate, token),
+    enabled: !!token && canCompare,
+  });
+  const h2h = useMemo(
+    () => (user?.id ? headToHead(dayGamesQuery.data, user.id, userId, stripScoreLabel) : null),
+    [dayGamesQuery.data, user?.id, userId],
+  );
+
+  // Seven-day form: how many of my games they posted each day, ending on the
+  // viewed day. Seven cached `GET /v1/games` reads — the same ones the home
+  // ‹ › already warms. TODO(api): a per-user history endpoint would also
+  // cover games outside my rotation.
+  const weekKeys = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => shiftDateKey(viewDate, i - 6)),
+    [viewDate],
+  );
+  const weekQueries = useQueries({
+    queries: weekKeys.map((key) => ({
+      queryKey: queryKeys.games.mine(key),
+      queryFn: () => fetchMyGames(key, token),
+      enabled: !!token && (canCompare || isSelf),
+      staleTime: 60_000,
+    })),
+  });
+  const subjectId = isSelf ? (user?.id ?? userId) : userId;
+  const week = weekKeys.map((key, i) => {
+    const data = weekQueries[i]?.data;
+    const games = data?.games ?? [];
+    let played = 0;
+    let wins = 0;
+    for (const g of games) {
+      const e = g.standings.entries.find((x) => x.userId === subjectId && x.scoreRaw);
+      if (!e) continue;
+      played += 1;
+      if (e.rank === 1) wins += 1;
+    }
+    return { key, played, wins, loading: !data, total: games.length };
+  });
+  const weekPlayed = week.reduce((n, d) => n + d.played, 0);
+  const weekWins = week.reduce((n, d) => n + d.wins, 0);
+  const dayHeading = formatDayHeading(viewDate, todayKey);
+
   return (
     <Screen testID="friend-profile-screen">
       <View style={styles.headerNav}>
@@ -238,20 +282,22 @@ export default function FriendProfileScreen() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>‹</Text>
+          <PixelIcon name="arrow-left" size={24} color={tokens.text.primary} />
         </Pressable>
-        <Text variant="title">Profile</Text>
+        <Text variant="title" style={styles.navTitle} numberOfLines={1}>
+          {profile ? name : "Profile"}
+        </Text>
         <View style={styles.navButton} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         {profileQuery.isPending ? (
           <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+            <ActivityIndicator color={tokens.neon.pink} />
           </View>
         ) : profileQuery.isError || !profile ? (
           <View style={styles.center}>
-            <EmptyState
+            <Notice
               title="Couldn't load this profile"
               description={errorMessage(profileQuery.error, "User not found.")}
               action={
@@ -334,6 +380,228 @@ export default function FriendProfileScreen() {
                 />
               </View>
             ) : null}
+
+            {/* Form — last seven days ending on the viewed day. */}
+            {canCompare || isSelf ? (
+              <View style={styles.section} testID="friend-profile-form">
+                <View style={styles.sectionHead}>
+                  <Text variant="heading" style={styles.sectionTitle}>
+                    Last 7 days
+                  </Text>
+                  <Text variant="caption" tone="secondary">
+                    {weekPlayed} played · {weekWins} {weekWins === 1 ? "win" : "wins"}
+                  </Text>
+                </View>
+                <View style={styles.weekRow}>
+                  {week.map((d) => (
+                    <View
+                      key={d.key}
+                      style={[styles.weekCell, d.key === viewDate && styles.weekCellSelected]}
+                      testID={`friend-profile-form-${d.key}`}
+                    >
+                      <Text
+                        variant="score"
+                        tone={d.wins > 0 ? "spotlight" : d.played > 0 ? "primary" : "muted"}
+                        style={styles.weekCount}
+                      >
+                        {d.loading ? "·" : d.played}
+                      </Text>
+                      <Text variant="caption" tone="secondary" style={styles.weekDay}>
+                        {weekdayLetter(d.key)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {/* Head-to-head on the viewed day. */}
+            {canCompare ? (
+              <View style={styles.section} testID="friend-profile-h2h">
+                <DayHeader testIDPrefix="friend-profile-day" />
+                {h2h && h2h.games.length > 0 ? (
+                  <>
+                    <View style={styles.tally}>
+                      <View style={styles.tallySide}>
+                        <Text
+                          variant="score"
+                          tone={h2h.wins > h2h.losses ? "spotlight" : "primary"}
+                          style={styles.tallyNum}
+                        >
+                          {h2h.wins}
+                        </Text>
+                        <Text variant="caption" tone="secondary">
+                          You
+                        </Text>
+                      </View>
+                      <Text variant="heading" tone="muted" style={styles.tallyVs}>
+                        vs
+                      </Text>
+                      <View style={styles.tallySide}>
+                        <Text
+                          variant="score"
+                          tone={h2h.losses > h2h.wins ? "spotlight" : "primary"}
+                          style={styles.tallyNum}
+                        >
+                          {h2h.losses}
+                        </Text>
+                        <Text variant="caption" tone="secondary" numberOfLines={1}>
+                          {name}
+                        </Text>
+                      </View>
+                    </View>
+                    {h2h.games.map((g) => (
+                      <Pressable
+                        key={g.gameId}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${g.title}: you ${g.mine.label}, ${name} ${g.theirs.label}`}
+                        onPress={() => router.push(routes.game(g.gameId, viewDate) as Href)}
+                        testID={`friend-profile-h2h-${g.gameId}`}
+                        style={({ pressed }) => [styles.h2hRow, pressed && styles.rowPressed]}
+                      >
+                        <Text
+                          variant="score"
+                          tone={g.leader === "me" ? "spotlight" : "primary"}
+                          style={styles.h2hScore}
+                        >
+                          {g.mine.label}
+                        </Text>
+                        <View style={styles.h2hMid}>
+                          <Text variant="label" numberOfLines={1} style={styles.h2hTitle}>
+                            {g.title}
+                          </Text>
+                          <Text variant="caption" tone="secondary">
+                            {g.leader === "tie"
+                              ? "Tied"
+                              : g.leader === "me"
+                                ? "You lead"
+                                : `${name} leads`}
+                          </Text>
+                        </View>
+                        <Text
+                          variant="score"
+                          tone={g.leader === "them" ? "spotlight" : "primary"}
+                          style={[styles.h2hScore, styles.h2hScoreRight]}
+                        >
+                          {g.theirs.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </>
+                ) : (
+                  <Text variant="caption" tone="muted" style={styles.sectionNote}>
+                    {dayGamesQuery.isPending
+                      ? "Loading…"
+                      : `No game you both posted ${dayHeading.short === "Today" ? "today" : `on ${dayHeading.short}`}.`}
+                  </Text>
+                )}
+              </View>
+            ) : null}
+
+            {/* Games. */}
+            {profile.games === null ? (
+              <View style={styles.lockedCard} testID="friend-profile-locked">
+                <PixelIcon name="gamepad" size={32} color={tokens.text.secondary} />
+                <Text variant="label" style={styles.lockedTitle}>
+                  Games are for friends
+                </Text>
+                <Text variant="caption" tone="muted" style={styles.lockedText}>
+                  Add {name} as a friend to see what games they play.
+                </Text>
+              </View>
+            ) : profile.games.length === 0 ? (
+              <View style={styles.section}>
+                <Text variant="heading" style={styles.sectionTitle}>
+                  Games
+                </Text>
+                <Text variant="caption" tone="muted">
+                  {isSelf ? "You haven't" : `${name} hasn't`} added any games yet.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.section} testID="friend-profile-games">
+                <View style={styles.sectionHead}>
+                  <Text variant="heading" style={styles.sectionTitle}>
+                    {profile.games.length === 1 ? "1 game" : `${profile.games.length} games`}
+                  </Text>
+                  <Text variant="caption" tone="secondary">
+                    {dayHeading.short}
+                  </Text>
+                </View>
+                {profile.games.map((pg) => {
+                  const adding = addingGameIds.includes(pg.game.id);
+                  const scoreBody = pg.score ? summarizeGameScoreBody(pg.game, pg.score) : null;
+                  const scoreLine = scoreBody
+                    ? scoreBody.split("\n")[0]
+                    : pg.score
+                      ? "Played"
+                      : "Not played";
+                  return (
+                    <Pressable
+                      key={pg.game.id}
+                      onPress={
+                        pg.viewerHasGame
+                          ? () => router.push(routes.game(pg.game.id, viewDate) as Href)
+                          : undefined
+                      }
+                      accessibilityLabel={pg.game.title}
+                      disabled={!pg.viewerHasGame}
+                      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                        styles.gameRow,
+                        pg.viewerHasGame && (pressed || hovered) && styles.rowPressed,
+                      ]}
+                      testID={`friend-profile-game-${pg.game.id}`}
+                    >
+                      <View style={styles.gameCover}>
+                        {pg.game.iconUrl ? (
+                          <Image
+                            source={{ uri: pg.game.iconUrl }}
+                            style={styles.gameCoverImage}
+                            accessibilityIgnoresInvertColors
+                          />
+                        ) : (
+                          <PixelIcon name="gamepad" size={16} color={tokens.text.secondary} />
+                        )}
+                      </View>
+                      <View style={styles.gameText}>
+                        <Text variant="label" numberOfLines={1} style={styles.gameTitle}>
+                          {pg.game.title}
+                        </Text>
+                        <Text
+                          variant="caption"
+                          tone={pg.score ? "primary" : "muted"}
+                          numberOfLines={1}
+                        >
+                          {scoreLine}
+                        </Text>
+                      </View>
+                      {pg.viewerHasGame ? (
+                        <PixelIcon name="chevron-right" size={16} color={tokens.text.secondary} />
+                      ) : isSelf ? null : (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Add ${pg.game.title}`}
+                          onPress={() => addGameMutation.mutate(pg)}
+                          disabled={adding}
+                          testID={`friend-profile-game-add-${pg.game.id}`}
+                          hitSlop={6}
+                          style={({ pressed }) => [styles.addBtn, pressed && styles.addBtnPressed]}
+                        >
+                          {adding ? (
+                            <ActivityIndicator size="small" color={tokens.neon.pink} />
+                          ) : (
+                            <Text variant="heading" tone="link" style={styles.addLabel}>
+                              Add
+                            </Text>
+                          )}
+                        </Pressable>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
             {profile.relationship === "friends" ? (
               <Button
                 label="Remove friend"
@@ -377,109 +645,6 @@ export default function FriendProfileScreen() {
                 </Pressable>
               </View>
             )}
-
-            {/* Games. */}
-            {profile.games === null ? (
-              <View style={styles.lockedCard} testID="friend-profile-locked">
-                <Text style={styles.lockedGlyph}>🎮</Text>
-                <Text variant="label" style={styles.lockedTitle}>
-                  Games are for friends
-                </Text>
-                <Text variant="caption" tone="muted" style={styles.lockedText}>
-                  Add {name} as a friend to see what games they play.
-                </Text>
-              </View>
-            ) : profile.games.length === 0 ? (
-              <View style={styles.list}>
-                <Text variant="caption" tone="muted" style={styles.listLabel}>
-                  Games
-                </Text>
-                <Text variant="caption" tone="muted">
-                  {isSelf ? "You haven't" : `${name} hasn't`} added any games yet.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.list} testID="friend-profile-games">
-                <Text variant="caption" tone="muted" style={styles.listLabel}>
-                  {profile.games.length === 1 ? "1 game" : `${profile.games.length} games`}
-                </Text>
-                {profile.games.map((pg) => {
-                  const adding = addingGameIds.includes(pg.game.id);
-                  const scoreBody = pg.score ? summarizeGameScoreBody(pg.game, pg.score) : null;
-                  const scoreLine = scoreBody
-                    ? `Today: ${scoreBody.split("\n")[0]}`
-                    : pg.score
-                      ? "Played today"
-                      : "Not played today";
-                  return (
-                    <Pressable
-                      key={pg.game.id}
-                      onPress={
-                        pg.viewerHasGame
-                          ? () => router.push(routes.game(pg.game.id) as Href)
-                          : undefined
-                      }
-                      accessibilityLabel={pg.game.title}
-                      disabled={!pg.viewerHasGame}
-                      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                        styles.gameRow,
-                        pg.viewerHasGame && (pressed || hovered) && styles.gameRowHover,
-                      ]}
-                      testID={`friend-profile-game-${pg.game.id}`}
-                    >
-                      <View style={styles.gameCover}>
-                        {pg.game.iconUrl ? (
-                          <Image
-                            source={{ uri: pg.game.iconUrl }}
-                            style={styles.gameCoverImage}
-                            accessibilityIgnoresInvertColors
-                          />
-                        ) : (
-                          <Text style={styles.gameCoverGlyph}>🎮</Text>
-                        )}
-                      </View>
-                      <View style={styles.gameText}>
-                        <Text variant="label" numberOfLines={1} style={styles.gameTitle}>
-                          {pg.game.title}
-                        </Text>
-                        <Text variant="caption" tone="muted" numberOfLines={1}>
-                          {scoreLine}
-                        </Text>
-                      </View>
-                      {pg.viewerHasGame ? (
-                        <Text style={styles.chevron}>›</Text>
-                      ) : isSelf ? null : (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`Add ${pg.game.title}`}
-                          onPress={() => addGameMutation.mutate(pg)}
-                          disabled={adding}
-                          testID={`friend-profile-game-add-${pg.game.id}`}
-                          hitSlop={6}
-                          style={({
-                            pressed,
-                            hovered,
-                          }: {
-                            pressed: boolean;
-                            hovered?: boolean;
-                          }) => [
-                            styles.addBtn,
-                            (pressed || hovered) && styles.addBtnHover,
-                            adding && styles.addBtnBusy,
-                          ]}
-                        >
-                          {adding ? (
-                            <ActivityIndicator size="small" color={tokens.accent.default} />
-                          ) : (
-                            <Text style={styles.addLabel}>Add</Text>
-                          )}
-                        </Pressable>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
           </>
         )}
       </ScrollView>
@@ -488,125 +653,133 @@ export default function FriendProfileScreen() {
   );
 }
 
-const COVER = 40;
+function weekdayLetter(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "narrow" });
+}
+
+const COVER = 36;
 
 const styles = StyleSheet.create({
   headerNav: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    gap: tokens.space.sm,
+    paddingHorizontal: tokens.space.xs,
+    paddingVertical: tokens.space.sm,
   },
-  navButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.md,
-  },
+  navButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
-  body: {
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.xl,
-  },
+  navTitle: { flex: 1, textAlign: "center", fontSize: 13, lineHeight: 20 },
+  body: { padding: tokens.space.lg, gap: tokens.space.lg, paddingBottom: tokens.space.xxl * 2 },
   center: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: tokens.space.xl,
+    paddingVertical: tokens.space.xxl,
   },
   identityCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
+    gap: tokens.space.md,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   identityText: { flex: 1, minWidth: 0, gap: 4 },
   actionRow: { flexDirection: "row", gap: tokens.space.md },
   actionFlex: { flex: 1 },
+  section: { gap: tokens.space.sm },
+  sectionHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+  sectionTitle: { fontSize: 11, lineHeight: 18 },
+  sectionNote: { paddingVertical: tokens.space.sm },
+  weekRow: { flexDirection: "row", gap: tokens.space.xs },
+  weekCell: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: tokens.space.sm,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+    backgroundColor: tokens.bg.surface,
+    gap: 2,
+  },
+  weekCellSelected: { borderColor: tokens.neon.pink },
+  weekCount: { fontSize: 14, lineHeight: 20 },
+  weekDay: { fontSize: 10, lineHeight: 12 },
+  tally: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: tokens.space.xl,
+    paddingVertical: tokens.space.md,
+  },
+  tallySide: { alignItems: "center", gap: 2, minWidth: 80 },
+  tallyNum: { fontSize: 28, lineHeight: 40 },
+  tallyVs: { fontSize: 10, lineHeight: 16 },
+  h2hRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    paddingVertical: tokens.space.sm,
+    paddingHorizontal: tokens.space.md,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+    backgroundColor: tokens.bg.surface,
+  },
+  rowPressed: { backgroundColor: tokens.bg.elevated },
+  h2hScore: { fontSize: 12, lineHeight: 18, letterSpacing: 0, minWidth: 56 },
+  h2hScoreRight: { textAlign: "right" },
+  h2hMid: { flex: 1, minWidth: 0, alignItems: "center", gap: 2 },
+  h2hTitle: { color: tokens.text.primary },
   safetyRow: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: tokens.space.lg,
-    marginTop: -tokens.space.sm,
+    gap: tokens.space.xl,
+    paddingVertical: tokens.space.sm,
   },
-  safetyBtn: {
-    paddingVertical: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.sm,
-  },
+  safetyBtn: { paddingHorizontal: tokens.space.sm, paddingVertical: 4 },
   safetyBtnPressed: { backgroundColor: tokens.bg.elevated },
   safetyLabel: { textDecorationLine: "underline" },
   blockLabel: { color: tokens.status.danger, textDecorationLine: "underline" },
   lockedCard: {
     alignItems: "center",
     gap: tokens.space.sm,
-    paddingVertical: tokens.space.xxl,
-    paddingHorizontal: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
+    padding: tokens.space.xl,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
   },
-  lockedGlyph: { fontSize: 28, lineHeight: 34 },
   lockedTitle: { color: tokens.text.primary },
   lockedText: { textAlign: "center" },
-  list: { gap: tokens.space.sm },
-  listLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
   gameRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
-  gameRowHover: { backgroundColor: tokens.bg.elevated },
   gameCover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
+    backgroundColor: tokens.bg.elevated,
   },
-  gameCoverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  gameCoverGlyph: { fontSize: 20 },
+  gameCoverImage: { width: COVER, height: COVER },
   gameText: { flex: 1, minWidth: 0, gap: 2 },
   gameTitle: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  chevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl * 1.2,
-    paddingHorizontal: tokens.space.sm,
-  },
   addBtn: {
-    minWidth: 64,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
     paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
   },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
-  addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
+  addBtnPressed: { backgroundColor: tokens.accent.muted },
+  addLabel: { fontSize: 10, lineHeight: 14 },
 });

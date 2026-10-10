@@ -6,8 +6,8 @@
 // inert with no add button.
 
 import type { ScoreReactionSummary } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
+import { Text, tokens } from "../../theme";
 
 export interface ScoreReactionsProps {
   reactions: ScoreReactionSummary[];
@@ -77,7 +77,6 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.elevated,
@@ -101,7 +100,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: tokens.radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.subtle,
   },

@@ -1,6 +1,6 @@
 import type { GameScoreDirection } from "@workshop/shared/games";
-import { Button, Chip, Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Button, Chip, Text, tokens } from "../../theme";
 import { ROLE_TAG, SCORE_COPY } from "../lib/scoreCheck";
 import type { ScoreCheck } from "../lib/useScoreCheck";
 
@@ -266,7 +266,6 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
     borderWidth: 1,
     borderColor: tokens.status.warning,
     backgroundColor: tokens.bg.surface,

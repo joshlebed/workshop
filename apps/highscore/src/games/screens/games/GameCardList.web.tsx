@@ -121,8 +121,6 @@ function stripButtonRole(attributes: unknown): Record<string, unknown> {
 
 const styles = StyleSheet.create({
   listContent: {
-    paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: homeLayout.contentTopGap,
     paddingBottom: homeLayout.bottomInset,
   },
 });
