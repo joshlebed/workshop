@@ -200,4 +200,27 @@ if any of these ships), and none bumps `app.json` `version`.
 
 ### Owner feedback
 
-_Pending._ Entries 4+ record the keep/scrap calls per axis above.
+Entries 4+ record the keep/scrap calls per axis above.
+
+## 4. Home bottom action bar — `+ GAME` / `PASTE SCORE`
+
+**Decision: keep. The final design incorporates a bottom bar on home with the two writes —
+edit the game list and paste a score.** Owner picked this out of **B — Scoreboard** on
+2026-10-10 ("I like these buttons").
+
+What it is, concretely (B, `apps/highscore/src/games/screens/GamesHome.tsx`, the `actions`
+row): a bar pinned to the bottom safe area with a secondary `+ GAME` button (opens the
+add-game sheet) and a primary pink `PASTE SCORE` button (pushes `/share`, the recognise-and-post
+flow). It is the "only two writes, always reachable, one-handed" idea — the rest of home is
+read-only. Hidden on the empty state, where the empty-state card owns those actions.
+
+Why it beats the alternatives on the table:
+
+- A puts `POST` on every row (fine for a specific game, but the paste-anything write has no
+  home) and reaches add-game from the header `+`.
+- C has a bottom bar too (Board · PASTE · Friends) but spends one of its three slots on
+  navigation. The owner's pick is the _write-only_ bar: no tabs in it.
+
+Carry-forward note for whichever model ships: the bar is independent of the home-row and
+day-control choices, so it ports onto any of A/B/C. Cost is one ~64px row; B's open question
+about collapsing unplayed games on an empty today is unaffected.
