@@ -38,6 +38,8 @@ export function GameCardList({
   onReorder,
   refreshing,
   onRefresh,
+  footer,
+  bottomInset = 0,
 }: GameCardListProps) {
   return (
     <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
@@ -50,7 +52,11 @@ export function GameCardList({
         onReorder={({ from, to }: ReorderableListReorderEvent) =>
           onReorder({ fromIndex: from, toIndex: to })
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: homeLayout.bottomInset + bottomInset },
+        ]}
+        ListFooterComponent={footer ?? null}
         testID="games-home-list"
         autoscrollThreshold={REORDER_AUTOSCROLL.threshold}
         autoscrollSpeedScale={REORDER_AUTOSCROLL.speedScale}
