@@ -23,19 +23,19 @@
   },
   "dependencies": {
     "@workshop/shared": "workspace:*",
-    "expo-apple-authentication": "~55.0.13",
-    "expo-auth-session": "~55.0.16",
-    "expo-constants": "55.0.16",
-    "expo-crypto": "~55.0.15",
-    "expo-secure-store": "55.0.14",
-    "expo-web-browser": "~55.0.16",
+    "expo-apple-authentication": "~57.0.1",
+    "expo-auth-session": "~57.0.9",
+    "expo-constants": "57.0.14",
+    "expo-crypto": "~57.0.2",
+    "expo-secure-store": "57.0.1",
+    "expo-web-browser": "~57.0.2",
     "react": "19.2.0",
     "react-native": "0.83.6",
     "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/react": "19.2.14",
-    "expo": "55.0.24",
+    "expo": "57.0.16",
     "typescript": "5.9.3",
     "vitest": "2.1.9"
   }
