@@ -3,7 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { Avatar, Button, Sheet, Text, tokens, useToast } from "@workshop/ui";
+import { useToast } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -11,6 +11,7 @@ import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "reac
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
 import { PRIVACY_ROUTE, SUPPORT_ROUTE, TERMS_ROUTE } from "../lib/publicRoutes";
+import { Avatar, Button, Sheet, Text, tokens } from "../theme";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -359,7 +360,7 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   pressed: { backgroundColor: tokens.bg.elevated },
   badge: {
@@ -386,9 +387,9 @@ const impersonationStyles = StyleSheet.create({
   form: { gap: tokens.space.sm },
   select: {
     minHeight: 44,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 10,
     backgroundColor: tokens.bg.surface,
@@ -407,9 +408,9 @@ const impersonationStyles = StyleSheet.create({
   },
   optionList: {
     maxHeight: 220,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.subtle,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     backgroundColor: tokens.bg.surface,
   },
   option: {

@@ -15,20 +15,10 @@ import {
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
-import {
-  Avatar,
-  Button,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics, useToast } from "@workshop/ui";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Avatar, Button, IconButton, PixelIcon, Screen, Text, tokens } from "../../theme";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
@@ -248,17 +238,16 @@ export default function FriendsScreen() {
   return (
     <Screen testID="friends-screen">
       <View style={styles.headerNav}>
-        <Pressable
-          accessibilityRole="button"
+        <IconButton
           accessibilityLabel="Back"
           onPress={() => goBack(routes.home)}
           testID="friends-back"
-          hitSlop={10}
-          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>‹</Text>
-        </Pressable>
-        <Text variant="title">Friends</Text>
+          <PixelIcon name="arrow-left" color={tokens.text.primary} />
+        </IconButton>
+        <Text variant="heading" style={styles.navTitle}>
+          FRIENDS
+        </Text>
         <View style={styles.navButton} />
       </View>
 
@@ -268,7 +257,7 @@ export default function FriendsScreen() {
           <Text variant="heading" style={styles.inviteTitle}>
             Add a friend
           </Text>
-          <Text variant="caption" tone="muted">
+          <Text variant="caption" tone="secondary">
             {Platform.OS === "web"
               ? "Generate a link and send it however you like. Whoever opens it and taps Accept becomes your friend."
               : "Generate a link and share it. Whoever opens it and taps Accept becomes your friend."}
@@ -311,11 +300,11 @@ export default function FriendsScreen() {
                   hitSlop={8}
                   style={({ pressed }) => [pressed && styles.resetPressed]}
                 >
-                  <Text variant="caption" tone="muted" style={styles.resetLabel}>
+                  <Text variant="caption" tone="secondary" style={styles.resetLabel}>
                     {resetMutation.isPending ? "Resetting…" : "Reset link"}
                   </Text>
                 </Pressable>
-                <Text variant="caption" tone="muted">
+                <Text variant="caption" tone="secondary">
                   Makes the current link stop working.
                 </Text>
               </View>
@@ -326,7 +315,7 @@ export default function FriendsScreen() {
         {/* Pending inbound requests. */}
         {inbound.length > 0 ? (
           <View style={styles.list} testID="friend-requests-section">
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
+            <Text variant="caption" tone="secondary" style={styles.listLabel}>
               {inbound.length === 1 ? "1 friend request" : `${inbound.length} friend requests`}
             </Text>
             {inbound.map((request) => {
@@ -351,7 +340,7 @@ export default function FriendsScreen() {
                     <Text variant="label" numberOfLines={1} style={styles.friendName}>
                       {request.displayName?.trim() || "Someone"}
                     </Text>
-                    <Text variant="caption" tone="muted" numberOfLines={1}>
+                    <Text variant="caption" tone="secondary" numberOfLines={1}>
                       Wants to be friends · {formatRelative(request.requestedAt)}
                     </Text>
                   </View>
@@ -400,24 +389,20 @@ export default function FriendsScreen() {
           </View>
         ) : friendsQuery.isError ? (
           <View style={styles.center}>
-            <EmptyState
-              title="Couldn't load friends"
-              description={errorMessage(friendsQuery.error)}
-              action={
-                <Button label="Retry" variant="secondary" onPress={() => friendsQuery.refetch()} />
-              }
-            />
+            <Text variant="heading">COULDN'T LOAD</Text>
+            <Text tone="secondary">{errorMessage(friendsQuery.error)}</Text>
+            <Button label="Retry" variant="secondary" onPress={() => friendsQuery.refetch()} />
           </View>
         ) : friends.length === 0 ? (
           <View style={styles.center}>
-            <EmptyState
-              title="No friends yet"
-              description="Share an invite link to start comparing daily scores with friends."
-            />
+            <Text variant="heading">NO FRIENDS YET</Text>
+            <Text tone="secondary" style={styles.centerText}>
+              Share an invite link to start comparing daily scores with friends.
+            </Text>
           </View>
         ) : (
           <View style={styles.list}>
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
+            <Text variant="caption" tone="secondary" style={styles.listLabel}>
               {friends.length === 1 ? "1 friend" : `${friends.length} friends`}
             </Text>
             {friends.map((friend) => (
@@ -440,7 +425,7 @@ export default function FriendsScreen() {
                   <Text variant="label" numberOfLines={1} style={styles.friendName}>
                     {friend.displayName?.trim() || "Someone"}
                   </Text>
-                  <Text variant="caption" tone="muted" numberOfLines={1}>
+                  <Text variant="caption" tone="secondary" numberOfLines={1}>
                     Friends since {formatRelative(friend.friendsSince)}
                   </Text>
                 </View>
@@ -462,7 +447,7 @@ export default function FriendsScreen() {
         {/* People you may know — friends of friends, most-connected first. */}
         {mutuals.length > 0 ? (
           <View style={styles.list} testID="friend-mutuals-section">
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
+            <Text variant="caption" tone="secondary" style={styles.listLabel}>
               People you may know
             </Text>
             {mutuals.map((mutual) => {
@@ -488,7 +473,7 @@ export default function FriendsScreen() {
                     <Text variant="label" numberOfLines={1} style={styles.friendName}>
                       {mutual.displayName?.trim() || "Someone"}
                     </Text>
-                    <Text variant="caption" tone="muted" numberOfLines={1}>
+                    <Text variant="caption" tone="secondary" numberOfLines={1}>
                       {mutualLine(mutual)}
                     </Text>
                   </View>
@@ -531,20 +516,18 @@ const styles = StyleSheet.create({
   headerNav: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
+    paddingHorizontal: tokens.space.xs,
+    paddingVertical: tokens.space.xs,
   },
   navButton: {
     width: 40,
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
+  navTitle: { flex: 1, textAlign: "center" },
+  centerText: { textAlign: "center" },
   body: {
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
@@ -553,8 +536,8 @@ const styles = StyleSheet.create({
   inviteCard: {
     gap: tokens.space.md,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.surface,
   },
@@ -569,7 +552,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.canvas,
@@ -598,8 +581,8 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.surface,
   },
@@ -609,7 +592,7 @@ const styles = StyleSheet.create({
   removeBtn: {
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 6,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   removeBtnPressed: { backgroundColor: `${tokens.status.danger}1A` },
   removeLabel: {
@@ -620,9 +603,9 @@ const styles = StyleSheet.create({
   acceptBtn: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: `${tokens.accent.default}55`,
   },
   acceptBtnHover: { backgroundColor: `${tokens.accent.default}33` },
@@ -634,11 +617,11 @@ const styles = StyleSheet.create({
   addBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: `${tokens.accent.default}55`,
   },
   addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
@@ -652,11 +635,11 @@ const styles = StyleSheet.create({
   requestedPill: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   requestedText: {
     fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.muted,
+    color: tokens.text.secondary,
   },
 });
