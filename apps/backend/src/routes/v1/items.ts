@@ -114,7 +114,31 @@ export const __test = {
   clearLinkPreviewContent,
   linkPreviewToContent,
   mergeLinkPreviewContent,
+  validateItemWriteContent,
 };
+
+function validateItemWriteContent(kind: ItemKind, content: Record<string, unknown>): ItemContent {
+  try {
+    // Older clients attach link previews to plain checklist items. Accept only
+    // the known preview shape, then keep the plain item's empty-content contract.
+    // The URL, title, note and tags live outside content and are preserved.
+    if (kind === "plain" && content.source === "link_preview") {
+      validateContent("link", content);
+      return {};
+    }
+    return validateContent(kind, content);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      logger.warn("item content validation failed", {
+        kind: "item_content_invalid",
+        itemKind: kind,
+        // Do not log values, URLs, or unrecognized keys from the request.
+        issues: error.issues.map(({ code, path }) => ({ code, path })),
+      });
+    }
+    throw error;
+  }
+}
 
 // --- Shape helpers ---
 
@@ -437,7 +461,7 @@ export async function createItem(
     let content: ItemContent = {};
     if (data.content !== undefined) {
       try {
-        content = validateContent(kind, data.content);
+        content = validateItemWriteContent(kind, data.content);
       } catch (e) {
         if (e instanceof UnknownItemKindError) throw new ItemContentError([{ message: e.message }]);
         const zerr = e as { issues?: unknown };
@@ -577,7 +601,7 @@ itemRoutes.patch("/:id", requireItemMember, async (c) => {
   if (parsed.data.kind !== undefined) patch.kind = parsed.data.kind;
   if (parsed.data.content !== undefined) {
     try {
-      patch.content = validateContent(nextKind, parsed.data.content);
+      patch.content = validateItemWriteContent(nextKind, parsed.data.content);
     } catch (e) {
       const zerr = e as { issues?: unknown; message?: string };
       return err(c, "VALIDATION", "invalid content for item kind", zerr.issues ?? zerr.message);

@@ -982,3 +982,13 @@ pnpm run test          # ~2s
 pnpm run knip          # ~2s — blocks CI: an export with no consumer in the same PR fails Quality
 cd infra && terraform fmt -check -recursive && terraform validate
 ```
+
+## Plain items with URLs
+
+Plain checklist items can have a top-level `url`, but `content` must remain `{}`. The add
+form may fetch a link preview for display; only attach that metadata when the resolved
+item kind is `link`. Attaching it to `plain` makes saving fail only after the preview
+arrives. Backend `validateItemWriteContent` accepts the strict `link_preview` shape from
+older clients and discards that metadata on plain creates/edits, preserving the URL.
+Other invalid content stays rejected; `item_content_invalid` logs schema paths/codes
+without request values.

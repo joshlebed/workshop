@@ -202,12 +202,14 @@ export default function AddItem() {
       previewQuery.data?.preview && normalizedUrl !== null && trimmedUrl === debouncedUrl.trim()
         ? previewQuery.data.preview
         : null;
-    const content = preview ? buildLinkContent(preview, isGameList) : undefined;
     const persistedUrl =
       trimmedUrl.length === 0
         ? undefined
         : (normalizedUrl ?? normalizeExternalUrl(trimmedUrl) ?? trimmedUrl);
     const resolvedKind: ItemKind = itemKind ?? (persistedUrl ? "link" : "plain");
+    // Plain items can carry a URL, but their content must stay empty.
+    const content =
+      resolvedKind === "link" && preview ? buildLinkContent(preview, isGameList) : undefined;
     const body: CreateItemRequest = {
       kind: resolvedKind,
       title: trimmedTitle,
