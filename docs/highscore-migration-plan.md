@@ -114,6 +114,12 @@ Workshop.dev iOS (exists) → EAS project workshop          → apps/workshop
 
 ### Phase 5 — Workshop cutover: remove games, point users at HighScore
 
+> **Status (2026-10-23):** App Store listing live (`id6805206753`, v1.0.1). Cutover PR shipped
+> as a date gate — countdown banner now, hard hand-off at `WORKSHOP_GAMES_SUNSET_AT`
+> (2026-10-31 07:00Z) — plus a backend 410 for Workshop clients on games routes and 301s for
+> the old `/g/*` Pages routes. Remaining: PR-10 (delete `src/legacyGames`, the gate, the games
+> e2e specs) ~1 week after the sunset.
+
 - Existing Workshop users first learn about HighScore here: once the App Store listing
   is live, the Workshop games tab is replaced (via OTA) with a **persistent** "Daily
   games moved to HighScore" surface deep-linking to the App Store listing / web app —

@@ -89,6 +89,7 @@ import { recordShareExtensionScore } from "../../lib/userFlags.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
+import { workshopGamesSunset } from "../../middleware/workshop-games-sunset.js";
 import { handleScorePreviewV2, handleScoreUpsertV2, registerGameTeachRoutes } from "./gameTeach.js";
 import { resolveLinkPreview } from "./link-preview.js";
 
@@ -339,6 +340,8 @@ gameRoutes.use("*", async (c, next) => {
   }
   await next();
 });
+// Workshop → HighScore cutover: Workshop clients get 410 from the sunset date.
+gameRoutes.use("*", workshopGamesSunset());
 gameRoutes.use("*", requireAuth);
 
 gameRoutes.get("/", async (c) => {

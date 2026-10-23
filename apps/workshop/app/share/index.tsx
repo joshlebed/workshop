@@ -16,7 +16,9 @@ import {
   pickSuggestedGameTarget,
   type ShareGameTarget,
 } from "../../src/legacyGames/lib/shareScoreDetection";
-import { LEGACY_GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
+import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
+import { HANDOFF_IS_NATIVE, openHighScore } from "../../src/lib/highscoreHandoff";
+import { useLegacyGamesActive } from "../../src/lib/useLegacyGamesActive";
 
 interface SharedPayload {
   url: string | null;
@@ -36,6 +38,13 @@ export default function ShareHome() {
   const resultlessShare = !!detection && isResultlessShare(payloadText);
   const router = useRouter();
   const { token } = useAuth();
+  // Games still live here until the HighScore sunset; afterwards every games
+  // affordance on this screen hands the payload to HighScore instead.
+  const legacyGames = useLegacyGamesActive();
+  const gamesMoved = GAMES_TAB_ENABLED && !legacyGames;
+  const onPostInHighScore = () => {
+    void openHighScore({ share: payload });
+  };
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -43,24 +52,17 @@ export default function ShareHome() {
   const myGamesQuery = useQuery({
     queryKey: queryKeys.games.mine(today),
     queryFn: () => fetchMyGames(today, token),
-    enabled: LEGACY_GAMES_TAB_ENABLED && !!token && !!detection,
+    enabled: legacyGames && !!token && !!detection,
     staleTime: 30_000,
   });
 
   const suggestedGameTarget = useMemo(
-    () =>
-      LEGACY_GAMES_TAB_ENABLED
-        ? pickSuggestedGameTarget(detection, myGamesQuery.data?.games ?? [])
-        : null,
-    [detection, myGamesQuery.data],
+    () => (legacyGames ? pickSuggestedGameTarget(detection, myGamesQuery.data?.games ?? []) : null),
+    [detection, myGamesQuery.data, legacyGames],
   );
 
   const suggestionLoading =
-    !!detection &&
-    LEGACY_GAMES_TAB_ENABLED &&
-    !!token &&
-    myGamesQuery.isPending &&
-    !suggestedGameTarget;
+    !!detection && legacyGames && !!token && myGamesQuery.isPending && !suggestedGameTarget;
 
   const submitGameSuggestion = useMutation({
     // No My Games row yet → find-or-create the catalog game from its
@@ -100,8 +102,9 @@ export default function ShareHome() {
     ? (`/share/pick-game${shareQuery}` as `/share/pick-game?${string}`)
     : "/share/pick-game";
   // Resultless shares need a paste field — the Games picker has one and is the
-  // only current score-posting surface.
-  const pasteTarget = LEGACY_GAMES_TAB_ENABLED ? gamesTarget : listTarget;
+  // only current score-posting surface. (Post-sunset `/share/pick-game` is the
+  // HighScore hand-off, which is exactly where a paste should go.)
+  const pasteTarget = GAMES_TAB_ENABLED ? gamesTarget : listTarget;
 
   return (
     <Screen style={styles.root} testID="share-home">
@@ -126,7 +129,10 @@ export default function ShareHome() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        {detection ? (
+        {detection && gamesMoved ? (
+          <MovedScoreSuggestion label={detection.gameLabel} onPost={onPostInHighScore} />
+        ) : null}
+        {detection && !gamesMoved ? (
           <DetectedScoreSuggestion
             label={detection.gameLabel}
             suggestion={suggestedGameTarget}
@@ -142,7 +148,7 @@ export default function ShareHome() {
         ) : null}
 
         <View style={styles.optionGroup}>
-          {LEGACY_GAMES_TAB_ENABLED && detection ? (
+          {legacyGames && detection ? (
             <GamesActionRow onPress={() => router.replace(gamesTarget)} />
           ) : null}
           <ActionRow
@@ -153,9 +159,10 @@ export default function ShareHome() {
             glyph="+"
             onPress={() => router.replace(listTarget)}
           />
-          {LEGACY_GAMES_TAB_ENABLED && !detection ? (
+          {legacyGames && !detection ? (
             <GamesActionRow onPress={() => router.replace(gamesTarget)} />
           ) : null}
+          {gamesMoved && !detection ? <HighScoreActionRow onPress={onPostInHighScore} /> : null}
         </View>
       </ScrollView>
     </Screen>
@@ -246,6 +253,46 @@ function GamesActionRow({ onPress }: { onPress: () => void }) {
       glyph="🏆"
       onPress={onPress}
     />
+  );
+}
+
+function HighScoreActionRow({ onPress }: { onPress: () => void }) {
+  return (
+    <ActionRow
+      testID="share-home-open-highscore"
+      eyebrow="Games"
+      title="Post a score in HighScore"
+      subtitle={
+        HANDOFF_IS_NATIVE
+          ? "Daily games moved to the HighScore app. Opens it with this share."
+          : "Daily games moved to highscore.live. Opens it with this share."
+      }
+      glyph="🕹️"
+      onPress={onPress}
+    />
+  );
+}
+
+// Post-sunset twin of `DetectedScoreSuggestion`: same detection, but the
+// one-tap post goes to HighScore (its /share picker takes the same payload).
+function MovedScoreSuggestion({ label, onPost }: { label: string; onPost: () => void }) {
+  return (
+    <View style={styles.suggestionBox} testID="share-home-detection-moved">
+      <View style={styles.suggestionHeader}>
+        <View style={styles.suggestionText}>
+          <Text variant="label">{label} score detected</Text>
+          <Text variant="caption" tone="muted" numberOfLines={2}>
+            Daily games moved to HighScore — post it there in one tap.
+          </Text>
+        </View>
+        <Button
+          label={HANDOFF_IS_NATIVE ? "Post in HighScore" : "Post"}
+          size="md"
+          onPress={onPost}
+          testID="share-home-post-highscore"
+        />
+      </View>
+    </View>
   );
 }
 

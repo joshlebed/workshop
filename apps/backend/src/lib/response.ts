@@ -8,6 +8,7 @@ type ErrorCode =
   | "VALIDATION"
   | "RATE_LIMITED"
   | "CONFLICT"
+  | "GONE"
   | "INTERNAL";
 
 const STATUS: Record<ErrorCode, ContentfulStatusCode> = {
@@ -17,6 +18,7 @@ const STATUS: Record<ErrorCode, ContentfulStatusCode> = {
   VALIDATION: 400,
   RATE_LIMITED: 429,
   CONFLICT: 409,
+  GONE: 410,
   INTERNAL: 500,
 };
 

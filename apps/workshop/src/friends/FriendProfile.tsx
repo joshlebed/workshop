@@ -31,6 +31,8 @@ import { localDateKey } from "../legacyGames/lib/gameDate";
 import { summarizeGameScoreBody } from "../legacyGames/lib/scoresSummary";
 import { useClientRuntime } from "../lib/clientRuntime";
 import { goBack } from "../lib/goBack";
+import { useLegacyGamesActive } from "../lib/useLegacyGamesActive";
+import { GamesMovedCard } from "../screens/gamesMoved/GamesMovedCard";
 
 /**
  * Friend profile page — `/friends/:userId`. Shows the relationship state with
@@ -79,6 +81,7 @@ export default function FriendProfileScreen() {
 
   const todayKey = localDateKey();
   const [addingGameIds, setAddingGameIds] = useState<string[]>([]);
+  const legacyGamesActive = useLegacyGamesActive();
 
   const profileQuery = useQuery({
     queryKey: queryKeys.friends.profile(userId, todayKey),
@@ -316,8 +319,10 @@ export default function FriendProfileScreen() {
               />
             ) : null}
 
-            {/* Games. */}
-            {profile.games === null ? (
+            {/* Games. Post-sunset these live in HighScore — point there. */}
+            {!legacyGamesActive ? (
+              <GamesMovedCard name={name} isSelf={isSelf} />
+            ) : profile.games === null ? (
               <View style={styles.lockedCard} testID="friend-profile-locked">
                 <Text style={styles.lockedGlyph}>🎮</Text>
                 <Text variant="label" style={styles.lockedTitle}>

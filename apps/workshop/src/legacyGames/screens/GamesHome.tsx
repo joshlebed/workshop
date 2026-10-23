@@ -91,9 +91,15 @@ function turnoutLine(playedCount: number, viewerHasPlayed: boolean, viewingToday
 export interface GamesHomeProps {
   headerLeft?: ReactNode;
   headerTrailing?: ReactNode;
+  /** Rendered between the header and the body (HighScore sunset countdown). */
+  banner?: ReactNode;
 }
 
-export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHomeProps) {
+export function GamesHome({
+  headerLeft = null,
+  headerTrailing = null,
+  banner = null,
+}: GamesHomeProps) {
   const { token, user, routes } = useClientRuntime();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -519,6 +525,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           </>
         }
       />
+      {banner}
 
       <View style={styles.body}>
         {gamesQuery.isPending ? (

@@ -30,3 +30,14 @@ export type GameScoreEntrySource = (typeof GAME_SCORE_ENTRY_SOURCES)[number];
 export const USER_FLAG_KEYS = {
   shareExtensionScore: "games.share-extension-score",
 } as const;
+
+// Workshop → HighScore games cutover. Workshop's frozen Games UI keeps working
+// until this instant (midnight Pacific, 2026-10-31), then every Workshop games
+// surface becomes a hand-off to HighScore and the backend answers Workshop
+// clients' games calls with 410. One constant drives the client gate, the
+// backend gate, and the pre-sunset banner copy so the three can't disagree.
+export const WORKSHOP_GAMES_SUNSET_AT = "2026-10-31T07:00:00Z";
+export const HIGHSCORE_WEB_URL = "https://highscore.live";
+export const HIGHSCORE_APP_STORE_URL =
+  "https://apps.apple.com/us/app/highscore-daily-games/id6805206753";
+export const HIGHSCORE_APP_SCHEME = "highscore";

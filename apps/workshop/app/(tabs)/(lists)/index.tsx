@@ -40,7 +40,7 @@ import {
 import { HeaderActivityButton } from "../../../src/components/HeaderActivityButton";
 import { ProfileMenu } from "../../../src/components/ProfileMenu";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { LEGACY_GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
+import { GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -252,7 +252,7 @@ export default function Home() {
   return (
     <Screen style={styles.root}>
       <HomeHeader
-        left={LEGACY_GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
+        left={GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
         right={
           <>
             <HeaderActivityButton
