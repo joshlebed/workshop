@@ -2,12 +2,13 @@ import { tokens } from "@workshop/ui";
 import { Tabs, usePathname, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Text as RNText } from "react-native";
-import { GAMES_TAB_ENABLED, isLegacyGamesActive } from "../../src/lib/featureFlags";
+import { isLegacyGamesActive } from "../../src/lib/featureFlags";
 import {
   getPreferredHomeTab,
   homeTabForPathname,
   setPreferredHomeTab,
 } from "../../src/lib/navigationPreferences";
+import { useLegacyGamesPhase } from "../../src/lib/useLegacyGamesPhase";
 
 // Top-level Lists / Games switch (spec §4). The Lists tab is the existing
 // app — the whole pre-Games stack nests under the `(lists)` group, so every
@@ -18,9 +19,10 @@ import {
 // shell renders exactly like the pre-tabs app. Flag on: both web and native
 // hide the bottom tab bar and render the inline Lists / Games switch at the
 // top of their screen headers, next to the existing action icons. After the
-// HighScore sunset the Games tab stays registered (it renders the hand-off
-// screen) but the remembered-home-tab redirect to /games stops — launching
-// into a "your games moved" wall every time would be hostile.
+// HighScore sunset ("moved") the Games tab stays registered (it renders the
+// hand-off screen) but the remembered-home-tab redirect to /games stops —
+// launching into a "your games moved" wall every time would be hostile. Two
+// weeks later ("gone") the tab is unlinked, same as flag off.
 // Uses the static `tokens` (not `useTheme()`) for backgrounds, matching the
 // root layout's Stack `contentStyle` — mixing the theme-resolved tokens here
 // paints a light scene behind dark screen content in light-preferring
@@ -28,6 +30,7 @@ import {
 export default function TabsLayout() {
   const router = useRouter();
   const pathname = usePathname();
+  const phase = useLegacyGamesPhase();
   const [preferenceReady, setPreferenceReady] = useState(!isLegacyGamesActive());
 
   useEffect(() => {
@@ -74,7 +77,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="games"
         options={
-          GAMES_TAB_ENABLED
+          phase !== "gone"
             ? {
                 title: "Games",
                 tabBarIcon: ({ color }) => <RNText style={{ color, fontSize: 17 }}>◆</RNText>,

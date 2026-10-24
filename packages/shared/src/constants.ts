@@ -31,12 +31,18 @@ export const USER_FLAG_KEYS = {
   shareExtensionScore: "games.share-extension-score",
 } as const;
 
-// Workshop → HighScore games cutover. Workshop's frozen Games UI keeps working
-// until this instant (midnight Pacific, 2026-10-31), then every Workshop games
-// surface becomes a hand-off to HighScore and the backend answers Workshop
-// clients' games calls with 410. One constant drives the client gate, the
-// backend gate, and the pre-sunset banner copy so the three can't disagree.
+// Workshop → HighScore games cutover, in three dated phases (midnight Pacific):
+//   active → until WORKSHOP_GAMES_SUNSET_AT: Workshop's frozen Games UI works,
+//            under a countdown banner.
+//   moved  → from the sunset: every Workshop games surface is a hand-off to
+//            HighScore, and the backend answers Workshop clients' games calls
+//            with 410.
+//   gone   → from WORKSHOP_GAMES_REMOVED_AT (two weeks later): the Games tab
+//            and switch disappear; only link / share hand-offs remain.
+// One set of constants drives the client phases, the backend gate, and the
+// banner copy so they can't disagree.
 export const WORKSHOP_GAMES_SUNSET_AT = "2026-10-31T07:00:00Z";
+export const WORKSHOP_GAMES_REMOVED_AT = "2026-11-14T07:00:00Z";
 export const HIGHSCORE_WEB_URL = "https://highscore.live";
 export const HIGHSCORE_APP_STORE_URL =
   "https://apps.apple.com/us/app/highscore-daily-games/id6805206753";

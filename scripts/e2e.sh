@@ -30,9 +30,10 @@ export EXPO_PUBLIC_API_URL="$BACKEND_URL"
 # Games tab (G0) is on for e2e — don't rely on the __DEV__ fallback.
 export EXPO_PUBLIC_ENABLE_GAMES="${EXPO_PUBLIC_ENABLE_GAMES:-1}"
 # The Workshop games specs exercise the frozen legacy Games UI, which the
-# HighScore sunset (WORKSHOP_GAMES_SUNSET_AT) replaces with a hand-off screen.
-# Pin the sunset off so they keep passing until PR-10 deletes them.
-export EXPO_PUBLIC_LEGACY_GAMES_SUNSET_AT="${EXPO_PUBLIC_LEGACY_GAMES_SUNSET_AT:-never}"
+# HighScore cutover (WORKSHOP_GAMES_SUNSET_AT / _REMOVED_AT) replaces with a
+# hand-off and then removes. Pin the "active" phase so they keep passing until
+# PR-10 deletes them.
+export EXPO_PUBLIC_LEGACY_GAMES_PHASE="${EXPO_PUBLIC_LEGACY_GAMES_PHASE:-active}"
 # Stub OAuth audiences so the sign-in screen treats Apple + Google as
 # available. Tests stub the SDK callbacks directly — the values are never
 # sent to the real providers.

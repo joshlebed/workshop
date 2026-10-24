@@ -17,8 +17,8 @@ import {
   type ShareGameTarget,
 } from "../../src/legacyGames/lib/shareScoreDetection";
 import { GAMES_TAB_ENABLED } from "../../src/lib/featureFlags";
-import { HANDOFF_IS_NATIVE, openHighScore } from "../../src/lib/highscoreHandoff";
-import { useLegacyGamesActive } from "../../src/lib/useLegacyGamesActive";
+import { HANDOFF_PLATFORM, openHighScore } from "../../src/lib/highscoreHandoff";
+import { useLegacyGamesPhase } from "../../src/lib/useLegacyGamesPhase";
 
 interface SharedPayload {
   url: string | null;
@@ -40,7 +40,7 @@ export default function ShareHome() {
   const { token } = useAuth();
   // Games still live here until the HighScore sunset; afterwards every games
   // affordance on this screen hands the payload to HighScore instead.
-  const legacyGames = useLegacyGamesActive();
+  const legacyGames = useLegacyGamesPhase() === "active";
   const gamesMoved = GAMES_TAB_ENABLED && !legacyGames;
   const onPostInHighScore = () => {
     void openHighScore({ share: payload });
@@ -263,9 +263,9 @@ function HighScoreActionRow({ onPress }: { onPress: () => void }) {
       eyebrow="Games"
       title="Post a score in HighScore"
       subtitle={
-        HANDOFF_IS_NATIVE
-          ? "Daily games moved to the HighScore app. Opens it with this share."
-          : "Daily games moved to highscore.live. Opens it with this share."
+        HANDOFF_PLATFORM === "web"
+          ? "Games moved to highscore.live."
+          : "Games moved to the HighScore app."
       }
       glyph="🕹️"
       onPress={onPress}
@@ -282,11 +282,11 @@ function MovedScoreSuggestion({ label, onPost }: { label: string; onPost: () => 
         <View style={styles.suggestionText}>
           <Text variant="label">{label} score detected</Text>
           <Text variant="caption" tone="muted" numberOfLines={2}>
-            Daily games moved to HighScore — post it there in one tap.
+            Games moved to HighScore.
           </Text>
         </View>
         <Button
-          label={HANDOFF_IS_NATIVE ? "Post in HighScore" : "Post"}
+          label="Post in HighScore"
           size="md"
           onPress={onPost}
           testID="share-home-post-highscore"

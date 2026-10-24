@@ -22,13 +22,15 @@ Personal monorepo. Two Expo apps on one backend: `apps/workshop` (published as
 and `apps/highscore` (**HighScore**, `highscore.live`) owns daily games. Both build web + iOS
 from one component tree; shared code lives in `packages/*`. HighScore owns its Games UI in
 `apps/highscore/src/games/`. Workshop's legacy Games UI is a frozen snapshot in
-`apps/workshop/src/legacyGames/` that **sunsets at `WORKSHOP_GAMES_SUNSET_AT`**
-(`@workshop/shared/constants`, 2026-10-31 07:00Z): before that instant Workshop renders it
-under a countdown banner, after it every Workshop games route is the "moved to HighScore"
-hand-off (`src/screens/gamesMoved/`) and the backend 410s `X-Workshop-Client: workshop` on
-`/v1/games*` + `/v1/game-share*` (`middleware/workshop-games-sunset.ts`). The snapshot is
-deleted wholesale ~1 week after the sunset (PR-10); only deliberate critical-fix backports may
-change it before then. See `docs/highscore-migration-plan.md`.
+`apps/workshop/src/legacyGames/` on a dated three-phase cutover (`@workshop/shared/constants`):
+**active** until `WORKSHOP_GAMES_SUNSET_AT` (2026-10-31 07:00Z, countdown banner), **moved**
+after it (every Workshop games route is the "moved to HighScore" hand-off in
+`src/screens/gamesMoved/`, App Store-first on iPhone; backend 410s `X-Workshop-Client:
+workshop` on `/v1/games*` + `/v1/game-share*` via `middleware/workshop-games-sunset.ts`), and
+**gone** from `WORKSHOP_GAMES_REMOVED_AT` (2026-11-14 07:00Z, Games tab + switch removed; only
+link/share hand-offs remain). The snapshot is deleted wholesale after that (PR-10); only
+deliberate critical-fix backports may change it before then. See
+`docs/highscore-migration-plan.md`.
 
 ## Stack at a glance
 

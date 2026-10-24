@@ -1,10 +1,11 @@
 import { Button, HomeHeader, InlineTabSwitch, Screen, Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
 import {
-  HANDOFF_IS_NATIVE,
+  HANDOFF_PLATFORM,
   type HighScoreTarget,
   openHighScore,
   openHighScoreAppStore,
+  openHighScoreWeb,
 } from "../../lib/highscoreHandoff";
 
 interface GamesMovedScreenProps {
@@ -17,25 +18,35 @@ interface GamesMovedScreenProps {
 }
 
 /**
- * Post-sunset replacement for every Workshop games surface: a persistent
- * "Daily games moved to HighScore" hand-off. Native tries the HighScore app
- * and falls back to the App Store; web goes to highscore.live. Deliberately
- * not dismissable — this is the one place a Workshop user learns where their
- * games went.
+ * Post-sunset replacement for every Workshop games surface. Pushes the iOS
+ * app first wherever the user is on an iPhone (native build or iOS browser);
+ * desktop / Android get highscore.live. Not dismissable on the Games tab —
+ * it's the one place a Workshop user learns where their games went.
  */
 export function GamesMovedScreen({ target, showTabSwitch, onCancel }: GamesMovedScreenProps) {
   const sharing = !!target?.share;
-  const title = sharing ? "Post this score in HighScore" : "Daily games moved to HighScore";
-  const body = sharing
-    ? "Workshop no longer posts scores. HighScore picks up right where you left off — same account, same games, same friends."
-    : "Your games, scores, streaks, and friends are all in HighScore. Sign in with the same account and everything is already there.";
-  const primaryLabel = HANDOFF_IS_NATIVE
-    ? sharing
-      ? "Post in HighScore"
-      : "Open HighScore"
-    : sharing
-      ? "Post on highscore.live"
-      : "Open highscore.live";
+  const title = sharing ? "Post this in HighScore" : "Games moved to HighScore";
+
+  // Primary = the push. Secondary = the escape hatch for people who already
+  // have the app (native) or who'd rather use the web (iOS browser).
+  let primary: { label: string; onPress: () => void };
+  let secondary: { label: string; onPress: () => void } | null = null;
+  if (HANDOFF_PLATFORM === "ios") {
+    primary = sharing
+      ? { label: "Post in HighScore", onPress: () => void openHighScore(target) }
+      : { label: "Get HighScore on the App Store", onPress: openHighScoreAppStore };
+    secondary = sharing
+      ? { label: "Get the app", onPress: openHighScoreAppStore }
+      : { label: "Already have it? Open HighScore", onPress: () => void openHighScore() };
+  } else if (HANDOFF_PLATFORM === "ios-web") {
+    primary = { label: "Get HighScore on the App Store", onPress: openHighScoreAppStore };
+    secondary = { label: "Use the web version", onPress: () => openHighScoreWeb(target) };
+  } else {
+    primary = {
+      label: sharing ? "Post on highscore.live" : "Open highscore.live",
+      onPress: () => openHighScoreWeb(target),
+    };
+  }
 
   return (
     <Screen style={styles.root} testID="games-moved">
@@ -46,30 +57,28 @@ export function GamesMovedScreen({ target, showTabSwitch, onCancel }: GamesMoved
           {title}
         </Text>
         <Text tone="secondary" style={styles.copy}>
-          {body}
+          Same account. Everything's there.
         </Text>
         <Button
-          label={primaryLabel}
-          onPress={() => {
-            void openHighScore(target);
-          }}
-          testID="games-moved-open"
+          label={primary.label}
+          onPress={primary.onPress}
+          testID="games-moved-primary"
           style={styles.primary}
         />
-        {HANDOFF_IS_NATIVE ? (
+        {secondary ? (
           <Pressable
             accessibilityRole="link"
-            onPress={openHighScoreAppStore}
-            testID="games-moved-app-store"
+            onPress={secondary.onPress}
+            testID="games-moved-secondary"
             hitSlop={8}
           >
             <Text variant="caption" tone="muted" style={styles.link}>
-              Don't have it yet? Get HighScore on the App Store
+              {secondary.label}
             </Text>
           </Pressable>
         ) : (
           <Text variant="caption" tone="muted" style={styles.link}>
-            On an iPhone? HighScore is on the App Store.
+            On iPhone? It's on the App Store.
           </Text>
         )}
         {onCancel ? (
@@ -92,7 +101,7 @@ const styles = StyleSheet.create({
   },
   glyph: { fontSize: 56, lineHeight: 68, textAlign: "center" },
   title: { textAlign: "center" },
-  copy: { textAlign: "center", maxWidth: 360 },
+  copy: { textAlign: "center" },
   primary: { alignSelf: "stretch", marginTop: tokens.space.sm },
   link: { textAlign: "center", textDecorationLine: "underline" },
 });
