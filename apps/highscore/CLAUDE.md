@@ -127,3 +127,18 @@ tunable from workers-og. So the cards carry a 1-day `s-maxage` + 30-day `stale-w
 (`prewarmGameShareCard` in `src/games/lib/prewarmShareCard.ts`). iMessage builds the preview on the sender's
 device, so that fetch lands the crawler on the same colo's warm cache. If you add a new share
 surface, pre-warm its card the same way.
+
+## Posting a score never waits on a round trip
+
+The Post button is open the moment there is text. The server dry run (`useScoreCheck`) is
+advice: "Checking…", a late preview and a wrong-game warning all leave Post enabled, and only
+the server's own "nothing to post" refusal (a bare link or title) holds it — `blocksPosting` in
+`src/games/lib/scoreCheck.ts` is the one place that decides. A post made while a wrong-game
+warning is on screen is sent as `wrongGame.choice: "here"`; a wrong reading is one tap to fix
+from the row. On success every surface (home paste sheet, board, share flow) writes the returned
+score into the cached `GET /v1/games` list through `writePostedScore` (`src/games/lib/postedScore.ts`),
+toasts and navigates at once, and lets the list refetch re-rank in the background — never
+`await invalidateQueries(...)` before the toast or the navigation. The share flow asks for one
+preview (`POST /v1/games/score-preview`), which seeds the per-game check's cache inside its own
+`queryFn`; `useScoreCheck` on that screen gets no game id until that answer is in, so the
+registry's guess at the game can't send a second, identical `scores/preview`.

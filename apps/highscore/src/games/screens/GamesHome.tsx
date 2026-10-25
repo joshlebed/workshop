@@ -66,6 +66,7 @@ import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { daysBack, localDateKey } from "../lib/gameDate";
+import { writePostedScore } from "../lib/postedScore";
 import { prewarmGameShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
 import { scoreLineLabel } from "../lib/scoreCheck";
@@ -414,6 +415,10 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     onSuccess: async (data, { game, extras }) => {
       haptics.medium();
       dismiss();
+      // The card shows the posted row from the cache at once; the refetch
+      // that re-ranks it runs in the background.
+      writePostedScore(queryClient, data.score, user);
+      showToast({ message: "Score posted", tone: "success" });
       const refresh = () =>
         Promise.all([
           queryClient.invalidateQueries({ queryKey: gamesKey }),
@@ -421,8 +426,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
             queryKey: queryKeys.games.leaderboard(game.id, todayKey),
           }),
         ]);
-      await refresh();
-      showToast({ message: "Score posted", tone: "success" });
+      void refresh();
       // A pick that can teach the game does so after the post has landed:
       // the score is already saved whatever comes of it.
       const taught = await teachAfterPost({

@@ -18,6 +18,7 @@ import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { localDateKey } from "../lib/gameDate";
+import { writePostedScore } from "../lib/postedScore";
 import { recognizedGameLabel, recognizedGameTarget } from "../lib/recognition";
 import {
   detectSharedScore,
@@ -49,7 +50,7 @@ export default function PickGame() {
   const entrySource = firstParam(params.via) === "share-extension" ? "share_extension" : "paste";
   const [scoreDraft, setScoreDraft] = useState(sharedPayload);
   const router = useRouter();
-  const { token, routes } = useGamesRuntime();
+  const { token, user, routes } = useGamesRuntime();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
@@ -101,8 +102,16 @@ export default function PickGame() {
   // Teach v2: what the one-tap post will record, and the picker when nothing
   // read the score. Checked against the catalog game even when it is not in
   // My Games yet (posting adds it).
+  //
+  // For a teach account the share preview is the one request: it seeds this
+  // check's cache under the recognised game, so the check only gets a game —
+  // and could only ask for itself — once that answer is in. Before this, the
+  // registry's guess at the game sent a second, identical preview request.
   const check = useScoreCheck({
-    gameId: recognized?.game.id ?? suggestion?.gameId ?? null,
+    gameId:
+      teachAvailable && shared === undefined
+        ? null
+        : (recognized?.game.id ?? suggestion?.gameId ?? null),
     text: scoreDraft,
     periodKey: today,
     entry: "share",
@@ -123,9 +132,12 @@ export default function PickGame() {
     },
     onSuccess: async ({ result, gameId }, target) => {
       haptics.medium();
-      await queryClient.invalidateQueries({ queryKey: ["games"] });
+      // Home shows the posted row from the cache at once; the refetch that
+      // re-ranks it runs behind the navigation, not in front of it.
+      writePostedScore(queryClient, result.score, user);
       showToast({ message: "Score posted", tone: "success" });
       router.replace(routes.home as Href);
+      void queryClient.invalidateQueries({ queryKey: ["games"] });
       // A pick that can teach the game does so after the post has landed.
       const taught = await teachAfterPost({
         gameId,
