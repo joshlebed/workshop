@@ -88,6 +88,25 @@ describe("applyPostedScore", () => {
     expect(entries[1]?.reactions).toHaveLength(1);
   });
 
+  it("takes the server's standings for the game outright when the post returned them", () => {
+    const serverMine = { ...friend, userId: "me", displayName: "Josh", scoreValue: 944, rank: 1 };
+    const standings = {
+      periodKey: "2026-10-25",
+      entries: [serverMine, { ...friend, rank: 2 }],
+      viewerHasPlayed: true,
+      viewerStreak: 3,
+    };
+    const out = applyPostedScore(list([myGame("g1", [friend])]), score(), viewer, standings);
+    expect(out?.games[0]?.standings).toBe(standings);
+    // Another day's block is not this day's: the row patch applies instead.
+    const stale = applyPostedScore(list([myGame("g1", [friend])]), score(), viewer, {
+      ...standings,
+      periodKey: "2026-10-24",
+    });
+    expect(stale?.games[0]?.standings.entries.map((e) => e.userId)).toEqual(["alex", "me"]);
+    expect(stale?.games[0]?.standings.viewerStreak).toBe(0);
+  });
+
   it("leaves the list alone when the game is not in it, or the day differs, or there is no list", () => {
     const data = list([myGame("g2", [])]);
     expect(applyPostedScore(data, score(), viewer)).toBe(data);

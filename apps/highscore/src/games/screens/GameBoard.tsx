@@ -39,6 +39,7 @@ import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { ScoreReactions } from "../components/ScoreReactions";
 import { useOpenProfile } from "../hooks/useOpenProfile";
+import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { daysBack, formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
@@ -69,6 +70,7 @@ export default function GameBoard() {
   const openProfile = useOpenProfile();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const notifyPosted = usePostedScoreNotice();
 
   const today = localDateKey();
   // The selected day lives in the shared view-day state (state/viewDay.tsx),
@@ -148,15 +150,19 @@ export default function GameBoard() {
         ]);
       // The home card shows the posted row from the cache at once (a past
       // day's post is not on it); the board's own list refetches behind the toast.
-      writePostedScore(queryClient, data.score, user);
+      writePostedScore(queryClient, data, user);
       void refresh();
-      showToast({
-        message: variables.postTo
+      notifyPosted({
+        result: data,
+        gameId: variables.postTo?.id ?? gameId ?? "",
+        periodKey: variables.periodKey,
+        scoreRaw: variables.scoreRaw,
+        today,
+        posted: variables.postTo
           ? `Posted to ${variables.postTo.title}`
           : variables.isEdit
             ? "Score updated"
             : "Score posted",
-        tone: "success",
       });
       // A pick that can teach the game does so once the post has landed.
       const taughtGameId = variables.postTo?.id ?? gameId;

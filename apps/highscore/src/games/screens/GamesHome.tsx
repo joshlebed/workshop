@@ -62,6 +62,7 @@ import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet"
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useOpenProfile } from "../hooks/useOpenProfile";
+import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
@@ -111,6 +112,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const openProfile = useOpenProfile();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const notifyPosted = usePostedScoreNotice();
   const livePoll = useLivePollingInterval();
 
   const todayKey = localDateKey();
@@ -412,13 +414,20 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         token,
       );
     },
-    onSuccess: async (data, { game, extras }) => {
+    onSuccess: async (data, { game, scoreRaw, extras }) => {
       haptics.medium();
       dismiss();
-      // The card shows the posted row from the cache at once; the refetch
-      // that re-ranks it runs in the background.
-      writePostedScore(queryClient, data.score, user);
-      showToast({ message: "Score posted", tone: "success" });
+      // The card shows the server's standings from the response at once; the
+      // refetch behind it only confirms them.
+      writePostedScore(queryClient, data, user);
+      notifyPosted({
+        result: data,
+        gameId: game.id,
+        periodKey: todayKey,
+        scoreRaw,
+        today: todayKey,
+        posted: "Score posted",
+      });
       const refresh = () =>
         Promise.all([
           queryClient.invalidateQueries({ queryKey: gamesKey }),

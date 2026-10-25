@@ -142,3 +142,11 @@ toasts and navigates at once, and lets the list refetch re-rank in the backgroun
 preview (`POST /v1/games/score-preview`), which seeds the per-game check's cache inside its own
 `queryFn`; `useScoreCheck` on that screen gets no game id until that answer is in, so the
 registry's guess at the game can't send a second, identical `scores/preview`.
+
+Because Post never waits, a post can land before its preview said anything. The server then
+returns `check` on the post (`PostedScoreCheck`: the wrong-game match, the same-text day), and
+`usePostedScoreNotice` (`src/games/hooks/`) turns it into the one toast every post surface shows:
+plain "Score posted", or the advice with its action — **Move** (upsert to the named game with
+`wrongGame.choice: "there"`, then clear here) or **Undo** (clear). Copy lives in the pure
+`src/games/lib/postedCheck.ts`. A post that carried `previewSeen: true` has no `check`; the
+response's `standings` block, when present, replaces the card's block in the cache outright.
