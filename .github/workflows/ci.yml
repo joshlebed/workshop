@@ -48,7 +48,7 @@ jobs:
       contents: read
       pull-requests: read # dorny/paths-filter needs this on PRs
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      code: ${{ steps.code.outputs.code }}
       mobile: ${{ steps.filter.outputs.mobile }}
       highscore_mobile: ${{ steps.filter.outputs.highscore_mobile }}
       migrations: ${{ steps.filter.outputs.migrations }}
@@ -58,14 +58,6 @@ jobs:
         id: filter
         with:
           filters: |
-            # Anything but docs. A docs-only PR skips `quality`; the skip
-            # counts as passing for branch protection, so no shim is needed.
-            code:
-              - '**'
-              - '!**/*.md'
-              - '!docs/**'
-              - '!.prettierrc.json'
-              - '!.prettierignore'
             mobile:
               - 'apps/workshop/**'
               - 'packages/shared/**'
@@ -78,6 +70,23 @@ jobs:
               - 'apps/backend/drizzle/**'
               - 'apps/backend/src/db/**'
               - 'pnpm-lock.yaml'
+      # Anything but docs, so a docs-only PR skips `quality` (a skipped required
+      # job counts as passing — no shim needed). Its own step because the `!`
+      # exclusions only work with `predicate-quantifier: every` (a file must
+      # match every pattern), and that quantifier would break the inclusive
+      # filters above. With the default `some`, `**` alone matched everything
+      # and docs-only PRs still ran the full job (#481).
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: code
+        with:
+          predicate-quantifier: every
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!.prettierrc.json'
+              - '!.prettierignore'
 
   # Combined quality job — install deps once, run every node-based check.
   # PR-only: push-to-main relies on the merge being a fast-forward of an
