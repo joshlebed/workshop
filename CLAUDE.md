@@ -104,11 +104,14 @@ deliberate critical-fix backports may change it before then. See
 - **Workflow path-filter self-trigger**: if a workflow's `on.push.paths:` includes its own
   filename, any PR touching the workflow file fires it on `main` post-merge even if no other
   path matched. Intentional but worth knowing when a PR's diff spans multiple workflow files.
-- **Docs-only PRs need a required-check shim.** `ci.yml` has `paths-ignore: **/*.md`/`docs/**`,
-  but branch protection still requires the `Quality (...)` check. `.github/workflows/ci-docs.yml`
-  emits the same job names as trivial successes on the inverse path set. If you add a new
-  required check to `ci.yml`, add a matching no-op job to `ci-docs.yml`. If you add a new
-  `paths-ignore` entry, mirror it as a `paths` entry in `ci-docs.yml`.
+- **Docs-only PRs skip `quality` through the `changes` job's `code` filter, not a second
+  workflow.** `ci.yml` runs on every PR; `quality` has `needs: changes` and is gated on
+  `needs.changes.outputs.code == 'true'`, and a skipped required job counts as passing. Never
+  reintroduce a sibling workflow that posts a job with a required check's name: the old
+  `ci-docs.yml` shim did, and on a PR touching code _and_ a `.md` its instant success
+  satisfied branch protection before the real `Quality` ran (#476 auto-merged that way). A
+  new required job should be gated the same way (`needs: changes` + a filter output), and a
+  new doc-ish path goes into the `code` filter's `!` list.
 - **iOS capabilities are config-as-code.** Declare iOS capabilities (App Groups, Push, Associated
   Domains, etc.) in `apps/workshop/app.json` (`ios.entitlements`) or via an Expo config plugin
   **before** enabling in the Apple Developer Portal. EAS's capability sync reverts portal-only

@@ -37,7 +37,7 @@ name: Terraform
 on:
   # Plan runs on every PR (no paths filter) because it's a required status
   # check — restricting the trigger would deadlock non-infra PRs the way
-  # docs-only PRs used to deadlock before ci-docs.yml. The plan job exits 0
+  # docs-only PRs used to deadlock before `quality` was gated on a filter. The plan job exits 0
   # for PRs with no infra changes (state matches code), so the CI cost is
   # ~25s on the AWS API per PR. Apply still only fires on infra changes.
   pull_request:

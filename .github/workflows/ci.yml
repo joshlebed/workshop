@@ -13,7 +13,10 @@ name: CI
 #   - PRs own full validation; push-to-main only re-checks the canonical-branch
 #     concerns (gitleaks always, migrate-smoke on migration changes). Skipping
 #     the duplicate full PR re-run on merge cuts roughly half the CI bill.
-#   - Docs-only PRs skip the workflow entirely via `paths-ignore`.
+#   - Docs-only PRs run only `changes` (~6s): `quality` is gated on its `code`
+#     filter and a skipped job satisfies branch protection. This replaced the
+#     ci-docs.yml shim, which posted a second, instantly-green `Quality` on
+#     any PR that touched code *and* a `.md`, and auto-merge took it (#476).
 #   - Draft PRs skip the heavy jobs entirely. Agents (Niteshift,
 #     /continue-redesign) push 2–10 commits to a draft before flipping to
 #     ready-for-review; each push otherwise burned ~2 billable min on `quality`.
@@ -21,11 +24,6 @@ name: CI
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - ".prettierrc.json"
-      - ".prettierignore"
   push:
     branches: [main]
   schedule:
@@ -50,6 +48,7 @@ jobs:
       contents: read
       pull-requests: read # dorny/paths-filter needs this on PRs
     outputs:
+      code: ${{ steps.filter.outputs.code }}
       mobile: ${{ steps.filter.outputs.mobile }}
       highscore_mobile: ${{ steps.filter.outputs.highscore_mobile }}
       migrations: ${{ steps.filter.outputs.migrations }}
@@ -59,6 +58,14 @@ jobs:
         id: filter
         with:
           filters: |
+            # Anything but docs. A docs-only PR skips `quality`; the skip
+            # counts as passing for branch protection, so no shim is needed.
+            code:
+              - '**'
+              - '!**/*.md'
+              - '!docs/**'
+              - '!.prettierrc.json'
+              - '!.prettierignore'
             mobile:
               - 'apps/workshop/**'
               - 'packages/shared/**'
@@ -78,7 +85,8 @@ jobs:
   # don't change file content), the next PR will catch it.
   quality:
     name: Quality (lint, typecheck, test, knip, format, terraform, actionlint)
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    needs: changes
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false && needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

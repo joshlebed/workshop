@@ -27,19 +27,6 @@ trail.
 
 ## Outstanding
 
-### CI
-
-- **A PR that touches code _and_ a `.md` file gets a 3-second green `Quality` from the
-  `ci-docs.yml` shim, and auto-merge fires before the real `Quality` finishes.** Both
-  workflows run on such a PR (`ci.yml`'s `paths-ignore` only skips when _every_ changed file
-  matches; `ci-docs.yml`'s `paths` fires when _any_ does), both post a check named `Quality`,
-  and branch protection is satisfied by the first success. PR #476 merged ~1 min after
-  `gh pr merge --auto` with the real Metro bundle check still pending (CI on `main` was green
-  after the fact). Suggested fix: make the shim jobs run only when no non-doc file changed
-  (a `dorny/paths-filter` step that `exit 1`s otherwise), or name the shim's jobs differently
-  and require the real ones. Until then: `gh pr checks <PR> --watch` before arming auto-merge
-  on a mixed PR.
-
 ### Dev / sandbox environment
 
 - **Expo RN DevTools auto-install crashes as root in the sandbox.** Every `expo start
@@ -178,12 +165,6 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
   chunk. ~5m doc edit.
 
 ### CI
-
-- **Required-checks drift between `ci.yml` and `ci-docs.yml` is unenforced.** CLAUDE.md
-  documents the rule ("if you add a new required check to `ci.yml`, mirror it as a noop
-  in `ci-docs.yml`") but nothing fails the build when someone forgets. **Fix:** a tiny
-  script in CI that diffs the job names between the two workflows and fails on
-  mismatch. ~30m.
 
 - **Leaked-secret rotation done 2026-10-08** except `SESSION_SECRET`, which rotates when #458
   applies. OpenAI, TypeSafe, Spotify secret, TMDB, Google Books and the Discord webhook were
@@ -347,12 +328,6 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
   chunk. ~5m doc edit.
 
 ### CI
-
-- **Required-checks drift between `ci.yml` and `ci-docs.yml` is unenforced.** CLAUDE.md
-  documents the rule ("if you add a new required check to `ci.yml`, mirror it as a noop
-  in `ci-docs.yml`") but nothing fails the build when someone forgets. **Fix:** a tiny
-  script in CI that diffs the job names between the two workflows and fails on
-  mismatch. ~30m.
 
 - **Leaked-secret rotation is in progress (2026-10-08).** The `Deploy Backend` logs that
   printed the Lambda env (199 runs, before #453) are deleted, and `SESSION_SECRET` is rotated
