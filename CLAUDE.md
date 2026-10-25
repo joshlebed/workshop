@@ -209,6 +209,16 @@ deliberate critical-fix backports may change it before then. See
   `POST /v1/telemetry/share-intent` (CloudWatch, filter `client_share_intent`), same as
   Workshop.
 
+- **Profile pictures are fetched by URL, so the URL must change when the picture does.**
+  `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load
+  (`failedUrl`) for the life of the mount, so a row mounted before a user uploaded a photo
+  kept initials while rows mounted after showed the photo (the "my pfp is different in Daily
+  Tens and Krillion" report). Standings entries now carry `avatarVersion` (`left(md5(avatar_url),
+8)`, null without a picture); build row URLs with `userAvatarImageUrl(userId, avatarVersion)`
+  so null skips the fetch and a new picture is a new `?v=` URL. Surfaces whose payload has no
+  version (friends list, profiles) still call the one-arg form and inherit the stale-for-60s
+  behaviour; thread a version through when you touch them.
+
 - **Backend-minted app links carry a validated client identity.** Every request from
   `@workshop/api-client` includes `X-Workshop-Client: workshop|highscore`, configured once in
   each app's root layout; old clients omit it. Friend invites map the validated value to the

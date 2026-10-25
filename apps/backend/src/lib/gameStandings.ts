@@ -9,7 +9,7 @@ import type {
   ScoreReactionSummary,
 } from "@workshop/shared/games";
 import { computeGameStreak, shiftPeriodKey } from "@workshop/shared/games";
-import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { type DbGame, gameScoreReactions, gameScores, users } from "../db/schema.js";
 import { toIsoOrNull } from "./dates.js";
@@ -88,6 +88,25 @@ export async function loadReactionsForScores(
   return byScore;
 }
 
+/**
+ * Per-user profile-picture version for standings rows: the first 8 hex chars
+ * of `md5(avatar_url)`, null for users without one. Hashed once per user (not
+ * per score row) because a data-URL avatar can run to ~1MB.
+ */
+async function avatarVersionsFor(userIds: string[]): Promise<Map<string, string | null>> {
+  const versions = new Map<string, string | null>();
+  if (userIds.length === 0) return versions;
+  const rows = await getDb()
+    .select({
+      id: users.id,
+      version: sql<string | null>`left(md5(${users.avatarUrl}), 8)`,
+    })
+    .from(users)
+    .where(inArray(users.id, userIds));
+  for (const r of rows) versions.set(r.id, r.version);
+  return versions;
+}
+
 export async function loadStandingsByGame(
   viewerId: string,
   gameIds: string[],
@@ -121,11 +140,13 @@ export async function loadStandingsByGame(
         inArray(gameScores.userId, visibleIds),
       ),
     );
+  const avatarVersions = await avatarVersionsFor([...new Set(rows.map((r) => r.userId))]);
   for (const r of rows) {
     const entries = byGame.get(r.gameId) ?? [];
     entries.push({
       userId: r.userId,
       displayName: r.displayName,
+      avatarVersion: avatarVersions.get(r.userId) ?? null,
       scoreRaw: r.scoreRaw,
       scoreValue: r.scoreValue === null ? null : Number(r.scoreValue),
       ...scoreCodeFields(r),

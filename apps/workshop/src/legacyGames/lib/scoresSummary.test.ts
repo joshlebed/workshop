@@ -10,6 +10,7 @@ function entry(
   return {
     userId,
     displayName: null,
+    avatarVersion: null,
     scoreRaw,
     scoreValue,
     updatedAt: "2026-05-22T12:00:00Z",

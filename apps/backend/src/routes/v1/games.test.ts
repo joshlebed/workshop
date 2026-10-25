@@ -82,7 +82,12 @@ async function myGames(asUser = userId, period?: string) {
         periodKey: string;
         viewerHasPlayed: boolean;
         viewerStreak: number;
-        entries: { userId: string; scoreValue: number | null; rank: number | null }[];
+        entries: {
+          userId: string;
+          scoreValue: number | null;
+          rank: number | null;
+          avatarVersion: string | null;
+        }[];
       };
     }[];
   };
@@ -444,6 +449,32 @@ describe("DELETE /v1/games/:id/scores/:periodKey — clear your score for a day"
 });
 
 describe("GET /v1/games — ordered list + standings block per game", () => {
+  it("stamps each entry with the player's avatarVersion (null without a picture)", async () => {
+    const myVersion = async () => {
+      const body = await myGames(userId, "2026-06-10");
+      const mine = body.games.flatMap((g) => g.standings.entries).find((e) => e.userId === userId);
+      expect(mine).toBeDefined();
+      return mine?.avatarVersion;
+    };
+    expect(await myVersion()).toBeNull();
+
+    await rows(`UPDATE users SET avatar_url = 'data:image/png;base64,AQID' WHERE id = $1`, [
+      userId,
+    ]);
+    const v1 = await myVersion();
+    expect(v1).toMatch(/^[0-9a-f]{8}$/);
+    // Same picture → same version; a different picture → a different one.
+    expect(await myVersion()).toBe(v1);
+    await rows(`UPDATE users SET avatar_url = 'data:image/png;base64,BAUG' WHERE id = $1`, [
+      userId,
+    ]);
+    const v2 = await myVersion();
+    expect(v2).toMatch(/^[0-9a-f]{8}$/);
+    expect(v2).not.toBe(v1);
+
+    await rows(`UPDATE users SET avatar_url = NULL WHERE id = $1`, [userId]);
+  });
+
   it("returns my games in position order with a per-game standings block", async () => {
     const body = await myGames(userId, "2026-06-10");
     expect(body.periodKey).toBe("2026-06-10");
@@ -459,7 +490,7 @@ describe("GET /v1/games — ordered list + standings block per game", () => {
     expect(dailytens?.standings.periodKey).toBe("2026-06-10");
     expect(dailytens?.standings.viewerHasPlayed).toBe(true);
     expect(dailytens?.standings.entries).toEqual([
-      expect.objectContaining({ userId, scoreValue: 7, rank: 1 }),
+      expect.objectContaining({ userId, scoreValue: 7, rank: 1, avatarVersion: null }),
     ]);
 
     // Standings are self-only: otherUser's Wordle score is not visible to me.
