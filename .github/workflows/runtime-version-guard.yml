@@ -20,7 +20,7 @@ name: Runtime version guard
 #      binary, so they need a bump too.
 #
 # Always runs (no `paths:` filter) so it reports a status on every PR and can be
-# made a required check without a ci-docs.yml skip-shim. The first step
+# made a required check without a skip-shim. The first step
 # short-circuits to a pass when no native-relevant file changed, so JS-only PRs
 # (the common case) stay cheap — no install.
 

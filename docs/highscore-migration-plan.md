@@ -134,7 +134,7 @@ Workshop.dev iOS (exists) → EAS project workshop          → apps/workshop
 ### Phase 6 — CI/CD generalization
 
 - `ci.yml`: extend path filters + Metro-bundle check to both apps (matrix or duplicated
-  job); mirror any new required-check names into `ci-docs.yml`.
+  job); gate any new required job on the `changes` job's filters, as `quality` is.
 - `deploy-mobile.yml` (OTA), `runtime-version-guard.yml`, `ios-capabilities-guard.yml`:
   per-app variants or matrixed with per-app fingerprint tag namespaces.
 - `deploy-pages.yml` verify job covers both Pages projects (OG + AASA on both domains).
