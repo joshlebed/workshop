@@ -283,7 +283,8 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   budget, stores nothing); 404 unless the caller's mode is `on`. Clients read
   `capabilities.codeParsing` on `GET /v1/games` instead of probing.
 - **`lambda.ts` pre-starts the worker at init when the global flag is not `off`**, because
-  init runs at full CPU and a request at 0.29 vCPU (worker start: ~75 ms vs ~300–700 ms).
+  init runs at full CPU and a request at a fraction of one (0.29 vCPU at the 512 MB this was
+  measured at; ~0.58 at today's 1024 MB — worker start: ~75 ms vs ~300–700 ms).
   With the flag off, beta accounts pay that once per cold container on their first post.
 - **`PUT /:id/score-spec` (the old teach flow) also writes code**: the compiled spec, a
   bumped `code_version` and a `game_code_revisions` row, in the same transaction as the spec.

@@ -186,7 +186,9 @@ A single `runParse` / `runFormat` reports the same condition as
 
 `scripts/bench-game-code.mjs`, against the built bundle. "Lambda-like" is the
 `public.ecr.aws/lambda/nodejs:20` image limited to 0.29 vCPU and 512 MB, which is what the
-function's memory setting buys; it has not been measured on Lambda itself.
+function's memory setting bought when this was measured; it has not been measured on Lambda
+itself. Prod now runs at 1024 MB (~0.58 vCPU, `infra/lambda.tf`), so the throttled column is
+pessimistic by roughly half.
 
 |                                                      | Unthrottled (Node 20)  | Lambda-like (0.29 vCPU)                       |
 | ---------------------------------------------------- | ---------------------- | --------------------------------------------- |

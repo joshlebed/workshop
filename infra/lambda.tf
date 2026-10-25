@@ -41,8 +41,14 @@ resource "aws_lambda_function" "api" {
   role          = aws_iam_role.lambda.arn
   runtime       = "nodejs20.x"
   handler       = "lambda.handler"
-  memory_size   = 512
-  timeout       = 15
+  # Lambda CPU scales with memory (1,769 MB = 1 vCPU): 512 MB bought 0.29 vCPU,
+  # which is what made a request's own CPU work — zod, JSON, the game-code
+  # sandbox start, cold init — the floor under every score post and games-list
+  # read (prod p50 for the dry-run preview was 318 ms around 45 ms of actual
+  # work). 1024 MB is ~0.58 vCPU; billing is per GB-second, so a request that
+  # finishes in proportionally less time costs about the same.
+  memory_size = 1024
+  timeout     = 15
 
   filename         = data.archive_file.placeholder.output_path
   source_code_hash = data.archive_file.placeholder.output_base64sha256
