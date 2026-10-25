@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
+import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { localDateKey } from "../lib/gameDate";
 import { writePostedScore } from "../lib/postedScore";
@@ -53,6 +54,7 @@ export default function PickGame() {
   const { token, user, routes } = useGamesRuntime();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  const notifyPosted = usePostedScoreNotice();
 
   // Detect against the live draft, not the frozen share payload: the paste box
   // lives on this screen, so filling in a result the iOS share sheet dropped
@@ -134,8 +136,15 @@ export default function PickGame() {
       haptics.medium();
       // Home shows the posted row from the cache at once; the refetch that
       // re-ranks it runs behind the navigation, not in front of it.
-      writePostedScore(queryClient, result.score, user);
-      showToast({ message: "Score posted", tone: "success" });
+      writePostedScore(queryClient, result, user);
+      notifyPosted({
+        result,
+        gameId,
+        periodKey: today,
+        scoreRaw: scoreDraft.trim(),
+        today,
+        posted: "Score posted",
+      });
       router.replace(routes.home as Href);
       void queryClient.invalidateQueries({ queryKey: ["games"] });
       // A pick that can teach the game does so after the post has landed.
