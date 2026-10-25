@@ -43,6 +43,7 @@ import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { daysBack, formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
+import { writePostedScore } from "../lib/postedScore";
 import { scoreLineLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
@@ -145,7 +146,10 @@ export default function GameBoard() {
           }),
           queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) }),
         ]);
-      await refresh();
+      // The home card shows the posted row from the cache at once (a past
+      // day's post is not on it); the board's own list refetches behind the toast.
+      writePostedScore(queryClient, data.score, user);
+      void refresh();
       showToast({
         message: variables.postTo
           ? `Posted to ${variables.postTo.title}`

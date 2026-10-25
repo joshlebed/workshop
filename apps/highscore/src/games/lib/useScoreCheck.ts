@@ -30,7 +30,10 @@ import {
   teachRequestsAllowed,
 } from "./scorePicker";
 
-/** Past this the user can post without the preview (spec §2). */
+/**
+ * Past this a preview that has not answered stops being "checking" and the
+ * picker opens on the local chips. Post is open the whole time either way.
+ */
 const PREVIEW_WAIT_MS = 1500;
 const MAX_CHIPS = 12;
 
@@ -93,7 +96,7 @@ export interface ScoreCheck {
  * Everything the score box shows about a draft for a teach account: the
  * server's dry run, the candidate picker (instant chips, labels when they
  * arrive), and the answers the user has given so far. Nothing here blocks
- * posting for longer than `PREVIEW_WAIT_MS`.
+ * posting on a round trip (see `blocksPosting`).
  */
 export function useScoreCheck(input: {
   gameId: string | null | undefined;
@@ -297,8 +300,9 @@ export function useScoreCheck(input: {
         pick: live.pick,
         overrodeRole,
         previewSeen: answer?.kind === "preview",
-        postedHereDespite:
-          wrongGameChosen && preview?.teach?.wrongGame ? preview.teach.wrongGame.game.id : null,
+        // Post is open while the warning shows, so a post made with it on
+        // screen — via "Post here anyway" or the main button — is "here".
+        postedHereDespite: preview?.teach?.wrongGame ? preview.teach.wrongGame.game.id : null,
         direction,
       }),
   };

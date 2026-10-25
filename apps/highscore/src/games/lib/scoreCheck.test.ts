@@ -124,14 +124,25 @@ describe("resolveScoreCheck — the spec's states and copy", () => {
 });
 
 describe("blocksPosting", () => {
-  it("only holds Post while checking, with nothing to post, or with a game to choose", () => {
+  it("only holds Post when the server said there is nothing to post", () => {
     const kinds = (answer: PreviewAnswer | null | undefined, over = {}) =>
       blocksPosting(resolve(answer, over));
-    expect(kinds(undefined)).toBe(true);
-    expect(kinds(undefined, { waitedOut: true })).toBe(false);
     expect(kinds({ kind: "rejected", reason: "url_only" })).toBe(true);
+    expect(kinds({ kind: "rejected", reason: "title_only" })).toBe(true);
     expect(kinds(preview())).toBe(false);
     expect(kinds(preview({ parseStatus: "failed", scoreValue: null }))).toBe(false);
+  });
+
+  it("never waits on a round trip: checking, no preview and a wrong game all post", () => {
+    const kinds = (answer: PreviewAnswer | null | undefined, over = {}) =>
+      blocksPosting(resolve(answer, over));
+    expect(kinds(undefined)).toBe(false);
+    expect(kinds(undefined, { waitedOut: true })).toBe(false);
+    expect(kinds(null)).toBe(false);
+    const other = { id: "g2", title: "Daily Tens", url: "https://dailytens.com" };
+    const wrong = preview({}, { wrongGame: { game: other, inMyGames: true } });
+    expect(resolve(wrong).kind).toBe("wrong_game");
+    expect(kinds(wrong)).toBe(false);
   });
 });
 

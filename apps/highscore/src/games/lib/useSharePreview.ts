@@ -1,50 +1,60 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type PreviewAnswer, previewSharedScore, type SharePreviewAnswer } from "../api/teach";
 import { useGamesRuntime } from "../runtime";
+import { settleDelayMs } from "./scorePicker";
 import { useTeachAvailable } from "./useScoreCheck";
-
-// Typing settles before we ask; a shared payload (the usual input) waits this once.
-const DEBOUNCE_MS = 300;
 
 /**
  * The share flow's preview for a teach account: which game the text is a
- * score for, and what posting it there would record — one request. Null
- * while it is out, when it fails, and always for an account without teach
- * (which keeps using recognition and the registry detection).
+ * score for, and what posting it there would record — one request.
+ * `undefined` while it is out (and always for an account without teach, which
+ * keeps using recognition and the registry detection); `null` when it failed.
  *
- * The preview it carries is also handed to `useScoreCheck`'s cache under the
- * recognised game, so the detected-score card shows it without asking again.
+ * The preview it carries is written into `useScoreCheck`'s cache under the
+ * recognised game before this resolves, so the detected-score card's check
+ * finds its answer already there and makes no request of its own.
  */
-export function useSharePreview(text: string, periodKey: string): SharePreviewAnswer | null {
+export function useSharePreview(
+  text: string,
+  periodKey: string,
+): SharePreviewAnswer | null | undefined {
   const { token } = useGamesRuntime();
   const available = useTeachAvailable();
   const queryClient = useQueryClient();
   const trimmed = text.trim();
   const [settled, setSettled] = useState(trimmed);
+  // Starts empty so the shared payload the screen opens with counts as a
+  // paste and is asked about at once; only typing is debounced.
+  const lastText = useRef("");
   useEffect(() => {
-    const timer = setTimeout(() => setSettled(trimmed), DEBOUNCE_MS);
+    const delay = settleDelayMs(lastText.current, trimmed);
+    lastText.current = trimmed;
+    const timer = setTimeout(() => setSettled(trimmed), delay);
     return () => clearTimeout(timer);
   }, [trimmed]);
 
   const enabled = available && !!token && settled.length > 0;
   const query = useQuery({
     queryKey: ["game-share-preview", periodKey, settled],
-    queryFn: ({ signal }) => previewSharedScore({ scoreRaw: settled, periodKey }, token, signal),
+    queryFn: async ({ signal }) => {
+      const answer = await previewSharedScore({ scoreRaw: settled, periodKey }, token, signal);
+      // Seed the per-game check synchronously with the answer, so the check
+      // query that turns on when the match is known starts from a fresh
+      // cache entry instead of racing this effect with its own fetch.
+      if (answer?.kind === "preview" && answer.match && answer.preview) {
+        const seeded: PreviewAnswer = { kind: "preview", preview: answer.preview };
+        queryClient.setQueryData(
+          ["game-score-check", answer.match.game.id, periodKey, settled],
+          (existing: PreviewAnswer | null | undefined) => existing ?? seeded,
+        );
+      }
+      return answer;
+    },
     enabled,
     staleTime: 60_000,
     retry: false,
   });
-  const answer = enabled && settled === trimmed ? (query.data ?? null) : null;
-
-  useEffect(() => {
-    if (answer?.kind !== "preview" || !answer.match || !answer.preview) return;
-    const seeded: PreviewAnswer = { kind: "preview", preview: answer.preview };
-    queryClient.setQueryData(
-      ["game-score-check", answer.match.game.id, periodKey, settled],
-      (existing: PreviewAnswer | null | undefined) => existing ?? seeded,
-    );
-  }, [answer, periodKey, settled, queryClient]);
-
-  return answer;
+  if (!enabled || settled !== trimmed || query.isPending) return undefined;
+  return query.data ?? null;
 }

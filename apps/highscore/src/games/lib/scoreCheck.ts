@@ -176,7 +176,15 @@ export function scoreLineLabel(
   return `Score: ${entry.scoreValue}`;
 }
 
-/** States in which the Post button waits: there is a question to answer first. */
+/**
+ * The one state in which the Post button waits: the server has said there is
+ * nothing to post (a link or a title with no result in it). Everything else —
+ * a preview still on its way, a wrong-game match — is advice, not a gate: the
+ * server parses the text at upload whether or not a preview ran, a post made
+ * under a wrong-game warning is recorded as "posted here anyway", and a wrong
+ * reading is one tap to fix from the row. Posting is never blocked on a
+ * round trip.
+ */
 export function blocksPosting(view: ScoreCheckView): boolean {
-  return view.kind === "checking" || view.kind === "no_result_text" || view.kind === "wrong_game";
+  return view.kind === "no_result_text";
 }
