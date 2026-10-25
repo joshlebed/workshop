@@ -407,6 +407,32 @@ describe("preview — a dry run", () => {
   });
 });
 
+describe("what a post hands back", () => {
+  it("returns the game's ranked standings with the new row in place", async () => {
+    const gameId = await taughtGame();
+    const res = await post(josh, gameId, today, krillion(90, 512), { previewSeen: true });
+    expect(res.status).toBe(200);
+    expect(res.body.standings).toMatchObject({ periodKey: today, viewerHasPlayed: true });
+    expect(res.body.standings?.entries.map((e) => [e.userId, e.scoreValue, e.rank])).toEqual([
+      [josh, 512, 1],
+    ]);
+    // The client saw the preview: nothing to tell it after the fact.
+    expect(res.body.check).toBeUndefined();
+  });
+
+  it("checks a post made without a preview: the same-text day and a wrong-game match", async () => {
+    const gameId = await taughtGame();
+    await post(josh, gameId, day(1), krillion(89, 500), { previewSeen: true });
+    const repeat = await post(josh, gameId, today, krillion(89, 500));
+    expect(repeat.body.check).toEqual({ wrongGame: null, sameTextPeriodKey: day(1) });
+
+    const dailyTens = "DailyTens #412\n\n  🏆   ❌\n  🏆   🏆\nhttps://dailytens.com/?ref=1";
+    const wrong = await post(josh, gameId, day(2), dailyTens);
+    expect(wrong.body.check?.wrongGame?.game.title).toBe("Daily Tens");
+    expect(wrong.body.check?.sameTextPeriodKey).toBeNull();
+  });
+});
+
 describe("the share-flow preview — text with no game", () => {
   it("recognises the game and previews the post against it", async () => {
     const mini =
