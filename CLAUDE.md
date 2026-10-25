@@ -114,7 +114,8 @@ deliberate critical-fix backports may change it before then. See
   new doc-ish path goes into the `code` filter's `!` list. That filter is its own
   `dorny/paths-filter` step with `predicate-quantifier: every` — with the default `some`, the
   `**` pattern matches every file and the `!` exclusions do nothing (#481 ran the full job on a
-  one-line `.md` change); don't fold it into the inclusive `mobile`/`migrations` step.
+  one-line `.md` change); don't fold it into the inclusive `mobile`/`migrations` step. Verified
+  2026-10-25 on a docs-only PR after #482: `Detect changes` ran, `Quality` was skipped, mergeable.
 - **iOS capabilities are config-as-code.** Declare iOS capabilities (App Groups, Push, Associated
   Domains, etc.) in `apps/workshop/app.json` (`ios.entitlements`) or via an Expo config plugin
   **before** enabling in the Apple Developer Portal. EAS's capability sync reverts portal-only
