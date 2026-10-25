@@ -468,26 +468,31 @@ describe("Games beta accounts", () => {
     expect(await capabilities(userId)).toMatchObject({ recognition: true });
   });
 
-  it("have their score posts shadow-logged with the global flag off", async () => {
+  it("do not shadow-log their score posts: with recognition on, the preview owns the decision", async () => {
     const info = vi.spyOn(logger, "info");
+    const warn = vi.spyOn(logger, "warn");
+    // Every recognition DB step opens a transaction; the post itself opens none.
+    const transaction = vi.spyOn(testDb, "transaction");
     await postScore(maptapId, "2026-07-01", MAPTAP, betaUserId);
-    expect(shadowLines(info)).toEqual([
-      expect.objectContaining({ user_id: betaUserId, outcome: "agree", method: "url" }),
-    ]);
+    expect(transaction).not.toHaveBeenCalled();
+    expect(judgeMock).not.toHaveBeenCalled();
+    expect([...shadowLines(info), ...shadowLines(warn)]).toEqual([]);
   });
 
   it("leave everyone else's score post untouched: no log line, no recognition query", async () => {
     const info = vi.spyOn(logger, "info");
     const warn = vi.spyOn(logger, "warn");
-    // Every recognition DB step opens a transaction; the post itself opens none.
     const transaction = vi.spyOn(testDb, "transaction");
     await postScore(maptapId, "2026-07-02", HEADERLESS_MAPTAP, userId);
     expect(transaction).not.toHaveBeenCalled();
     expect(judgeMock).not.toHaveBeenCalled();
     expect([...shadowLines(info), ...shadowLines(warn)]).toEqual([]);
 
-    await postScore(maptapId, "2026-07-02", MAPTAP, betaUserId);
+    // Only the shadow mode itself runs recognition on a post.
+    setMode("shadow");
+    await postScore(maptapId, "2026-07-02", MAPTAP, userId);
     expect(transaction).toHaveBeenCalled();
+    expect(shadowLines(info)).toHaveLength(1);
   });
 
   it("follow the account the session acts as during an impersonation", async () => {

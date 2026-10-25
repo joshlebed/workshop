@@ -17,6 +17,7 @@
 import { GAME_SCORE_ENTRY_SOURCES } from "@workshop/shared/constants";
 import type {
   ApplyScorePickResponse,
+  PostedScoreCheck,
   PreviewGameScoreResponse,
   ScoreCandidatesResponse,
   ScoreInputRejectedDetails,
@@ -38,12 +39,9 @@ import {
   OBJECTIONABLE_CONTENT_MESSAGE,
 } from "../../lib/contentFilter.js";
 import { RECOGNITION_SURFACE_THRESHOLD } from "../../lib/gameRecognition.js";
-import {
-  recognitionModeFor,
-  recognizeGameForUser,
-  shadowRecognizePostedScore,
-} from "../../lib/gameRecognitionService.js";
+import { recognitionModeFor, recognizeGameForUser } from "../../lib/gameRecognitionService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
+import { loadGameStandings } from "../../lib/gameStandings.js";
 import { logger } from "../../lib/logger.js";
 import {
   notifyFirstScore,
@@ -63,8 +61,10 @@ import {
   InvalidPickError,
   knownSymbolsFor,
   previewScore,
+  sameTextDay,
   saveScore,
   toScoreShape,
+  wrongGameFor,
 } from "../../lib/teach/scores.js";
 import { rollbackParser, teachFromPick } from "../../lib/teach/teach.js";
 import { recordShareExtensionScore } from "../../lib/userFlags.js";
@@ -216,13 +216,62 @@ export async function handleScoreUpsertV2(c: Context, gameId: string): Promise<R
       user_choice: parsed.data.wrongGame.choice,
     });
   }
-  await shadowRecognizePostedScore({ userId, gameId: game.id, periodKey, scoreRaw });
+
+  // The post never waits on a preview, so a client may post before (or
+  // without) seeing one. Only then does the post itself make the two checks
+  // a preview would have shown — the wrong-game match, inside the post's own
+  // shorter budget, and the same-text day — and hands them back for the
+  // client to show on the row. A client that saw the preview already knows.
+  // Standings first, on their own: the pool is one connection, and
+  // recognition's queries (bounded, but several) must not queue in front of
+  // the block every post returns.
+  const standings = await loadGameStandings(userId, game, periodKey);
+  const check =
+    parsed.data.previewSeen === true
+      ? null
+      : await postedScoreCheck({ userId, game, periodKey, scoreRaw, context });
 
   const response: UpsertGameScoreResponse = {
     score: toScoreShape(saved.row),
     ...(saved.teach ? { teach: saved.teach } : {}),
+    standings,
+    ...(check ? { check } : {}),
   };
   return ok(c, response);
+}
+
+/** Recognition inside a post: shorter than the preview's — the row is already saved. */
+const POST_RECOGNITION_BUDGET_MS = 400;
+
+async function postedScoreCheck(input: {
+  userId: string;
+  game: DbGame;
+  periodKey: string;
+  scoreRaw: string;
+  context: TeachLogContext;
+}): Promise<PostedScoreCheck> {
+  const { userId, game, periodKey, scoreRaw } = input;
+  const [wrong, sameTextPeriodKey] = await Promise.all([
+    wrongGameFor(userId, game, scoreRaw, POST_RECOGNITION_BUDGET_MS),
+    sameTextDay(userId, game.id, periodKey, scoreRaw, getDb()),
+  ]);
+  if (wrong.ran) {
+    logTeachEvent("game_recognition", input.context, {
+      entry: "post",
+      method: wrong.wrongGame?.method ?? null,
+      confidence: wrong.wrongGame?.confidence ?? null,
+      candidates: wrong.candidates,
+      game_chosen: wrong.wrongGame?.game.id ?? null,
+      warning_shown: wrong.wrongGame !== null,
+      in_budget: wrong.inBudget,
+    });
+  }
+  return {
+    wrongGame: wrong.wrongGame
+      ? { game: wrong.wrongGame.game, inMyGames: wrong.wrongGame.inMyGames }
+      : null,
+    sameTextPeriodKey,
+  };
 }
 
 /**

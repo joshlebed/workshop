@@ -285,6 +285,12 @@ export async function recognizeGameForUser(
  * response for more than `SHADOW_BUDGET_MS` (plus a few ms of slack). One
  * `kind: "game_recognition_shadow"` line per post; the raw text stays in
  * `game_scores` (join on user_id + game_id + period_key), not in the logs.
+ *
+ * Runs only while the mode in force is `shadow`. With recognition `on` the
+ * decision is already made — and logged as `game_recognition` — by the
+ * preview the client showed, or by the post itself when no preview was seen
+ * (`handleScoreUpsertV2`); running it again here would only hold the post's
+ * response for up to the budget to log the same answer twice.
  */
 export async function shadowRecognizePostedScore(input: {
   userId: string;
@@ -292,7 +298,7 @@ export async function shadowRecognizePostedScore(input: {
   periodKey: string;
   scoreRaw: string;
 }): Promise<void> {
-  if (recognitionModeFor(input.userId) === "off") return;
+  if (recognitionModeFor(input.userId) !== "shadow") return;
   const startedAt = Date.now();
   const base = {
     kind: "game_recognition_shadow",

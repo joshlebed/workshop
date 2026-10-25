@@ -46,7 +46,7 @@ const TEACH_WINDOW_DAYS = 30;
  * misses the budget so the whole preview stays near 1.5s.
  */
 const PREVIEW_RECOGNITION_BUDGET_MS = 1000;
-const PREVIEW_RECOGNITION_CAP_MS = PREVIEW_RECOGNITION_BUDGET_MS + 100;
+const PREVIEW_RECOGNITION_CAP_SLACK_MS = 100;
 
 /** Teach v2's fields of a score for an API response. */
 export function scorePickFields(row: {
@@ -174,7 +174,7 @@ function resolves<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 }
 
 /** The day, other than this one, the user already posted this exact text to this game. */
-async function sameTextDay(
+export async function sameTextDay(
   userId: string,
   gameId: string,
   periodKey: string,
@@ -209,20 +209,22 @@ interface WrongGame {
  * game never warns. Otherwise recognition runs inside the preview's budget;
  * a classifier answer that misses it is dropped (`inBudget: false`).
  */
-async function wrongGameFor(
+export async function wrongGameFor(
   userId: string,
   game: DbGame,
   raw: string,
+  /** How long recognition may take; the preview's budget by default. */
+  budgetMs: number = PREVIEW_RECOGNITION_BUDGET_MS,
 ): Promise<{ wrongGame: WrongGame | null; ran: boolean; inBudget: boolean; candidates: number }> {
   if (textNamesGame(raw, game) || recognitionModeFor(userId) !== "on") {
     return { wrongGame: null, ran: false, inBudget: true, candidates: 0 };
   }
   const recognition = await resolves(
     recognizeGameForUser(userId, raw, {
-      budgetMs: PREVIEW_RECOGNITION_BUDGET_MS,
+      budgetMs,
       includeGameIds: [game.id],
     }),
-    PREVIEW_RECOGNITION_CAP_MS,
+    budgetMs + PREVIEW_RECOGNITION_CAP_SLACK_MS,
   );
   if (!recognition) return { wrongGame: null, ran: true, inBudget: false, candidates: 0 };
   const { result, match, candidates, trace } = recognition;

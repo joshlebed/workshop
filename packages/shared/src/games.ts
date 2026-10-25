@@ -213,6 +213,27 @@ export interface UpsertGameScoreResponse {
   score: GameScore;
   /** Present when the request carried a pick (teach v2). */
   teach?: ScoreTeachHint;
+  /**
+   * The game's standings for the posted day as `GET /v1/games` would return
+   * them, ranked, with the new row in place (teach v2 write path). Lets the
+   * client write the server's ranking into its cached list at once instead
+   * of refetching every game.
+   */
+  standings?: GameStandings;
+  /**
+   * What a preview would have said, for a post made without seeing one
+   * (`previewSeen` not true) — the client shows it on the row after the
+   * fact. Absent when the client already saw the preview for this text.
+   */
+  check?: PostedScoreCheck;
+}
+
+/** Post-hoc advice about a score that was posted before its preview arrived. */
+export interface PostedScoreCheck {
+  /** The text positively matches a different game. */
+  wrongGame: { game: Game; inMyGames: boolean } | null;
+  /** Another day the caller already posted this exact text to this game. */
+  sameTextPeriodKey: string | null;
 }
 
 // ---------------------------------------------------------------------------

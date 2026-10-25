@@ -10,7 +10,6 @@ import type {
   GameLeaderboardResponse,
   GameScore,
   GameStandings,
-  GameStandingsEntry,
   GamesResponse,
   MyGame,
   PreviewGameScoreResponse,
@@ -20,16 +19,10 @@ import type {
   SetScoreReactionResponse,
   UpsertGameScoreResponse,
 } from "@workshop/shared/games";
-import {
-  computeGameStreak,
-  isReactionEmoji,
-  normalizeGameUrl,
-  shiftPeriodKey,
-  unwrapLinkShim,
-} from "@workshop/shared/games";
+import { isReactionEmoji, normalizeGameUrl, unwrapLinkShim } from "@workshop/shared/games";
 import { parseScoreWithSpec, scoreSpecSchema } from "@workshop/shared/scoreParsing";
 import { evaluateSummarySpec, summarySpecSchema } from "@workshop/shared/summarySpec";
-import { and, asc, eq, gte, inArray, lte, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -48,7 +41,7 @@ import {
   containsObjectionableContent,
   OBJECTIONABLE_CONTENT_MESSAGE,
 } from "../../lib/contentFilter.js";
-import { toIsoOrNull, toIsoString } from "../../lib/dates.js";
+import { toIsoString } from "../../lib/dates.js";
 import { friendsOf } from "../../lib/friends.js";
 import {
   catalogEntryForKey,
@@ -72,6 +65,13 @@ import {
 } from "../../lib/gameRecognitionService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import {
+  loadReactionsForScores,
+  loadStandingsByGame,
+  loadViewerStreaksByGame,
+  reactionKey,
+  visibleUserIds,
+} from "../../lib/gameStandings.js";
+import {
   notifyFirstScore,
   notifyGameAdded,
   notifyScoreSpecTaught,
@@ -84,7 +84,6 @@ import { err, ok } from "../../lib/response.js";
 import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
 import { teachModeFor } from "../../lib/teach/gate.js";
-import { scorePickFields } from "../../lib/teach/scores.js";
 import { recordShareExtensionScore } from "../../lib/userFlags.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
@@ -151,182 +150,6 @@ function toScoreShape(row: {
     createdAt: toIsoString(row.createdAt),
     updatedAt: toIsoString(row.updatedAt),
   };
-}
-
-/**
- * The user set whose scores a viewer can see (spec §3.2):
- * `viewer ∪ friends_of(viewer)` (G2a). Everything downstream (standings
- * blocks, the leaderboard endpoint) picks it up unchanged — widening here
- * only grows the user set, never reshapes the response payload.
- */
-async function visibleUserIds(viewerId: string): Promise<string[]> {
-  return [viewerId, ...(await friendsOf(viewerId))];
-}
-
-/** Map key for a single score `(gameId, scoreUserId)` within a period. */
-function reactionKey(gameId: string, scoreUserId: string): string {
-  return `${gameId} ${scoreUserId}`;
-}
-
-/**
- * Reaction summaries for every score in `gameIds` on `periodKey`, keyed by
- * `reactionKey(gameId, scoreUserId)`. Reactor identity is gated to `visibleIds`
- * (the viewer's friend graph) so a non-mutual friend's reaction on a shared
- * friend's score never reveals who they are — the same boundary the scores
- * themselves use. Oldest reaction first, so chip order is stable; `viewerReacted`
- * flags the emoji holding the viewer's own current reaction.
- */
-async function loadReactionsForScores(
-  viewerId: string,
-  gameIds: string[],
-  periodKey: string,
-  visibleIds: string[],
-): Promise<Map<string, ScoreReactionSummary[]>> {
-  const byScore = new Map<string, ScoreReactionSummary[]>();
-  if (gameIds.length === 0) return byScore;
-  const db = getDb();
-  const rows = await db
-    .select({
-      gameId: gameScoreReactions.gameId,
-      scoreUserId: gameScoreReactions.scoreUserId,
-      reactorUserId: gameScoreReactions.reactorUserId,
-      emoji: gameScoreReactions.emoji,
-      displayName: users.displayName,
-    })
-    .from(gameScoreReactions)
-    .leftJoin(users, eq(users.id, gameScoreReactions.reactorUserId))
-    .where(
-      and(
-        inArray(gameScoreReactions.gameId, gameIds),
-        eq(gameScoreReactions.periodKey, periodKey),
-        inArray(gameScoreReactions.scoreUserId, visibleIds),
-        inArray(gameScoreReactions.reactorUserId, visibleIds),
-      ),
-    )
-    .orderBy(asc(gameScoreReactions.createdAt));
-
-  for (const r of rows) {
-    const key = reactionKey(r.gameId, r.scoreUserId);
-    const summaries = byScore.get(key) ?? [];
-    let summary = summaries.find((s) => s.emoji === r.emoji);
-    if (!summary) {
-      summary = { emoji: r.emoji, count: 0, reactors: [], viewerReacted: false };
-      summaries.push(summary);
-    }
-    summary.count += 1;
-    summary.reactors.push({ userId: r.reactorUserId, displayName: r.displayName });
-    if (r.reactorUserId === viewerId) summary.viewerReacted = true;
-    byScore.set(key, summaries);
-  }
-  return byScore;
-}
-
-async function loadStandingsByGame(
-  viewerId: string,
-  gameIds: string[],
-  periodKey: string,
-): Promise<Map<string, GameStandingsEntry[]>> {
-  const byGame = new Map<string, GameStandingsEntry[]>();
-  if (gameIds.length === 0) return byGame;
-  const db = getDb();
-  const visibleIds = await visibleUserIds(viewerId);
-  // Teach v2 fields ride along only for a viewer who has it on.
-  const teachOn = teachModeFor(viewerId) === "on";
-  const rows = await db
-    .select({
-      gameId: gameScores.gameId,
-      userId: gameScores.userId,
-      scoreRaw: gameScores.scoreRaw,
-      scoreValue: gameScores.scoreValue,
-      parseStatus: gameScores.parseStatus,
-      scoreSummary: gameScores.scoreSummary,
-      updatedAt: gameScores.updatedAt,
-      displayName: users.displayName,
-      scoreSource: gameScores.scoreSource,
-      pickAdjusted: gameScores.pickAdjusted,
-    })
-    .from(gameScores)
-    .leftJoin(users, eq(users.id, gameScores.userId))
-    .where(
-      and(
-        inArray(gameScores.gameId, gameIds),
-        eq(gameScores.periodKey, periodKey),
-        inArray(gameScores.userId, visibleIds),
-      ),
-    );
-  for (const r of rows) {
-    const entries = byGame.get(r.gameId) ?? [];
-    entries.push({
-      userId: r.userId,
-      displayName: r.displayName,
-      scoreRaw: r.scoreRaw,
-      scoreValue: r.scoreValue === null ? null : Number(r.scoreValue),
-      ...scoreCodeFields(r),
-      rank: null,
-      updatedAt: toIsoOrNull(r.updatedAt),
-      reactions: [],
-      ...(teachOn ? scorePickFields(r) : {}),
-    });
-    byGame.set(r.gameId, entries);
-  }
-
-  // Decorate each score with its reactions (G2c). One batched read for the
-  // whole period, joined back in-memory by `(gameId, scoreUserId)`. `rankEntries`
-  // downstream spreads each entry, so the array survives ranking.
-  const reactionsByScore = await loadReactionsForScores(viewerId, gameIds, periodKey, visibleIds);
-  for (const [gameId, entries] of byGame) {
-    for (const entry of entries) {
-      entry.reactions = reactionsByScore.get(reactionKey(gameId, entry.userId)) ?? [];
-    }
-  }
-  return byGame;
-}
-
-/**
- * How far back the streak query looks. A daily-game run longer than this is
- * exceptional; a streak that does exceed it is reported as the window length,
- * which is fine for what's ultimately a "keep playing" nudge. The bound keeps
- * the per-request read small (one viewer's own score-days across their games).
- */
-const STREAK_LOOKBACK_DAYS = 400;
-
-/**
- * The viewer's consecutive-day play streak per game, as of `today` (see
- * `computeGameStreak`). One batched read of the viewer's own recent score-days
- * across `gameIds`, then the pure day-walk per game. Keyed by gameId; games
- * with no live streak are omitted (the caller defaults them to 0).
- */
-async function loadViewerStreaksByGame(
-  viewerId: string,
-  gameIds: string[],
-  today: string,
-): Promise<Map<string, number>> {
-  const byGame = new Map<string, number>();
-  if (gameIds.length === 0) return byGame;
-  const since = shiftPeriodKey(today, -STREAK_LOOKBACK_DAYS);
-  const db = getDb();
-  const rows = await db
-    .select({ gameId: gameScores.gameId, periodKey: gameScores.periodKey })
-    .from(gameScores)
-    .where(
-      and(
-        inArray(gameScores.gameId, gameIds),
-        eq(gameScores.userId, viewerId),
-        gte(gameScores.periodKey, since),
-        lte(gameScores.periodKey, today),
-      ),
-    );
-  const daysByGame = new Map<string, Set<string>>();
-  for (const r of rows) {
-    const set = daysByGame.get(r.gameId) ?? new Set<string>();
-    set.add(r.periodKey);
-    daysByGame.set(r.gameId, set);
-  }
-  for (const gameId of gameIds) {
-    const streak = computeGameStreak(daysByGame.get(gameId) ?? new Set<string>(), today);
-    if (streak > 0) byGame.set(gameId, streak);
-  }
-  return byGame;
 }
 
 export const gameRoutes = new Hono();
@@ -752,9 +575,11 @@ gameRoutes.put(
     await addToMyGames(userId, game.id);
     if (isFirstScore) await notifyFirstScore(userId, game.title);
     // Shadow-mode recognition: logs what it would have detected for this
-    // paste. No-op when the flag is off. Awaited (Lambda freezes anything
-    // left running) but bounded: it can neither fail the post nor hold this
-    // response for more than SHADOW_BUDGET_MS.
+    // paste. No-op unless the flag is `shadow` (with it `on`, the preview the
+    // client showed already logged the real decision, and a post should not
+    // pay for a second one). Awaited (Lambda freezes anything left running)
+    // but bounded: it can neither fail the post nor hold this response for
+    // more than SHADOW_BUDGET_MS.
     await shadowRecognizePostedScore({
       userId,
       gameId: game.id,

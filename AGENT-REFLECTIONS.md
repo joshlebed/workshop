@@ -27,6 +27,19 @@ trail.
 
 ## Outstanding
 
+### CI
+
+- **A PR that touches code _and_ a `.md` file gets a 3-second green `Quality` from the
+  `ci-docs.yml` shim, and auto-merge fires before the real `Quality` finishes.** Both
+  workflows run on such a PR (`ci.yml`'s `paths-ignore` only skips when _every_ changed file
+  matches; `ci-docs.yml`'s `paths` fires when _any_ does), both post a check named `Quality`,
+  and branch protection is satisfied by the first success. PR #476 merged ~1 min after
+  `gh pr merge --auto` with the real Metro bundle check still pending (CI on `main` was green
+  after the fact). Suggested fix: make the shim jobs run only when no non-doc file changed
+  (a `dorny/paths-filter` step that `exit 1`s otherwise), or name the shim's jobs differently
+  and require the real ones. Until then: `gh pr checks <PR> --watch` before arming auto-merge
+  on a mixed PR.
+
 ### Dev / sandbox environment
 
 - **Expo RN DevTools auto-install crashes as root in the sandbox.** Every `expo start

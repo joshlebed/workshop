@@ -358,6 +358,16 @@ POST, one timeout, strict JSON schema out, zod on the way back in, never throws)
 - **The model is called only by `POST …/scores/candidates` and `POST …/parser/teach`** — never
   by a preview or a post. Both are rate-limited per user per minute and per day. Don't add a
   model call to `previewScore` / `saveScore`.
+- **A post hands back the game's standings and, when no preview was seen, the check.**
+  `handleScoreUpsertV2`'s response carries `standings` — the posted day's ranked block for that
+  one game, built by `loadGameStandings` (`lib/gameStandings.ts`, the same loaders `GET
+/v1/games` uses) — so the client writes the server's ranking into its cached list instead
+  of refetching every game. Posting never waits on a preview on the client, so a post may
+  arrive with `previewSeen` unset: only then does the post run the two checks a preview
+  would have shown (`wrongGameFor` inside `POST_RECOGNITION_BUDGET_MS` = 400 ms, and
+  `sameTextDay`) and return them as `check` for the client to show on the row after the
+  fact. A post with `previewSeen: true` runs neither and has no `check`. The legacy write
+  path returns just `score`, as before.
 - **A pick never carries a value.** The client sends a feature id; the server recomputes
   `computeScoreFeatures(raw)` (`@workshop/shared/scoreCandidates`) and reads the value itself.
   `parser/teach` takes only a `periodKey` and learns from the caller's own stored pick.
@@ -648,7 +658,10 @@ text names; examples = the 20 most recent distinct usable scores, any player's).
   the game the user chose, `outcome: agree | disagree | none` — and changes nothing; `on` also
   serves `POST /v1/games/recognize` (404 otherwise), which returns a match only at or above
   `RECOGNITION_SURFACE_THRESHOLD`. Query shadow results with
-  `./scripts/logs.sh --filter game_recognition_shadow`.
+  `./scripts/logs.sh --filter game_recognition_shadow`. **`shadowRecognizePostedScore` runs
+  only in `shadow` mode** — with recognition `on` the decision is made (and logged as
+  `game_recognition`) by the preview, or by the post itself when the client saw none (below),
+  and a second run would only hold the post's response for the budget to log the same answer.
 - **It must never make posting depend on Jev.** `lib/jev.ts` is one attempt with a 1.5s timeout and
   returns null on any failure; every caller treats null as "no detection". Don't add retries, and
   don't swap in `@typesafe-ai/sdk` without overriding its 10s × 3-attempt default.
