@@ -111,7 +111,8 @@ deliberate critical-fix backports may change it before then. See
   `ci-docs.yml` shim did, and on a PR touching code _and_ a `.md` its instant success
   satisfied branch protection before the real `Quality` ran (#476 auto-merged that way). A
   new required job should be gated the same way (`needs: changes` + a filter output), and a
-  new doc-ish path goes into the `code` filter's `!` list.
+  new doc-ish path goes into the `code` filter's `!` list. Verified 2026-10-25 on a docs-only
+  PR: `Detect changes` ran, `Quality` reported skipped, and the PR was mergeable.
 - **iOS capabilities are config-as-code.** Declare iOS capabilities (App Groups, Push, Associated
   Domains, etc.) in `apps/workshop/app.json` (`ios.entitlements`) or via an Expo config plugin
   **before** enabling in the Apple Developer Portal. EAS's capability sync reverts portal-only
