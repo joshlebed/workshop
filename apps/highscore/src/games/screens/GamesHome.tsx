@@ -515,7 +515,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         return {
           userId: entry.userId,
           displayName: entry.displayName,
-          avatarUrl: userAvatarImageUrl(entry.userId),
+          avatarUrl: userAvatarImageUrl(entry.userId, entry.avatarVersion),
           rank: entry.rank,
           body: summarizeGameScoreBody(mg.game, entry),
           reactions: entry.reactions,

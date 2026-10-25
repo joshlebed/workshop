@@ -31,6 +31,7 @@ const myGame = (gameId: string, entries: MyGame["standings"]["entries"]): MyGame
 const friend = {
   userId: "alex",
   displayName: "Alex",
+  avatarVersion: null,
   scoreRaw: "GeoSports 800 / 1,000",
   scoreValue: 800,
   rank: 1,

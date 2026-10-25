@@ -43,9 +43,16 @@ export function applyPostedScore(
       if (mg.gameId !== score.gameId) return mg;
       if (standings && standings.periodKey === score.periodKey) return { ...mg, standings };
       const previous = mg.standings.entries.find((e) => e.userId === viewer.id);
+      // The picture version is server-authored; on a first post of the day
+      // borrow it from any other row of the viewer's so the new row doesn't
+      // flash initials before the refetch settles.
+      const viewerRow =
+        previous ??
+        data.games.flatMap((g) => g.standings.entries).find((e) => e.userId === viewer.id);
       const entry: GameStandingsEntry = {
         userId: viewer.id,
         displayName: viewer.displayName,
+        avatarVersion: viewerRow?.avatarVersion ?? null,
         rank: previous?.rank ?? null,
         reactions: previous?.reactions ?? [],
         scoreRaw: score.scoreRaw,

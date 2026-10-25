@@ -132,6 +132,14 @@ export interface ScoreReactionSummary {
 export interface GameStandingsEntry extends ScoreCodeFields, ScorePickFields {
   userId: string;
   displayName: string | null;
+  /**
+   * Short content hash of the player's profile picture, or null when they have
+   * none. Clients build the avatar image URL from it (`userAvatarImageUrl`):
+   * null skips the fetch (no 404 → initials latch), and a new photo yields a
+   * new URL so every already-mounted row re-fetches instead of keeping the
+   * cached/failed image for the old one.
+   */
+  avatarVersion: string | null;
   scoreRaw: string | null;
   scoreValue: number | null;
   /**

@@ -22,6 +22,7 @@ import { pickProfilePhoto } from "../lib/profilePhoto";
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
   const { showToast } = useToast();
+  const queryClient = useQueryClient();
 
   const [name, setName] = useState(user?.displayName ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
@@ -52,6 +53,10 @@ export default function EditProfile() {
       if (nameChanged) patch.displayName = trimmed;
       if (avatarChanged) patch.avatarUrl = avatarUrl;
       await updateProfile(patch);
+      // Standings rows build their avatar URL from the server's per-user
+      // `avatarVersion`; refetch so the viewer's own rows pick up the new
+      // picture now, not on the next poll/focus.
+      if (avatarChanged) void queryClient.invalidateQueries({ queryKey: ["games"] });
       showToast({ message: "Profile updated", tone: "success" });
       goBack("/");
     } catch (e) {

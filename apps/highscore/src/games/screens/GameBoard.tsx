@@ -583,7 +583,11 @@ function EntryRow({
           disabled={!onPressPlayer}
           testID={`game-board-player-${entry.userId}`}
         >
-          <Avatar name={entry.displayName} imageUrl={userAvatarImageUrl(entry.userId)} size="md" />
+          <Avatar
+            name={entry.displayName}
+            imageUrl={userAvatarImageUrl(entry.userId, entry.avatarVersion)}
+            size="md"
+          />
           <View style={styles.entryNameWrap}>
             <View style={styles.entryNameRow}>
               <Text variant="label" style={styles.entryName} numberOfLines={1}>
