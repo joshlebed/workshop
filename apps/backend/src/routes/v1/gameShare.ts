@@ -21,6 +21,7 @@ import { err, ok } from "../../lib/response.js";
 import { isValidShareSlug } from "../../lib/shareSlug.js";
 import { optionalAuth, requireAuth } from "../../middleware/auth.js";
 import { type RateLimitKeyFn, rateLimit } from "../../middleware/rate-limit.js";
+import { workshopGamesSunset } from "../../middleware/workshop-games-sunset.js";
 
 const ipKey: RateLimitKeyFn = (c) => {
   const xff = c.req.header("x-forwarded-for");
@@ -56,6 +57,8 @@ gameShareRoutes.use("*", async (c, next) => {
   await next();
 });
 
+// Workshop → HighScore cutover: Workshop clients get 410 from the sunset date.
+gameShareRoutes.use("*", workshopGamesSunset());
 // --- POST /v1/game-share — mint/reuse my play link for today ---
 // Idempotent per (user, UTC day): re-copying returns the same link all day,
 // a fresh slug the next day. Old days' tokens keep resolving.

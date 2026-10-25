@@ -3,7 +3,7 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import { InlineTabSwitch } from "@workshop/ui";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo } from "react";
 import { Platform } from "react-native";
 import { fetchActivity } from "../api/activity";
 import { fetchLists } from "../api/lists";
@@ -12,7 +12,7 @@ import { ProfileMenu } from "../components/ProfileMenu";
 import { useAuth } from "../hooks/useAuth";
 import { GamesHome as LegacyGamesHome } from "./screens/GamesHome";
 
-export function WorkshopGamesHome() {
+export function WorkshopGamesHome({ banner }: { banner?: ReactNode }) {
   const { token } = useAuth();
   const router = useRouter();
   const livePoll = useLivePollingInterval();
@@ -56,6 +56,7 @@ export function WorkshopGamesHome() {
 
   return (
     <LegacyGamesHome
+      banner={banner}
       headerLeft={<InlineTabSwitch />}
       headerTrailing={
         <>

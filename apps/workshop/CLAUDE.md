@@ -5,13 +5,31 @@ the primary dev surface — faster iteration, browser-automation can drive the r
 
 Human onboarding (clone → run → deploy) lives in `apps/workshop/README.md`.
 
-## Frozen Games snapshot — Wave-4 deletion target
+## Frozen Games snapshot — sunsets 2026-10-31, tab removed 2026-11-14, deleted in PR-10
 
-`src/legacyGames/` is a frozen copy of the exact Games UI Workshop currently ships. It is
-deleted wholesale with `EXPO_PUBLIC_ENABLE_LEGACY_GAMES_TAB` at the Wave-4 cutover (PR-10).
-Only deliberate critical-fix backports may change it; all product, style, layout, branding,
-and client-behavior iteration belongs in `apps/highscore/src/games/` and must have zero effect
-on Workshop users.
+`src/legacyGames/` is a frozen copy of the exact Games UI Workshop currently ships. It runs
+only while `legacyGamesPhase()` (`src/lib/featureFlags.ts`) is `"active"` — before
+`WORKSHOP_GAMES_SUNSET_AT` from `@workshop/shared/constants`. The gate is **date-driven, not
+a bundle flag**, so the countdown banner (`GamesSunsetBanner`), the `"moved"` hand-off, and the
+`"gone"` removal (`WORKSHOP_GAMES_REMOVED_AT`, two weeks later) all shipped in one OTA.
+`"moved"`: `/games` renders `GamesMovedScreen` (still reachable from the Lists / Games switch,
+but the remembered-home-tab redirect to `/games` stops), `/games/:id` → `/games`, friends
+screens swap their game panels for `GamesMovedCard`. `"gone"`: the Games tab is unlinked and
+the switch hidden — identical to flag-off — and the friend panels render nothing. In both:
+`/share` + `/share/pick-game` hand the shared payload to HighScore (`highscore:///share?text=…`;
+HighScore's `PickGame` reads the same params; web → `https://highscore.live/share?…`) and
+`/g/:token` forwards to `highscore.live/g/:token` — links and share-extension scores must never
+dead-end. The hand-off lives in `src/lib/highscoreHandoff/`: `HANDOFF_PLATFORM` is `ios`
+(native), `ios-web` (iPhone/iPad browser, UA-sniffed), or `web`; the first two push the App
+Store listing first, `web` gets highscore.live. `impl.ts` `openHighScore` tries the custom
+scheme and falls back to the App Store on rejection — no `canOpenURL`, which would need
+`LSApplicationQueriesSchemes` and a TestFlight build. Local/e2e override:
+`EXPO_PUBLIC_LEGACY_GAMES_PHASE=active|moved|gone` (`scripts/e2e.sh` pins `active`; Metro won't
+pick up a changed value without `--clear`). Use `useLegacyGamesPhase()` in components (advances
+live at each boundary) and `legacyGamesPhase()` / `isLegacyGamesActive()` in callbacks. Only
+deliberate critical-fix backports may change the snapshot (the `banner` slot on `GamesHome` is
+one); all product iteration belongs in `apps/highscore/src/games/`. PR-10 deletes the
+snapshot, the phases, the games-specific hand-off routes, and the games e2e specs.
 
 ## App shell: Lists/Games tabs via route groups (G0, epic #279)
 
@@ -19,9 +37,9 @@ The root is an expo-router `Tabs` shell: `app/(tabs)/(lists)/` holds the entire 
 stack (home, lists, activity, create-list) and `app/(tabs)/games/` the Games surface. Group
 segments never appear in URLs, so all deep links are unchanged — but they DO appear in
 `useSegments()`; AuthGate in `app/_layout.tsx` filters `(`-prefixed segments before matching.
-The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` and the transitional
-`EXPO_PUBLIC_ENABLE_LEGACY_GAMES_TAB` (`src/lib/featureFlags.ts`: both default ON;
-the latter is the Wave-4 cutover switch). `EXPO_PUBLIC_ENABLE_GAMES` launched
+The Games tab is gated on `EXPO_PUBLIC_ENABLE_GAMES` (kill switch) and the date-driven
+HighScore cutover phases (`legacyGamesPhase()` in `src/lib/featureFlags.ts`, see the section
+above). `EXPO_PUBLIC_ENABLE_GAMES` launched
 2026-06-10 — production declares `"1"` in `.env.production`, EAS config, and OTA/TestFlight
 workflows; unset still means ON, and `"0"` is the kill switch). Flag off must look exactly like the
 pre-tabs app: tab bar hidden, `/games` redirects home, no top switch. Auth/onboarding/invite/share

@@ -21,9 +21,15 @@ Personal monorepo. Two Expo apps on one backend: `apps/workshop` (published as
 **Workshop.dev**) is an umbrella for small products — lists, watchlist, sharing, friends —
 and `apps/highscore` (**HighScore**, `highscore.live`) owns daily games. Both build web + iOS
 from one component tree; shared code lives in `packages/*`. HighScore owns its Games UI in
-`apps/highscore/src/games/`. Workshop's flag-gated legacy Games UI is a frozen snapshot in
-`apps/workshop/src/legacyGames/`; it is deleted wholesale with the flag at the Wave-4 cutover
-(PR-10), and only deliberate critical-fix backports may change it before then. See
+`apps/highscore/src/games/`. Workshop's legacy Games UI is a frozen snapshot in
+`apps/workshop/src/legacyGames/` on a dated three-phase cutover (`@workshop/shared/constants`):
+**active** until `WORKSHOP_GAMES_SUNSET_AT` (2026-10-31 07:00Z, countdown banner), **moved**
+after it (every Workshop games route is the "moved to HighScore" hand-off in
+`src/screens/gamesMoved/`, App Store-first on iPhone; backend 410s `X-Workshop-Client:
+workshop` on `/v1/games*` + `/v1/game-share*` via `middleware/workshop-games-sunset.ts`), and
+**gone** from `WORKSHOP_GAMES_REMOVED_AT` (2026-11-14 07:00Z, Games tab + switch removed; only
+link/share hand-offs remain). The snapshot is deleted wholesale after that (PR-10); only
+deliberate critical-fix backports may change it before then. See
 `docs/highscore-migration-plan.md`.
 
 ## Stack at a glance
@@ -872,15 +878,12 @@ table, plus the friend-invite card and the play-link card:
    the list routes it never falls through to the default card on a missing preview — a
    friend link always reads as a friend invite, so a null preview (API down / games flag
    off / bad token) still emits the generic "Add a friend" 👋 card.
-6. **Play link** — `functions/g/[token].ts` intercepts the Games copy-scores CTA
-   (`/g/:token`, minted by `POST /v1/game-share`). Calls the public `GET /v1/game-share/:token`
-   resolve and emits a play card inviting the recipient to "play games with `<name>`"
-   ("Join me and play games on Workshop.dev"), image via `functions/og/g/[token].ts`. Like
-   the friend route it never falls through to the default card — a null preview (API down /
-   flag off / bad token) still emits the generic 🎮 "Play daily games" card. The link itself
-   is a per-(user, day) token that the in-app `/g/:token` resolver routes:
-   already-friends/self → Games home, everyone else → the sharer's profile. It is **not** an
-   accept surface — opening it never forms a friend edge (that's the `/friends/accept` link).
+6. **Play link** — `functions/g/[token].ts` and `functions/og/g/[token].ts` are **301s to
+   the `highscore.live` equivalents** (same token, same paths). Play links have been minted
+   on HighScore since FIX-1; only pre-cutover iMessage history still points here. HighScore's
+   `apps/highscore/functions/g/` owns the 🎮 card. An installed Workshop app intercepts the
+   URL first (AASA keeps `/g/*`) and its `app/g/[token].tsx` performs the same hand-off
+   post-sunset.
 
 ```
 GET /l/:slug                → preview API → HTMLRewriter swaps defaults for per-list tags
@@ -891,8 +894,8 @@ GET /invite/:token          → legacy preview API (back-compat) → per-list ta
 GET /og/invite/:token.png   → legacy PNG renderer (back-compat)
 GET /friends/accept/:token  → friends preview API → inviter-named friend tags
 GET /og/friend/:token.png   → workers-og  → 1200×630 friend PNG (inviter named, 👋 card)
-GET /g/:token               → game-share resolve API → sharer-named play tags
-GET /og/g/:token.png        → workers-og  → 1200×630 play PNG (sharer named, 🎮 card)
+GET /g/:token               → 301 https://highscore.live/g/:token
+GET /og/g/:token.png        → 301 https://highscore.live/og/g/:token.png
 GET /og/:name.png           → workers-og  → 1200×630 static PNG (default, locked-list)
 ```
 

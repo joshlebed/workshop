@@ -13,6 +13,7 @@ import { addGame, fetchGameDiscovery } from "../legacyGames/api/games";
 import { localDateKey } from "../legacyGames/lib/gameDate";
 import { FriendGameSuggestions } from "../legacyGames/screens/games/FriendGameSuggestions";
 import { useClientRuntime } from "../lib/clientRuntime";
+import { isLegacyGamesActive } from "../lib/featureFlags";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../lib/inviteStash";
 
 /**
@@ -77,8 +78,14 @@ export default function AcceptFriendInvite() {
         // Friendship gates score visibility — refresh the social board.
         queryClient.invalidateQueries({ queryKey: ["games"] }),
       ]);
-      // Hand off to the post-accept picker instead of bouncing to /friends.
-      setAcceptedFriend(data.friend);
+      // Hand off to the post-accept picker instead of bouncing to /friends —
+      // unless games have moved to HighScore, in which case there's nothing
+      // to pick here.
+      if (isLegacyGamesActive()) {
+        setAcceptedFriend(data.friend);
+      } else {
+        router.replace(routes.friends as Href);
+      }
     },
     onError: (e) => {
       // Drop the stash on a hard failure so re-opening doesn't loop back here.

@@ -43,14 +43,10 @@ overwrites the forwarded `Origin` after the check. `packages/api-client/src/conf
    flag-off environment degrades to that generic card. Pure helpers (`buildFriendMetaTags`,
    `buildFriendOgImageHtml`, `fetchFriendInvitePreview`) live in `_lib/og.ts` + the
    `packages/shared/src/og.ts` mirror.
-6. **Play link** — `g/[token].ts` intercepts the Games copy-scores CTA (`/g/:token`, minted
-   by `POST /v1/game-share`). Calls the public `GET /v1/game-share/:token` resolve and emits a
-   play card ("Play games with `<name>`" / "Join me and play games on Workshop.dev"), image
-   via `og/g/[token].ts`. Same never-fall-through contract as the friend route — a null
-   preview emits the generic 🎮 "Play daily games" card. Pure helpers (`buildGameShareMetaTags`,
-   `buildGameShareOgImageHtml`, `fetchGameSharePreview`) live in `_lib/og.ts` + the
-   `packages/shared/src/og.ts` mirror. The flag-gated resolve endpoint is distinct from the
-   friend one, and the card shape + CTA differ so the two link types read differently.
+6. **Play link** — `g/[token].ts` and `og/g/[token].ts` are permanent redirects to the
+   `highscore.live` equivalents (daily games moved to HighScore; links are minted there now,
+   these only serve pre-cutover iMessage history). No preview fetch, no card — HighScore's
+   `apps/highscore/functions/g/` owns the 🎮 card.
 
 ```
 GET /l/:slug                  → preview API → HTMLRewriter swaps defaults for per-list tags
@@ -61,8 +57,8 @@ GET /invite/:token            → legacy preview API → per-list tags (back-com
 GET /og/invite/:token.png     → legacy PNG renderer (back-compat)
 GET /friends/accept/:token    → friends preview API → inviter-named friend tags
 GET /og/friend/:token.png     → workers-og  → 1200×630 friend PNG (inviter named, 👋 card)
-GET /g/:token                 → game-share resolve API → sharer-named play tags
-GET /og/g/:token.png          → workers-og  → 1200×630 play PNG (sharer named, 🎮 card)
+GET /g/:token                 → 301 https://highscore.live/g/:token
+GET /og/g/:token.png          → 301 https://highscore.live/og/g/:token.png
 GET /og/:name.png             → workers-og  → 1200×630 static PNG (default, locked-list)
 ANY /api/*                    → fixed EXPO_PUBLIC_API_URL upstream (auth cookie bridge)
 ```

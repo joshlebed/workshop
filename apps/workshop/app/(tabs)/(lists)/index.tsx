@@ -40,7 +40,7 @@ import {
 import { HeaderActivityButton } from "../../../src/components/HeaderActivityButton";
 import { ProfileMenu } from "../../../src/components/ProfileMenu";
 import { useAuth } from "../../../src/hooks/useAuth";
-import { LEGACY_GAMES_TAB_ENABLED } from "../../../src/lib/featureFlags";
+import { useLegacyGamesPhase } from "../../../src/lib/useLegacyGamesPhase";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -103,6 +103,7 @@ function sharedDotAlphas(memberCount: number): string[] {
 export default function Home() {
   const { user, token } = useAuth();
   const router = useRouter();
+  const legacyGamesPhase = useLegacyGamesPhase();
   const queryClient = useQueryClient();
   const livePoll = useLivePollingInterval();
   const listsQuery = useQuery({
@@ -252,7 +253,7 @@ export default function Home() {
   return (
     <Screen style={styles.root}>
       <HomeHeader
-        left={LEGACY_GAMES_TAB_ENABLED ? <InlineTabSwitch /> : null}
+        left={legacyGamesPhase !== "gone" ? <InlineTabSwitch /> : null}
         right={
           <>
             <HeaderActivityButton
