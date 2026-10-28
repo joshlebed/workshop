@@ -29,6 +29,24 @@ send `"paste"`); the redirect also reports the intent snapshot to the log-only
 redirect — it's the only thing distinguishing a share-sheet post from a manual paste, and the
 backend derives the durable `user_flags` adoption marker from it (see root CLAUDE.md).
 
+Discoverability: the Games home shows a one-time share-sheet announcement card
+(`ShareAnnouncementCard`, gating rules in `src/lib/shareOnboarding.ts` — iOS native only, hidden
+while flags load, hidden once dismissed/completed/already-adopted) that leads into the
+`/share-setup` walkthrough (`src/screens/ShareSetupWalkthrough.tsx`, persistent entry also in
+Edit profile). Each "how" step shows a screenshot of the real iOS 26 share sheet
+(`assets/share-setup/*.png`) with the control to tap ringed — rings are fractions of the image in
+`SHARE_WALKTHROUGH_STEPS`, so re-cropping an image means re-measuring its ring (the simulator
+only captures at 1x; real-device 3x captures can replace them). The last step opens a live share
+sheet (`Share.share` with `SHARE_PRACTICE_TEXT`) and asks for confirmation when it closes. Don't
+make the user tap HighScore in that sheet to "test" it: sharing to the app's own extension from
+inside the app reuses the same `dataUrl` deep link, which `useShareIntent` only re-reads when the
+URL changes or the app re-activates, and the extension's blank view can stay up until swiped away.
+If they do tap it, `Share.share` reports our extension (→ "It works", pending payload cleared) and
+`_layout.tsx` routes the practice text to `/share-setup?tested=1`, never the score picker.
+Dismiss/complete state is the server-side
+`games.share-sheet-announcement` user flag — never a local storage key, so reinstalls and second
+devices don't re-blast. **Merging the announcement PR is the blast** — OTA ships ~60s after merge.
+
 ## Public pages (`/support`, `/privacy`, `/terms`)
 
 All three routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and
@@ -86,6 +104,13 @@ ships a working picker — with the generic "Allow HighScore to access your phot
 App Review can flag under 5.1.1(ii). The explicit `photosPermission` entry in `app.json` is the
 one that describes the use (profile picture). Camera/microphone are `false` on purpose; the
 picker never opens them. Any change here is a native change: bump `version`.
+
+## Share while the app is open
+
+`app/+native-intent.tsx` returns `null` for the share extension's sentinel deep link when the app
+is already running (`initial: false`), so expo-router ignores it and `useShareIntentRedirect`
+alone navigates. Returning `/` there raced the redirect and could land after it, dumping the user
+on the Games home. Cold starts still park on `/`.
 
 ## Share while signed out
 
