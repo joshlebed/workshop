@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { AppleSignInButton } from "../src/components/AppleSignInButton";
 import { AppStoreBadge } from "../src/components/AppStoreBadge";
-import { BrandIcon } from "../src/components/BrandIcon";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
 import { PRIVACY_ROUTE, TERMS_ROUTE } from "../src/lib/publicRoutes";
@@ -150,15 +149,14 @@ export default function SignIn() {
 
       {SHOW_APP_STORE_CARD ? (
         <View style={styles.appCard} testID="sign-in-app-store">
-          <View style={styles.appCardRow}>
-            <BrandIcon size={56} />
-            <View style={styles.appCardCopy}>
-              <Text variant="heading">Get HighScore for iPhone</Text>
-              <Text variant="label" tone="secondary">
-                Share a score straight from any game, get daily reminders, and keep your streak in
-                your pocket.
-              </Text>
-            </View>
+          <View style={styles.appCardCopy}>
+            <Text variant="heading" style={styles.appCardText}>
+              Get HighScore for iPhone
+            </Text>
+            <Text variant="label" tone="secondary" style={styles.appCardText}>
+              Share a score straight from any game, get daily reminders, and keep your streak in
+              your pocket.
+            </Text>
           </View>
           <AppStoreBadge />
         </View>
@@ -209,8 +207,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: tokens.border.default,
   },
-  appCardRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
-  appCardCopy: { flex: 1, gap: tokens.space.xs },
+  appCardCopy: { gap: tokens.space.xs },
+  appCardText: { textAlign: "center" },
   help: { textAlign: "center", marginTop: tokens.space.xs },
   divider: {
     flexDirection: "row",
