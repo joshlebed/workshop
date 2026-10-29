@@ -4,6 +4,11 @@ import { resetConfigForTesting } from "../lib/config.js";
 import { getRequestClientContext } from "../lib/requestContext.js";
 import { requestLog } from "./request-log.js";
 
+vi.mock("../lib/userActivity.js", () => ({
+  recordUserActivity: vi.fn(async () => {}),
+}));
+const { recordUserActivity } = await import("../lib/userActivity.js");
+
 function buildAppForTest() {
   const app = new Hono();
   app.use("*", requestLog);
@@ -70,6 +75,25 @@ describe("requestLog middleware", () => {
   it("captures the userId set by downstream handlers", async () => {
     await buildAppForTest().request("/whoami");
     expect(lastInfoEntry(logSpy)).toMatchObject({ user_id: "user-xyz", path: "/whoami" });
+  });
+
+  it("records daily activity for signed-in requests, attributed to the client app", async () => {
+    vi.mocked(recordUserActivity).mockClear();
+    await buildAppForTest().request("/whoami", { headers: { "X-Workshop-Client": "highscore" } });
+    expect(recordUserActivity).toHaveBeenCalledWith("user-xyz", "highscore");
+  });
+
+  it("does not record activity for anonymous or impersonated requests", async () => {
+    vi.mocked(recordUserActivity).mockClear();
+    const app = buildAppForTest();
+    app.get("/as-someone", (c) => {
+      c.set("userId", "target");
+      c.set("impersonatorUserId", "admin");
+      return c.json({ ok: true });
+    });
+    await app.request("/ping");
+    await app.request("/as-someone");
+    expect(recordUserActivity).not.toHaveBeenCalled();
   });
 
   it("reads the explicit X-Workshop-Platform and version headers", async () => {

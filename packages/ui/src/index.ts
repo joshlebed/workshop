@@ -1,5 +1,7 @@
 export type { AvatarProps } from "./Avatar";
 export { Avatar } from "./Avatar";
+export type { BarChartPoint, BarChartProps } from "./BarChart";
+export { BarChart } from "./BarChart";
 export type { ButtonProps } from "./Button";
 export { Button } from "./Button";
 export type { CardProps } from "./Card";

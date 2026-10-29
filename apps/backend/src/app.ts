@@ -8,6 +8,7 @@ import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
 import { requestLog } from "./middleware/request-log.js";
 import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
+import { adminRoutes } from "./routes/v1/admin.js";
 import { authRoutes } from "./routes/v1/auth.js";
 import { friendRoutes } from "./routes/v1/friends.js";
 import { gameShareRoutes } from "./routes/v1/gameShare.js";
@@ -165,6 +166,7 @@ export function buildApp() {
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);
   app.route("/v1/activity", activityRoutes);
+  app.route("/v1/admin", adminRoutes);
   app.route("/v1/sources", sourcePreviewRoutes);
   app.route("/v1/telemetry", telemetryRoutes);
   // Inbound webhooks for push-driven sources. No auth — signature
