@@ -310,12 +310,17 @@ gameRoutes.get("/discovery", async (c) => {
       friendId: userGames.userId,
       displayName: users.displayName,
       addedAt: userGames.addedAt,
+      position: userGames.position,
     })
     .from(userGames)
     .innerJoin(games, eq(games.id, userGames.gameId))
     .leftJoin(users, eq(users.id, userGames.userId))
     .where(friendGamesWhere)
-    .orderBy(asc(userGames.addedAt), asc(userGames.gameId));
+    .orderBy(
+      sql`${userGames.position} asc nulls last`,
+      asc(userGames.addedAt),
+      asc(userGames.gameId),
+    );
 
   const byGame = new Map<string, DiscoveryGame>();
   for (const r of rows) {
@@ -329,12 +334,16 @@ gameRoutes.get("/discovery", async (c) => {
   }
   // Addable games first — owned rows (includeOwned feed only) sink to the
   // bottom so the add-game sheet leads with what the user can actually add.
-  // Within each group: most-played-among-friends first; stable tiebreak on title.
+  // Single-friend form (`?friend=`): keep that friend's own home order — the
+  // rows arrive position-ASC (nulls last, then added_at), and Map insertion
+  // order preserves it, so the "Josh plays these" picker mirrors Josh's list.
+  // All-friends feed: most-played-among-friends first; stable tiebreak on title.
   const discovered = [...byGame.values()].sort(
     (a, b) =>
       Number(a.inMyGames) - Number(b.inMyGames) ||
-      b.friends.length - a.friends.length ||
-      a.game.title.localeCompare(b.game.title),
+      (scopedFriendId === undefined
+        ? b.friends.length - a.friends.length || a.game.title.localeCompare(b.game.title)
+        : 0),
   );
 
   const response: GameDiscoveryResponse = { games: discovered, ...countField };
