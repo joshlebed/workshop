@@ -17,7 +17,11 @@ export type WorkshopClient = (typeof WORKSHOP_CLIENTS)[number];
 
 // Chart windows the admin analytics dashboard (`GET /v1/admin/analytics`)
 // accepts, in days. Runtime constant so both apps render the same range picker.
-export const ADMIN_ANALYTICS_RANGES = [7, 30, 90] as const;
+// Windows above WEEKLY_BUCKET_ABOVE days are served as weekly buckets.
+export const ADMIN_ANALYTICS_RANGES = [7, 30, 90, 365] as const;
+export const ADMIN_ANALYTICS_WEEKLY_BUCKET_ABOVE = 90;
+export const ADMIN_ANALYTICS_BUCKETS = ["day", "week"] as const;
+export type AdminAnalyticsBucket = (typeof ADMIN_ANALYTICS_BUCKETS)[number];
 export type AdminAnalyticsRange = (typeof ADMIN_ANALYTICS_RANGES)[number];
 
 // Which surface a game-score write arrived from at PUT /v1/games/:id/scores

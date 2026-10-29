@@ -6,7 +6,7 @@
 // type barrel through Metro. Bump it on any breaking edit to a request/
 // response type below.
 
-import type { AdminAnalyticsRange, WorkshopClient } from "./constants.js";
+import type { AdminAnalyticsBucket, AdminAnalyticsRange, WorkshopClient } from "./constants.js";
 import type { ItemContent, ItemKind } from "./itemKinds.js";
 import type { ConfigWarning, ModuleName } from "./modules.js";
 import type { SourceKind } from "./sourceKinds.js";
@@ -157,7 +157,10 @@ export interface ImpersonationTargetsResponse {
 
 /** Admin analytics (`GET /v1/admin/analytics`). Admin-only; one dashboard per client app. */
 
-/** One day on a chart. `day` is a UTC `YYYY-MM-DD`. */
+/**
+ * One bar on a chart. `day` is a UTC `YYYY-MM-DD`: the day itself for daily
+ * series, or the first day of the bucket for weekly ones.
+ */
 export interface AdminAnalyticsPoint {
   day: string;
   value: number;
@@ -180,6 +183,8 @@ export interface AdminAnalyticsStat {
 export interface AdminAnalyticsResponse {
   client: WorkshopClient;
   rangeDays: AdminAnalyticsRange;
+  /** Granularity of every series' points: daily, or weekly for long windows. */
+  bucket: AdminAnalyticsBucket;
   /** ISO timestamp the numbers were computed at. */
   generatedAt: string;
   stats: AdminAnalyticsStat[];

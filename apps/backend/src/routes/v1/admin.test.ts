@@ -139,6 +139,28 @@ describe("GET /v1/admin/analytics", () => {
     expect(body.series.find((s) => s.key === "scores")).toBeUndefined();
   });
 
+  it("rolls a one-year window up into weekly buckets", async () => {
+    const res = await adminRoutes.request("/analytics?client=highscore&range=365", {
+      headers: authHeaders(adminId),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as AdminAnalyticsResponse;
+    expect(body.bucket).toBe("week");
+    expect(body.rangeDays).toBe(365);
+    // 365 days → 52 full weeks + one 1-day bucket at the start.
+    expect(series(body, "dau").points).toHaveLength(53);
+    expect(series(body, "dau").label).toBe("Weekly active users");
+    const lastWeek = series(body, "dau").points.at(-1);
+    expect(lastWeek?.value).toBe(2);
+    // Scores: 3 in the last 7 days (2 today + 1 two days ago) summed into one bar.
+    expect(series(body, "scores").points.at(-1)?.value).toBe(3);
+    // Scorers are distinct within the week (player scored twice, lurker once).
+    expect(series(body, "scorers").points.at(-1)?.value).toBe(2);
+    expect(stat(body, "scores_7d")).toBe(3);
+    // Weekly MAU is the end-of-week snapshot, not a sum.
+    expect(series(body, "mau").points.at(-1)?.value).toBe(2);
+  });
+
   it("defaults the client to the calling app's X-Workshop-Client header", async () => {
     // Routed through requestLog in the real app; here the route reads the
     // context directly, so an explicit header without the context store means

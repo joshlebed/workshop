@@ -69,7 +69,7 @@ export default function AdminAnalytics() {
             {ADMIN_ANALYTICS_RANGES.map((days) => (
               <Chip
                 key={days}
-                label={`${days} days`}
+                label={days === 365 ? "1 year" : `${days} days`}
                 selected={range === days}
                 onPress={() => setRange(days)}
                 testID={`admin-analytics-range-${days}`}
@@ -112,7 +112,7 @@ export default function AdminAnalytics() {
                 <Card key={series.key} style={styles.chartCard} testID={`series-${series.key}`}>
                   <Text variant="label">{series.label}</Text>
                   <View style={styles.chart}>
-                    <BarChart points={series.points} />
+                    <BarChart points={series.points} bucket={query.data.bucket} />
                   </View>
                   <Text variant="caption" tone="muted">
                     {series.description}
@@ -121,7 +121,8 @@ export default function AdminAnalytics() {
               ))}
 
               <Text variant="caption" tone="muted" style={styles.footer}>
-                UTC days · computed {formatGeneratedAt(query.data.generatedAt)}
+                UTC {query.data.bucket === "week" ? "weeks" : "days"} · computed{" "}
+                {formatGeneratedAt(query.data.generatedAt)}
               </Text>
             </>
           ) : null}
