@@ -29,6 +29,7 @@ import { requireModule, stripModuleGatedItemFields } from "../../lib/moduleGate.
 import { requireCapability } from "../../lib/permissions.js";
 import { appendPosition, moveItemPosition } from "../../lib/positions.js";
 import { parseJsonBody } from "../../lib/request.js";
+import { requestOriginColumns } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
 import { type DbClient, executeRows } from "../../lib/sql.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
@@ -497,6 +498,7 @@ export async function createItem(
         content,
         position,
         addedBy: userId,
+        ...requestOriginColumns(),
       })
       .returning();
     if (!row) throw new Error("item insert returned no row");

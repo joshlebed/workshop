@@ -35,6 +35,7 @@ import { notifyListArchived, notifyListJoined } from "../../lib/opsNotifications
 import { requireCapability } from "../../lib/permissions.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
+import { requestOriginColumns } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
 import { verifySession } from "../../lib/session.js";
 import { generateShareSlug, isValidShareSlug } from "../../lib/shareSlug.js";
@@ -1252,6 +1253,7 @@ listRoutes.post(
             completed: preserveCompletion ? it.completed : false,
             completedAt: preserveCompletion ? it.completedAt : null,
             completedBy: preserveCompletion ? it.completedBy : null,
+            ...requestOriginColumns(),
           })
           .returning({ id: items.id });
         if (newItem) {

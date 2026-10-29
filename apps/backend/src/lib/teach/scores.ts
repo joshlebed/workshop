@@ -33,6 +33,7 @@ import { resolvePostedScore, scoreCodeFields, scoreShareWithinBudget } from "../
 import { matchByUrlOrLabel, RECOGNITION_SURFACE_THRESHOLD } from "../gameRecognition.js";
 import { recognitionModeFor, recognizeGameForUser } from "../gameRecognitionService.js";
 import { todayPeriodKey, toGameShape } from "../gameShapes.js";
+import { requestOriginColumns } from "../requestContext.js";
 import type { DbClient } from "../sql.js";
 import { logTeachEvent, type TeachLogContext } from "./log.js";
 import type { StoredPick } from "./types.js";
@@ -514,7 +515,7 @@ export async function saveScore(input: {
         updatedAt: new Date(),
       };
   // Every write sets it, so a post without it does not keep an older surface.
-  const columns = { ...values, entrySource: input.entrySource ?? null };
+  const columns = { ...values, entrySource: input.entrySource ?? null, ...requestOriginColumns() };
   const [row] = await db
     .insert(gameScores)
     .values({ gameId: game.id, userId, periodKey, ...columns })

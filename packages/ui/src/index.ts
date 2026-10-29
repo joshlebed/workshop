@@ -1,6 +1,6 @@
 export type { AvatarProps } from "./Avatar";
 export { Avatar } from "./Avatar";
-export type { BarChartPoint, BarChartProps } from "./BarChart";
+export type { BarChartPoint, BarChartProps, BarChartSegment } from "./BarChart";
 export { BarChart } from "./BarChart";
 export type { ButtonProps } from "./Button";
 export { Button } from "./Button";
@@ -15,6 +15,8 @@ export type { EmptyStateProps } from "./EmptyState";
 export { EmptyState } from "./EmptyState";
 export type { GoogleSignInButtonProps } from "./GoogleSignInButton";
 export { GoogleSignInButton } from "./GoogleSignInButton";
+export type { HorizontalBarRow, HorizontalBarsProps } from "./HorizontalBars";
+export { HorizontalBars } from "./HorizontalBars";
 export { haptics } from "./haptics";
 export type { IconButtonProps } from "./IconButton";
 export { IconButton } from "./IconButton";

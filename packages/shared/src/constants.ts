@@ -22,6 +22,9 @@ export const ADMIN_ANALYTICS_RANGES = [7, 30, 90, 365] as const;
 export const ADMIN_ANALYTICS_WEEKLY_BUCKET_ABOVE = 90;
 export const ADMIN_ANALYTICS_BUCKETS = ["day", "week"] as const;
 export type AdminAnalyticsBucket = (typeof ADMIN_ANALYTICS_BUCKETS)[number];
+// Fixed-order platform segments for stacked charts (never re-ordered by rank).
+export const ADMIN_ANALYTICS_PLATFORMS = ["ios", "web", "other"] as const;
+export type AdminAnalyticsPlatform = (typeof ADMIN_ANALYTICS_PLATFORMS)[number];
 export type AdminAnalyticsRange = (typeof ADMIN_ANALYTICS_RANGES)[number];
 
 // Which surface a game-score write arrived from at PUT /v1/games/:id/scores

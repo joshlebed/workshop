@@ -219,14 +219,22 @@ deliberate critical-fix backports may change it before then. See
 - **Admin analytics dashboards live in each app at `/admin/analytics`** (ProfileMenu →
   "Admin: analytics"), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90|365` (365 is served as weekly buckets: distinct users per week, end-of-week MAU snapshot, summed counts; `bucket` on the response)
   (`routes/v1/admin.ts`, gated on the real admin via `isAdminUser`, impersonation-aware).
-  DAU/MAU come from `user_activity_days` — one row per (user, client, UTC day), written by
+  DAU/MAU come from `user_activity_days` — one row per (user, client, platform, app version,
+  UTC day; a multi-platform user appears under each platform), written by
   the `requestLog` middleware (`lib/userActivity.ts`, memoized per Lambda container, skipped
   for impersonated and 5xx requests). Header-less requests count as `workshop`. Rows before
   2026-10-29 were backfilled from `game_scores` / reactions (→ highscore) and
   `activity_events` (→ workshop), so early history is a lower bound. Per-app content series
   (scores + scorers per day for HighScore, items + lists per day for Workshop) are computed
   from their source tables in `lib/adminAnalytics.ts`; add a series there, not client-side.
-  Charts are `BarChart` from `@workshop/ui`; the two screens are intentionally per-app copies.
+  User-written rows (`game_scores`, `items`) are stamped with `client` / `platform` /
+  `app_version` via `requestOriginColumns()` from `lib/requestContext.ts` — **add it to any
+  new user-write path** so the per-platform stacks stay complete (NULL = pre-stamping or a
+  server job, shown as "Other / unknown"). Series carry an optional per-platform `stack`
+  (`stackMode: sum` for counts, `overlap` for distinct users) and the response a `breakdowns`
+  list (versions in use, last 7 days). Charts are `BarChart` / `HorizontalBars` from
+  `@workshop/ui`; the two screens are intentionally per-app copies. Workshop web persists the
+  react-query cache to localStorage, so a new response field must be read as optional.
 
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load

@@ -57,6 +57,22 @@ export function getRequestClientContext(): RequestClientContext | null {
   return storage.getStore() ?? null;
 }
 
+/**
+ * The three origin columns stamped onto user-written rows (`game_scores`,
+ * `items`): all null outside a request or when the caller sent no headers.
+ */
+export function requestOriginColumns(ctx = getRequestClientContext()): {
+  client: WorkshopClient | null;
+  platform: string | null;
+  appVersion: string | null;
+} {
+  return {
+    client: ctx?.client ?? null,
+    platform: ctx?.platform?.toLowerCase() ?? null,
+    appVersion: ctx?.appVersion ?? null,
+  };
+}
+
 const CLIENT_LABELS: Record<WorkshopClient, string> = {
   workshop: "Workshop",
   highscore: "HighScore",

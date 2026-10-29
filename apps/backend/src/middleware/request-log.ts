@@ -76,7 +76,7 @@ export const requestLog: MiddlewareHandler = async (c, next) => {
     // admin acting as someone else, not that person using the app; failed
     // requests (5xx) are not usage either.
     if (userId && !c.get("impersonatorUserId") && status > 0 && status < 500) {
-      await recordUserActivity(userId, clientContext.client);
+      await recordUserActivity(userId, clientContext);
     }
 
     logger.info("request", {
