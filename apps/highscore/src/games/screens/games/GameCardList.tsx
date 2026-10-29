@@ -39,6 +39,7 @@ export function GameCardList({
   onReorder,
   refreshing,
   onRefresh,
+  bottomInset = 0,
 }: GameCardListProps) {
   return (
     <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
@@ -51,7 +52,10 @@ export function GameCardList({
         onReorder={({ from, to }: ReorderableListReorderEvent) =>
           onReorder({ fromIndex: from, toIndex: to })
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: tokens.space.lg + bottomInset },
+        ]}
         testID="games-home-list"
         autoscrollThreshold={REORDER_AUTOSCROLL.threshold}
         autoscrollSpeedScale={REORDER_AUTOSCROLL.speedScale}
@@ -97,8 +101,5 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: homeLayout.contentTopGap,
-    // The home action bar sits below the list in normal flow, so the list only
-    // needs breathing room, not FAB clearance.
-    paddingBottom: tokens.space.lg,
   },
 });

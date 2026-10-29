@@ -46,7 +46,7 @@ import {
   tokens,
   useToast,
 } from "@workshop/ui";
-import { type Href, useRouter } from "expo-router";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -65,13 +65,17 @@ import {
 import { setScoreDirection } from "../api/teach";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
+import {
+  HomeActionBar,
+  homeActionBarListInset,
+  resolveHomeActionBarVariant,
+} from "../components/HomeActionBar";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
-import { actionBarBottomPadding } from "../lib/actionBar";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { daysBack, localDateKey } from "../lib/gameDate";
 import { writePostedScore } from "../lib/postedScore";
@@ -124,6 +128,10 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   // The root SafeAreaView only pads the top edge; the action bar clears the
   // home indicator itself.
   const insets = useSafeAreaInsets();
+  // Exploration switch while the owner picks a bar treatment: `?bar=dock|composer|rail`
+  // on web; native (no query) takes the default.
+  const { bar } = useLocalSearchParams<{ bar?: string }>();
+  const barVariant = resolveHomeActionBarVariant(bar);
 
   const todayKey = localDateKey();
   const gamesKey = queryKeys.games.mine(todayKey);
@@ -680,6 +688,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               onReorder={onReorder}
               refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
               onRefresh={() => gamesQuery.refetch()}
+              bottomInset={homeActionBarListInset(barVariant, insets.bottom)}
             />
           </>
         )}
@@ -688,29 +697,12 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       {/* The only two writes, always reachable, one-handed. Hidden on the
           empty state — the onboarding card owns those actions there. */}
       {!gamesQuery.isPending && !isEmpty ? (
-        <View
-          style={[
-            styles.actions,
-            { paddingBottom: actionBarBottomPadding(insets.bottom, tokens.space.md) },
-          ]}
-          testID="home-action-bar"
-        >
-          <Button
-            label="+ GAME"
-            variant="secondary"
-            accessibilityLabel="Add a game"
-            onPress={() => setAddOpen(true)}
-            testID="fab-add-game"
-            style={styles.actionSecondary}
-          />
-          <Button
-            label="PASTE SCORE"
-            accessibilityLabel="Paste a score"
-            onPress={() => router.push(routes.share as Href)}
-            testID="home-paste-score"
-            style={styles.actionPrimary}
-          />
-        </View>
+        <HomeActionBar
+          variant={barVariant}
+          insetBottom={insets.bottom}
+          onAddGame={() => setAddOpen(true)}
+          onPasteScore={() => router.push(routes.share as Href)}
+        />
       ) : null}
 
       <AddGameSheet
@@ -910,19 +902,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: tokens.space.lg,
   },
-  // Bottom action bar: in normal flow (not absolute) so the card list ends
-  // above it and the last card is never hidden behind it on any platform.
-  actions: {
-    flexDirection: "row",
-    gap: tokens.space.sm,
-    paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: tokens.space.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: tokens.border.default,
-    backgroundColor: tokens.bg.canvas,
-  },
-  actionSecondary: { flex: 1 },
-  actionPrimary: { flex: 2 },
   sheetHeader: { gap: 4 },
   sheetActions: { gap: tokens.space.sm },
   sheetDivider: {
