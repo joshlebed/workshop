@@ -12,6 +12,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
+import { AppStoreBanner } from "../src/components/AppStoreBanner";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
@@ -214,6 +215,8 @@ function AuthGate() {
 
   return (
     <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
+      {/* The sign-in screen already carries the App Store card. */}
+      <AppStoreBanner hidden={segments[0] === "sign-in"} />
       <Stack
         screenOptions={{
           headerShown: false,
