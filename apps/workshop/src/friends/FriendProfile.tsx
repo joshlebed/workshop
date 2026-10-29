@@ -200,6 +200,7 @@ export default function FriendProfileScreen() {
   const name = profile?.user.displayName?.trim() || "Someone";
   const mutuals = profile ? mutualsLine(profile) : null;
   const isSelf = profile?.relationship === "self" || (!!user?.id && user.id === userId);
+  const scoresVisible = isSelf || profile?.relationship === "friends";
 
   return (
     <Screen testID="friend-profile-screen">
@@ -319,7 +320,8 @@ export default function FriendProfileScreen() {
               />
             ) : null}
 
-            {/* Games. Post-sunset these live in HighScore — point there; once
+            {/* Games. Public to every viewer (score line friends/self only; `null`
+                games = stale pre-public cache). Post-sunset these live in HighScore — point there; once
                 the tab is gone, say nothing. */}
             {legacyGamesPhase === "gone" ? null : legacyGamesPhase === "moved" ? (
               <GamesMovedCard name={name} isSelf={isSelf} />
@@ -355,11 +357,13 @@ export default function FriendProfileScreen() {
                         scoreRaw: pg.score.scoreRaw,
                       })
                     : null;
-                  const scoreLine = scoreBody
-                    ? `Today: ${scoreBody.split("\n")[0]}`
-                    : pg.score
-                      ? "Played today"
-                      : "Not played today";
+                  const scoreLine = !scoresVisible
+                    ? null
+                    : scoreBody
+                      ? `Today: ${scoreBody.split("\n")[0]}`
+                      : pg.score
+                        ? "Played today"
+                        : "Not played today";
                   return (
                     <Pressable
                       key={pg.game.id}
@@ -391,9 +395,11 @@ export default function FriendProfileScreen() {
                         <Text variant="label" numberOfLines={1} style={styles.gameTitle}>
                           {pg.game.title}
                         </Text>
-                        <Text variant="caption" tone="muted" numberOfLines={1}>
-                          {scoreLine}
-                        </Text>
+                        {scoreLine ? (
+                          <Text variant="caption" tone="muted" numberOfLines={1}>
+                            {scoreLine}
+                          </Text>
+                        ) : null}
                       </View>
                       {pg.viewerHasGame ? (
                         <Text style={styles.chevron}>›</Text>

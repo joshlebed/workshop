@@ -686,11 +686,12 @@ friendRoutes.get("/mutuals", requireAuth, async (c) => {
 });
 
 // --- GET /v1/friends/users/:userId — a user's profile, viewer-relative ---
-// Games (with the subject's score for `?period=`, default today UTC) are
-// attached only for friends/self; everyone else gets `games: null` ("add
-// them to see what they play"). A viewer with no relationship AND no mutual
-// friends gets 404 — indistinguishable from a missing user, so the endpoint
-// can't be used to probe arbitrary ids.
+// Games are public: every viewer who can see the profile gets the subject's
+// game list. The subject's score for `?period=` (default today UTC) is only
+// attached for friends/self — non-friends get `score: null` on every row.
+// A viewer with no relationship AND no mutual friends gets 404 —
+// indistinguishable from a missing user, so the endpoint can't be used to
+// probe arbitrary ids.
 
 friendRoutes.get("/users/:userId", requireAuth, async (c) => {
   const viewerId = c.get("userId");
@@ -770,8 +771,9 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
     if (!vouched) return err(c, "NOT_FOUND", "user not found");
   }
 
-  let profileGames: FriendProfileGame[] | null = null;
-  if (relationship === "friends" || relationship === "self") {
+  const scoresVisible = relationship === "friends" || relationship === "self";
+  let profileGames: FriendProfileGame[];
+  {
     const rows = await db
       .select({ game: games })
       .from(userGames)
@@ -784,7 +786,7 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
       );
     const gameIds = rows.map((r) => r.game.id);
     const [scoreRows, viewerGameRows] = await Promise.all([
-      gameIds.length === 0
+      gameIds.length === 0 || !scoresVisible
         ? Promise.resolve([])
         : db
             .select({
