@@ -217,7 +217,7 @@ deliberate critical-fix backports may change it before then. See
   Workshop.
 
 - **Admin analytics dashboards live in each app at `/admin/analytics`** (ProfileMenu →
-  "Admin: analytics"), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90`
+  "Admin: analytics"), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90|365` (365 is served as weekly buckets: distinct users per week, end-of-week MAU snapshot, summed counts; `bucket` on the response)
   (`routes/v1/admin.ts`, gated on the real admin via `isAdminUser`, impersonation-aware).
   DAU/MAU come from `user_activity_days` — one row per (user, client, UTC day), written by
   the `requestLog` middleware (`lib/userActivity.ts`, memoized per Lambda container, skipped

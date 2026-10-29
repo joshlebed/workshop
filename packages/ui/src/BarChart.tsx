@@ -19,6 +19,8 @@ export interface BarChartPoint {
 
 export interface BarChartProps {
   points: BarChartPoint[];
+  /** What one bar covers; a weekly bar is labelled by the week it starts. */
+  bucket?: "day" | "week";
   /** Plot height in px, excluding the axis label row. */
   height?: number;
   /** Series color; defaults to the theme accent. */
@@ -54,7 +56,15 @@ function shortDay(day: string): string {
   return `${month} ${Number(d)}`;
 }
 
-export function BarChart({ points, height = PLOT_HEIGHT, color, testID }: BarChartProps) {
+export function BarChart({
+  points,
+  bucket = "day",
+  height = PLOT_HEIGHT,
+  color,
+  testID,
+}: BarChartProps) {
+  const labelFor = (day: string) =>
+    bucket === "week" ? `Week of ${shortDay(day)}` : shortDay(day);
   // Static dark tokens, like `Text` and `Card`, so the tooltip surface and
   // its text always come from the same palette.
   const fill = color ?? theme.accent.default;
@@ -108,7 +118,7 @@ export function BarChart({ points, height = PLOT_HEIGHT, color, testID }: BarCha
             return (
               <Pressable
                 key={p.day}
-                accessibilityLabel={`${shortDay(p.day)}: ${p.value}`}
+                accessibilityLabel={`${labelFor(p.day)}: ${p.value}`}
                 onHoverIn={() => setActive(i)}
                 onHoverOut={() => setActive((cur) => (cur === i ? null : cur))}
                 onPressIn={() => setActive(i)}
@@ -164,7 +174,7 @@ export function BarChart({ points, height = PLOT_HEIGHT, color, testID }: BarCha
             ]}
           >
             <Text variant="caption" tone="muted">
-              {shortDay(activePoint.day)}
+              {labelFor(activePoint.day)}
             </Text>
             <Text variant="label">{activePoint.value.toLocaleString()}</Text>
           </View>
@@ -224,7 +234,7 @@ const styles = StyleSheet.create({
   tooltip: {
     position: "absolute",
     top: 0,
-    width: 96,
+    width: 112,
     padding: 6,
     borderRadius: 8,
     borderWidth: 1,
