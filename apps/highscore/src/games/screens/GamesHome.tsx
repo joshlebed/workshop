@@ -13,10 +13,11 @@
 // suggestions when you do. The + sheet carries the same discovery suggestions
 // above its URL field; the home card list itself stays purely your own games.
 //
-// The two writes live in a bottom action bar (UX-DECISIONS entry 4): `+ GAME`
-// opens the add sheet and `PASTE SCORE` goes to the share flow (`/share`),
-// which recognises the game from the pasted text and posts to today. The bar
-// is hidden on the empty state, whose onboarding card owns those actions.
+// The two writes live in a floating bottom action bar (UX-DECISIONS entry 4,
+// `HomeActionBar`): "Add game" opens the add sheet and "Paste score" goes to
+// the share flow (`/share`), which recognises the game from the pasted text
+// and posts to today. The bar is hidden on the empty state, whose onboarding
+// card owns those actions.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
@@ -46,8 +47,8 @@ import {
   tokens,
   useToast,
 } from "@workshop/ui";
-import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type Href, useRouter } from "expo-router";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReportSheet } from "../../moderation/ReportSheet";
@@ -65,11 +66,7 @@ import {
 import { setScoreDirection } from "../api/teach";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
-import {
-  HomeActionBar,
-  homeActionBarListInset,
-  resolveHomeActionBarVariant,
-} from "../components/HomeActionBar";
+import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useOpenProfile } from "../hooks/useOpenProfile";
@@ -122,16 +119,12 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const router = useRouter();
   const openProfile = useOpenProfile();
   const queryClient = useQueryClient();
-  const { showToast } = useToast();
+  const { showToast, registerBottomInset } = useToast();
   const notifyPosted = usePostedScoreNotice();
   const livePoll = useLivePollingInterval();
   // The root SafeAreaView only pads the top edge; the action bar clears the
   // home indicator itself.
   const insets = useSafeAreaInsets();
-  // Exploration switch while the owner picks a bar treatment: `?bar=dock|composer|rail`
-  // on web; native (no query) takes the default.
-  const { bar } = useLocalSearchParams<{ bar?: string }>();
-  const barVariant = resolveHomeActionBarVariant(bar);
 
   const todayKey = localDateKey();
   const gamesKey = queryKeys.games.mine(todayKey);
@@ -175,6 +168,14 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const myGames = gamesQuery.data?.games ?? [];
   const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
+  // The bar floats over the list, so the list pads its tail to clear it and
+  // toasts lift above it while this screen is mounted.
+  const barVisible = !gamesQuery.isPending && !isEmpty;
+  const listInset = homeActionBarListInset(insets.bottom);
+  useEffect(() => {
+    if (!barVisible) return;
+    return registerBottomInset(listInset);
+  }, [barVisible, listInset, registerBottomInset]);
 
   // Standings for the selected day. When viewing today this shares the
   // today-pinned query's key, so it costs nothing extra; it only does work
@@ -688,7 +689,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               onReorder={onReorder}
               refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
               onRefresh={() => gamesQuery.refetch()}
-              bottomInset={homeActionBarListInset(barVariant, insets.bottom)}
+              bottomInset={listInset}
             />
           </>
         )}
@@ -696,9 +697,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 
       {/* The only two writes, always reachable, one-handed. Hidden on the
           empty state — the onboarding card owns those actions there. */}
-      {!gamesQuery.isPending && !isEmpty ? (
+      {barVisible ? (
         <HomeActionBar
-          variant={barVariant}
           insetBottom={insets.bottom}
           onAddGame={() => setAddOpen(true)}
           onPasteScore={() => router.push(routes.share as Href)}
