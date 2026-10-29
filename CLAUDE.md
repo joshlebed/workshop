@@ -811,12 +811,12 @@ once per fresh sandbox; `.niteshift/resume` runs on every resume; `.niteshift/se
 declares the supervised processes. `ns services status` shows them; `ns services up`
 re-applies the manifest after you edit it; `ns services validate` checks it.
 
-| Service     | Port | Autostart | Notes                                                               |
-| ----------- | ---- | --------- | ------------------------------------------------------------------- |
-| `web`       | 8081 | yes       | Workshop.dev Expo web. Primary preview. `EXPO_PUBLIC_DEV_AUTH=1`.   |
-| `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).           |
-| `highscore` | 8082 | no        | `ns services start highscore` — HighScore web against same backend. |
-| `postgres`  | —    | no        | Docker PG16, host networking. Only when no Neon `DATABASE_URL`.     |
+| Service     | Port | Autostart | Notes                                                                         |
+| ----------- | ---- | --------- | ----------------------------------------------------------------------------- |
+| `highscore` | 8082 | yes       | HighScore Expo web. Primary preview (listed first). `EXPO_PUBLIC_DEV_AUTH=1`. |
+| `web`       | 8081 | yes       | Workshop.dev Expo web against the same backend. `ns preview 8081` to view it. |
+| `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).                     |
+| `postgres`  | —    | no        | Docker PG16, host networking. Only when no Neon `DATABASE_URL`.               |
 
 Gotchas: services get **platform env + manifest `environment` + `PORT` only**, never the
 repository variables setup sees — that's why `backend` goes through

@@ -1,9 +1,23 @@
-# Supervised long-running processes. `web` is first so the preview panel
-# defaults to the Workshop.dev web app. Setup lives in .niteshift/setup.
+# Supervised long-running processes. `highscore` is first so the preview panel
+# defaults to the HighScore web app. Setup lives in .niteshift/setup.
 services:
-  # Workshop.dev web (react-native-web via Expo CLI). Primary preview surface.
-  # With EXPO_PUBLIC_DEV_AUTH=1 the bundle auto-signs-in as the seeded
+  # HighScore web (react-native-web via Expo CLI, :8082). Primary preview
+  # surface. With EXPO_PUBLIC_DEV_AUTH=1 the bundle auto-signs-in as the seeded
   # joshlebed@gmail.com user on boot, so no preview `auth` block is needed.
+  - name: highscore
+    command: .niteshift/files/expo-web.sh highscore-app
+    port: 8082
+    environment:
+      - name: EXPO_PUBLIC_DEV_AUTH
+        value: "1"
+      # dev-api-proxy.js falls back to $PORT for the backend port; pin it so
+      # the /api proxy doesn't loop back to the web server itself.
+      - name: DEV_API_PROXY_PORT
+        value: "8787"
+      - name: EXPO_NO_TELEMETRY
+        value: "1"
+
+  # Workshop.dev web (:8081) against the same backend.
   - name: web
     command: .niteshift/files/expo-web.sh workshop-app
     port: 8081
@@ -21,20 +35,6 @@ services:
   - name: backend
     command: .niteshift/files/backend.sh
     port: 8787
-
-  # HighScore web (:8082) against the same backend. On demand:
-  #   ns services start highscore
-  - name: highscore
-    command: .niteshift/files/expo-web.sh highscore-app
-    port: 8082
-    autostart: false
-    environment:
-      - name: EXPO_PUBLIC_DEV_AUTH
-        value: "1"
-      - name: DEV_API_PROXY_PORT
-        value: "8787"
-      - name: EXPO_NO_TELEMETRY
-        value: "1"
 
   # Local Postgres 16, only when no remote DATABASE_URL is injected (the
   # Niteshift Database integration normally provides a per-task Neon branch).
