@@ -3,7 +3,16 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
+import {
+  Avatar,
+  Button,
+  CloseIcon,
+  IconButton,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
@@ -81,7 +90,7 @@ export default function EditProfile() {
           onPress={() => goBack("/")}
           testID="profile-edit-close"
         >
-          <Text style={styles.closeGlyph}>✕</Text>
+          <CloseIcon size={18} color={tokens.text.secondary} />
         </IconButton>
       </View>
 
@@ -342,7 +351,6 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
   headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,

@@ -16,7 +16,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { MyGame } from "@workshop/shared/games";
-import { homeLayout, PullToRefresh, REORDER_ACTIVATION } from "@workshop/ui";
+import { homeLayout, PullToRefresh, REORDER_ACTIVATION, tokens } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import type { GameCardListProps } from "./gameCardListProps";
@@ -27,6 +27,7 @@ export function GameCardList({
   onReorder,
   refreshing,
   onRefresh,
+  bottomInset = 0,
 }: GameCardListProps) {
   // Two sensors, never one with mixed activation (see ItemList.web.tsx):
   // MouseSensor stays snappy on desktop; TouchSensor's delay+tolerance lets
@@ -62,7 +63,13 @@ export function GameCardList({
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
       <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
-        <ScrollView contentContainerStyle={styles.listContent} testID="games-home-list">
+        <ScrollView
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: tokens.space.lg + bottomInset },
+          ]}
+          testID="games-home-list"
+        >
           <SortableContext items={ids} strategy={verticalListSortingStrategy}>
             {games.map((game) => (
               <SortableCard key={game.gameId} game={game} render={renderCard} />
@@ -123,6 +130,5 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: homeLayout.contentTopGap,
-    paddingBottom: homeLayout.bottomInset,
   },
 });

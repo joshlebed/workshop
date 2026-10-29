@@ -13,6 +13,8 @@ export interface GamesRoutes {
   home: string;
   signIn: string;
   friends: string;
+  /** Paste-any-score entry: the share flow's picker, which recognises the game from the text. */
+  share: string;
   /** Per-game board; `date` (YYYY-MM-DD) preselects that day on its rail. */
   game: (gameId: string, date?: string) => string;
   friendProfile: (userId: string, via?: string) => string;

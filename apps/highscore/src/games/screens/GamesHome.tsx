@@ -12,6 +12,12 @@
 // pushes "Add friends" when you have none, or your friends' games as one-tap
 // suggestions when you do. The + sheet carries the same discovery suggestions
 // above its URL field; the home card list itself stays purely your own games.
+//
+// The two writes live in a floating bottom action bar (UX-DECISIONS entry 4,
+// `HomeActionBar`): "Add game" opens the add sheet and "Paste score" goes to
+// the share flow (`/share`), which recognises the game from the pasted text
+// and posts to today. The bar is hidden on the empty state, whose onboarding
+// card owns those actions.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
@@ -42,8 +48,9 @@ import {
   useToast,
 } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
 import {
@@ -59,6 +66,7 @@ import {
 import { setScoreDirection } from "../api/teach";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
+import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useOpenProfile } from "../hooks/useOpenProfile";
@@ -111,9 +119,12 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const router = useRouter();
   const openProfile = useOpenProfile();
   const queryClient = useQueryClient();
-  const { showToast } = useToast();
+  const { showToast, registerBottomInset } = useToast();
   const notifyPosted = usePostedScoreNotice();
   const livePoll = useLivePollingInterval();
+  // The root SafeAreaView only pads the top edge; the action bar clears the
+  // home indicator itself.
+  const insets = useSafeAreaInsets();
 
   const todayKey = localDateKey();
   const gamesKey = queryKeys.games.mine(todayKey);
@@ -157,6 +168,14 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const myGames = gamesQuery.data?.games ?? [];
   const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
+  // The bar floats over the list, so the list pads its tail to clear it and
+  // toasts lift above it while this screen is mounted.
+  const barVisible = !gamesQuery.isPending && !isEmpty;
+  const listInset = homeActionBarListInset(insets.bottom);
+  useEffect(() => {
+    if (!barVisible) return;
+    return registerBottomInset(listInset);
+  }, [barVisible, listInset, registerBottomInset]);
 
   // Standings for the selected day. When viewing today this shares the
   // today-pinned query's key, so it costs nothing extra; it only does work
@@ -552,8 +571,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           selfId={user?.id ?? null}
           loading={!viewingToday && viewQuery.isPending}
           emptyFaces={[]}
-          // The home CTA posts to today only — past days are read-only here
-          // (post a past day from the per-game board), so Play / paste hide
+          // The home Play pill is a today-only nudge — past days are read-only
+          // here (post a past day from the per-game board), so it hides
           // off-today.
           showCta={viewingToday && !mg.standings.viewerHasPlayed}
           // Hand the rail's day to the board so "Yesterday" stays selected
@@ -563,7 +582,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           {...(onLongPressBody ? { onLongPressBody } : {})}
           onMenu={() => setMenuGame(mg)}
           onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
-          onPaste={() => openPasteFor({ id: mg.gameId, url: mg.game.url })}
           onReact={(userId, emoji, currentlyReacted) =>
             reactionCtl.react(mg.gameId, userId, emoji, currentlyReacted)
           }
@@ -582,7 +600,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       teachAvailable,
       router,
       markPlaying,
-      openPasteFor,
       viewStandings,
       viewDate,
       viewingToday,
@@ -672,26 +689,21 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               onReorder={onReorder}
               refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
               onRefresh={() => gamesQuery.refetch()}
+              bottomInset={listInset}
             />
           </>
         )}
       </View>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Add a game"
-        onPress={() => setAddOpen(true)}
-        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-          styles.fab,
-          hovered && styles.fabHovered,
-          pressed && styles.fabPressed,
-        ]}
-        testID="fab-add-game"
-      >
-        <Text style={styles.fabGlyph} tone="onAccent">
-          +
-        </Text>
-      </Pressable>
+      {/* The only two writes, always reachable, one-handed. Hidden on the
+          empty state — the onboarding card owns those actions there. */}
+      {barVisible ? (
+        <HomeActionBar
+          insetBottom={insets.bottom}
+          onAddGame={() => setAddOpen(true)}
+          onPasteScore={() => router.push(routes.share as Href)}
+        />
+      ) : null}
 
       <AddGameSheet
         visible={addOpen}
@@ -870,7 +882,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.bg.canvas,
     paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.lg,
   },
   body: { flex: 1 },
   headerIconBtn: {
@@ -891,26 +902,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: tokens.space.lg,
   },
-  fab: {
-    position: "absolute",
-    right: homeLayout.horizontalInset,
-    bottom: homeLayout.horizontalInset,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: tokens.accent.default,
-    alignItems: "center",
-    justifyContent: "center",
-    // Calm neutral elevation, not an amber glow (see DESIGN.md "calm by default").
-    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
-    elevation: 5,
-  },
-  fabHovered: {
-    backgroundColor: tokens.accent.hover,
-    transform: [{ scale: 1.04 }],
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
   sheetHeader: { gap: 4 },
   sheetActions: { gap: tokens.space.sm },
   sheetDivider: {

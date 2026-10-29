@@ -11,12 +11,14 @@
 // raw result through the `scoresSummary` distiller) and surface-specific copy
 // (turnout line, CTA visibility) is computed at the call site. What lives
 // here is the standings rendering itself: rank marks, top-N cut with a pinned
-// "you" row, the dimmed empty facepile, skeletons, and the Play / paste
-// affordances.
+// "you" row, the dimmed empty facepile, skeletons, and the Play affordance.
+// There is no per-card paste: the home's bottom action bar is the only paste
+// entry point (UX-DECISIONS entry 7); posting for a specific game lives on
+// the per-game board.
 //
 // Both drag stacks compose this inside their own drag-aware wrappers. On
-// native the whole card is the reorder handle: the cover, title, Play, paste
-// and standings Pressables each take `onLongPressBody`, and the wrapper
+// native the whole card is the reorder handle: the cover, title, Play and
+// standings Pressables each take `onLongPressBody`, and the wrapper
 // catches a long-press on the gaps between them — only the kebab menu opts out
 // (a press there opens the menu instead of starting a drag). Web drags via the
 // wrapper's pointer listeners. A short tap on any control still runs that
@@ -87,7 +89,7 @@ export interface StandingsCardProps {
   loading?: boolean;
   /** Dimmed facepile shown when nobody has played (may be empty). */
   emptyFaces: StandingsFace[];
-  /** Show the Play pill / paste link (caller gates on "viewer hasn't played today"). */
+  /** Show the Play pill (caller gates on "viewer hasn't played today"). */
   showCta: boolean;
   /** Tap the title or standings → detail. */
   onPressBody?: () => void;
@@ -95,15 +97,13 @@ export interface StandingsCardProps {
   onPressPlayer?: (userId: string) => void;
   /**
    * Long-press to reorder (native only; web drags via the wrapper). Wired onto
-   * the cover, title, Play, paste and standings rows so the whole card is a
+   * the cover, title, Play and standings rows so the whole card is a
    * drag handle; the kebab menu deliberately omits it.
    */
   onLongPressBody?: () => void;
   onMenu: () => void;
   /** Open the game externally + arm the paste-on-return prompt. */
   onPlay: () => void;
-  /** Manual paste fallback — opens the paste sheet without leaving the page. */
-  onPaste: () => void;
   /**
    * Tap an existing reaction chip on a friend's row (Games surface only). When
    * omitted, chips render but aren't interactive.
@@ -136,7 +136,6 @@ export const StandingsCard = memo(function StandingsCard({
   onLongPressBody,
   onMenu,
   onPlay,
-  onPaste,
   onReact,
   onOpenReactionPicker,
 }: StandingsCardProps) {
@@ -233,30 +232,6 @@ export const StandingsCard = memo(function StandingsCard({
             <Text variant="caption" tone="muted" numberOfLines={1} style={styles.turnout}>
               {turnout}
             </Text>
-            {ctaVisible ? (
-              <>
-                <Text variant="caption" tone="muted">
-                  ·
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Paste your ${title} result`}
-                  onPress={onPaste}
-                  onLongPress={onLongPressBody}
-                  delayLongPress={REORDER_ACTIVATION.longPressMs}
-                  hitSlop={8}
-                  testID={`game-card-paste-${cardId}`}
-                  style={({ pressed, hovered }) => [
-                    styles.pasteLink,
-                    (pressed || hovered) && styles.pasteLinkHover,
-                  ]}
-                >
-                  <Text variant="caption" tone="muted" style={styles.pasteLinkText}>
-                    paste
-                  </Text>
-                </Pressable>
-              </>
-            ) : null}
           </View>
         </View>
 
@@ -600,9 +575,6 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   turnout: { flexShrink: 1, letterSpacing: 0 },
-  pasteLink: { borderRadius: tokens.radius.sm },
-  pasteLinkHover: { backgroundColor: tokens.bg.elevated },
-  pasteLinkText: { textDecorationLine: "underline" },
   playPill: {
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 6,

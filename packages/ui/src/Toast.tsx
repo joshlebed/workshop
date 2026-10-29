@@ -7,7 +7,8 @@ import {
   useRef,
   useState,
 } from "react";
-import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
+import { Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
+import { CloseIcon } from "./CloseIcon";
 import { CopyIcon } from "./CopyIcon";
 import { copyToClipboard } from "./clipboard";
 import { Text } from "./Text";
@@ -33,6 +34,12 @@ interface ShowToastInput {
 
 interface ToastContextValue {
   showToast: (input: ShowToastInput) => void;
+  /**
+   * Lift the toast viewport by `px` while the caller is mounted (a screen
+   * with a bottom bar the toasts would otherwise cover). Returns the
+   * unregister function; the viewport honours the largest active lift.
+   */
+  registerBottomInset: (px: number) => () => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -56,7 +63,17 @@ const DANGER_DURATION_MS = 10_000;
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [overlayCount, setOverlayCount] = useState(0);
+  const [bottomInsets, setBottomInsets] = useState<{ id: number; px: number }[]>([]);
   const idRef = useRef(0);
+  const insetIdRef = useRef(0);
+
+  const registerBottomInset = useCallback((px: number) => {
+    insetIdRef.current += 1;
+    const id = insetIdRef.current;
+    setBottomInsets((prev) => [...prev, { id, px }]);
+    return () => setBottomInsets((prev) => prev.filter((i) => i.id !== id));
+  }, []);
+  const bottomInset = bottomInsets.reduce((max, i) => Math.max(max, i.px), 0);
 
   const registerOverlay = useCallback(() => {
     setOverlayCount((n) => n + 1);
@@ -81,7 +98,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [dismiss],
   );
 
-  const value = useMemo(() => ({ showToast }), [showToast]);
+  const value = useMemo(
+    () => ({ showToast, registerBottomInset }),
+    [showToast, registerBottomInset],
+  );
   const stateValue = useMemo(
     () => ({ toasts, dismiss, registerOverlay }),
     [toasts, dismiss, registerOverlay],
@@ -92,7 +112,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <ToastStateContext.Provider value={stateValue}>
         {children}
         {overlayCount === 0 ? (
-          <ToastViewport toasts={toasts} dismiss={dismiss} style={styles.viewport} />
+          <ToastViewport
+            toasts={toasts}
+            dismiss={dismiss}
+            style={[styles.viewport, { bottom: tokens.space.xl + bottomInset }]}
+          />
         ) : null}
       </ToastStateContext.Provider>
     </ToastContext.Provider>
@@ -120,7 +144,7 @@ function ToastViewport({
 }: {
   toasts: Toast[];
   dismiss: (id: number) => void;
-  style: ViewStyle;
+  style: StyleProp<ViewStyle>;
 }) {
   if (toasts.length === 0) return null;
   return (
@@ -182,7 +206,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
         hitSlop={8}
         testID="toast-dismiss"
       >
-        <Text style={styles.iconGlyph}>✕</Text>
+        <CloseIcon size={14} color={tokens.text.secondary} />
       </Pressable>
     </View>
   );
@@ -245,9 +269,4 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   iconBtnHover: { backgroundColor: tokens.bg.surface },
-  iconGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
-  },
 });

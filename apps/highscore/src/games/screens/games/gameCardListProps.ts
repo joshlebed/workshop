@@ -22,4 +22,6 @@ export interface GameCardListProps {
   onReorder: (event: GameReorderEvent) => void;
   refreshing: boolean;
   onRefresh: () => void;
+  /** Extra tail padding so the last card clears a bar floating over the list. */
+  bottomInset?: number;
 }

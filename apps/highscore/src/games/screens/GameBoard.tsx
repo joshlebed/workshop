@@ -7,6 +7,7 @@ import { STREAK_MIN_DAYS } from "@workshop/shared/games";
 import {
   Avatar,
   Button,
+  ChevronIcon,
   confirm,
   EmptyState,
   formatRelative,
@@ -323,7 +324,7 @@ export default function GameBoard() {
             hitSlop={10}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <Text style={styles.navGlyph}>‹</Text>
+            <ChevronIcon direction="left" size={20} color={tokens.text.primary} />
           </Pressable>
           {game.iconUrl ? (
             <Image
@@ -884,7 +885,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   body: {
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl * 2,

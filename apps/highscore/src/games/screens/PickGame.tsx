@@ -2,7 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import {
+  Button,
+  ChevronIcon,
+  CloseIcon,
+  EmptyState,
+  haptics,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -207,7 +217,7 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>x</Text>
+          <CloseIcon size={18} color={tokens.text.primary} />
         </Pressable>
         <View style={styles.headerTitleBlock}>
           <Text variant="title" style={styles.title}>
@@ -257,6 +267,10 @@ export default function PickGame() {
             onChangeText={setScoreDraft}
             placeholder="Paste score text"
             placeholderTextColor={tokens.text.muted}
+            // Opened by hand (home's Paste score) there is nothing to post yet,
+            // so land in the box with the keyboard up. A share-intent arrival
+            // already has its text; the Post button is the primary there.
+            autoFocus={sharedPayload.length === 0}
             multiline
             maxLength={2000}
             style={styles.scoreInput}
@@ -468,7 +482,7 @@ function GameRow({
       {loading ? (
         <ActivityIndicator color={tokens.accent.default} size="small" />
       ) : (
-        <Text style={styles.rowChevron}>{">"}</Text>
+        <ChevronIcon size={16} color={tokens.text.muted} />
       )}
     </Pressable>
   );
@@ -517,11 +531,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
   headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
   title: { fontSize: tokens.font.size.xl },
   payloadPill: {
@@ -565,14 +574,7 @@ const styles = StyleSheet.create({
   },
   suggestionText: { flex: 1, minWidth: 0, gap: 2 },
   loadingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  scoreBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-  },
+  scoreBox: { gap: tokens.space.sm },
   scoreHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -585,10 +587,10 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
+    paddingVertical: tokens.space.md,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.surface,
     textAlignVertical: "top",
   },
   gameSectionHeader: { gap: 2 },
@@ -609,11 +611,6 @@ const styles = StyleSheet.create({
   disabledRow: { opacity: 0.55 },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
   rowTitle: { color: tokens.text.primary },
-  rowChevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
   gameThumb: {
     width: 44,
     height: 44,
