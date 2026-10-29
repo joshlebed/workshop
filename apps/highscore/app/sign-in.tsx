@@ -1,18 +1,20 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { HIGHSCORE_APP_STORE_URL } from "@workshop/shared/constants";
 import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Linking, Platform, StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { AppleSignInButton } from "../src/components/AppleSignInButton";
+import { AppStoreBadge } from "../src/components/AppStoreBadge";
+import { BrandIcon } from "../src/components/BrandIcon";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
 import { PRIVACY_ROUTE, TERMS_ROUTE } from "../src/lib/publicRoutes";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
-// The App Store link only makes sense from the web app; inside the iOS app
-// the visitor is already where it points.
-const SHOW_APP_STORE_LINK = Platform.OS === "web";
+// The "get the app" card only makes sense from the web app; inside the iOS
+// app the visitor is already where it points. (iOS Safari additionally shows
+// the native Smart App Banner via the apple-itunes-app meta in index.html.)
+const SHOW_APP_STORE_CARD = Platform.OS === "web";
 const GOOGLE_CONFIGURED = Boolean(
   process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
 );
@@ -144,24 +146,23 @@ export default function SignIn() {
           </Text>
           . Scores you post are shared with your friends on HighScore.
         </Text>
-        {SHOW_APP_STORE_LINK ? (
-          <Text variant="caption" tone="muted" style={styles.appStore} testID="sign-in-app-store">
-            On iPhone?{" "}
-            <Text
-              variant="caption"
-              tone="secondary"
-              style={styles.legalLink}
-              onPress={() => {
-                Linking.openURL(HIGHSCORE_APP_STORE_URL).catch(() => {});
-              }}
-              accessibilityRole="link"
-              testID="sign-in-app-store-link"
-            >
-              Download HighScore on the App Store
-            </Text>
-          </Text>
-        ) : null}
       </View>
+
+      {SHOW_APP_STORE_CARD ? (
+        <View style={styles.appCard} testID="sign-in-app-store">
+          <View style={styles.appCardRow}>
+            <BrandIcon size={56} />
+            <View style={styles.appCardCopy}>
+              <Text variant="heading">Get HighScore for iPhone</Text>
+              <Text variant="label" tone="secondary">
+                Share a score straight from any game, get daily reminders, and keep your streak in
+                your pocket.
+              </Text>
+            </View>
+          </View>
+          <AppStoreBadge />
+        </View>
+      ) : null}
 
       <View style={styles.bottomSpacer} />
     </View>
@@ -196,7 +197,20 @@ const styles = StyleSheet.create({
   error: { textAlign: "center", marginTop: tokens.space.xs },
   legal: { textAlign: "center", marginTop: tokens.space.md, lineHeight: 18 },
   legalLink: { textDecorationLine: "underline" },
-  appStore: { textAlign: "center", marginTop: tokens.space.sm },
+  appCard: {
+    maxWidth: 420,
+    width: "100%",
+    alignSelf: "center",
+    alignItems: "center",
+    gap: tokens.space.lg,
+    padding: tokens.space.lg,
+    borderRadius: tokens.radius.lg,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.border.default,
+  },
+  appCardRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  appCardCopy: { flex: 1, gap: tokens.space.xs },
   help: { textAlign: "center", marginTop: tokens.space.xs },
   divider: {
     flexDirection: "row",
