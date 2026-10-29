@@ -2,13 +2,18 @@ import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
 import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { AppleSignInButton } from "../src/components/AppleSignInButton";
+import { AppStoreBadge } from "../src/components/AppStoreBadge";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
 import { PRIVACY_ROUTE, TERMS_ROUTE } from "../src/lib/publicRoutes";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
+// The "get the app" card only makes sense from the web app; inside the iOS
+// app the visitor is already where it points. (iOS Safari additionally shows
+// the native Smart App Banner via the apple-itunes-app meta in index.html.)
+const SHOW_APP_STORE_CARD = Platform.OS === "web";
 const GOOGLE_CONFIGURED = Boolean(
   process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
 );
@@ -142,6 +147,21 @@ export default function SignIn() {
         </Text>
       </View>
 
+      {SHOW_APP_STORE_CARD ? (
+        <View style={styles.appCard} testID="sign-in-app-store">
+          <View style={styles.appCardCopy}>
+            <Text variant="heading" style={styles.appCardText}>
+              Get HighScore for iPhone
+            </Text>
+            <Text variant="label" tone="secondary" style={styles.appCardText}>
+              Share a score straight from any game, get daily reminders, and keep your streak in
+              your pocket.
+            </Text>
+          </View>
+          <AppStoreBadge />
+        </View>
+      ) : null}
+
       <View style={styles.bottomSpacer} />
     </View>
   );
@@ -175,6 +195,20 @@ const styles = StyleSheet.create({
   error: { textAlign: "center", marginTop: tokens.space.xs },
   legal: { textAlign: "center", marginTop: tokens.space.md, lineHeight: 18 },
   legalLink: { textDecorationLine: "underline" },
+  appCard: {
+    maxWidth: 420,
+    width: "100%",
+    alignSelf: "center",
+    alignItems: "center",
+    gap: tokens.space.lg,
+    padding: tokens.space.lg,
+    borderRadius: tokens.radius.lg,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tokens.border.default,
+  },
+  appCardCopy: { gap: tokens.space.xs },
+  appCardText: { textAlign: "center" },
   help: { textAlign: "center", marginTop: tokens.space.xs },
   divider: {
     flexDirection: "row",
