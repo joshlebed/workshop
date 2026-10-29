@@ -1,14 +1,18 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
+import { HIGHSCORE_APP_STORE_URL } from "@workshop/shared/constants";
 import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Linking, Platform, StyleSheet, View } from "react-native";
 import { AppleSignInButton } from "../src/components/AppleSignInButton";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
 import { PRIVACY_ROUTE, TERMS_ROUTE } from "../src/lib/publicRoutes";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
+// The App Store link only makes sense from the web app; inside the iOS app
+// the visitor is already where it points.
+const SHOW_APP_STORE_LINK = Platform.OS === "web";
 const GOOGLE_CONFIGURED = Boolean(
   process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
 );
@@ -140,6 +144,23 @@ export default function SignIn() {
           </Text>
           . Scores you post are shared with your friends on HighScore.
         </Text>
+        {SHOW_APP_STORE_LINK ? (
+          <Text variant="caption" tone="muted" style={styles.appStore} testID="sign-in-app-store">
+            On iPhone?{" "}
+            <Text
+              variant="caption"
+              tone="secondary"
+              style={styles.legalLink}
+              onPress={() => {
+                Linking.openURL(HIGHSCORE_APP_STORE_URL).catch(() => {});
+              }}
+              accessibilityRole="link"
+              testID="sign-in-app-store-link"
+            >
+              Download HighScore on the App Store
+            </Text>
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.bottomSpacer} />
@@ -175,6 +196,7 @@ const styles = StyleSheet.create({
   error: { textAlign: "center", marginTop: tokens.space.xs },
   legal: { textAlign: "center", marginTop: tokens.space.md, lineHeight: 18 },
   legalLink: { textDecorationLine: "underline" },
+  appStore: { textAlign: "center", marginTop: tokens.space.sm },
   help: { textAlign: "center", marginTop: tokens.space.xs },
   divider: {
     flexDirection: "row",
