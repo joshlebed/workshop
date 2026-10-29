@@ -8,6 +8,8 @@ export type { CardProps } from "./Card";
 export { Card } from "./Card";
 export type { ChipProps } from "./Chip";
 export { Chip } from "./Chip";
+export type { CloseIconProps } from "./CloseIcon";
+export { CloseIcon } from "./CloseIcon";
 export type { CopyIconProps } from "./CopyIcon";
 export { CopyIcon } from "./CopyIcon";
 export { confirm } from "./confirm";

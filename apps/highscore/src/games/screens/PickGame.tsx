@@ -2,7 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import { Button, EmptyState, haptics, Screen, Text, tokens, useToast } from "@workshop/ui";
+import {
+  Button,
+  CloseIcon,
+  EmptyState,
+  haptics,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -207,7 +216,7 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>x</Text>
+          <CloseIcon size={18} color={tokens.text.primary} />
         </Pressable>
         <View style={styles.headerTitleBlock}>
           <Text variant="title" style={styles.title}>
@@ -257,6 +266,10 @@ export default function PickGame() {
             onChangeText={setScoreDraft}
             placeholder="Paste score text"
             placeholderTextColor={tokens.text.muted}
+            // Opened by hand (home's Paste score) there is nothing to post yet,
+            // so land in the box with the keyboard up. A share-intent arrival
+            // already has its text; the Post button is the primary there.
+            autoFocus={sharedPayload.length === 0}
             multiline
             maxLength={2000}
             style={styles.scoreInput}
@@ -517,11 +530,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
   headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
   title: { fontSize: tokens.font.size.xl },
   payloadPill: {

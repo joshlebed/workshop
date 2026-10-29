@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
+import { CloseIcon } from "./CloseIcon";
 import { CopyIcon } from "./CopyIcon";
 import { copyToClipboard } from "./clipboard";
 import { Text } from "./Text";
@@ -205,7 +206,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
         hitSlop={8}
         testID="toast-dismiss"
       >
-        <Text style={styles.iconGlyph}>✕</Text>
+        <CloseIcon size={14} color={tokens.text.secondary} />
       </Pressable>
     </View>
   );
@@ -268,9 +269,4 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   iconBtnHover: { backgroundColor: tokens.bg.surface },
-  iconGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    lineHeight: tokens.font.size.md + 2,
-  },
 });
