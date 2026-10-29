@@ -29,6 +29,16 @@ send `"paste"`); the redirect also reports the intent snapshot to the log-only
 redirect — it's the only thing distinguishing a share-sheet post from a manual paste, and the
 backend derives the durable `user_flags` adoption marker from it (see root CLAUDE.md).
 
+## "Get the app" banner (web, iOS browsers only)
+
+`src/components/AppStoreBanner.web.tsx` mounts in `AuthGate` above the router (native variant is
+`null`; hidden on `/sign-in`, which has its own App Store card). The show rule and cookie helpers
+are pure in `src/lib/appStoreBanner.ts` (pinned by its test): iPhone/iPad UA only (iPadOS reports
+as a Mac with `maxTouchPoints > 1`), never in a standalone home-screen context, and hidden once the
+`hs_app_banner_dismissed` cookie exists. The X sets that cookie with the 400-day browser maximum —
+per device by design, so a new device sees the banner again. It complements, not replaces, the
+Safari-only Smart App Banner (`apple-itunes-app` meta in `public/index.html`).
+
 ## Public pages (`/support`, `/privacy`, `/terms`)
 
 All three routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and
