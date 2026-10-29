@@ -168,6 +168,15 @@ describe("GET /v1/friends/requests/:token — public preview", () => {
     expect(body.status).toBe("pending");
   });
 
+  it("reports viewerIsFriend=false for anonymous, stranger, and the inviter", async () => {
+    for (const headers of [{}, authHeaders(stranger), authHeaders(me)]) {
+      const res = await friendRoutes.request(`/requests/${inviteToken}`, { headers });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { viewerIsFriend: boolean };
+      expect(body.viewerIsFriend).toBe(false);
+    }
+  });
+
   it("404s an unknown token", async () => {
     const res = await friendRoutes.request("/requests/zzzzzzzz");
     expect(res.status).toBe(404);
@@ -214,6 +223,15 @@ describe("POST /v1/friends/requests/:token/accept", () => {
       [inviteToken],
     );
     expect(request[0]).toEqual({ status: "pending", invitee_id: null });
+  });
+
+  it("previews with viewerIsFriend=true once the edge exists", async () => {
+    const res = await friendRoutes.request(`/requests/${inviteToken}`, {
+      headers: authHeaders(friend),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { viewerIsFriend: boolean };
+    expect(body.viewerIsFriend).toBe(true);
   });
 
   it("re-accepting by the same user is idempotent, not an error", async () => {

@@ -179,6 +179,11 @@ export default function AcceptFriendInvite() {
   const inviterName = preview.inviter.displayName?.trim() || "Someone";
   const isOwnInvite = preview.inviter.userId === user?.id;
 
+  // Already friends — nothing to accept; the link just opens their profile.
+  if (preview.viewerIsFriend && !isOwnInvite) {
+    return <RedirectToProfile userId={preview.inviter.userId} />;
+  }
+
   // You opened your own link — nothing to accept; point you back to Friends.
   if (isOwnInvite) {
     return (
@@ -366,6 +371,26 @@ function PostAcceptPicker({
           />
         )}
       </Card>
+    </Centered>
+  );
+}
+
+/**
+ * Render-time redirect for an invite the viewer has already accepted: drop the
+ * stash (so sign-in can't bounce back here) and replace the route with the
+ * inviter's profile. A component rather than an inline effect so the hooks
+ * above the early return stay unconditional.
+ */
+function RedirectToProfile({ userId }: { userId: string }) {
+  const router = useRouter();
+  const { routes } = useClientRuntime();
+  useEffect(() => {
+    removeItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => {});
+    router.replace(routes.friendProfile(userId) as Href);
+  }, [router, routes, userId]);
+  return (
+    <Centered testID="friend-accept-loading">
+      <ActivityIndicator color={tokens.accent.default} />
     </Centered>
   );
 }

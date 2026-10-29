@@ -33,6 +33,12 @@ export interface FriendRequestPreview {
     displayName: string | null;
   };
   status: FriendRequestStatus;
+  /**
+   * True when the (optionally authenticated) viewer is already friends with
+   * the inviter — the client skips the accept card and opens their profile.
+   * Always false for anonymous requests and for the inviter's own link.
+   */
+  viewerIsFriend: boolean;
 }
 
 /** `POST /v1/friends/requests/:token/accept` */
