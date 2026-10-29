@@ -812,6 +812,35 @@ describe("GET /v1/games/discovery — friend's games + friendGameCount", () => {
     const res = await discover(viewer, otherUserId);
     expect(res.status).toBe(404);
   });
+
+  it("lists a single friend's games in that friend's home order, not alphabetically", async () => {
+    const orderedFriend = "00000000-0000-4000-8000-0000000000d4";
+    const orderedViewer = "00000000-0000-4000-8000-0000000000d0";
+    await rows(`INSERT INTO users (id, email) VALUES ($1, $2), ($3, $4)`, [
+      orderedViewer,
+      "oviewer@example.com",
+      orderedFriend,
+      "ofriend@example.com",
+    ]);
+    await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2)`, [
+      orderedViewer,
+      orderedFriend,
+    ]);
+    // Added in alphabetical order, then reordered so the home shows Wordle, Globle, Connections.
+    await addGame("https://www.nytimes.com/games/connections", orderedFriend);
+    await addGame("https://globle-game.com", orderedFriend);
+    await addGame("https://www.nytimes.com/games/wordle/index.html", orderedFriend);
+    await rows(
+      `UPDATE user_games ug SET position = CASE g.game_key
+         WHEN 'wordle' THEN 10 WHEN 'globle' THEN 20 WHEN 'connections' THEN 30 END
+       FROM games g WHERE g.id = ug.game_id AND ug.user_id = $1`,
+      [orderedFriend],
+    );
+    const res = await discover(orderedViewer, orderedFriend);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { games: { game: { gameKey: string | null } }[] };
+    expect(body.games.map((g) => g.game.gameKey)).toEqual(["wordle", "globle", "connections"]);
+  });
 });
 
 describe("PUT/DELETE /v1/games/:id/reactions — emoji reactions on a friend's score", () => {
