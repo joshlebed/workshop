@@ -216,6 +216,18 @@ deliberate critical-fix backports may change it before then. See
   `POST /v1/telemetry/share-intent` (CloudWatch, filter `client_share_intent`), same as
   Workshop.
 
+- **Admin analytics dashboards live in each app at `/admin/analytics`** (ProfileMenu →
+  "Admin: analytics"), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90`
+  (`routes/v1/admin.ts`, gated on the real admin via `isAdminUser`, impersonation-aware).
+  DAU/MAU come from `user_activity_days` — one row per (user, client, UTC day), written by
+  the `requestLog` middleware (`lib/userActivity.ts`, memoized per Lambda container, skipped
+  for impersonated and 5xx requests). Header-less requests count as `workshop`. Rows before
+  2026-10-29 were backfilled from `game_scores` / reactions (→ highscore) and
+  `activity_events` (→ workshop), so early history is a lower bound. Per-app content series
+  (scores + scorers per day for HighScore, items + lists per day for Workshop) are computed
+  from their source tables in `lib/adminAnalytics.ts`; add a series there, not client-side.
+  Charts are `BarChart` from `@workshop/ui`; the two screens are intentionally per-app copies.
+
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load
   (`failedUrl`) for the life of the mount, so a row mounted before a user uploaded a photo

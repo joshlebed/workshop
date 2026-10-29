@@ -234,6 +234,17 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
             }}
             testID="send-feedback"
           />
+          {user?.isAdmin ? (
+            <Button
+              label="Admin: analytics"
+              variant="secondary"
+              testID="open-admin-analytics"
+              onPress={() => {
+                setProfileOpen(false);
+                router.push("/admin/analytics");
+              }}
+            />
+          ) : null}
           <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
           <LetterboxdAccountRow />
         </View>

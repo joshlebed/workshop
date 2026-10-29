@@ -15,6 +15,11 @@ export const SHARED_TYPES_VERSION = "5";
 export const WORKSHOP_CLIENTS = ["workshop", "highscore"] as const;
 export type WorkshopClient = (typeof WORKSHOP_CLIENTS)[number];
 
+// Chart windows the admin analytics dashboard (`GET /v1/admin/analytics`)
+// accepts, in days. Runtime constant so both apps render the same range picker.
+export const ADMIN_ANALYTICS_RANGES = [7, 30, 90] as const;
+export type AdminAnalyticsRange = (typeof ADMIN_ANALYTICS_RANGES)[number];
+
 // Which surface a game-score write arrived from at PUT /v1/games/:id/scores
 // (`entrySource`). Optional on the wire (older clients omit it → NULL in
 // `game_scores.entry_source`). Not to be confused with `score_source`

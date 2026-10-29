@@ -133,6 +133,17 @@ export function ProfileMenu() {
               router.push(TERMS_ROUTE);
             }}
           />
+          {user?.isAdmin ? (
+            <Button
+              label="Admin: analytics"
+              variant="secondary"
+              testID="open-admin-analytics"
+              onPress={() => {
+                setOpen(false);
+                router.push("/admin/analytics");
+              }}
+            />
+          ) : null}
           <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
           <Button
             label="Sign out"

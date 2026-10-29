@@ -4,6 +4,7 @@ import {
   requestClientContextFromHeaders,
   runWithRequestClientContext,
 } from "../lib/requestContext.js";
+import { recordUserActivity } from "../lib/userActivity.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -69,6 +70,14 @@ export const requestLog: MiddlewareHandler = async (c, next) => {
     const platformHeader = c.req.header("x-workshop-platform");
     const appVersion = c.req.header("x-workshop-app-version");
     const status = c.res?.status ?? 0;
+    const userId = c.get("userId");
+
+    // DAU/MAU source for the admin dashboard. Impersonated requests are the
+    // admin acting as someone else, not that person using the app; failed
+    // requests (5xx) are not usage either.
+    if (userId && !c.get("impersonatorUserId") && status > 0 && status < 500) {
+      await recordUserActivity(userId, clientContext.client);
+    }
 
     logger.info("request", {
       kind: "request",

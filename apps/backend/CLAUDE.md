@@ -878,6 +878,10 @@ AWS_PROFILE=workshop-prod ./scripts/logs.sh --since 720h --filter '?"new signup"
 
 ## Request analytics
 
+In-app dashboards: `GET /v1/admin/analytics` (admin-only; see the root CLAUDE.md bullet)
+serves DAU/MAU from `user_activity_days` plus per-app content series. The CloudWatch log
+below remains the source for request-level questions (latency, paths, errors).
+
 Every Lambda request emits one structured JSON line (`kind: "request"`) with
 `request_id`, `method`, `path`, `route`, `status`, `duration_ms`, `user_id`, `platform`,
 `app_version`, `ip`, `origin`, `referer`, `user_agent`. CloudWatch log group

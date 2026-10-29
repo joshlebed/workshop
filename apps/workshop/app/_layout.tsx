@@ -302,6 +302,7 @@ function AuthGate() {
             activity, and the share-intent flow overlay whichever tab is active. */}
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="admin/analytics" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="onboarding/display-name" />
         <Stack.Screen name="onboarding/accept-invite" />

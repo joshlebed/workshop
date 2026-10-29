@@ -25,6 +25,11 @@ export const queryKeys = {
   users: {
     impersonationTargets: ["users", "impersonationTargets"] as const,
   },
+  admin: {
+    /** `GET /v1/admin/analytics?client=…&range=…` — admin-only dashboard numbers. */
+    analytics: (client: string, rangeDays: number) =>
+      ["admin", "analytics", client, rangeDays] as const,
+  },
   invites: {
     forList: (listId: string) => ["invites", "forList", listId] as const,
   },

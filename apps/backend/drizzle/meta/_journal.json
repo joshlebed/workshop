@@ -351,6 +351,13 @@
       "when": 1792940739713,
       "tag": "0049_push_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793291344752,
+      "tag": "0050_user_activity_days",
+      "breakpoints": true
     }
   ]
 }

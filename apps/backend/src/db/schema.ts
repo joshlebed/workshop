@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -835,6 +836,32 @@ export const gameScores = pgTable(
       "game_scores_parse_status_check",
       sql`${t.parseStatus} IN ('score', 'no_result', 'failed')`,
     ),
+  }),
+);
+
+/**
+ * One row per (user, client app, UTC day) on which the user made at least one
+ * authenticated, non-impersonated request. Written by the `requestLog`
+ * middleware (memoized per Lambda container, so it is one tiny insert per
+ * user per app per day) and read only by the admin analytics dashboard
+ * (`GET /v1/admin/analytics`) for DAU / MAU. `client` is the validated
+ * `X-Workshop-Client` value; requests without the header are attributed to
+ * `workshop` (pre-header installs are all Workshop). Rows before 2026-10-29
+ * were backfilled in migration 0050 from `game_scores` (→ highscore) and
+ * `activity_events` (→ workshop), so early history is a lower bound.
+ */
+export const userActivityDays = pgTable(
+  "user_activity_days",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    client: text("client").notNull(),
+    day: date("day").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.client, t.day] }),
+    clientDayIdx: index("user_activity_days_client_day_idx").on(t.client, t.day),
   }),
 );
 

@@ -230,6 +230,7 @@ function AuthGate() {
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="profile" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="admin/analytics" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="support" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="privacy" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="terms" options={{ animation: "slide_from_right" }} />
