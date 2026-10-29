@@ -6,7 +6,12 @@
 // type barrel through Metro. Bump it on any breaking edit to a request/
 // response type below.
 
-import type { AdminAnalyticsBucket, AdminAnalyticsRange, WorkshopClient } from "./constants.js";
+import type {
+  AdminAnalyticsBucket,
+  AdminAnalyticsPlatform,
+  AdminAnalyticsRange,
+  WorkshopClient,
+} from "./constants.js";
 import type { ItemContent, ItemKind } from "./itemKinds.js";
 import type { ConfigWarning, ModuleName } from "./modules.js";
 import type { SourceKind } from "./sourceKinds.js";
@@ -166,12 +171,47 @@ export interface AdminAnalyticsPoint {
   value: number;
 }
 
+/** One segment of a stacked bar, aligned 1:1 with the parent series' points. */
+export interface AdminAnalyticsSegment {
+  key: AdminAnalyticsPlatform;
+  label: string;
+  points: AdminAnalyticsPoint[];
+}
+
 export interface AdminAnalyticsSeries {
   key: string;
   label: string;
   /** One sentence on how the number is derived — shown under the chart. */
   description: string;
+  /** The total per bucket (for a stacked series, the whole bar). */
   points: AdminAnalyticsPoint[];
+  /**
+   * Per-platform split of each bar, when the series has one. For counts the
+   * segments sum to `points`; for distinct-user series a multi-platform user
+   * counts in every segment they used, so segments can exceed the total.
+   */
+  stack?: AdminAnalyticsSegment[];
+  /**
+   * How to draw the stack: `sum` (segments add up to the bar) or `overlap`
+   * (each segment is its own bar from the baseline, drawn tallest-first, for
+   * distinct-user series where segments can exceed the total).
+   */
+  stackMode?: "sum" | "overlap";
+}
+
+/** A ranked list (versions in use, …) rendered as horizontal bars. */
+export interface AdminAnalyticsBreakdownRow {
+  label: string;
+  value: number;
+  /** Platform the row belongs to, for its bar color. */
+  platform: AdminAnalyticsPlatform;
+}
+
+export interface AdminAnalyticsBreakdown {
+  key: string;
+  label: string;
+  description: string;
+  rows: AdminAnalyticsBreakdownRow[];
 }
 
 export interface AdminAnalyticsStat {
@@ -189,6 +229,7 @@ export interface AdminAnalyticsResponse {
   generatedAt: string;
   stats: AdminAnalyticsStat[];
   series: AdminAnalyticsSeries[];
+  breakdowns: AdminAnalyticsBreakdown[];
 }
 
 /**

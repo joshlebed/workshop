@@ -304,6 +304,16 @@ export const items = pgTable(
     completed: boolean("completed").notNull().default(false),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     completedBy: uuid("completed_by").references(() => users.id, { onDelete: "set null" }),
+    /**
+     * Where this write came from: the validated `X-Workshop-Client`, the
+     * raw `X-Workshop-Platform` (`ios` | `web` | …) and `X-Workshop-App-Version`
+     * of the request that wrote the row (latest write wins). NULL = written
+     * before origin stamping, or by a server-side job. Read by the admin
+     * analytics dashboard; never shown to users.
+     */
+    client: text("client"),
+    platform: text("platform"),
+    appVersion: text("app_version"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
@@ -821,6 +831,16 @@ export const gameScores = pgTable(
      * recorded in `user_flags` instead (see the upsert routes).
      */
     entrySource: text("entry_source"),
+    /**
+     * Where this write came from: the validated `X-Workshop-Client`, the
+     * raw `X-Workshop-Platform` (`ios` | `web` | …) and `X-Workshop-App-Version`
+     * of the request that wrote the row (latest write wins). NULL = written
+     * before origin stamping, or by a server-side job. Read by the admin
+     * analytics dashboard; never shown to users.
+     */
+    client: text("client"),
+    platform: text("platform"),
+    appVersion: text("app_version"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
@@ -840,8 +860,9 @@ export const gameScores = pgTable(
 );
 
 /**
- * One row per (user, client app, UTC day) on which the user made at least one
- * authenticated, non-impersonated request. Written by the `requestLog`
+ * One row per (user, client app, platform, app version, UTC day) on which the
+ * user made at least one authenticated, non-impersonated request — so a
+ * person on both web and iOS shows up under both. Written by the `requestLog`
  * middleware (memoized per Lambda container, so it is one tiny insert per
  * user per app per day) and read only by the admin analytics dashboard
  * (`GET /v1/admin/analytics`) for DAU / MAU. `client` is the validated
@@ -857,10 +878,14 @@ export const userActivityDays = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     client: text("client").notNull(),
+    /** Raw `X-Workshop-Platform` (`ios` | `web` | …); `unknown` when absent. */
+    platform: text("platform").notNull().default("unknown"),
+    /** Raw `X-Workshop-App-Version`; `unknown` when absent. */
+    appVersion: text("app_version").notNull().default("unknown"),
     day: date("day").notNull(),
   },
   (t) => ({
-    pk: primaryKey({ columns: [t.userId, t.client, t.day] }),
+    pk: primaryKey({ columns: [t.userId, t.client, t.platform, t.appVersion, t.day] }),
     clientDayIdx: index("user_activity_days_client_day_idx").on(t.client, t.day),
   }),
 );

@@ -7,8 +7,22 @@ import { useQuery } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { AdminAnalyticsResponse } from "@workshop/shared";
-import { ADMIN_ANALYTICS_RANGES, type AdminAnalyticsRange } from "@workshop/shared/constants";
-import { BarChart, Button, Card, Chip, IconButton, Screen, Text, tokens } from "@workshop/ui";
+import {
+  ADMIN_ANALYTICS_RANGES,
+  type AdminAnalyticsPlatform,
+  type AdminAnalyticsRange,
+} from "@workshop/shared/constants";
+import {
+  BarChart,
+  Button,
+  Card,
+  Chip,
+  HorizontalBars,
+  IconButton,
+  Screen,
+  Text,
+  tokens,
+} from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
@@ -16,6 +30,13 @@ import { fetchAdminAnalytics } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
 
 const CLIENT = "workshop" as const;
+
+// Fixed platform hues, validated for the dark surface (CVD-safe, ≥3:1).
+const PLATFORM_COLORS: Record<AdminAnalyticsPlatform, string> = {
+  ios: "#c98500",
+  web: "#3987e5",
+  other: "#199e70",
+};
 
 function formatGeneratedAt(iso: string): string {
   const d = new Date(iso);
@@ -112,10 +133,34 @@ export default function AdminAnalytics() {
                 <Card key={series.key} style={styles.chartCard} testID={`series-${series.key}`}>
                   <Text variant="label">{series.label}</Text>
                   <View style={styles.chart}>
-                    <BarChart points={series.points} bucket={query.data.bucket} />
+                    <BarChart
+                      points={series.points}
+                      bucket={query.data.bucket}
+                      stack={series.stack?.map((seg) => ({
+                        ...seg,
+                        color: PLATFORM_COLORS[seg.key],
+                      }))}
+                      stackMode={series.stackMode}
+                    />
                   </View>
                   <Text variant="caption" tone="muted">
                     {series.description}
+                  </Text>
+                </Card>
+              ))}
+
+              {(query.data.breakdowns ?? []).map((b) => (
+                <Card key={b.key} style={styles.chartCard} testID={`breakdown-${b.key}`}>
+                  <Text variant="label">{b.label}</Text>
+                  <HorizontalBars
+                    rows={b.rows.map((r) => ({
+                      label: r.label,
+                      value: r.value,
+                      color: PLATFORM_COLORS[r.platform],
+                    }))}
+                  />
+                  <Text variant="caption" tone="muted">
+                    {b.description}
                   </Text>
                 </Card>
               ))}

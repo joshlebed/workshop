@@ -66,10 +66,10 @@ describe("GET /v1/admin/analytics", () => {
       [gameId],
     );
     await run(
-      `INSERT INTO game_scores (game_id, user_id, period_key, score_raw, created_at) VALUES
-       ($1, $2, 'p1', 'Wordle 1 3/6', now()),
-       ($1, $3, 'p1', 'Wordle 1 4/6', now()),
-       ($1, $2, 'p0', 'Wordle 0 5/6', now() - interval '2 days')`,
+      `INSERT INTO game_scores (game_id, user_id, period_key, score_raw, created_at, platform) VALUES
+       ($1, $2, 'p1', 'Wordle 1 3/6', now(), 'ios'),
+       ($1, $3, 'p1', 'Wordle 1 4/6', now(), 'web'),
+       ($1, $2, 'p0', 'Wordle 0 5/6', now() - interval '2 days', NULL)`,
       [gameId, playerId, lurkerId],
     );
     await run(
@@ -77,15 +77,26 @@ describe("GET /v1/admin/analytics", () => {
       [listId, playerId],
     );
     await run(
-      `INSERT INTO items (list_id, title, added_by) VALUES ($1, 'Dune', $2), ($1, 'Emma', $2)`,
+      `INSERT INTO items (list_id, title, added_by, platform) VALUES ($1, 'Dune', $2, 'web'), ($1, 'Emma', $2, 'web')`,
       [listId, playerId],
     );
 
     resetUserActivityMemoForTesting();
-    await recordUserActivity(playerId, "highscore");
-    await recordUserActivity(lurkerId, "highscore");
-    await recordUserActivity(playerId, "workshop");
-    await recordUserActivity(playerId, null); // header-less → workshop, de-duped
+    const origin = (
+      client: "highscore" | "workshop" | null,
+      platform: string | null,
+      v = "1.0.0",
+    ) => ({
+      client,
+      platform,
+      appVersion: v,
+    });
+    // Player uses HighScore on both iOS and web (two versions); lurker is web-only.
+    await recordUserActivity(playerId, origin("highscore", "ios", "1.4.0"));
+    await recordUserActivity(playerId, origin("highscore", "web", "0.6.0"));
+    await recordUserActivity(lurkerId, origin("highscore", "web", "0.6.0"));
+    await recordUserActivity(playerId, origin("workshop", "web"));
+    await recordUserActivity(playerId, origin(null, "web")); // header-less → workshop, de-duped
   }, 60_000);
 
   it("rejects non-admins", async () => {
@@ -113,6 +124,23 @@ describe("GET /v1/admin/analytics", () => {
     expect(body.rangeDays).toBe(7);
     expect(series(body, "dau").points).toHaveLength(7);
     expect(series(body, "dau").points.at(-1)).toEqual({ day: today, value: 2 });
+    // Stacked by platform: the player counts under both iOS and web.
+    const dauStack = series(body, "dau").stack ?? [];
+    expect(dauStack.map((s) => [s.key, s.points.at(-1)?.value])).toEqual([
+      ["ios", 1],
+      ["web", 2],
+    ]);
+    const scoreStack = series(body, "scores").stack ?? [];
+    expect(scoreStack.map((s) => [s.key, s.points.reduce((a, p) => a + p.value, 0)])).toEqual([
+      ["ios", 1],
+      ["web", 1],
+      ["other", 1],
+    ]);
+    const versions = body.breakdowns.find((b) => b.key === "versions");
+    expect(versions?.rows).toEqual([
+      { label: "Web · 0.6.0", value: 2, platform: "web" },
+      { label: "iOS app · 1.4.0", value: 1, platform: "ios" },
+    ]);
     expect(series(body, "mau").points.at(-1)?.value).toBe(2);
     expect(series(body, "scores").points.at(-1)?.value).toBe(2);
     expect(series(body, "scores").points.reduce((a, p) => a + p.value, 0)).toBe(3);
@@ -134,6 +162,9 @@ describe("GET /v1/admin/analytics", () => {
     expect(series(body, "dau").points).toHaveLength(30);
     expect(stat(body, "active_today")).toBe(1);
     expect(series(body, "items").points.at(-1)?.value).toBe(2);
+    expect(series(body, "items").stack?.map((s) => [s.key, s.points.at(-1)?.value])).toEqual([
+      ["web", 2],
+    ]);
     expect(series(body, "lists").points.at(-1)?.value).toBe(1);
     expect(stat(body, "items_7d")).toBe(2);
     expect(body.series.find((s) => s.key === "scores")).toBeUndefined();

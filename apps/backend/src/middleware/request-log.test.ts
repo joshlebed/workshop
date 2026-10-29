@@ -80,7 +80,11 @@ describe("requestLog middleware", () => {
   it("records daily activity for signed-in requests, attributed to the client app", async () => {
     vi.mocked(recordUserActivity).mockClear();
     await buildAppForTest().request("/whoami", { headers: { "X-Workshop-Client": "highscore" } });
-    expect(recordUserActivity).toHaveBeenCalledWith("user-xyz", "highscore");
+    expect(recordUserActivity).toHaveBeenCalledWith("user-xyz", {
+      client: "highscore",
+      platform: null,
+      appVersion: null,
+    });
   });
 
   it("does not record activity for anonymous or impersonated requests", async () => {

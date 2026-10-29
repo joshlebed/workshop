@@ -1,10 +1,12 @@
-// Single-series daily bar chart for the admin analytics dashboards. Pure
-// react-native Views so it bundles on web and iOS without a chart library.
+// Daily/weekly bar chart for the admin analytics dashboards, optionally
+// stacked by a fixed set of segments. Pure react-native Views so it bundles
+// on web and iOS without a chart library.
 //
-// Follows the dataviz mark spec: bars ≤ 24px with a 2px surface gap, rounded
-// data-end and square baseline, hairline recessive gridlines, one direct
-// label on the peak, and a per-bar hover/press tooltip. Text wears text
-// tokens, never the series color.
+// Follows the dataviz mark spec: bars ≤ 24px with a 2px surface gap between
+// stacked segments, rounded data-end and square baseline, hairline recessive
+// gridlines, one direct label on the peak, a legend whenever there is more
+// than one series, and a per-bar hover/press tooltip. Text wears text tokens,
+// never the series color.
 
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -17,13 +19,30 @@ export interface BarChartPoint {
   value: number;
 }
 
+export interface BarChartSegment {
+  key: string;
+  label: string;
+  color: string;
+  /** Aligned 1:1 with the chart's `points`. */
+  points: BarChartPoint[];
+}
+
 export interface BarChartProps {
+  /** The bar totals (for a stacked chart: what the tooltip calls "total"). */
   points: BarChartPoint[];
   /** What one bar covers; a weekly bar is labelled by the week it starts. */
   bucket?: "day" | "week";
+  /** Segments to draw instead of a single bar. */
+  stack?: BarChartSegment[];
+  /**
+   * `sum`: segments stack to the total. `overlap`: each segment is its own
+   * bar from the baseline, tallest drawn first, for distinct-user series
+   * where segments legitimately exceed the total.
+   */
+  stackMode?: "sum" | "overlap";
   /** Plot height in px, excluding the axis label row. */
   height?: number;
-  /** Series color; defaults to the theme accent. */
+  /** Single-series color; defaults to the theme accent. */
   color?: string;
   testID?: string;
 }
@@ -59,6 +78,8 @@ function shortDay(day: string): string {
 export function BarChart({
   points,
   bucket = "day",
+  stack,
+  stackMode = "sum",
   height = PLOT_HEIGHT,
   color,
   testID,
@@ -69,18 +90,33 @@ export function BarChart({
   // its text always come from the same palette.
   const fill = color ?? theme.accent.default;
   const [active, setActive] = useState<number | null>(null);
+  const segments = stack && stack.length > 0 ? stack : null;
+
+  // The bar height per slot: the total for a plain or summed chart, the
+  // tallest segment for an overlapped one.
+  const barHeights = useMemo(
+    () =>
+      points.map((p, i) =>
+        segments && stackMode === "overlap"
+          ? Math.max(0, ...segments.map((s) => s.points[i]?.value ?? 0))
+          : p.value,
+      ),
+    [points, segments, stackMode],
+  );
 
   const { max, ceiling, peakIndex } = useMemo(() => {
     let max = 0;
     let peakIndex = -1;
-    points.forEach((p, i) => {
-      if (p.value > max) {
-        max = p.value;
+    barHeights.forEach((v, i) => {
+      if (v > max) {
+        max = v;
         peakIndex = i;
       }
     });
     return { max, ceiling: niceCeiling(max), peakIndex };
-  }, [points]);
+  }, [barHeights]);
+
+  const px = (value: number) => (ceiling > 0 ? Math.round((value / ceiling) * height) : 0);
 
   const first = points[0];
   const last = points[points.length - 1];
@@ -89,8 +125,20 @@ export function BarChart({
 
   return (
     <View testID={testID} style={styles.root}>
+      {segments ? (
+        <View style={styles.legend}>
+          {segments.map((s) => (
+            <View key={s.key} style={styles.legendItem}>
+              <View style={[styles.swatch, { backgroundColor: s.color }]} />
+              <Text variant="caption" tone="secondary">
+                {s.label}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
       <View style={[styles.plot, { height }]}>
-        {/* Recessive gridlines at 0 / ½ / max, labelled on the right. */}
+        {/* Recessive gridlines at ½ / max, labelled on the right. */}
         {[1, 0.5].map((fraction) =>
           Number.isInteger(ceiling * fraction) ? (
             <View
@@ -113,8 +161,72 @@ export function BarChart({
         />
         <View style={styles.bars}>
           {points.map((p, i) => {
-            const barHeight = ceiling > 0 ? Math.round((p.value / ceiling) * height) : 0;
             const isActive = active === i;
+            const dim = active !== null && !isActive ? 0.45 : 1;
+            let body: React.ReactNode;
+            if (!segments) {
+              const h = px(p.value);
+              body = (
+                <View
+                  style={[
+                    styles.bar,
+                    {
+                      height: Math.max(h, p.value > 0 ? 2 : 0),
+                      backgroundColor: fill,
+                      opacity: dim,
+                    },
+                  ]}
+                />
+              );
+            } else if (stackMode === "sum") {
+              // Bottom-up: later segments sit on top of earlier ones, each
+              // separated by a surface-colored gap; only the top is rounded.
+              const present = segments.filter((s) => (s.points[i]?.value ?? 0) > 0);
+              body = (
+                <View style={[styles.stackColumn, { opacity: dim }]}>
+                  {[...present].reverse().map((s, idx) => (
+                    <View
+                      key={s.key}
+                      style={[
+                        styles.segment,
+                        idx === 0 ? styles.bar : null,
+                        {
+                          height: Math.max(px(s.points[i]?.value ?? 0), 2),
+                          backgroundColor: s.color,
+                          marginTop: idx === 0 ? 0 : GAP,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              );
+            } else {
+              // Overlap: every segment from the baseline, tallest at the back
+              // and each one in front narrower, so equal heights stay visible
+              // as nested bars instead of hiding each other.
+              const ordered = segments
+                .map((s) => ({ s, v: s.points[i]?.value ?? 0 }))
+                .filter((e) => e.v > 0)
+                .sort((a, b) => b.v - a.v);
+              body = (
+                <View style={[styles.overlapColumn, { opacity: dim }]}>
+                  {ordered.map((e, idx) => (
+                    <View
+                      key={e.s.key}
+                      style={[
+                        styles.bar,
+                        styles.overlapBar,
+                        {
+                          height: Math.max(px(e.v), 2),
+                          backgroundColor: e.s.color,
+                          width: `${100 - (idx * 100) / (ordered.length + 0.5)}%`,
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              );
+            }
             return (
               <Pressable
                 key={p.day}
@@ -125,16 +237,7 @@ export function BarChart({
                 onPressOut={() => setActive((cur) => (cur === i ? null : cur))}
                 style={styles.slot}
               >
-                <View
-                  style={[
-                    styles.bar,
-                    {
-                      height: Math.max(barHeight, p.value > 0 ? 2 : 0),
-                      backgroundColor: fill,
-                      opacity: active !== null && !isActive ? 0.45 : 1,
-                    },
-                  ]}
-                />
+                {body}
               </Pressable>
             );
           })}
@@ -149,7 +252,7 @@ export function BarChart({
               peakIndex > points.length * 0.8 ? styles.peakLabelLeft : null,
               {
                 left: `${((peakIndex + 0.5) / points.length) * 100}%`,
-                top: height - Math.round((max / ceiling) * height) - 18,
+                top: height - px(max) - 18,
               },
             ]}
           >
@@ -168,7 +271,7 @@ export function BarChart({
                 borderColor: theme.border.default,
                 left: `${((Number(active) + 0.5) / points.length) * 100}%`,
                 transform: [
-                  { translateX: active !== null && active > points.length / 2 ? -96 : 0 },
+                  { translateX: active !== null && active > points.length / 2 ? -140 : 0 },
                 ],
               },
             ]}
@@ -176,7 +279,18 @@ export function BarChart({
             <Text variant="caption" tone="muted">
               {labelFor(activePoint.day)}
             </Text>
-            <Text variant="label">{activePoint.value.toLocaleString()}</Text>
+            <Text variant="label">
+              {activePoint.value.toLocaleString()}
+              {segments ? " total" : ""}
+            </Text>
+            {segments?.map((s) => (
+              <View key={s.key} style={styles.tooltipRow}>
+                <View style={[styles.swatch, { backgroundColor: s.color }]} />
+                <Text variant="caption" tone="secondary">
+                  {s.label}: {(s.points[Number(active)]?.value ?? 0).toLocaleString()}
+                </Text>
+              </View>
+            ))}
           </View>
         ) : null}
       </View>
@@ -197,6 +311,9 @@ export function BarChart({
 
 const styles = StyleSheet.create({
   root: { width: "100%" },
+  legend: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 4 },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  swatch: { width: 10, height: 10, borderRadius: 3 },
   // Top margin leaves room for the peak label when the peak touches the ceiling.
   plot: { position: "relative", width: "100%", marginTop: 20 },
   gridline: {
@@ -229,16 +346,28 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 4,
     borderTopRightRadius: 4,
   },
+  stackColumn: { width: "100%", maxWidth: MAX_BAR, justifyContent: "flex-end" },
+  segment: { width: "100%" },
+  overlapColumn: {
+    width: "100%",
+    maxWidth: MAX_BAR,
+    height: "100%",
+    justifyContent: "flex-end",
+    alignItems: "center",
+  },
+  overlapBar: { position: "absolute", bottom: 0 },
   peakLabel: { position: "absolute", marginLeft: -20, width: 40, alignItems: "center" },
   peakLabelLeft: { marginLeft: -44, alignItems: "flex-end" },
   tooltip: {
     position: "absolute",
     top: 0,
-    width: 112,
+    width: 140,
     padding: 6,
     borderRadius: 8,
     borderWidth: 1,
+    gap: 2,
   },
+  tooltipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   axis: {
     flexDirection: "row",
     justifyContent: "space-between",

@@ -11,15 +11,19 @@
 // rolling MAU is the value on the bucket's last day; plain counts are summed.
 
 import type {
+  AdminAnalyticsBreakdown,
   AdminAnalyticsPoint,
   AdminAnalyticsRange,
   AdminAnalyticsResponse,
+  AdminAnalyticsSegment,
   AdminAnalyticsSeries,
   AdminAnalyticsStat,
 } from "@workshop/shared";
 import {
+  ADMIN_ANALYTICS_PLATFORMS,
   ADMIN_ANALYTICS_WEEKLY_BUCKET_ABOVE,
   type AdminAnalyticsBucket,
+  type AdminAnalyticsPlatform,
   type WorkshopClient,
 } from "@workshop/shared/constants";
 import { and, eq, gte, isNull, sql } from "drizzle-orm";
@@ -102,6 +106,41 @@ function usersByDayOf(rows: { userId: string; day: string }[]): Map<string, Set<
   return out;
 }
 
+const PLATFORM_LABELS: Record<AdminAnalyticsPlatform, string> = {
+  ios: "iOS app",
+  web: "Web",
+  other: "Other / unknown",
+};
+
+/** Fold the raw `X-Workshop-Platform` value onto the fixed chart segments. */
+function platformSegment(raw: string | null | undefined): AdminAnalyticsPlatform {
+  const p = raw?.toLowerCase();
+  if (p === "ios") return "ios";
+  if (p === "web") return "web";
+  return "other";
+}
+
+/** Partition rows by platform segment (fixed order), dropping empty segments. */
+function byPlatform<T extends { platform: string | null }>(rows: T[]) {
+  const groups = new Map<AdminAnalyticsPlatform, T[]>();
+  for (const row of rows) {
+    const seg = platformSegment(row.platform);
+    const list = groups.get(seg);
+    if (list) list.push(row);
+    else groups.set(seg, [row]);
+  }
+  return ADMIN_ANALYTICS_PLATFORMS.flatMap((seg) => {
+    const list = groups.get(seg);
+    return list ? [{ seg, label: PLATFORM_LABELS[seg], rows: list }] : [];
+  });
+}
+
+function stackOf(
+  groups: { seg: AdminAnalyticsPlatform; label: string; points: AdminAnalyticsPoint[] }[],
+): AdminAnalyticsSegment[] {
+  return groups.map((g) => ({ key: g.seg, label: g.label, points: g.points }));
+}
+
 /** `(timestamp AT TIME ZONE 'UTC')::date` rendered as text, so it groups and compares as `YYYY-MM-DD`. */
 function utcDayOf(column: unknown) {
   return sql<string>`to_char((${column} AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD')`;
@@ -110,6 +149,8 @@ function utcDayOf(column: unknown) {
 interface ActivityRow {
   userId: string;
   day: string;
+  platform: string;
+  appVersion: string;
 }
 
 /**
@@ -124,12 +165,49 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
   const lookbackStart = addDays(first, -(MAU_WINDOW - 1));
 
   const rows: ActivityRow[] = await db
-    .select({ userId: userActivityDays.userId, day: sql<string>`${userActivityDays.day}::text` })
+    .select({
+      userId: userActivityDays.userId,
+      day: sql<string>`${userActivityDays.day}::text`,
+      platform: userActivityDays.platform,
+      appVersion: userActivityDays.appVersion,
+    })
     .from(userActivityDays)
     .where(and(eq(userActivityDays.client, client), gte(userActivityDays.day, lookbackStart)));
   const usersByDay = usersByDayOf(rows);
 
   const active = distinctSeries(buckets, usersByDay);
+  const activeStack = stackOf(
+    byPlatform(rows).map((g) => ({
+      seg: g.seg,
+      label: g.label,
+      points: distinctSeries(buckets, usersByDayOf(g.rows)),
+    })),
+  );
+
+  // Versions in use over the last 7 days: distinct users per (platform, version).
+  const versionWindow = new Set(dayRange(addDays(last, -6), last));
+  const usersByVersion = new Map<
+    string,
+    { platform: AdminAnalyticsPlatform; users: Set<string> }
+  >();
+  for (const row of rows) {
+    if (!versionWindow.has(row.day)) continue;
+    const seg = platformSegment(row.platform);
+    const key = `${seg}\u0000${row.appVersion}`;
+    let entry = usersByVersion.get(key);
+    if (!entry) {
+      entry = { platform: seg, users: new Set() };
+      usersByVersion.set(key, entry);
+    }
+    entry.users.add(row.userId);
+  }
+  const versions = [...usersByVersion.entries()]
+    .map(([key, entry]) => ({
+      label: `${PLATFORM_LABELS[entry.platform]} · ${key.split("\u0000")[1] ?? "unknown"}`,
+      value: entry.users.size,
+      platform: entry.platform,
+    }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
   const mau = buckets.map((b) => {
     const end = b.days[b.days.length - 1] ?? b.start;
     return {
@@ -141,7 +219,7 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
   // "New" = first day this user ever appeared for this client, computed over
   // the whole table (not just the window) so returning users never re-count.
   const firstDayByUser = new Map<string, string>();
-  const allRows: ActivityRow[] = await db
+  const allRows: { userId: string; day: string }[] = await db
     .select({
       userId: userActivityDays.userId,
       day: sql<string>`min(${userActivityDays.day})::text`,
@@ -158,6 +236,8 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
 
   return {
     active,
+    activeStack,
+    versions,
     mau,
     newUsers: sumSeries(buckets, newByDay),
     activeToday: usersByDay.get(last)?.size ?? 0,
@@ -177,15 +257,22 @@ async function highscoreSeries(db: Db, buckets: Bucket[]) {
     .select({
       day: createdDay,
       userId: gameScores.userId,
+      platform: gameScores.platform,
       scores: sql<number>`count(*)`,
     })
     .from(gameScores)
     .where(gte(gameScores.createdAt, sinceTs))
-    .groupBy(createdDay, gameScores.userId);
-  const scoresByDay = new Map<string, number>();
-  for (const r of rows) scoresByDay.set(r.day, (scoresByDay.get(r.day) ?? 0) + Number(r.scores));
+    .groupBy(createdDay, gameScores.userId, gameScores.platform);
+  const scoreCounts = (list: typeof rows) => {
+    const byDay = new Map<string, number>();
+    for (const r of list) byDay.set(r.day, (byDay.get(r.day) ?? 0) + Number(r.scores));
+    return sumSeries(buckets, byDay);
+  };
   return {
-    scores: sumSeries(buckets, scoresByDay),
+    scores: scoreCounts(rows),
+    scoresStack: stackOf(
+      byPlatform(rows).map((g) => ({ seg: g.seg, label: g.label, points: scoreCounts(g.rows) })),
+    ),
     scorers: distinctSeries(buckets, usersByDayOf(rows)),
   };
 }
@@ -195,10 +282,15 @@ async function workshopSeries(db: Db, buckets: Bucket[]) {
   const sinceTs = new Date(`${first}T00:00:00Z`);
   const itemDay = utcDayOf(items.createdAt);
   const itemRows = await db
-    .select({ day: itemDay, count: sql<number>`count(*)` })
+    .select({ day: itemDay, platform: items.platform, count: sql<number>`count(*)` })
     .from(items)
     .where(and(gte(items.createdAt, sinceTs), isNull(items.archivedAt)))
-    .groupBy(itemDay);
+    .groupBy(itemDay, items.platform);
+  const itemCounts = (list: typeof itemRows) => {
+    const byDay = new Map<string, number>();
+    for (const r of list) byDay.set(r.day, (byDay.get(r.day) ?? 0) + Number(r.count));
+    return sumSeries(buckets, byDay);
+  };
   const listDay = utcDayOf(lists.createdAt);
   const listRows = await db
     .select({ day: listDay, count: sql<number>`count(*)` })
@@ -206,7 +298,10 @@ async function workshopSeries(db: Db, buckets: Bucket[]) {
     .where(and(gte(lists.createdAt, sinceTs), isNull(lists.archivedAt)))
     .groupBy(listDay);
   return {
-    items: sumSeries(buckets, countByDay(itemRows)),
+    items: itemCounts(itemRows),
+    itemsStack: stackOf(
+      byPlatform(itemRows).map((g) => ({ seg: g.seg, label: g.label, points: itemCounts(g.rows) })),
+    ),
     lists: sumSeries(buckets, countByDay(listRows)),
   };
 }
@@ -246,21 +341,16 @@ export async function buildAdminAnalytics(
     { key: "users_total", label: "Users ever seen", value: active.totalUsers },
   ];
   const series: AdminAnalyticsSeries[] = [
-    bucket === "week"
-      ? {
-          key: "dau",
-          label: "Weekly active users",
-          description:
-            "Distinct signed-in users who made at least one request from this app during that week.",
-          points: active.active,
-        }
-      : {
-          key: "dau",
-          label: "Daily active users",
-          description:
-            "Distinct signed-in users who made at least one request from this app that UTC day.",
-          points: active.active,
-        },
+    {
+      key: "dau",
+      label: bucket === "week" ? "Weekly active users" : "Daily active users",
+      description: `Distinct signed-in users who made at least one request from this app ${
+        bucket === "week" ? "during that week" : "that UTC day"
+      }, split by platform (a person on both counts in both).`,
+      points: active.active,
+      stack: active.activeStack,
+      stackMode: "overlap",
+    },
     {
       key: "mau",
       label: "Monthly active users",
@@ -280,8 +370,10 @@ export async function buildAdminAnalytics(
       {
         key: "scores",
         label: `Scores posted per ${per}`,
-        description: `Game scores first posted that ${per} (edits to an existing day's score don't count again).`,
+        description: `Game scores first posted that ${per}, by the platform they were posted from (edits to an existing day's score don't count again).`,
         points: hs.scores,
+        stack: hs.scoresStack,
+        stackMode: "sum",
       },
       {
         key: "scorers",
@@ -301,8 +393,10 @@ export async function buildAdminAnalytics(
       {
         key: "items",
         label: `Items added per ${per}`,
-        description: `Items created that ${per} across all lists (archived items excluded).`,
+        description: `Items created that ${per} across all lists, by the platform they were added from (archived items excluded).`,
         points: ws.items,
+        stack: ws.itemsStack,
+        stackMode: "sum",
       },
       {
         key: "lists",
@@ -320,5 +414,15 @@ export async function buildAdminAnalytics(
     points: active.newUsers,
   });
 
-  return { client, rangeDays, bucket, generatedAt: now.toISOString(), stats, series };
+  const breakdowns: AdminAnalyticsBreakdown[] = [
+    {
+      key: "versions",
+      label: "Versions in use, last 7 days",
+      description:
+        "Distinct users per platform and app version seen in the last 7 days. The iOS version is the JS bundle version (follows OTA updates); web is the deployed build.",
+      rows: active.versions,
+    },
+  ];
+
+  return { client, rangeDays, bucket, generatedAt: now.toISOString(), stats, series, breakdowns };
 }

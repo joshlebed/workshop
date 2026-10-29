@@ -80,6 +80,7 @@ import {
 } from "../../lib/opsNotifications.js";
 import { rankEntries } from "../../lib/ranking.js";
 import { parseJsonBody } from "../../lib/request.js";
+import { requestOriginColumns } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
 import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
@@ -536,6 +537,7 @@ gameRoutes.put(
       codeVersion: scored.codeVersion,
       // Latest write wins: a post without it (an older client) stores NULL.
       entrySource: parsed.data.entrySource ?? null,
+      ...requestOriginColumns(),
     };
 
     // Capture activation state BEFORE the upsert — false means this is the
