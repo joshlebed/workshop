@@ -115,6 +115,42 @@ describe("createItemSchema", () => {
   });
 });
 
+describe("plain-item preview compatibility", () => {
+  const preview = {
+    source: "link_preview",
+    sourceId: "https://example.com",
+    title: "Example",
+    description: "Preview text",
+    image: "https://example.com/image.png",
+  };
+
+  it("discards a valid legacy preview for plain writes but preserves it for links", () => {
+    expect(__test.validateItemWriteContent("plain", preview)).toEqual({});
+    expect(__test.validateItemWriteContent("link", preview)).toEqual(preview);
+  });
+
+  it("keeps ordinary plain content strict", () => {
+    expect(__test.validateItemWriteContent("plain", {})).toEqual({});
+    expect(() => __test.validateItemWriteContent("plain", { title: "x" })).toThrow();
+    expect(() => __test.validateItemWriteContent("plain", { source: "manual" })).toThrow();
+  });
+
+  it("rejects unknown fields and malformed previews instead of silently dropping them", () => {
+    expect(() =>
+      __test.validateItemWriteContent("plain", { ...preview, unexpected: true }),
+    ).toThrow();
+    expect(() =>
+      __test.validateItemWriteContent("plain", { ...preview, title: "x".repeat(501) }),
+    ).toThrow();
+    expect(() => __test.validateItemWriteContent("plain", { ...preview, image: 42 })).toThrow();
+  });
+
+  it("does not accept link metadata for movie or book items", () => {
+    expect(() => __test.validateItemWriteContent("movie", preview)).toThrow();
+    expect(() => __test.validateItemWriteContent("book", preview)).toThrow();
+  });
+});
+
 describe("updateItemSchema", () => {
   const { updateItemSchema } = __test;
 
