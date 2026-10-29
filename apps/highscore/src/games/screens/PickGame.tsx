@@ -4,6 +4,7 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
 import {
   Button,
+  ChevronIcon,
   CloseIcon,
   EmptyState,
   haptics,
@@ -481,7 +482,7 @@ function GameRow({
       {loading ? (
         <ActivityIndicator color={tokens.accent.default} size="small" />
       ) : (
-        <Text style={styles.rowChevron}>{">"}</Text>
+        <ChevronIcon size={16} color={tokens.text.muted} />
       )}
     </Pressable>
   );
@@ -573,14 +574,7 @@ const styles = StyleSheet.create({
   },
   suggestionText: { flex: 1, minWidth: 0, gap: 2 },
   loadingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  scoreBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-  },
+  scoreBox: { gap: tokens.space.sm },
   scoreHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -593,10 +587,10 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
+    paddingVertical: tokens.space.md,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.surface,
     textAlignVertical: "top",
   },
   gameSectionHeader: { gap: 2 },
@@ -617,11 +611,6 @@ const styles = StyleSheet.create({
   disabledRow: { opacity: 0.55 },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
   rowTitle: { color: tokens.text.primary },
-  rowChevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.lg,
-    fontWeight: tokens.font.weight.semibold,
-  },
   gameThumb: {
     width: 44,
     height: 44,

@@ -18,6 +18,7 @@ import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
 import {
   Avatar,
   Button,
+  ChevronIcon,
   confirm,
   EmptyState,
   formatRelative,
@@ -256,7 +257,7 @@ export default function FriendsScreen() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>‹</Text>
+          <ChevronIcon direction="left" size={20} color={tokens.text.primary} />
         </Pressable>
         <Text variant="title">Friends</Text>
         <View style={styles.navButton} />
@@ -544,7 +545,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   body: {
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,

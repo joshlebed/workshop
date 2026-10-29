@@ -14,6 +14,7 @@ import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/
 import {
   Avatar,
   Button,
+  ChevronIcon,
   confirm,
   EmptyState,
   formatRelative,
@@ -238,7 +239,7 @@ export default function FriendProfileScreen() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <Text style={styles.navGlyph}>‹</Text>
+          <ChevronIcon direction="left" size={20} color={tokens.text.primary} />
         </Pressable>
         <Text variant="title">Profile</Text>
         <View style={styles.navButton} />
@@ -447,7 +448,9 @@ export default function FriendProfileScreen() {
                         </Text>
                       </View>
                       {pg.viewerHasGame ? (
-                        <Text style={styles.chevron}>›</Text>
+                        <View style={styles.chevron}>
+                          <ChevronIcon size={16} color={tokens.text.muted} />
+                        </View>
                       ) : isSelf ? null : (
                         <Pressable
                           accessibilityRole="button"
@@ -507,7 +510,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
   body: {
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
@@ -585,12 +587,7 @@ const styles = StyleSheet.create({
   gameCoverGlyph: { fontSize: 20 },
   gameText: { flex: 1, minWidth: 0, gap: 2 },
   gameTitle: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  chevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl * 1.2,
-    paddingHorizontal: tokens.space.sm,
-  },
+  chevron: { paddingHorizontal: tokens.space.sm },
   addBtn: {
     minWidth: 64,
     paddingHorizontal: tokens.space.md,

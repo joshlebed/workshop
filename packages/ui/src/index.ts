@@ -6,6 +6,8 @@ export type { ButtonProps } from "./Button";
 export { Button } from "./Button";
 export type { CardProps } from "./Card";
 export { Card } from "./Card";
+export type { ChevronIconProps } from "./ChevronIcon";
+export { ChevronIcon } from "./ChevronIcon";
 export type { ChipProps } from "./Chip";
 export { Chip } from "./Chip";
 export type { CloseIconProps } from "./CloseIcon";
