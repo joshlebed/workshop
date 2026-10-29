@@ -28,7 +28,7 @@ import {
 } from "@workshop/shared/constants";
 import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { gameScores, items, lists, userActivityDays } from "../db/schema.js";
+import { gameScores, items, lists, requestRollups, userActivityDays } from "../db/schema.js";
 import { utcDay } from "./userActivity.js";
 
 const MAU_WINDOW = 30;
@@ -306,6 +306,84 @@ async function workshopSeries(db: Db, buckets: Bucket[]) {
   };
 }
 
+const CLIENT_LABELS: Record<string, string> = {
+  workshop: "Workshop",
+  highscore: "HighScore",
+  unknown: "(no header)",
+};
+const SHORT_PLATFORM: Record<AdminAnalyticsPlatform, string> = {
+  ios: "iOS",
+  web: "web",
+  other: "other",
+};
+
+/**
+ * Request traffic from `request_rollups` — a backend-wide fact (both apps
+ * share one API), so it is not filtered by client; the client split is a
+ * breakdown instead. Everything is summed from hourly rows in JS.
+ */
+async function requestSeries(db: Db, buckets: Bucket[], last: string) {
+  const first = buckets[0]?.start ?? utcDay(new Date());
+  const sinceTs = new Date(`${first}T00:00:00Z`);
+  const rows = await db
+    .select({
+      hour: requestRollups.hour,
+      client: requestRollups.client,
+      platform: requestRollups.platform,
+      appVersion: requestRollups.appVersion,
+      method: requestRollups.method,
+      route: requestRollups.route,
+      requests: requestRollups.requests,
+      errors: requestRollups.errors,
+    })
+    .from(requestRollups)
+    .where(gte(requestRollups.hour, sinceTs));
+  const dayOf = (hour: Date) => utcDay(hour);
+  const counts = (list: typeof rows) => {
+    const byDay = new Map<string, number>();
+    for (const r of list) byDay.set(dayOf(r.hour), (byDay.get(dayOf(r.hour)) ?? 0) + r.requests);
+    return sumSeries(buckets, byDay);
+  };
+  const [through] = await db
+    .select({ max: sql<string | null>`max(${requestRollups.hour})` })
+    .from(requestRollups);
+
+  const last24 = new Date(Date.parse(`${last}T00:00:00Z`) + DAY_MS - 24 * 3_600_000);
+  const recent = rows.filter((r) => r.hour >= last24);
+  const sevenDays = new Date(Date.parse(`${last}T00:00:00Z`) - 6 * DAY_MS);
+  const week = rows.filter((r) => r.hour >= sevenDays);
+  const tally = <K extends string>(list: typeof rows, keyOf: (r: (typeof rows)[number]) => K) => {
+    const out = new Map<K, number>();
+    for (const r of list) out.set(keyOf(r), (out.get(keyOf(r)) ?? 0) + r.requests);
+    return out;
+  };
+
+  const versionLabel = (r: (typeof rows)[number]) =>
+    `${CLIENT_LABELS[r.client] ?? r.client} · ${SHORT_PLATFORM[platformSegment(r.platform)]} · ${r.appVersion}`;
+  const byClientVersion = tally(week, versionLabel);
+  const platformOfLabel = new Map<string, AdminAnalyticsPlatform>();
+  for (const r of week) platformOfLabel.set(versionLabel(r), platformSegment(r.platform));
+  const byRoute = tally(week, (r) => `${r.method} ${r.route}`);
+  const topN = (m: Map<string, number>, n: number) =>
+    [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, n);
+
+  return {
+    requests: counts(rows),
+    requestsStack: stackOf(
+      byPlatform(rows).map((g) => ({ seg: g.seg, label: g.label, points: counts(g.rows) })),
+    ),
+    requests24h: recent.reduce((a, r) => a + r.requests, 0),
+    errors24h: recent.reduce((a, r) => a + r.errors, 0),
+    versions: topN(byClientVersion, 12).map(([label, value]) => ({
+      label,
+      value,
+      platform: platformOfLabel.get(label) ?? ("other" as const),
+    })),
+    routes: topN(byRoute, 10).map(([label, value]) => ({ label, value })),
+    through: through?.max ? new Date(through.max).toISOString() : null,
+  };
+}
+
 /** Sum of the last `lastDays` days of a daily count map. */
 function sumLast(
   byDayPoints: AdminAnalyticsPoint[],
@@ -414,7 +492,34 @@ export async function buildAdminAnalytics(
     points: active.newUsers,
   });
 
+  const req = await requestSeries(db, buckets, days[days.length - 1] ?? today);
+  stats.push(
+    { key: "requests_24h", label: "API requests, last 24h", value: req.requests24h },
+    { key: "errors_24h", label: "5xx responses, last 24h", value: req.errors24h },
+  );
+  series.push({
+    key: "requests",
+    label: `API requests per ${per}`,
+    description: `Every request to the shared backend from any app or bot, by platform header (hourly rollups from the request log; not filtered by app).`,
+    points: req.requests,
+    stack: req.requestsStack,
+    stackMode: "sum",
+  });
+
   const breakdowns: AdminAnalyticsBreakdown[] = [
+    {
+      key: "request_versions",
+      label: "API requests by app and version, last 7 days",
+      description:
+        "Request volume per client app, platform and version. '(no header)' is traffic from bots, scripts, and installs that predate the client header.",
+      rows: req.versions,
+    },
+    {
+      key: "routes",
+      label: "Top routes, last 7 days",
+      description: "Most-requested API routes across both apps.",
+      rows: req.routes,
+    },
     {
       key: "versions",
       label: "Versions in use, last 7 days",
@@ -424,5 +529,14 @@ export async function buildAdminAnalytics(
     },
   ];
 
-  return { client, rangeDays, bucket, generatedAt: now.toISOString(), stats, series, breakdowns };
+  return {
+    client,
+    rangeDays,
+    bucket,
+    generatedAt: now.toISOString(),
+    stats,
+    series,
+    breakdowns,
+    requestsThrough: req.through,
+  };
 }

@@ -30,7 +30,7 @@ export function HorizontalBars({ rows, testID }: HorizontalBarsProps) {
     <View style={styles.root} testID={testID}>
       {rows.map((row) => (
         <View key={row.label} style={styles.row}>
-          <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.label}>
+          <Text variant="caption" tone="secondary" numberOfLines={2} style={styles.label}>
             {row.label}
           </Text>
           <View style={styles.track}>
@@ -56,7 +56,7 @@ export function HorizontalBars({ rows, testID }: HorizontalBarsProps) {
 const styles = StyleSheet.create({
   root: { gap: 6 },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  label: { width: 168 },
+  label: { width: 200 },
   track: { flex: 1, height: 12, borderRadius: 3, backgroundColor: theme.bg.elevated },
   bar: { height: "100%", borderRadius: 3 },
   value: { width: 40, textAlign: "right" },

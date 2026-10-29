@@ -88,6 +88,7 @@ export const requestLog: MiddlewareHandler = async (c, next) => {
       status,
       duration_ms: Date.now() - start,
       user_id: c.get("userId") ?? null,
+      client: clientContext.client,
       platform: platformHeader ?? detectPlatform(userAgent),
       app_version: truncate(appVersion, MAX_VERSION),
       ip: clientIp(c),

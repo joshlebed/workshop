@@ -81,6 +81,13 @@ describe("GET /v1/admin/analytics", () => {
       [listId, playerId],
     );
 
+    await run(
+      `INSERT INTO request_rollups (hour, client, platform, app_version, method, route, requests, users, errors, avg_ms) VALUES
+       (date_trunc('hour', now()) - interval '1 hour', 'highscore', 'ios', '1.4.0', 'PUT', '/v1/games/:id/scores', 40, 3, 1, 90),
+       (date_trunc('hour', now()) - interval '1 hour', 'workshop', 'web', '0.6.0', 'GET', '/v1/lists', 10, 1, 0, 30),
+       (date_trunc('hour', now()) - interval '3 days', 'unknown', 'other', 'unknown', 'GET', '/health', 5, 0, 0, 5)`,
+    );
+
     resetUserActivityMemoForTesting();
     const origin = (
       client: "highscore" | "workshop" | null,
@@ -150,6 +157,25 @@ describe("GET /v1/admin/analytics", () => {
     expect(stat(body, "users_total")).toBe(2);
     expect(stat(body, "scores_7d")).toBe(3);
     expect(body.series.find((s) => s.key === "items")).toBeUndefined();
+
+    // Request rollups: backend-wide, stacked by platform, with the client split as a breakdown.
+    expect(stat(body, "requests_24h")).toBe(50);
+    expect(stat(body, "errors_24h")).toBe(1);
+    expect(series(body, "requests").points.reduce((a, p) => a + p.value, 0)).toBe(55);
+    expect(series(body, "requests").stack?.map((s) => [s.key, s.points.at(-1)?.value])).toEqual([
+      ["ios", 40],
+      ["web", 10],
+      ["other", 0],
+    ]);
+    const reqVersions = body.breakdowns.find((b) => b.key === "request_versions");
+    expect(reqVersions?.rows[0]).toEqual({
+      label: "HighScore · iOS · 1.4.0",
+      value: 40,
+      platform: "ios",
+    });
+    const routes = body.breakdowns.find((b) => b.key === "routes");
+    expect(routes?.rows[0]).toEqual({ label: "PUT /v1/games/:id/scores", value: 40 });
+    expect(body.requestsThrough).not.toBeNull();
   });
 
   it("serves the Workshop dashboard with items and lists per day", async () => {

@@ -203,8 +203,8 @@ export interface AdminAnalyticsSeries {
 export interface AdminAnalyticsBreakdownRow {
   label: string;
   value: number;
-  /** Platform the row belongs to, for its bar color. */
-  platform: AdminAnalyticsPlatform;
+  /** Platform the row belongs to, for its bar color; absent = neutral. */
+  platform?: AdminAnalyticsPlatform;
 }
 
 export interface AdminAnalyticsBreakdown {
@@ -230,6 +230,8 @@ export interface AdminAnalyticsResponse {
   stats: AdminAnalyticsStat[];
   series: AdminAnalyticsSeries[];
   breakdowns: AdminAnalyticsBreakdown[];
+  /** ISO hour the request rollups are complete through; null = no rollups yet. */
+  requestsThrough: string | null;
 }
 
 /**

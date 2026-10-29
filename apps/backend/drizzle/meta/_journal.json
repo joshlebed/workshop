@@ -365,6 +365,13 @@
       "when": 1793297865702,
       "tag": "0051_origin_columns_and_activity_platform",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793299493532,
+      "tag": "0052_request_rollups",
+      "breakpoints": true
     }
   ]
 }

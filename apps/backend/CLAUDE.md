@@ -883,8 +883,8 @@ serves DAU/MAU from `user_activity_days` plus per-app content series. The CloudW
 below remains the source for request-level questions (latency, paths, errors).
 
 Every Lambda request emits one structured JSON line (`kind: "request"`) with
-`request_id`, `method`, `path`, `route`, `status`, `duration_ms`, `user_id`, `platform`,
-`app_version`, `ip`, `origin`, `referer`, `user_agent`. CloudWatch log group
+`request_id`, `method`, `path`, `route`, `status`, `duration_ms`, `user_id`, `client`,
+`platform`, `app_version`, `ip`, `origin`, `referer`, `user_agent`. CloudWatch log group
 `/aws/lambda/workshop-prod-api`, 30-day retention. Preset queries via
 `scripts/log-analytics.sh` (e.g. `by-platform`, `top-paths`, `errors`, `slow`,
 `user <user-id>`).
