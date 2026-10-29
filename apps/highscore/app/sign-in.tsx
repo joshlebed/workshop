@@ -154,8 +154,7 @@ export default function SignIn() {
               Get HighScore for iPhone
             </Text>
             <Text variant="label" tone="secondary" style={styles.appCardText}>
-              Share a score straight from any game, get daily reminders, and keep your streak in
-              your pocket.
+              Share your scores straight from any game
             </Text>
           </View>
           <AppStoreBadge />
