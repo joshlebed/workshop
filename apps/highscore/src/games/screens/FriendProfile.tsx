@@ -227,6 +227,7 @@ export default function FriendProfileScreen() {
   const name = profile?.user.displayName?.trim() || "Someone";
   const mutuals = profile ? mutualsLine(profile) : null;
   const isSelf = profile?.relationship === "self" || (!!user?.id && user.id === userId);
+  const scoresVisible = isSelf || profile?.relationship === "friends";
 
   return (
     <Screen testID="friend-profile-screen">
@@ -379,7 +380,10 @@ export default function FriendProfileScreen() {
               </View>
             )}
 
-            {/* Games. */}
+            {/* Games. Public to every viewer; today's score is only sent for
+                friends/self, so the per-row score line is hidden otherwise.
+                `games === null` only comes from a response cached before
+                games went public. */}
             {profile.games === null ? (
               <View style={styles.lockedCard} testID="friend-profile-locked">
                 <Text style={styles.lockedGlyph}>🎮</Text>
@@ -407,11 +411,13 @@ export default function FriendProfileScreen() {
                 {profile.games.map((pg) => {
                   const adding = addingGameIds.includes(pg.game.id);
                   const scoreBody = pg.score ? summarizeGameScoreBody(pg.game, pg.score) : null;
-                  const scoreLine = scoreBody
-                    ? `Today: ${scoreBody.split("\n")[0]}`
-                    : pg.score
-                      ? "Played today"
-                      : "Not played today";
+                  const scoreLine = !scoresVisible
+                    ? null
+                    : scoreBody
+                      ? `Today: ${scoreBody.split("\n")[0]}`
+                      : pg.score
+                        ? "Played today"
+                        : "Not played today";
                   return (
                     <Pressable
                       key={pg.game.id}
@@ -443,9 +449,11 @@ export default function FriendProfileScreen() {
                         <Text variant="label" numberOfLines={1} style={styles.gameTitle}>
                           {pg.game.title}
                         </Text>
-                        <Text variant="caption" tone="muted" numberOfLines={1}>
-                          {scoreLine}
-                        </Text>
+                        {scoreLine ? (
+                          <Text variant="caption" tone="muted" numberOfLines={1}>
+                            {scoreLine}
+                          </Text>
+                        ) : null}
                       </View>
                       {pg.viewerHasGame ? (
                         <View style={styles.chevron}>

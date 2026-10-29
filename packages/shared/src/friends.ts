@@ -91,7 +91,11 @@ export interface FriendProfileGame {
   game: Game;
   /** Whether the viewer already has this game in My Games (gates quick-add). */
   viewerHasGame: boolean;
-  /** The profile subject's score for `periodKey`; null when unplayed. */
+  /**
+   * The profile subject's score for `periodKey`; null when unplayed. Only
+   * populated when `relationship` is `friends` or `self` — non-friends see
+   * the game list but never scores.
+   */
   score: ({ scoreRaw: string; scoreValue: number | null } & ScoreCodeFields) | null;
 }
 
@@ -104,6 +108,10 @@ export interface FriendProfileResponse {
   /** My friends who are also their friends. */
   mutualFriends: FriendUser[];
   periodKey: string;
-  /** Their games; null unless `relationship` is `friends` or `self`. */
+  /**
+   * Their games, visible to every viewer who can see the profile. Always an
+   * array from current backends; `null` only in responses cached by clients
+   * from before games went public.
+   */
   games: FriendProfileGame[] | null;
 }

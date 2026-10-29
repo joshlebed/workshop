@@ -714,16 +714,23 @@ describe("GET /v1/friends/users/:userId — profile", () => {
     expect(Array.isArray(body.games)).toBe(true);
   });
 
-  it("a mutual's profile is visible but withholds games", async () => {
-    const res = await friendRoutes.request(`/users/${alice}`, { headers: authHeaders(me) });
+  it("a mutual's profile shows games but withholds scores", async () => {
+    // Alice (not my friend) plays Globle — which I also have — and scored today.
+    const globleId = await addGame("https://globle-game.com/", alice);
+    await postScore(globleId, alice, "🌎 Jun 10, 2026 🌍\n🟩 = 1");
+
+    const res = await friendRoutes.request(`/users/${alice}?period=${PERIOD}`, {
+      headers: authHeaders(me),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       relationship: string;
-      games: unknown;
+      games: { game: { title: string }; viewerHasGame: boolean; score: unknown }[];
       mutualFriends: { displayName: string | null }[];
     };
     expect(body.relationship).toBe("none");
-    expect(body.games).toBeNull();
+    expect(body.games.map((g) => g.game.title)).toEqual(["Globle"]);
+    expect(body.games[0]).toMatchObject({ viewerHasGame: true, score: null });
     expect(body.mutualFriends.map((f) => f.displayName).sort()).toEqual(["Friendly", "Reuser"]);
   });
 

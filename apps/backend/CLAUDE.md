@@ -579,7 +579,8 @@ A partial unique index keeps one pending row per (inviter, invitee); the legacy 
 has no relationship AND no mutual friends with the target (profiles can't probe strangers) —
 **unless** the request carries `?via=<token>`, a valid play link (`game_share_links`) for the
 target, which vouches the viewer in so a play-link recipient can see who they are and add them;
-it attaches the target's games + period scores only for friends/self.
+it attaches the target's game list for every viewer who gets a 200 (games are public), but
+the period scores on those rows only for friends/self (`score: null` otherwise).
 `GET /v1/games/discovery` (friends' games, ranked by how many friends play each) is
 registered **before** the `/:id` routes so the literal path isn't shadowed; its `?friend=`
 filter 404s for non-friends so the endpoint can't be used to probe a stranger's games. The
