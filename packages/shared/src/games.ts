@@ -476,6 +476,28 @@ export interface GameDiscoveryResponse {
 }
 
 /**
+ * `GET /v1/games/catalog` — every game on the platform worth listing: the
+ * registry games always, plus user-added games two or more people play
+ * (a single-player URL is someone's private experiment, not a catalog
+ * entry). `playerCount` is an aggregate over all users (never names; only
+ * `friends` names anyone, and only the viewer's own friends). The client
+ * groups rows by `gameCategoryForKey(game.gameKey)` — the registry owns
+ * game types, so there is no category on the wire.
+ */
+export interface CatalogGame {
+  game: Game;
+  /** How many users have this game in My Games, platform-wide. */
+  playerCount: number;
+  /** The viewer's friends who play it (home-order of nothing in particular). */
+  friends: DiscoveryFriend[];
+  inMyGames: boolean;
+}
+
+export interface GameCatalogResponse {
+  games: CatalogGame[];
+}
+
+/**
  * `POST /v1/game-share` — my per-(user, day) "play with me" link. Surfaced by
  * the Games-tab copy-scores recap; `url` is the short `/g/:token` form.
  */
