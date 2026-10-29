@@ -1,6 +1,7 @@
 import { handle, type LambdaEvent } from "hono/aws-lambda";
 import { buildApp } from "./app.js";
 import { runPlayReminderJob } from "./jobs/playReminders.js";
+import { runRequestRollupJob } from "./jobs/requestRollups.js";
 import { warmGameCodeSandboxIfEnabled } from "./lib/gameCodeService.js";
 
 const app = buildApp();
@@ -9,22 +10,25 @@ const app = buildApp();
 warmGameCodeSandboxIfEnabled();
 const apiHandler = handle(app);
 
-interface PlayReminderEvent {
-  job: "play-reminders";
+interface JobEvent {
+  job: "play-reminders" | "request-rollups";
 }
 
-function isPlayReminderEvent(event: unknown): event is PlayReminderEvent {
-  return (
-    typeof event === "object" &&
-    event !== null &&
-    (event as { job?: unknown }).job === "play-reminders"
-  );
+function jobOf(event: unknown): JobEvent["job"] | null {
+  const job = typeof event === "object" && event !== null ? (event as { job?: unknown }).job : null;
+  return job === "play-reminders" || job === "request-rollups" ? job : null;
 }
 
 export async function handler(
-  event: LambdaEvent | PlayReminderEvent,
+  event: LambdaEvent | JobEvent,
   context?: Parameters<typeof apiHandler>[1],
 ): Promise<unknown> {
-  if (isPlayReminderEvent(event)) return runPlayReminderJob();
-  return apiHandler(event, context);
+  switch (jobOf(event)) {
+    case "play-reminders":
+      return runPlayReminderJob();
+    case "request-rollups":
+      return runRequestRollupJob();
+    default:
+      return apiHandler(event as LambdaEvent, context);
+  }
 }

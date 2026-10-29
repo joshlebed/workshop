@@ -156,7 +156,7 @@ export default function AdminAnalytics() {
                     rows={b.rows.map((r) => ({
                       label: r.label,
                       value: r.value,
-                      color: PLATFORM_COLORS[r.platform],
+                      color: r.platform ? PLATFORM_COLORS[r.platform] : tokens.accent.default,
                     }))}
                   />
                   <Text variant="caption" tone="muted">
@@ -168,6 +168,9 @@ export default function AdminAnalytics() {
               <Text variant="caption" tone="muted" style={styles.footer}>
                 UTC {query.data.bucket === "week" ? "weeks" : "days"} · computed{" "}
                 {formatGeneratedAt(query.data.generatedAt)}
+                {query.data.requestsThrough
+                  ? ` · API requests through ${formatGeneratedAt(query.data.requestsThrough)}`
+                  : ""}
               </Text>
             </>
           ) : null}

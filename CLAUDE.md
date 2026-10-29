@@ -232,7 +232,14 @@ deliberate critical-fix backports may change it before then. See
   new user-write path** so the per-platform stacks stay complete (NULL = pre-stamping or a
   server job, shown as "Other / unknown"). Series carry an optional per-platform `stack`
   (`stackMode: sum` for counts, `overlap` for distinct users) and the response a `breakdowns`
-  list (versions in use, last 7 days). Charts are `BarChart` / `HorizontalBars` from
+  list (versions in use, last 7 days). **Request traffic is a separate, backend-wide source:**
+  `request_rollups` is materialized hourly from the CloudWatch request log by the
+  `{ "job": "request-rollups" }` Lambda invocation (`jobs/requestRollups.ts`, EventBridge
+  Scheduler in `infra/request_rollups.tf`, Logs Insights `StartQuery` over the last 3 complete
+  hours, delete+insert so re-runs are idempotent). The request log line now carries `client`
+  (`X-Workshop-Client`); rows before that show as `(no header)`. Backfill by hand with
+  `runRequestRollupJob({ hours: 24 * 14 })` from a `tsx` script (needs AWS creds + logs read).
+  Charts are `BarChart` / `HorizontalBars` from
   `@workshop/ui`; the two screens are intentionally per-app copies. Workshop web persists the
   react-query cache to localStorage, so a new response field must be read as optional.
 

@@ -891,6 +891,37 @@ export const userActivityDays = pgTable(
 );
 
 /**
+ * Hourly request-traffic rollups, materialized from the CloudWatch request
+ * log by the `request-rollups` Lambda job (`jobs/requestRollups.ts`, hourly
+ * via EventBridge Scheduler). One row per (hour, client, platform, app
+ * version, method, route); the job rewrites the last few complete hours each
+ * run, so re-runs are idempotent. `client` is the validated
+ * `X-Workshop-Client` (`unknown` when the request carried none — bots, curl,
+ * pre-header installs). Read only by the admin analytics dashboard.
+ */
+export const requestRollups = pgTable(
+  "request_rollups",
+  {
+    hour: timestamp("hour", { withTimezone: true }).notNull(),
+    client: text("client").notNull(),
+    platform: text("platform").notNull(),
+    appVersion: text("app_version").notNull(),
+    method: text("method").notNull(),
+    route: text("route").notNull(),
+    requests: integer("requests").notNull(),
+    /** Distinct signed-in users in the hour for this combination. */
+    users: integer("users").notNull(),
+    /** Responses with status >= 500. */
+    errors: integer("errors").notNull(),
+    avgMs: integer("avg_ms").notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.hour, t.client, t.platform, t.appVersion, t.method, t.route] }),
+    hourIdx: index("request_rollups_hour_idx").on(t.hour),
+  }),
+);
+
+/**
  * Per-user server-side flags — small durable key/value state that must survive
  * reinstalls and follow the account across devices (announcement dismissals,
  * feature-adoption markers). Keyed like `user_activity_reads`: composite PK,

@@ -85,6 +85,7 @@ describe("requestLog middleware", () => {
       platform: null,
       appVersion: null,
     });
+    expect(lastInfoEntry(logSpy)).toMatchObject({ client: "highscore" });
   });
 
   it("does not record activity for anonymous or impersonated requests", async () => {
