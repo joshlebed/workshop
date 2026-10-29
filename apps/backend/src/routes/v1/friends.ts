@@ -47,7 +47,7 @@ import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { periodKeySchema } from "../../lib/scoreSchemas.js";
 import { generateShareSlug, isValidShareSlug } from "../../lib/shareSlug.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { optionalAuth, requireAuth } from "../../middleware/auth.js";
 import { type RateLimitKeyFn, rateLimit } from "../../middleware/rate-limit.js";
 
 const ipKey: RateLimitKeyFn = (c) => {
@@ -316,13 +316,16 @@ friendRoutes.post(
 );
 
 // --- GET /v1/friends/requests/:token — public inviter preview ---
-// No auth: the recipient sees who's inviting them before signing in (same
-// shape as the public list-share preview). Unauthenticated DB endpoint, so
-// the opening query wraps in withDbRetry (Neon cold-start; backend CLAUDE.md).
+// No auth required: the recipient sees who's inviting them before signing in
+// (same shape as the public list-share preview). A valid bearer token adds the
+// viewer-relative `viewerIsFriend` so the client can skip the accept card for
+// an existing friend. Unauthenticated DB endpoint, so the opening query wraps
+// in withDbRetry (Neon cold-start; backend CLAUDE.md).
 
 friendRoutes.get(
   "/requests/:token",
   rateLimit({ family: "v1.friends.preview", limit: 60, windowSec: 60, key: ipKey }),
+  optionalAuth,
   async (c) => {
     const token = c.req.param("token");
     if (!isValidShareSlug(token)) return err(c, "NOT_FOUND", "invite not found");
@@ -342,9 +345,14 @@ friendRoutes.get(
     );
     if (!row) return err(c, "NOT_FOUND", "invite not found");
 
+    const viewerId = c.get("userId") as string | undefined;
+    const viewerIsFriend =
+      !!viewerId && viewerId !== row.inviterId && !!(await friendshipEdge(viewerId, row.inviterId));
+
     const response: FriendRequestPreview = {
       inviter: { userId: row.inviterId, displayName: row.inviterName },
       status: normalizeStatus(row.status),
+      viewerIsFriend,
     };
     return ok(c, response);
   },

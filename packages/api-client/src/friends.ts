@@ -44,6 +44,8 @@ const friendRequestPreviewSchema = z.object({
     displayName: z.string().nullable(),
   }),
   status: z.enum(["pending", "accepted", "declined"]),
+  // Optional for a backend that predates the field; absent reads as "not friends".
+  viewerIsFriend: z.boolean().default(false),
 });
 
 const acceptFriendRequestResponseSchema = z.object({
