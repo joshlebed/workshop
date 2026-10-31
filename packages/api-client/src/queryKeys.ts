@@ -29,6 +29,8 @@ export const queryKeys = {
     /** `GET /v1/admin/analytics?client=…&range=…` — admin-only dashboard numbers. */
     analytics: (client: string, rangeDays: number) =>
       ["admin", "analytics", client, rangeDays] as const,
+    /** `GET /v1/admin/graph` — the HighScore friend graph for the admin users web. */
+    graph: ["admin", "graph"] as const,
   },
   invites: {
     forList: (listId: string) => ["invites", "forList", listId] as const,

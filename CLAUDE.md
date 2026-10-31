@@ -216,8 +216,8 @@ deliberate critical-fix backports may change it before then. See
   `POST /v1/telemetry/share-intent` (CloudWatch, filter `client_share_intent`), same as
   Workshop.
 
-- **Admin analytics dashboards live in each app at `/admin/analytics`** (ProfileMenu →
-  "Admin: analytics"), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90|365` (365 is served as weekly buckets: distinct users per week, end-of-week MAU snapshot, summed counts; `bucket` on the response)
+- **Admin analytics dashboards live in each app** (Workshop: `/admin/analytics`, ProfileMenu →
+  "Admin: analytics"; HighScore: the Overview tab of `/admin`), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90|365` (365 is served as weekly buckets: distinct users per week, end-of-week MAU snapshot, summed counts; `bucket` on the response)
   (`routes/v1/admin.ts`, gated on the real admin via `isAdminUser`, impersonation-aware).
   DAU/MAU come from `user_activity_days` — one row per (user, client, platform, app version,
   UTC day; a multi-platform user appears under each platform), written by
@@ -242,6 +242,25 @@ deliberate critical-fix backports may change it before then. See
   Charts are `BarChart` / `HorizontalBars` from
   `@workshop/ui`; the two screens are intentionally per-app copies. Workshop web persists the
   react-query cache to localStorage, so a new response field must be read as optional.
+
+- **HighScore's admin surface is one dashboard, `/admin`** (ProfileMenu → "Admin dashboard"),
+  with tabs in the URL: `?tab=overview` (analytics, `src/admin/AnalyticsPanel.tsx`),
+  `?tab=users` (the friend graph + `&view=force|clusters|tree|list` + `&user=<id>`), and
+  `?tab=tools` (impersonation, `src/admin/ImpersonationPanel.tsx`; the "Stop impersonating"
+  strip stays in ProfileMenu because the impersonated session isn't an admin). `/admin/analytics`
+  and `/admin/graph` are redirects for old links. Workshop still has its own `/admin/analytics`.
+  The users tab's three canvases over `GET /v1/admin/graph` (`lib/adminGraph.ts`, same real-admin
+  gate as `/analytics`; every HighScore user with activity stats plus every `friendships` row)
+  live under `apps/highscore/src/admin/graph/` — d3-force growth replay, sigma.js Louvain
+  communities, cytoscape invite tree — as `.web.tsx` files whose bare `.tsx` sibling re-exports
+  the native `GraphUnavailable` card, so the iOS Metro bundle never pulls a DOM library; keep
+  that split if you add a view. Pure helpers (adjacency, cohorts, the inferred invite tree,
+  table sort) live in `model.ts` and are unit-tested. **sigma is v4**: styling is the `styles`
+  declaration (attribute bindings / value functions), not v3's `nodeReducer` settings;
+  `itemSizesReference` defaults to graph units, so set `"screen"` for pixel sizes;
+  `enableNodeDrag` needs `x`/`y` attribute bindings. cytoscape 3.34 ships its own types — no
+  `@types/cytoscape`. The screen is deliberately not wrapped in `Screen` (a graph wants the
+  whole viewport).
 
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load

@@ -235,6 +235,54 @@ export interface AdminAnalyticsResponse {
 }
 
 /**
+ * One user in the admin friend-graph (`GET /v1/admin/graph`). Counts are
+ * HighScore-wide (not viewer-relative): this is an operator surface, so the
+ * email is included and scores are never hidden.
+ */
+export interface AdminGraphNode {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  /** `left(md5(avatar_url), 8)`, null without a picture. */
+  avatarVersion: string | null;
+  isAdmin: boolean;
+  createdAt: string;
+  friendCount: number;
+  /** Directed friend requests still pending, sent by / to this user. */
+  pendingOut: number;
+  pendingIn: number;
+  /** `game_scores` rows, distinct games scored, and the first/last post. */
+  scoreCount: number;
+  gamesScored: number;
+  firstScoreAt: string | null;
+  lastScoreAt: string | null;
+  /** Games on the user's home screen (`user_games`). */
+  gamesOnHome: number;
+  /** HighScore `user_activity_days`: last active UTC day, days active in the last 30. */
+  lastActiveDay: string | null;
+  activeDays30: number;
+  activeDaysTotal: number;
+  /** Distinct `X-Workshop-Platform` values seen for this user in HighScore. */
+  platforms: string[];
+  /** Has posted at least one score through the iOS share sheet. */
+  usedShareExtension: boolean;
+}
+
+/** One `friendships` row — `source < target` canonically, with when it formed. */
+export interface AdminGraphEdge {
+  source: string;
+  target: string;
+  createdAt: string;
+}
+
+export interface AdminGraphResponse {
+  /** ISO timestamp the graph was computed at. */
+  generatedAt: string;
+  nodes: AdminGraphNode[];
+  edges: AdminGraphEdge[];
+}
+
+/**
  * Partial profile update. Both fields are optional and updated independently —
  * send only what changed. `avatarUrl: null` clears the profile picture; omitting
  * a field leaves it untouched.
