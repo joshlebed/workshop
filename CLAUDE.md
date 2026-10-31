@@ -252,15 +252,18 @@ deliberate critical-fix backports may change it before then. See
   The users tab's three canvases over `GET /v1/admin/graph` (`lib/adminGraph.ts`, same real-admin
   gate as `/analytics`; every HighScore user with activity stats plus every `friendships` row)
   live under `apps/highscore/src/admin/graph/` — d3-force growth replay, sigma.js Louvain
-  communities, cytoscape invite tree — as `.web.tsx` files whose bare `.tsx` sibling re-exports
-  the native `GraphUnavailable` card, so the iOS Metro bundle never pulls a DOM library; keep
-  that split if you add a view. Pure helpers (adjacency, cohorts, the inferred invite tree,
-  table sort) live in `model.ts` and are unit-tested. **sigma is v4**: styling is the `styles`
-  declaration (attribute bindings / value functions), not v3's `nodeReducer` settings;
-  `itemSizesReference` defaults to graph units, so set `"screen"` for pixel sizes;
-  `enableNodeDrag` needs `x`/`y` attribute bindings. cytoscape 3.34 ships its own types — no
-  `@types/cytoscape`. The screen is deliberately not wrapped in `Screen` (a graph wants the
-  whole viewport).
+  communities, cytoscape invite tree — as `.web.tsx` files; the bare `.tsx` sibling is the
+  **native** implementation, drawing the same layouts through `NativeGraphCanvas` (plain views
+  - gesture-handler pan/pinch, no SVG/WebGL, no new native module) so iOS gets the feature by
+    OTA. Keep that split if you add a view: DOM libraries only in `.web.tsx`. Layout math is in
+    `layouts.ts` (pure JS: d3-force ticks, ForceAtlas2 + Louvain, a radial invite tree, shared by
+    both platforms); pure helpers (adjacency, cohorts, the inferred invite tree, table sort) in
+    `model.ts`; both unit-tested. **sigma is v4**: styling is the `styles`
+    declaration (attribute bindings / value functions), not v3's `nodeReducer` settings;
+    `itemSizesReference` defaults to graph units, so set `"screen"` for pixel sizes;
+    `enableNodeDrag` needs `x`/`y` attribute bindings. cytoscape 3.34 ships its own types — no
+    `@types/cytoscape`. The screen is deliberately not wrapped in `Screen` (a graph wants the
+    whole viewport).
 
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load

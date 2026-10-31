@@ -5,11 +5,6 @@
 // member so the clusters have names. Best for seeing *which groups* HighScore
 // has grown into and how (or whether) they connect.
 
-import type { AdminGraphNode } from "@workshop/shared";
-import Graph from "graphology";
-import louvain from "graphology-communities-louvain";
-import random from "graphology-layout/random";
-import forceAtlas2 from "graphology-layout-forceatlas2";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sigma from "sigma";
 import {
@@ -20,27 +15,8 @@ import {
   overlayGroup,
   overlayTop,
 } from "./canvasControls";
+import { runCommunityLayout } from "./layouts";
 import { displayName, type GraphViewProps } from "./model";
-
-interface Community {
-  id: number;
-  color: string;
-  members: AdminGraphNode[];
-  /** Highest-degree member, the cluster's "anchor". */
-  anchor: AdminGraphNode;
-}
-
-/** Deterministic PRNG so communities and the initial layout are stable across renders. */
-function mulberry32(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 export function ClusterGraphView({
   data,
@@ -56,61 +32,22 @@ export function ClusterGraphView({
   const [showLabels, setShowLabels] = useState(true);
   const [hideIsolated, setHideIsolated] = useState(false);
 
-  // Build the graph + communities once per dataset.
+  // Layout + communities once per dataset; sigma reads the graph's attributes.
   const { graph, communities, communityOf } = useMemo(() => {
-    const g = new Graph({ type: "undirected" });
-    const nodesById = new Map(data.nodes.map((n) => [n.id, n]));
+    const layout = runCommunityLayout(data);
     for (const n of data.nodes) {
-      g.addNode(n.id, {
+      const c = layout.communityOf.get(n.id) ?? 0;
+      layout.graph.mergeNodeAttributes(n.id, {
         label: displayName(n),
-        size: 4 + Math.min(16, n.friendCount * 1.1),
-        isolated: n.friendCount === 0 ? 1 : 0,
+        color: palette.series[c % palette.series.length] ?? palette.accent,
         dim: 0,
         focus: 0,
         hideLabel: 0,
         hidden: 0,
       });
     }
-    for (const e of data.edges) {
-      if (g.hasNode(e.source) && g.hasNode(e.target) && !g.hasEdge(e.source, e.target)) {
-        g.addEdge(e.source, e.target, { lit: 0, dim: 0 });
-      }
-    }
-    const rng = mulberry32(42);
-    random.assign(g, { scale: 100, rng });
-    if (g.order > 0) {
-      const settings = forceAtlas2.inferSettings(g);
-      forceAtlas2.assign(g, {
-        iterations: 600,
-        settings: { ...settings, gravity: 1.2, scalingRatio: 8 },
-      });
-    }
-    const mapping = g.order > 0 ? louvain(g, { rng: mulberry32(7), resolution: 1 }) : {};
-    // Renumber communities by size so #1 is the biggest and colours are stable.
-    const groups = new Map<number, AdminGraphNode[]>();
-    for (const [id, c] of Object.entries(mapping)) {
-      const n = nodesById.get(id);
-      if (!n) continue;
-      if (!groups.has(c)) groups.set(c, []);
-      groups.get(c)?.push(n);
-    }
-    const ordered = [...groups.values()].sort(
-      (a, b) => b.length - a.length || (a[0]?.createdAt ?? "").localeCompare(b[0]?.createdAt ?? ""),
-    );
-    const communityOf = new Map<string, number>();
-    const list: Community[] = ordered.map((members, i) => {
-      const anchor = [...members].sort(
-        (a, b) => b.friendCount - a.friendCount,
-      )[0] as AdminGraphNode;
-      const color = palette.series[i % palette.series.length] ?? palette.accent;
-      for (const m of members) {
-        communityOf.set(m.id, i);
-        g.setNodeAttribute(m.id, "color", color);
-        g.setNodeAttribute(m.id, "community", i);
-      }
-      return { id: i, color, members, anchor };
-    });
-    return { graph: g, communities: list, communityOf };
+    layout.graph.forEachEdge((edge) => layout.graph.mergeEdgeAttributes(edge, { lit: 0, dim: 0 }));
+    return layout;
   }, [data, palette]);
 
   // Mount sigma once per graph. Styling is attribute-driven (sigma v4 style
@@ -257,7 +194,7 @@ export function ClusterGraphView({
         <LegendRow
           palette={palette}
           items={communities.map((c) => ({
-            color: c.color,
+            color: palette.series[c.id % palette.series.length] ?? palette.accent,
             label: `${c.members.length === 1 ? "Solo" : `Group ${c.id + 1}`} · ${c.members.length} · ${displayName(c.anchor)}${selectedCommunity === c.id ? " ◀" : ""}`,
           }))}
         />
