@@ -2,6 +2,7 @@
 // games, content flag, parser health, and the markdown the automation pastes.
 
 import { PGlite } from "@electric-sql/pglite";
+import { OFFICIAL_CATALOG_EXTRAS } from "@workshop/shared/gameRegistry";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -99,7 +100,11 @@ describe("runCatalogAudit", () => {
       expect(h.hasParser).toBe(true);
       expect(h.issues).toEqual(["no formatter: rows show raw share text"]);
     }
-    expect(report.staleExtras).toEqual([]);
+    // The fixture DB has no row for any reviewed extra, so every extra reads
+    // as stale here — and none of them may be counted as listed above.
+    expect(report.staleExtras.map((e) => e.normalizedUrl)).toEqual(
+      OFFICIAL_CATALOG_EXTRAS.map((e) => e.normalizedUrl),
+    );
   });
 
   it("renders markdown with proposed extras that exclude the flagged title", async () => {

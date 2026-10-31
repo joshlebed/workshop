@@ -633,7 +633,37 @@ export interface OfficialCatalogEntry {
  * entries (games with players that aren't listed) in a PR; a human merges.
  * See `docs/catalog-ops-runbook.md`. Keep sorted by title.
  */
-export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [];
+export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
+  { normalizedUrl: "hbd.gg/play", title: "EthnoGuessr", category: "trivia" },
+  { normalizedUrl: "farflung.game", title: "Farflung · The daily expedition", category: "other" },
+  {
+    normalizedUrl: "fermi.gg",
+    title: "Fermi: The Daily Estimation Puzzle Game",
+    category: "puzzles",
+  },
+  { normalizedUrl: "geohistory.gg", title: "GeoHistory", category: "geography" },
+  {
+    normalizedUrl: "geozee.earth",
+    title: "Geozee — Daily Geography Category Puzzle",
+    category: "geography",
+  },
+  { normalizedUrl: "gerrymandle.com", title: "Gerrymandle", category: "words" },
+  {
+    normalizedUrl: "bandle.app/menu",
+    title: "Guess the song, one instrument at a time",
+    category: "music-movies",
+  },
+  { normalizedUrl: "krillion.io", title: "Krillion · the daily dive", category: "other" },
+  { normalizedUrl: "linxicon.com", title: "Linxicon", category: "other" },
+  { normalizedUrl: "minutecryptic.com", title: "Minute Cryptic", category: "other" },
+  {
+    normalizedUrl: "magnitudle.com/size-it-up",
+    title: "Size It Up | Magnitudle",
+    category: "words",
+  },
+  { normalizedUrl: "spotle.io", title: "Spotle: Music Wordle Game", category: "music-movies" },
+  { normalizedUrl: "timeguessr.com", title: "TimeGuessr", category: "trivia" },
+];
 
 const EXTRAS_BY_URL = new Map(OFFICIAL_CATALOG_EXTRAS.map((e) => [e.normalizedUrl, e]));
 
