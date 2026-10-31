@@ -7,7 +7,7 @@
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { Text } from "@workshop/ui";
 import type { ReactNode } from "react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
@@ -52,6 +52,9 @@ interface Props {
   /** Bumps to re-fit the scene (e.g. a layout switch). */
   fitNonce?: number;
   showLabels: boolean;
+  /** Height of the controls (top) and legend/timeline (bottom) floated over
+   *  the scene; fit and locate frame the graph in the space between them. */
+  chromeInsets?: { top: number; bottom: number };
   /** Rendered above the scene (controls, legend). */
   children?: ReactNode;
   testID?: string;
@@ -73,15 +76,15 @@ export function NativeGraphCanvas({
   focus,
   fitNonce = 0,
   showLabels,
+  chromeInsets = { top: 44, bottom: 80 },
   children,
   testID,
 }: Props) {
+  const viewTop = chromeInsets.top;
+  const viewHeight = Math.max(1, height - chromeInsets.top - chromeInsets.bottom);
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
   const scale = useSharedValue(1);
-  const startX = useSharedValue(0);
-  const startY = useSharedValue(0);
-  const startScale = useSharedValue(1);
 
   const nodeById = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
 
@@ -89,53 +92,61 @@ export function NativeGraphCanvas({
   // biome-ignore lint/correctness/useExhaustiveDependencies: fit only when the scene or viewport changes
   useEffect(() => {
     if (width <= 0 || height <= 0) return;
-    const t = fitTransform(bounds, width, height, 32);
+    const t = fitTransform(bounds, width, viewHeight, 24);
     tx.value = withTiming(t.x, { duration: 300 });
-    ty.value = withTiming(t.y, { duration: 300 });
+    ty.value = withTiming(viewTop + t.y, { duration: 300 });
     scale.value = withTiming(t.k, { duration: 300 });
-  }, [bounds, width, height, fitNonce]);
+  }, [bounds, width, height, viewTop, viewHeight, fitNonce]);
 
-  // Locate a user.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run on a new locate request
+  // Locate a user. Each request is handled once, as soon as its node is
+  // drawn: a view that filtered the target out (timeline, hide loners)
+  // reveals it first, and the camera moves on that render.
+  const handledFocus = useRef<number | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-check a pending request when the drawn nodes change
   useEffect(() => {
-    if (!focus) return;
+    if (!focus || handledFocus.current === focus.nonce) return;
     const n = nodeById.get(focus.id);
     if (!n) return;
+    handledFocus.current = focus.nonce;
     const k = Math.max(1.4, scale.value);
     tx.value = withTiming(width / 2 - n.x * k, { duration: 350 });
-    ty.value = withTiming(height / 2 - n.y * k, { duration: 350 });
+    ty.value = withTiming(viewTop + viewHeight / 2 - n.y * k, { duration: 350 });
     scale.value = withTiming(k, { duration: 350 });
-  }, [focus?.nonce]);
+  }, [focus?.nonce, nodeById]);
 
+  // Both gestures apply their per-frame deltas to the live camera instead of
+  // replaying from a start snapshot, so a pan that becomes a pinch (or the
+  // reverse) composes without either one resetting the other's progress.
   const pan = Gesture.Pan()
     .minDistance(4)
-    .onStart(() => {
-      startX.value = tx.value;
-      startY.value = ty.value;
-    })
-    .onUpdate((e) => {
-      tx.value = startX.value + e.translationX;
-      ty.value = startY.value + e.translationY;
+    .onChange((e) => {
+      tx.value += e.changeX;
+      ty.value += e.changeY;
     });
-  const pinch = Gesture.Pinch()
-    .onStart(() => {
-      startScale.value = scale.value;
-      startX.value = tx.value;
-      startY.value = ty.value;
-    })
-    .onUpdate((e) => {
-      const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, startScale.value * e.scale));
-      const ratio = next / startScale.value;
-      // Zoom around the pinch focal point.
-      tx.value = e.focalX - (e.focalX - startX.value) * ratio;
-      ty.value = e.focalY - (e.focalY - startY.value) * ratio;
-      scale.value = next;
-    });
+  const pinch = Gesture.Pinch().onChange((e) => {
+    const prev = scale.value;
+    const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev * e.scaleChange));
+    const ratio = next / prev;
+    // Zoom around the pinch focal point.
+    tx.value = e.focalX - (e.focalX - tx.value) * ratio;
+    ty.value = e.focalY - (e.focalY - ty.value) * ratio;
+    scale.value = next;
+  });
   const gesture = Gesture.Simultaneous(pan, pinch);
 
-  const sceneStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
-  }));
+  // The scene is viewport-sized (so its children stay inside a real frame
+  // for accessibility and hit-testing) and RN scales about a view's centre,
+  // so convert the origin-based camera (x' = k·x + t) into RN's transform.
+  const sceneStyle = useAnimatedStyle(() => {
+    const k = scale.value;
+    return {
+      transform: [
+        { translateX: tx.value - (width / 2) * (1 - k) },
+        { translateY: ty.value - (height / 2) * (1 - k) },
+        { scale: k },
+      ],
+    };
+  });
 
   return (
     <View
@@ -149,7 +160,10 @@ export function NativeGraphCanvas({
         {/* A plain View, not a Pressable: a Pressable is one accessibility
             element and would hide every node from VoiceOver and test tooling. */}
         <View style={styles.stage} accessible={false} accessibilityLabel="Graph">
-          <Animated.View style={[styles.scene, sceneStyle]} pointerEvents="box-none">
+          <Animated.View
+            style={[styles.scene, { width, height }, sceneStyle]}
+            pointerEvents="box-none"
+          >
             {edges.map((e) => {
               const dx = e.x2 - e.x1;
               const dy = e.y2 - e.y1;
@@ -219,20 +233,34 @@ export function NativeGraphCanvas({
                   {n.isAdmin ? (
                     <Text style={[styles.star, { color: palette.accent }]}>★</Text>
                   ) : null}
-                  {showLabels || selected ? (
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.label,
-                        { color: palette.text, backgroundColor: `${palette.canvas}CC` },
-                      ]}
-                    >
-                      {n.label}
-                    </Text>
-                  ) : null}
                 </Pressable>
               );
             })}
+            {/* Labels are siblings of the nodes, not children: inside a node
+                they were squeezed to the node's width, and a wider label
+                would grow the tap target. */}
+            {nodes.map((n) =>
+              showLabels || n.id === selectedId ? (
+                <View
+                  key={`label-${n.id}`}
+                  pointerEvents="none"
+                  style={[
+                    styles.labelWrap,
+                    { left: n.x - LABEL_WIDTH / 2, top: n.y + n.r + 2, opacity: n.dim ? 0.25 : 1 },
+                  ]}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.label,
+                      { color: palette.text, backgroundColor: `${palette.canvas}CC` },
+                    ]}
+                  >
+                    {n.label}
+                  </Text>
+                </View>
+              ) : null,
+            )}
           </Animated.View>
         </View>
       </GestureDetector>
@@ -244,7 +272,7 @@ export function NativeGraphCanvas({
 const styles = StyleSheet.create({
   frame: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
   stage: { flex: 1 },
-  scene: { position: "absolute", left: 0, top: 0, width: 1, height: 1 },
+  scene: { position: "absolute", left: 0, top: 0 },
   labelWrap: { position: "absolute", width: LABEL_WIDTH, alignItems: "center" },
   label: {
     fontSize: 10,

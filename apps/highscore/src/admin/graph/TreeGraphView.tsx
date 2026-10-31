@@ -3,7 +3,7 @@
 // solid, other friendships dashed; selecting a user lights their lineage up
 // to the seed.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { boundsOf, runRadialTreeLayout } from "./layouts";
 import { displayName, edgeKey, type GraphViewProps, inferInviteTree, radiusFor } from "./model";
@@ -49,6 +49,14 @@ export function TreeGraphView({
     }
     return s;
   }, [selectedId, lineage, data.edges]);
+
+  // Locating a loner while loners are hidden shows them again so the canvas
+  // can draw (and pan to) the target.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only on a new locate request
+  useEffect(() => {
+    if (!focus || !hideIsolated) return;
+    if (data.nodes.some((n) => n.id === focus.id && n.friendCount === 0)) setHideIsolated(false);
+  }, [focus?.nonce]);
 
   const shown = hideIsolated ? data.nodes.filter((n) => n.friendCount > 0) : data.nodes;
   const shownIds = new Set(shown.map((n) => n.id));

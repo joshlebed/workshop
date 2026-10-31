@@ -2,6 +2,7 @@ import type { AdminGraphNode, AdminGraphResponse } from "@workshop/shared";
 import { describe, expect, it } from "vitest";
 import {
   boundsOf,
+  communitySpread,
   fitTransform,
   runCommunityLayout,
   runForceLayout,
@@ -74,7 +75,8 @@ describe("graph layouts", () => {
     expect(one.communities[0]?.members.length).toBe(3);
     expect([...one.positions.entries()]).toEqual([...two.positions.entries()]);
     const b = boundsOf(one.positions);
-    expect(Math.max(b.maxX - b.minX, b.maxY - b.minY)).toBeCloseTo(900);
+    expect(Math.max(b.maxX - b.minX, b.maxY - b.minY)).toBeCloseTo(communitySpread(7));
+    expect(communitySpread(48)).toBeCloseTo(900, -1);
   });
 
   it("radial tree puts the seed in the middle, generations on rings, loners outside", () => {

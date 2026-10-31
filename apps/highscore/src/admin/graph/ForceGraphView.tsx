@@ -119,6 +119,18 @@ export function ForceGraphView({
     return () => clearInterval(id);
   }, [playing, domain]);
 
+  // Locating a user who hasn't joined yet at the scrubbed time jumps the
+  // timeline to now so the canvas can draw (and pan to) them.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only on a new locate request
+  useEffect(() => {
+    if (!focus) return;
+    const target = data.nodes.find((n) => n.id === focus.id);
+    if (target && target.createdAt > new Date(t).toISOString()) {
+      setPlaying(false);
+      setT(domain.end);
+    }
+  }, [focus?.nonce]);
+
   const cutoff = new Date(t).toISOString();
   const neighbors = selectedId ? adj.get(selectedId) : undefined;
   const dim = (id: string) => selectedId !== null && id !== selectedId && !neighbors?.has(id);
@@ -180,6 +192,7 @@ export function ForceGraphView({
           focus={focus}
           fitNonce={fitNonce}
           showLabels={showLabels}
+          chromeInsets={{ top: 44, bottom: 112 }}
           testID="admin-graph-force"
         >
           <ChromeTop>
@@ -242,7 +255,7 @@ export function ForceGraphView({
             <Text variant="caption" style={{ color: palette.text }}>
               {formatDay(t)} · {nodes.length} users · {edges.length} friendships
             </Text>
-            <ChromeLegend items={legend} palette={palette} />
+            <ChromeLegend items={legend} palette={palette} inline />
           </View>
         </NativeGraphCanvas>
       ) : null}
