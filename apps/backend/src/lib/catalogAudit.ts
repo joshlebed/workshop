@@ -28,11 +28,11 @@ import { gameScores, games, userGames } from "../db/schema.js";
 import { containsObjectionableContent } from "./contentFilter.js";
 import { toIsoString } from "./dates.js";
 
-export const AUDIT_WINDOW_DAYS = 30;
+const AUDIT_WINDOW_DAYS = 30;
 /** A listed game whose last-30-day scores read worse than this is flagged. */
-export const UNREAD_RATE_THRESHOLD = 0.2;
+const UNREAD_RATE_THRESHOLD = 0.2;
 
-export interface CatalogCandidate {
+interface CatalogCandidate {
   gameId: string;
   title: string;
   url: string;
@@ -51,7 +51,7 @@ export interface CatalogCandidate {
   flags: string[];
 }
 
-export interface ListedGameHealth {
+interface ListedGameHealth {
   gameId: string;
   title: string;
   gameKey: string | null;
@@ -66,7 +66,7 @@ export interface ListedGameHealth {
   issues: string[];
 }
 
-export interface CatalogAuditReport {
+interface CatalogAuditReport {
   generatedAt: string;
   windowDays: number;
   totals: {
