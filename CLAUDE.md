@@ -199,6 +199,20 @@ deliberate critical-fix backports may change it before then. See
   Never widen to `*` with `credentials: true`.
   Verify: `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`.
 
+- **The HighScore catalog is operator-curated code, not a DB flag.** Add a game (`/games/add`,
+  `apps/highscore/src/games/screens/games/AddGame.tsx`) has a **Friends only** checkbox
+  (default on) over one list grouped by game type: **on** (`/discovery?includeOwned=1`, says how many and which friends play each game)
+  and **off** = the catalog (`GET /v1/games/catalog`: platform-wide `playerCount`, **never a name**).
+  Types sort by their most-played game, rows by popularity (`lib/catalogSections.ts`). Game
+  types are `category` on each `GameDefinition` in `packages/shared/src/gameRegistry.ts`
+  (`GAME_CATEGORIES` is the fallback order; `other` catches every unknown URL). "Listed" means
+  `isOfficiallyListed`: a `catalog: true` registry game or an entry in `OFFICIAL_CATALOG_EXTRAS`
+  (same file) — **every extra was reviewed by a human; popularity alone never lists a URL**,
+  that is the content gate. The daily "HighScore catalog audit" Niteshift automation runs
+  `pnpm --filter @workshop/backend run ops:catalog-audit` (read-only, prod via SSM) and opens a
+  PR proposing extras + reporting parser/formatter health; the operator edits categories and
+  merges. `docs/catalog-ops-runbook.md`.
+
 - **Share-panel adoption is observed, never detected.** iOS has no API to ask "is this app
   enabled in the share sheet", so adoption is inferred from usage: HighScore's score upsert
   (`PUT /v1/games/:id/scores`) takes an optional `entrySource` (`share_extension` | `paste`,

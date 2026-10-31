@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   CATALOG_GAME_DEFINITIONS,
+  GAME_CATEGORIES,
   GAME_REGISTRY,
+  gameCategoryFor,
+  gameCategoryForKey,
+  gameCategoryLabel,
   gameDefinitionForKey,
   identifyGame,
+  isOfficiallyListed,
   isResultlessShare,
   matchShareText,
 } from "./gameRegistry.js";
@@ -31,6 +36,31 @@ describe("registry shape", () => {
 
   it("wordle stays last so Worldle/Tradle never fall through to it", () => {
     expect(GAME_REGISTRY[GAME_REGISTRY.length - 1]?.key).toBe("wordle");
+  });
+
+  it("every game sits in a declared category, and unknown games fall into `other`", () => {
+    const keys = new Set<string>(GAME_CATEGORIES.map((c) => c.key));
+    for (const def of GAME_REGISTRY) {
+      expect(keys.has(def.category), `${def.key} has an unknown category`).toBe(true);
+      expect(gameCategoryForKey(def.key)).toBe(def.category);
+    }
+    expect(GAME_CATEGORIES.at(-1)?.key).toBe("other");
+    expect(gameCategoryForKey(null)).toBe("other");
+    expect(gameCategoryForKey("not-a-game")).toBe("other");
+    expect(gameCategoryLabel("words")).toBe("Word games");
+  });
+
+  it("official listing = catalog registry games + reviewed extras", () => {
+    expect(isOfficiallyListed({ gameKey: "wordle", normalizedUrl: "x" })).toBe(true);
+    // Detection-only registry games are not listed.
+    expect(isOfficiallyListed({ gameKey: "heardle", normalizedUrl: "x" })).toBe(false);
+    expect(isOfficiallyListed({ gameKey: null, normalizedUrl: "never-reviewed.example" })).toBe(
+      false,
+    );
+    expect(gameCategoryFor({ gameKey: "globle", normalizedUrl: "x" })).toBe("geography");
+    expect(gameCategoryFor({ gameKey: null, normalizedUrl: "never-reviewed.example" })).toBe(
+      "other",
+    );
   });
 
   it("every catalog game has a spec (catalog implies parseable)", () => {

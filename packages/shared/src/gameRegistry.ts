@@ -43,6 +43,23 @@ export const GAME_KEYS = [
 
 export type GameKey = (typeof GAME_KEYS)[number];
 
+/**
+ * Game types — the sections the HighScore catalog groups games under
+ * ("organized by game type"). Order here is display order. `other` is the
+ * bucket for games the registry doesn't know (user-added URLs); it always
+ * renders last.
+ */
+export const GAME_CATEGORIES = [
+  { key: "words", label: "Word games" },
+  { key: "geography", label: "Geography" },
+  { key: "trivia", label: "Trivia" },
+  { key: "puzzles", label: "Puzzles & logic" },
+  { key: "music-movies", label: "Music & movies" },
+  { key: "other", label: "Other" },
+] as const;
+
+export type GameCategory = (typeof GAME_CATEGORIES)[number]["key"];
+
 export interface GameDefinition {
   key: GameKey;
   /** Canonical catalog title (what the games table stores). */
@@ -59,6 +76,8 @@ export interface GameDefinition {
   catalog: boolean;
   /** 'desc' = bigger is better, 'asc' = lower is better. */
   scoreDirection: GameScoreDirection;
+  /** Game type — the catalog section this game is listed under. */
+  category: GameCategory;
   /** How to parse a numeric score out of a share; null = no reliable parse. */
   spec: ScoreSpec | null;
   /** Any one matching an item/game's title/url/siteName/sourceId identifies it. */
@@ -174,6 +193,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://anthropeum.com",
     catalog: true,
     scoreDirection: "desc",
+    category: "trivia",
     // "62,090 · top 38% of players today!" → 62090 (points; higher is better).
     // The header line's `·` ("Anthropeum.com · Jun 14 2026") has no digits in
     // front of it, so the first `[\d,]+ ·` the capture lands on is the score.
@@ -198,6 +218,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://maptap.gg",
     catalog: true,
     scoreDirection: "desc",
+    category: "geography",
     // "Final score: 970" → 970
     spec: { rules: [{ kind: "capture", pattern: "Final score:\\s*(\\d+)" }] },
     identifyPatterns: [/\bmap\s*tap\b/i, /maptap\.gg/i],
@@ -218,6 +239,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://dailytens.com",
     catalog: true,
     scoreDirection: "desc",
+    category: "trivia",
     // The share is a 5×2 grid of 🏆 (correct) / ❌ (wrong) for the day's 10
     // questions; score = number of 🏆. `within` keeps a gridless share (just
     // the `?ref=` URL, the grid dropped at the share-sheet boundary) at null
@@ -254,6 +276,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://satle.ca",
     catalog: true,
     scoreDirection: "asc",
+    category: "geography",
     // "Satle #449 5/6" → 5
     spec: { rules: [{ kind: "capture", pattern: "Satle\\s*#\\d+\\s+(\\d+)/6" }] },
     identifyPatterns: [/\bsatle\b/i, /satle\.ca/i],
@@ -276,6 +299,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://travle.earth",
     catalog: true,
     scoreDirection: "asc",
+    category: "geography",
     // "#travle #1250 +0" → 0 (extra-guess count; lower is better)
     spec: { rules: [{ kind: "capture", pattern: "#travle\\s+#?\\d+\\s+\\+(\\d+)" }] },
     identifyPatterns: [/\btravle\b/i, /travle\.earth/i],
@@ -298,6 +322,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://globle-game.com",
     catalog: true,
     scoreDirection: "asc",
+    category: "geography",
     // "⬜⬜🟧🟥🟩 = 5" → 5 (today's guess count; lower is better). No `$`
     // anchor — the share text has a trailing URL + hashtag. There's only one
     // `=` in the canonical Globle share, so this is safe.
@@ -329,6 +354,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://worldle.teuteuf.fr",
     catalog: true,
     scoreDirection: "asc",
+    category: "geography",
     // "#Worldle #842 3/6 (100%)" → 3
     spec: { rules: [{ kind: "capture", pattern: "Worldle\\s*#?\\d+\\s+(\\d+)/6" }] },
     identifyPatterns: [/\bworldle\b/i, /worldle\.teuteuf\.fr/i],
@@ -346,6 +372,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://tradle.net",
     catalog: true,
     scoreDirection: "asc",
+    category: "geography",
     // "#Tradle #1547 1/6" → 1 (guess count out of 6; lower is better)
     spec: { rules: [{ kind: "capture", pattern: "Tradle\\s*#?\\d+\\s+(\\d+)/6" }] },
     // Tradle now lives at tradle.net; oec.world kept for legacy bookmarks.
@@ -363,6 +390,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://www.geosports.app",
     catalog: true,
     scoreDirection: "desc",
+    category: "geography",
     // "711 / 1,000" → 711 (points scored; higher is better). Commas are
     // stripped by the capture rule before Number().
     spec: { rules: [{ kind: "capture", pattern: "([\\d,]+)\\s*/\\s*[\\d,]+" }] },
@@ -388,6 +416,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // — what was missing was a clean display, which `formatShareBody` provides.
     catalog: false,
     scoreDirection: "desc",
+    category: "geography",
     spec: null,
     identifyPatterns: [/\bethnoguessr\b/i, /\bhbd\.gg\b/i],
     shareTextPatterns: [
@@ -410,6 +439,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://framed.wtf",
     catalog: true,
     scoreDirection: "asc",
+    category: "music-movies",
     // Shape: `Framed #1234\n🎥 🟥 🟥 🟩 ⬛ ⬛ ⬛` — the guess count is the
     // position of 🟩 among the squares (🟥 wrong guesses before it, ⬛/⬜
     // unused after); no 🟩 = a loss = no numeric score. The old regex grabbed
@@ -425,6 +455,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://www.heardle.app",
     catalog: false,
     scoreDirection: "asc",
+    category: "music-movies",
     spec: null,
     identifyPatterns: [/\bheardle\b/i],
     shareTextPatterns: [/#Heardle\b\s*#?\d+/i, /\bheardle\.app\b/i, /\bheardle\.glitch\.me\b/i],
@@ -435,6 +466,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://www.nytimes.com/games/connections",
     catalog: true,
     scoreDirection: "asc",
+    category: "words",
     // The share is one line of four color squares per guess; a perfect game is
     // 4 rows, each mistake adds one (max 7). Count the guess rows; no grid at
     // all = no result.
@@ -460,6 +492,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://www.nytimes.com/games/strands",
     catalog: true,
     scoreDirection: "asc",
+    category: "words",
     // The share grid is 🔵 (found word) / 🟡 (spangram) / 💡 (hint used);
     // score = hints used, 0 is a perfect game. `within` keeps a gridless
     // share at null while a hint-free grid still scores a legitimate 0.
@@ -478,6 +511,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://www.nytimes.com/crosswords/game/mini",
     catalog: true,
     scoreDirection: "asc",
+    category: "puzzles",
     // "I solved the 5/20/2026 New York Times Mini Crossword in 0:16!" → 16
     // seconds. The date is a fraction-shaped trap for naive number parsing —
     // the duration rule only reads `m:ss`.
@@ -507,6 +541,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://www.nytimes.com/puzzles/spelling-bee",
     catalog: true,
     scoreDirection: "desc",
+    category: "words",
     // The NYT share is rank-based ("I just hit Genius on Spelling Bee."); map
     // the rank word to its ordinal so the board can order players.
     spec: {
@@ -543,6 +578,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://www.nytimes.com/games/wordle",
     catalog: true,
     scoreDirection: "asc",
+    category: "words",
     // "Wordle 1,127 3/6" → 3 (guess count out of 6; lower is better). The
     // [\d,] swallows the puzzle number's thousands separator without
     // capturing it.
@@ -563,6 +599,66 @@ const BY_KEY = new Map(GAME_REGISTRY.map((g) => [g.key as string, g]));
 export function gameDefinitionForKey(key: string | null | undefined): GameDefinition | null {
   if (!key) return null;
   return BY_KEY.get(key) ?? null;
+}
+
+/**
+ * The catalog section for a `games.game_key` value. Unknown / user-added
+ * games (null key, or a key the registry dropped) fall into `other`.
+ */
+export function gameCategoryForKey(key: string | null | undefined): GameCategory {
+  return gameDefinitionForKey(key)?.category ?? "other";
+}
+
+// ---------------------------------------------------------------------------
+// Official catalog
+// ---------------------------------------------------------------------------
+
+/**
+ * A user-added game (no registry entry) an operator has reviewed and listed
+ * in the official catalog — HighScore's "Catalog" tab, visible to everyone.
+ * Keyed by the `games.normalized_url` dedup key (see `normalizeGameUrl`).
+ */
+export interface OfficialCatalogEntry {
+  normalizedUrl: string;
+  /** Display title at review time (the DB row's title is what ships). */
+  title: string;
+  category: GameCategory;
+}
+
+/**
+ * Operator-curated extras beyond the registry. **Every entry here was
+ * reviewed by a human** — the Catalog tab is the one place a user-added game
+ * reaches people outside the adder's friend graph, so this list is the
+ * content gate. The daily `catalog-audit` Niteshift automation proposes
+ * entries (games with players that aren't listed) in a PR; a human merges.
+ * See `docs/catalog-ops-runbook.md`. Keep sorted by title.
+ */
+export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [];
+
+const EXTRAS_BY_URL = new Map(OFFICIAL_CATALOG_EXTRAS.map((e) => [e.normalizedUrl, e]));
+
+export interface CatalogIdentity {
+  gameKey: string | null;
+  normalizedUrl: string;
+}
+
+/** Listed in the official catalog: a catalog registry game or a reviewed extra. */
+export function isOfficiallyListed(game: CatalogIdentity): boolean {
+  const def = gameDefinitionForKey(game.gameKey);
+  if (def) return def.catalog;
+  return EXTRAS_BY_URL.has(game.normalizedUrl);
+}
+
+/** Catalog section for a game row: registry category, else the extra's, else `other`. */
+export function gameCategoryFor(game: CatalogIdentity): GameCategory {
+  const def = gameDefinitionForKey(game.gameKey);
+  if (def) return def.category;
+  return EXTRAS_BY_URL.get(game.normalizedUrl)?.category ?? "other";
+}
+
+/** Display label for a category key. */
+export function gameCategoryLabel(category: GameCategory): string {
+  return GAME_CATEGORIES.find((c) => c.key === category)?.label ?? "Other";
 }
 
 /** The label share-detection UI shows for a game. */

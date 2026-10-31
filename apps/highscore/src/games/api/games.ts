@@ -5,6 +5,7 @@
 import { apiRequest } from "@workshop/api-client/api";
 import type {
   AddGameResponse,
+  GameCatalogResponse,
   GameDiscoveryResponse,
   GameLeaderboardResponse,
   GameScoreDirection,
@@ -203,6 +204,15 @@ export function fetchGameDiscovery(
     path: `/v1/games/discovery${qs ? `?${qs}` : ""}`,
     token,
   });
+}
+
+/**
+ * `GET /v1/games/catalog` — the "All games" view: registry games plus any
+ * user-added game two or more people play, each with its platform-wide
+ * player count, which of my friends play it, and whether it's in My Games.
+ */
+export function fetchGameCatalog(token: string | null): Promise<GameCatalogResponse> {
+  return apiRequest<GameCatalogResponse>({ method: "GET", path: "/v1/games/catalog", token });
 }
 
 export function fetchGameLeaderboard(

@@ -8,15 +8,7 @@
 import type { DiscoveryGame } from "@workshop/shared/games";
 import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
-
-/** "Sam plays" / "Sam & Alex play" / "Sam, Alex +2 play". */
-function friendsPlayLine(friends: DiscoveryGame["friends"]): string {
-  const names = friends.map((f) => f.displayName?.trim() || "Someone");
-  if (names.length === 0) return "A friend plays this";
-  if (names.length === 1) return `${names[0]} plays`;
-  if (names.length === 2) return `${names[0]} & ${names[1]} play`;
-  return `${names[0]}, ${names[1]} +${names.length - 2} play`;
-}
+import { friendsPlayLine } from "../../lib/catalogSections";
 
 interface FriendGameSuggestionsProps {
   games: DiscoveryGame[];
@@ -70,7 +62,7 @@ export function FriendGameSuggestions({
               </Text>
               {hideFriendLine ? null : (
                 <Text variant="caption" tone="muted" numberOfLines={1}>
-                  {friendsPlayLine(dg.friends)}
+                  {friendsPlayLine(dg.friends) ?? "A friend plays this"}
                 </Text>
               )}
             </View>

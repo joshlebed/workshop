@@ -3,9 +3,11 @@
 // but this router still only owns the Games surface tables directly.
 // Standings cover `viewer ∪ friends_of(viewer)` (G2a) in the G1a shape.
 
+import { isOfficiallyListed } from "@workshop/shared/gameRegistry";
 import type {
   AddGameResponse,
   DiscoveryGame,
+  GameCatalogResponse,
   GameDiscoveryResponse,
   GameLeaderboardResponse,
   GameScore,
@@ -22,7 +24,7 @@ import type {
 import { isReactionEmoji, normalizeGameUrl, unwrapLinkShim } from "@workshop/shared/games";
 import { parseScoreWithSpec, scoreSpecSchema } from "@workshop/shared/scoreParsing";
 import { evaluateSummarySpec, summarySpecSchema } from "@workshop/shared/summarySpec";
-import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -347,6 +349,46 @@ gameRoutes.get("/discovery", async (c) => {
   );
 
   const response: GameDiscoveryResponse = { games: discovered, ...countField };
+  return ok(c, response);
+});
+
+/**
+ * GET /v1/games/catalog — the official catalog (the Catalog tab): every game
+ * an operator has listed (`isOfficiallyListed`: catalog registry games plus
+ * the reviewed `OFFICIAL_CATALOG_EXTRAS`), each with a platform-wide
+ * `playerCount` and whether it's already in My Games. Names nobody — the
+ * privacy page promises no global leaderboard — and never lists an
+ * unreviewed user-added URL (that is the content gate). Most played first;
+ * the client groups by game type. Registered before the `/:id` routes so the
+ * literal path isn't shadowed.
+ */
+gameRoutes.get("/catalog", async (c) => {
+  const userId = c.get("userId");
+  const db = getDb();
+
+  const playerCount = sql<number>`count(${userGames.userId})::int`;
+  const allGames = await db
+    .select({ game: games, playerCount })
+    .from(games)
+    .leftJoin(userGames, eq(userGames.gameId, games.id))
+    .groupBy(games.id)
+    .orderBy(desc(playerCount), asc(games.title), asc(games.id));
+
+  const owned = await db
+    .select({ gameId: userGames.gameId })
+    .from(userGames)
+    .where(eq(userGames.userId, userId));
+  const ownedIds = new Set(owned.map((r) => r.gameId));
+
+  const response: GameCatalogResponse = {
+    games: allGames
+      .filter((r) => isOfficiallyListed(r.game))
+      .map((r) => ({
+        game: toGameShape(r.game),
+        playerCount: r.playerCount,
+        inMyGames: ownedIds.has(r.game.id),
+      })),
+  };
   return ok(c, response);
 });
 

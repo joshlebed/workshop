@@ -476,6 +476,24 @@ export interface GameDiscoveryResponse {
 }
 
 /**
+ * `GET /v1/games/catalog` — the official catalog: every game an operator has
+ * listed (`isOfficiallyListed` in `@workshop/shared/gameRegistry`), with a
+ * platform-wide `playerCount`. Deliberately names nobody: the Catalog tab is
+ * platform-wide, and the privacy page promises no global leaderboard. The
+ * client groups rows by `gameCategoryFor(game)`.
+ */
+export interface CatalogGame {
+  game: Game;
+  /** How many users have this game in My Games, platform-wide. */
+  playerCount: number;
+  inMyGames: boolean;
+}
+
+export interface GameCatalogResponse {
+  games: CatalogGame[];
+}
+
+/**
  * `POST /v1/game-share` — my per-(user, day) "play with me" link. Surfaced by
  * the Games-tab copy-scores recap; `url` is the short `/g/:token` form.
  */
