@@ -1,15 +1,16 @@
 // Add a game — a full screen (like Paste score), reached from the home
-// action bar's "Add game" and the empty state. Two tabs over one sectioned
-// list (`GameCatalogList`, grouped by game type via `lib/catalogSections`):
+// action bar's "Add game" and the empty state. A "Friends only" checkbox
+// (default on) over one sectioned list (`GameCatalogList`, grouped by game
+// type via `lib/catalogSections`):
 //
-//   Friends — only games your friends play, each saying how many and which
-//             friends; types ordered by the game most of your friends play.
-//             Backed by `GET /v1/games/discovery?includeOwned=1`.
-//   Catalog — the official catalog (operator-reviewed, see
-//             docs/catalog-ops-runbook.md): every listed game with a
-//             platform-wide player count and no names. Same ordering.
+//   on  — only games your friends play, each saying how many and which
+//         friends; types ordered by the game most of your friends play.
+//         Backed by `GET /v1/games/discovery?includeOwned=1`.
+//   off — the official catalog (operator-reviewed, see
+//         docs/catalog-ops-runbook.md): every listed game with a
+//         platform-wide player count and no names. Same ordering.
 //
-// Both tabs add in place: tap Add, the row flips to "✓ Added", keep browsing.
+// Both modes add in place: tap Add, the row flips to "✓ Added", keep browsing.
 // A game you already have opens its board. The footer keeps the bootstrap
 // path — paste any game's URL (spec §3.3: known dailies collapse onto their
 // catalog row, unknown URLs get a link-preview title + favicon) — which adds
@@ -37,7 +38,7 @@ import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { addGame, fetchGameCatalog, fetchGameDiscovery } from "../../api/games";
-import { SegmentedControl } from "../../components/SegmentedControl";
+import { FriendsOnlyToggle } from "../../components/FriendsOnlyToggle";
 import {
   type CatalogRow,
   catalogRows,
@@ -49,12 +50,6 @@ import { goBack } from "../../lib/navigation";
 import { useGamesRuntime } from "../../runtime";
 import { GameCatalogList } from "./GameCatalogList";
 
-const TABS = [
-  { key: "friends", label: "Friends" },
-  { key: "catalog", label: "Catalog" },
-] as const;
-type Tab = (typeof TABS)[number]["key"];
-
 export function AddGame() {
   const { token, routes } = useGamesRuntime();
   const router = useRouter();
@@ -64,13 +59,13 @@ export function AddGame() {
   const insets = useSafeAreaInsets();
   const todayKey = localDateKey();
 
-  const [tab, setTab] = useState<Tab>("friends");
+  const [friendsOnly, setFriendsOnly] = useState(true);
   const [draft, setDraft] = useState("");
   // Per-row add state so each row shows its own spinner / "✓ Added" pill.
   const [addingIds, setAddingIds] = useState<string[]>([]);
   const [addedIds, setAddedIds] = useState<string[]>([]);
 
-  const onFriends = tab === "friends";
+  const onFriends = friendsOnly;
 
   const friendsQuery = useQuery({
     queryKey: queryKeys.friends.all,
@@ -172,7 +167,7 @@ export function AddGame() {
       title="No games yet"
       description="Your friends haven't added any games. Browse the catalog to find one."
       action={
-        <Button label="Browse the catalog" variant="secondary" onPress={() => setTab("catalog")} />
+        <Button label="Show every game" variant="secondary" onPress={() => setFriendsOnly(false)} />
       }
     />
   ) : (
@@ -196,7 +191,7 @@ export function AddGame() {
         <View style={styles.navButton} />
       </View>
 
-      <SegmentedControl items={TABS} value={tab} onChange={setTab} testID="add-game-tab" />
+      <FriendsOnlyToggle value={friendsOnly} onChange={setFriendsOnly} />
 
       <View style={styles.body}>
         <GameCatalogList

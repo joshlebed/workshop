@@ -200,9 +200,9 @@ deliberate critical-fix backports may change it before then. See
   Verify: `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`.
 
 - **The HighScore catalog is operator-curated code, not a DB flag.** Add a game (`/games/add`,
-  `apps/highscore/src/games/screens/games/AddGame.tsx`) has two tabs grouped by game type:
-  **Friends** (`/discovery?includeOwned=1`, says how many and which friends play each game)
-  and **Catalog** (`GET /v1/games/catalog`: platform-wide `playerCount`, **never a name**).
+  `apps/highscore/src/games/screens/games/AddGame.tsx`) has a **Friends only** checkbox
+  (default on) over one list grouped by game type: **on** (`/discovery?includeOwned=1`, says how many and which friends play each game)
+  and **off** = the catalog (`GET /v1/games/catalog`: platform-wide `playerCount`, **never a name**).
   Types sort by their most-played game, rows by popularity (`lib/catalogSections.ts`). Game
   types are `category` on each `GameDefinition` in `packages/shared/src/gameRegistry.ts`
   (`GAME_CATEGORIES` is the fallback order; `other` catches every unknown URL). "Listed" means

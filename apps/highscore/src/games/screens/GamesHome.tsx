@@ -15,7 +15,7 @@
 //
 // The two writes live in a floating bottom action bar (UX-DECISIONS entry 4,
 // `HomeActionBar`): "Add game" opens the Add-game screen (`/games/add`:
-// Friends / Catalog tabs grouped by game type, plus add-by-URL — see
+// "Friends only" checkbox over a list grouped by game type, plus add-by-URL — see
 // `games/AddGame.tsx`) and "Paste score" goes to the share flow (`/share`),
 // which recognises the game from the pasted text and posts to today. The bar
 // is hidden on the empty state, whose onboarding card owns those actions.
@@ -232,7 +232,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const friends = friendsQuery.data?.friends ?? [];
 
-  // Same key/shape as the Add-game screen's Friends tab (`includeOwned`), so
+  // Same key/shape as the Add-game screen's friends-only list (`includeOwned`), so
   // the two share one cache entry; the empty state has no owned games anyway.
   const discoveryQuery = useQuery({
     queryKey: queryKeys.games.discovery(),

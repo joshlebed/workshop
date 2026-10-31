@@ -1,7 +1,7 @@
-// Grouping + ordering for the Add-game screen's two tabs. Both reduce to one
-// row shape (`CatalogRow`) carrying a `weight`: how many of *your friends*
-// play the game (Friends tab) or how many people on the platform do (Catalog
-// tab). Within a game type, rows sort by weight (most played first); the
+// Grouping + ordering for the Add-game screen's two modes ("Friends only" on
+// / off). Both reduce to one row shape (`CatalogRow`) carrying a `weight`: how
+// many of *your friends* play the game (friends only) or how many people on
+// the platform do (the catalog). Within a game type, rows sort by weight (most played first); the
 // game types themselves sort by their most-played game, so the section with
 // the game most of your friends play leads. Ties fall back to the registry's
 // category order, then title. Empty categories are dropped.
@@ -78,7 +78,7 @@ export function playerCountLine(count: number): string {
   return count === 1 ? "1 player" : `${count} players`;
 }
 
-/** Friends tab rows: "3 friends · Sam, Alex +1". */
+/** Friends-only rows: "3 friends · Sam, Alex +1". */
 export function friendsFeedRows(games: DiscoveryGame[]): CatalogRow[] {
   return games.map((dg) => {
     const n = dg.friends.length;
@@ -92,7 +92,7 @@ export function friendsFeedRows(games: DiscoveryGame[]): CatalogRow[] {
   });
 }
 
-/** Catalog tab rows: a count only, never a name. */
+/** Catalog rows: a count only, never a name. */
 export function catalogRows(games: CatalogGame[]): CatalogRow[] {
   return games.map((cg) => ({
     game: cg.game,

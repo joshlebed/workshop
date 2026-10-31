@@ -1,6 +1,6 @@
 # Catalog ops runbook
 
-The HighScore **Catalog** tab (Add a game → Catalog) is the one place a user-added game reaches
+The HighScore **catalog** (Add a game → untick "Friends only") is the one place a user-added game reaches
 people outside the adder's friend graph. It shows the **official catalog** only: catalog registry
 games plus the operator-reviewed `OFFICIAL_CATALOG_EXTRAS` in
 `packages/shared/src/gameRegistry.ts`. Nothing reaches it without a human merge — that is the
@@ -56,7 +56,7 @@ Review the PR like any content decision:
   then visits the page and picks the category it believes is right, noting where it overrode
   the suggestion. You have the final say — change it in the PR.
 - **Merge.** Merge = deploy (Lambda via Terraform apply, OTA ~60s), and the game appears in the
-  Catalog tab under its type. There is no DB write.
+  catalog under its type. There is no DB write.
 
 Removing a game from the catalog is deleting its entry and merging. Blocking a _person_ is
 `admin:eject` (`docs/moderation-runbook.md`), which also removes their `user_games` rows.
