@@ -37,10 +37,13 @@ starts a task that:
    description for `admin:eject` review and **never** added. If there are no candidates and no
    health changes since the last run, it opens nothing and just posts its summary.
 
-4. For the health section it does what it safely can: a missing formatter on a registry game
-   is a code change (`formatShareBody` in the registry, or `admin:game-code`); a bad unread
-   rate on an extra is usually "nobody taught it yet" → leave it, note it. It never changes
-   stored parse code without a labelled example set (see `apps/backend/CLAUDE.md`, game code).
+4. For the health section it reports and recommends; it does not change parse or format code.
+   A missing formatter on a **registry** game is fixed in
+   `apps/backend/src/lib/gameCode/builtin.ts` and installed on the existing prod row with
+   `admin:game-code` — `games.format_code` is seeded from `builtin.ts` only when the row is
+   created, so a registry `formatShareBody` change alone never clears the flag. A bad unread
+   rate on an **extra** is usually "nobody taught it yet": leave it, note it. Code changes need
+   a labelled example set (see `apps/backend/CLAUDE.md`, game code).
 
 ## What the operator does
 
@@ -49,7 +52,9 @@ Review the PR like any content decision:
 - **Is it a real game people should see?** Open the URL. Drop junk, duplicates, anything
   offensive. The title ships as-is from the `games` row — fix a bad one with
   `admin:game-code`'s neighbour scripts or directly in Neon, then re-run.
-- **Is the category right?** The suggestion is a regex over title + URL. Change it in the PR.
+- **Is the category right?** The audit's suggestion is a regex over title + URL; the automation
+  then visits the page and picks the category it believes is right, noting where it overrode
+  the suggestion. You have the final say — change it in the PR.
 - **Merge.** Merge = deploy (Lambda via Terraform apply, OTA ~60s), and the game appears in the
   Catalog tab under its type. There is no DB write.
 
