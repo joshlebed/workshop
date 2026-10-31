@@ -3,10 +3,12 @@ import {
   CATALOG_GAME_DEFINITIONS,
   GAME_CATEGORIES,
   GAME_REGISTRY,
+  gameCategoryFor,
   gameCategoryForKey,
   gameCategoryLabel,
   gameDefinitionForKey,
   identifyGame,
+  isOfficiallyListed,
   isResultlessShare,
   matchShareText,
 } from "./gameRegistry.js";
@@ -46,6 +48,19 @@ describe("registry shape", () => {
     expect(gameCategoryForKey(null)).toBe("other");
     expect(gameCategoryForKey("not-a-game")).toBe("other");
     expect(gameCategoryLabel("words")).toBe("Word games");
+  });
+
+  it("official listing = catalog registry games + reviewed extras", () => {
+    expect(isOfficiallyListed({ gameKey: "wordle", normalizedUrl: "x" })).toBe(true);
+    // Detection-only registry games are not listed.
+    expect(isOfficiallyListed({ gameKey: "heardle", normalizedUrl: "x" })).toBe(false);
+    expect(isOfficiallyListed({ gameKey: null, normalizedUrl: "never-reviewed.example" })).toBe(
+      false,
+    );
+    expect(gameCategoryFor({ gameKey: "globle", normalizedUrl: "x" })).toBe("geography");
+    expect(gameCategoryFor({ gameKey: null, normalizedUrl: "never-reviewed.example" })).toBe(
+      "other",
+    );
   });
 
   it("every catalog game has a spec (catalog implies parseable)", () => {

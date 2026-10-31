@@ -1078,19 +1078,16 @@ describe("GET /v1/games/discovery?includeOwned — full ranked friend feed", () 
   });
 });
 
-describe("GET /v1/games/catalog — every listed game with platform-wide counts", () => {
+describe("GET /v1/games/catalog — the official catalog with platform-wide counts", () => {
   const v = "00000000-0000-4000-8000-0000000000a1";
   const friend = "00000000-0000-4000-8000-0000000000a2";
   const stranger = "00000000-0000-4000-8000-0000000000a3";
-  const sharedUrl = "https://e2e-catalog-shared.example.com";
-  const soloUrl = "https://e2e-catalog-solo.example.com";
-  let sharedId = "";
-  let soloId = "";
+  const unlistedUrl = "https://e2e-catalog-unlisted.example.com";
+  let unlistedId = "";
 
   type CatalogRow = {
     game: { id: string; gameKey: string | null; title: string };
     playerCount: number;
-    friends: { userId: string; displayName: string | null }[];
     inMyGames: boolean;
   };
 
@@ -1113,48 +1110,39 @@ describe("GET /v1/games/catalog — every listed game with platform-wide counts"
       ]);
     }
     await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2)`, [v, friend]);
-    // shared: friend + stranger play (2 players, unknown game → listed).
-    // solo: only the stranger plays (1 player, unknown game → hidden).
-    sharedId = (await addGame(sharedUrl, friend)).game.id;
-    await addGame(sharedUrl, stranger);
-    soloId = (await addGame(soloUrl, stranger)).game.id;
+    // Three people play an unreviewed URL — popularity alone never lists it.
+    unlistedId = (await addGame(unlistedUrl, friend)).game.id;
+    await addGame(unlistedUrl, stranger);
+    await addGame(unlistedUrl, v);
     // The viewer plays Wordle; the friend plays Wordle and Globle.
     await addGame("https://www.nytimes.com/games/wordle", v);
     await addGame("https://www.nytimes.com/games/wordle", friend);
     await addGame("https://globle-game.com", friend);
   });
 
-  it("lists every registry game, even with zero players", async () => {
+  it("lists every catalog registry game, even with zero players", async () => {
     const listed = await catalog();
     const keys = new Set(listed.map((g) => g.game.gameKey));
     for (const def of CATALOG_GAME_DEFINITIONS) expect(keys.has(def.key)).toBe(true);
-    const zero = listed.filter((g) => g.playerCount === 0);
-    expect(zero.length).toBeGreaterThan(0);
-    expect(zero.every((g) => g.game.gameKey !== null)).toBe(true);
+    expect(listed.some((g) => g.playerCount === 0)).toBe(true);
   });
 
-  it("lists an unknown game only once two people play it", async () => {
+  it("never lists an unreviewed user-added game, however many play it", async () => {
     const listed = await catalog();
-    expect(listed.some((g) => g.game.id === sharedId)).toBe(true);
-    expect(listed.some((g) => g.game.id === soloId)).toBe(false);
+    expect(listed.some((g) => g.game.id === unlistedId)).toBe(false);
+    expect(listed.every((g) => g.game.gameKey !== null)).toBe(true);
   });
 
-  it("counts every player, names only the viewer's friends, and tags inMyGames", async () => {
+  it("counts every player platform-wide, names nobody, and tags inMyGames", async () => {
     const listed = await catalog();
-    const shared = listed.find((g) => g.game.id === sharedId);
-    expect(shared).toMatchObject({ playerCount: 2, inMyGames: false });
-    // The stranger plays too but is never named.
-    expect(shared?.friends).toEqual([{ userId: friend, displayName: "Friend" }]);
     const wordle = listed.find((g) => g.game.gameKey === "wordle");
     expect(wordle?.inMyGames).toBe(true);
     expect(wordle?.playerCount).toBeGreaterThanOrEqual(2);
-    expect(wordle?.friends.map((f) => f.userId)).toContain(friend);
-    // The stranger has no friends: same counts, nobody named.
+    expect(wordle).not.toHaveProperty("friends");
     const asStranger = await catalog(stranger);
-    expect(asStranger.find((g) => g.game.id === sharedId)).toMatchObject({
-      playerCount: 2,
-      friends: [],
-      inMyGames: true,
+    expect(asStranger.find((g) => g.game.gameKey === "wordle")).toMatchObject({
+      playerCount: wordle?.playerCount,
+      inMyGames: false,
     });
   });
 

@@ -609,6 +609,53 @@ export function gameCategoryForKey(key: string | null | undefined): GameCategory
   return gameDefinitionForKey(key)?.category ?? "other";
 }
 
+// ---------------------------------------------------------------------------
+// Official catalog
+// ---------------------------------------------------------------------------
+
+/**
+ * A user-added game (no registry entry) an operator has reviewed and listed
+ * in the official catalog — HighScore's "Catalog" tab, visible to everyone.
+ * Keyed by the `games.normalized_url` dedup key (see `normalizeGameUrl`).
+ */
+export interface OfficialCatalogEntry {
+  normalizedUrl: string;
+  /** Display title at review time (the DB row's title is what ships). */
+  title: string;
+  category: GameCategory;
+}
+
+/**
+ * Operator-curated extras beyond the registry. **Every entry here was
+ * reviewed by a human** — the Catalog tab is the one place a user-added game
+ * reaches people outside the adder's friend graph, so this list is the
+ * content gate. The daily `catalog-audit` Niteshift automation proposes
+ * entries (games with players that aren't listed) in a PR; a human merges.
+ * See `docs/catalog-ops-runbook.md`. Keep sorted by title.
+ */
+export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [];
+
+const EXTRAS_BY_URL = new Map(OFFICIAL_CATALOG_EXTRAS.map((e) => [e.normalizedUrl, e]));
+
+export interface CatalogIdentity {
+  gameKey: string | null;
+  normalizedUrl: string;
+}
+
+/** Listed in the official catalog: a catalog registry game or a reviewed extra. */
+export function isOfficiallyListed(game: CatalogIdentity): boolean {
+  const def = gameDefinitionForKey(game.gameKey);
+  if (def) return def.catalog;
+  return EXTRAS_BY_URL.has(game.normalizedUrl);
+}
+
+/** Catalog section for a game row: registry category, else the extra's, else `other`. */
+export function gameCategoryFor(game: CatalogIdentity): GameCategory {
+  const def = gameDefinitionForKey(game.gameKey);
+  if (def) return def.category;
+  return EXTRAS_BY_URL.get(game.normalizedUrl)?.category ?? "other";
+}
+
 /** Display label for a category key. */
 export function gameCategoryLabel(category: GameCategory): string {
   return GAME_CATEGORIES.find((c) => c.key === category)?.label ?? "Other";

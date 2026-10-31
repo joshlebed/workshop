@@ -15,6 +15,8 @@ export interface GamesRoutes {
   friends: string;
   /** Paste-any-score entry: the share flow's picker, which recognises the game from the text. */
   share: string;
+  /** Add-a-game screen: Friends / Catalog tabs + add-by-URL. */
+  addGame: string;
   /** Per-game board; `date` (YYYY-MM-DD) preselects that day on its rail. */
   game: (gameId: string, date?: string) => string;
   friendProfile: (userId: string, via?: string) => string;

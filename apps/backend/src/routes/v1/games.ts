@@ -3,9 +3,9 @@
 // but this router still only owns the Games surface tables directly.
 // Standings cover `viewer ∪ friends_of(viewer)` (G2a) in the G1a shape.
 
+import { isOfficiallyListed } from "@workshop/shared/gameRegistry";
 import type {
   AddGameResponse,
-  CatalogGame,
   DiscoveryGame,
   GameCatalogResponse,
   GameDiscoveryResponse,
@@ -24,7 +24,7 @@ import type {
 import { isReactionEmoji, normalizeGameUrl, unwrapLinkShim } from "@workshop/shared/games";
 import { parseScoreWithSpec, scoreSpecSchema } from "@workshop/shared/scoreParsing";
 import { evaluateSummarySpec, summarySpecSchema } from "@workshop/shared/summarySpec";
-import { and, asc, desc, eq, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
@@ -353,39 +353,25 @@ gameRoutes.get("/discovery", async (c) => {
 });
 
 /**
- * A user-added game (no registry key) is listed in the catalog once this
- * many people play it. One player is someone's private experiment — a
- * half-typed URL, a site only they care about — and listing it platform-wide
- * would leak what one person added to everyone.
- */
-const CATALOG_MIN_PLAYERS_UNKNOWN_GAME = 2;
-
-/**
- * GET /v1/games/catalog — the "All games" view: every registry game, plus
- * user-added games at least `CATALOG_MIN_PLAYERS_UNKNOWN_GAME` people play.
- * Each row carries a platform-wide `playerCount` (an aggregate — the privacy
- * page promises no global leaderboard and this names nobody), the viewer's
- * own friends who play it, and whether it's already in My Games. Sorted most
- * played first; the client groups by game type from the registry. Registered
- * before the `/:id` routes so the literal path isn't shadowed.
+ * GET /v1/games/catalog — the official catalog (the Catalog tab): every game
+ * an operator has listed (`isOfficiallyListed`: catalog registry games plus
+ * the reviewed `OFFICIAL_CATALOG_EXTRAS`), each with a platform-wide
+ * `playerCount` and whether it's already in My Games. Names nobody — the
+ * privacy page promises no global leaderboard — and never lists an
+ * unreviewed user-added URL (that is the content gate). Most played first;
+ * the client groups by game type. Registered before the `/:id` routes so the
+ * literal path isn't shadowed.
  */
 gameRoutes.get("/catalog", async (c) => {
   const userId = c.get("userId");
   const db = getDb();
-  const friendIds = await friendsOf(userId);
 
   const playerCount = sql<number>`count(${userGames.userId})::int`;
-  const listed = await db
+  const allGames = await db
     .select({ game: games, playerCount })
     .from(games)
     .leftJoin(userGames, eq(userGames.gameId, games.id))
     .groupBy(games.id)
-    .having(
-      or(
-        isNotNull(games.gameKey),
-        sql`count(${userGames.userId}) >= ${CATALOG_MIN_PLAYERS_UNKNOWN_GAME}`,
-      ),
-    )
     .orderBy(desc(playerCount), asc(games.title), asc(games.id));
 
   const owned = await db
@@ -394,32 +380,14 @@ gameRoutes.get("/catalog", async (c) => {
     .where(eq(userGames.userId, userId));
   const ownedIds = new Set(owned.map((r) => r.gameId));
 
-  const friendsByGame = new Map<string, CatalogGame["friends"]>();
-  if (friendIds.length > 0) {
-    const friendRows = await db
-      .select({
-        gameId: userGames.gameId,
-        userId: userGames.userId,
-        displayName: users.displayName,
-      })
-      .from(userGames)
-      .innerJoin(users, eq(users.id, userGames.userId))
-      .where(inArray(userGames.userId, friendIds))
-      .orderBy(asc(userGames.addedAt), asc(userGames.userId));
-    for (const r of friendRows) {
-      const list = friendsByGame.get(r.gameId) ?? [];
-      list.push({ userId: r.userId, displayName: r.displayName });
-      friendsByGame.set(r.gameId, list);
-    }
-  }
-
   const response: GameCatalogResponse = {
-    games: listed.map((r) => ({
-      game: toGameShape(r.game),
-      playerCount: r.playerCount,
-      friends: friendsByGame.get(r.game.id) ?? [],
-      inMyGames: ownedIds.has(r.game.id),
-    })),
+    games: allGames
+      .filter((r) => isOfficiallyListed(r.game))
+      .map((r) => ({
+        game: toGameShape(r.game),
+        playerCount: r.playerCount,
+        inMyGames: ownedIds.has(r.game.id),
+      })),
   };
   return ok(c, response);
 });

@@ -10,21 +10,15 @@
 //
 // Empty state is the friends-first onboarding (G3, #293) — `GamesOnboarding`
 // pushes "Add friends" when you have none, or your friends' games as one-tap
-// suggestions when you do. The + sheet carries the same discovery suggestions
-// above its URL field; the home card list itself stays purely your own games.
-//
-// The header's view switch (`HomeViewSwitch`) flips the body between My
-// games (the cards above, default) and two browse-and-add catalog views —
-// Friends (what your friends play, who plays what) and All games (every game
-// on the platform, most played first) — both grouped by game type
-// (`lib/catalogSections`). Adds from either view land in My Games in place;
-// a game already there opens its board.
+// suggestions when you do. The home card list itself stays purely your own
+// games.
 //
 // The two writes live in a floating bottom action bar (UX-DECISIONS entry 4,
-// `HomeActionBar`): "Add game" opens the add sheet and "Paste score" goes to
-// the share flow (`/share`), which recognises the game from the pasted text
-// and posts to today. The bar is hidden on the empty state, whose onboarding
-// card owns those actions.
+// `HomeActionBar`): "Add game" opens the Add-game screen (`/games/add`:
+// Friends / Catalog tabs grouped by game type, plus add-by-URL — see
+// `games/AddGame.tsx`) and "Paste score" goes to the share flow (`/share`),
+// which recognises the game from the pasted text and posts to today. The bar
+// is hidden on the empty state, whose onboarding card owns those actions.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
@@ -32,7 +26,13 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { createFriendInvite, fetchFriends } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import type { Game, GameStandingsEntry, GamesResponse, MyGame } from "@workshop/shared/games";
+import type {
+  DiscoveryGame,
+  Game,
+  GameStandingsEntry,
+  GamesResponse,
+  MyGame,
+} from "@workshop/shared/games";
 import {
   Button,
   CopyIcon,
@@ -57,7 +57,6 @@ import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
 import {
   addGame,
   createGameShareLink,
-  fetchGameCatalog,
   fetchGameDiscovery,
   fetchMyGames,
   moveGame,
@@ -69,7 +68,6 @@ import { setScoreDirection } from "../api/teach";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
-import { type HomeView, HomeViewSwitch } from "../components/HomeViewSwitch";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { useOpenProfile } from "../hooks/useOpenProfile";
@@ -77,7 +75,6 @@ import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { allGamesRows, friendsFeedRows, groupCatalogRows } from "../lib/catalogSections";
 import { daysBack, localDateKey } from "../lib/gameDate";
 import { writePostedScore } from "../lib/postedScore";
 import { prewarmGameShareCard } from "../lib/prewarmShareCard";
@@ -91,9 +88,7 @@ import { type ScorePostExtras, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
 import { useViewDay } from "../state/viewDay";
 import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
-import { AddGameSheet } from "./games/AddGameSheet";
 import { GameCardList } from "./games/GameCardList";
-import { GameCatalogList } from "./games/GameCatalogList";
 import { GamesOnboarding } from "./games/GamesOnboarding";
 import type { GameReorderEvent } from "./games/gameCardListProps";
 
@@ -145,8 +140,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   // rail to keep the shared selection visible.
   const railLength = Math.max(DAY_RAIL_DEFAULT_LENGTH, daysBack(viewDate, todayKey) + 1);
 
-  const [view, setView] = useState<HomeView>("mine");
-  const [addOpen, setAddOpen] = useState(false);
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
   // Teach v2: "Fix score" on my own unread row, and the direction control in
   // the card menu. Both are absent for an account without the capability.
@@ -174,11 +167,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const myGames = gamesQuery.data?.games ?? [];
   const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
-  const onMine = view === "mine";
   // The bar floats over the list, so the list pads its tail to clear it and
-  // toasts lift above it while this screen is mounted. The catalog views
-  // keep it even with an empty My Games — adding is the point there.
-  const barVisible = !gamesQuery.isPending && (!onMine || !isEmpty);
+  // toasts lift above it while this screen is mounted.
+  const barVisible = !gamesQuery.isPending && !isEmpty;
   const listInset = homeActionBarListInset(insets.bottom);
   useEffect(() => {
     if (!barVisible) return;
@@ -230,71 +221,31 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const reportFlow = useScoreReportFlow(reactionCtl.closePicker);
 
-  // Friends drive which empty-state variant shows (and the Friends view's
-  // "add friends first" state); discovery powers the friends-but-no-games
-  // suggestions, the + sheet's suggestion list, and the Friends view. Only
-  // fetched when one of those is on screen.
-  const onFriendsView = view === "friends";
+  // Friends drive which empty-state variant shows; discovery powers the
+  // friends-but-no-games suggestions. Both only matter while the home is
+  // empty — the Add-game screen fetches its own.
   const friendsQuery = useQuery({
     queryKey: queryKeys.friends.all,
     queryFn: () => fetchFriends(token),
-    enabled: !!token && (isEmpty || onFriendsView),
+    enabled: !!token && isEmpty,
     refetchInterval: livePoll,
   });
   const friends = friendsQuery.data?.friends ?? [];
 
-  // `includeOwned` so the + sheet and the Friends view show the full ranked
-  // list of what friends play — including games already in My Games
-  // (rendered non-addable). The empty state shares this query but has no
-  // owned games, so it's unaffected.
+  // Same key/shape as the Add-game screen's Friends tab (`includeOwned`), so
+  // the two share one cache entry; the empty state has no owned games anyway.
   const discoveryQuery = useQuery({
     queryKey: queryKeys.games.discovery(),
     queryFn: () => fetchGameDiscovery(token, { includeOwned: true }),
-    enabled: !!token && (addOpen || isEmpty || onFriendsView),
+    enabled: !!token && isEmpty,
     refetchInterval: livePoll,
   });
   const discovery = discoveryQuery.data?.games ?? [];
 
-  // The All games view: the platform catalog, most played first.
-  const onAllView = view === "all";
-  const catalogQuery = useQuery({
-    queryKey: queryKeys.games.catalog,
-    queryFn: () => fetchGameCatalog(token),
-    enabled: !!token && onAllView,
-    refetchInterval: livePoll,
-  });
-  const catalogSections = useMemo(
-    () =>
-      onFriendsView
-        ? groupCatalogRows(friendsFeedRows(discovery))
-        : onAllView
-          ? groupCatalogRows(allGamesRows(catalogQuery.data?.games ?? []))
-          : [],
-    [onFriendsView, onAllView, discovery, catalogQuery.data],
-  );
-
-  const addMutation = useMutation({
-    mutationFn: (url: string) => addGame(url, token),
-    onSuccess: async (data) => {
-      haptics.medium();
-      setAddOpen(false);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: gamesKey }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.games.discovery() }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.games.catalog }),
-      ]);
-      showToast({ message: `Added ${data.game.title}`, tone: "success" });
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't add that game."), tone: "danger" });
-    },
-  });
-
-  // One-tap add of a discovery suggestion (sheet + empty state) or a catalog
-  // row (Friends / All games views). Unlike the URL add it keeps the surface
-  // open so the user can add several; the row flips to "✓ Added" in place.
+  // One-tap add of an empty-state discovery suggestion. Keeps the onboarding
+  // card open so the user can add several; the row flips to "✓ Added".
   const addDiscoveryMutation = useMutation({
-    mutationFn: (game: { game: Pick<Game, "id" | "url"> }) => addGame(game.game.url, token),
+    mutationFn: (game: DiscoveryGame) => addGame(game.game.url, token),
     onMutate: (game) => {
       setAddingDiscoveryIds((ids) => [...ids, game.game.id]);
     },
@@ -675,89 +626,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         }
       />
 
-      <HomeViewSwitch value={view} onChange={setView} />
-
       <View style={styles.body}>
-        {!onMine ? (
-          <GameCatalogList
-            sections={catalogSections}
-            addingGameIds={addingDiscoveryIds}
-            addedGameIds={addedDiscoveryIds}
-            onAdd={(row) => addDiscoveryMutation.mutate(row)}
-            onOpen={(gameId) => router.push(routes.game(gameId, viewDate) as Href)}
-            refreshing={
-              onFriendsView
-                ? discoveryQuery.isRefetching && !discoveryQuery.isPending
-                : catalogQuery.isRefetching && !catalogQuery.isPending
-            }
-            onRefresh={() => (onFriendsView ? discoveryQuery.refetch() : catalogQuery.refetch())}
-            bottomInset={listInset}
-            testIDPrefix={onFriendsView ? "friends-games" : "all-games"}
-            empty={
-              onFriendsView ? (
-                friendsQuery.isPending || discoveryQuery.isPending ? (
-                  <ActivityIndicator color={tokens.accent.default} />
-                ) : discoveryQuery.isError ? (
-                  <EmptyState
-                    title="Couldn't load your friends' games"
-                    description={errorMessage(discoveryQuery.error)}
-                    action={
-                      <Button
-                        label="Retry"
-                        variant="secondary"
-                        onPress={() => discoveryQuery.refetch()}
-                      />
-                    }
-                  />
-                ) : friends.length === 0 ? (
-                  <EmptyState
-                    title="See what your friends play"
-                    description="Add a friend and their games show up here, grouped by type."
-                    action={
-                      <Button
-                        label="Add friends"
-                        onPress={() => inviteMutation.mutate()}
-                        loading={inviteMutation.isPending}
-                        testID="friends-games-add-friends"
-                      />
-                    }
-                  />
-                ) : (
-                  <EmptyState
-                    title="No games yet"
-                    description="Your friends haven't added any games. Browse All games to find one."
-                    action={
-                      <Button
-                        label="Browse all games"
-                        variant="secondary"
-                        onPress={() => setView("all")}
-                      />
-                    }
-                  />
-                )
-              ) : catalogQuery.isPending ? (
-                <ActivityIndicator color={tokens.accent.default} />
-              ) : catalogQuery.isError ? (
-                <EmptyState
-                  title="Couldn't load the catalog"
-                  description={errorMessage(catalogQuery.error)}
-                  action={
-                    <Button
-                      label="Retry"
-                      variant="secondary"
-                      onPress={() => catalogQuery.refetch()}
-                    />
-                  }
-                />
-              ) : (
-                <EmptyState
-                  title="No games yet"
-                  description="Add a game by URL and it shows up here once a second person plays it."
-                />
-              )
-            }
-          />
-        ) : gamesQuery.isPending ? (
+        {gamesQuery.isPending ? (
           <View style={styles.center}>
             <ActivityIndicator color={tokens.accent.default} />
           </View>
@@ -781,7 +651,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
             inviteUrl={inviteUrl}
             onAddFriends={() => inviteMutation.mutate()}
             onCopyInvite={onCopyInvite}
-            onAddByUrl={() => setAddOpen(true)}
+            onAddByUrl={() => router.push(routes.addGame as Href)}
             onAddDiscovery={(game) => addDiscoveryMutation.mutate(game)}
             addingGameIds={addingDiscoveryIds}
             addedGameIds={addedDiscoveryIds}
@@ -815,22 +685,10 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       {barVisible ? (
         <HomeActionBar
           insetBottom={insets.bottom}
-          onAddGame={() => setAddOpen(true)}
+          onAddGame={() => router.push(routes.addGame as Href)}
           onPasteScore={() => router.push(routes.share as Href)}
         />
       ) : null}
-
-      <AddGameSheet
-        visible={addOpen}
-        pending={addMutation.isPending}
-        onSubmit={(url) => addMutation.mutate(url)}
-        onClose={() => setAddOpen(false)}
-        discovery={discovery}
-        discoveryLoading={discoveryQuery.isLoading}
-        onAddDiscovery={(game) => addDiscoveryMutation.mutate(game)}
-        addingGameIds={addingDiscoveryIds}
-        addedGameIds={addedDiscoveryIds}
-      />
 
       <GameScorePasteSheet
         item={pasteTarget}

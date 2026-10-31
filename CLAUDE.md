@@ -199,16 +199,19 @@ deliberate critical-fix backports may change it before then. See
   Never widen to `*` with `credentials: true`.
   Verify: `curl -X OPTIONS -H "Origin: https://workshop-a2v.pages.dev" -H "Access-Control-Request-Method: PUT" <api>/v1/whatever -i`.
 
-- **Game types live in the registry, not the DB.** The HighScore home's view switch (My games /
-  Friends / All games) groups the two catalog views by `category` on each `GameDefinition` in
-  `packages/shared/src/gameRegistry.ts` (`GAME_CATEGORIES` is the section order; `other` is last
-  and catches every user-added URL via `gameCategoryForKey(null)`). There is no `games.category`
-  column and nothing on the wire — add a game to the registry and it lands in the right section;
-  a new type is a `GAME_CATEGORIES` entry plus the registry test. "All games" is
-  `GET /v1/games/catalog`: every registry game, plus a user-added game only once **two** people
-  have it in My Games (`CATALOG_MIN_PLAYERS_UNKNOWN_GAME`) — one player's URL is private. Rows
-  carry an aggregate `playerCount` and name only the viewer's own friends; keep it that way, the
-  privacy page promises no global leaderboard. "Friends" reuses `/discovery?includeOwned=1`.
+- **The HighScore catalog is operator-curated code, not a DB flag.** Add a game (`/games/add`,
+  `apps/highscore/src/games/screens/games/AddGame.tsx`) has two tabs grouped by game type:
+  **Friends** (`/discovery?includeOwned=1`, says how many and which friends play each game)
+  and **Catalog** (`GET /v1/games/catalog`: platform-wide `playerCount`, **never a name**).
+  Types sort by their most-played game, rows by popularity (`lib/catalogSections.ts`). Game
+  types are `category` on each `GameDefinition` in `packages/shared/src/gameRegistry.ts`
+  (`GAME_CATEGORIES` is the fallback order; `other` catches every unknown URL). "Listed" means
+  `isOfficiallyListed`: a `catalog: true` registry game or an entry in `OFFICIAL_CATALOG_EXTRAS`
+  (same file) — **every extra was reviewed by a human; popularity alone never lists a URL**,
+  that is the content gate. The daily "HighScore catalog audit" Niteshift automation runs
+  `pnpm --filter @workshop/backend run ops:catalog-audit` (read-only, prod via SSM) and opens a
+  PR proposing extras + reporting parser/formatter health; the operator edits categories and
+  merges. `docs/catalog-ops-runbook.md`.
 
 - **Share-panel adoption is observed, never detected.** iOS has no API to ask "is this app
   enabled in the share sheet", so adoption is inferred from usage: HighScore's score upsert

@@ -476,20 +476,16 @@ export interface GameDiscoveryResponse {
 }
 
 /**
- * `GET /v1/games/catalog` — every game on the platform worth listing: the
- * registry games always, plus user-added games two or more people play
- * (a single-player URL is someone's private experiment, not a catalog
- * entry). `playerCount` is an aggregate over all users (never names; only
- * `friends` names anyone, and only the viewer's own friends). The client
- * groups rows by `gameCategoryForKey(game.gameKey)` — the registry owns
- * game types, so there is no category on the wire.
+ * `GET /v1/games/catalog` — the official catalog: every game an operator has
+ * listed (`isOfficiallyListed` in `@workshop/shared/gameRegistry`), with a
+ * platform-wide `playerCount`. Deliberately names nobody: the Catalog tab is
+ * platform-wide, and the privacy page promises no global leaderboard. The
+ * client groups rows by `gameCategoryFor(game)`.
  */
 export interface CatalogGame {
   game: Game;
   /** How many users have this game in My Games, platform-wide. */
   playerCount: number;
-  /** The viewer's friends who play it (home-order of nothing in particular). */
-  friends: DiscoveryFriend[];
   inMyGames: boolean;
 }
 

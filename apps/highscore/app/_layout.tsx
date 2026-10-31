@@ -37,6 +37,7 @@ const HIGHSCORE_GAMES_ROUTES: GamesRoutes = {
   signIn: "/sign-in",
   friends: "/friends",
   share: "/share",
+  addGame: "/games/add",
   game: (gameId, date) =>
     `/games/${encodeURIComponent(gameId)}${date ? `?date=${encodeURIComponent(date)}` : ""}`,
   friendProfile: (userId, via) =>
@@ -223,6 +224,7 @@ function AuthGate() {
         }}
       >
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="games/add" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="games/[id]" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="friends/[userId]" options={{ animation: "slide_from_right" }} />

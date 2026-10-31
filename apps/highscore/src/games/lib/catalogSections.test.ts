@@ -1,7 +1,7 @@
 import type { CatalogGame, DiscoveryGame, Game } from "@workshop/shared/games";
 import { describe, expect, it } from "vitest";
 import {
-  allGamesRows,
+  catalogRows,
   friendsFeedRows,
   friendsPlayLine,
   groupCatalogRows,
@@ -23,20 +23,37 @@ function game(id: string, gameKey: string | null, title = id): Game {
   };
 }
 
+const row = (id: string, key: string | null, weight: number, title = id) => ({
+  game: game(id, key, title),
+  subtitle: null,
+  weight,
+  inMyGames: false,
+});
+
 describe("groupCatalogRows", () => {
-  it("sections by registry category in display order, unknown games last, keeping row order", () => {
-    const rows = [
-      { game: game("g1", "wordle"), subtitle: null, inMyGames: false },
-      { game: game("g2", null), subtitle: null, inMyGames: false },
-      { game: game("g3", "globle"), subtitle: null, inMyGames: true },
-      { game: game("g4", "connections"), subtitle: null, inMyGames: false },
-    ];
-    const sections = groupCatalogRows(rows);
-    expect(sections.map((s) => [s.category, s.title, s.data.map((r) => r.game.id)])).toEqual([
-      ["words", "Word games", ["g1", "g4"]],
-      ["geography", "Geography", ["g3"]],
-      ["other", "Other", ["g2"]],
+  it("sorts rows by weight inside a type, and types by their most-played game", () => {
+    const sections = groupCatalogRows([
+      row("wordle", "wordle", 1),
+      row("connections", "connections", 2),
+      row("globle", "globle", 5),
+      row("mystery", null, 3),
     ]);
+    expect(sections.map((s) => [s.title, s.data.map((r) => r.game.id)])).toEqual([
+      ["Geography", ["globle"]],
+      ["Other", ["mystery"]],
+      ["Word games", ["connections", "wordle"]],
+    ]);
+  });
+
+  it("breaks weight ties by registry category order, then title", () => {
+    const sections = groupCatalogRows([
+      row("b", null, 0, "Beta"),
+      row("a", null, 0, "Alpha"),
+      row("wordle", "wordle", 0),
+      row("globle", "globle", 0),
+    ]);
+    expect(sections.map((s) => s.category)).toEqual(["words", "geography", "other"]);
+    expect(sections[2]?.data.map((r) => r.game.title)).toEqual(["Alpha", "Beta"]);
   });
 
   it("drops empty categories", () => {
@@ -62,22 +79,22 @@ describe("row builders", () => {
     expect(playerCountLine(12)).toBe("12 players");
   });
 
-  it("friendsFeedRows and allGamesRows produce one subtitle per row", () => {
+  it("friends rows say how many and which friends; catalog rows say only how many", () => {
     const dg: DiscoveryGame = {
       game: game("d", "wordle"),
-      friends: [{ userId: "u1", displayName: "Sam" }],
+      friends: [
+        { userId: "u1", displayName: "Sam" },
+        { userId: "u2", displayName: "Alex" },
+        { userId: "u3", displayName: "Q" },
+      ],
       inMyGames: true,
     };
-    expect(friendsFeedRows([dg])[0]).toMatchObject({ subtitle: "Sam plays", inMyGames: true });
-    const cg: CatalogGame = {
-      game: game("c", null),
-      playerCount: 3,
-      friends: [],
-      inMyGames: false,
-    };
-    expect(allGamesRows([cg])[0]?.subtitle).toBe("3 players");
-    expect(allGamesRows([{ ...cg, friends: dg.friends }])[0]?.subtitle).toBe(
-      "3 players · Sam plays",
-    );
+    expect(friendsFeedRows([dg])[0]).toMatchObject({
+      subtitle: "3 friends · Sam, Alex +1",
+      weight: 3,
+      inMyGames: true,
+    });
+    const cg: CatalogGame = { game: game("c", null), playerCount: 3, inMyGames: false };
+    expect(catalogRows([cg])[0]).toMatchObject({ subtitle: "3 players", weight: 3 });
   });
 });

@@ -1,42 +1,43 @@
-// The Games-home view switch: My games (your ordered list of today's
-// leaderboards, the default) / Friends (which of your friends play what) /
-// All games (everything on the platform, most played first). The two catalog
-// views are browse-and-add surfaces grouped by game type; only "My games"
-// shows standings. A segmented pill under the header, sentence-case labels.
+// Segmented pill switch (the Add-game screen's Friends / Catalog tabs).
+// Generic over the item keys; sentence-case labels; `accessibilityRole="tab"`.
 
 import { haptics, homeLayout, Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
 
-export const HOME_VIEWS = [
-  { key: "mine", label: "My games" },
-  { key: "friends", label: "Friends" },
-  { key: "all", label: "All games" },
-] as const;
-
-export type HomeView = (typeof HOME_VIEWS)[number]["key"];
-
-interface HomeViewSwitchProps {
-  value: HomeView;
-  onChange: (view: HomeView) => void;
+export interface SegmentedItem<K extends string> {
+  key: K;
+  label: string;
 }
 
-export function HomeViewSwitch({ value, onChange }: HomeViewSwitchProps) {
+interface SegmentedControlProps<K extends string> {
+  items: readonly SegmentedItem<K>[];
+  value: K;
+  onChange: (key: K) => void;
+  testID?: string;
+}
+
+export function SegmentedControl<K extends string>({
+  items,
+  value,
+  onChange,
+  testID = "segmented-control",
+}: SegmentedControlProps<K>) {
   return (
-    <View style={styles.wrap} testID="home-view-switch">
+    <View style={styles.wrap} testID={testID}>
       <View style={styles.track} accessibilityRole="tablist">
-        {HOME_VIEWS.map((view) => {
-          const active = view.key === value;
+        {items.map((item) => {
+          const active = item.key === value;
           return (
             <Pressable
-              key={view.key}
+              key={item.key}
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
-              accessibilityLabel={view.label}
-              testID={`home-view-${view.key}`}
+              accessibilityLabel={item.label}
+              testID={`${testID}-${item.key}`}
               onPress={() => {
                 if (active) return;
                 haptics.selection();
-                onChange(view.key);
+                onChange(item.key);
               }}
               style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
                 styles.segment,
@@ -49,7 +50,7 @@ export function HomeViewSwitch({ value, onChange }: HomeViewSwitchProps) {
                 numberOfLines={1}
                 style={[styles.label, active ? styles.labelActive : styles.labelIdle]}
               >
-                {view.label}
+                {item.label}
               </Text>
             </Pressable>
           );

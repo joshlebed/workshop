@@ -93,6 +93,15 @@ picker never opens them. Any change here is a native change: bump `version`.
 resolver skips its `router.replace("/")` while it is — otherwise the async home redirect lands
 after the `/share/pick-game` one and the shared score is silently discarded.
 
+## Add a game (`/games/add`)
+
+A full screen, not a sheet: the home action bar's "Add game" and the empty state both push it.
+`SegmentedControl` (Friends / Catalog) over one `GameCatalogList`; sections come from
+`lib/catalogSections.ts` (`groupCatalogRows` — rows by weight, types by their top row), rows
+from `friendsFeedRows` / `catalogRows`. One-tap Add stays on the screen and flips the row; the
+footer URL add returns home. The Catalog tab shows only what the backend lists
+(`docs/catalog-ops-runbook.md`); do not add a client-side "all games" fallback.
+
 ## Reorder activation vs. taps (Games home)
 
 Every Games-home card is both a drag handle and a stack of tap targets, and once a drag
