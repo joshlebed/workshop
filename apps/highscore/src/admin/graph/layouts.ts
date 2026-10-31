@@ -139,17 +139,25 @@ export function runCommunityLayout(data: AdminGraphResponse): CommunityLayout {
   });
   // ForceAtlas2's coordinates are tiny relative to node radii; sigma
   // auto-rescales to its viewport but the native canvas draws in layout
-  // units, so normalise the spread to ~900 units across the longer side.
+  // units, so normalise the spread across the longer side. The spread grows
+  // with the user count (~900 units at 48 users, like the d3-force layout's
+  // natural density) so a small graph doesn't fit at a third of its size
+  // with unreadable labels.
   const raw: Positions = new Map();
   g.forEachNode((id, attrs) => raw.set(id, { x: Number(attrs.x), y: Number(attrs.y) }));
   const b = boundsOf(raw);
   const span = Math.max(1, b.maxX - b.minX, b.maxY - b.minY);
-  const k = 900 / span;
+  const k = communitySpread(g.order) / span;
   const cx = (b.minX + b.maxX) / 2;
   const cy = (b.minY + b.maxY) / 2;
   const positions: Positions = new Map();
   for (const [id, p] of raw) positions.set(id, { x: (p.x - cx) * k, y: (p.y - cy) * k });
   return { graph: g, positions, communities, communityOf };
+}
+
+/** Longer-side extent of the community layout, in layout units. */
+export function communitySpread(userCount: number): number {
+  return Math.min(1400, Math.max(300, 130 * Math.sqrt(userCount)));
 }
 
 /**

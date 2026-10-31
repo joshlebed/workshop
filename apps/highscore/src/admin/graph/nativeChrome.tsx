@@ -58,17 +58,24 @@ export function ChromeLegend({
   items,
   note,
   palette,
+  inline,
 }: {
   items: { color: string; label: string; shape?: "dot" | "line" | "dashed" }[];
   note?: string;
   palette: GraphPalette;
+  /** Flow inside a parent panel instead of floating over the canvas bottom. */
+  inline?: boolean;
 }) {
   return (
     <View
-      style={[
-        styles.legend,
-        { backgroundColor: `${palette.surface}E6`, borderColor: palette.border },
-      ]}
+      style={
+        inline
+          ? styles.legendInline
+          : [
+              styles.legend,
+              { backgroundColor: `${palette.surface}E6`, borderColor: palette.border },
+            ]
+      }
     >
       <ScrollView
         horizontal
@@ -125,6 +132,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 6,
   },
+  legendInline: { gap: 6 },
   legendRow: { gap: 12, alignItems: "center" },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
   dot: { width: 9, height: 9, borderRadius: 5 },

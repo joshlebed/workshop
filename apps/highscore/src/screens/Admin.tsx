@@ -26,6 +26,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AnalyticsPanel } from "../admin/AnalyticsPanel";
 import { ClusterGraphView } from "../admin/graph/ClusterGraphView";
 import { ForceGraphView } from "../admin/graph/ForceGraphView";
@@ -47,26 +48,36 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "tools", label: "Tools" },
 ];
 
-const VIEWS: { key: UsersView; label: string; hint: string }[] = [
+// `nativeHint` describes the iOS canvases, which pan/pinch/tap instead of
+// drag-nodes/scroll/hover and draw the invite tree without arrowheads.
+const VIEWS: { key: UsersView; label: string; hint: string; nativeHint: string }[] = [
   {
     key: "force",
     label: "Growth",
     hint: "Drag the timeline or press ▶ to replay sign-ups and friendships. Colour = join month or activity; size = scores. Drag nodes, scroll to zoom.",
+    nativeHint:
+      "Drag the timeline or press ▶ to replay sign-ups and friendships. Colour = join month or activity; size = scores. Drag to pan, pinch to zoom, tap a user for details.",
   },
   {
     key: "clusters",
     label: "Groups",
     hint: "Friend groups found by community detection, each named after its best-connected member. Hover to light up a neighbourhood; size = friends.",
+    nativeHint:
+      "Friend groups found by community detection, each named after its best-connected member. Tap a user to light up their neighbourhood; size = friends. Drag to pan, pinch to zoom.",
   },
   {
     key: "tree",
     label: "Invite tree",
     hint: "Who brought whom: a user's parent is the older account in their earliest friendship. Seeds in the middle, arrows point to newcomers.",
+    nativeHint:
+      "Who brought whom: a user's parent is the older account in their earliest friendship. Seeds in the middle, newcomers on the outer rings; tap a user to light their lineage.",
   },
   {
     key: "list",
     label: "List",
     hint: "Every user as a row. Click a column to sort; the dot is activity (green this week, amber this month, grey dormant).",
+    nativeHint:
+      "Every user as a row. Tap a column to sort; the dot is activity (green this week, amber this month, grey dormant).",
   },
 ];
 
@@ -159,8 +170,16 @@ export default function Admin() {
   // On native the Users tab is a fixed, non-scrolling column so the canvas
   // owns pan/pinch; on web the body scrolls as usual.
   const nativeUsers = tab === "users" && Platform.OS !== "web";
+  // Native: the canvas fills what's left of the (non-scrolling) body below
+  // the toolbar, above the home indicator. Measured, because the header,
+  // tabs and wrapped hint above it vary in height.
+  const insets = useSafeAreaInsets();
+  const [bodyHeight, setBodyHeight] = useState(0);
+  const [canvasTop, setCanvasTop] = useState(0);
   const canvasHeight = nativeUsers
-    ? Math.max(320, height - 330)
+    ? bodyHeight > 0 && canvasTop > 0
+      ? Math.max(320, bodyHeight - canvasTop - Math.max(insets.bottom, tokens.space.md))
+      : Math.max(320, height - 330)
     : Math.max(420, Math.min(820, height - 250));
   const activeView = VIEWS.find((v) => v.key === view) ?? VIEWS[0];
 
@@ -200,7 +219,15 @@ export default function Admin() {
         setSelectedId(id);
         if (id) setFocus({ id, nonce: Date.now() });
       }}
-      onLocate={view === "list" ? undefined : locate}
+      onLocate={
+        view === "list"
+          ? undefined
+          : (id: string) => {
+              locate(id);
+              // On a phone the sheet covers the canvas; close it to show the move.
+              setSheetOpen(false);
+            }
+      }
       onImpersonate={(node) => {
         setImpersonateQuery(node.email ?? displayName(node));
         setSheetOpen(false);
@@ -267,6 +294,7 @@ export default function Admin() {
             contentContainerStyle={styles.body}
             keyboardShouldPersistTaps="handled"
             scrollEnabled={!nativeUsers}
+            onLayout={(e) => setBodyHeight(e.nativeEvent.layout.height)}
           >
             {tab === "overview" ? <AnalyticsPanel /> : null}
 
@@ -313,7 +341,7 @@ export default function Admin() {
                   ) : null}
                 </View>
                 <Text variant="caption" tone="secondary" testID="admin-users-hint">
-                  {activeView?.hint}
+                  {Platform.OS === "web" ? activeView?.hint : activeView?.nativeHint}
                 </Text>
 
                 {graphQuery.isError ? (
@@ -335,7 +363,10 @@ export default function Admin() {
 
                 {graphQuery.data ? (
                   <>
-                    <View style={[styles.layout, wide ? styles.layoutWide : styles.layoutNarrow]}>
+                    <View
+                      style={[styles.layout, wide ? styles.layoutWide : styles.layoutNarrow]}
+                      onLayout={(e) => setCanvasTop(e.nativeEvent.layout.y)}
+                    >
                       <View style={styles.canvas}>{renderUsersCanvas(graphQuery.data)}</View>
                       {wide
                         ? renderDetail(graphQuery.data, {
