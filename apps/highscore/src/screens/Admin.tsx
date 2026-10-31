@@ -19,6 +19,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -155,7 +156,12 @@ export default function Admin() {
     () => (graphQuery.data ? inferInviteTree(graphQuery.data) : null),
     [graphQuery.data],
   );
-  const canvasHeight = Math.max(420, Math.min(820, height - 250));
+  // On native the Users tab is a fixed, non-scrolling column so the canvas
+  // owns pan/pinch; on web the body scrolls as usual.
+  const nativeUsers = tab === "users" && Platform.OS !== "web";
+  const canvasHeight = nativeUsers
+    ? Math.max(320, height - 330)
+    : Math.max(420, Math.min(820, height - 250));
   const activeView = VIEWS.find((v) => v.key === view) ?? VIEWS[0];
 
   const onSessionChanged = useCallback(() => {
@@ -257,7 +263,11 @@ export default function Admin() {
             </Card>
           </View>
         ) : (
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.body}
+            keyboardShouldPersistTaps="handled"
+            scrollEnabled={!nativeUsers}
+          >
             {tab === "overview" ? <AnalyticsPanel /> : null}
 
             {tab === "tools" ? (
