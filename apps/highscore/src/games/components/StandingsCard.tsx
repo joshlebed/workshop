@@ -174,6 +174,11 @@ export const StandingsCard = memo(function StandingsCard({
       testID={`game-card-${cardId}`}
     >
       <View style={styles.header}>
+        {/* Visible reorder affordance only: it says "you can drag this" and
+            does nothing itself — the whole card is already the drag handle. */}
+        <View style={styles.grip} pointerEvents="none" testID={`game-card-grip-${cardId}`}>
+          <Text style={styles.gripGlyph}>⠿</Text>
+        </View>
         <View style={styles.cover} testID={`game-card-cover-${cardId}`}>
           {coverImageUrl ? (
             <Image
@@ -433,6 +438,17 @@ function SkeletonRows() {
 }
 
 const styles = StyleSheet.create({
+  // Tight against the left edge: eats the card's horizontal padding and most
+  // of the header gap so the cover stays where it was.
+  grip: {
+    width: 16,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: -tokens.space.sm,
+    marginRight: -tokens.space.xs,
+  },
+  gripGlyph: { color: tokens.text.muted, fontSize: 18, lineHeight: 22 },
   // A ledger section, not a box: hairline rule below, breathing room inside.
   // The slight horizontal bleed gives hover/drag backgrounds room without
   // shifting content off the column grid.
