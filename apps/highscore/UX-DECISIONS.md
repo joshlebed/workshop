@@ -40,6 +40,15 @@ fastest way to re-check any claim below. Each variant's own rationale is at
 | 9   | Brand mark / app icon                                             | **Frozen.** External contractor owns it.      | No changes                                                                                                                 |
 | 8   | Pixel font scope                                                  | **Narrow.** Brand, game names, maybe actions. | Secondary font pick open                                                                                                   |
 
+**Type lab (2026-11-02).** The candidates — System, Space Grotesk, Inter, IBM Plex Sans — and
+the scores question (pixel face vs secondary face bold with tabular figures) are up for
+comparison as a live switcher on variant B (`src/theme/typeLab.ts` +
+`src/components/TypeLabChip.tsx`, uncommitted review scaffolding in the liaison sandbox;
+`?font=` / `?scores=` / `?buttons=` on any URL, or the yellow `Aa` chip). Under the narrowed
+scope the `Text` variants map as: `display` and a new `game` variant stay pixel; `title`,
+`heading`, `body`, `caption`, `label` use the secondary face; `score` follows the scores
+switch. The pick gets recorded here.
+
 ## 9. Brand mark and app icon — frozen
 
 **Decision: do not change the brand mark or the app icon.** Owner, 2026-11-02: an external
