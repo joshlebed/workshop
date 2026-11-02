@@ -859,7 +859,7 @@ re-applies the manifest after you edit it; `ns services validate` checks it.
 | `highscore` | 8082 | yes       | HighScore Expo web. Primary preview (listed first). `EXPO_PUBLIC_DEV_AUTH=1`. |
 | `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).                     |
 | `web`       | 8081 | no        | `ns services start web` — Workshop.dev web against same backend.              |
-| `postgres`  | —    | no        | Docker PG16, host networking. Only when no Neon `DATABASE_URL`.               |
+| `postgres`  | —    | no        | Docker PG17, host networking, prod copy. Started by setup/resume.             |
 
 Gotchas: services get **platform env + manifest `environment` + `PORT` only**, never the
 repository variables setup sees — that's why `backend` goes through
