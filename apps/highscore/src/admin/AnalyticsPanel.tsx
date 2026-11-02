@@ -12,19 +12,21 @@ import {
   type AdminAnalyticsPlatform,
   type AdminAnalyticsRange,
 } from "@workshop/shared/constants";
-import { BarChart, Button, Card, Chip, HorizontalBars, Text, tokens } from "@workshop/ui";
 import { useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { fetchAdminAnalytics } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
+import { BarChart, Button, bodyType, Card, Chip, HorizontalBars, Text, tokens } from "../theme";
 
 const CLIENT = "highscore" as const;
 
-// Fixed platform hues, validated for the dark surface (CVD-safe, ≥3:1).
+// Fixed platform hues from the neon palette: pink / yellow / secondary grey
+// stay distinguishable on the dark surface (and for CVD) without borrowing
+// chartreuse, which is reserved for success.
 const PLATFORM_COLORS: Record<AdminAnalyticsPlatform, string> = {
-  ios: "#c98500",
-  web: "#3987e5",
-  other: "#199e70",
+  ios: tokens.neon.pink,
+  web: tokens.neon.yellow,
+  other: tokens.text.secondary,
 };
 
 function formatGeneratedAt(iso: string): string {
@@ -145,9 +147,9 @@ const styles = StyleSheet.create({
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
   statTile: { flexGrow: 1, flexBasis: "30%", gap: 2 },
   statValue: {
+    ...bodyType("semibold"),
     fontSize: tokens.font.size.xxl,
     lineHeight: 34,
-    fontWeight: tokens.font.weight.semibold,
     color: tokens.text.primary,
   },
   chartCard: { gap: tokens.space.sm },

@@ -4,10 +4,10 @@
 // never re-runs physics on the phone.
 
 import type { AdminGraphNode } from "@workshop/shared";
-import { Text } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { PixelIcon, Text, tokens } from "../../theme";
 import { boundsOf, runForceLayout } from "./layouts";
 import {
   ACTIVITY_BAND_LABEL,
@@ -28,11 +28,12 @@ import { ChromeButton, ChromeLegend, ChromeTop } from "./nativeChrome";
 
 type ColorMode = "cohort" | "activity";
 
+// Chartreuse this week (earned), amber this month, grey dormant, bezel never.
 const BAND_COLORS: Record<ActivityBand, string> = {
-  week: "#3DD68C",
-  month: "#F5A524",
-  dormant: "#94A3B8",
-  never: "#55504C",
+  week: tokens.neon.chartreuse,
+  month: tokens.status.warning,
+  dormant: tokens.text.secondary,
+  never: tokens.border.default,
 };
 const PLAY_STEPS = 240;
 
@@ -238,7 +239,7 @@ export function ForceGraphView({
                   { borderColor: palette.border, backgroundColor: palette.surface },
                 ]}
               >
-                <Text style={{ color: palette.text }}>{playing ? "❚❚" : "▶"}</Text>
+                <PixelIcon name={playing ? "pause" : "play"} size={16} color={palette.text} />
               </Pressable>
               <Slider
                 value={t}
@@ -270,21 +271,21 @@ const styles = StyleSheet.create({
     right: 8,
     bottom: 8,
     padding: 8,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
     gap: 6,
   },
   timelineRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   play: {
     width: 34,
     height: 30,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
     alignItems: "center",
     justifyContent: "center",
   },
   sliderHit: { flex: 1, height: 30, justifyContent: "center" },
-  sliderTrack: { height: 4, borderRadius: 2, overflow: "hidden" },
+  sliderTrack: { height: 4, borderRadius: 0, overflow: "hidden" },
   sliderFill: { height: 4 },
-  sliderThumb: { position: "absolute", width: 18, height: 18, borderRadius: 9, marginLeft: -9 },
+  sliderThumb: { position: "absolute", width: 18, height: 18, borderRadius: 0, marginLeft: -9 },
 });

@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import { Avatar, Button, Sheet, Text, tokens } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -10,6 +9,7 @@ import { Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 import { ImpersonationStatus } from "../admin/ImpersonationPanel";
 import { useAuth } from "../hooks/useAuth";
 import { PRIVACY_ROUTE, SUPPORT_ROUTE, TERMS_ROUTE } from "../lib/publicRoutes";
+import { Avatar, Button, bodyType, Sheet, Text, tokens } from "../theme";
 
 export function ProfileMenu() {
   const { token, user, signOut } = useAuth();
@@ -175,14 +175,14 @@ const styles = StyleSheet.create({
     minWidth: 17,
     height: 17,
     paddingHorizontal: 3,
-    borderRadius: 9,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.accent.default,
-    borderWidth: 2,
+    backgroundColor: tokens.neon.pink,
+    borderWidth: tokens.bezel,
     borderColor: tokens.bg.canvas,
   },
-  badgeText: { fontSize: 9, lineHeight: 11, fontWeight: tokens.font.weight.bold },
+  badgeText: { ...bodyType("bold"), fontSize: 9, lineHeight: 11 },
   content: { gap: tokens.space.md },
   identity: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
   identityText: { flex: 1, minWidth: 0 },

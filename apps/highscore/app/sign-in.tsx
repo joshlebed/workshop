@@ -1,5 +1,5 @@
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
-import { Button, GoogleSignInButton, Text, tokens } from "@workshop/ui";
+import { GoogleSignInButton } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
@@ -8,6 +8,7 @@ import { AppStoreBadge } from "../src/components/AppStoreBadge";
 import { Wordmark } from "../src/components/Wordmark";
 import { useAuth } from "../src/hooks/useAuth";
 import { PRIVACY_ROUTE, TERMS_ROUTE } from "../src/lib/publicRoutes";
+import { Button, Text, tokens, uiType } from "../src/theme";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 // The "get the app" card only makes sense from the web app; inside the iOS
@@ -124,7 +125,7 @@ export default function SignIn() {
           By continuing you agree to HighScore's{" "}
           <Text
             variant="caption"
-            tone="secondary"
+            tone="link"
             style={styles.legalLink}
             onPress={() => router.push(TERMS_ROUTE)}
             accessibilityRole="link"
@@ -135,7 +136,7 @@ export default function SignIn() {
           and{" "}
           <Text
             variant="caption"
-            tone="secondary"
+            tone="link"
             style={styles.legalLink}
             onPress={() => router.push(PRIVACY_ROUTE)}
             accessibilityRole="link"
@@ -193,7 +194,8 @@ const styles = StyleSheet.create({
   },
   error: { textAlign: "center", marginTop: tokens.space.xs },
   legal: { textAlign: "center", marginTop: tokens.space.md, lineHeight: 18 },
-  legalLink: { textDecorationLine: "underline" },
+  // Small pink text: the tint keeps it legible at caption size (DESIGN.md).
+  legalLink: { textDecorationLine: "underline", color: tokens.neon.pinkTint },
   appCard: {
     maxWidth: 420,
     width: "100%",
@@ -201,9 +203,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
+    borderRadius: 0,
     backgroundColor: tokens.bg.surface,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
   },
   appCardCopy: { gap: tokens.space.xs },
@@ -218,11 +220,7 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    backgroundColor: tokens.border.default,
   },
-  dividerText: {
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
+  dividerText: uiType(8),
 });

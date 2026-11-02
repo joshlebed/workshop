@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import type { UpsertGameScoreResponse } from "@workshop/shared/games";
-import { useToast } from "@workshop/ui";
 import { useCallback } from "react";
+import { useToast } from "../../theme";
 import { clearGameScore, upsertGameScore } from "../api/games";
 import { postedCheckNotice } from "../lib/postedCheck";
 import { useGamesRuntime } from "../runtime";

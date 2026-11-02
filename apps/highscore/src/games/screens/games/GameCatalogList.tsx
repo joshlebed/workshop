@@ -3,9 +3,9 @@
 // already in My Games opens its board instead. Data, grouping and the add
 // mutation live at the call site (GamesHome); this file only renders.
 
-import { ChevronIcon, homeLayout, PullToRefresh, Text, tokens } from "@workshop/ui";
 import type { ReactNode } from "react";
 import { ActivityIndicator, Image, Pressable, SectionList, StyleSheet, View } from "react-native";
+import { bodyType, homeLayout, PixelIcon, PullToRefresh, Text, tokens } from "../../../theme";
 import type { CatalogRow, CatalogSection } from "../../lib/catalogSections";
 
 interface GameCatalogListProps {
@@ -67,6 +67,7 @@ export function GameCatalogList({
               testID={`${testIDPrefix}-row-${item.game.id}`}
               style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
                 styles.row,
+                added && styles.rowSelected,
                 owned && (pressed || hovered) && styles.rowHover,
               ]}
             >
@@ -82,7 +83,7 @@ export function GameCatalogList({
                 )}
               </View>
               <View style={styles.text}>
-                <Text variant="label" numberOfLines={1} style={styles.title}>
+                <Text variant="game" numberOfLines={1} style={styles.title}>
                   {item.game.title}
                 </Text>
                 {item.subtitle ? (
@@ -93,15 +94,17 @@ export function GameCatalogList({
               </View>
               {item.inMyGames ? (
                 <View style={styles.ownedCell} testID={`${testIDPrefix}-owned-${item.game.id}`}>
-                  <Text style={styles.ownedText} numberOfLines={1}>
+                  <Text variant="label" style={styles.ownedText} numberOfLines={1}>
                     In your games
                   </Text>
-                  <ChevronIcon size={14} color={tokens.text.muted} />
+                  <PixelIcon name="chevron-right" size={16} color={tokens.text.secondary} />
                 </View>
               ) : added ? (
                 <View style={styles.ownedCell} testID={`${testIDPrefix}-added-${item.game.id}`}>
-                  <Text style={styles.ownedText}>✓ Added</Text>
-                  <ChevronIcon size={14} color={tokens.text.muted} />
+                  <Text variant="label" style={styles.ownedText}>
+                    ✓ Added
+                  </Text>
+                  <PixelIcon name="chevron-right" size={16} color={tokens.neon.pink} />
                 </View>
               ) : (
                 <Pressable
@@ -120,7 +123,9 @@ export function GameCatalogList({
                   {adding ? (
                     <ActivityIndicator size="small" color={tokens.accent.default} />
                   ) : (
-                    <Text style={styles.addLabel}>Add</Text>
+                    <Text variant="label" style={styles.addLabel}>
+                      Add
+                    </Text>
                   )}
                 </Pressable>
               )}
@@ -163,42 +168,42 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
+  rowSelected: { borderColor: tokens.neon.pink, backgroundColor: tokens.accent.muted },
   rowHover: { backgroundColor: tokens.bg.elevated },
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    backgroundColor: tokens.accent.muted,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
+  coverImage: { width: COVER, height: COVER, borderRadius: 0 },
   coverGlyph: { fontSize: 20 },
   text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  title: { color: tokens.text.primary },
   addBtn: {
     minWidth: 64,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
   addBtnBusy: { opacity: 0.8 },
   addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    ...bodyType("semibold"),
+    color: tokens.neon.pinkTint,
   },
   ownedCell: {
     flexDirection: "row",
@@ -207,8 +212,7 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.sm,
   },
   ownedText: {
+    ...bodyType("semibold"),
     color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
   },
 });

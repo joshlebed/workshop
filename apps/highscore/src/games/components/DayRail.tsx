@@ -7,8 +7,8 @@
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
-import { Text, tokens } from "@workshop/ui";
-import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { scoreType, Text, tokens } from "../../theme";
 import { shiftDateKey } from "../lib/gameDate";
 
 /** Days the rail spans by default, today inclusive. */
@@ -43,10 +43,11 @@ export function DayRail({
   horizontalInset = tokens.space.xl,
   onExtend,
 }: DayRailProps) {
-  const days: { key: string; label: string }[] = [];
+  const days: { key: string; label: string; parts: DayChipParts }[] = [];
   for (let i = 0; i < length; i++) {
     const key = shiftDateKey(today, -i);
-    days.push({ key, label: dayChipLabel(key, today) });
+    const parts = dayChipParts(key, today);
+    days.push({ key, label: dayChipLabel(parts), parts });
   }
   return (
     <ScrollView
@@ -70,9 +71,21 @@ export function DayRail({
               pressed && styles.chipPressed,
             ]}
           >
-            <Text variant="label" style={[styles.chipText, selected && styles.chipTextSelected]}>
-              {d.label}
-            </Text>
+            <View style={styles.chipInner}>
+              <Text
+                variant={
+                  d.parts.word === "Today" || d.parts.word === "Yesterday" ? "overline" : "label"
+                }
+                style={[styles.chipText, selected && styles.chipTextSelected]}
+              >
+                {d.parts.word}
+              </Text>
+              {d.parts.day ? (
+                <Text variant="score" style={[styles.chipDay, selected && styles.chipTextSelected]}>
+                  {d.parts.day}
+                </Text>
+              ) : null}
+            </View>
           </Pressable>
         );
       })}
@@ -93,14 +106,29 @@ export function DayRail({
   );
 }
 
-/** "Today" / "Yesterday" / "Mon 5" for a YYYY-MM-DD key relative to today. */
-function dayChipLabel(key: string, today: string): string {
-  if (key === today) return "Today";
-  if (key === shiftDateKey(today, -1)) return "Yesterday";
+interface DayChipParts {
+  /** "Today" / "Yesterday" / weekday word ("Mon"). Space Grotesk. */
+  word: string;
+  /** Day-of-month numeral for older days — set in the score (pixel) face. */
+  day: string | null;
+}
+
+/** "Today" / "Yesterday" / ("Mon", "5") for a YYYY-MM-DD key relative to today. */
+function dayChipParts(key: string, today: string): DayChipParts {
+  if (key === today) return { word: "Today", day: null };
+  if (key === shiftDateKey(today, -1)) return { word: "Yesterday", day: null };
   const [y, m, d] = key.split("-").map(Number);
-  if (!y || !m || !d) return key;
+  if (!y || !m || !d) return { word: key, day: null };
   const dt = new Date(y, m - 1, d);
-  return dt.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+  return {
+    word: dt.toLocaleDateString(undefined, { weekday: "short" }),
+    day: dt.toLocaleDateString(undefined, { day: "numeric" }),
+  };
+}
+
+/** "Today" / "Yesterday" / "Mon 5" — the chip's spoken label. */
+function dayChipLabel(parts: DayChipParts): string {
+  return parts.day ? `${parts.word} ${parts.day}` : parts.word;
 }
 
 const styles = StyleSheet.create({
@@ -110,16 +138,19 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
+    justifyContent: "center",
   },
   chipSelected: {
     backgroundColor: tokens.accent.muted,
-    borderColor: tokens.accent.default,
+    borderColor: tokens.neon.pink,
   },
   chipPressed: { opacity: 0.75 },
-  chipText: { fontSize: tokens.font.size.sm, color: tokens.text.secondary },
-  chipTextSelected: { color: tokens.accent.default, fontWeight: tokens.font.weight.semibold },
+  chipInner: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  chipText: { color: tokens.text.secondary },
+  chipDay: { ...scoreType(11), color: tokens.text.secondary },
+  chipTextSelected: { color: tokens.neon.pink },
 });

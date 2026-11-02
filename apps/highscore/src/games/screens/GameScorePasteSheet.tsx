@@ -48,9 +48,9 @@ import {
   summaryShareLines,
   synthesizeSummarySpec,
 } from "@workshop/shared/summarySpec";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Avatar, Button, Chip, Sheet, Text, tokens } from "../../theme";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { WrongGameNotice } from "../components/WrongGameNotice";
 import { pasteSheetCaption } from "../lib/scorePreview";
@@ -297,7 +297,7 @@ export function GameScorePasteSheet<T extends PasteTarget>({
             value={draft}
             onChangeText={editDraft}
             placeholder={"Paste your result here"}
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             multiline
             maxLength={2000}
             autoFocus
@@ -417,8 +417,8 @@ export function GameScorePasteSheet<T extends PasteTarget>({
 }
 
 // iOS Safari zooms the page when a focused input's font-size is under 16px,
-// and never zooms back out on blur. Keep the paste box at 16px on web.
-const PASTE_INPUT_FONT_SIZE = Platform.OS === "web" ? tokens.font.size.md : tokens.font.size.sm;
+// and never zooms back out on blur. Inputs are ≥16px everywhere (DESIGN.md).
+const PASTE_INPUT_FONT_SIZE = tokens.font.size.md;
 
 const styles = StyleSheet.create({
   header: {
@@ -429,14 +429,14 @@ const styles = StyleSheet.create({
   headerText: { flex: 1, minWidth: 0, gap: 2 },
   input: {
     minHeight: 120,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
     fontSize: PASTE_INPUT_FONT_SIZE,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.elevated,
     textAlignVertical: "top",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     lineHeight: PASTE_INPUT_FONT_SIZE + 6,
@@ -449,12 +449,12 @@ const styles = StyleSheet.create({
   },
   summary: { gap: tokens.space.sm },
   summaryBox: {
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.surface,
     gap: 2,
   },
   summaryLine: {

@@ -15,21 +15,20 @@ import {
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
+import { confirm, formatRelative, haptics } from "@workshop/ui";
+import { useState } from "react";
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import {
   Avatar,
   Button,
-  ChevronIcon,
-  confirm,
+  bodyType,
   EmptyState,
-  formatRelative,
-  haptics,
+  PixelIcon,
   Screen,
   Text,
   tokens,
   useToast,
-} from "@workshop/ui";
-import { useState } from "react";
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+} from "../../theme";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
@@ -257,7 +256,7 @@ export default function FriendsScreen() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <ChevronIcon direction="left" size={20} color={tokens.text.primary} />
+          <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
         </Pressable>
         <Text variant="title">Friends</Text>
         <View style={styles.navButton} />
@@ -371,7 +370,9 @@ export default function FriendsScreen() {
                           (pressed || hovered) && styles.acceptBtnHover,
                         ]}
                       >
-                        <Text style={styles.acceptLabel}>Accept</Text>
+                        <Text variant="label" style={styles.acceptLabel}>
+                          Accept
+                        </Text>
                       </Pressable>
                       <Pressable
                         accessibilityRole="button"
@@ -384,7 +385,9 @@ export default function FriendsScreen() {
                           pressed && styles.removeBtnPressed,
                         ]}
                       >
-                        <Text style={styles.removeLabel}>Decline</Text>
+                        <Text variant="label" style={styles.removeLabel}>
+                          Decline
+                        </Text>
                       </Pressable>
                     </>
                   )}
@@ -453,7 +456,9 @@ export default function FriendsScreen() {
                   hitSlop={8}
                   style={({ pressed }) => [styles.removeBtn, pressed && styles.removeBtnPressed]}
                 >
-                  <Text style={styles.removeLabel}>Remove</Text>
+                  <Text variant="label" style={styles.removeLabel}>
+                    Remove
+                  </Text>
                 </Pressable>
               </Pressable>
             ))}
@@ -495,7 +500,9 @@ export default function FriendsScreen() {
                   </View>
                   {requested ? (
                     <View style={styles.requestedPill} testID={`friend-requested-${mutual.userId}`}>
-                      <Text style={styles.requestedText}>Requested</Text>
+                      <Text variant="label" style={styles.requestedText}>
+                        Requested
+                      </Text>
                     </View>
                   ) : (
                     <Pressable
@@ -514,7 +521,7 @@ export default function FriendsScreen() {
                       {requesting ? (
                         <ActivityIndicator size="small" color={tokens.accent.default} />
                       ) : (
-                        <Text style={styles.addGlyph}>+</Text>
+                        <PixelIcon name="plus" size={16} color={tokens.neon.pink} />
                       )}
                     </Pressable>
                   )}
@@ -553,9 +560,9 @@ const styles = StyleSheet.create({
   inviteCard: {
     gap: tokens.space.md,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   inviteTitle: { letterSpacing: -0.2 },
@@ -569,10 +576,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.canvas,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+    backgroundColor: tokens.bg.elevated,
   },
   resetRow: {
     flexDirection: "row",
@@ -582,8 +589,8 @@ const styles = StyleSheet.create({
   },
   resetPressed: { opacity: 0.6 },
   resetLabel: {
+    ...bodyType("semibold"),
     color: tokens.status.danger,
-    fontWeight: tokens.font.weight.semibold,
   },
   center: {
     alignItems: "center",
@@ -598,14 +605,19 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   friendRowHover: { backgroundColor: tokens.bg.elevated },
   friendText: { flex: 1, minWidth: 0, gap: 2 },
-  friendName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  friendName: {
+    ...bodyType("medium"),
+    fontSize: tokens.font.size.md,
+    lineHeight: 22,
+    color: tokens.text.primary,
+  },
   removeBtn: {
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 6,
@@ -613,50 +625,41 @@ const styles = StyleSheet.create({
   },
   removeBtnPressed: { backgroundColor: `${tokens.status.danger}1A` },
   removeLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    ...bodyType("semibold"),
     color: tokens.status.danger,
   },
   acceptBtn: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   acceptBtnHover: { backgroundColor: `${tokens.accent.default}33` },
   acceptLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
+    ...bodyType("semibold"),
+    color: tokens.neon.pinkTint,
   },
   addBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
   addBtnBusy: { opacity: 0.8 },
-  addGlyph: {
-    fontSize: 20,
-    lineHeight: 24,
-    color: tokens.accent.default,
-    fontWeight: tokens.font.weight.semibold,
-  },
   requestedPill: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   requestedText: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    ...bodyType("semibold"),
     color: tokens.text.muted,
   },
 });

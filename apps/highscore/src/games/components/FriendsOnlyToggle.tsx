@@ -2,8 +2,9 @@
 // your friends play, with who plays each. Off: the official catalog,
 // platform-wide counts. One row, whole row tappable, `checkbox` role.
 
-import { haptics, homeLayout, Text, tokens } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
+import { homeLayout, PixelIcon, Text, tokens } from "../../theme";
 
 interface FriendsOnlyToggleProps {
   value: boolean;
@@ -35,7 +36,7 @@ export function FriendsOnlyToggle({
       ]}
     >
       <View style={[styles.box, value && styles.boxChecked]}>
-        {value ? <Text style={styles.check}>✓</Text> : null}
+        {value ? <PixelIcon name="check" size={16} color={tokens.text.onAccent} /> : null}
       </View>
       <View style={styles.text}>
         <Text variant="label" style={styles.label}>
@@ -60,26 +61,20 @@ const styles = StyleSheet.create({
     marginBottom: tokens.space.xs,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
-  rowHover: { backgroundColor: `${tokens.text.primary}0A` },
+  rowHover: { backgroundColor: tokens.bg.surface },
   box: {
     width: BOX,
     height: BOX,
-    borderRadius: tokens.radius.sm,
-    borderWidth: 1.5,
-    borderColor: tokens.border.strong,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
   },
-  boxChecked: { backgroundColor: tokens.accent.default, borderColor: tokens.accent.default },
-  check: {
-    color: tokens.text.onAccent,
-    fontSize: 14,
-    fontWeight: tokens.font.weight.bold,
-    lineHeight: 16,
-  },
+  boxChecked: { backgroundColor: tokens.neon.pink, borderColor: tokens.neon.pink },
   text: { flex: 1, minWidth: 0, gap: 1 },
   label: { fontSize: tokens.font.size.md, color: tokens.text.primary },
 });

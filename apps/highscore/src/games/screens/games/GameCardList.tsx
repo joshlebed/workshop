@@ -15,14 +15,7 @@
 // `scrollable={false}` disabled windowing, mounting every card up front.
 
 import type { MyGame } from "@workshop/shared/games";
-import {
-  haptics,
-  homeLayout,
-  PullToRefresh,
-  REORDER_ACTIVATION,
-  REORDER_AUTOSCROLL,
-  tokens,
-} from "@workshop/ui";
+import { haptics, REORDER_ACTIVATION, REORDER_AUTOSCROLL } from "@workshop/ui";
 import { memo } from "react";
 import type { ListRenderItemInfo } from "react-native";
 import { Pressable, StyleSheet } from "react-native";
@@ -31,6 +24,7 @@ import ReorderableList, {
   useIsActive,
   useReorderableDrag,
 } from "react-native-reorderable-list";
+import { homeLayout, PullToRefresh, tokens } from "../../../theme";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({
