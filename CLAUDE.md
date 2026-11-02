@@ -293,7 +293,7 @@ deliberate critical-fix backports may change it before then. See
   `@workshop/api-client` includes `X-Workshop-Client: workshop|highscore`, configured once in
   each app's root layout; old clients omit it. Friend invites map the validated value to the
   matching web origin (absent defaults to Workshop), while games-only `/g/:token` links always
-  use HighScore. Local links follow the web dev ports: Workshop `:8081`, HighScore `:8082`.
+  use HighScore. Local links follow the web dev ports: Workshop `:8082`, HighScore `:8081`.
 
 - **Auto-merge is on. `main` runs five gating-tier checks.** Four should be required:
   `Quality`, `Mobile Metro bundle`, `Mobile Metro bundle (highscore)`, and `Migrate smoke`.
@@ -381,7 +381,7 @@ deliberate critical-fix backports may change it before then. See
   `impl.web.ts` beside it. Copy that shape for any new platform-variant package export; verify
   with `grep -oE "packages/.*impl[a-z.]*\.ts" <bundle>` on both a `platform=web` and a
   `platform=ios` Metro bundle.
-- **`scripts/e2e.sh` collides with running dev servers** on `:8787` and `:8081`. Kill anything
+- **`scripts/e2e.sh` collides with running dev servers** on `:8787` and `:8082`. Kill anything
   bound to those ports first; `--kill-others-on-fail` only cleans the e2e script's own children.
 - **`useColorScheme()` returns `null` on web during the first render** (before
   `prefers-color-scheme` hydrates). A naive `scheme === "dark" ? darkTokens : lightTokens`
@@ -770,18 +770,18 @@ pnpm dev   # first run creates apps/backend/.env, migrates the local DB
 ### Running it
 
 ```bash
-pnpm dev              # postgres (docker) + backend (:8787) + workshop web (:8081)
-HIGHSCORE=1 pnpm dev  # …plus the HighScore web app on :8082
+pnpm dev              # postgres (docker) + backend (:8787) + workshop web (:8082)
+HIGHSCORE=1 pnpm dev  # …plus the HighScore web app on :8081
 pnpm dev:backend      # backend only
 pnpm dev:mobile       # Workshop iOS/Expo Go — separate terminal (QR/keybinds)
-pnpm dev:highscore    # HighScore web only (:8082), against a running backend
+pnpm dev:highscore    # HighScore web only (:8081), against a running backend
 ```
 
 `pnpm dev` runs `scripts/dev.sh`: starts `workshop-pg` postgres, seeds `apps/backend/.env`
 on first run (generates `SESSION_SECRET`), applies migrations, runs dev seed, then
 `concurrently` runs backend + `expo start --web` with `[backend]`/`[web]` prefixes. Ctrl-C
 stops both. `app.json` points `apiUrl` at `http://localhost:8787`; the backend CORS allowlist
-includes `http://localhost:8081` (Workshop) and `http://localhost:8082` (HighScore).
+includes `http://localhost:8082` (Workshop) and `http://localhost:8081` (HighScore).
 `HIGHSCORE=1` is opt-in so the common Workshop loop doesn't pay for a third Metro server.
 
 ### Database in the Niteshift sandbox
@@ -856,8 +856,8 @@ re-applies the manifest after you edit it; `ns services validate` checks it.
 
 | Service     | Port | Autostart | Notes                                                                         |
 | ----------- | ---- | --------- | ----------------------------------------------------------------------------- |
-| `highscore` | 8082 | yes       | HighScore Expo web. Primary preview (listed first). `EXPO_PUBLIC_DEV_AUTH=1`. |
-| `workshop`  | 8081 | yes       | Workshop.dev Expo web against the same backend.                               |
+| `highscore` | 8081 | yes       | HighScore Expo web. Primary preview (listed first). `EXPO_PUBLIC_DEV_AUTH=1`. |
+| `workshop`  | 8082 | yes       | Workshop.dev Expo web against the same backend.                               |
 | `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).                     |
 | `postgres`  | —    | no        | Docker PG17, host networking, prod copy. Started by setup/resume.             |
 

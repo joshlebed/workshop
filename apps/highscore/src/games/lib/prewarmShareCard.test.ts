@@ -6,8 +6,8 @@ describe("shareCardUrl", () => {
     expect(shareCardUrl("https://highscore.live/g/fzruFcqR")).toBe(
       "https://highscore.live/og/g/fzruFcqR.png",
     );
-    expect(shareCardUrl("http://localhost:8082/g/abc123")).toBe(
-      "http://localhost:8082/og/g/abc123.png",
+    expect(shareCardUrl("http://localhost:8081/g/abc123")).toBe(
+      "http://localhost:8081/og/g/abc123.png",
     );
   });
 

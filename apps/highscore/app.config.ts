@@ -6,8 +6,8 @@
 // page. The middleware (`@expo/cli/.../middleware/CorsMiddleware.js`) reads
 // `exp.extra.router.origin` and whitelists that host in addition to
 // `localhost`. The Niteshift preview proxy forwards upstream with
-// `Host: localhost:8081` but preserves the iframe `Origin:
-// https://ns-8081-<task>.preview.niteshift.dev`, so without this whitelist
+// `Host: localhost:8082` but preserves the iframe `Origin:
+// https://ns-8082-<task>.preview.niteshift.dev`, so without this whitelist
 // the same-origin check fails and the dev sign-in (and any other write)
 // POST gets bounced before our `dev-api-proxy.js` ever sees the request.
 //

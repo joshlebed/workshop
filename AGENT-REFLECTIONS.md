@@ -121,7 +121,7 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
 ### Tooling / scripts
 
 - **`scripts/dev-smoke.sh`** doesn't exist. A single script that hits home, list-detail,
-  settings, activity, and sign-in on `localhost:8081`, reports non-200s + console
+  settings, activity, and sign-in on `localhost:8082`, reports non-200s + console
   errors, and exits non-zero on failure. Would shave ~90s per smoke iteration during UI
   work (vs. one-off agent-browser calls that each rebuild). ~30m + a tiny shell script.
 
@@ -284,7 +284,7 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
 ### Tooling / scripts
 
 - **`scripts/dev-smoke.sh`** doesn't exist. A single script that hits home, list-detail,
-  settings, activity, and sign-in on `localhost:8081`, reports non-200s + console
+  settings, activity, and sign-in on `localhost:8082`, reports non-200s + console
   errors, and exits non-zero on failure. Would shave ~90s per smoke iteration during UI
   work (vs. one-off agent-browser calls that each rebuild). ~30m + a tiny shell script.
 

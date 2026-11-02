@@ -106,13 +106,13 @@ describe("POST /v1/friends/invite", () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { token: string; url: string };
     expect(body.token).toMatch(/^[A-Za-z0-9]{8}$/);
-    expect(body.url).toBe(`http://localhost:8081/friends/accept/${body.token}`);
+    expect(body.url).toBe(`http://localhost:8082/friends/accept/${body.token}`);
     inviteToken = body.token;
   });
 
   it.each([
-    ["workshop", "http://localhost:8081", "https://workshop-a2v.pages.dev"],
-    ["highscore", "http://localhost:8082", "https://highscore.live"],
+    ["workshop", "http://localhost:8082", "https://workshop-a2v.pages.dev"],
+    ["highscore", "http://localhost:8081", "https://highscore.live"],
   ] as const)("mints %s-branded invite URLs", async (client, localBase, productionBase) => {
     const res = await friendRoutes.request("/invite", {
       method: "POST",

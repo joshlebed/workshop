@@ -1,12 +1,12 @@
 # Supervised long-running processes. `highscore` is first so the preview panel
 # defaults to the HighScore web app. Setup lives in .niteshift/setup.
 services:
-  # HighScore web (:8082). Primary preview surface — first so the panel
+  # HighScore web (:8081). Primary preview surface — first so the panel
   # defaults to it. With EXPO_PUBLIC_DEV_AUTH=1 the bundle auto-signs-in as the
   # seeded joshlebed@gmail.com user on boot, so no preview `auth` block is needed.
   - name: highscore
     command: .niteshift/files/expo-web.sh highscore-app
-    port: 8082
+    port: 8081
     environment:
       - name: EXPO_PUBLIC_DEV_AUTH
         value: "1"
@@ -17,10 +17,10 @@ services:
       - name: EXPO_NO_TELEMETRY
         value: "1"
 
-  # Workshop.dev web (:8081) against the same backend.
+  # Workshop.dev web (:8082) against the same backend.
   - name: workshop
     command: .niteshift/files/expo-web.sh workshop-app
-    port: 8081
+    port: 8082
     environment:
       - name: EXPO_PUBLIC_DEV_AUTH
         value: "1"

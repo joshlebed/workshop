@@ -4,13 +4,13 @@ import { defineConfig, devices } from "@playwright/test";
 //
 // Expected pre-conditions when this runs:
 //   • Backend on http://localhost:8787 with `DEV_AUTH_ENABLED=1`
-//   • Web bundle on http://localhost:8081 with `EXPO_PUBLIC_DEV_AUTH=1`
+//   • Web bundle on http://localhost:8082 with `EXPO_PUBLIC_DEV_AUTH=1`
 //
 // The `pnpm run e2e` script in package.json starts both with the right
 // env vars before invoking Playwright. CI integration lands in Phase 5
 // (see docs/redesign-plan.md §3 Phase 5).
 
-const WEB_PORT = Number(process.env.WORKSHOP_E2E_WEB_PORT ?? 8081);
+const WEB_PORT = Number(process.env.WORKSHOP_E2E_WEB_PORT ?? 8082);
 
 export default defineConfig({
   testDir: "./tests/e2e",

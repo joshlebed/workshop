@@ -78,7 +78,7 @@ describe("POST /v1/game-share (mint)", () => {
   it("mints a play link as a short /g/:token URL", async () => {
     const link = await mint(sharerId);
     expect(link.token).toMatch(/^[A-Za-z0-9]{8}$/);
-    expect(link.url).toBe(`http://localhost:8082/g/${link.token}`);
+    expect(link.url).toBe(`http://localhost:8081/g/${link.token}`);
     expect(__internal.gameShareUrl(link.token, false)).toBe(
       `https://highscore.live/g/${link.token}`,
     );
