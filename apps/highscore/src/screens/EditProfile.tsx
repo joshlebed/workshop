@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
   },
-  avatarPreview: { width: 72, height: 72, borderRadius: 0 },
+  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
   avatarButtons: { flex: 1, gap: tokens.space.sm },
   field: { gap: tokens.space.sm },
   input: {
