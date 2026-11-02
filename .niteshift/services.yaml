@@ -34,16 +34,16 @@ services:
       - name: EXPO_NO_TELEMETRY
         value: "1"
 
-  # Local Postgres 16, only when no remote DATABASE_URL is injected (the
-  # Niteshift Database integration normally provides a per-task Neon branch).
+  # Local Postgres 17 (matches prod's major so pg_dump/pg_restore from the
+  # same image work). Seeded with a copy of prod by .niteshift/setup.
   # Started by .niteshift/setup / .niteshift/resume, not by `ns services up`.
   # Host networking: Niteshift DinD bridge networking is broken.
   - name: postgres
     command: |
       docker rm -f workshop-pg >/dev/null 2>&1 || true
       exec docker run --rm --name workshop-pg --network=host \
-        -v workshop-pg-data:/var/lib/postgresql/data \
+        -v workshop-pg17-data:/var/lib/postgresql/data \
         -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=workshop \
-        postgres:16
+        postgres:17
     autostart: false
     stopGracePeriod: 30s
