@@ -22,12 +22,10 @@ services:
     command: .niteshift/files/backend.sh
     port: 8787
 
-  # Workshop.dev web (:8081) against the same backend. On demand:
-  #   ns services start web
+  # Workshop.dev web (:8081) against the same backend.
   - name: web
     command: .niteshift/files/expo-web.sh workshop-app
     port: 8081
-    autostart: false
     environment:
       - name: EXPO_PUBLIC_DEV_AUTH
         value: "1"
