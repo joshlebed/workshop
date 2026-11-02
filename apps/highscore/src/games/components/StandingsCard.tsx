@@ -177,7 +177,7 @@ export const StandingsCard = memo(function StandingsCard({
         {/* Visible reorder affordance only: it says "you can drag this" and
             does nothing itself — the whole card is already the drag handle. */}
         <View style={styles.grip} pointerEvents="none" testID={`game-card-grip-${cardId}`}>
-          <PixelIcon name="grip" size={16} color={tokens.border.default} />
+          <PixelIcon name="grip" size={16} color={tokens.text.secondary} />
         </View>
         <View style={styles.cover} testID={`game-card-cover-${cardId}`}>
           {coverImageUrl ? (
@@ -447,6 +447,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginLeft: -tokens.space.sm,
     marginRight: -tokens.space.xs,
+    // Halfway between a rest-state icon and a bezel: visible at a glance,
+    // quieter than the ⋯ control beside it.
+    opacity: 0.5,
   },
   // A ledger section, not a box: hairline rule below, breathing room inside.
   // The slight horizontal bleed gives hover/drag backgrounds room without
