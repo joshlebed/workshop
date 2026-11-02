@@ -68,7 +68,9 @@ stepped motion (no spring, no overshoot).
 
 **Decision: ship entries 1 and 8 now, on today's structure.** Owner, 2026-11-02. The
 implementation brief to hand to an agent is
-[`docs/plans/highscore-theme-ship.md`](../../docs/plans/highscore-theme-ship.md). What goes in:
+[`docs/plans/highscore-theme-ship.md`](../../docs/plans/highscore-theme-ship.md); running as
+[task_int_7kj8suadwgb459gu](https://niteshift.dev/repo/joshlebed/workshop/task_int_7kj8suadwgb459gu)
+(Fable 5.1, medium). What goes in:
 
 - `DESIGN.md` from `joshlebed/highscore-design-brief`, amended: body face is Space Grotesk
   (not the system face); pixel face is wordmark + game names + score numerals only.
