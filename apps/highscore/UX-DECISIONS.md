@@ -66,7 +66,9 @@ stepped motion (no spring, no overshoot).
 
 ## 10. Ship the visual language — scope
 
-**Decision: ship entries 1 and 8 now, on today's structure.** Owner, 2026-11-02. What goes in:
+**Decision: ship entries 1 and 8 now, on today's structure.** Owner, 2026-11-02. The
+implementation brief to hand to an agent is
+[`docs/plans/highscore-theme-ship.md`](../../docs/plans/highscore-theme-ship.md). What goes in:
 
 - `DESIGN.md` from `joshlebed/highscore-design-brief`, amended: body face is Space Grotesk
   (not the system face); pixel face is wordmark + game names + score numerals only.
