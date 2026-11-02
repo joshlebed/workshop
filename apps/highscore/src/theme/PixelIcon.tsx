@@ -6,6 +6,9 @@ import { tokens } from "./tokens";
 // so the `d` strings live here; add new names with
 // `pnpm --filter highscore-app run icons:paths <name>` (scripts/pixel-icon-paths.mjs).
 const PATHS = {
+  // Hand-drawn on the 24px grid (2px pixels): a 2×3 dot grip. Not in
+  // pixelarticons; stays passive chrome (see DESIGN.md → Iconography).
+  grip: ["M8 5h2v2H8zM14 5h2v2h-2zM8 11h2v2H8zM14 11h2v2h-2zM8 17h2v2H8zM14 17h2v2h-2z"],
   "arrow-left": [
     "M20 11v2H4v-2zM8 13v2H6v-2zm2 2v2H8v-2zm2 2v2h-2v-2zm-4-6V9H6v2z",
     "M10 15V7H8v8zm2 2V5h-2v12z",
