@@ -99,7 +99,10 @@ Rules:
   icons. Render via `react-native-svg` (add as a dependency; verify against
   `scripts/check-expo-sdk-deps.mjs` before bumping anything native — it may require an
   `app.json` version bump per the runtime-version policy).
-- Icons are single-color: `text.secondary` at rest, `primary` when active/selected. Keep
+- Icons are single-color: `text.secondary` at rest, `primary` when active/selected. A
+  passive affordance that only _signals_ (the reorder grip on a game card, which you
+  can't tap) sits one tier lower: `text.secondary` at 50% opacity, so it's seen at a
+  glance but never reads as a control. Keep
   them on the 24px grid (16/24/32) — fractional scaling blurs the pixels and breaks the
   aesthetic.
 - Emoji already in the product (reactions, game emoji) stay as-is.
