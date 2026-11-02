@@ -246,11 +246,11 @@ export const StandingsCard = memo(function StandingsCard({
             hitSlop={8}
             testID={`game-card-play-${cardId}`}
             style={({ pressed, hovered }) => [
-              styles.playPill,
-              (pressed || hovered) && styles.playPillHover,
+              styles.playBtn,
+              (pressed || hovered) && styles.playBtnHover,
             ]}
           >
-            <Text style={styles.playLabel}>Play</Text>
+            <PixelIcon name="play" size={32} color={tokens.neon.pink} />
           </Pressable>
         ) : null}
 
@@ -577,20 +577,14 @@ const styles = StyleSheet.create({
   },
   turnout: { ...uiType(8), flexShrink: 1 },
   // Play is a tap target → pink: neon bezel + neon label on transparent.
-  playPill: {
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 6,
-    borderRadius: 0,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.neon.pink,
+  // Bare pink hollow triangle — no box, no label.
+  playBtn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  playPillHover: { backgroundColor: tokens.accent.muted },
-  playLabel: {
-    ...bodyType("semibold"),
-    color: tokens.neon.pink,
-    fontSize: tokens.font.size.sm,
-    lineHeight: 18,
-  },
+  playBtnHover: { opacity: 0.7 },
   menuBtn: {
     width: 28,
     height: 28,
