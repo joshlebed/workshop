@@ -69,7 +69,6 @@ import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet"
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
-import { useOpenProfile } from "../hooks/useOpenProfile";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { useScoreReactions } from "../hooks/useScoreReactions";
@@ -116,7 +115,6 @@ export interface GamesHomeProps {
 export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHomeProps) {
   const { token, user, routes } = useGamesRuntime();
   const router = useRouter();
-  const openProfile = useOpenProfile();
   const queryClient = useQueryClient();
   const { showToast, registerBottomInset } = useToast();
   const notifyPosted = usePostedScoreNotice();
@@ -562,7 +560,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           // Hand the rail's day to the board so "Yesterday" stays selected
           // when drilling in from a past-day view.
           onPressBody={() => router.push(routes.game(mg.gameId, viewDate) as Href)}
-          onPressPlayer={openProfile}
           {...(onLongPressBody ? { onLongPressBody } : {})}
           onMenu={() => setMenuGame(mg)}
           onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
@@ -591,7 +588,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       reactionCtl.react,
       reactionCtl.openPicker,
       routes.game,
-      openProfile,
     ],
   );
 
