@@ -309,7 +309,20 @@ deliberate critical-fix backports may change it before then. See
   add the HighScore check after its introducing PR merges. `terraform plan` is advisory (no
   docs shim, so requiring it would block non-infra PRs). Agents get a 403 reading branch
   protection via the API — ask the operator to update this bullet if the required list changes.
-  - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs.
+  - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs. Since
+    PR #519 it is a zero-work **gate** over `Checks (…)` (lint, typecheck, knip, format,
+    terraform, actionlint) and `Test (shard 1/2)` / `Test (shard 2/2)`; it passes when those
+    succeeded or were skipped (docs-only) and fails otherwise. Keep the name — it is what
+    branch protection requires — and never make it do real work again: it exists so the
+    checks and the test shards run on separate runners at the same time (PR wall-clock
+    ~max of them instead of the ~170s sum the single job had grown to). The shards are
+    `vitest run --shard=N/2` over the root `vitest.workspace.ts` — one vitest process for all
+    six packages. `pnpm -r --parallel test` was six vitest instances each sizing its own
+    pool to the machine, ~24 forks on 4 vCPUs; the workspace alone halved the suite on a
+    4-core box. Backend tests resolve `./drizzle` from the cwd, so the backend
+    `test-setup.ts` does `process.chdir` (forks pool only — the threads pool is slower here
+    anyway, measured 76s vs 60s). A new package's `vitest.config.ts` under `apps/` must be
+    added to `vitest.workspace.ts` (`packages/*` is globbed).
   - `Mobile Metro bundle` — runs on `apps/workshop/**`, `packages/shared/**`, or
     `pnpm-lock.yaml` changes; skipped (treated passing) otherwise. Catches RN/Expo SDK drift.
   - `Mobile Metro bundle (highscore)` — runs on `apps/highscore/**`, `packages/**`, or
@@ -1133,7 +1146,7 @@ ship prod, dropping the wrangler step changed nothing about deploys.
 ```bash
 pnpm run typecheck     # ~12s
 pnpm run lint          # ~1s
-pnpm run test          # ~2s
+pnpm run test          # ~15s on 16 cores, ~70s on 4 (vitest workspace; see CI bullet)
 pnpm run knip          # ~2s — blocks CI: an export with no consumer in the same PR fails Quality
 cd infra && terraform fmt -check -recursive && terraform validate
 ```

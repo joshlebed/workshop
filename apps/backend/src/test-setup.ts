@@ -11,3 +11,9 @@ vi.mock("./lib/sessionRevocation.js", () => ({
   isSessionRevoked: vi.fn(async () => false),
   revokeAllSessions: vi.fn(async () => undefined),
 }));
+
+// Backend tests resolve `./drizzle` (migrationsFolder) and `drizzle/meta`
+// relative to the cwd. Under the root vitest workspace the process starts at
+// the repo root, so pin it here. Safe: the pool is `forks`, and every backend
+// file runs this setup, so the chdir is per-process and idempotent.
+process.chdir(new URL("..", import.meta.url).pathname);

@@ -168,7 +168,7 @@ packages:
     "typecheck": "pnpm -r --parallel typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
-    "test": "pnpm -r --parallel test"
+    "test": "vitest run"
   },
   "packageManager": "pnpm@10.34.9",
   "engines": { "node": ">=20.19 <21" },

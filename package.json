@@ -14,7 +14,7 @@
     "format": "biome format --write .",
     "format:md": "prettier --write \"**/*.md\"",
     "format:md:check": "prettier --check \"**/*.md\"",
-    "test": "pnpm -r --parallel test",
+    "test": "vitest run",
     "knip": "knip",
     "dev:backend": "pnpm --filter @workshop/backend dev",
     "dev:mobile": "pnpm --filter workshop-app start",
@@ -43,7 +43,8 @@
     "lefthook": "2.2.2",
     "prettier": "^3.9.10",
     "semver": "^7.7.4",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "2.1.9"
   },
   "dependencies": {
     "workers-og": "^0.0.27"
