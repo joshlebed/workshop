@@ -1,7 +1,15 @@
+import { PressStart2P_400Regular } from "@expo-google-fonts/press-start-2p";
+import {
+  SpaceGrotesk_400Regular,
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_600SemiBold,
+  SpaceGrotesk_700Bold,
+} from "@expo-google-fonts/space-grotesk";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
 import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
+import { useFonts } from "expo-font";
 import { type Href, Stack, useRouter, useSegments } from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
@@ -21,6 +29,7 @@ import { ViewDayProvider } from "../src/games/state/viewDay";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
+import { tokens as themeTokens } from "../src/theme";
 
 configureApiClient({ client: "highscore" });
 
@@ -246,6 +255,8 @@ function AuthGate() {
   );
 }
 
+const fontLoadingCanvas = { flex: 1, backgroundColor: themeTokens.bg.canvas } as const;
+
 const centered = {
   flex: 1,
   alignItems: "center",
@@ -258,6 +269,18 @@ export default function RootLayout() {
   const queryClient = useMemo(() => createQueryClient(), []);
   const colorScheme = useColorScheme();
   const isLight = colorScheme === "light";
+  // HighScore is dark-only (DESIGN.md). Each Space Grotesk weight is its own
+  // family so no faux bold is ever synthesised. Blocking on the fonts is a
+  // brief dark canvas, not a blank app; render proceeds on a load error too
+  // (the system face stands in).
+  const [fontsLoaded, fontError] = useFonts({
+    PressStart2P_400Regular,
+    SpaceGrotesk_400Regular,
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_600SemiBold,
+    SpaceGrotesk_700Bold,
+  });
+  if (!fontsLoaded && !fontError) return <View style={fontLoadingCanvas} />;
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
