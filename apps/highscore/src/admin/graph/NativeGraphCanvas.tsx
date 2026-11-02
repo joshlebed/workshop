@@ -214,8 +214,8 @@ export function NativeGraphCanvas({
                     style={{
                       width: size,
                       height: size,
-                      // Square nodes: HighScore avatars are squares, not circles.
-                      borderRadius: 0,
+                      // Round nodes: HighScore avatars are circles.
+                      borderRadius: size / 2,
                       backgroundColor: n.color,
                       borderWidth: selected ? 3 : 1.5,
                       borderColor: selected ? palette.accent : palette.canvas,
@@ -227,7 +227,7 @@ export function NativeGraphCanvas({
                     {img ? (
                       <Image
                         source={{ uri: img }}
-                        style={{ width: size - 4, height: size - 4, borderRadius: 0 }}
+                        style={{ width: size - 4, height: size - 4, borderRadius: (size - 4) / 2 }}
                       />
                     ) : null}
                   </View>

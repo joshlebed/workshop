@@ -57,7 +57,7 @@ function colorFor(name: string | null): string {
   return PALETTE[seed % PALETTE.length] ?? tokens.text.primary;
 }
 
-/** Pixel-era avatar: a sharp square with a 2px bezel — no circles here. */
+/** Pixel-era avatar: a bare circle — no bezel. */
 export function Avatar({ name, imageUrl, size = "md", style, testID }: AvatarProps) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const dim = SIZE[size];
@@ -89,9 +89,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.bg.raised,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: 999,
   },
   image: { backgroundColor: tokens.bg.surface },
   label: { ...bodyType("bold") },
