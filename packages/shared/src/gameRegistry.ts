@@ -80,8 +80,14 @@ export interface GameDefinition {
   category: GameCategory;
   /** How to parse a numeric score out of a share; null = no reliable parse. */
   spec: ScoreSpec | null;
-  /** Any one matching an item/game's title/url/siteName/sourceId identifies it. */
+  /**
+   * Name patterns: any one matching an item/game's title/siteName/sourceId
+   * identifies it. These are loose bare words ("wordle"), so they must never
+   * be the only thing run against a URL — Le Mot lives at wordle.louan.me.
+   */
   identifyPatterns: RegExp[];
+  /** Host/path patterns: any one matching a URL identifies the game. */
+  identifyUrlPatterns: RegExp[];
   /** Any one matching a pasted share text identifies the game. */
   shareTextPatterns: RegExp[];
   /**
@@ -198,7 +204,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // The header line's `·` ("Anthropeum.com · Jun 14 2026") has no digits in
     // front of it, so the first `[\d,]+ ·` the capture lands on is the score.
     spec: { rules: [{ kind: "capture", pattern: "([\\d,]+(?:\\.\\d+)?)\\s*·" }] },
-    identifyPatterns: [/\banthropeum\b/i, /anthropeum\.com/i],
+    identifyPatterns: [/\banthropeum\b/i],
+    identifyUrlPatterns: [/anthropeum\.com/i],
     shareTextPatterns: [/\banthropeum\.com\b/i, /\banthropeum\b/i],
     // Shape: `Anthropeum.com · Jun 14 2026\n🟨🟨🟨🟨🟩🟦🟩🟥🟦🟩\n62,090 · top 38% of players today!`
     // Drop the url/date header line (the filter also catches a trailing
@@ -221,7 +228,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     category: "geography",
     // "Final score: 970" → 970
     spec: { rules: [{ kind: "capture", pattern: "Final score:\\s*(\\d+)" }] },
-    identifyPatterns: [/\bmap\s*tap\b/i, /maptap\.gg/i],
+    identifyPatterns: [/\bmap\s*tap\b/i],
+    identifyUrlPatterns: [/maptap\.gg/i],
     shareTextPatterns: [/\bmaptap\.gg\b/i, /\bmap\s*tap\b/i],
     // Shape: `www.maptap.gg May 27\n100🎯 95🏆 94🏅 52😔 77😂\nFinal score: 770`
     // Drop the URL/date header line; keep the per-round scoreline and the
@@ -245,7 +253,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // the `?ref=` URL, the grid dropped at the share-sheet boundary) at null
     // instead of a fake 0, while an all-❌ day still scores a legitimate 0.
     spec: { rules: [{ kind: "count", token: "🏆", within: "[🏆❌]" }] },
-    identifyPatterns: [/\bdaily\s*tens\b/i, /dailytens\.com/i],
+    identifyPatterns: [/\bdaily\s*tens\b/i],
+    identifyUrlPatterns: [/dailytens\.com/i],
     shareTextPatterns: [/\bdaily\s*tens\b\s*#?\d+/i, /\bdailytens\.com\b/i],
     // Shape: `DailyTens #751\n\n     🏆    ❌\n     🏆    🏆\n...` — a 5-row ×
     // 2-col 🏆/❌ grid. Drop the `DailyTens #N` header (the `• Daily Tens`
@@ -279,7 +288,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     category: "geography",
     // "Satle #449 5/6" → 5
     spec: { rules: [{ kind: "capture", pattern: "Satle\\s*#\\d+\\s+(\\d+)/6" }] },
-    identifyPatterns: [/\bsatle\b/i, /satle\.ca/i],
+    identifyPatterns: [/\bsatle\b/i],
+    identifyUrlPatterns: [/satle\.ca/i],
     shareTextPatterns: [/\bsatle\s*#\s*\d+/i, /\bsatle\.ca\b/i],
     // Shape: `🛰Satle #468 6/6\n🟥🟥🟥🟥🟥🟩\nhttps://satle.ca`
     // Pull the `N/6` fraction off the header and append it to the grid.
@@ -302,7 +312,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     category: "geography",
     // "#travle #1250 +0" → 0 (extra-guess count; lower is better)
     spec: { rules: [{ kind: "capture", pattern: "#travle\\s+#?\\d+\\s+\\+(\\d+)" }] },
-    identifyPatterns: [/\btravle\b/i, /travle\.earth/i],
+    identifyPatterns: [/\btravle\b/i],
+    identifyUrlPatterns: [/travle\.earth/i],
     shareTextPatterns: [/#travle\s+#?\d+/i, /\btravle\.earth\b/i],
     // Shape: `#travle #1260 +2\n🟧✅🟩🟧🟩✅✅\nhttps://travle.earth`
     // (perfect: `#travle #1251 +0 (Perfect)`)
@@ -327,7 +338,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // anchor — the share text has a trailing URL + hashtag. There's only one
     // `=` in the canonical Globle share, so this is safe.
     spec: { rules: [{ kind: "capture", pattern: "=\\s*(\\d+)" }] },
-    identifyPatterns: [/\bgloble\b/i, /globle-game\.com/i],
+    identifyPatterns: [/\bgloble\b/i],
+    identifyUrlPatterns: [/globle-game\.com/i],
     shareTextPatterns: [/#globle\b/i, /\bgloble-game\.com\b/i],
     // Shape: `🌎 May 27, 2026 🌍\n🔥 1 | Avg. Guesses: 8.4\n⬜🟨⬜🟧🟩 = 5\n\nhttps://globle-game.com\n#globle`
     // Long runs wrap across multiple grid lines; the final line ends `= N`,
@@ -357,7 +369,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     category: "geography",
     // "#Worldle #842 3/6 (100%)" → 3
     spec: { rules: [{ kind: "capture", pattern: "Worldle\\s*#?\\d+\\s+(\\d+)/6" }] },
-    identifyPatterns: [/\bworldle\b/i, /worldle\.teuteuf\.fr/i],
+    identifyPatterns: [/\bworldle\b/i],
+    identifyUrlPatterns: [/worldle\.teuteuf\.fr/i],
     shareTextPatterns: [/#?\bWorldle\b\s*#?\d+/i, /\bworldle\.teuteuf\.fr\b/i],
     // Shape: `#Worldle #1287 (27.08.2026) 4/6 (100%)\n🟩🟩🟩🟨⬜⬅️\n…\n🟩🟩🟩🟩🟩🎉\n⭐🧭📍\nhttps://worldle.teuteuf.fr`
     // Same Wordle-style grid as Tradle (rows carry a trailing direction arrow /
@@ -376,7 +389,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // "#Tradle #1547 1/6" → 1 (guess count out of 6; lower is better)
     spec: { rules: [{ kind: "capture", pattern: "Tradle\\s*#?\\d+\\s+(\\d+)/6" }] },
     // Tradle now lives at tradle.net; oec.world kept for legacy bookmarks.
-    identifyPatterns: [/\btradle\b/i, /tradle\.net/i, /oec\.world.*tradle/i],
+    identifyPatterns: [/\btradle\b/i],
+    identifyUrlPatterns: [/tradle\.net/i, /oec\.world.*tradle/i],
     shareTextPatterns: [/#?\bTradle\b\s*#?\d+/i, /\btradle\.net\b/i, /\boec\.world\/.+\/tradle\b/i],
     // Shape: `#Tradle #1548 6/6\n🟩🟩⬜⬜⬜\n🟩🟩🟩⬜⬜\n…\n🟩🟩🟩🟩🟩\nhttps://tradle.net/`
     // Six grid lines collapse to `🟩 2·3·4·4·4·5 6/6` (see greensSparkline).
@@ -394,7 +408,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // "711 / 1,000" → 711 (points scored; higher is better). Commas are
     // stripped by the capture rule before Number().
     spec: { rules: [{ kind: "capture", pattern: "([\\d,]+)\\s*/\\s*[\\d,]+" }] },
-    identifyPatterns: [/\bgeosports\b/i, /geosports\.app/i],
+    identifyPatterns: [/\bgeosports\b/i],
+    identifyUrlPatterns: [/geosports\.app/i],
     shareTextPatterns: [/\bgeosports\b/i, /geosports\.app/i],
     // Shape: `GeoSports — Daily sports geography game\nGeoSports · June 11th\n🟡🟡🔴🟡🟢\n711 / 1,000\nwww.geosports.app`
     // Keep the emoji grid row and the "N / 1,000" score line; drop the header
@@ -418,7 +433,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     scoreDirection: "desc",
     category: "geography",
     spec: null,
-    identifyPatterns: [/\bethnoguessr\b/i, /\bhbd\.gg\b/i],
+    identifyPatterns: [/\bethnoguessr\b/i],
+    identifyUrlPatterns: [/\bhbd\.gg\b/i],
     shareTextPatterns: [
       /\bethnoguessr\b/i,
       /\bhbd\.gg\b/i,
@@ -446,7 +462,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // the puzzle number, which is identical for everyone that day and tied the
     // whole board — same bug Daily Tens had before `count`.
     spec: { rules: [{ kind: "tokenPosition", token: "🟩", among: ["🟥", "⬛", "⬜"] }] },
-    identifyPatterns: [/\bframed\b/i, /framed\.wtf/i],
+    identifyPatterns: [/\bframed\b/i],
+    identifyUrlPatterns: [/framed\.wtf/i],
     shareTextPatterns: [/\bFramed\s*#\d+/i, /\bframed\.wtf\b/i],
   },
   {
@@ -458,6 +475,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     category: "music-movies",
     spec: null,
     identifyPatterns: [/\bheardle\b/i],
+    identifyUrlPatterns: [/heardle\.app/i, /heardle\.glitch\.me/i],
     shareTextPatterns: [/#Heardle\b\s*#?\d+/i, /\bheardle\.app\b/i, /\bheardle\.glitch\.me\b/i],
   },
   {
@@ -471,7 +489,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // 4 rows, each mistake adds one (max 7). Count the guess rows; no grid at
     // all = no result.
     spec: { rules: [{ kind: "countLines", pattern: "^[🟨🟩🟦🟪]{4}$" }] },
-    identifyPatterns: [/\bconnections\b/i, /nytimes\.com\/games\/connections/i],
+    identifyPatterns: [/\bconnections\b/i],
+    identifyUrlPatterns: [/nytimes\.com\/games\/connections/i],
     shareTextPatterns: [
       // The official NYT share starts with "Connections\nPuzzle #<n>".
       /\bConnections\b[\s\S]{0,40}Puzzle\s*#?\d+/i,
@@ -497,7 +516,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // score = hints used, 0 is a perfect game. `within` keeps a gridless
     // share at null while a hint-free grid still scores a legitimate 0.
     spec: { rules: [{ kind: "count", token: "💡", within: "[💡🔵🟡]" }] },
-    identifyPatterns: [/\bstrands\b/i, /nytimes\.com\/games\/strands/i],
+    identifyPatterns: [/\bstrands\b/i],
+    identifyUrlPatterns: [/nytimes\.com\/games\/strands/i],
     shareTextPatterns: [
       /\bStrands\s*#\d+/i,
       // Share blocks always start with "Strands #N\n"Today's theme""
@@ -516,12 +536,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // seconds. The date is a fraction-shaped trap for naive number parsing —
     // the duration rule only reads `m:ss`.
     spec: { rules: [{ kind: "duration" }] },
-    identifyPatterns: [
-      /\bmini\s*crossword\b/i,
-      /\bnyt\s*mini\b/i,
-      /\bthe mini\b/i,
-      /nytimes\.com\/(?:badges|crosswords\/game)\/mini/i,
-    ],
+    identifyPatterns: [/\bmini\s*crossword\b/i, /\bnyt\s*mini\b/i, /\bthe mini\b/i],
+    identifyUrlPatterns: [/nytimes\.com\/(?:badges|crosswords\/game)\/mini/i],
     shareTextPatterns: [
       /nytimes\.com\/(?:badges|crosswords\/game)\/mini/i,
       /\bThe Mini\b[\s\S]{0,40}\d+:\d{2}/i,
@@ -564,7 +580,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
         },
       ],
     },
-    identifyPatterns: [/\bspelling\s*bee\b/i, /nytimes\.com\/puzzles\/spelling-bee/i],
+    identifyPatterns: [/\bspelling\s*bee\b/i],
+    identifyUrlPatterns: [/nytimes\.com\/puzzles\/spelling-bee/i],
     shareTextPatterns: [
       /\bSpelling Bee\b/i,
       /nytimes\.com\/puzzles\/spelling-bee/i,
@@ -583,7 +600,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     // [\d,] swallows the puzzle number's thousands separator without
     // capturing it.
     spec: { rules: [{ kind: "capture", pattern: "Wordle\\s+[\\d,]+\\s+(\\d+)/6" }] },
-    identifyPatterns: [/\bwordle\b/i, /nytimes\.com\/games\/wordle/i],
+    identifyPatterns: [/\bwordle\b/i],
+    identifyUrlPatterns: [/nytimes\.com\/games\/wordle/i],
     // Keep this entry last — "Wordle" is short and could appear as a substring
     // elsewhere; require the number-of-guesses suffix to be safe.
     shareTextPatterns: [/\bWordle\b\s+[\d,]+\s+[\dX]\/6/i, /nytimes\.com\/games\/wordle/i],
@@ -680,9 +698,27 @@ export function identifyGame(
   if (haystack.length === 0) return null;
   for (const def of GAME_REGISTRY) {
     if (opts.catalogOnly && !def.catalog) continue;
-    for (const pattern of def.identifyPatterns) {
+    for (const pattern of [...def.identifyPatterns, ...def.identifyUrlPatterns]) {
       if (haystack.some((h) => pattern.test(h))) return def;
     }
+  }
+  return null;
+}
+
+/**
+ * Identify a game from a URL alone, using only host/path patterns. The bare
+ * name patterns are skipped on purpose: a third-party host that merely contains
+ * a game's name (wordle.louan.me is Le Mot, connections.swellgarfo.com is a
+ * Connections clone) must not collapse onto the official game.
+ */
+export function identifyGameByUrl(
+  url: string | null | undefined,
+  opts: { catalogOnly?: boolean } = {},
+): GameDefinition | null {
+  if (typeof url !== "string" || url.trim().length === 0) return null;
+  for (const def of GAME_REGISTRY) {
+    if (opts.catalogOnly && !def.catalog) continue;
+    if (def.identifyUrlPatterns.some((pattern) => pattern.test(url))) return def;
   }
   return null;
 }

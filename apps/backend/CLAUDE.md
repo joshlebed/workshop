@@ -99,6 +99,13 @@ unknown row gets claimed); `games.test.ts` enforces the seed sync against
 `CATALOG_GAME_DEFINITIONS`. Never extend per-game code — add a spec primitive to the
 interpreter if a share shape doesn't fit.
 
+**Identify a URL with `identifyGameByUrl`, never `identifyGame`.** Registry entries carry two
+pattern lists: `identifyPatterns` (bare names like `\bwordle\b`, for titles / siteName /
+share text) and `identifyUrlPatterns` (host/path). `findOrCreateGame` uses the URL-only
+matcher because the loose names claim third-party hosts — `wordle.louan.me` is Le Mot, not
+NYT Wordle, and before this split "Play Le Mot" opened Wordle (every add collapsed onto the
+Wordle row). `identifyGame` still runs both lists for mixed title+URL input.
+
 Parser resolution at post time (`lib/gameCatalog.ts`): registry spec by `games.game_key` →
 user-taught `games.score_spec` jsonb (written by `PUT /v1/games/:id/score-spec`, the
 tap-the-score teach flow — server re-runs the spec against the teaching example and rejects

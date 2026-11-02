@@ -10,6 +10,7 @@ import {
   type GameDefinition,
   gameDefinitionForKey,
   identifyGame,
+  identifyGameByUrl,
 } from "@workshop/shared/gameRegistry";
 import { normalizeGameUrl } from "@workshop/shared/games";
 import {
@@ -150,7 +151,7 @@ export async function findOrCreateGame(
   const existing = await lookup(normalizedUrl);
   if (existing) return existing;
 
-  const detected = identifyGame([inputUrl], { catalogOnly: true });
+  const detected = identifyGameByUrl(inputUrl, { catalogOnly: true });
   const canonicalKey = detected ? normalizeGameUrl(detected.canonicalUrl) : null;
   if (detected && canonicalKey) {
     const canonical = await lookup(canonicalKey);
