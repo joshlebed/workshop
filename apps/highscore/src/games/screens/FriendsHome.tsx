@@ -25,6 +25,7 @@ import {
   EmptyState,
   PixelIcon,
   Screen,
+  sectionLabelType,
   Text,
   tokens,
   useToast,
@@ -326,7 +327,7 @@ export default function FriendsScreen() {
         {/* Pending inbound requests. */}
         {inbound.length > 0 ? (
           <View style={styles.list} testID="friend-requests-section">
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
+            <Text style={styles.listLabel}>
               {inbound.length === 1 ? "1 friend request" : `${inbound.length} friend requests`}
             </Text>
             {inbound.map((request) => {
@@ -421,7 +422,7 @@ export default function FriendsScreen() {
           </View>
         ) : (
           <View style={styles.list}>
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
+            <Text style={styles.listLabel}>
               {friends.length === 1 ? "1 friend" : `${friends.length} friends`}
             </Text>
             {friends.map((friend) => (
@@ -468,9 +469,7 @@ export default function FriendsScreen() {
         {/* People you may know — friends of friends, most-connected first. */}
         {mutuals.length > 0 ? (
           <View style={styles.list} testID="friend-mutuals-section">
-            <Text variant="caption" tone="muted" style={styles.listLabel}>
-              People you may know
-            </Text>
+            <Text style={styles.listLabel}>People you may know</Text>
             {mutuals.map((mutual) => {
               const requested = outboundIds.has(mutual.userId);
               const requesting = requestingIds.includes(mutual.userId);
@@ -598,7 +597,8 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xl,
   },
   list: { gap: tokens.space.sm },
-  listLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
+  // Same section-label style as the You page (theme `sectionLabelType`).
+  listLabel: { ...sectionLabelType(), color: tokens.text.secondary },
   friendRow: {
     flexDirection: "row",
     alignItems: "center",

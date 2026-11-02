@@ -9,7 +9,15 @@ import { goBack } from "@workshop/ui/navigation";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useState } from "react";
-import { Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import {
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  type TextStyle,
+  View,
+} from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { ImpersonationStatus } from "../admin/ImpersonationPanel";
 import { blockedUsersQueryKey, fetchBlockedUsers, unblockUser } from "../api/moderation";
@@ -27,9 +35,11 @@ import {
   Avatar,
   Button,
   bodyType,
+  glow,
   IconButton,
   PixelIcon,
   Screen,
+  sectionLabelType,
   Text,
   tokens,
   useToast,
@@ -44,6 +54,7 @@ export default function EditProfile() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
   const [busy, setBusy] = useState(false);
   const [nameFocused, setNameFocused] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const initialName = user?.displayName ?? "";
   const initialAvatar = user?.avatarUrl ?? null;
@@ -63,6 +74,7 @@ export default function EditProfile() {
   function onDiscard() {
     setName(initialName);
     setAvatarUrl(initialAvatar);
+    setSaveError(null);
   }
 
   async function onSave() {
@@ -80,9 +92,11 @@ export default function EditProfile() {
       // picture now, not on the next poll/focus.
       if (avatarChanged) void queryClient.invalidateQueries({ queryKey: ["games"] });
       showToast({ message: "Profile updated", tone: "success" });
+      setSaveError(null);
       setBusy(false);
     } catch (e) {
-      showToast({ message: errorMessage(e, "Could not save profile"), tone: "danger" });
+      // Say it where the user is looking, not only in a toast that fades.
+      setSaveError(errorMessage(e, "Could not save your profile. Try again."));
       setBusy(false);
     }
   }
@@ -112,8 +126,7 @@ export default function EditProfile() {
           <Avatar
             name={trimmed || user?.email || null}
             imageUrl={avatarUrl}
-            size="lg"
-            style={styles.avatarPreview}
+            size="xl"
             testID="profile-edit-avatar"
           />
           <View style={styles.identityActions}>
@@ -134,7 +147,7 @@ export default function EditProfile() {
         </View>
 
         <View style={styles.field}>
-          <Text variant="overline" tone="secondary">
+          <Text variant="label" tone="secondary">
             Display name
           </Text>
           <TextInput
@@ -143,7 +156,7 @@ export default function EditProfile() {
             onChangeText={setName}
             onFocus={() => setNameFocused(true)}
             onBlur={() => setNameFocused(false)}
-            placeholder="Ada Lovelace"
+            placeholder="Your name"
             placeholderTextColor={tokens.text.secondary}
             autoComplete="name"
             maxLength={40}
@@ -151,11 +164,23 @@ export default function EditProfile() {
             returnKeyType="done"
             onSubmitEditing={onSave}
           />
-          <Text variant="caption" tone="secondary">
-            {trimmed.length === 0
-              ? "Pick a name so friends can find you on the board."
-              : "How you appear on your friends' leaderboards."}
-          </Text>
+          <View style={styles.hintRow}>
+            <Text variant="caption" tone="secondary" style={styles.hintText}>
+              {trimmed.length === 0
+                ? "Pick a name so friends can find you on the board."
+                : "How you appear on your friends' leaderboards."}
+            </Text>
+            {name.length >= 30 ? (
+              <Text variant="caption" tone={name.length >= 40 ? "danger" : "secondary"}>
+                {name.length}/40
+              </Text>
+            ) : null}
+          </View>
+          {saveError ? (
+            <Text variant="caption" tone="danger" testID="profile-save-error">
+              {saveError}
+            </Text>
+          ) : null}
           {dirty ? (
             <View style={styles.saveRow} testID="profile-save-row">
               <Button
@@ -219,12 +244,7 @@ function SettingsGroups() {
   return (
     <View style={styles.groupStack} testID="profile-settings">
       <Group title="Help">
-        <LinkRow
-          label="Send feedback"
-          detail="Opens your mail app"
-          onPress={onSendFeedback}
-          testID="send-feedback"
-        />
+        <LinkRow label="Send feedback" onPress={onSendFeedback} testID="send-feedback" />
         {/* Public pages (src/lib/publicRoutes.ts): the in-app push lands on the
             same content Apple sees at the published highscore.live URLs. */}
         <LinkRow label="Support" onPress={() => router.push(SUPPORT_ROUTE)} testID="open-support" />
@@ -253,10 +273,11 @@ function SettingsGroups() {
           <ImpersonationStatus onSessionChanged={onAuthSessionChanged} />
         </Group>
       ) : null}
-      <View>
-        <LinkRow
+      <View style={styles.signOutRow}>
+        <Button
           label="Sign out"
-          chevron={false}
+          variant="ghost"
+          size="md"
           onPress={() => void signOut()}
           testID="sign-out"
         />
@@ -269,9 +290,7 @@ function SettingsGroups() {
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View style={styles.group}>
-      <Text variant="overline" tone="secondary">
-        {title}
-      </Text>
+      <Text style={styles.sectionLabel}>{title}</Text>
       <View>{children}</View>
     </View>
   );
@@ -472,17 +491,20 @@ function DeleteAccountSection() {
 
   return (
     <View style={[styles.group, dangerStyles.section]} testID="danger-zone">
-      <Text variant="overline" tone="secondary">
-        Danger zone
-      </Text>
+      <Text style={styles.sectionLabel}>Delete account</Text>
 
       {step === "idle" ? null : (
         <View style={dangerStyles.confirmCard} testID="account-delete-confirm-card">
           <Text variant="label">Delete your account permanently?</Text>
           {ACCOUNT_DELETION_CONSEQUENCES.map((line) => (
-            <Text key={line} variant="caption" tone="secondary">
-              • {line}
-            </Text>
+            <View key={line} style={dangerStyles.consequence}>
+              <Text variant="caption" tone="danger">
+                ·
+              </Text>
+              <Text variant="caption" tone="secondary" style={dangerStyles.consequenceText}>
+                {line}
+              </Text>
+            </View>
           ))}
           <View style={dangerStyles.confirmActions}>
             <Button
@@ -544,31 +566,45 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.sm,
   },
   navSpacer: { width: 40, height: 40 },
+  // Rhythm: the identity block gets the most air (it is the point of the
+  // page); the name field sits close under it; the lists below share one
+  // steady beat.
   body: {
     paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.md,
+    paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.xxl * 2,
-    gap: tokens.space.xxl,
+    gap: tokens.space.xl,
   },
   identity: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
+    gap: tokens.space.xl,
+    paddingVertical: tokens.space.sm,
   },
-  avatarPreview: { width: 88, height: 88 },
-  identityActions: { flex: 1, gap: tokens.space.sm },
+  identityActions: { flex: 1, gap: tokens.space.md },
   textActionHover: { opacity: 0.7 },
-  field: { gap: tokens.space.sm },
+  field: { gap: tokens.space.sm, paddingBottom: tokens.space.sm },
+  hintRow: { flexDirection: "row", alignItems: "flex-start", gap: tokens.space.md },
+  hintText: { flex: 1, minWidth: 0 },
   saveRow: { flexDirection: "row", gap: tokens.space.sm, paddingTop: tokens.space.xs },
-  // A group is an overline + ruled rows. Groups are separated by the body gap;
-  // rows inside a group are tight.
-  groupStack: { gap: tokens.space.xxl },
+  // A group is a small section label + ruled rows. Rows are tight; groups are
+  // separated by the body gap.
+  groupStack: { gap: tokens.space.xl },
   group: { gap: tokens.space.xs },
+  sectionLabel: { ...sectionLabelType(), color: tokens.text.secondary },
+  // Ghost button padding would indent the label past the row text; pull it back.
+  signOutRow: {
+    alignItems: "flex-start",
+    paddingTop: tokens.space.xs,
+    marginLeft: -tokens.space.lg,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
     minHeight: 48,
+    marginHorizontal: -tokens.space.sm,
+    paddingHorizontal: tokens.space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.border.default,
   },
@@ -577,6 +613,7 @@ const styles = StyleSheet.create({
   rowValue: { flexShrink: 1, textAlign: "right" },
   input: {
     ...bodyType(),
+    ...(Platform.OS === "web" ? ({ outlineStyle: "none" } as object) : {}),
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.sm,
@@ -586,12 +623,18 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.lg,
     backgroundColor: tokens.bg.elevated,
   },
-  inputFocused: { borderColor: tokens.neon.pink },
+  // Focused input per DESIGN.md: pink bezel + glow, and no browser outline on top.
+  inputFocused: {
+    borderColor: tokens.neon.pink,
+    ...(glow(tokens.neon.pinkGlow, 8) as TextStyle),
+  },
 });
 
 const dangerStyles = StyleSheet.create({
   section: { gap: tokens.space.sm },
   actionRow: { flexDirection: "row" },
+  consequence: { flexDirection: "row", gap: tokens.space.sm },
+  consequenceText: { flex: 1, minWidth: 0 },
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,

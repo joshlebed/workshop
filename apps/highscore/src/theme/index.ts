@@ -26,4 +26,11 @@ export {
   textGlow,
   tokens,
 } from "./tokens";
-export { bodyType, buttonType, type SecondaryWeight, scoreType, uiType } from "./type";
+export {
+  bodyType,
+  buttonType,
+  type SecondaryWeight,
+  scoreType,
+  sectionLabelType,
+  uiType,
+} from "./type";

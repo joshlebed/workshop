@@ -29,6 +29,11 @@ export function uiType(px: number): TextStyle {
   };
 }
 
+/** Section label over a list group: small, tracked, uppercase, secondary. One style for every screen. */
+export function sectionLabelType(): TextStyle {
+  return uiType(9);
+}
+
 /** Score numerals: ranks, scores, the podium cell, streak counts, day-strip values. */
 export function scoreType(px: number): TextStyle {
   return { fontFamily: PIXEL_FONT, fontSize: px, lineHeight: Math.round(px * 1.5) };
