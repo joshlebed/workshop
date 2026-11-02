@@ -92,14 +92,14 @@ export interface StandingsCardProps {
   emptyFaces: StandingsFace[];
   /** Show the Play pill (caller gates on "viewer hasn't played today"). */
   showCta: boolean;
-  /** Tap the title or standings → detail. */
-  onPressBody?: () => void;
-  /** Tap a player's avatar → their profile. The rest of the row still opens the board. */
-  onPressPlayer?: (userId: string) => void;
   /**
-   * Long-press to reorder (native only; web drags via the wrapper). Wired onto
-   * the cover, title, Play and standings rows so the whole card is a
-   * drag handle; the kebab menu deliberately omits it.
+   * Tap anywhere on the card → detail. The only parts that don't are the
+   * Play triangle, the kebab menu, the reaction chips and the Fix link.
+   */
+  onPressBody?: () => void;
+  /**
+   * Long-press to reorder (native only; web drags via the wrapper). The whole
+   * card is the drag handle.
    */
   onLongPressBody?: () => void;
   onMenu: () => void;
@@ -133,7 +133,6 @@ export const StandingsCard = memo(function StandingsCard({
   emptyFaces,
   showCta,
   onPressBody,
-  onPressPlayer,
   onLongPressBody,
   onMenu,
   onPlay,
@@ -157,20 +156,25 @@ export const StandingsCard = memo(function StandingsCard({
   const ctaVisible = showCta && !loading;
   const emptyShown = !loading && playedCount === 0;
 
+  // The card itself is the tap target for detail (and the native drag
+  // handle). It carries no accessibilityRole so RN-Web renders a <div>, not a
+  // <button> — the Play / menu / reaction / Fix controls inside are real
+  // buttons and nested buttons are invalid DOM. The title row is the named,
+  // focusable "open leaderboard" control for assistive tech.
   return (
-    <View style={[styles.card, isDragging && styles.cardDragging]} testID={`game-card-${cardId}`}>
-      {/* Header: cover opens the game; the title taps through to detail. */}
+    <Pressable
+      onPress={onPressBody}
+      onLongPress={onLongPressBody}
+      delayLongPress={REORDER_ACTIVATION.longPressMs}
+      style={({ pressed, hovered }) => [
+        styles.card,
+        (pressed || hovered) && styles.cardHover,
+        isDragging && styles.cardDragging,
+      ]}
+      testID={`game-card-${cardId}`}
+    >
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel={`Play ${title}`}
-          onPress={onPlay}
-          onLongPress={onLongPressBody}
-          delayLongPress={REORDER_ACTIVATION.longPressMs}
-          hitSlop={6}
-          testID={`game-card-cover-${cardId}`}
-          style={({ pressed }) => [styles.cover, pressed && styles.coverPressed]}
-        >
+        <View style={styles.cover} testID={`game-card-cover-${cardId}`}>
           {coverImageUrl ? (
             <Image
               source={{ uri: coverImageUrl }}
@@ -188,45 +192,30 @@ export const StandingsCard = memo(function StandingsCard({
               <Text style={styles.coverGlyph}>{coverGlyph}</Text>
             </View>
           )}
-        </Pressable>
+        </View>
 
         <View style={styles.headerText}>
           <View style={styles.titleRow}>
-            <Pressable
+            <View
               accessibilityRole="button"
               accessibilityLabel={`Open ${title} leaderboard`}
-              onPress={onPressBody}
-              onLongPress={onLongPressBody}
-              delayLongPress={REORDER_ACTIVATION.longPressMs}
-              hitSlop={{ top: 6, bottom: 2 }}
               testID={`game-card-body-${cardId}`}
-              style={({ pressed, hovered }) => [
-                styles.titlePress,
-                (pressed || hovered) && styles.bodyPressed,
-              ]}
+              style={styles.titlePress}
             >
               <Text variant="game" numberOfLines={1}>
                 {title}
               </Text>
-            </Pressable>
+            </View>
             {showStreak ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${streak} day streak — play ${title} today to keep it going`}
-                onPress={onPlay}
-                onLongPress={onLongPressBody}
-                delayLongPress={REORDER_ACTIVATION.longPressMs}
-                hitSlop={6}
+              <View
+                accessibilityLabel={`${streak} day streak`}
                 testID={`game-card-streak-${cardId}`}
-                style={({ pressed, hovered }) => [
-                  styles.streak,
-                  (pressed || hovered) && styles.streakHover,
-                ]}
+                style={styles.streak}
               >
                 <Text style={styles.streakFlame}>🔥</Text>
                 <Text style={styles.streakCount}>{streak}</Text>
                 <Text style={styles.streakLabel}>day streak</Text>
-              </Pressable>
+              </View>
             ) : null}
           </View>
           <View style={styles.metaRow}>
@@ -241,8 +230,6 @@ export const StandingsCard = memo(function StandingsCard({
             accessibilityRole="link"
             accessibilityLabel={`Play ${title}`}
             onPress={onPlay}
-            onLongPress={onLongPressBody}
-            delayLongPress={REORDER_ACTIVATION.longPressMs}
             hitSlop={8}
             testID={`game-card-play-${cardId}`}
             style={({ pressed, hovered }) => [
@@ -271,10 +258,8 @@ export const StandingsCard = memo(function StandingsCard({
 
       {/* Standings — only when there's something to show. The turnout line
           already carries the nobody-played story; an empty game stays one
-          header row tall. Each score line is its own tap/long-press target
-          (open detail / reorder on native) so the reaction controls beneath it
-          aren't nested inside a button — that both avoids invalid DOM on web
-          and keeps a reaction tap from bubbling into "open game". */}
+          header row tall. Rows are plain views: the card's own press opens
+          detail, and the reaction controls are the only buttons inside. */}
       {loading ? (
         <SkeletonRows />
       ) : emptyShown ? (
@@ -288,9 +273,6 @@ export const StandingsCard = memo(function StandingsCard({
               key={row.userId}
               row={row}
               isMe={row.userId === selfId}
-              onPressBody={onPressBody}
-              onPressPlayer={onPressPlayer}
-              onLongPressBody={onLongPressBody}
               onReact={onReact}
               onOpenReactionPicker={onOpenReactionPicker}
             />
@@ -301,52 +283,30 @@ export const StandingsCard = memo(function StandingsCard({
               <PlayerRow
                 row={pinnedSelf}
                 isMe
-                onPressBody={onPressBody}
-                onPressPlayer={onPressPlayer}
-                onLongPressBody={onLongPressBody}
                 onReact={onReact}
                 onOpenReactionPicker={onOpenReactionPicker}
               />
             </>
           ) : null}
           {overflow > 0 ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Open ${title} leaderboard`}
-              onPress={onPressBody}
-              onLongPress={onLongPressBody}
-              delayLongPress={REORDER_ACTIVATION.longPressMs}
-            >
-              <Text variant="caption" tone="muted" style={styles.moreLine}>
-                +{overflow} more
-              </Text>
-            </Pressable>
+            <Text variant="caption" tone="muted" style={styles.moreLine}>
+              +{overflow} more
+            </Text>
           ) : null}
         </View>
       )}
-    </View>
+    </Pressable>
   );
 });
 
 interface PlayerRowProps {
   row: StandingsRow;
   isMe: boolean;
-  onPressBody?: () => void;
-  onPressPlayer?: (userId: string) => void;
-  onLongPressBody?: () => void;
   onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
   onOpenReactionPicker?: (userId: string) => void;
 }
 
-function PlayerRow({
-  row,
-  isMe,
-  onPressBody,
-  onPressPlayer,
-  onLongPressBody,
-  onReact,
-  onOpenReactionPicker,
-}: PlayerRowProps) {
+function PlayerRow({ row, isMe, onReact, onOpenReactionPicker }: PlayerRowProps) {
   const name = row.displayName ?? "Someone";
   const reactions = row.reactions ?? [];
   // The viewer reacts to friends' scores, never their own — so the add
@@ -365,31 +325,15 @@ function PlayerRow({
     >
       <View style={styles.playerLine}>
         <RankMark rank={row.rank} />
-        {onPressPlayer ? (
-          // A sibling of the body button, not a child — RN-Web renders both
-          // as <button>, and nested buttons are invalid DOM. Long-press is
-          // forwarded so the avatar stays a drag handle for reorder.
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`View ${name}'s profile`}
-            onPress={() => onPressPlayer(row.userId)}
-            onLongPress={onLongPressBody}
-            delayLongPress={REORDER_ACTIVATION.longPressMs}
-            hitSlop={6}
-            testID={`game-card-avatar-${row.userId}`}
-          >
-            <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
-          </Pressable>
-        ) : (
-          <Avatar name={row.displayName} imageUrl={row.avatarUrl} size="sm" />
-        )}
-        <Pressable
+        <Avatar
+          name={row.displayName}
+          imageUrl={row.avatarUrl}
+          size="sm"
+          testID={`game-card-avatar-${row.userId}`}
+        />
+        <View
           style={styles.playerBody}
-          accessibilityRole="button"
           accessibilityLabel={`${name}${isMe ? " (you)" : ""}: ${row.body ?? "played"}`}
-          onPress={onPressBody}
-          onLongPress={onLongPressBody}
-          delayLongPress={REORDER_ACTIVATION.longPressMs}
         >
           <Text
             style={[styles.scoreBody, row.body ? null : styles.scoreBodyMuted]}
@@ -407,7 +351,7 @@ function PlayerRow({
               <Text style={styles.youPillText}>you</Text>
             </View>
           ) : null}
-        </Pressable>
+        </View>
       </View>
       {row.onFix ? (
         <Pressable
@@ -500,6 +444,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.border.default,
   },
+  cardHover: { backgroundColor: tokens.bg.surface },
   cardDragging: {
     backgroundColor: tokens.bg.elevated,
     borderRadius: 0,
@@ -511,7 +456,6 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   cover: { borderRadius: 0 },
-  coverPressed: { opacity: 0.7 },
   coverImage: {
     width: COVER,
     height: COVER,
@@ -536,7 +480,6 @@ const styles = StyleSheet.create({
     marginHorizontal: -tokens.space.xs,
     borderRadius: 0,
   },
-  bodyPressed: { backgroundColor: tokens.bg.elevated },
   // The streak is earned, so it's the one chartreuse element on the card:
   // chartreuse bezel + count/label on transparent (DESIGN.md "Chartreuse is
   // earned"), reading as "tap to keep your run going", not decor.
@@ -551,7 +494,6 @@ const styles = StyleSheet.create({
     borderWidth: tokens.bezel,
     borderColor: tokens.neon.chartreuse,
   },
-  streakHover: { backgroundColor: tokens.bg.elevated },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
   // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
   streakFlame: { fontSize: 12, lineHeight: 16 },
