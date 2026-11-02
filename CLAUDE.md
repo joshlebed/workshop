@@ -310,7 +310,7 @@ deliberate critical-fix backports may change it before then. See
   docs shim, so requiring it would block non-infra PRs). Agents get a 403 reading branch
   protection via the API — ask the operator to update this bullet if the required list changes.
   - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs. Since
-    PR #519 it is a zero-work **gate** over `Checks (…)` (lint, typecheck, knip, format,
+    PR #523 it is a zero-work **gate** over `Checks (…)` (lint, typecheck, knip, format,
     terraform, actionlint) and `Test (shard 1/2)` / `Test (shard 2/2)`; it passes when those
     succeeded or were skipped (docs-only) and fails otherwise. Keep the name — it is what
     branch protection requires — and never make it do real work again: it exists so the
