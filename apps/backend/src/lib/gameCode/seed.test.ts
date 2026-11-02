@@ -336,6 +336,18 @@ describe("registry games created after the seed", () => {
     expect((await revisionsFor(game.id)).map((r) => r.source)).toEqual(["seed"]);
   });
 
+  it("a third-party host containing a game's name is its own row, not the official game", async () => {
+    // Le Mot lives at wordle.louan.me; it must not collapse onto NYT Wordle.
+    const game = await findOrCreateGame("https://wordle.louan.me", undefined, client());
+    expect(game).toMatchObject({
+      gameKey: null,
+      normalizedUrl: "wordle.louan.me",
+      url: "https://wordle.louan.me",
+      parseCode: null,
+      codeVersion: 0,
+    });
+  });
+
   it("an unknown game is created with no code, version 0 and no revision", async () => {
     const game = await findOrCreateGame("https://brand-new-game.example", undefined, client());
     expect(game).toMatchObject({ parseCode: null, formatCode: null, codeVersion: 0 });

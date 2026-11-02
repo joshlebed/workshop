@@ -8,6 +8,7 @@ import {
   gameCategoryLabel,
   gameDefinitionForKey,
   identifyGame,
+  identifyGameByUrl,
   isOfficiallyListed,
   isResultlessShare,
   matchShareText,
@@ -219,6 +220,30 @@ describe("share-text detection", () => {
   });
 });
 
+describe("identifyGameByUrl", () => {
+  it("identifies official games from their host/path", () => {
+    expect(identifyGameByUrl("https://www.nytimes.com/games/wordle/index.html")?.key).toBe(
+      "wordle",
+    );
+    expect(identifyGameByUrl("nytimes.com/games/connections")?.key).toBe("connections");
+    expect(identifyGameByUrl("https://globle-game.com/daily")?.key).toBe("globle");
+  });
+
+  it("does not claim a third-party host that merely contains a game's name", () => {
+    // Le Mot (French Wordle) — the bug report: "Play Le Mot opens Wordle".
+    expect(identifyGameByUrl("https://wordle.louan.me")).toBe(null);
+    expect(identifyGameByUrl("wordle.louan.me")).toBe(null);
+    expect(identifyGameByUrl("https://connections.swellgarfo.com")).toBe(null);
+    // …while the name match still works for titles.
+    expect(identifyGame(["Wordle"])?.key).toBe("wordle");
+  });
+
+  it("returns null for empty input", () => {
+    expect(identifyGameByUrl("")).toBe(null);
+    expect(identifyGameByUrl(null)).toBe(null);
+  });
+});
+
 describe("identifyGame", () => {
   it("identifies from any identity field", () => {
     expect(identifyGame(["Daily Tens", "https://dailytens.com/"])?.key).toBe("dailytens");
@@ -235,6 +260,12 @@ describe("identifyGame", () => {
   it("identifies ethnoguessr from its title or hbd.gg url", () => {
     expect(identifyGame(["EthnoGuessr", "https://hbd.gg/play"])?.key).toBe("ethnoguessr");
     expect(identifyGame([null, null, "hbd.gg"])?.key).toBe("ethnoguessr");
+  });
+
+  it("every registry game has at least one URL pattern", () => {
+    for (const def of GAME_REGISTRY) {
+      expect(def.identifyUrlPatterns.length, def.key).toBeGreaterThan(0);
+    }
   });
 
   it("returns null for unknown identity and empty input", () => {
