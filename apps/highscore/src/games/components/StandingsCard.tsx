@@ -101,6 +101,8 @@ export interface StandingsCardProps {
    * drag handle; the kebab menu deliberately omits it.
    */
   onLongPressBody?: () => void;
+  /** PROTOTYPE option C: show a grip glyph as a visible reorder affordance. */
+  showReorderHandle?: boolean;
   onMenu: () => void;
   /** Open the game externally + arm the paste-on-return prompt. */
   onPlay: () => void;
@@ -134,6 +136,7 @@ export const StandingsCard = memo(function StandingsCard({
   onPressBody,
   onPressPlayer,
   onLongPressBody,
+  showReorderHandle,
   onMenu,
   onPlay,
   onReact,
@@ -160,6 +163,22 @@ export const StandingsCard = memo(function StandingsCard({
     <View style={[styles.card, isDragging && styles.cardDragging]} testID={`game-card-${cardId}`}>
       {/* Header: cover opens the game; the title taps through to detail. */}
       <View style={styles.header}>
+        {showReorderHandle ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Reorder ${title}`}
+            onLongPress={onLongPressBody}
+            delayLongPress={REORDER_ACTIVATION.longPressMs}
+            hitSlop={8}
+            testID={`game-card-grip-${cardId}`}
+            style={({ pressed, hovered }) => [
+              styles.grip,
+              (pressed || hovered) && styles.gripHover,
+            ]}
+          >
+            <Text style={styles.gripGlyph}>⠿</Text>
+          </Pressable>
+        ) : null}
         <Pressable
           accessibilityRole="link"
           accessibilityLabel={`Play ${title}`}
@@ -488,6 +507,17 @@ function SkeletonRows() {
 }
 
 const styles = StyleSheet.create({
+  grip: {
+    width: 20,
+    alignSelf: "stretch",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: -4,
+    borderRadius: tokens.radius.sm,
+    ...(Platform.OS === "web" ? ({ cursor: "grab" } as object) : {}),
+  },
+  gripHover: { backgroundColor: tokens.bg.elevated },
+  gripGlyph: { color: tokens.text.muted, fontSize: 18, lineHeight: 22 },
   // A ledger section, not a box: hairline rule below, breathing room inside.
   // The slight horizontal bleed gives hover/drag backgrounds room without
   // shifting content off the column grid.

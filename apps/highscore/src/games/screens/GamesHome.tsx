@@ -85,6 +85,12 @@ import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/sco
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useTeachAvailable } from "../lib/useScoreCheck";
+import {
+  ReorderCoachMark,
+  ReorderHintSwitch,
+  ReorderMenuTip,
+} from "../prototype/ReorderHintPrototypeUI";
+import { useReorderHintPrototype } from "../prototype/reorderHint";
 import { useGamesRuntime } from "../runtime";
 import { useViewDay } from "../state/viewDay";
 import { GameScorePasteSheet, type TaughtScoreSpec } from "./GameScorePasteSheet";
@@ -141,6 +147,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const railLength = Math.max(DAY_RAIL_DEFAULT_LENGTH, daysBack(viewDate, todayKey) + 1);
 
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
+  // PROTOTYPE: which reorder-discoverability option is live.
+  const reorderHint = useReorderHintPrototype();
   // Teach v2: "Fix score" on my own unread row, and the direction control in
   // the card menu. Both are absent for an account without the capability.
   const teachAvailable = useTeachAvailable();
@@ -490,12 +498,24 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     if (!neighbors) return;
     const moved = myGames[fromIndex];
     if (!moved) return;
+    // PROTOTYPE option B: a real reorder retires the coach mark for good.
+    reorderHint.dismissCoach();
     moveMutation.mutate({
       gameId: moved.gameId,
       beforeGameId: neighbors.before?.gameId ?? null,
       afterGameId: neighbors.after?.gameId ?? null,
       toIndex,
     });
+  };
+
+  // PROTOTYPE option A: move from the ⋯ menu.
+  const onMenuMove = (mg: MyGame, to: "top" | "up" | "down") => {
+    const fromIndex = myGames.findIndex((g) => g.gameId === mg.gameId);
+    if (fromIndex < 0) return;
+    const toIndex = to === "top" ? 0 : to === "up" ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= myGames.length || toIndex === fromIndex) return;
+    setMenuGame(null);
+    onReorder({ fromIndex, toIndex });
   };
 
   const onRemove = async (mg: MyGame) => {
@@ -555,6 +575,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           rows={rows}
           selfId={user?.id ?? null}
           loading={!viewingToday && viewQuery.isPending}
+          showReorderHandle={reorderHint.mode === "handle"}
           emptyFaces={[]}
           // The home Play pill is a today-only nudge — past days are read-only
           // here (post a past day from the per-game board), so it hides
@@ -593,6 +614,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       reactionCtl.openPicker,
       routes.game,
       openProfile,
+      reorderHint.mode,
     ],
   );
 
@@ -658,6 +680,10 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           />
         ) : (
           <>
+            <ReorderHintSwitch mode={reorderHint.mode} onChange={reorderHint.setMode} />
+            {reorderHint.mode === "coach" && !reorderHint.coachDismissed && myGames.length >= 3 ? (
+              <ReorderCoachMark onDismiss={reorderHint.dismissCoach} />
+            ) : null}
             <View style={styles.dayRail}>
               <DayRail
                 selectedDate={viewDate}
@@ -826,6 +852,41 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
                       })
                     }
                   />
+                </>
+              ) : null}
+              {reorderHint.mode === "menu" ? (
+                <>
+                  <View style={styles.sheetDivider} />
+                  {(() => {
+                    const idx = myGames.findIndex((g) => g.gameId === menuGame.gameId);
+                    const last = myGames.length - 1;
+                    return (
+                      <>
+                        <Button
+                          testID="game-menu-move-top"
+                          variant="ghost"
+                          label="Move to top"
+                          disabled={idx <= 0}
+                          onPress={() => onMenuMove(menuGame, "top")}
+                        />
+                        <Button
+                          testID="game-menu-move-up"
+                          variant="ghost"
+                          label="Move up"
+                          disabled={idx <= 0}
+                          onPress={() => onMenuMove(menuGame, "up")}
+                        />
+                        <Button
+                          testID="game-menu-move-down"
+                          variant="ghost"
+                          label="Move down"
+                          disabled={idx < 0 || idx >= last}
+                          onPress={() => onMenuMove(menuGame, "down")}
+                        />
+                      </>
+                    );
+                  })()}
+                  <ReorderMenuTip />
                 </>
               ) : null}
               <View style={styles.sheetDivider} />
