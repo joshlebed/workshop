@@ -786,16 +786,23 @@ includes `http://localhost:8081` (Workshop) and `http://localhost:8082` (HighSco
 
 ### Database in the Niteshift sandbox
 
-Local `pnpm dev` uses docker postgres. Niteshift sandbox can use docker OR a per-task Neon
-branch, depending on the repo's Niteshift Database integration (Settings → Repositories →
-`joshlebed/workshop` → Database). When enabled: fresh Neon branch on task start with
-`DATABASE_URL` injected, reused on resume, GC'd on archive. `.niteshift/setup` detects
-shape — non-localhost `DATABASE_URL` skips the docker `postgres` service. Migrations still run. Dev seed is
-**skipped by default** against remote DBs to avoid smearing fixtures over real data; force
-with `SEED_DEV_DATA=1`.
+The sandbox runs **local docker Postgres 17 only**, seeded with a **wholesale copy of prod**
+so repros are realistic. `.niteshift/setup` starts the `postgres` service, reads the prod URL
+from SSM `/workshop-prod/db/url` through the sandbox AWS role, `pg_dump`s prod from the
+`postgres:17` image, `pg_restore`s it into the local `workshop` DB, then runs this branch's
+migrations on top. Any `DATABASE_URL` Niteshift injects (the Neon Database integration) is
+**ignored** — turn that integration off in Settings → Repositories → `joshlebed/workshop` →
+Database so tasks stop minting Neon branches. `PROD_SNAPSHOT=0` skips the copy (falls back to
+the synthetic seed). Data persists in the `workshop-pg17-data` volume across suspend; it is
+not re-copied on resume. Re-copy (drops local data) with:
 
-**PII caveat**: if the parent branch is prod, every sandbox gets a copy of real user data.
-Point at a scrubbed staging branch if that's not OK.
+```bash
+.niteshift/files/snapshot-prod.sh
+```
+
+Prod is PG 17 — keep the local image on the same major, or `pg_dump` refuses the server.
+
+**PII caveat**: every sandbox gets a copy of real user data.
 
 ### Dev data seed
 
@@ -809,10 +816,10 @@ hard-guarded against non-local stages. `SEED_DEV_DATA=0` to skip. To re-seed, fo
 header comment in `seed.ts` — a bare `DELETE FROM users …` fails on the non-cascade
 `activity_events.actor_id` FK; clear `activity_events` and `lists` for those users first.
 
-On a Niteshift Neon branch forked from prod the seed is skipped by default — the real
-`joshlebed@gmail.com` row already exists with the apple identity, and the dev sign-in
-route attaches a synthetic `(apple, dev:joshlebed@gmail.com)` identity to that same user
-on first hit. So the agent/preview see your real data; the sign-in just bypasses Apple.
+In the sandbox (prod copy) the synthetic seed is skipped — the real `joshlebed@gmail.com`
+row already exists with the apple identity, and the dev sign-in route attaches a synthetic
+`(apple, dev:joshlebed@gmail.com)` identity to that same user on first hit. So the
+agent/preview see your real data; the sign-in just bypasses Apple.
 
 When adding a new list type or item-metadata field, extend `seed.ts`.
 
@@ -847,12 +854,12 @@ once per fresh sandbox; `.niteshift/resume` runs on every resume; `.niteshift/se
 declares the supervised processes. `ns services status` shows them; `ns services up`
 re-applies the manifest after you edit it; `ns services validate` checks it.
 
-| Service     | Port | Autostart | Notes                                                               |
-| ----------- | ---- | --------- | ------------------------------------------------------------------- |
-| `web`       | 8081 | yes       | Workshop.dev Expo web. Primary preview. `EXPO_PUBLIC_DEV_AUTH=1`.   |
-| `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).           |
-| `highscore` | 8082 | no        | `ns services start highscore` — HighScore web against same backend. |
-| `postgres`  | —    | no        | Docker PG16, host networking. Only when no Neon `DATABASE_URL`.     |
+| Service     | Port | Autostart | Notes                                                                         |
+| ----------- | ---- | --------- | ----------------------------------------------------------------------------- |
+| `highscore` | 8082 | yes       | HighScore Expo web. Primary preview (listed first). `EXPO_PUBLIC_DEV_AUTH=1`. |
+| `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).                     |
+| `web`       | 8081 | no        | `ns services start web` — Workshop.dev web against same backend.              |
+| `postgres`  | —    | no        | Docker PG17, host networking, prod copy. Started by setup/resume.             |
 
 Gotchas: services get **platform env + manifest `environment` + `PORT` only**, never the
 repository variables setup sees — that's why `backend` goes through
@@ -867,8 +874,7 @@ and the pinned mise only reads `MISE_GITHUB_TOKEN` / `GITHUB_TOKEN` — not the 
 sandbox injects. `toolchain.sh` bridges the two; without it, calls are anonymous and the
 shared egress IP's 60/hour limit fails setup with `403 rate limit exceeded`. **Don't re-run
 `.niteshift/setup` by hand from an agent shell**: the shell lacks setup's repository variables
-(`DATABASE_URL`, `SESSION_SECRET`), so it falls back to local postgres and rewrites
-`apps/backend/.env` away from the Neon branch. Run the individual step instead.
+(`SESSION_SECRET`), so writing `apps/backend/.env` fails. Run the individual step instead.
 
 ### Known sandbox gotcha: CORS preflight via the preview proxy
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runs on every sandbox resume, before services are restarted. The only
 # resume-specific recovery: the on-demand `postgres` service doesn't return
-# automatically after a resume, so bring it back when the sandbox runs
-# against a local database (no injected Neon DATABASE_URL).
+# automatically after a resume, so bring it back. Data lives in the
+# workshop-pg17-data docker volume and survives the suspend; the prod copy is
+# NOT re-taken here (use .niteshift/files/snapshot-prod.sh).
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,9 +16,5 @@ source "$REPO_DIR/.niteshift/files/toolchain.sh"
 source "$REPO_DIR/.niteshift/files/db.sh"
 
 workshop_resolve_database_url
-if [ "$WORKSHOP_LOCAL_DB" = "1" ]; then
-  log "local database — restarting postgres service"
-  workshop_ensure_local_postgres
-else
-  log "remote DATABASE_URL — nothing to recover"
-fi
+log "restarting postgres service"
+workshop_ensure_local_postgres

@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Service wrapper for the Hono backend (:8787). Sources apps/backend/.env,
-# which .niteshift/setup writes with the resolved DATABASE_URL (Neon branch
-# or local docker) + SESSION_SECRET — services don't receive setup's
-# repository variables, and the manifest can't express "prefer the injected
-# Neon URL, else the local one".
+# which .niteshift/setup writes with the local DATABASE_URL + SESSION_SECRET —
+# services don't receive setup's repository variables.
 set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_DIR"
