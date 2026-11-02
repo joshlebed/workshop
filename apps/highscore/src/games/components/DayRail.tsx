@@ -1,12 +1,15 @@
-// Horizontal day selector — "Today", "Yesterday", then older days back
-// `length` days. Both leaderboard surfaces share it so "show me yesterday" is
-// the same control whether you're on a single game's detail screen or the
-// list-level status-card view.
+// Horizontal day selector — a timeline that reads left to right: older days
+// on the left, "Yesterday", then "Today" at the right edge. The rail opens
+// scrolled to the end (today in view) and going back in time scrolls left.
+// Both leaderboard surfaces share it so "show me yesterday" is the same
+// control whether you're on a single game's detail screen or the list-level
+// status-card view.
 //
 // Controlled + pure presentation: the parent owns the active `selectedDate`
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
+import { useRef } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { scoreType, Text, tokens } from "../../theme";
 import { shiftDateKey } from "../lib/gameDate";
@@ -27,9 +30,9 @@ export interface DayRailProps {
   /** Edge padding so chips align with the host screen's content inset. */
   horizontalInset?: number;
   /**
-   * When set, an "Earlier" chip trails the last day; tapping it asks the
-   * parent to grow `length`. Lets history-focused hosts page past the default
-   * week without rendering an unbounded rail up front.
+   * When set, an "Earlier" chip leads the oldest day at the left edge; tapping
+   * it asks the parent to grow `length`. Lets history-focused hosts page past
+   * the default week without rendering an unbounded rail up front.
    */
   onExtend?: () => void;
 }
@@ -43,52 +46,30 @@ export function DayRail({
   horizontalInset = tokens.space.xl,
   onExtend,
 }: DayRailProps) {
+  // Oldest first, today last — the chronological reading order.
   const days: { key: string; label: string; parts: DayChipParts }[] = [];
-  for (let i = 0; i < length; i++) {
+  for (let i = length - 1; i >= 0; i--) {
     const key = shiftDateKey(today, -i);
     const parts = dayChipParts(key, today);
     days.push({ key, label: dayChipLabel(parts), parts });
   }
+  const scrollRef = useRef<ScrollView>(null);
+  // Open with today in view. Only on the first layout: when "Earlier" grows
+  // the rail, the new chips appear at the left and the user is looking there.
+  const scrolledToEndRef = useRef(false);
+  const onContentSizeChange = () => {
+    if (scrolledToEndRef.current) return;
+    scrolledToEndRef.current = true;
+    scrollRef.current?.scrollToEnd({ animated: false });
+  };
   return (
     <ScrollView
+      ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={[styles.rail, { paddingHorizontal: horizontalInset }]}
+      onContentSizeChange={onContentSizeChange}
     >
-      {days.map((d) => {
-        const selected = d.key === selectedDate;
-        return (
-          <Pressable
-            key={d.key}
-            accessibilityRole="button"
-            accessibilityLabel={`Show ${d.label}`}
-            accessibilityState={{ selected }}
-            onPress={() => onSelectDate(d.key)}
-            testID={`${testIDPrefix}-${d.key}`}
-            style={({ pressed }) => [
-              styles.chip,
-              selected && styles.chipSelected,
-              pressed && styles.chipPressed,
-            ]}
-          >
-            <View style={styles.chipInner}>
-              <Text
-                variant={
-                  d.parts.word === "Today" || d.parts.word === "Yesterday" ? "overline" : "label"
-                }
-                style={[styles.chipText, selected && styles.chipTextSelected]}
-              >
-                {d.parts.word}
-              </Text>
-              {d.parts.day ? (
-                <Text variant="score" style={[styles.chipDay, selected && styles.chipTextSelected]}>
-                  {d.parts.day}
-                </Text>
-              ) : null}
-            </View>
-          </Pressable>
-        );
-      })}
       {onExtend ? (
         <Pressable
           accessibilityRole="button"
@@ -102,6 +83,40 @@ export function DayRail({
           </Text>
         </Pressable>
       ) : null}
+      {days.map((d) => {
+        const selected = d.key === selectedDate;
+        return (
+          <Pressable
+            key={d.key}
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${d.label}`}
+            accessibilityState={{ selected }}
+            onPress={() => onSelectDate(d.key)}
+            testID={`${testIDPrefix}-${d.key}`}
+            style={({ pressed }) => [
+              styles.chip,
+              !selected && styles.chipUnselected,
+              pressed && styles.chipPressed,
+            ]}
+          >
+            <View style={styles.chipInner}>
+              <Text
+                variant={
+                  d.parts.word === "Today" || d.parts.word === "Yesterday" ? "overline" : "label"
+                }
+                style={styles.chipText}
+              >
+                {d.parts.word}
+              </Text>
+              {d.parts.day ? (
+                <Text variant="score" style={styles.chipDay}>
+                  {d.parts.day}
+                </Text>
+              ) : null}
+            </View>
+          </Pressable>
+        );
+      })}
     </ScrollView>
   );
 }
@@ -144,13 +159,11 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
     justifyContent: "center",
   },
-  chipSelected: {
-    backgroundColor: tokens.accent.muted,
-    borderColor: tokens.neon.pink,
-  },
+  // Quiet control, no neon: the selected day is the plain purple chip and
+  // the other days fade back. Pink is reserved for the actions on the page.
+  chipUnselected: { opacity: 0.55 },
   chipPressed: { opacity: 0.75 },
   chipInner: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   chipText: { color: tokens.text.secondary },
   chipDay: { ...scoreType(11), color: tokens.text.secondary },
-  chipTextSelected: { color: tokens.neon.pink },
 });
