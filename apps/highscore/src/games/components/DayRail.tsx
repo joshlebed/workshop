@@ -1,12 +1,15 @@
-// Horizontal day selector — "Today", "Yesterday", then older days back
-// `length` days. Both leaderboard surfaces share it so "show me yesterday" is
-// the same control whether you're on a single game's detail screen or the
-// list-level status-card view.
+// Horizontal day selector — a timeline that reads left to right: older days
+// on the left, "Yesterday", then "Today" at the right edge. The rail opens
+// scrolled to the end (today in view) and going back in time scrolls left.
+// Both leaderboard surfaces share it so "show me yesterday" is the same
+// control whether you're on a single game's detail screen or the list-level
+// status-card view.
 //
 // Controlled + pure presentation: the parent owns the active `selectedDate`
 // and the data fetch keyed off it. Going past today isn't offered — daily
 // puzzles have no future bucket.
 
+import { useRef } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { scoreType, Text, tokens } from "../../theme";
 import { shiftDateKey } from "../lib/gameDate";
@@ -27,9 +30,9 @@ export interface DayRailProps {
   /** Edge padding so chips align with the host screen's content inset. */
   horizontalInset?: number;
   /**
-   * When set, an "Earlier" chip trails the last day; tapping it asks the
-   * parent to grow `length`. Lets history-focused hosts page past the default
-   * week without rendering an unbounded rail up front.
+   * When set, an "Earlier" chip leads the oldest day at the left edge; tapping
+   * it asks the parent to grow `length`. Lets history-focused hosts page past
+   * the default week without rendering an unbounded rail up front.
    */
   onExtend?: () => void;
 }
@@ -43,18 +46,43 @@ export function DayRail({
   horizontalInset = tokens.space.xl,
   onExtend,
 }: DayRailProps) {
+  // Oldest first, today last — the chronological reading order.
   const days: { key: string; label: string; parts: DayChipParts }[] = [];
-  for (let i = 0; i < length; i++) {
+  for (let i = length - 1; i >= 0; i--) {
     const key = shiftDateKey(today, -i);
     const parts = dayChipParts(key, today);
     days.push({ key, label: dayChipLabel(parts), parts });
   }
+  const scrollRef = useRef<ScrollView>(null);
+  // Open with today in view. Only on the first layout: when "Earlier" grows
+  // the rail, the new chips appear at the left and the user is looking there.
+  const scrolledToEndRef = useRef(false);
+  const onContentSizeChange = () => {
+    if (scrolledToEndRef.current) return;
+    scrolledToEndRef.current = true;
+    scrollRef.current?.scrollToEnd({ animated: false });
+  };
   return (
     <ScrollView
+      ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={[styles.rail, { paddingHorizontal: horizontalInset }]}
+      onContentSizeChange={onContentSizeChange}
     >
+      {onExtend ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Show earlier days"
+          onPress={onExtend}
+          testID={`${testIDPrefix}-earlier`}
+          style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+        >
+          <Text variant="label" style={styles.chipText}>
+            Earlier
+          </Text>
+        </Pressable>
+      ) : null}
       {days.map((d) => {
         const selected = d.key === selectedDate;
         return (
@@ -89,19 +117,6 @@ export function DayRail({
           </Pressable>
         );
       })}
-      {onExtend ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Show earlier days"
-          onPress={onExtend}
-          testID={`${testIDPrefix}-earlier`}
-          style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
-        >
-          <Text variant="label" style={styles.chipText}>
-            Earlier
-          </Text>
-        </Pressable>
-      ) : null}
     </ScrollView>
   );
 }
