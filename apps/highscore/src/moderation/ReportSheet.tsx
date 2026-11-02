@@ -8,10 +8,10 @@
 import { useMutation } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import type { ReportReason } from "@workshop/shared/moderation";
-import { Button, Chip, Sheet, Text, tokens, useToast } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { createReport } from "../api/moderation";
+import { Button, bodyType, Chip, Sheet, Text, tokens, useToast } from "../theme";
 
 export interface ReportTarget {
   userId: string;
@@ -118,7 +118,7 @@ export function ReportSheet({ target, token, onClose, onClosed }: ReportSheetPro
             value={details}
             onChangeText={setDetails}
             placeholder="Anything else? (optional)"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             multiline
             maxLength={500}
             style={styles.input}
@@ -151,15 +151,16 @@ const styles = StyleSheet.create({
   header: { gap: 4 },
   reasons: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
   input: {
+    ...bodyType(),
     minHeight: 72,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.elevated,
     textAlignVertical: "top",
   },
   actions: { flexDirection: "row", justifyContent: "flex-end", gap: tokens.space.sm },

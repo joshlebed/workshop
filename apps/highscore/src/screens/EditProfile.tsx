@@ -3,16 +3,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import {
-  Avatar,
-  Button,
-  CloseIcon,
-  IconButton,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
@@ -27,6 +17,17 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import {
+  Avatar,
+  Button,
+  bodyType,
+  IconButton,
+  PixelIcon,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "../theme";
 
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
@@ -90,7 +91,7 @@ export default function EditProfile() {
           onPress={() => goBack("/")}
           testID="profile-edit-close"
         >
-          <CloseIcon size={18} color={tokens.text.secondary} />
+          <PixelIcon name="close" size={24} color={tokens.text.secondary} />
         </IconButton>
       </View>
 
@@ -137,7 +138,7 @@ export default function EditProfile() {
             value={name}
             onChangeText={setName}
             placeholder="Ada Lovelace"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             autoComplete="name"
             maxLength={40}
             style={styles.input}
@@ -361,18 +362,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
   },
-  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
+  avatarPreview: { width: 72, height: 72, borderRadius: 0 },
   avatarButtons: { flex: 1, gap: tokens.space.sm },
   field: { gap: tokens.space.sm },
   input: {
-    borderWidth: 1,
+    ...bodyType(),
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 14,
     color: tokens.text.primary,
     fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
   },
   hint: { marginTop: tokens.space.xs },
   saveButton: { marginTop: tokens.space.sm },
@@ -382,15 +384,15 @@ const dangerStyles = StyleSheet.create({
   section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
   divider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    backgroundColor: tokens.border.default,
     marginBottom: tokens.space.md,
   },
   eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
     borderColor: tokens.status.danger,
     backgroundColor: tokens.bg.surface,
   },

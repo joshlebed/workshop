@@ -9,6 +9,31 @@ Shared boundaries are contracts and primitives only: `@workshop/api-client`, `@w
 Games UI is a frozen snapshot at `apps/workshop/src/legacyGames/`; never update it in lockstep with
 HighScore. Only an explicitly requested critical-fix backport may touch both copies.
 
+## Theme (`src/theme/`) — the only source of visual tokens
+
+HighScore is dark-only and app-themed per `DESIGN.md`. Every visual import — `tokens`, `Text`,
+`Button`, `Card`, `Chip`, `Sheet`, `Avatar`, `IconButton`, `Screen`/`HomeHeader`, `EmptyState`,
+`PullToRefresh`, `useToast`, `BarChart`, `PixelIcon` — comes from `src/theme`, never from
+`@workshop/ui` (only its behaviour helpers may be imported: `haptics`, `confirm`,
+`openExternalUrl`, `formatRelative`, `goBack`, the reorder constants, `GoogleSignInButton`, and
+the `/clipboard` `/navigation` `/reorder` `/share` subpaths). `grep -rn "@workshop/ui" apps/highscore`
+should list only those. Gotchas:
+
+- **Never put `fontWeight` on a HighScore `Text`.** Each Space Grotesk weight is its own
+  registered family (`SpaceGrotesk_700Bold` etc. with `fontWeight: "400"`), so a `fontWeight`
+  on top makes the browser synthesise a faux bold. Pick the variant that carries the weight or
+  spread `bodyType("bold")` from `src/theme/type.ts`.
+- **Press Start 2P is for three things only**: the wordmark (`variant="display"`), game names
+  (`variant="game"`), score numerals (`variant="score"` / `scoreType(px)`). Everything else is
+  Space Grotesk. `overline` is the small uppercase label (TODAY, YOU, turnout, FIX/EDIT).
+- **Icons are pixelarticons path data inlined in `PixelIcon.tsx`** (`.svg` imports don't bundle
+  on Metro or Cloudflare Pages). Add a glyph with
+  `pnpm --filter highscore-app run icons:paths <name>` and paste the output. Sizes 16/24/32 only.
+- `useColorScheme()` / `ThemeProvider` / light tokens are irrelevant here — static `tokens`.
+- The brand mark (`BrandIcon`, `assets/`, app icon, splash, `public/index.html` chrome) is
+  frozen: an external contractor owns the new mark. The pixel `HIGHSCORE` wordmark is type,
+  not the mark.
+
 Friends remain a shared product concept backed by the same graph and `@workshop/api-client/friends`,
 but each app owns its screen implementation so either frontend can evolve independently.
 

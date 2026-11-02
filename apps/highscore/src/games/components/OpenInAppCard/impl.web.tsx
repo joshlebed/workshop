@@ -24,11 +24,12 @@
 //
 // The `<a>` also needs an explicit `fontFamily`: a raw DOM element doesn't
 // inherit RN-Web's injected text font, so without this it renders in the UA
-// serif (Times). The value mirrors RN-Web's default `Text` stack exactly.
+// serif (Times). It uses the theme's button face (Space Grotesk 600, registered
+// by expo-font under `SECONDARY_FONT.semibold`) with a system fallback stack.
 
-import { Button, Card, Text, tokens } from "@workshop/ui";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
+import { Button, Card, SECONDARY_FONT, Text, tokens } from "../../../theme";
 import type { OpenInAppCardProps } from "./impl";
 
 export type { OpenInAppCardProps } from "./impl";
@@ -38,24 +39,28 @@ export type { OpenInAppCardProps } from "./impl";
 // (iOS scheme opens are sub-second); short enough to not feel stuck.
 const FALLBACK_MS = 2000;
 
-// RN-Web's default Text font stack — keep in sync so the anchor matches the card.
-const SYSTEM_FONT =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+// Theme button face first, then RN-Web's default stack as the fallback.
+const BUTTON_FONT = `"${SECONDARY_FONT.semibold}", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
 
+// Mirrors the theme `Button` primary variant (neon sign: transparent fill,
+// pink 2px bezel, pink label, pink glow) on a raw DOM anchor.
 const anchorStyle: CSSProperties = {
   display: "block",
   width: "100%",
   boxSizing: "border-box",
-  backgroundColor: tokens.accent.default,
-  color: tokens.text.onAccent,
+  backgroundColor: "transparent",
+  color: tokens.neon.pink,
   textDecoration: "none",
   textAlign: "center",
-  fontFamily: SYSTEM_FONT,
+  fontFamily: BUTTON_FONT,
   fontSize: tokens.font.size.md,
-  fontWeight: tokens.font.weight.semibold,
   paddingTop: tokens.space.md,
   paddingBottom: tokens.space.md,
-  borderRadius: tokens.radius.md,
+  borderRadius: 0,
+  borderWidth: tokens.bezel,
+  borderStyle: "solid",
+  borderColor: tokens.neon.pink,
+  boxShadow: `0 0 10px ${tokens.neon.pinkGlow}`,
 };
 
 export function OpenInAppCard({ appName, url, onContinue }: OpenInAppCardProps) {

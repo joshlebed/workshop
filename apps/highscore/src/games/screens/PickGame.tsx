@@ -2,17 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
-import {
-  Button,
-  ChevronIcon,
-  CloseIcon,
-  EmptyState,
-  haptics,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -24,6 +14,16 @@ import {
   TextInput,
   View,
 } from "react-native";
+import {
+  Button,
+  bodyType,
+  EmptyState,
+  PixelIcon,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "../../theme";
 import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
@@ -217,7 +217,7 @@ export default function PickGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <CloseIcon size={18} color={tokens.text.primary} />
+          <PixelIcon name="close" size={24} color={tokens.text.primary} />
         </Pressable>
         <View style={styles.headerTitleBlock}>
           <Text variant="title" style={styles.title}>
@@ -266,7 +266,7 @@ export default function PickGame() {
             value={scoreDraft}
             onChangeText={setScoreDraft}
             placeholder="Paste score text"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             // Opened by hand (home's Paste score) there is nothing to post yet,
             // so land in the box with the keyboard up. A share-intent arrival
             // already has its text; the Post button is the primary there.
@@ -457,6 +457,7 @@ function GameRow({
       style={({ pressed }) => [
         styles.gameRow,
         pressed && !disabled && styles.gameRowPressed,
+        loading && styles.gameRowSelected,
         disabled && !loading && styles.disabledRow,
       ]}
     >
@@ -472,7 +473,7 @@ function GameRow({
         </View>
       )}
       <View style={styles.rowBody}>
-        <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
+        <Text variant="game" numberOfLines={1} style={styles.rowTitle}>
           {title}
         </Text>
         <Text variant="caption" tone="muted" numberOfLines={1}>
@@ -482,7 +483,7 @@ function GameRow({
       {loading ? (
         <ActivityIndicator color={tokens.accent.default} size="small" />
       ) : (
-        <ChevronIcon size={16} color={tokens.text.muted} />
+        <PixelIcon name="chevron-right" size={16} color={tokens.text.secondary} />
       )}
     </Pressable>
   );
@@ -540,16 +541,16 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 4,
-    borderRadius: tokens.radius.pill,
+    borderRadius: 0,
     backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     maxWidth: "100%",
   },
   payloadDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: 0,
     backgroundColor: tokens.accent.default,
   },
   payloadText: { flexShrink: 1 },
@@ -562,9 +563,9 @@ const styles = StyleSheet.create({
   suggestionBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
+    borderRadius: 0,
     backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
   },
   suggestionHeader: {
@@ -582,15 +583,16 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   scoreInput: {
+    ...bodyType(),
     minHeight: 116,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
     textAlignVertical: "top",
   },
   gameSectionHeader: { gap: 2 },
@@ -601,20 +603,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
     padding: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.canvas,
     minHeight: 76,
   },
   gameRowPressed: { backgroundColor: tokens.bg.surface },
+  gameRowSelected: { borderColor: tokens.neon.pink, backgroundColor: tokens.accent.muted },
   disabledRow: { opacity: 0.55 },
   rowBody: { flex: 1, minWidth: 0, gap: 2 },
   rowTitle: { color: tokens.text.primary },
   gameThumb: {
     width: 44,
     height: 44,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     backgroundColor: tokens.bg.elevated,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },

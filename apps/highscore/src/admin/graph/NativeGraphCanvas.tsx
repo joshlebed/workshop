@@ -5,12 +5,12 @@
 // `layouts.ts`; this component only draws and moves the camera.
 
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
-import { Text } from "@workshop/ui";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { Text, tokens } from "../../theme";
 import { type Bounds, fitTransform } from "./layouts";
 import type { GraphPalette } from "./model";
 
@@ -214,7 +214,8 @@ export function NativeGraphCanvas({
                     style={{
                       width: size,
                       height: size,
-                      borderRadius: n.r,
+                      // Square nodes: HighScore avatars are squares, not circles.
+                      borderRadius: 0,
                       backgroundColor: n.color,
                       borderWidth: selected ? 3 : 1.5,
                       borderColor: selected ? palette.accent : palette.canvas,
@@ -226,7 +227,7 @@ export function NativeGraphCanvas({
                     {img ? (
                       <Image
                         source={{ uri: img }}
-                        style={{ width: size - 4, height: size - 4, borderRadius: n.r }}
+                        style={{ width: size - 4, height: size - 4, borderRadius: 0 }}
                       />
                     ) : null}
                   </View>
@@ -270,14 +271,14 @@ export function NativeGraphCanvas({
 }
 
 const styles = StyleSheet.create({
-  frame: { borderRadius: 14, borderWidth: 1, overflow: "hidden" },
+  frame: { borderRadius: 0, borderWidth: tokens.bezel, overflow: "hidden" },
   stage: { flex: 1 },
   scene: { position: "absolute", left: 0, top: 0 },
   labelWrap: { position: "absolute", width: LABEL_WIDTH, alignItems: "center" },
   label: {
     fontSize: 10,
     paddingHorizontal: 3,
-    borderRadius: 3,
+    borderRadius: 0,
     maxWidth: LABEL_WIDTH,
     overflow: "hidden",
   },

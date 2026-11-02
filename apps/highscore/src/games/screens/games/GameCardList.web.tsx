@@ -16,9 +16,10 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { MyGame } from "@workshop/shared/games";
-import { homeLayout, PullToRefresh, REORDER_ACTIVATION, tokens } from "@workshop/ui";
+import { REORDER_ACTIVATION } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { homeLayout, PullToRefresh, tokens } from "../../../theme";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({

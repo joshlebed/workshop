@@ -22,21 +22,22 @@ import { fetchFriends } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { Game } from "@workshop/shared/games";
-import {
-  Button,
-  ChevronIcon,
-  EmptyState,
-  haptics,
-  homeLayout,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  Button,
+  bodyType,
+  EmptyState,
+  homeLayout,
+  PixelIcon,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "../../../theme";
 import { addGame, fetchGameCatalog, fetchGameDiscovery } from "../../api/games";
 import { FriendsOnlyToggle } from "../../components/FriendsOnlyToggle";
 import {
@@ -185,7 +186,7 @@ export function AddGame() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <ChevronIcon direction="left" size={20} color={tokens.text.primary} />
+          <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
         </Pressable>
         <Text variant="title">Add a game</Text>
         <View style={styles.navButton} />
@@ -218,7 +219,7 @@ export function AddGame() {
             value={draft}
             onChangeText={setDraft}
             placeholder="https://example.com/daily"
-            placeholderTextColor={tokens.text.muted}
+            placeholderTextColor={tokens.text.secondary}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
@@ -262,22 +263,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: tokens.space.sm,
     gap: tokens.space.xs,
-    borderTopWidth: 1,
-    borderTopColor: tokens.border.subtle,
+    borderTopWidth: tokens.bezel,
+    borderTopColor: tokens.border.default,
     backgroundColor: tokens.bg.canvas,
   },
   footerLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
   footerRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   input: {
+    ...bodyType(),
     flex: 1,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 10,
     color: tokens.text.primary,
     // ≥16 or iOS Safari zooms the page on focus (see root CLAUDE.md).
     fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
   },
 });

@@ -13,7 +13,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { AdminGraphResponse } from "@workshop/shared";
-import { Button, Card, IconButton, Sheet, Text, tokens, useTheme } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,6 +37,7 @@ import { UsersTable } from "../admin/graph/UsersTable";
 import { ImpersonationPanel } from "../admin/ImpersonationPanel";
 import { fetchAdminGraph } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
+import { Button, Card, IconButton, PixelIcon, Sheet, Text, tokens } from "../theme";
 
 type Tab = "overview" | "users" | "tools";
 type UsersView = "force" | "clusters" | "tree" | "list";
@@ -81,15 +81,17 @@ const VIEWS: { key: UsersView; label: string; hint: string; nativeHint: string }
   },
 ];
 
+// Ordinal hues for cohorts / communities / generations, drawn from the neon
+// palette so the graph reads as HighScore; ordered to keep neighbours apart.
 const SERIES = [
-  "#F5A524",
-  "#4CA7E8",
-  "#3DD68C",
-  "#A78BFA",
-  "#F472B6",
-  "#D4B896",
-  "#94A3B8",
-  "#F05252",
+  tokens.neon.pink,
+  tokens.neon.chartreuse,
+  tokens.neon.yellow,
+  tokens.status.warning,
+  tokens.text.secondary,
+  tokens.status.danger,
+  tokens.neon.pinkTint,
+  tokens.text.primary,
 ];
 
 const WIDE_BREAKPOINT = 960;
@@ -105,7 +107,6 @@ function isUsersView(v: unknown): v is UsersView {
 
 export default function Admin() {
   const { user, token } = useAuth();
-  const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ tab?: string; view?: string; user?: string }>();
@@ -135,15 +136,15 @@ export default function Admin() {
 
   const palette = useMemo<GraphPalette>(
     () => ({
-      canvas: theme.bg.canvas,
-      surface: theme.bg.surface,
-      text: theme.text.primary,
-      muted: theme.text.secondary,
-      border: theme.border.default,
-      accent: theme.accent.default,
+      canvas: tokens.bg.canvas,
+      surface: tokens.bg.surface,
+      text: tokens.text.primary,
+      muted: tokens.text.secondary,
+      border: tokens.border.default,
+      accent: tokens.accent.default,
       series: SERIES,
     }),
-    [theme],
+    [],
   );
 
   const onSelect = useCallback(
@@ -249,7 +250,7 @@ export default function Admin() {
           accessibilityState={{ selected: tab === t.key }}
           testID={`admin-tab-${t.key}`}
         >
-          <Text variant="label" tone={tab === t.key ? "primary" : "muted"}>
+          <Text variant="label" tone={tab === t.key ? "link" : "muted"}>
             {t.label}
           </Text>
         </Pressable>
@@ -262,7 +263,7 @@ export default function Admin() {
       <View style={styles.column}>
         <View style={styles.header}>
           <View style={styles.headerText}>
-            <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
+            <Text variant="overline" tone="muted">
               HighScore
             </Text>
             <Text variant="heading" numberOfLines={1}>
@@ -275,7 +276,7 @@ export default function Admin() {
             onPress={() => goBack("/")}
             testID="admin-close"
           >
-            <Text style={styles.closeGlyph}>✕</Text>
+            <PixelIcon name="close" size={24} color={tokens.text.secondary} />
           </IconButton>
         </View>
         {isAdmin && !wide ? <View style={styles.tabsRowNarrow}>{tabsRow}</View> : null}
@@ -319,7 +320,7 @@ export default function Admin() {
                         accessibilityState={{ selected: view === v.key }}
                         testID={`admin-users-view-${v.key}`}
                       >
-                        <Text variant="label" tone={view === v.key ? "primary" : "muted"}>
+                        <Text variant="label" tone={view === v.key ? "link" : "muted"}>
                           {v.label}
                         </Text>
                       </Pressable>
@@ -417,13 +418,12 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1, minWidth: 0, gap: 2 },
   tabsRowNarrow: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.md },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
   tabs: {
     flexDirection: "row",
     gap: tokens.space.xs,
-    backgroundColor: tokens.bg.surface,
-    borderRadius: tokens.radius.pill,
-    padding: 3,
+    borderRadius: 0,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: tokens.border.default,
     alignSelf: "center",
     width: "100%",
     maxWidth: 360,
@@ -432,10 +432,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     paddingVertical: 7,
-    borderRadius: tokens.radius.pill,
+    borderRadius: 0,
+    // Sits on the row's bezel so the active underline replaces it.
+    marginBottom: -tokens.bezel,
+    borderBottomWidth: tokens.bezel,
+    borderBottomColor: "transparent",
   },
-  tabActive: { backgroundColor: tokens.bg.elevated },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  tabActive: { borderBottomColor: tokens.neon.pink },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
@@ -451,16 +454,18 @@ const styles = StyleSheet.create({
   segment: {
     flexDirection: "row",
     backgroundColor: tokens.bg.surface,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     padding: 3,
     gap: 2,
   },
   segmentItem: {
     paddingVertical: 7,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
-  segmentActive: { backgroundColor: tokens.bg.elevated },
+  segmentActive: { backgroundColor: tokens.accent.muted },
   loading: { paddingVertical: tokens.space.xl, alignItems: "center" },
   layout: { gap: tokens.space.md },
   layoutWide: { flexDirection: "row", alignItems: "flex-start" },

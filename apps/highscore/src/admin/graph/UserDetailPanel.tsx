@@ -4,10 +4,11 @@
 
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import type { AdminGraphNode, AdminGraphResponse } from "@workshop/shared";
-import { Avatar, Button, Card, formatRelative, Text, tokens } from "@workshop/ui";
+import { formatRelative } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Avatar, Button, bodyType, Card, Text, tokens } from "../../theme";
 import {
   ACTIVITY_BAND_LABEL,
   activityBand,
@@ -224,12 +225,14 @@ const styles = StyleSheet.create({
     flexBasis: "30%",
     flexGrow: 1,
     backgroundColor: tokens.bg.elevated,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
     gap: 2,
   },
-  statValue: { fontSize: tokens.font.size.lg, fontWeight: tokens.font.weight.semibold },
+  statValue: { ...bodyType("semibold"), fontSize: tokens.font.size.lg },
   friendsHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   friendRow: {
     flexDirection: "row",
@@ -237,7 +240,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     paddingVertical: tokens.space.xs,
     paddingHorizontal: tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   friendRowPressed: { backgroundColor: tokens.bg.elevated },
   friendText: { flex: 1, minWidth: 0 },

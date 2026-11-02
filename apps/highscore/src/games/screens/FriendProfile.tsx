@@ -11,24 +11,23 @@ import {
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
-import {
-  Avatar,
-  Button,
-  ChevronIcon,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { blockUser } from "../../api/moderation";
 import { ReportSheet, type ReportTarget } from "../../moderation/ReportSheet";
+import {
+  Avatar,
+  Button,
+  bodyType,
+  EmptyState,
+  PixelIcon,
+  Screen,
+  Text,
+  tokens,
+  useToast,
+} from "../../theme";
 import { addGame } from "../api/games";
 import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
@@ -240,7 +239,7 @@ export default function FriendProfileScreen() {
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
         >
-          <ChevronIcon direction="left" size={20} color={tokens.text.primary} />
+          <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
         </Pressable>
         <Text variant="title">Profile</Text>
         <View style={styles.navButton} />
@@ -387,7 +386,7 @@ export default function FriendProfileScreen() {
             {profile.games === null ? (
               <View style={styles.lockedCard} testID="friend-profile-locked">
                 <Text style={styles.lockedGlyph}>🎮</Text>
-                <Text variant="label" style={styles.lockedTitle}>
+                <Text variant="heading" style={styles.lockedTitle}>
                   Games are for friends
                 </Text>
                 <Text variant="caption" tone="muted" style={styles.lockedText}>
@@ -446,7 +445,7 @@ export default function FriendProfileScreen() {
                         )}
                       </View>
                       <View style={styles.gameText}>
-                        <Text variant="label" numberOfLines={1} style={styles.gameTitle}>
+                        <Text variant="game" numberOfLines={1} style={styles.gameTitle}>
                           {pg.game.title}
                         </Text>
                         {scoreLine ? (
@@ -457,7 +456,7 @@ export default function FriendProfileScreen() {
                       </View>
                       {pg.viewerHasGame ? (
                         <View style={styles.chevron}>
-                          <ChevronIcon size={16} color={tokens.text.muted} />
+                          <PixelIcon name="chevron-right" size={16} color={tokens.text.secondary} />
                         </View>
                       ) : isSelf ? null : (
                         <Pressable
@@ -482,7 +481,9 @@ export default function FriendProfileScreen() {
                           {adding ? (
                             <ActivityIndicator size="small" color={tokens.accent.default} />
                           ) : (
-                            <Text style={styles.addLabel}>Add</Text>
+                            <Text variant="label" style={styles.addLabel}>
+                              Add
+                            </Text>
                           )}
                         </Pressable>
                       )}
@@ -533,9 +534,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
     padding: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   identityText: { flex: 1, minWidth: 0, gap: 4 },
@@ -560,9 +561,9 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     paddingVertical: tokens.space.xxl,
     paddingHorizontal: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   lockedGlyph: { fontSize: 28, lineHeight: 34 },
@@ -576,42 +577,41 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   gameRowHover: { backgroundColor: tokens.bg.elevated },
   gameCover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    backgroundColor: tokens.accent.muted,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  gameCoverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
+  gameCoverImage: { width: COVER, height: COVER, borderRadius: 0 },
   gameCoverGlyph: { fontSize: 20 },
   gameText: { flex: 1, minWidth: 0, gap: 2 },
-  gameTitle: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  gameTitle: { color: tokens.text.primary },
   chevron: { paddingHorizontal: tokens.space.sm },
   addBtn: {
     minWidth: 64,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
   addBtnBusy: { opacity: 0.8 },
   addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    ...bodyType("semibold"),
+    color: tokens.neon.pinkTint,
   },
 });

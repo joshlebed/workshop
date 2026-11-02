@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/apiError";
-import { Button, Sheet, Text, tokens, useToast } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
+import { Button, Sheet, Text, tokens, useToast } from "../../theme";
 import { applyScorePick } from "../api/teach";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
@@ -135,12 +135,12 @@ export function FixScoreSheet({
 const styles = StyleSheet.create({
   header: { gap: 2 },
   rawBox: {
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.surface,
     maxHeight: 180,
     overflow: "hidden",
   },
