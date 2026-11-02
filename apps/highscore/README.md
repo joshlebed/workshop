@@ -25,11 +25,11 @@ same account row — see the multi-audience token verification in `apps/backend/
 The app needs the backend on `:8787`. Three options:
 
 ```bash
-# 1. Everything at once — backend + Workshop web (:8081) + HighScore web (:8082)
+# 1. Everything at once — backend + Workshop web (:8082) + HighScore web (:8081)
 HIGHSCORE=1 pnpm dev
 
 # 2. Just this app, against an already-running backend
-pnpm dev:highscore            # http://localhost:8082
+pnpm dev:highscore            # http://localhost:8081
 
 # 3. Native (Expo Go / dev client) — separate terminal, interactive QR UI
 pnpm dev:highscore:mobile

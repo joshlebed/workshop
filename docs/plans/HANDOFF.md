@@ -164,7 +164,7 @@ Required:
       `dev.josh.workshop.web`. This identifier becomes the `aud` claim on web identity
       tokens and must be pasted into SSM as `apple_services_id`.
 - [ ] On that Services ID, configure **Return URLs**. For Phase 0c:
-  - `http://localhost:8081` (Expo web dev)
+  - `http://localhost:8082` (Expo web dev)
   - `https://workshop.pages.dev` (temporary Cloudflare Pages URL; add the custom
     domain later when it lands)
 - [ ] Create a **Sign in with Apple key** (`.p8`). Not strictly required for the
@@ -188,7 +188,7 @@ Required:
 - [ ] **Create OAuth client ID → iOS**. Bundle ID `dev.josh.workshop`. Copy the client
       ID — it is the `aud` for native Google tokens.
 - [ ] **Create OAuth client ID → Web application**. Authorized JavaScript origins:
-      `http://localhost:8081`, `https://workshop.pages.dev`. Authorized redirect URIs
+      `http://localhost:8082`, `https://workshop.pages.dev`. Authorized redirect URIs
       (only if using the implicit flow; Google Identity Services doesn't require one).
       Copy the client ID — it is the `aud` for web Google tokens.
 

@@ -46,13 +46,14 @@ const STATIC_ALLOWED_ORIGINS = new Set<string>([
   // HighScore production web (Cloudflare Pages custom domain). Inert until the
   // HighScore client exists — see docs/highscore-migration-plan.md phase 1.
   "https://highscore.live",
-  "http://localhost:8081",
-  "http://localhost:8787",
-  "http://127.0.0.1:8081",
-  // HighScore's Expo web dev server (`pnpm dev:highscore` / `HIGHSCORE=1 pnpm dev`).
-  // Workshop's runs on :8081; the two coexist so both apps can point at one backend.
+  // Workshop's Expo web dev server (`pnpm dev`).
   "http://localhost:8082",
+  "http://localhost:8787",
   "http://127.0.0.1:8082",
+  // HighScore's Expo web dev server (`pnpm dev:highscore` / `HIGHSCORE=1 pnpm dev`).
+  // It takes :8081 (Expo's default) so it sorts first in Niteshift's preview list.
+  "http://localhost:8081",
+  "http://127.0.0.1:8081",
 ]);
 
 // Cloudflare Pages gives each project a `<project>.pages.dev` apex plus a

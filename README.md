@@ -30,11 +30,11 @@ you get the same account.
 
 ```bash
 pnpm install
-pnpm dev                # postgres (docker) + backend (:8787) + workshop web (:8081)
-HIGHSCORE=1 pnpm dev    # …plus the HighScore web app on :8082
+pnpm dev                # postgres (docker) + backend (:8787) + workshop web (:8082)
+HIGHSCORE=1 pnpm dev    # …plus the HighScore web app on :8081
 ```
 
-Open <http://localhost:8081> (or <http://localhost:8082> for HighScore). Web is the primary dev surface — fast iteration,
+Open <http://localhost:8082> (or <http://localhost:8081> for HighScore). Web is the primary dev surface — fast iteration,
 agent-browser can drive the real UI. The web app auto-signs in as a seeded dev user
 (`joshlebed@gmail.com`) with sample lists already populated, so it opens lived-in.
 

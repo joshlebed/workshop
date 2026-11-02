@@ -70,11 +70,11 @@ const workshopClientHeaderSchema = z.enum(WORKSHOP_CLIENTS).default("workshop");
 
 const FRIEND_INVITE_BASE_URLS = {
   workshop: {
-    local: "http://localhost:8081",
+    local: "http://localhost:8082",
     production: "https://workshop-a2v.pages.dev",
   },
   highscore: {
-    local: "http://localhost:8082",
+    local: "http://localhost:8081",
     production: "https://highscore.live",
   },
 } as const satisfies Record<WorkshopClient, { local: string; production: string }>;

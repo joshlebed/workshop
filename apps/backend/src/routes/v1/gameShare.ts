@@ -36,10 +36,10 @@ const ipKey: RateLimitKeyFn = (c) => {
  * Where the play link lands — the short, app-routable `/g/:token` form (iOS
  * Universal Links + the Pages OG interceptor both handle it). Games belong to
  * HighScore, so even Workshop's legacy Games tab mints HighScore links. Local
- * links use HighScore's Expo web port (:8082), not Workshop's (:8081).
+ * links use HighScore's Expo web port (:8081), not Workshop's (:8082).
  */
 function gameShareUrl(token: string, isLocal = getConfig().isLocal): string {
-  const base = isLocal ? "http://localhost:8082" : "https://highscore.live";
+  const base = isLocal ? "http://localhost:8081" : "https://highscore.live";
   return `${base}/g/${token}`;
 }
 

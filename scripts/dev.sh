@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Start postgres (Docker) + backend + Expo web app, with namespaced log output
-# via `concurrently`. Web runs at http://localhost:8081, backend at :8787.
+# via `concurrently`. Web runs at http://localhost:8082, backend at :8787.
 #
-# `HIGHSCORE=1 pnpm dev` additionally starts the HighScore web app on :8082
+# `HIGHSCORE=1 pnpm dev` additionally starts the HighScore web app on :8081
 # against the same backend. Off by default so the common Workshop loop keeps
 # booting two processes instead of three; `pnpm dev:highscore` runs it alone.
 #
@@ -71,16 +71,16 @@ RUN_HIGHSCORE="${HIGHSCORE:-0}"
 
 echo ""
 if [ "$RUN_HIGHSCORE" = "1" ]; then
-  echo "→ Starting backend (:8787), workshop web (:8081), highscore web (:8082). Ctrl-C stops all."
+  echo "→ Starting backend (:8787), workshop web (:8082), highscore web (:8081). Ctrl-C stops all."
 else
-  echo "→ Starting backend (:8787) and web app (:8081). Ctrl-C stops both."
+  echo "→ Starting backend (:8787) and web app (:8082). Ctrl-C stops both."
 fi
 echo "  Logs tee'd to $LOG_FILE — \`tail -f $LOG_FILE\` to follow, or grep to search."
 echo ""
 
-lsof -ti:8081 | xargs kill 2>/dev/null || true
+lsof -ti:8082 | xargs kill 2>/dev/null || true
 if [ "$RUN_HIGHSCORE" = "1" ]; then
-  lsof -ti:8082 | xargs kill 2>/dev/null || true
+  lsof -ti:8081 | xargs kill 2>/dev/null || true
 fi
 
 # Keep colors on the terminal (FORCE_COLOR=1 propagates through the pipe), but

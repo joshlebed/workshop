@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # Run the Playwright E2E suite against the local dev servers.
-# Starts backend (:8787) + web (:8081) with the dev-auth flags enabled,
+# Starts backend (:8787) + web (:8082) with the dev-auth flags enabled,
 # waits for both to be healthy, then runs `playwright test`.
 #
 # Prereqs:
 #   • `pnpm install` has completed
 #   • Chromium is installed: `npx playwright install chromium`
-#   • Nothing else is bound to :8787 / :8081
+#   • Nothing else is bound to :8787 / :8082
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 BACKEND_PORT="${BACKEND_PORT:-8787}"
-WEB_PORT="${WEB_PORT:-8081}"
+WEB_PORT="${WEB_PORT:-8082}"
 BACKEND_URL="http://localhost:${BACKEND_PORT}"
 WEB_URL="http://localhost:${WEB_PORT}"
 

@@ -24,7 +24,7 @@ function deriveFromWebLocation(): string | null {
     return "/api";
   }
 
-  if (port === "8081") {
+  if (port === "8081" || port === "8082") {
     return `${window.location.protocol}//${hostname}:8787`;
   }
   return null;

@@ -6,8 +6,8 @@ The iOS + web client for **Workshop.dev** — an umbrella app for small products
 
 ## Running locally
 
-From the repo root: `pnpm dev` (boots postgres + backend + this app at `:8081`).
-Web is the primary dev surface — open <http://localhost:8081>.
+From the repo root: `pnpm dev` (boots postgres + backend + this app at `:8082`).
+Web is the primary dev surface — open <http://localhost:8082>.
 
 For iOS in Expo Go:
 

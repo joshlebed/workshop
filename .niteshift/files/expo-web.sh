@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Service wrapper for an Expo web dev server: `expo-web.sh <pnpm-filter>`.
-# Used by the `workshop` (workshop-app, :8081) and `highscore` (highscore-app,
-# :8082) services.
+# Used by the `workshop` (workshop-app, :8082) and `highscore` (highscore-app,
+# :8081) services.
 #
 # Expo CLI's CorsMiddleware only whitelists `localhost` plus
 # `expo.extra.router.origin`; the Niteshift preview proxy keeps the iframe
@@ -11,7 +11,7 @@
 # EXPO_DEV_SERVER_ALLOWED_ORIGIN; derive it for *this* service's port from
 # NITESHIFT_PORT_<port>_URL (present on tasks started after the manifest was
 # committed) or the preview URL template. Clear the legacy named-port variable
-# so HighScore doesn't inherit Workshop's :8081 origin.
+# so HighScore doesn't inherit Workshop's :8082 origin.
 set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_DIR"
