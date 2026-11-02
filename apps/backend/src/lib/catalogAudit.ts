@@ -27,6 +27,7 @@ import { getDb } from "../db/client.js";
 import { gameScores, games, userGames } from "../db/schema.js";
 import { containsObjectionableContent } from "./contentFilter.js";
 import { toIsoString } from "./dates.js";
+import { cleanGameTitle, titleLooksLikeTagline } from "./gameCatalog.js";
 
 const AUDIT_WINDOW_DAYS = 30;
 /** A listed game whose last-30-day scores read worse than this is flagged. */
@@ -45,10 +46,15 @@ interface CatalogCandidate {
   suggestedCategory: GameCategory;
   /**
    * `objectionable-title`: the title/url trips the content filter — do not
-   * list; consider `admin:eject`. `no-parser`: scores for it are unread until
-   * someone teaches it. `single-player`: only one person has it.
+   * list; consider `admin:eject`. `tagline-title`: the stored title reads
+   * like a page tagline ("Krillion · the daily dive"); `suggestedTitle` is
+   * what `cleanGameTitle` makes of it — rename the row before listing.
+   * `no-parser`: scores for it are unread until someone teaches it.
+   * `single-player`: only one person has it.
    */
   flags: string[];
+  /** Set with `tagline-title`: the cleaned name to `UPDATE games SET title` to. */
+  suggestedTitle?: string;
 }
 
 interface ListedGameHealth {
@@ -163,8 +169,11 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
       if (r.playerCount === 0) continue;
       const flags: string[] = [];
       if (containsObjectionableContent(`${g.title} ${g.url}`)) flags.push("objectionable-title");
+      const tagline = titleLooksLikeTagline(g.title);
+      if (tagline) flags.push("tagline-title");
       if (!hasParser) flags.push("no-parser");
       if (r.playerCount === 1) flags.push("single-player");
+      const suggestedTitle = tagline ? cleanGameTitle(g.title) : null;
       candidates.push({
         gameId: g.id,
         title: g.title,
@@ -176,6 +185,7 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
         hasFormatter,
         suggestedCategory: suggestCategory(g.title, g.url),
         flags,
+        ...(suggestedTitle && suggestedTitle !== g.title ? { suggestedTitle } : {}),
       });
       continue;
     }
@@ -187,6 +197,12 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
     if (!hasParser) issues.push("no parser: every score is stored unread");
     if (!hasFormatter) issues.push("no formatter: rows show raw share text");
     if (g.parseConflictAt) issues.push("open parse conflict (two players' picks disagree)");
+    if (titleLooksLikeTagline(g.title)) {
+      const clean = cleanGameTitle(g.title);
+      issues.push(
+        `title reads like a tagline${clean && clean !== g.title ? ` — rename to "${clean}"` : ""}`,
+      );
+    }
     if (r.scoresInWindow >= 5 && r.unreadInWindow / r.scoresInWindow > UNREAD_RATE_THRESHOLD) {
       issues.push(
         `${r.unreadInWindow}/${r.scoresInWindow} scores unread in the last ${AUDIT_WINDOW_DAYS} days`,
@@ -251,7 +267,7 @@ export function renderCatalogAuditMarkdown(report: CatalogAuditReport): string {
     out.push("| --- | --- | ---: | ---: | --- | --- | --- |");
     for (const c of report.candidates) {
       out.push(
-        `| ${c.title} | ${c.url} | ${c.playerCount} | ${c.scoresInWindow} | ${c.hasParser ? "yes" : "no"} | ${categoryLabel(c.suggestedCategory)} | ${c.flags.join(", ") || "—"} |`,
+        `| ${c.title}${c.suggestedTitle ? ` (→ "${c.suggestedTitle}")` : ""} | ${c.url} | ${c.playerCount} | ${c.scoresInWindow} | ${c.hasParser ? "yes" : "no"} | ${categoryLabel(c.suggestedCategory)} | ${c.flags.join(", ") || "—"} |`,
       );
     }
     out.push("");
@@ -262,7 +278,7 @@ export function renderCatalogAuditMarkdown(report: CatalogAuditReport): string {
     out.push("```ts");
     for (const c of report.candidates.filter((c) => !c.flags.includes("objectionable-title"))) {
       out.push(
-        `{ normalizedUrl: ${JSON.stringify(c.normalizedUrl)}, title: ${JSON.stringify(c.title)}, category: ${JSON.stringify(c.suggestedCategory)} },`,
+        `{ normalizedUrl: ${JSON.stringify(c.normalizedUrl)}, title: ${JSON.stringify(c.suggestedTitle ?? c.title)}, category: ${JSON.stringify(c.suggestedCategory)} },`,
       );
     }
     out.push("```");

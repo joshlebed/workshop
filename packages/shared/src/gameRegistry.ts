@@ -655,35 +655,35 @@ export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
   { normalizedUrl: "hbd.gg/play", title: "EthnoGuessr", category: "geography" },
   {
     normalizedUrl: "farflung.game",
-    title: "Farflung · The daily expedition",
+    title: "Farflung",
     category: "geography",
   },
   {
     normalizedUrl: "fermi.gg",
-    title: "Fermi: The Daily Estimation Puzzle Game",
+    title: "Fermi",
     category: "puzzles",
   },
   { normalizedUrl: "geohistory.gg", title: "GeoHistory", category: "geography" },
   {
     normalizedUrl: "geozee.earth",
-    title: "Geozee — Daily Geography Category Puzzle",
+    title: "Geozee",
     category: "geography",
   },
   { normalizedUrl: "gerrymandle.com", title: "Gerrymandle", category: "puzzles" },
   {
     normalizedUrl: "bandle.app/menu",
-    title: "Guess the song, one instrument at a time",
+    title: "Bandle",
     category: "music-movies",
   },
-  { normalizedUrl: "krillion.io", title: "Krillion · the daily dive", category: "trivia" },
+  { normalizedUrl: "krillion.io", title: "Krillion", category: "trivia" },
   { normalizedUrl: "linxicon.com", title: "Linxicon", category: "words" },
   { normalizedUrl: "minutecryptic.com", title: "Minute Cryptic", category: "words" },
   {
     normalizedUrl: "magnitudle.com/size-it-up",
-    title: "Size It Up | Magnitudle",
+    title: "Size It Up",
     category: "puzzles",
   },
-  { normalizedUrl: "spotle.io", title: "Spotle: Music Wordle Game", category: "music-movies" },
+  { normalizedUrl: "spotle.io", title: "Spotle", category: "music-movies" },
   { normalizedUrl: "timeguessr.com", title: "TimeGuessr", category: "trivia" },
 ];
 

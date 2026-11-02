@@ -36,6 +36,8 @@ type ScoreDirection = "asc" | "desc";
  */
 export interface GameMetadataHints {
   title?: string | null;
+  /** `og:site_name` — the fallback name when the page title is a tagline. */
+  siteName?: string | null;
   iconUrl?: string | null;
 }
 
@@ -48,24 +50,46 @@ type GameMetadataHintsProvider = () => Promise<GameMetadataHints | null>;
 
 const MAX_GAME_TITLE_LENGTH = 80;
 
+/** Page-title separators: "Wordle — The New York Times", "Size It Up | Magnitudle", "Fermi: The Daily…". */
+const TITLE_SEPARATOR = /\s*[|·—–]\s*|\s+-\s+|:\s+/;
+
+function wordCount(s: string): number {
+  return s.split(/\s+/).filter(Boolean).length;
+}
+
 /**
- * Distill a page `<title>` into a card-sized game name: collapse whitespace,
- * and when the title is long, keep the segment before the first separator
- * ("Wordle — The New York Times" → "Wordle"). Short titles pass through
- * untouched so legit hyphenated names survive.
+ * Distill a page title into a card-sized game name. Pages title themselves
+ * "<name> <sep> <tagline>" ("Krillion · the daily dive"), so keep the segment
+ * before the first separator whenever that head is a plausible name (≥3
+ * chars). When what's left still reads as a sentence (≥5 words — "Guess the
+ * song, one instrument at a time") and the page declares an `og:site_name`
+ * that looks like a name, use that instead. Imperfect by design: the daily
+ * catalog audit flags titles that still look like taglines for a human.
  */
-export function cleanGameTitle(raw: string | null | undefined): string | null {
+export function cleanGameTitle(
+  raw: string | null | undefined,
+  siteName: string | null | undefined = null,
+): string | null {
   if (!raw) return null;
   let title = raw.replace(/\s+/g, " ").trim();
   if (title.length === 0) return null;
-  if (title.length > 40) {
-    const head = title.split(/\s*[|·—–]\s*|\s+-\s+/)[0]?.trim();
-    if (head && head.length >= 3) title = head;
+  const head = title.split(TITLE_SEPARATOR)[0]?.trim();
+  if (head && head.length >= 3 && head.length < title.length) title = head;
+  if (wordCount(title) >= 5) {
+    const site = siteName?.replace(/\s+/g, " ").trim() ?? "";
+    if (site.length >= 3 && site.length <= 40 && !/[./]/.test(site) && wordCount(site) < 5) {
+      title = site;
+    }
   }
   if (title.length > MAX_GAME_TITLE_LENGTH) {
     title = `${title.slice(0, MAX_GAME_TITLE_LENGTH - 1).trimEnd()}…`;
   }
   return title;
+}
+
+/** True when a stored title still reads like a page tagline rather than a name. */
+export function titleLooksLikeTagline(title: string): boolean {
+  return TITLE_SEPARATOR.test(title) || wordCount(title) >= 5;
 }
 
 /**
@@ -177,7 +201,9 @@ export async function findOrCreateGame(
           normalizedUrl,
           url: `https://${normalizedUrl}`,
           title:
-            cleanGameTitle(resolvedHints.title) ?? normalizedUrl.split("/")[0] ?? normalizedUrl,
+            cleanGameTitle(resolvedHints.title, resolvedHints.siteName) ??
+            normalizedUrl.split("/")[0] ??
+            normalizedUrl,
           iconUrl: iconHint ?? defaultGameIconUrl(normalizedUrl),
           gameKey: null,
           scoreDirection: "desc" as const,
