@@ -837,7 +837,7 @@ grep "<request_id>" /tmp/workshop-dev.log       # trace one request
 
 In the Niteshift sandbox, backend + web are separate supervised services (see
 "Niteshift sandbox lifecycle" below): `ns services logs backend -n 200` /
-`ns services logs web -n 200`. `$NITESHIFT_LOG_FILE` only covers `.niteshift/setup`.
+`ns services logs workshop -n 200`. `$NITESHIFT_LOG_FILE` only covers `.niteshift/setup`.
 
 ### Niteshift sandbox lifecycle — `.niteshift/`
 
@@ -857,8 +857,8 @@ re-applies the manifest after you edit it; `ns services validate` checks it.
 | Service     | Port | Autostart | Notes                                                                         |
 | ----------- | ---- | --------- | ----------------------------------------------------------------------------- |
 | `highscore` | 8082 | yes       | HighScore Expo web. Primary preview (listed first). `EXPO_PUBLIC_DEV_AUTH=1`. |
+| `workshop`  | 8081 | yes       | Workshop.dev Expo web against the same backend.                               |
 | `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).                     |
-| `web`       | 8081 | no        | `ns services start web` — Workshop.dev web against same backend.              |
 | `postgres`  | —    | no        | Docker PG17, host networking, prod copy. Started by setup/resume.             |
 
 Gotchas: services get **platform env + manifest `environment` + `PORT` only**, never the

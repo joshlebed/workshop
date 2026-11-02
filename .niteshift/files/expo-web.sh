@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Service wrapper for an Expo web dev server: `expo-web.sh <pnpm-filter>`.
-# Used by the `web` (workshop-app, :8081) and `highscore` (highscore-app,
+# Used by the `workshop` (workshop-app, :8081) and `highscore` (highscore-app,
 # :8082) services.
 #
 # Expo CLI's CorsMiddleware only whitelists `localhost` plus
