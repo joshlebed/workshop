@@ -10,3 +10,15 @@ export { PixelIcon, type PixelIconName, type PixelIconProps } from "./PixelIcon"
 export { Sheet, type SheetProps } from "./Sheet";
 export { AnimatedText, type HSTextProps, Text } from "./Text";
 export { glow, PIXEL_FONT, palette, pixelType, type Tokens, textGlow, tokens } from "./tokens";
+export {
+  buttonType,
+  LAB_FONT_LABEL,
+  type LabButtons,
+  type LabFont,
+  type LabScores,
+  scoreType,
+  setTypeLab,
+  type TypeLab,
+  uiType,
+  useTypeLab,
+} from "./typeLab";

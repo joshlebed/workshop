@@ -20,7 +20,7 @@ import { STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { REORDER_ACTIVATION } from "@workshop/ui";
 import { memo } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
-import { Avatar, PixelIcon, Text, tokens } from "../../theme";
+import { Avatar, PixelIcon, scoreType, Text, tokens, uiType, useTypeLab } from "../../theme";
 import { ordinal, shortScore } from "../lib/shortScore";
 
 const PODIUM = 3;
@@ -65,6 +65,7 @@ export const GameScoreCard = memo(function GameScoreCard({
   onMenu,
   onLongPressBody,
 }: GameScoreCardProps) {
+  const lab = useTypeLab();
   const scored = entries.filter((e) => e.scoreRaw != null && e.scoreRaw.length > 0);
   const me = selfId ? scored.find((e) => e.userId === selfId) : undefined;
   const podium = scored.slice(0, PODIUM);
@@ -110,13 +111,13 @@ export const GameScoreCard = memo(function GameScoreCard({
               <PixelIcon name="gamepad" size={16} />
             </View>
           )}
-          <Text variant="heading" numberOfLines={1} style={styles.title}>
+          <Text variant="game" numberOfLines={1} style={styles.title}>
             {title}
           </Text>
           {streak >= STREAK_MIN_DAYS ? (
             <View style={styles.streak} testID={`game-card-streak-${gameId}`}>
               <PixelIcon name="zap" size={16} color={tokens.neon.chartreuse} />
-              <Text style={styles.streakText}>{streak}</Text>
+              <Text style={[styles.streakText, scoreType(lab, 10)]}>{streak}</Text>
             </View>
           ) : null}
         </Pressable>
@@ -141,7 +142,10 @@ export const GameScoreCard = memo(function GameScoreCard({
           {...longPress}
           style={styles.metaLeft}
         >
-          <Text style={[styles.turnout, nobody && styles.turnoutMuted]} numberOfLines={1}>
+          <Text
+            style={[styles.turnout, uiType(lab, 8), nobody && styles.turnoutMuted]}
+            numberOfLines={1}
+          >
             {loading ? "LOADING" : turnout}
           </Text>
         </Pressable>
@@ -154,11 +158,13 @@ export const GameScoreCard = memo(function GameScoreCard({
             style={styles.placing}
             testID={`game-card-placing-${gameId}`}
           >
-            <Text style={styles.placingLabel}>YOU</Text>
-            <Text style={[styles.placingRank, me.rank === 1 && styles.placingWin]}>
+            <Text style={[styles.placingLabel, uiType(lab, 8)]}>YOU</Text>
+            <Text
+              style={[styles.placingRank, scoreType(lab, 11), me.rank === 1 && styles.placingWin]}
+            >
               {me.rank ? ordinal(me.rank) : "—"}
             </Text>
-            <Text style={styles.placingScore}>{shortScore(me)}</Text>
+            <Text style={[styles.placingScore, scoreType(lab, 11)]}>{shortScore(me)}</Text>
           </Pressable>
         ) : isToday && !loading ? (
           <Pressable
@@ -169,7 +175,7 @@ export const GameScoreCard = memo(function GameScoreCard({
             testID={`game-card-paste-${gameId}`}
             style={({ pressed }) => [styles.pasteBtn, pressed && styles.pasteBtnPressed]}
           >
-            <Text style={styles.pasteText}>PASTE</Text>
+            <Text style={[styles.pasteText, uiType(lab, 10)]}>PASTE</Text>
           </Pressable>
         ) : null}
       </View>
@@ -206,7 +212,7 @@ export const GameScoreCard = memo(function GameScoreCard({
           ) : null}
           {overflow > 0 ? (
             <Pressable accessibilityRole="button" onPress={onPress} {...longPress}>
-              <Text style={styles.more}>+{overflow} MORE</Text>
+              <Text style={[styles.more, uiType(lab, 8)]}>+{overflow} MORE</Text>
             </Pressable>
           ) : null}
         </View>
@@ -228,11 +234,14 @@ function PodiumRow({
   onPressPlayer: (userId: string) => void;
   longPress: { onLongPress?: () => void; delayLongPress?: number };
 }) {
+  const lab = useTypeLab();
   const name = entry.displayName?.trim() || "Someone";
   const first = name.split(/\s+/)[0] ?? name;
   return (
     <View style={[styles.row, isMe && styles.rowMe]} testID={`game-card-row-${entry.userId}`}>
-      <Text style={[styles.rank, entry.rank === 1 && styles.rankFirst]}>{entry.rank ?? "·"}</Text>
+      <Text style={[styles.rank, scoreType(lab, 9), entry.rank === 1 && styles.rankFirst]}>
+        {entry.rank ?? "·"}
+      </Text>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`View ${name}'s profile`}
@@ -255,7 +264,10 @@ function PodiumRow({
         style={styles.scoreCell}
       >
         <View style={styles.leader} />
-        <Text style={[styles.score, entry.rank === 1 && styles.scoreFirst]} numberOfLines={1}>
+        <Text
+          style={[styles.score, scoreType(lab, 11), entry.rank === 1 && styles.scoreFirst]}
+          numberOfLines={1}
+        >
           {shortScore(entry)}
         </Text>
         {entry.reactions.length > 0 ? (
@@ -299,7 +311,6 @@ const styles = StyleSheet.create({
   title: { flexShrink: 1, minWidth: 0, fontSize: 12, lineHeight: 18 },
   streak: { flexDirection: "row", alignItems: "center", gap: 2 },
   streakText: {
-    fontFamily: tokens.font.pixel,
     fontSize: 10,
     lineHeight: 16,
     color: tokens.neon.chartreuse,
@@ -308,7 +319,6 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm, minHeight: 24 },
   metaLeft: { flex: 1, minWidth: 0 },
   turnout: {
-    fontFamily: tokens.font.pixel,
     fontSize: 8,
     lineHeight: 14,
     letterSpacing: 1,
@@ -317,14 +327,12 @@ const styles = StyleSheet.create({
   turnoutMuted: { color: tokens.text.secondary, opacity: 0.7 },
   placing: { flexDirection: "row", alignItems: "baseline", gap: tokens.space.sm },
   placingLabel: {
-    fontFamily: tokens.font.pixel,
     fontSize: 8,
     lineHeight: 14,
     letterSpacing: 1,
     color: tokens.text.secondary,
   },
   placingRank: {
-    fontFamily: tokens.font.pixel,
     fontSize: 11,
     lineHeight: 16,
     letterSpacing: 1,
@@ -332,7 +340,6 @@ const styles = StyleSheet.create({
   },
   placingWin: { color: tokens.neon.yellow },
   placingScore: {
-    fontFamily: tokens.font.pixel,
     fontSize: 11,
     lineHeight: 16,
     color: tokens.text.primary,
@@ -346,7 +353,6 @@ const styles = StyleSheet.create({
   },
   pasteBtnPressed: { backgroundColor: tokens.accent.muted },
   pasteText: {
-    fontFamily: tokens.font.pixel,
     fontSize: 10,
     lineHeight: 16,
     letterSpacing: 1,
@@ -365,7 +371,6 @@ const styles = StyleSheet.create({
   rank: {
     width: 18,
     textAlign: "right",
-    fontFamily: tokens.font.pixel,
     fontSize: 9,
     lineHeight: 14,
     color: tokens.text.secondary,
@@ -389,7 +394,6 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   score: {
-    fontFamily: tokens.font.pixel,
     fontSize: 11,
     lineHeight: 16,
     color: tokens.text.primary,
@@ -404,7 +408,6 @@ const styles = StyleSheet.create({
     marginVertical: 2,
   },
   more: {
-    fontFamily: tokens.font.pixel,
     fontSize: 8,
     lineHeight: 14,
     letterSpacing: 1,

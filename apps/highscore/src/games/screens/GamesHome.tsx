@@ -27,7 +27,18 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
-import { Button, IconButton, PixelIcon, Screen, Sheet, Text, tokens } from "../../theme";
+import {
+  Button,
+  IconButton,
+  PixelIcon,
+  Screen,
+  Sheet,
+  scoreType,
+  Text,
+  tokens,
+  uiType,
+  useTypeLab,
+} from "../../theme";
 import {
   addGame,
   fetchGameDiscovery,
@@ -68,6 +79,7 @@ export interface GamesHomeProps {
 }
 
 export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHomeProps) {
+  const lab = useTypeLab();
   const { token, user, routes } = useGamesRuntime();
   const router = useRouter();
   const openProfile = useOpenProfile();
@@ -439,7 +451,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
             <PixelIcon name="users" color={tokens.text.primary} />
             {pendingRequests > 0 ? (
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{pendingRequests > 9 ? "9+" : pendingRequests}</Text>
+                <Text style={[styles.badgeText, uiType(lab, 8)]}>
+                  {pendingRequests > 9 ? "9+" : pendingRequests}
+                </Text>
               </View>
             ) : null}
           </IconButton>
@@ -721,7 +735,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   badgeText: {
-    fontFamily: tokens.font.pixel,
     fontSize: 8,
     lineHeight: 12,
     color: tokens.text.onAccent,

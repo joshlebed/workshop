@@ -14,7 +14,7 @@ import type { Game, GameStandingsEntry } from "@workshop/shared/games";
 import { formatRelative } from "@workshop/ui";
 import { useState } from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
-import { Avatar, PixelIcon, Text, tokens } from "../../theme";
+import { Avatar, PixelIcon, scoreType, Text, tokens, uiType, useTypeLab } from "../../theme";
 import { scoreLineLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { shortScore } from "../lib/shortScore";
@@ -45,6 +45,7 @@ export function BoardRow({
   onReact,
   onOpenReactionPicker,
 }: BoardRowProps) {
+  const lab = useTypeLab();
   const name = entry.displayName?.trim() || "Someone";
   const body = summarizeGameScoreBody(game, entry);
   const picked = scoreLineLabel(entry, game, teachAvailable);
@@ -58,7 +59,9 @@ export function BoardRow({
       <View style={styles.head}>
         <View style={styles.rankCell}>
           {first ? <PixelIcon name="crown" size={16} color={tokens.neon.yellow} /> : null}
-          <Text style={[styles.rank, first && styles.rankFirst]}>{entry.rank ?? "·"}</Text>
+          <Text style={[styles.rank, scoreType(lab, 11), first && styles.rankFirst]}>
+            {entry.rank ?? "·"}
+          </Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -71,7 +74,7 @@ export function BoardRow({
           <View style={styles.nameWrap}>
             <Text variant="label" numberOfLines={1} style={styles.name}>
               {name}
-              {isMe ? <Text style={styles.you}> · YOU</Text> : null}
+              {isMe ? <Text style={[styles.you, uiType(lab, 8)]}> · YOU</Text> : null}
             </Text>
             <Text variant="caption" tone="secondary" numberOfLines={1}>
               {entry.updatedAt ? `posted ${formatRelative(entry.updatedAt)}` : " "}
@@ -80,7 +83,7 @@ export function BoardRow({
           </View>
         </Pressable>
         <Text
-          style={[styles.score, first && styles.scoreFirst]}
+          style={[styles.score, scoreType(lab, 16), first && styles.scoreFirst]}
           testID={`game-board-score-${entry.userId}`}
         >
           {shortScore(entry)}
@@ -155,6 +158,7 @@ function ActionLink({
   testID: string;
   muted?: boolean;
 }) {
+  const lab = useTypeLab();
   return (
     <Pressable
       accessibilityRole="button"
@@ -164,7 +168,9 @@ function ActionLink({
       testID={testID}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
-      <Text style={[styles.actionText, muted && styles.actionTextMuted]}>{label}</Text>
+      <Text style={[styles.actionText, uiType(lab, 9), muted && styles.actionTextMuted]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -185,7 +191,6 @@ const styles = StyleSheet.create({
   head: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   rankCell: { width: RANK_W, alignItems: "center", gap: 1 },
   rank: {
-    fontFamily: tokens.font.pixel,
     fontSize: 11,
     lineHeight: 16,
     color: tokens.text.secondary,
@@ -200,9 +205,8 @@ const styles = StyleSheet.create({
   },
   nameWrap: { flex: 1, minWidth: 0 },
   name: { color: tokens.text.primary, fontSize: tokens.font.size.md },
-  you: { fontFamily: tokens.font.pixel, fontSize: 8, color: tokens.neon.pinkTint },
+  you: { fontSize: 8, color: tokens.neon.pinkTint },
   score: {
-    fontFamily: tokens.font.pixel,
     fontSize: 16,
     lineHeight: 24,
     color: tokens.text.primary,
@@ -221,7 +225,6 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", gap: tokens.space.lg, paddingTop: 2 },
   action: { paddingVertical: 2 },
   actionText: {
-    fontFamily: tokens.font.pixel,
     fontSize: 9,
     lineHeight: 14,
     letterSpacing: 1,

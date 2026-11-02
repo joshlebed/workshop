@@ -7,6 +7,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { glow, tokens } from "./tokens";
+import { buttonType, useTypeLab } from "./typeLab";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "contrast";
 type Size = "md" | "lg";
@@ -41,6 +42,7 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const isDisabled = disabled || loading;
+  const lab = useTypeLab();
   return (
     <Pressable
       {...rest}
@@ -66,6 +68,7 @@ export function Button({
           <Text
             style={[
               styles.label,
+              buttonType(lab),
               { color: isDisabled ? tokens.text.secondary : labelColor[variant] },
             ]}
           >

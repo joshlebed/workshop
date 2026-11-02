@@ -1,4 +1,22 @@
+import {
+  IBMPlexSans_400Regular,
+  IBMPlexSans_500Medium,
+  IBMPlexSans_600SemiBold,
+  IBMPlexSans_700Bold,
+} from "@expo-google-fonts/ibm-plex-sans";
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from "@expo-google-fonts/inter";
 import { PressStart2P_400Regular, useFonts } from "@expo-google-fonts/press-start-2p";
+import {
+  SpaceGrotesk_400Regular,
+  SpaceGrotesk_500Medium,
+  SpaceGrotesk_600SemiBold,
+  SpaceGrotesk_700Bold,
+} from "@expo-google-fonts/space-grotesk";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem } from "@workshop/api-client/storage";
@@ -13,6 +31,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
+import { TypeLabChip } from "../src/components/TypeLabChip";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
@@ -255,7 +274,22 @@ export default function RootLayout() {
   // HighScore is dark-only (DESIGN.md). Press Start 2P is heading/score-only,
   // so blocking on it briefly is a dark canvas, not a blank app; render
   // proceeds on a load error too (the system face stands in).
-  const [fontsLoaded, fontError] = useFonts({ PressStart2P_400Regular });
+  const [fontsLoaded, fontError] = useFonts({
+    PressStart2P_400Regular,
+    // Type-lab candidates (review only; see src/theme/typeLab.ts).
+    SpaceGrotesk_400Regular,
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_600SemiBold,
+    SpaceGrotesk_700Bold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+    IBMPlexSans_400Regular,
+    IBMPlexSans_500Medium,
+    IBMPlexSans_600SemiBold,
+    IBMPlexSans_700Bold,
+  });
   if (!fontsLoaded && !fontError) return <View style={centered} />;
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -269,6 +303,7 @@ export default function RootLayout() {
                   <GamesRuntimeBridge>
                     <ViewDayProvider>
                       <AuthGate />
+                      <TypeLabChip />
                     </ViewDayProvider>
                   </GamesRuntimeBridge>
                 </AuthProvider>

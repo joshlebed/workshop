@@ -12,7 +12,7 @@
 // so "am I on today?" is answered by colour and by text at once.
 
 import { Pressable, StyleSheet, View } from "react-native";
-import { IconButton, PixelIcon, Text, tokens } from "../../theme";
+import { IconButton, PixelIcon, scoreType, Text, tokens, uiType, useTypeLab } from "../../theme";
 import { dateBarLabel, shiftDateKey } from "../lib/gameDate";
 
 export interface DateBarProps {
@@ -30,6 +30,7 @@ export function DateBar({
   onOpenPicker,
   testIDPrefix = "date",
 }: DateBarProps) {
+  const lab = useTypeLab();
   const isToday = date === today;
   const { relative, calendar } = dateBarLabel(date, today);
   return (
@@ -72,7 +73,7 @@ export function DateBar({
           testID={`${testIDPrefix}-today`}
           style={({ pressed }) => [styles.todayChip, pressed && styles.todayChipPressed]}
         >
-          <Text style={styles.todayChipText}>TODAY</Text>
+          <Text style={[styles.todayChipText, uiType(lab, 10)]}>TODAY</Text>
         </Pressable>
       )}
 
@@ -117,7 +118,6 @@ const styles = StyleSheet.create({
   },
   todayChipPressed: { backgroundColor: "rgba(255,233,61,0.14)" },
   todayChipText: {
-    fontFamily: tokens.font.pixel,
     fontSize: 10,
     lineHeight: 16,
     letterSpacing: 1,

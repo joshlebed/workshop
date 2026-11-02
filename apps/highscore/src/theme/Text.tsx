@@ -2,8 +2,9 @@ import type { ComponentProps } from "react";
 import { Text as RNText, type TextProps, type TextStyle } from "react-native";
 import Animated from "react-native-reanimated";
 import { pixelType, tokens } from "./tokens";
+import { bodyType, scoreType, type TypeLab, uiType, useTypeLab } from "./typeLab";
 
-type Variant = "display" | "title" | "heading" | "score" | "body" | "caption" | "label";
+type Variant = "display" | "game" | "title" | "heading" | "score" | "body" | "caption" | "label";
 type Tone =
   | "primary"
   | "secondary"
@@ -17,21 +18,28 @@ type Tone =
 // display/title/heading/score render in Press Start 2P (ALL CAPS, generous
 // line height — the face clips tight line boxes); body/caption/label stay on
 // the system face per DESIGN.md ("pixel type is for headings + scores only").
-const variantStyle: Record<Variant, TextStyle> = {
-  display: pixelType(24),
-  title: pixelType(18),
-  heading: pixelType(13),
-  // Score numerals — effectively monospace, so columns align. Override
-  // fontSize freely via `style`; hero numerals go up to 40+.
-  score: pixelType(14),
-  body: { fontSize: tokens.font.size.md, lineHeight: 22, fontWeight: tokens.font.weight.regular },
-  caption: {
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.regular,
-  },
-  label: { fontSize: tokens.font.size.sm, lineHeight: 18, fontWeight: tokens.font.weight.medium },
-};
+function variantStyle(v: Variant, lab: TypeLab): TextStyle {
+  switch (v) {
+    // Pixel face is reserved for the brand mark and game names (decision log
+    // entry 8); everything else renders in the secondary face from the lab.
+    case "display":
+      return pixelType(24);
+    case "game":
+      return pixelType(13);
+    case "title":
+      return { ...bodyType(lab, "bold"), fontSize: 20, lineHeight: 26 };
+    case "heading":
+      return uiType(lab, 11);
+    case "score":
+      return scoreType(lab, 14);
+    case "body":
+      return { ...bodyType(lab), fontSize: tokens.font.size.md, lineHeight: 22 };
+    case "caption":
+      return { ...bodyType(lab), fontSize: tokens.font.size.xs, lineHeight: 16 };
+    case "label":
+      return { ...bodyType(lab, "medium"), fontSize: tokens.font.size.sm, lineHeight: 18 };
+  }
+}
 
 const toneColor: Record<Tone, string> = {
   primary: tokens.text.primary,
@@ -54,7 +62,10 @@ export interface HSTextProps extends TextProps {
 }
 
 export function Text({ variant = "body", tone = "primary", style, ...rest }: HSTextProps) {
-  return <RNText {...rest} style={[variantStyle[variant], { color: toneColor[tone] }, style]} />;
+  const lab = useTypeLab();
+  return (
+    <RNText {...rest} style={[variantStyle(variant, lab), { color: toneColor[tone] }, style]} />
+  );
 }
 
 const AnimatedRNText = Animated.createAnimatedComponent(RNText);
@@ -72,7 +83,11 @@ export function AnimatedText({
   style,
   ...rest
 }: HSAnimatedTextProps) {
+  const lab = useTypeLab();
   return (
-    <AnimatedRNText {...rest} style={[variantStyle[variant], { color: toneColor[tone] }, style]} />
+    <AnimatedRNText
+      {...rest}
+      style={[variantStyle(variant, lab), { color: toneColor[tone] }, style]}
+    />
   );
 }

@@ -5,7 +5,7 @@
 // the pink bezel and today's letter is spotlight-yellow.
 
 import { Pressable, StyleSheet, View } from "react-native";
-import { Text, tokens } from "../../theme";
+import { scoreType, Text, tokens, uiType, useTypeLab } from "../../theme";
 
 export interface DayStripCell {
   date: string;
@@ -36,6 +36,7 @@ export function DayStrip({
   loading,
   testIDPrefix = "strip",
 }: DayStripProps) {
+  const lab = useTypeLab();
   return (
     <View style={styles.strip} testID={`${testIDPrefix}-strip`}>
       {cells.map((cell) => {
@@ -55,12 +56,16 @@ export function DayStrip({
               pressed && styles.cellPressed,
             ]}
           >
-            <Text style={[styles.weekday, isToday && styles.weekdayToday]} numberOfLines={1}>
+            <Text
+              style={[styles.weekday, uiType(lab, 8), isToday && styles.weekdayToday]}
+              numberOfLines={1}
+            >
               {cell.weekday}
             </Text>
             <Text
               style={[
                 styles.value,
+                scoreType(lab, 9),
                 !cell.value && styles.valueEmpty,
                 cell.won && styles.valueWon,
                 loading && styles.valueLoading,
@@ -95,7 +100,6 @@ const styles = StyleSheet.create({
   cellSelected: { borderColor: tokens.neon.pink, backgroundColor: tokens.accent.muted },
   cellPressed: { backgroundColor: tokens.bg.raised },
   weekday: {
-    fontFamily: tokens.font.pixel,
     fontSize: 8,
     lineHeight: 12,
     letterSpacing: 1,
@@ -103,7 +107,6 @@ const styles = StyleSheet.create({
   },
   weekdayToday: { color: tokens.neon.yellow },
   value: {
-    fontFamily: tokens.font.pixel,
     fontSize: 9,
     lineHeight: 14,
     color: tokens.text.primary,

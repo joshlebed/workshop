@@ -26,7 +26,18 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
-import { Avatar, Button, IconButton, PixelIcon, Screen, Text, tokens } from "../../theme";
+import {
+  Avatar,
+  Button,
+  IconButton,
+  PixelIcon,
+  Screen,
+  scoreType,
+  Text,
+  tokens,
+  uiType,
+  useTypeLab,
+} from "../../theme";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { BoardRow } from "../components/BoardRow";
 import { DateBar } from "../components/DateBar";
@@ -50,6 +61,7 @@ import { useViewDay } from "../state/viewDay";
 const WEEKDAY_LETTER = ["S", "M", "T", "W", "T", "F", "S"];
 
 export default function GameBoard() {
+  const lab = useTypeLab();
   const params = useLocalSearchParams<{ id: string; date?: string }>();
   const gameId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { token, user, routes } = useGamesRuntime();
@@ -288,13 +300,13 @@ export default function GameBoard() {
               <PixelIcon name="gamepad" size={16} />
             </View>
           )}
-          <Text variant="heading" numberOfLines={1} style={styles.title}>
+          <Text variant="game" numberOfLines={1} style={styles.title}>
             {game.title}
           </Text>
           {streak >= STREAK_MIN_DAYS ? (
             <View style={styles.streak} testID="game-board-streak">
               <PixelIcon name="zap" size={16} color={tokens.neon.chartreuse} />
-              <Text style={styles.streakText}>{streak}</Text>
+              <Text style={[styles.streakText, scoreType(lab, 10)]}>{streak}</Text>
             </View>
           ) : null}
           <IconButton
@@ -328,7 +340,7 @@ export default function GameBoard() {
               loading={stripLoading}
               testIDPrefix="game-board-day"
             />
-            <Text style={styles.turnout} testID="game-board-turnout">
+            <Text style={[styles.turnout, uiType(lab, 8)]} testID="game-board-turnout">
               {calendarLabel(date)} · {turnout}
             </Text>
           </View>
@@ -523,6 +535,7 @@ function ScoreComposer({
   userAvatarUrl,
   onPlay,
 }: ScoreComposerProps) {
+  const lab = useTypeLab();
   const isEdit = mode === "edit";
   const trimmed = draft.trim();
   const empty = trimmed.length === 0;
@@ -548,7 +561,7 @@ function ScoreComposer({
         <View style={styles.composerText}>
           <Text variant="label" style={styles.composerName}>
             {userName?.trim() || "You"}
-            <Text style={styles.you}> · YOU</Text>
+            <Text style={[styles.you, uiType(lab, 8)]}> · YOU</Text>
           </Text>
           <Text variant="caption" tone="secondary">
             {isEdit
@@ -633,7 +646,6 @@ const styles = StyleSheet.create({
   title: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 18 },
   streak: { flexDirection: "row", alignItems: "center", gap: 2 },
   streakText: {
-    fontFamily: tokens.font.pixel,
     fontSize: 10,
     lineHeight: 16,
     color: tokens.neon.chartreuse,
@@ -645,7 +657,6 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
   },
   turnout: {
-    fontFamily: tokens.font.pixel,
     fontSize: 8,
     lineHeight: 14,
     letterSpacing: 1,
@@ -663,7 +674,7 @@ const styles = StyleSheet.create({
   composerHead: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   composerText: { flex: 1, minWidth: 0 },
   composerName: { color: tokens.text.primary, fontSize: tokens.font.size.md },
-  you: { fontFamily: tokens.font.pixel, fontSize: 8, color: tokens.neon.pinkTint },
+  you: { fontSize: 8, color: tokens.neon.pinkTint },
   pasteInput: {
     minHeight: 104,
     borderWidth: tokens.bezel,
