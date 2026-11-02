@@ -28,7 +28,7 @@ function dayStart(now: Date): Date {
  * every caller already treats "no model" as an ordinary outcome.
  */
 export async function claimTeachLlmCall(
-  step: "find_targets" | "write_code",
+  step: "find_targets" | "write_code" | "write_format",
   context: TeachLogContext,
   db: SqlExecutor = getDb(),
 ): Promise<boolean> {

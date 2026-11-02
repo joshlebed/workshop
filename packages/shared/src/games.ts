@@ -195,6 +195,17 @@ export interface GamesCapabilities {
    * picker, "Fix score" and the teach endpoints. Absent from older servers.
    */
   teach?: boolean;
+  /**
+   * PROTOTYPE (`GAME_FORMATTER_PREVIEW`): the paste sheet may show a
+   * "Summary preview" card for a game with no formatter
+   * (`POST /v1/games/:id/formatter/preview`). Absent = off.
+   */
+  formatterPreview?: boolean;
+  /**
+   * PROTOTYPE (`GAME_TEACH_FORMAT`): the card may also ask the model for a
+   * formatter (`POST /v1/games/:id/formatter/suggest`). Absent = off.
+   */
+  formatterSuggest?: boolean;
 }
 
 export interface GamesResponse {
@@ -656,4 +667,50 @@ export function computeGameStreak(playedPeriodKeys: Iterable<string>, today: str
     cursor = shiftPeriodKey(cursor, -1);
   }
   return streak;
+}
+
+// ---------------------------------------------------------------------------
+// PROTOTYPE — generated share formatters (`capabilities.formatterPreview`).
+// ---------------------------------------------------------------------------
+
+/** One share the preview card renders: the paste being posted, or an older one of the caller's. */
+export interface FormatterPreviewSample {
+  /** Null for the paste being posted now. */
+  periodKey: string | null;
+  raw: string;
+  /** What the row shows today with no formatter (the cleaned raw text). */
+  fallback: string | null;
+}
+
+/** A formatter the user can approve, rendered over every sample (same order). */
+export interface FormatterCandidate {
+  kind: "heuristic" | "llm";
+  /** Null = renders nothing for that sample (the row would fall back to the raw text). */
+  summaries: (string | null)[];
+}
+
+/** `POST /v1/games/:id/formatter/preview` */
+export interface FormatterPreviewResponse {
+  /** The game already has a formatter: there is nothing to approve. */
+  hasFormatter: boolean;
+  samples: FormatterPreviewSample[];
+  /** The layer-1 heuristic; absent when the game already has a formatter. */
+  heuristic: FormatterCandidate | null;
+}
+
+/** `POST /v1/games/:id/formatter/suggest` — the model's formatter, already gated. */
+export interface FormatterSuggestResponse {
+  /** Null when the model was unavailable or its code failed the gate (`reason`). */
+  candidate: (FormatterCandidate & { code: string; token: string }) | null;
+  reason: string | null;
+}
+
+/** `PUT /v1/games/:id/formatter` body. */
+export type SetFormatterRequest =
+  | { choice: "heuristic"; exampleRaw: string }
+  | { choice: "llm"; exampleRaw: string; code: string; token: string };
+
+/** `PUT /v1/games/:id/formatter` response. */
+export interface SetFormatterResponse {
+  game: Game;
 }

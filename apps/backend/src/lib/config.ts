@@ -134,6 +134,14 @@ const configSchema = z.object({
   // before. Games beta accounts (lib/gamesBeta.ts) get `on`
   // regardless — read it through `teachModeFor(userId)`.
   gameTeach: z.enum(["off", "on"]).catch("on"),
+  // PROTOTYPE (generated share formatters). `GAME_TEACH_FORMAT=on`: the teach
+  // write-code call also writes `format(raw)` and the formatter preview may
+  // ask the model for one. `GAME_FORMATTER_PREVIEW=on`: HighScore's paste sheet
+  // shows the "Summary preview" card (`capabilities.formatterPreview`). Both
+  // default — and fall back on anything unrecognized — to `off`, and neither
+  // is in Terraform: inert in prod. Read through `lib/teach/formatGate.ts`.
+  gameTeachFormat: z.enum(["off", "on"]).catch("off"),
+  gameFormatterPreview: z.enum(["off", "on"]).catch("off"),
   // Spotify Web API app credentials (Client Credentials flow). Used by the
   // Album Shelf feature to read public playlists with an app-level token —
   // no per-user OAuth. Empty defaults so the rest of the API still boots
@@ -179,6 +187,8 @@ export function getConfig(): Config {
     gameRecognition: process.env.GAME_RECOGNITION,
     gameCodeParsing: process.env.GAME_CODE_PARSING,
     gameTeach: process.env.GAME_TEACH,
+    gameTeachFormat: process.env.GAME_TEACH_FORMAT,
+    gameFormatterPreview: process.env.GAME_FORMATTER_PREVIEW,
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
     discordNotifyWebhookUrl: process.env.DISCORD_NOTIFY_WEBHOOK_URL,

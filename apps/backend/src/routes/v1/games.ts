@@ -86,12 +86,14 @@ import { requestOriginColumns } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
 import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
+import { formatterPreviewOn, teachFormatOn } from "../../lib/teach/formatGate.js";
 import { teachModeFor } from "../../lib/teach/gate.js";
 import { recordShareExtensionScore } from "../../lib/userFlags.js";
 import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 import { workshopGamesSunset } from "../../middleware/workshop-games-sunset.js";
+import { registerGameFormatterRoutes } from "./gameFormatter.js";
 import { handleScorePreviewV2, handleScoreUpsertV2, registerGameTeachRoutes } from "./gameTeach.js";
 import { resolveLinkPreview } from "./link-preview.js";
 
@@ -226,6 +228,10 @@ gameRoutes.get("/", async (c) => {
       recognition: recognitionModeFor(userId) === "on",
       codeParsing: codeParsingModeFor(userId) === "on",
       teach: teachOn,
+      // PROTOTYPE: both flags default off; old clients ignore the fields.
+      ...(formatterPreviewOn(userId)
+        ? { formatterPreview: true, formatterSuggest: teachFormatOn() }
+        : {}),
     },
   };
   return ok(c, response);
@@ -1020,3 +1026,5 @@ gameRoutes.put(
 
 // Teach v2: previews, picks, parser teaching, direction (see gameTeach.ts).
 registerGameTeachRoutes(gameRoutes);
+// PROTOTYPE: generated share formatters (see gameFormatter.ts).
+registerGameFormatterRoutes(gameRoutes);

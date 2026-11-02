@@ -17,7 +17,11 @@ type TeachLogKind =
   | "direction_change"
   | "game_recognition"
   | "sandbox_failure"
-  | "parser_rollback";
+  | "parser_rollback"
+  // PROTOTYPE (generated share formatters).
+  | "formatter_generated"
+  | "formatter_approved"
+  | "formatter_rejected";
 
 /** The fields every event carries when it has them. */
 export interface TeachLogContext {

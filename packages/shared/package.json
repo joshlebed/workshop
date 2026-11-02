@@ -10,6 +10,7 @@
     "./constants": "./src/constants.ts",
     "./games": "./src/games.ts",
     "./gameRegistry": "./src/gameRegistry.ts",
+    "./formatHeuristic": "./src/formatHeuristic.ts",
     "./linkContent": "./src/linkContent.ts",
     "./scoreParsing": "./src/scoreParsing.ts",
     "./scoreCandidates": "./src/scoreCandidates.ts",
