@@ -1,7 +1,7 @@
-// HighScore's "You" page (/profile): edit your profile up top, then
-// blocked users, then settings / help / legal / sign out, with account
-// deletion last. Reached straight from the home-header avatar — there is
-// no menu sheet in between.
+// HighScore's "You" page (/profile): your picture and name up top, then the
+// quiet lists — account facts, help, legal, admin, sign out — and account
+// deletion last. Reached straight from the home-header avatar; there is no
+// menu sheet in between. Same nav grammar as the Friends page.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
@@ -29,7 +29,6 @@ import {
   bodyType,
   IconButton,
   PixelIcon,
-  type PixelIconName,
   Screen,
   Text,
   tokens,
@@ -44,6 +43,7 @@ export default function EditProfile() {
   const [name, setName] = useState(user?.displayName ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
   const [busy, setBusy] = useState(false);
+  const [nameFocused, setNameFocused] = useState(false);
 
   const initialName = user?.displayName ?? "";
   const initialAvatar = user?.avatarUrl ?? null;
@@ -58,6 +58,11 @@ export default function EditProfile() {
   async function onPickPhoto() {
     const picked = await pickProfilePhoto();
     if (picked) setAvatarUrl(picked.dataUrl);
+  }
+
+  function onDiscard() {
+    setName(initialName);
+    setAvatarUrl(initialAvatar);
   }
 
   async function onSave() {
@@ -75,7 +80,7 @@ export default function EditProfile() {
       // picture now, not on the next poll/focus.
       if (avatarChanged) void queryClient.invalidateQueries({ queryKey: ["games"] });
       showToast({ message: "Profile updated", tone: "success" });
-      goBack("/");
+      setBusy(false);
     } catch (e) {
       showToast({ message: errorMessage(e, "Could not save profile"), tone: "danger" });
       setBusy(false);
@@ -83,8 +88,8 @@ export default function EditProfile() {
   }
 
   return (
-    <Screen style={styles.root}>
-      <View style={styles.header}>
+    <Screen style={styles.root} testID="you-screen">
+      <View style={styles.headerNav}>
         <IconButton
           accessibilityLabel="Back"
           onPress={() => goBack("/")}
@@ -92,9 +97,8 @@ export default function EditProfile() {
         >
           <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
         </IconButton>
-        <Text variant="heading" numberOfLines={1} style={styles.headerText}>
-          You
-        </Text>
+        <Text variant="title">You</Text>
+        <View style={styles.navSpacer} />
       </View>
 
       <KeyboardAwareScrollView
@@ -103,7 +107,8 @@ export default function EditProfile() {
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
       >
-        <View style={styles.avatarSection}>
+        {/* Identity: the picture is the hero; its actions are quiet text links. */}
+        <View style={styles.identity}>
           <Avatar
             name={trimmed || user?.email || null}
             imageUrl={avatarUrl}
@@ -111,20 +116,17 @@ export default function EditProfile() {
             style={styles.avatarPreview}
             testID="profile-edit-avatar"
           />
-          <View style={styles.avatarButtons}>
-            <Button
+          <View style={styles.identityActions}>
+            <TextAction
               testID="profile-photo-pick"
-              label={avatarUrl ? "Change photo" : "Upload photo"}
-              variant="secondary"
-              size="md"
+              label={avatarUrl ? "Change photo" : "Add a photo"}
               onPress={onPickPhoto}
             />
             {avatarUrl ? (
-              <Button
+              <TextAction
                 testID="profile-photo-remove"
-                label="Remove"
-                variant="secondary"
-                size="md"
+                label="Remove photo"
+                tone="secondary"
                 onPress={() => setAvatarUrl(null)}
               />
             ) : null}
@@ -132,49 +134,56 @@ export default function EditProfile() {
         </View>
 
         <View style={styles.field}>
-          <Text variant="caption" tone="muted">
+          <Text variant="overline" tone="secondary">
             Display name
           </Text>
           <TextInput
             testID="profile-display-name"
             value={name}
             onChangeText={setName}
+            onFocus={() => setNameFocused(true)}
+            onBlur={() => setNameFocused(false)}
             placeholder="Ada Lovelace"
             placeholderTextColor={tokens.text.secondary}
             autoComplete="name"
             maxLength={40}
-            style={styles.input}
+            style={[styles.input, nameFocused && styles.inputFocused]}
             returnKeyType="done"
             onSubmitEditing={onSave}
           />
-          <Text variant="caption" tone="muted" style={styles.hint}>
-            Shown to friends on your leaderboards.
+          <Text variant="caption" tone="secondary">
+            {trimmed.length === 0
+              ? "Pick a name so friends can find you on the board."
+              : "How you appear on your friends' leaderboards."}
           </Text>
+          {dirty ? (
+            <View style={styles.saveRow} testID="profile-save-row">
+              <Button
+                testID="profile-save"
+                label="Save changes"
+                size="md"
+                disabled={!canSave}
+                loading={busy}
+                onPress={onSave}
+              />
+              <Button
+                testID="profile-discard"
+                label="Discard"
+                variant="ghost"
+                size="md"
+                disabled={busy}
+                onPress={onDiscard}
+              />
+            </View>
+          ) : null}
         </View>
 
-        {user?.email ? (
-          <View style={styles.field}>
-            <Text variant="caption" tone="muted">
-              Email
-            </Text>
-            <Text tone="secondary" numberOfLines={1}>
-              {user.email}
-            </Text>
-          </View>
-        ) : null}
+        <Group title="Account">
+          {user?.email ? <InfoRow label="Email" value={user.email} testID="profile-email" /> : null}
+          <BlockedUsersRow />
+        </Group>
 
-        <Button
-          testID="profile-save"
-          label="Save changes"
-          size="lg"
-          disabled={!canSave}
-          loading={busy}
-          onPress={onSave}
-          style={styles.saveButton}
-        />
-
-        <BlockedUsersSection />
-        <SettingsSection />
+        <SettingsGroups />
         <DeleteAccountSection />
       </KeyboardAwareScrollView>
     </Screen>
@@ -183,11 +192,11 @@ export default function EditProfile() {
 
 /**
  * Everything that used to live in the profile menu sheet: help, legal, admin
- * and sign out, as a quiet row list under your profile. Rare actions, so one
+ * and sign out, as quiet ruled rows under your profile. Rare actions, so one
  * extra scroll is fine; the daily surfaces (home, friends) never show them.
  */
-function SettingsSection() {
-  const { user, signOut } = useAuth();
+function SettingsGroups() {
+  const { user, impersonation, signOut } = useAuth();
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -208,107 +217,147 @@ function SettingsSection() {
   }, [queryClient]);
 
   return (
-    <View style={dangerStyles.section} testID="profile-settings">
-      <View style={dangerStyles.divider} />
-      <Text variant="caption" tone="muted" style={dangerStyles.eyebrow}>
-        Settings
-      </Text>
-      <View style={settingsStyles.list}>
-        <SettingsRow
-          icon="mail"
+    <View style={styles.groupStack} testID="profile-settings">
+      <Group title="Help">
+        <LinkRow
           label="Send feedback"
+          detail="Opens your mail app"
           onPress={onSendFeedback}
           testID="send-feedback"
         />
         {/* Public pages (src/lib/publicRoutes.ts): the in-app push lands on the
             same content Apple sees at the published highscore.live URLs. */}
-        <SettingsRow
-          icon="link"
-          label="Support"
-          onPress={() => router.push(SUPPORT_ROUTE)}
-          testID="open-support"
-        />
-        <SettingsRow
+        <LinkRow label="Support" onPress={() => router.push(SUPPORT_ROUTE)} testID="open-support" />
+      </Group>
+      <Group title="Legal">
+        <LinkRow
           label="Privacy policy"
           onPress={() => router.push(PRIVACY_ROUTE)}
           testID="open-privacy"
         />
-        <SettingsRow
+        <LinkRow
           label="Terms of use"
           onPress={() => router.push(TERMS_ROUTE)}
           testID="open-terms"
         />
-        {user?.isAdmin ? (
-          <SettingsRow
-            icon="sliders"
-            label="Admin dashboard"
-            onPress={() => router.push("/admin")}
-            testID="open-admin"
-          />
-        ) : null}
+      </Group>
+      {user?.isAdmin || impersonation ? (
+        <Group title="Admin">
+          {user?.isAdmin ? (
+            <LinkRow
+              label="Admin dashboard"
+              onPress={() => router.push("/admin")}
+              testID="open-admin"
+            />
+          ) : null}
+          <ImpersonationStatus onSessionChanged={onAuthSessionChanged} />
+        </Group>
+      ) : null}
+      <View>
+        <LinkRow
+          label="Sign out"
+          chevron={false}
+          onPress={() => void signOut()}
+          testID="sign-out"
+        />
       </View>
-      <ImpersonationStatus onSessionChanged={onAuthSessionChanged} />
-      <Button label="Sign out" variant="ghost" testID="sign-out" onPress={() => void signOut()} />
     </View>
   );
 }
 
-function SettingsRow({
-  icon,
+/** An overline plus its ruled rows. Groups are separated by the body gap; rows inside are tight. */
+function Group({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.group}>
+      <Text variant="overline" tone="secondary">
+        {title}
+      </Text>
+      <View>{children}</View>
+    </View>
+  );
+}
+
+/** One quiet settings row: label, optional detail, chevron. Same shape as the Friends rows. */
+function LinkRow({
   label,
+  detail,
   onPress,
   testID,
+  chevron = true,
 }: {
-  icon?: PixelIconName;
   label: string;
+  detail?: string;
   onPress: () => void;
   testID: string;
+  chevron?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
       testID={testID}
-      style={({ pressed, hovered }) => [
-        settingsStyles.row,
-        (pressed || hovered) && settingsStyles.rowHover,
-      ]}
+      style={({ pressed, hovered }) => [styles.row, (pressed || hovered) && styles.rowHover]}
     >
-      {icon ? (
-        <PixelIcon name={icon} size={24} color={tokens.text.secondary} />
-      ) : (
-        <View style={settingsStyles.iconSlot} />
-      )}
-      <Text style={settingsStyles.rowLabel} numberOfLines={1}>
-        {label}
-      </Text>
-      <PixelIcon name="chevron-right" size={16} color={tokens.text.secondary} />
+      <View style={styles.rowText}>
+        <Text numberOfLines={1}>{label}</Text>
+        {detail ? (
+          <Text variant="caption" tone="secondary" numberOfLines={1}>
+            {detail}
+          </Text>
+        ) : null}
+      </View>
+      {chevron ? <PixelIcon name="chevron-right" size={16} color={tokens.text.secondary} /> : null}
     </Pressable>
   );
 }
 
-const settingsStyles = StyleSheet.create({
-  list: { marginHorizontal: -tokens.space.sm },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.sm,
-    minHeight: 48,
-  },
-  rowHover: { backgroundColor: tokens.bg.surface },
-  rowLabel: { flex: 1, minWidth: 0 },
-  iconSlot: { width: 24, height: 24 },
-});
+/** Read-only fact: label left, value right. */
+function InfoRow({ label, value, testID }: { label: string; value: string; testID?: string }) {
+  return (
+    <View style={styles.row} testID={testID}>
+      <Text style={styles.rowText} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text tone="secondary" numberOfLines={1} style={styles.rowValue}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+/** Small text-link action (photo actions). Pink = tappable, per DESIGN.md. */
+function TextAction({
+  label,
+  onPress,
+  testID,
+  tone = "link",
+}: {
+  label: string;
+  onPress: () => void;
+  testID: string;
+  tone?: "link" | "secondary";
+}) {
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} testID={testID} hitSlop={8}>
+      {({ pressed, hovered }) => (
+        <Text variant="label" tone={tone} style={(pressed || hovered) && styles.textActionHover}>
+          {label}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
 
 /**
- * Who you've blocked (App Store Review Guideline 1.2), with an Unblock per row.
- * Unblocking does not restore the friendship — they'd have to be re-added.
+ * Who you've blocked (App Store Review Guideline 1.2), as a row with the
+ * count that expands inline; Unblock per person. Unblocking does not restore
+ * the friendship — they'd have to be re-added.
  */
-function BlockedUsersSection() {
+function BlockedUsersRow() {
   const { token } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
   const query = useQuery({
     queryKey: blockedUsersQueryKey,
     queryFn: () => fetchBlockedUsers(token),
@@ -327,53 +376,73 @@ function BlockedUsersSection() {
     },
   });
   const blocked = query.data?.blocked ?? [];
+  const count = query.isError ? "?" : String(blocked.length);
 
   return (
-    <View style={dangerStyles.section} testID="blocked-users">
-      <View style={dangerStyles.divider} />
-      <Text variant="caption" tone="muted" style={dangerStyles.eyebrow}>
-        Blocked users
-      </Text>
-      {blocked.length === 0 ? (
-        <Text variant="caption" tone="muted">
-          {query.isError
-            ? "Couldn't load your blocked users."
-            : "Nobody blocked. Block someone from their profile and they'll show up here."}
+    <View testID="blocked-users">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
+        accessibilityLabel={`Blocked users, ${count}`}
+        onPress={() => setOpen((o) => !o)}
+        testID="blocked-users-toggle"
+        style={({ pressed, hovered }) => [styles.row, (pressed || hovered) && styles.rowHover]}
+      >
+        <Text style={styles.rowText} numberOfLines={1}>
+          Blocked users
         </Text>
-      ) : (
-        blocked.map((b) => (
-          <View key={b.userId} style={blockedStyles.row} testID={`blocked-user-${b.userId}`}>
-            <Avatar name={b.displayName} size="sm" />
-            <Text style={blockedStyles.name} numberOfLines={1}>
-              {b.displayName?.trim() || "Someone"}
+        <Text tone="secondary" style={styles.rowValue}>
+          {count}
+        </Text>
+        <PixelIcon
+          name={open ? "chevron-up" : "chevron-down"}
+          size={16}
+          color={tokens.text.secondary}
+        />
+      </Pressable>
+      {open ? (
+        <View style={blockedStyles.panel}>
+          {blocked.length === 0 ? (
+            <Text variant="caption" tone="secondary">
+              {query.isError
+                ? "Couldn't load your blocked users."
+                : "Nobody blocked. Block someone from their profile and they'll show up here."}
             </Text>
-            <Button
-              label="Unblock"
-              variant="secondary"
-              size="md"
-              disabled={unblock.isPending}
-              onPress={() => unblock.mutate(b.userId)}
-              testID={`unblock-${b.userId}`}
-            />
-          </View>
-        ))
-      )}
+          ) : (
+            blocked.map((b) => (
+              <View key={b.userId} style={blockedStyles.row} testID={`blocked-user-${b.userId}`}>
+                <Avatar name={b.displayName} size="sm" />
+                <Text style={blockedStyles.name} numberOfLines={1}>
+                  {b.displayName?.trim() || "Someone"}
+                </Text>
+                <Button
+                  label="Unblock"
+                  variant="secondary"
+                  size="md"
+                  disabled={unblock.isPending}
+                  onPress={() => unblock.mutate(b.userId)}
+                  testID={`unblock-${b.userId}`}
+                />
+              </View>
+            ))
+          )}
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const blockedStyles = StyleSheet.create({
+  panel: { paddingTop: tokens.space.sm, paddingBottom: tokens.space.md, gap: tokens.space.sm },
   row: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
   name: { flex: 1, minWidth: 0 },
 });
 
 /**
  * Permanent account deletion, required in-app by App Store Review Guideline
- * 5.1.1(v). Lives at the bottom of the account screen — one tap from the
- * profile menu — behind a two-step, inline confirmation rather than a modal:
- * the consequences (including the shared Workshop.dev account) stay on screen
- * while the destructive button is visible, and nothing stacks over the sheet
- * the user opened this screen from.
+ * 5.1.1(v). Last thing on the page, behind a two-step inline confirmation
+ * rather than a modal: the consequences (including the shared Workshop.dev
+ * account) stay on screen while the destructive button is visible.
  */
 function DeleteAccountSection() {
   const { token, impersonation, deleteAccount } = useAuth();
@@ -402,9 +471,8 @@ function DeleteAccountSection() {
   }
 
   return (
-    <View style={dangerStyles.section} testID="danger-zone">
-      <View style={dangerStyles.divider} />
-      <Text variant="caption" tone="muted" style={dangerStyles.eyebrow}>
+    <View style={[styles.group, dangerStyles.section]} testID="danger-zone">
+      <Text variant="overline" tone="secondary">
         Danger zone
       </Text>
 
@@ -439,20 +507,22 @@ function DeleteAccountSection() {
       )}
       {step === "idle" ? (
         <>
-          <Text variant="caption" tone="muted">
+          <Text variant="caption" tone="secondary">
             Deleting removes your HighScore and Workshop.dev account and all of its data. This
             cannot be undone.
           </Text>
-          <Button
-            testID="account-delete-open"
-            label="Delete account"
-            variant="danger"
-            size="md"
-            disabled={blocked !== null}
-            onPress={() => setStep((s) => nextDeletionStep(s, "open"))}
-          />
+          <View style={dangerStyles.actionRow}>
+            <Button
+              testID="account-delete-open"
+              label="Delete account"
+              variant="danger"
+              size="md"
+              disabled={blocked !== null}
+              onPress={() => setStep((s) => nextDeletionStep(s, "open"))}
+            />
+          </View>
           {blocked === "impersonating" ? (
-            <Text variant="caption" tone="muted" testID="account-delete-blocked">
+            <Text variant="caption" tone="secondary" testID="account-delete-blocked">
               Stop impersonating before deleting an account.
             </Text>
           ) : null}
@@ -464,28 +534,47 @@ function DeleteAccountSection() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
+  // Same nav as the Friends page: back · centered title · spacer.
+  headerNav: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: tokens.space.sm,
-    paddingTop: tokens.space.sm,
+    paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.sm,
-    gap: tokens.space.sm,
   },
-  headerText: { flex: 1, minWidth: 0 },
+  navSpacer: { width: 40, height: 40 },
   body: {
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.xxl,
-    gap: tokens.space.xl,
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.xxl * 2,
+    gap: tokens.space.xxl,
   },
-  avatarSection: {
+  identity: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.lg,
   },
-  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
-  avatarButtons: { flex: 1, gap: tokens.space.sm },
+  avatarPreview: { width: 88, height: 88 },
+  identityActions: { flex: 1, gap: tokens.space.sm },
+  textActionHover: { opacity: 0.7 },
   field: { gap: tokens.space.sm },
+  saveRow: { flexDirection: "row", gap: tokens.space.sm, paddingTop: tokens.space.xs },
+  // A group is an overline + ruled rows. Groups are separated by the body gap;
+  // rows inside a group are tight.
+  groupStack: { gap: tokens.space.xxl },
+  group: { gap: tokens.space.xs },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    minHeight: 48,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border.default,
+  },
+  rowHover: { backgroundColor: tokens.bg.surface },
+  rowText: { flex: 1, minWidth: 0 },
+  rowValue: { flexShrink: 1, textAlign: "right" },
   input: {
     ...bodyType(),
     borderWidth: tokens.bezel,
@@ -497,18 +586,12 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.lg,
     backgroundColor: tokens.bg.elevated,
   },
-  hint: { marginTop: tokens.space.xs },
-  saveButton: { marginTop: tokens.space.sm },
+  inputFocused: { borderColor: tokens.neon.pink },
 });
 
 const dangerStyles = StyleSheet.create({
-  section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.default,
-    marginBottom: tokens.space.md,
-  },
-  eyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
+  section: { gap: tokens.space.sm },
+  actionRow: { flexDirection: "row" },
   confirmCard: {
     gap: tokens.space.sm,
     padding: tokens.space.lg,
