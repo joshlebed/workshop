@@ -892,8 +892,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 0,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.elevated,
   },
   titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
@@ -934,24 +932,17 @@ const styles = StyleSheet.create({
   scoresErrorAction: { alignItems: "center" },
   leaderboard: {
     paddingHorizontal: tokens.space.xl,
-    gap: tokens.space.md,
   },
+  // Rows are ruled, not boxed: one hairline between entries, no fill, no
+  // bezel. The only framed thing on the board is the paste input.
   entry: {
     gap: tokens.space.sm,
     paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: 0,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.border.default,
-    backgroundColor: tokens.bg.surface,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border.default,
   },
-  entryMe: {
-    // "Selected" treatment as the "this is you" signal — pink bezel + muted
-    // pink fill; the "you" pill doubles as a textual label so the highlight
-    // isn't color-only.
-    backgroundColor: tokens.accent.muted,
-    borderColor: tokens.neon.pink,
-  },
+  // "This is you" is carried by the YOU pill, not a highlight.
+  entryMe: {},
   entryHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1007,37 +998,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.sm,
   },
+  // Score text sits in the row's indent, unframed.
   scoreFrame: {
     flex: 1,
     minWidth: 0,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: 0,
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.default,
+    paddingLeft: 28 + tokens.space.sm,
   },
   // Rank numerals are pixel; rank 1 is the yellow spotlight (DESIGN.md).
   rankBadge: {
-    minWidth: 28,
-    height: 28,
-    paddingHorizontal: 6,
-    borderRadius: 0,
+    width: 28,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.canvas,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.border.default,
   },
-  rankBadgeTop1: {
-    backgroundColor: tokens.neon.yellow,
-    borderColor: tokens.neon.yellow,
-  },
+  rankBadgeTop1: {},
   rankBadgeText: {
     ...scoreType(11),
     color: tokens.text.secondary,
   },
-  rankBadgeTextTop1: { color: tokens.text.onAccent },
+  rankBadgeTextTop1: { color: tokens.neon.yellow },
   scoreText: {
     color: tokens.text.primary,
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
