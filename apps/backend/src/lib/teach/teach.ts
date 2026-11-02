@@ -28,6 +28,7 @@ import {
   type TeachDecision,
 } from "./acceptance.js";
 import { claimTeachLlmCall } from "./budget.js";
+import { gateGeneratedFormat, teachFormatOn } from "./formatGate.js";
 import { teachModeFor } from "./gate.js";
 import { logTeachEvent, type TeachLogContext } from "./log.js";
 import { isAdjusted, logSandboxFailure, storedPickOf, windowStartKey } from "./scores.js";
@@ -65,6 +66,8 @@ const MAX_PROMPT_PROBES = 12;
 const MAX_ADJUSTED_ROWS = 100;
 /** Model calls per teach: the one retry after a gate failure, or after a slow call. */
 const MAX_MODEL_CALLS = 2;
+/** PROTOTYPE: window texts a generated formatter is gated over, beside its own example. */
+const MAX_FORMAT_GATE_TEXTS = 20;
 
 /**
  * The most sandbox runs one teach can make, whatever the game's history
@@ -79,8 +82,19 @@ export const worstCaseSandboxRuns = {
   adjusted: MAX_ADJUSTED_ROWS,
   /** Format runs for re-read rows that had no summary — only for a game with format code. */
   summaries: MAX_WINDOW_TEXTS,
+  /**
+   * PROTOTYPE, only with GAME_TEACH_FORMAT on: the format gate validates parse
+   * + format on each text, then renders the example once more.
+   */
+  generatedFormat: (1 + MAX_FORMAT_GATE_TEXTS) * 2 + 1,
   get total() {
-    return this.perEvaluation * MAX_MODEL_CALLS + this.currentCode + this.adjusted + this.summaries;
+    return (
+      this.perEvaluation * MAX_MODEL_CALLS +
+      this.currentCode +
+      this.adjusted +
+      this.summaries +
+      this.generatedFormat
+    );
   },
 };
 
@@ -174,7 +188,7 @@ function rowsReadByOutvoted(evaluation: CodeEvaluation, game: DbGame): RowReadin
  * an ordinary post stores for a game with no formatter.
  */
 async function summariesFor(
-  game: DbGame,
+  formatCode: string | null,
   rows: readonly RowReading[],
   deadlineMs: number,
 ): Promise<Map<string, string | null>> {
@@ -182,8 +196,8 @@ async function summariesFor(
   for (const row of rows) {
     if (row.storedSummary !== null || byRaw.has(row.raw)) continue;
     let summary = formatShareBodyFallback(row.raw);
-    if (game.formatCode !== null && Date.now() < deadlineMs) {
-      const formatted = await runFormat(game.formatCode, row.raw);
+    if (formatCode !== null && Date.now() < deadlineMs) {
+      const formatted = await runFormat(formatCode, row.raw);
       if (formatted.kind === "summary") summary = formatted.text;
     }
     byRaw.set(row.raw, summary);
@@ -252,6 +266,8 @@ async function alsoCorrectFor(
 
 interface Attempt {
   code: string;
+  /** PROTOTYPE (`GAME_TEACH_FORMAT`): the formatter written with it, ungated. */
+  format: string | null;
   evaluation: CodeEvaluation;
   decision: TeachDecision;
 }
@@ -341,6 +357,9 @@ export async function teachFromPick(input: {
   // At most two model calls per teach, whatever they are spent on: the one
   // retry after a gate failure, or a second try after a slow or failed call.
   const attempts: Attempt[] = [];
+  // PROTOTYPE: with GAME_TEACH_FORMAT on, a game with no formatter gets one
+  // written in the same call. Off (the default): byte-for-byte the old prompt.
+  const withFormat = teachFormatOn() && game.formatCode === null;
   let noVerdict = false;
   let previous: { code: string; feedback: string } | undefined;
   for (let attempt = 1; attempt <= MAX_MODEL_CALLS; attempt++) {
@@ -367,6 +386,7 @@ export async function teachFromPick(input: {
         alsoCorrect,
         currentCode: game.parseCode,
         previous,
+        withFormat,
       },
       { timeoutMs, ...(input.fetchImpl ? { fetchImpl: input.fetchImpl } : {}) },
     );
@@ -399,7 +419,7 @@ export async function teachFromPick(input: {
       deadlineMs: deadline - APPLY_RESERVE_MS,
     });
     const decision = decide(evaluation);
-    attempts.push({ code: written.code, evaluation, decision });
+    attempts.push({ code: written.code, format: written.format, evaluation, decision });
     const firstFailure = evaluation.failures[0];
     const rereadOnSwitch = rowsReadByOutvoted(evaluation, game).filter(
       (r) => teachModeFor(r.userId) === "on",
@@ -499,6 +519,8 @@ export async function teachFromPick(input: {
   }
 
   const switched = winner.decision === "switch";
+  const formatCode =
+    game.formatCode ?? (await acceptedFormat(winner, example, window, context, deadline));
   const applied = await applyNewCode({
     db,
     game,
@@ -509,6 +531,7 @@ export async function teachFromPick(input: {
     example,
     pick,
     scoreDirection: input.scoreDirection,
+    formatCode,
     deadlineMs: deadline,
   });
   if (!applied) {
@@ -555,6 +578,42 @@ export async function teachFromPick(input: {
 }
 
 /**
+ * PROTOTYPE — the generated formatter that rides along with an accepted
+ * parser, if it passes the format gate (`gateGeneratedFormat`) over the
+ * teaching example and the window's texts. Never blocks the parser: any
+ * failure, or no time left, stores the parser alone. One log line either way.
+ */
+async function acceptedFormat(
+  winner: Attempt,
+  example: WindowScore,
+  window: readonly WindowScore[],
+  context: TeachLogContext,
+  deadlineMs: number,
+): Promise<string | null> {
+  if (winner.format === null) return null;
+  if (Date.now() > deadlineMs - APPLY_RESERVE_MS) {
+    logTeachEvent("formatter_generated", context, { outcome: "skipped", reason: "deadline" });
+    return null;
+  }
+  const otherRaws = [...new Set(window.map((r) => r.raw))]
+    .filter((raw) => raw !== example.raw)
+    .slice(0, MAX_FORMAT_GATE_TEXTS);
+  const gate = await gateGeneratedFormat({
+    format: winner.format,
+    teachingRaw: example.raw,
+    otherRaws,
+  });
+  logTeachEvent("formatter_generated", context, {
+    outcome: gate.ok ? "accepted" : "rejected",
+    reason: gate.ok ? null : gate.reason,
+    detail: gate.ok ? null : (gate.detail ?? null),
+    code: winner.format,
+    raw: example.raw,
+  });
+  return gate.ok ? winner.format : null;
+}
+
+/**
  * Store accepted code: bump the version, append the revision, apply the rows
  * the evaluation cleared, and settle the picks it overturned — one
  * transaction. Returns null when the game's code changed underneath us.
@@ -569,6 +628,8 @@ async function applyNewCode(input: {
   example: WindowScore;
   pick: StoredPick;
   scoreDirection: GameScoreDirection | undefined;
+  /** The formatter to store: the game's own, or (PROTOTYPE) a gated generated one. */
+  formatCode: string | null;
   /** Past this the formatter is not run for missing summaries; the cleaned text is used. */
   deadlineMs: number;
 }): Promise<{
@@ -592,7 +653,11 @@ async function applyNewCode(input: {
     : [];
   const dropped = [...evaluation.overturnedPicks, ...(switched ? evaluation.conflictingPicks : [])];
   // Computed before the transaction opens: it may run the formatter.
-  const summaries = await summariesFor(game, [...rereads, ...changed], input.deadlineMs);
+  const summaries = await summariesFor(
+    input.formatCode,
+    [...rereads, ...changed],
+    input.deadlineMs,
+  );
 
   return input.db.transaction(async (tx) => {
     // Lock the game row and make sure nobody changed its code while this
@@ -606,7 +671,7 @@ async function applyNewCode(input: {
     // The foundation's writer: bumps `code_version` and appends the revision.
     await applyGameCodeChange(tx, {
       gameId: game.id,
-      candidate: { parseCode: code, formatCode: game.formatCode },
+      candidate: { parseCode: code, formatCode: input.formatCode },
       source: "teach",
       authoredBy: userId,
       note: switched

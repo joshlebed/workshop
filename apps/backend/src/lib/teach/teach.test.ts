@@ -69,6 +69,7 @@ describe("worstCaseSandboxRuns", () => {
     // Format runs for re-read rows with no summary (a game with format code only).
     expect(worstCaseSandboxRuns.summaries).toBe(200);
     // Two model calls at most, so two evaluations.
-    expect(worstCaseSandboxRuns.total).toBe(1195);
+    expect(worstCaseSandboxRuns.generatedFormat).toBe(43);
+    expect(worstCaseSandboxRuns.total).toBe(1238);
   });
 });

@@ -34,6 +34,7 @@
 // nothing read the score, server-computed candidate chips plus "I didn't
 // finish". The pick rides along on the post (`onSubmit`'s `extras`).
 
+import { useMutation } from "@tanstack/react-query";
 import type { GameScoreDirection } from "@workshop/shared/games";
 import {
   type ScoreCandidate,
@@ -51,12 +52,17 @@ import {
 import { Avatar, Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { rejectFormatter, setFormatter } from "../api/formatter";
+import { type FormatterCardStatus, FormatterPreviewCard } from "../components/FormatterPreviewCard";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { WrongGameNotice } from "../components/WrongGameNotice";
+import type { FormatterOption } from "../lib/formatterPreview";
 import { pasteSheetCaption } from "../lib/scorePreview";
 import { previewScore } from "../lib/scoreSpecs";
+import { useFormatterPreview } from "../lib/useFormatterPreview";
 import { type ScorePostExtras, useScoreCheck } from "../lib/useScoreCheck";
 import { useScorePreview } from "../lib/useScorePreview";
+import { useGamesRuntime } from "../runtime";
 
 /** A learned parser (+ optional recap formatter), ready for `PUT /v1/games/:id/score-spec`. */
 export interface TaughtScoreSpec {
@@ -70,7 +76,8 @@ export interface TaughtScoreSpec {
 
 // `id` is optional so non-catalog targets still fit; with one, the sheet can
 // warn when the pasted text is recognizably another game's score.
-type PasteTarget = { title: string; id?: string };
+// `hasFormatter` (PROTOTYPE): `false` offers the "Summary preview" card.
+type PasteTarget = { title: string; id?: string; hasFormatter?: boolean };
 
 interface GameScorePasteSheetProps<T extends PasteTarget> {
   /** Target game, or `null` when the sheet should be closed. */
@@ -252,6 +259,44 @@ export function GameScorePasteSheet<T extends PasteTarget>({
     setLineOverrides({});
   };
 
+  // PROTOTYPE — "Summary preview" for a game with no formatter
+  // (`capabilities.formatterPreview`, teach v2 accounts only).
+  const { token } = useGamesRuntime();
+  const [formatterStatus, setFormatterStatus] = useState<FormatterCardStatus>("idle");
+  useEffect(() => {
+    if (item) setFormatterStatus("idle");
+  }, [item]);
+  const formatterView = useFormatterPreview({
+    gameId: visible && check.available && formatterStatus === "idle" ? snapshot?.id : null,
+    hasFormatter: snapshot?.hasFormatter,
+    text: draft,
+  });
+  const approveFormatter = useMutation({
+    mutationFn: (option: FormatterOption) => {
+      const exampleRaw = formatterView.settledText;
+      const body =
+        option.kind === "llm" && option.code && option.token
+          ? { choice: "llm" as const, exampleRaw, code: option.code, token: option.token }
+          : { choice: "heuristic" as const, exampleRaw };
+      return setFormatter(snapshot?.id ?? "", body, token);
+    },
+    onMutate: () => setFormatterStatus("saving"),
+    // No cache write here: a refetch hands the sheet a new target object and
+    // its reset effect would clear the draft. The post's own refetch updates
+    // `hasFormatter`; until then the server's preview says it has one.
+    onSuccess: () => setFormatterStatus("saved"),
+    onError: () => setFormatterStatus("error"),
+  });
+  const rejectFormatterChoice = (shown: FormatterOption["kind"][]) => {
+    setFormatterStatus("rejected");
+    if (snapshot?.id) {
+      // Log-only; a failure changes nothing the user sees.
+      rejectFormatter(snapshot.id, { scoreRaw: formatterView.settledText, shown }, token).catch(
+        () => undefined,
+      );
+    }
+  };
+
   const blocked = check.available && !check.canPost;
   const submit = () => {
     if (!snapshot || empty || pending || blocked) return;
@@ -320,6 +365,15 @@ export function GameScorePasteSheet<T extends PasteTarget>({
           ) : (
             <WrongGameNotice text={draft} gameId={snapshot.id} gameTitle={snapshot.title} />
           )}
+          {check.available ? (
+            <FormatterPreviewCard
+              view={formatterView}
+              status={formatterStatus}
+              onApprove={(option) => approveFormatter.mutate(option)}
+              onReject={rejectFormatterChoice}
+              testID="game-paste-formatter"
+            />
+          ) : null}
           {previewCaption ? (
             <Text variant="caption" tone="muted" testID="game-paste-preview">
               {previewCaption}

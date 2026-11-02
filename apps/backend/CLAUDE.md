@@ -482,6 +482,24 @@ pick_conflict | direction_change | game_recognition | sandbox_failure | parser_r
 src/routes/v1/gameTeach.live.test.ts` — prints step latencies, tokens and gate results.
   Re-run it before changing either prompt or model.
 
+### PROTOTYPE: generated share formatters (draft PR, flags default off)
+
+- **Two flags, both `off` by default, neither in Terraform** (`lib/teach/formatGate.ts`):
+  `GAME_TEACH_FORMAT=on` makes teach's write-code call return `parse` **and** `format`
+  (schema `score_parser_and_format`) and lets the paste sheet ask the model for a formatter;
+  `GAME_FORMATTER_PREVIEW=on` adds `capabilities.formatterPreview` and the four routes in
+  `routes/v1/gameFormatter.ts`. Off, the teach prompt and schema are byte-for-byte the old ones.
+- **A generated `format` is stored only after `gateGeneratedFormat`** (loads, never fails on
+  an example, non-blank on the teaching example, ≤ 6 lines); a failing format never blocks the
+  parser it came with. Log kinds: `formatter_generated | formatter_approved | formatter_rejected`.
+- **The heuristic block is `String(fn)` of `@workshop/shared/formatHeuristic`**
+  (`lib/gameCode/heuristicFormat.ts`), with the game's parse code embedded to find the score
+  line. tsx (the dev backend) compiles with keep-names, so `String(fn)` contains `__name(...)`
+  calls; vitest and the Lambda bundle do not. The block defines a no-op `__name`, and
+  `heuristicFormat.test.ts` builds from a `keepNames: true` compilation to pin it.
+- Live check: `TEACH_LIVE=1 pnpm exec vitest run src/routes/v1/gameFormatter.live.test.ts`
+  (same `.env` recipe as the teach live check; `FORMATTER_LIVE_OUT=<file>` writes the table).
+
 ## Migration journal `when` values must be monotonic
 
 The drizzle migrator records each migration's journal `when` as `created_at` and only
