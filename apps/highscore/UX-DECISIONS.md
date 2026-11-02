@@ -37,4 +37,16 @@ fastest way to re-check any claim below. Each variant's own rationale is at
 | 5   | Home card = minimal top-3 per game; raw share text only on detail | **Keep.**                                     | Not started                                                                                                                |
 | 6   | Game detail (box score) view                                      | **Rework. Current B version is ugly.**        | Needs design                                                                                                               |
 | 7   | Per-card `PASTE` button on home                                   | **Scrap.** The bottom bar is the only paste.  | Shipping with 4 (separate commit)                                                                                          |
+| 9   | Brand mark / app icon                                             | **Frozen.** External contractor owns it.      | No changes                                                                                                                 |
 | 8   | Pixel font scope                                                  | **Narrow.** Brand, game names, maybe actions. | Secondary font pick open                                                                                                   |
+
+## 9. Brand mark and app icon — frozen
+
+**Decision: do not change the brand mark or the app icon.** Owner, 2026-11-02: an external
+contractor is producing the new brand mark. Entry 1's "pick one of the three cabinet drawings"
+is withdrawn — the theme PR ships with the existing raster icon / wordmark treatment and
+leaves `assets/`, `app.json` icon fields, and `index.html` chrome alone. The contractor's mark
+lands as its own PR.
+
+Also accepted as defaults on the same date: spacing scale `4·8·12·16·24·32` and ~120ms
+stepped motion (no spring, no overshoot).
