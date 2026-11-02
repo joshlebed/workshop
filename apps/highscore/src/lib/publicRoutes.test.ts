@@ -62,8 +62,8 @@ describe("public routes", () => {
     }
   });
 
-  it("links all three pages from the signed-in profile menu", () => {
-    const menu = readFileSync(join(__dirname, "..", "components", "ProfileMenu.tsx"), "utf8");
+  it("links all three pages from the signed-in You page", () => {
+    const menu = readFileSync(join(__dirname, "..", "screens", "EditProfile.tsx"), "utf8");
     expect(menu).toContain(
       'import { PRIVACY_ROUTE, SUPPORT_ROUTE, TERMS_ROUTE } from "../lib/publicRoutes"',
     );

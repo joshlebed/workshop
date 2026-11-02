@@ -1,12 +1,17 @@
-// HighScore's edit-profile screen. Adapted copy of apps/workshop's — same
-// PATCH /v1/users/me contract, HighScore-owned presentation.
+// HighScore's "You" page (/profile): edit your profile up top, then
+// blocked users, then settings / help / legal / sign out, with account
+// deletion last. Reached straight from the home-header avatar — there is
+// no menu sheet in between.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { goBack } from "@workshop/ui/navigation";
-import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import Constants from "expo-constants";
+import { useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import { Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { ImpersonationStatus } from "../admin/ImpersonationPanel";
 import { blockedUsersQueryKey, fetchBlockedUsers, unblockUser } from "../api/moderation";
 import { useAuth } from "../hooks/useAuth";
 import {
@@ -17,12 +22,14 @@ import {
   nextDeletionStep,
 } from "../lib/accountDeletion";
 import { pickProfilePhoto } from "../lib/profilePhoto";
+import { PRIVACY_ROUTE, SUPPORT_ROUTE, TERMS_ROUTE } from "../lib/publicRoutes";
 import {
   Avatar,
   Button,
   bodyType,
   IconButton,
   PixelIcon,
+  type PixelIconName,
   Screen,
   Text,
   tokens,
@@ -78,21 +85,16 @@ export default function EditProfile() {
   return (
     <Screen style={styles.root}>
       <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
-            Account
-          </Text>
-          <Text variant="heading" numberOfLines={1}>
-            Edit profile
-          </Text>
-        </View>
         <IconButton
-          accessibilityLabel="Close profile editor"
+          accessibilityLabel="Back"
           onPress={() => goBack("/")}
           testID="profile-edit-close"
         >
-          <PixelIcon name="close" size={24} color={tokens.text.secondary} />
+          <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
         </IconButton>
+        <Text variant="heading" numberOfLines={1} style={styles.headerText}>
+          You
+        </Text>
       </View>
 
       <KeyboardAwareScrollView
@@ -172,11 +174,132 @@ export default function EditProfile() {
         />
 
         <BlockedUsersSection />
+        <SettingsSection />
         <DeleteAccountSection />
       </KeyboardAwareScrollView>
     </Screen>
   );
 }
+
+/**
+ * Everything that used to live in the profile menu sheet: help, legal, admin
+ * and sign out, as a quiet row list under your profile. Rare actions, so one
+ * extra scroll is fine; the daily surfaces (home, friends) never show them.
+ */
+function SettingsSection() {
+  const { user, signOut } = useAuth();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
+  const onSendFeedback = () => {
+    const subject = encodeURIComponent("HighScore feedback");
+    const version = Constants.expoConfig?.version ?? "0.0.0";
+    const body = encodeURIComponent(
+      `\n\nFeedback context\nHighScore v${version} · ${Platform.OS}${user?.id ? ` · ${user.id.slice(0, 8)}` : ""}`,
+    );
+    Linking.openURL(`mailto:joshlebed@gmail.com?subject=${subject}&body=${body}`).catch(() => {});
+  };
+
+  // Impersonation swaps the whole session — drop every cached query so no
+  // other user's data leaks across accounts, then land on home.
+  const onAuthSessionChanged = useCallback(() => {
+    queryClient.clear();
+    goBack("/");
+  }, [queryClient]);
+
+  return (
+    <View style={dangerStyles.section} testID="profile-settings">
+      <View style={dangerStyles.divider} />
+      <Text variant="caption" tone="muted" style={dangerStyles.eyebrow}>
+        Settings
+      </Text>
+      <View style={settingsStyles.list}>
+        <SettingsRow
+          icon="mail"
+          label="Send feedback"
+          onPress={onSendFeedback}
+          testID="send-feedback"
+        />
+        {/* Public pages (src/lib/publicRoutes.ts): the in-app push lands on the
+            same content Apple sees at the published highscore.live URLs. */}
+        <SettingsRow
+          icon="link"
+          label="Support"
+          onPress={() => router.push(SUPPORT_ROUTE)}
+          testID="open-support"
+        />
+        <SettingsRow
+          label="Privacy policy"
+          onPress={() => router.push(PRIVACY_ROUTE)}
+          testID="open-privacy"
+        />
+        <SettingsRow
+          label="Terms of use"
+          onPress={() => router.push(TERMS_ROUTE)}
+          testID="open-terms"
+        />
+        {user?.isAdmin ? (
+          <SettingsRow
+            icon="sliders"
+            label="Admin dashboard"
+            onPress={() => router.push("/admin")}
+            testID="open-admin"
+          />
+        ) : null}
+      </View>
+      <ImpersonationStatus onSessionChanged={onAuthSessionChanged} />
+      <Button label="Sign out" variant="ghost" testID="sign-out" onPress={() => void signOut()} />
+    </View>
+  );
+}
+
+function SettingsRow({
+  icon,
+  label,
+  onPress,
+  testID,
+}: {
+  icon?: PixelIconName;
+  label: string;
+  onPress: () => void;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      testID={testID}
+      style={({ pressed, hovered }) => [
+        settingsStyles.row,
+        (pressed || hovered) && settingsStyles.rowHover,
+      ]}
+    >
+      {icon ? (
+        <PixelIcon name={icon} size={24} color={tokens.text.secondary} />
+      ) : (
+        <View style={settingsStyles.iconSlot} />
+      )}
+      <Text style={settingsStyles.rowLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <PixelIcon name="chevron-right" size={16} color={tokens.text.secondary} />
+    </Pressable>
+  );
+}
+
+const settingsStyles = StyleSheet.create({
+  list: { marginHorizontal: -tokens.space.sm },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.sm,
+    minHeight: 48,
+  },
+  rowHover: { backgroundColor: tokens.bg.surface },
+  rowLabel: { flex: 1, minWidth: 0 },
+  iconSlot: { width: 24, height: 24 },
+});
 
 /**
  * Who you've blocked (App Store Review Guideline 1.2), with an Unblock per row.
@@ -344,14 +467,12 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-    gap: tokens.space.md,
+    paddingHorizontal: tokens.space.sm,
+    paddingTop: tokens.space.sm,
+    paddingBottom: tokens.space.sm,
+    gap: tokens.space.sm,
   },
-  headerText: { flex: 1, minWidth: 0, gap: 2 },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
+  headerText: { flex: 1, minWidth: 0 },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
