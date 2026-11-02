@@ -6,8 +6,8 @@
 // only renders rows and reports taps.
 
 import type { DiscoveryGame } from "@workshop/shared/games";
-import { Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from "react-native";
+import { bodyType, Text, tokens } from "../../../theme";
 import { friendsPlayLine } from "../../lib/catalogSections";
 
 interface FriendGameSuggestionsProps {
@@ -57,7 +57,7 @@ export function FriendGameSuggestions({
               )}
             </View>
             <View style={styles.text}>
-              <Text variant="label" numberOfLines={1} style={styles.title}>
+              <Text variant="game" numberOfLines={1} style={styles.title}>
                 {dg.game.title}
               </Text>
               {hideFriendLine ? null : (
@@ -68,13 +68,15 @@ export function FriendGameSuggestions({
             </View>
             {owned ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-owned-${dg.game.id}`}>
-                <Text style={styles.addedText} numberOfLines={1}>
+                <Text variant="label" style={styles.addedText} numberOfLines={1}>
                   ✓ In your games
                 </Text>
               </View>
             ) : added ? (
               <View style={styles.addedPill} testID={`${testIDPrefix}-added-${dg.game.id}`}>
-                <Text style={styles.addedText}>✓ Added</Text>
+                <Text variant="label" style={styles.addedText}>
+                  ✓ Added
+                </Text>
               </View>
             ) : (
               <Pressable
@@ -93,7 +95,9 @@ export function FriendGameSuggestions({
                 {adding ? (
                   <ActivityIndicator size="small" color={tokens.accent.default} />
                 ) : (
-                  <Text style={styles.addLabel}>Add</Text>
+                  <Text variant="label" style={styles.addLabel}>
+                    Add
+                  </Text>
                 )}
               </Pressable>
             )}
@@ -114,53 +118,51 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   cover: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    backgroundColor: tokens.accent.muted,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
   },
-  coverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
+  coverImage: { width: COVER, height: COVER, borderRadius: 0 },
   coverGlyph: { fontSize: 20 },
   text: { flex: 1, minWidth: 0, gap: 2 },
-  title: { fontSize: tokens.font.size.md, color: tokens.text.primary },
+  title: { color: tokens.text.primary },
   addBtn: {
     minWidth: 64,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
   addBtnBusy: { opacity: 0.8 },
   addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    ...bodyType("semibold"),
+    color: tokens.neon.pinkTint,
   },
   addedPill: {
     minWidth: 64,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
   },
   addedText: {
+    ...bodyType("semibold"),
     color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
   },
 });

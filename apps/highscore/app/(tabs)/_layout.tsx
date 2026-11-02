@@ -1,5 +1,5 @@
-import { tokens } from "@workshop/ui";
 import { Tabs } from "expo-router";
+import { tokens } from "../../src/theme";
 
 // Minimal tab shell. HighScore ships a single surface today (the Games home);
 // the group exists so PR-4 can drop the Games routes plus a Friends/Profile
@@ -12,8 +12,8 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: tokens.bg.canvas },
-        tabBarActiveTintColor: tokens.accent.default,
-        tabBarInactiveTintColor: tokens.text.muted,
+        tabBarActiveTintColor: tokens.neon.pink,
+        tabBarInactiveTintColor: tokens.text.secondary,
         tabBarStyle: { display: "none" },
       }}
     >

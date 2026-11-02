@@ -25,9 +25,10 @@
 // control's own action.
 
 import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
-import { Avatar, REORDER_ACTIVATION, Text, tokens } from "@workshop/ui";
+import { REORDER_ACTIVATION } from "@workshop/ui";
 import { memo } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Avatar, bodyType, PixelIcon, scoreType, Text, tokens, uiType } from "../../theme";
 import { ScoreReactions } from "./ScoreReactions";
 
 const TOP_N = 5;
@@ -204,7 +205,7 @@ export const StandingsCard = memo(function StandingsCard({
                 (pressed || hovered) && styles.bodyPressed,
               ]}
             >
-              <Text variant="heading" numberOfLines={1} style={styles.title}>
+              <Text variant="game" numberOfLines={1}>
                 {title}
               </Text>
             </Pressable>
@@ -229,7 +230,7 @@ export const StandingsCard = memo(function StandingsCard({
             ) : null}
           </View>
           <View style={styles.metaRow}>
-            <Text variant="caption" tone="muted" numberOfLines={1} style={styles.turnout}>
+            <Text variant="overline" tone="muted" numberOfLines={1} style={styles.turnout}>
               {turnout}
             </Text>
           </View>
@@ -264,7 +265,7 @@ export const StandingsCard = memo(function StandingsCard({
             (pressed || hovered) && styles.menuBtnHover,
           ]}
         >
-          <Text style={styles.menuGlyph}>⋯</Text>
+          <PixelIcon name="more-horizontal" size={16} color={tokens.text.secondary} />
         </Pressable>
       </View>
 
@@ -497,26 +498,26 @@ const styles = StyleSheet.create({
     marginHorizontal: -tokens.space.sm,
     gap: tokens.space.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: tokens.border.subtle,
+    borderBottomColor: tokens.border.default,
   },
   cardDragging: {
     backgroundColor: tokens.bg.elevated,
-    borderRadius: tokens.radius.lg,
+    borderRadius: 0,
     borderBottomColor: "transparent",
-    boxShadow: "0px 8px 18px rgba(0, 0, 0, 0.4)",
-    elevation: 10,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
   },
-  cover: { borderRadius: tokens.radius.sm },
+  cover: { borderRadius: 0 },
   coverPressed: { opacity: 0.7 },
   coverImage: {
     width: COVER,
     height: COVER,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.elevated,
   },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
@@ -533,12 +534,12 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   bodyPressed: { backgroundColor: tokens.bg.elevated },
-  title: { fontSize: tokens.font.size.md, lineHeight: 21, letterSpacing: 0 },
-  // The streak flame mirrors the Play pill's warm CTA treatment (amber-muted
-  // fill, accent count) so it reads as "tap to keep your run going", not decor.
+  // The streak is earned, so it's the one chartreuse element on the card:
+  // chartreuse bezel + count/label on transparent (DESIGN.md "Chartreuse is
+  // earned"), reading as "tap to keep your run going", not decor.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
@@ -546,27 +547,27 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 1,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.chartreuse,
   },
-  streakHover: { backgroundColor: `${tokens.accent.default}33` },
+  streakHover: { backgroundColor: tokens.bg.elevated },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
   // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
   streakFlame: { fontSize: 12, lineHeight: 16 },
+  // Streak counts are score numerals (pixel face).
   streakCount: {
-    fontSize: tokens.font.size.xs,
+    ...scoreType(10),
     lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.accent.default,
-    fontVariant: ["tabular-nums"],
+    color: tokens.neon.chartreuse,
   },
-  // The unit lives next to the bold count: "🔥 4 day streak". Lighter weight
-  // than the number so the count stays the focal point; same accent + lineHeight.
+  // The unit lives next to the count: "🔥 4 day streak". Secondary face so
+  // the numeral stays the focal point; same colour + lineHeight.
   streakLabel: {
+    ...bodyType("medium"),
     fontSize: tokens.font.size.xs,
     lineHeight: 16,
-    fontWeight: tokens.font.weight.medium,
-    color: tokens.accent.default,
+    color: tokens.neon.chartreuse,
   },
   metaRow: {
     flexDirection: "row",
@@ -574,33 +575,30 @@ const styles = StyleSheet.create({
     gap: tokens.space.xs,
     marginTop: 1,
   },
-  turnout: { flexShrink: 1, letterSpacing: 0 },
+  turnout: { ...uiType(8), flexShrink: 1 },
+  // Play is a tap target → pink: neon bezel + neon label on transparent.
   playPill: {
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
-  playPillHover: { backgroundColor: `${tokens.accent.default}33` },
+  playPillHover: { backgroundColor: tokens.accent.muted },
   playLabel: {
-    color: tokens.accent.default,
+    ...bodyType("semibold"),
+    color: tokens.neon.pink,
     fontSize: tokens.font.size.sm,
     lineHeight: 18,
-    fontWeight: tokens.font.weight.semibold,
   },
   menuBtn: {
     width: 28,
     height: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   menuBtnHover: { backgroundColor: tokens.bg.elevated },
-  menuGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg,
-  },
   standings: { gap: tokens.space.sm },
   playerRow: {
     flexDirection: "row",
@@ -609,7 +607,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   playerLine: {
     flex: 1,
@@ -629,52 +627,49 @@ const styles = StyleSheet.create({
   // height. They keep their natural width; the score line flexes to fill.
   reactionsWrap: { flexShrink: 0 },
   adjusted: {
+    ...bodyType(),
     fontSize: tokens.font.size.xs,
     color: tokens.text.muted,
     fontStyle: "italic",
   },
   fixLink: { flexShrink: 0, paddingHorizontal: tokens.space.xs },
   fixLinkText: {
-    fontSize: tokens.font.size.sm,
-    color: tokens.accent.default,
+    ...uiType(11),
+    color: tokens.neon.pinkTint,
     textDecorationLine: "underline",
   },
-  playerRowMe: { backgroundColor: `${tokens.accent.default}14` },
+  playerRowMe: { backgroundColor: tokens.accent.muted },
   rankSlot: {
     width: RANK_SLOT,
     height: RANK_SLOT,
     alignItems: "center",
     justifyContent: "center",
   },
+  // Rank numbers are score numerals (pixel face).
   rankText: {
+    ...scoreType(10),
     color: tokens.text.muted,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    fontVariant: ["tabular-nums"],
   },
   rankDot: { color: tokens.text.muted, fontSize: tokens.font.size.md },
+  // Rank 1 is the spotlight: neon yellow fill, dark numeral (DESIGN.md).
   rankFirst: {
-    borderRadius: RANK_SLOT / 2,
-    backgroundColor: tokens.accent.default,
+    borderRadius: 0,
+    backgroundColor: tokens.neon.yellow,
   },
   rankFirstText: {
+    ...scoreType(10),
     color: tokens.text.onAccent,
-    fontSize: tokens.font.size.xs,
-    fontWeight: tokens.font.weight.bold,
-    fontVariant: ["tabular-nums"],
   },
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   youPillText: {
-    fontSize: 10,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.5,
-    color: tokens.accent.default,
-    textTransform: "uppercase",
+    ...uiType(8),
+    color: tokens.neon.pinkTint,
   },
   scoreBody: {
     flex: 1,
@@ -686,7 +681,7 @@ const styles = StyleSheet.create({
   scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
   pinnedDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    backgroundColor: tokens.border.default,
     marginVertical: tokens.space.xs,
     marginLeft: SCORE_INDENT,
   },
@@ -698,7 +693,7 @@ const styles = StyleSheet.create({
   faceWrap: {
     borderWidth: 2,
     borderColor: tokens.bg.canvas,
-    borderRadius: 999,
+    borderRadius: 0,
     opacity: 0.45,
   },
   faceOverlap: { marginLeft: -10 },
@@ -707,12 +702,12 @@ const styles = StyleSheet.create({
   skeletonDot: {
     width: AVATAR_SM,
     height: AVATAR_SM,
-    borderRadius: AVATAR_SM / 2,
+    borderRadius: 0,
     backgroundColor: tokens.bg.elevated,
   },
   skeletonBar: {
     height: 10,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
     backgroundColor: tokens.bg.elevated,
   },
 });

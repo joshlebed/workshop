@@ -1,9 +1,9 @@
 // RN counterparts of canvasControls.tsx for the native canvases: a compact
 // toggle button row and a legend strip, laid over the graph.
 
-import { Text } from "@workshop/ui";
 import type { ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text, tokens } from "../../theme";
 import type { GraphPalette } from "./model";
 
 export function ChromeButton({
@@ -29,11 +29,11 @@ export function ChromeButton({
         styles.button,
         {
           borderColor: active ? palette.accent : palette.border,
-          backgroundColor: active ? `${palette.accent}22` : palette.surface,
+          backgroundColor: active ? tokens.accent.muted : palette.surface,
         },
       ]}
     >
-      <Text variant="caption" style={{ color: palette.text }}>
+      <Text variant="caption" style={{ color: active ? palette.accent : palette.text }}>
         {label}
       </Text>
     </Pressable>
@@ -115,8 +115,8 @@ const styles = StyleSheet.create({
   button: {
     height: 30,
     paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
     justifyContent: "center",
     marginRight: 6,
   },
@@ -128,12 +128,12 @@ const styles = StyleSheet.create({
     right: 8,
     bottom: 8,
     padding: 8,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
     gap: 6,
   },
   legendInline: { gap: 6 },
   legendRow: { gap: 12, alignItems: "center" },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
-  dot: { width: 9, height: 9, borderRadius: 5 },
+  dot: { width: 9, height: 9, borderRadius: 0 },
 });

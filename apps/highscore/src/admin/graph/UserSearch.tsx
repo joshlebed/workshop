@@ -3,9 +3,9 @@
 
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import type { AdminGraphNode } from "@workshop/shared";
-import { Avatar, Text, tokens } from "@workshop/ui";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Avatar, bodyType, PixelIcon, Text, tokens } from "../../theme";
 import { displayName } from "./model";
 
 interface Props {
@@ -38,10 +38,10 @@ export function UserSearch({ nodes, onPick, value, onChange, placeholder }: Prop
         onFocus={() => setFocused(true)}
         onBlur={() => setTimeout(() => setFocused(false), 150)}
         placeholder={placeholder ?? "Find a user by name or email"}
-        placeholderTextColor={tokens.text.muted}
+        placeholderTextColor={tokens.text.secondary}
         autoCapitalize="none"
         autoCorrect={false}
-        style={styles.input}
+        style={[styles.input, focused && styles.inputFocused]}
         testID="admin-user-search"
         accessibilityLabel="Find a user"
       />
@@ -52,7 +52,7 @@ export function UserSearch({ nodes, onPick, value, onChange, placeholder }: Prop
           accessibilityRole="button"
           accessibilityLabel="Clear search"
         >
-          <Text tone="muted">✕</Text>
+          <PixelIcon name="close" size={16} color={tokens.text.secondary} />
         </Pressable>
       ) : null}
       {open ? (
@@ -91,31 +91,29 @@ export function UserSearch({ nodes, onPick, value, onChange, placeholder }: Prop
 const styles = StyleSheet.create({
   wrap: { position: "relative", zIndex: 20, flexGrow: 1, minWidth: 220, maxWidth: 420 },
   input: {
+    ...bodyType(),
     minHeight: 40,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingLeft: tokens.space.md,
     paddingRight: 36,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
   },
-  clear: { position: "absolute", right: 10, top: 9, padding: 2 },
+  inputFocused: { borderColor: tokens.neon.pink },
+  clear: { position: "absolute", right: 10, top: 10, padding: 2 },
   dropdown: {
     position: "absolute",
     top: 44,
     left: 0,
     right: 0,
     backgroundColor: tokens.bg.elevated,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     overflow: "hidden",
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
   },
   option: {
     flexDirection: "row",
@@ -124,6 +122,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
   },
-  optionPressed: { backgroundColor: tokens.bg.surface },
+  optionPressed: { backgroundColor: tokens.accent.muted },
   optionText: { flex: 1, minWidth: 0 },
 });

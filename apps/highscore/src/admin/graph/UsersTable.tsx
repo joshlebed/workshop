@@ -4,9 +4,9 @@
 
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import type { AdminGraphNode, AdminGraphResponse } from "@workshop/shared";
-import { Avatar, Text, tokens } from "@workshop/ui";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Avatar, Text, tokens } from "../../theme";
 import {
   ACTIVITY_BAND_LABEL,
   activityBand,
@@ -34,10 +34,11 @@ const COLUMNS: { key: UserSortKey; label: string; width: number; numeric?: boole
   { key: "createdAt", label: "Joined", width: 110 },
 ];
 
+// Activity dot: chartreuse this week (earned), amber this month, grey dormant.
 const BAND_COLORS = {
   week: tokens.status.success,
-  month: tokens.accent.default,
-  dormant: tokens.list.slate,
+  month: tokens.status.warning,
+  dormant: tokens.text.secondary,
   never: tokens.border.strong,
 } as const;
 
@@ -175,9 +176,9 @@ export function UsersTable({ data, selectedId, onSelect, height, filter }: Props
 
 const styles = StyleSheet.create({
   frame: {
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.lg,
+    borderRadius: 0,
     backgroundColor: tokens.bg.canvas,
     overflow: "hidden",
   },
@@ -191,12 +192,12 @@ const styles = StyleSheet.create({
     borderBottomColor: tokens.border.subtle,
   },
   headerRow: { backgroundColor: tokens.bg.surface, paddingVertical: tokens.space.xs },
-  rowSelected: { backgroundColor: tokens.accent.muted },
+  rowSelected: { backgroundColor: tokens.accent.muted, borderBottomColor: tokens.neon.pink },
   rowPressed: { backgroundColor: tokens.bg.elevated },
   cell: { paddingVertical: tokens.space.sm, paddingHorizontal: tokens.space.xs },
   numeric: { alignItems: "flex-end" },
   nameCell: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   nameText: { flex: 1, minWidth: 0 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
+  dot: { width: 8, height: 8, borderRadius: 0 },
   empty: { padding: tokens.space.lg, textAlign: "center" },
 });

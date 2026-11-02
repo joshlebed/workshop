@@ -33,27 +33,26 @@ import type {
   GamesResponse,
   MyGame,
 } from "@workshop/shared/games";
-import {
-  Button,
-  CopyIcon,
-  confirm,
-  EmptyState,
-  HomeHeader,
-  haptics,
-  homeLayout,
-  openExternalUrl,
-  Screen,
-  Sheet,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, haptics, openExternalUrl } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
+import {
+  Button,
+  bodyType,
+  EmptyState,
+  HomeHeader,
+  homeLayout,
+  PixelIcon,
+  Screen,
+  Sheet,
+  Text,
+  tokens,
+  useToast,
+} from "../../theme";
 import {
   addGame,
   createGameShareLink,
@@ -618,7 +617,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
               {copyingScores ? (
                 <ActivityIndicator size="small" color={tokens.text.primary} />
               ) : (
-                <CopyIcon size={20} color={tokens.text.primary} />
+                <PixelIcon name="copy" size={24} color={tokens.text.secondary} />
               )}
             </Pressable>
             {headerTrailing}
@@ -772,7 +771,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         {menuGame ? (
           <>
             <View style={styles.sheetHeader}>
-              <Text variant="heading" numberOfLines={1}>
+              <Text variant="game" numberOfLines={1}>
                 {menuGame.game.title}
               </Text>
             </View>
@@ -862,7 +861,7 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
   headerIconBtnDisabled: { opacity: 0.6 },
@@ -879,19 +878,21 @@ const styles = StyleSheet.create({
   sheetActions: { gap: tokens.space.sm },
   sheetDivider: {
     height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.subtle,
+    backgroundColor: tokens.border.default,
     marginVertical: tokens.space.xs,
   },
   sheetDangerRow: {
     paddingVertical: tokens.space.md,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.status.danger,
   },
-  sheetDangerPressed: { backgroundColor: `${tokens.status.danger}1A` },
+  sheetDangerPressed: { backgroundColor: "rgba(255,77,94,0.12)" },
   sheetDangerLabel: {
+    ...bodyType("semibold"),
     color: tokens.status.danger,
     fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
   },
 });

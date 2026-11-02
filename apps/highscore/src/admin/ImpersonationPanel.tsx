@@ -9,11 +9,11 @@ import { useQuery } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ImpersonationTargetUser } from "@workshop/shared";
-import { Avatar, Button, Card, Text, tokens, useToast } from "@workshop/ui";
 import { useMemo, useState } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
+import { Avatar, Button, bodyType, Card, Text, tokens, useToast } from "../theme";
 
 function labelFor(u: { displayName: string | null; email: string | null }): string {
   return u.displayName?.trim() || u.email || "user";
@@ -120,7 +120,7 @@ export function ImpersonationPanel({ onSessionChanged, initialQuery = "" }: Pane
         value={query}
         onChangeText={setQuery}
         placeholder="Search by name or email"
-        placeholderTextColor={tokens.text.muted}
+        placeholderTextColor={tokens.text.secondary}
         autoCapitalize="none"
         autoCorrect={false}
         style={styles.input}
@@ -186,12 +186,13 @@ const styles = StyleSheet.create({
   status: { gap: tokens.space.sm },
   note: { paddingHorizontal: tokens.space.xs },
   input: {
+    ...bodyType(),
     minHeight: 44,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
-    backgroundColor: tokens.bg.surface,
+    backgroundColor: tokens.bg.elevated,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
   },

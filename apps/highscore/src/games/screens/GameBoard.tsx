@@ -4,20 +4,7 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import { STREAK_MIN_DAYS } from "@workshop/shared/games";
-import {
-  Avatar,
-  Button,
-  ChevronIcon,
-  confirm,
-  EmptyState,
-  formatRelative,
-  haptics,
-  openExternalUrl,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "@workshop/ui";
+import { confirm, formatRelative, haptics, openExternalUrl } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -33,6 +20,18 @@ import {
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
+import {
+  Avatar,
+  Button,
+  EmptyState,
+  PixelIcon,
+  Screen,
+  scoreType,
+  Text,
+  tokens,
+  uiType,
+  useToast,
+} from "../../theme";
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
@@ -324,7 +323,7 @@ export default function GameBoard() {
             hitSlop={10}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <ChevronIcon direction="left" size={20} color={tokens.text.primary} />
+            <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
           </Pressable>
           {game.iconUrl ? (
             <Image
@@ -338,7 +337,7 @@ export default function GameBoard() {
             </View>
           )}
           <View style={styles.titleText}>
-            <Text variant="heading" numberOfLines={1} style={styles.titleName}>
+            <Text variant="game" numberOfLines={1}>
               {game.title}
             </Text>
           </View>
@@ -356,7 +355,7 @@ export default function GameBoard() {
             hitSlop={6}
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
-            <Text style={styles.titleOpenGlyph}>↗</Text>
+            <PixelIcon name="external-link" size={16} color={tokens.text.secondary} />
           </Pressable>
         </View>
 
@@ -372,7 +371,7 @@ export default function GameBoard() {
         </View>
 
         <View style={styles.dayHeader}>
-          <Text variant="caption" tone="muted" testID="game-board-turnout">
+          <Text variant="overline" tone="muted" testID="game-board-turnout">
             {boardQuery.isPending ? dateLabel : `${dateLabel} · ${turnout}`}
           </Text>
         </View>
@@ -811,7 +810,7 @@ function ScoreComposer({
         value={draft}
         onChangeText={onChangeDraft}
         placeholder={"Paste your result here"}
-        placeholderTextColor={tokens.text.muted}
+        placeholderTextColor={tokens.text.secondary}
         multiline
         autoFocus={isEdit}
         maxLength={2000}
@@ -857,8 +856,8 @@ function ScoreComposer({
 }
 
 // iOS Safari zooms the page when a focused input's font-size is under 16px,
-// and never zooms back out on blur. Keep the paste box at 16px on web.
-const PASTE_INPUT_FONT_SIZE = Platform.OS === "web" ? tokens.font.size.md : tokens.font.size.sm;
+// and never zooms back out on blur. Inputs are ≥16px everywhere (DESIGN.md).
+const PASTE_INPUT_FONT_SIZE = tokens.font.size.md;
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas, paddingTop: tokens.space.xl },
@@ -882,7 +881,7 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
   body: {
@@ -892,7 +891,9 @@ const styles = StyleSheet.create({
   titleBadge: {
     width: 32,
     height: 32,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.elevated,
   },
   titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
@@ -900,14 +901,8 @@ const styles = StyleSheet.create({
   // glyph to the inherited line box otherwise (see app CLAUDE.md).
   titleBadgeGlyph: { fontSize: 18, lineHeight: 22 },
   titleText: { flex: 1, minWidth: 0 },
-  titleName: { letterSpacing: -0.3 },
-  titleOpenGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg + 2,
-  },
-  // Streak pill mirrors the home card's (StandingsCard) so the flame reads as
-  // the same signal on both surfaces; static here — Play lives in the my-slot.
+  // Streak badge mirrors the home card's (StandingsCard): chartreuse bezel +
+  // pixel count, earned (DESIGN.md); static here — Play lives in the my-slot.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
@@ -915,16 +910,15 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 1,
-    borderRadius: tokens.radius.pill,
-    backgroundColor: `${tokens.accent.default}1F`,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.chartreuse,
   },
   streakFlame: { fontSize: 12, lineHeight: 16 },
   streakCount: {
-    fontSize: tokens.font.size.xs,
+    ...scoreType(10),
     lineHeight: 16,
-    fontWeight: tokens.font.weight.bold,
-    color: tokens.accent.default,
-    fontVariant: ["tabular-nums"],
+    color: tokens.neon.chartreuse,
   },
   dayRail: { paddingBottom: tokens.space.sm },
   dayHeader: { paddingHorizontal: tokens.space.xl },
@@ -946,15 +940,17 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   entryMe: {
-    // Quiet accent tint as the sole "this is you" signal; the "you" pill
-    // doubles as a textual label so the highlight isn't color-only.
-    backgroundColor: `${tokens.accent.default}14`,
+    // "Selected" treatment as the "this is you" signal — pink bezel + muted
+    // pink fill; the "you" pill doubles as a textual label so the highlight
+    // isn't color-only.
+    backgroundColor: tokens.accent.muted,
+    borderColor: tokens.neon.pink,
   },
   entryHeader: {
     flexDirection: "row",
@@ -967,7 +963,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   entryIdentityPressed: { opacity: 0.6 },
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
@@ -977,35 +973,32 @@ const styles = StyleSheet.create({
   scoreActionButton: {
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 4,
-    borderRadius: tokens.radius.sm,
+    borderRadius: 0,
   },
   editScorePressed: { backgroundColor: tokens.accent.muted },
+  // FIX / EDIT / CLEAR: small uppercase UI labels (DESIGN.md "Typography").
   editScoreLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.accent.default,
+    ...uiType(11),
+    color: tokens.neon.pink,
   },
   // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
   // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
   // the control itself stays calm rather than a loud red on a daily screen.
   clearScorePressed: { backgroundColor: tokens.bg.elevated },
   clearScoreLabel: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
+    ...uiType(11),
     color: tokens.text.secondary,
   },
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.muted,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
   },
   youPillText: {
-    fontSize: 10,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.5,
-    color: tokens.accent.default,
-    textTransform: "uppercase",
+    ...uiType(8),
+    color: tokens.neon.pinkTint,
   },
   // Score box + reactions share one row so reactions sit to the right of the
   // score instead of below it (no extra row height).
@@ -1019,31 +1012,30 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     backgroundColor: tokens.bg.canvas,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderColor: tokens.border.default,
   },
+  // Rank numerals are pixel; rank 1 is the yellow spotlight (DESIGN.md).
   rankBadge: {
     minWidth: 28,
     height: 28,
     paddingHorizontal: 6,
-    borderRadius: 14,
+    borderRadius: 0,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.bg.canvas,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tokens.border.subtle,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
   },
   rankBadgeTop1: {
-    backgroundColor: tokens.accent.default,
-    borderColor: tokens.accent.default,
+    backgroundColor: tokens.neon.yellow,
+    borderColor: tokens.neon.yellow,
   },
   rankBadgeText: {
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.bold,
+    ...scoreType(11),
     color: tokens.text.secondary,
-    fontVariant: ["tabular-nums"],
   },
   rankBadgeTextTop1: { color: tokens.text.onAccent },
   scoreText: {
@@ -1058,14 +1050,14 @@ const styles = StyleSheet.create({
   },
   pasteInput: {
     minHeight: 110,
-    borderWidth: 1,
+    borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
+    borderRadius: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
     fontSize: PASTE_INPUT_FONT_SIZE,
-    backgroundColor: tokens.bg.canvas,
+    backgroundColor: tokens.bg.elevated,
     textAlignVertical: "top",
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     lineHeight: PASTE_INPUT_FONT_SIZE + 6,

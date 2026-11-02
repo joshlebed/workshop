@@ -368,7 +368,10 @@ deliberate critical-fix backports may change it before then. See
   `@workshop/api-client` is `apiRequest` + the method union, `queryKeys`, `storage`,
   `sessionCredentials`, `authBootstrap`, `useLivePollingInterval`, and the API-URL derivation
   (`./config`) plus OAuth hooks under `./oauth/*`; it is **subpath-only** (no barrel).
-  HighScore's Games UI is app-owned under `apps/highscore/src/games`; Workshop uses the frozen
+  HighScore's Games UI is app-owned under `apps/highscore/src/games`, and **HighScore's visual
+  tokens/primitives are `apps/highscore/src/theme`** (dark-only, Press Start 2P + Space Grotesk,
+  pixel icons — see `apps/highscore/CLAUDE.md`): HighScore imports only behaviour helpers from
+  `@workshop/ui`. Workshop uses the frozen
   `apps/workshop/src/legacyGames` snapshot until PR-10. Never re-share presentation code between
   them: HighScore style/layout/branding/client iteration must have zero Workshop effect. Shared
   game contracts stay in `@workshop/shared` (`games`, `gameRegistry`, `scoreParsing`,

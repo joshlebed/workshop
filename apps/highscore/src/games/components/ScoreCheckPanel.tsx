@@ -1,6 +1,6 @@
 import type { GameScoreDirection } from "@workshop/shared/games";
-import { Button, Chip, Text, tokens } from "@workshop/ui";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+import { Button, Chip, Text, tokens } from "../../theme";
 import { ROLE_TAG, SCORE_COPY } from "../lib/scoreCheck";
 import type { ScoreCheck } from "../lib/useScoreCheck";
 
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     minHeight: 24,
   },
   pickerCaption: { flexShrink: 1 },
-  link: { color: tokens.accent.default, textDecorationLine: "underline" },
+  link: { color: tokens.neon.pinkTint, textDecorationLine: "underline" },
   picker: { gap: tokens.space.sm },
   direction: { gap: tokens.space.sm },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
@@ -266,8 +266,8 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
+    borderRadius: 0,
+    borderWidth: tokens.bezel,
     borderColor: tokens.status.warning,
     backgroundColor: tokens.bg.surface,
   },
