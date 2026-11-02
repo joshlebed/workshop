@@ -179,7 +179,6 @@ const styles = StyleSheet.create({
     width: COVER,
     height: COVER,
     borderRadius: 0,
-    backgroundColor: tokens.accent.muted,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",

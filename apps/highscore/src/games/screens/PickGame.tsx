@@ -618,7 +618,6 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 0,
-    backgroundColor: tokens.bg.elevated,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   gameThumbGlyph: {
