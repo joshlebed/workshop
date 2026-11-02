@@ -892,7 +892,6 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 0,
-    backgroundColor: tokens.bg.elevated,
   },
   titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
