@@ -95,7 +95,7 @@ export function DayRail({
             testID={`${testIDPrefix}-${d.key}`}
             style={({ pressed }) => [
               styles.chip,
-              selected && styles.chipSelected,
+              !selected && styles.chipUnselected,
               pressed && styles.chipPressed,
             ]}
           >
@@ -104,12 +104,12 @@ export function DayRail({
                 variant={
                   d.parts.word === "Today" || d.parts.word === "Yesterday" ? "overline" : "label"
                 }
-                style={[styles.chipText, selected && styles.chipTextSelected]}
+                style={styles.chipText}
               >
                 {d.parts.word}
               </Text>
               {d.parts.day ? (
-                <Text variant="score" style={[styles.chipDay, selected && styles.chipTextSelected]}>
+                <Text variant="score" style={styles.chipDay}>
                   {d.parts.day}
                 </Text>
               ) : null}
@@ -159,13 +159,11 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
     justifyContent: "center",
   },
-  chipSelected: {
-    backgroundColor: tokens.accent.muted,
-    borderColor: tokens.neon.pink,
-  },
+  // Quiet control, no neon: the selected day is the plain purple chip and
+  // the other days fade back. Pink is reserved for the actions on the page.
+  chipUnselected: { opacity: 0.55 },
   chipPressed: { opacity: 0.75 },
   chipInner: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   chipText: { color: tokens.text.secondary },
   chipDay: { ...scoreType(11), color: tokens.text.secondary },
-  chipTextSelected: { color: tokens.neon.pink },
 });
