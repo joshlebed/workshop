@@ -5,9 +5,11 @@
  * Each game goes through the same gate as the single-game script
  * (`planGameCodeChange` → `decideGameCodeChange`): the candidate must
  * reproduce every stored score with a known result and render every example
- * in the entry as reviewed. Parse code is never touched. A game whose stored
- * `format_code` already equals the entry is skipped, so re-running is a no-op.
- * Stored scores are NOT rewritten — see `admin:reformat-scores` for that.
+ * in the entry as reviewed. An entry's `parse` is installed only on a game
+ * with no parse code; an existing parser is never replaced. A game whose
+ * stored code already equals the entry is skipped, so re-running is a no-op.
+ * Stored scores are NOT rewritten — see `admin:reformat-scores` and
+ * `admin:reread-scores --include-failed` for that.
  *
  * DRY RUN BY DEFAULT.
  *
@@ -17,8 +19,11 @@
  *   … --apply --by=<admin email> --note="<why>"
  *
  * Flags:
- *   --apply        write (needs --by and --note)
- *   --game=<ref>   only the entry with this `ref` (repeatable, comma-separated)
+ *   --apply                write (needs --by and --note)
+ *   --game=<ref>           only the entry with this `ref` (repeatable, comma-separated)
+ *   --accept-changes=<id>  as in admin:game-code: write although some stored scores read
+ *                          differently, when --game names one entry and a dry run printed
+ *                          this id for exactly that set of differences
  */
 
 import { eq, or } from "drizzle-orm";
@@ -56,6 +61,8 @@ async function findGame(ref: string): Promise<DbGame | null> {
 async function main() {
   const apply = flag("--apply");
   const only = new Set((arg("--game") ?? "").split(",").filter(Boolean));
+  const accepted = arg("--accept-changes");
+  if (accepted !== null && only.size !== 1) fail("--accept-changes needs exactly one --game");
   const email = arg("--by");
   const note = arg("--note");
   let authorId: string | null = null;
@@ -79,20 +86,26 @@ async function main() {
       console.log(`${entry.title}: no games row for ${entry.ref} — skipped`);
       continue;
     }
-    if (game.formatCode === entry.format) {
+    const parseCode = game.parseCode ?? entry.parse ?? null;
+    if (game.formatCode === entry.format && game.parseCode === parseCode) {
       console.log(`${entry.title}: already current (v${game.codeVersion})`);
       continue;
     }
-    if (game.parseCode === null) {
+    if (parseCode === null) {
       console.log(`${entry.title}: has no parse code; a formatter needs a parser first — skipped`);
       continue;
     }
-    const candidate = { parseCode: game.parseCode, formatCode: entry.format };
-    const plan = await planGameCodeChange(getDb(), game, candidate, entry.examples);
-    const decision = decideGameCodeChange(plan);
+    const candidate = { parseCode, formatCode: entry.format };
+    const examples = entry.examples.map(({ expected, ...rest }) =>
+      game.parseCode === null && expected !== undefined ? { ...rest, expected } : rest,
+    );
+    const plan = await planGameCodeChange(getDb(), game, candidate, examples);
+    const decision = decideGameCodeChange(plan, accepted);
     if (!decision.write) {
       refused += 1;
-      console.log(`${entry.title}: refused (${decision.reason})`);
+      console.log(
+        `${entry.title}: refused (${decision.reason}${plan.storedMismatchFingerprint ? `; --accept-changes=${plan.storedMismatchFingerprint}` : ""})`,
+      );
       for (const m of [...plan.storedMismatches, ...plan.exampleMismatches].slice(0, 10)) {
         console.log(
           `  [${m.step}] ${JSON.stringify(m.raw.slice(0, 60))} → ${JSON.stringify(m.actual)}`,
@@ -110,7 +123,7 @@ async function main() {
       source: "operator",
       authoredBy: authorId,
       note: note ?? "",
-      examples: entry.examples,
+      examples,
     });
     written += 1;
     console.log(`  wrote ${entry.title} code version ${version}`);

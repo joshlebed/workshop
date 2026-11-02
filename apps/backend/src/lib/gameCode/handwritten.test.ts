@@ -26,8 +26,12 @@ describe("hand-written formatters", () => {
   for (const formatter of HANDWRITTEN_FORMATTERS) {
     it(`${formatter.title}: renders every example as reviewed`, async () => {
       const report = await validateCode(
-        { parse: PARSE_STUB, format: formatter.format },
-        formatter.examples.map((e) => ({ raw: e.raw, expectedSummary: e.expectedSummary })),
+        { parse: formatter.parse ?? PARSE_STUB, format: formatter.format },
+        formatter.examples.map((e) => ({
+          raw: e.raw,
+          expectedSummary: e.expectedSummary,
+          ...(formatter.parse && e.expected !== undefined ? { expected: e.expected } : {}),
+        })),
       );
       expect(report.unavailable).toBe(false);
       expect(report.mismatches).toEqual([]);
