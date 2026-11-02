@@ -18,6 +18,8 @@
     "admin:game-code": "tsx scripts/set-game-code.ts",
     "admin:game-direction": "tsx scripts/set-game-direction.ts",
     "admin:reread-scores": "tsx scripts/reread-scores.ts",
+    "admin:handwritten-formatters": "tsx scripts/apply-handwritten-formatters.ts",
+    "admin:reformat-scores": "tsx scripts/reformat-scores.ts",
     "ops:catalog-audit": "tsx scripts/catalog-audit.ts"
   },
   "dependencies": {

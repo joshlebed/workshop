@@ -311,6 +311,21 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   empty mismatch list from a validation that did not run proves nothing.
   **It never re-parses history** — rows keep their values and `code_version` shows which code
   read them.
+- **Hand-written formatters live in `lib/gameCode/handwritten.ts`**, one `format` block per
+  game keyed by `game_key` or `normalized_url`, each with the shares it must render and the
+  reviewed `expectedSummary` (`handwritten.test.ts` runs them in the real sandbox). Install
+  with `admin:handwritten-formatters` (`scripts/apply-handwritten-formatters.ts`): dry run by
+  default, the same `planGameCodeChange` gate as `admin:game-code` per game, a skip when the
+  stored block already matches, `--apply --by --note` to write. Edit the block there, re-run,
+  and the revision history shows the change. A formatter change only affects new posts, so
+  follow it with **`admin:reformat-scores`** (`scripts/reformat-scores.ts`): re-renders
+  `score_summary` on every row stored code already read with the game's current format code,
+  writes nothing else (value, status, source and `code_version` stay), guards each write on
+  the row's text and old summary, and is dry by default. Registry games keep their
+  `formatShareBody` in the shared registry untouched: `builtin.parity.test.ts` requires a
+  registry formatter and the seed block to agree, so a registry game formatted only in the
+  DB (Wordle, Framed, Strands, Spelling Bee) is formatted by the server and the client's
+  local fallback stays the cleaned text.
 - **History is re-read by `admin:reread-scores`** (`scripts/reread-scores.ts`, core in
   `lib/gameCode/reread.ts`) — the spec's one-off re-read and the successor to
   `rescore-game.ts`. Dry run by default; `--apply` is an operator decision, never something to

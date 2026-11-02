@@ -1,0 +1,340 @@
+// Hand-written `format` code for catalog games whose rows otherwise show the
+// cleaned raw share (no `format_code`). Each block satisfies the stored-code
+// contract in README.md and is installed into `games.format_code` by
+// `scripts/apply-handwritten-formatters.ts`, which validates it against the
+// game's stored scores first and records a `game_code_revisions` row.
+//
+// The database is what executes; this file is the reviewed source of the
+// operator-written blocks, pinned by handwritten.test.ts (each example's
+// `expectedSummary` is what the sandbox must produce). Edit here, re-run the
+// apply script, and the revision history shows the change.
+//
+// Conventions, borrowed from the registry formatters in builtin.ts: drop the
+// header, URLs and hashtag lines; keep the visual grid; keep a fraction or
+// percentile only when it says something the score value does not.
+
+// biome-ignore-all lint/complexity/noUselessStringRaw: every block is String.raw so a regex added later keeps its backslashes
+
+interface HandwrittenFormatter {
+  /** `game_key` for a registry game, `normalized_url` for a taught one. */
+  ref: string;
+  /** For the apply script's output only. */
+  title: string;
+  /** The stored `format_code`. */
+  format: string;
+  /** Shares in the shapes prod holds, with the summary each must produce. */
+  examples: ReadonlyArray<{ raw: string; expectedSummary: string | null }>;
+}
+
+/** Helpers copied into every block that uses them (blocks are self-contained). */
+const LINES = String.raw`
+// Non-blank lines with URLs (bare or <angle-bracketed>) and hashtag-only lines removed.
+function lines(raw) {
+  return raw
+    .split(/\r?\n/)
+    .map(function (l) { return l.replace(/<?\bhttps?:\/\/\S+>?/gi, "").trim(); })
+    .filter(function (l) { return l.length > 0 && !/^#\S+$/.test(l); });
+}`;
+
+const IS_GRID = String.raw`
+// A line of emoji / box characters only — no letters or digits.
+function isGrid(line) {
+  return !/[A-Za-z0-9]/.test(line);
+}`;
+
+function block(...parts: string[]): string {
+  return `${parts.map((part) => part.trim()).join("\n\n")}\n`;
+}
+
+/** Header off, grid kept: Wordle, Le Mot, Spotle, Framed, Krillion-style shares. */
+const GRID_ONLY = block(
+  LINES,
+  IS_GRID,
+  String.raw`
+function format(raw) {
+  var grid = lines(raw).filter(isGrid);
+  return grid.length ? grid.join("\n") : null;
+}`,
+);
+
+export const HANDWRITTEN_FORMATTERS: ReadonlyArray<HandwrittenFormatter> = [
+  {
+    ref: "wordle",
+    title: "Wordle",
+    format: GRID_ONLY,
+    examples: [
+      {
+        raw: "Wordle 1,962 4/6\n\n⬜⬜🟨⬜⬜\n⬜🟨⬜⬜⬜\n🟩⬜🟩🟩⬜\n🟩🟩🟩🟩🟩",
+        expectedSummary: "⬜⬜🟨⬜⬜\n⬜🟨⬜⬜⬜\n🟩⬜🟩🟩⬜\n🟩🟩🟩🟩🟩",
+      },
+      {
+        raw: "Archive October 31, 2026\nWordle 1,960 3/6\n\n🟨⬜⬜⬜⬜\n⬜🟨⬜⬜⬜\n🟩🟩🟩🟩🟩",
+        expectedSummary: "🟨⬜⬜⬜⬜\n⬜🟨⬜⬜⬜\n🟩🟩🟩🟩🟩",
+      },
+      { raw: "https://www.nytimes.com/games/wordle", expectedSummary: null },
+    ],
+  },
+  {
+    ref: "wordle.louan.me",
+    title: "Le Mot",
+    format: GRID_ONLY,
+    examples: [
+      {
+        raw: "Le Mot (@WordleFR) #1758 4/6\n\n⬛⬛⬛⬛🟨\n🟩🟩🟨⬛⬛\n🟩🟩⬛🟩🟩\n🟩🟩🟩🟩🟩\n\nhttps://wordle.louan.me",
+        expectedSummary: "⬛⬛⬛⬛🟨\n🟩🟩🟨⬛⬛\n🟩🟩⬛🟩🟩\n🟩🟩🟩🟩🟩",
+      },
+      {
+        raw: "Le Mot (@WordleFR) #1758 💀/6\n\n⬛⬛🟨⬛🟩\n⬛🟩⬛🟩🟩\n🟩🟩⬛🟩🟩\n\nhttps://wordle.louan.me",
+        expectedSummary: "⬛⬛🟨⬛🟩\n⬛🟩⬛🟩🟩\n🟩🟩⬛🟩🟩",
+      },
+    ],
+  },
+  {
+    ref: "framed",
+    title: "Framed",
+    format: GRID_ONLY,
+    examples: [
+      {
+        raw: "Framed #1234\n🎥 🟥 🟥 🟩 ⬛ ⬛ ⬛\nhttps://framed.wtf",
+        expectedSummary: "🎥 🟥 🟥 🟩 ⬛ ⬛ ⬛",
+      },
+      { raw: "Framed #1234\n🎥 🟥 🟥 🟥 🟥 🟥 🟥", expectedSummary: "🎥 🟥 🟥 🟥 🟥 🟥 🟥" },
+    ],
+  },
+  {
+    ref: "strands",
+    title: "Strands",
+    format: block(
+      LINES,
+      String.raw`
+function format(raw) {
+  var grid = lines(raw).filter(function (l) { return /^[🔵🟡💡]+$/u.test(l); });
+  return grid.length ? grid.join("\n") : null;
+}`,
+    ),
+    examples: [
+      {
+        raw: 'Strands #432\n"Today\'s theme"\n💡🔵🔵🟡\n🔵🔵🔵🔵',
+        expectedSummary: "💡🔵🔵🟡\n🔵🔵🔵🔵",
+      },
+      { raw: "https://www.nytimes.com/games/strands", expectedSummary: null },
+    ],
+  },
+  {
+    ref: "spelling-bee",
+    title: "Spelling Bee",
+    format: block(String.raw`
+// "I just hit Genius on Spelling Bee." → "🐝 Genius"
+function format(raw) {
+  var m = raw.match(/(?:hit|reached|got to|made it to)\s+([A-Za-z ]{2,20}?)\s+on/i);
+  return m ? "🐝 " + m[1].trim() : null;
+}`),
+    examples: [
+      { raw: "I just hit Genius on Spelling Bee.", expectedSummary: "🐝 Genius" },
+      { raw: "I just hit Queen Bee on Spelling Bee!", expectedSummary: "🐝 Queen Bee" },
+    ],
+  },
+  {
+    ref: "krillion.io",
+    title: "Krillion",
+    format: block(
+      LINES,
+      IS_GRID,
+      String.raw`
+// "Krillion #110 🦐\n360\n\n🦑🏮🐟🦑🐟🫧🏮" → "🦑🏮🐟🦑🐟🫧🏮 360"
+function format(raw) {
+  var ls = lines(raw);
+  var grid = ls.find(isGrid);
+  var score = ls.find(function (l) { return /^\d+$/.test(l); });
+  if (!grid) return null;
+  return score ? grid + " " + score : grid;
+}`,
+    ),
+    examples: [
+      { raw: "Krillion #110 🦐\n360\n\n🦑🏮🐟🦑🐟🫧🏮", expectedSummary: "🦑🏮🐟🦑🐟🫧🏮 360" },
+      { raw: "Krillion #81 🦐\n415\n\n🦑🫧🏮🐟🦑🦑🫧", expectedSummary: "🦑🫧🏮🐟🦑🦑🫧 415" },
+    ],
+  },
+  {
+    ref: "geozee.earth",
+    title: "Geozee",
+    format: block(
+      LINES,
+      String.raw`
+// Keep the 3×3 grid and "N/M · top X%". The flag row is the clue, not the result.
+function format(raw) {
+  var ls = lines(raw);
+  var grid = ls.filter(function (l) { return /^[🟩🟨🟥⬜⬛]+$/u.test(l); });
+  var header = ls.find(function (l) { return /\d+\/\d+/.test(l); });
+  var score = header ? (header.match(/\d+\/\d+(?:\s*·\s*top \d+%)?/) || [])[0] : undefined;
+  if (grid.length === 0 && !score) return null;
+  return grid.concat(score ? [score] : []).join("\n");
+}`,
+    ),
+    examples: [
+      {
+        raw: "Geozee #117 — 784/784 · top 1% 🌍\n🇸🇲🇵🇰🇬🇧🇵🇼🇹🇬🇳🇱🇲🇭🇪🇨🇲🇹\n\n🟩🟩🟨\n🟩🟩🟩\n🟩🟩🟩\n\nhttps://geozee.earth?ref=share",
+        expectedSummary: "🟩🟩🟨\n🟩🟩🟩\n🟩🟩🟩\n784/784 · top 1%",
+      },
+    ],
+  },
+  {
+    ref: "farflung.game",
+    title: "Farflung",
+    format: block(
+      LINES,
+      String.raw`
+// "Farflung #29 · 195/500 km*\nMiss · Rare · Elusive · Common · Miss" → rarity row, then "195/500 km*"
+function format(raw) {
+  var ls = lines(raw);
+  var header = ls.find(function (l) { return /\d+\/\d+\s*km/.test(l); });
+  var score = header ? (header.match(/\d+\/\d+\s*km\*?/) || [])[0] : undefined;
+  var row = ls.find(function (l) { return /·/.test(l) && !/\d+\/\d+/.test(l); });
+  if (!score) return null;
+  return row ? row + "\n" + score : score;
+}`,
+    ),
+    examples: [
+      {
+        raw: "Farflung #29 · 195/500 km*\nMiss · Rare · Elusive · Common · Miss\nhttps://farflung.game/s/2pqwkd?e=29&w=4",
+        expectedSummary: "Miss · Rare · Elusive · Common · Miss\n195/500 km*",
+      },
+      {
+        raw: "Farflung #27 · 155/500 km\nMiss · Miss · Rare · Elusive · Miss\nhttps://farflung.game/s/p4qh34?e=27",
+        expectedSummary: "Miss · Miss · Rare · Elusive · Miss\n155/500 km",
+      },
+    ],
+  },
+  {
+    ref: "magnitudle.com/size-it-up",
+    title: "Size It Up",
+    format: block(
+      LINES,
+      String.raw`
+// Five "🟥🟥⬜⬜⬜ 43" rows → "19 · 43 · 45 · 100 · 61"
+function format(raw) {
+  var rounds = lines(raw)
+    .map(function (l) { return (l.match(/^[🟥⬜]+\s+(\d+)$/u) || [])[1]; })
+    .filter(Boolean);
+  return rounds.length ? rounds.join(" · ") : null;
+}`,
+    ),
+    examples: [
+      {
+        raw: "Size It Up\nOverall Score 268\n\n🟥⬜⬜⬜⬜ 19\n🟥🟥⬜⬜⬜ 43\n🟥🟥⬜⬜⬜ 45\n🟥🟥🟥🟥🟥 100\n🟥🟥🟥⬜⬜ 61\nhttps://magnitudle.com/size-it-up",
+        expectedSummary: "19 · 43 · 45 · 100 · 61",
+      },
+    ],
+  },
+  {
+    ref: "fermi.gg",
+    title: "Fermi",
+    format: block(
+      LINES,
+      String.raw`
+// Round errors on one line, then "4.36× · top 49%". The share wraps its URL in <…>.
+function format(raw) {
+  var ls = lines(raw);
+  var rounds = ls
+    .map(function (l) { return (l.match(/^\d{2}\s+(\S+×)$/) || [])[1]; })
+    .filter(Boolean);
+  var total = ls.find(function (l) { return /×\s*score/.test(l); });
+  if (!total) return null;
+  total = total.replace(/\s*score\s*/, " ").trim();
+  return rounds.length ? rounds.join(" · ") + "\n" + total : total;
+}`,
+    ),
+    examples: [
+      {
+        raw: "Fermi · No. 95\n01  2.47×\n02  4.80×\n03  7.00×\n─────────\n4.36× score · top 49%\n<https://fermi.gg/s/daily>",
+        expectedSummary: "2.47× · 4.80× · 7.00×\n4.36× · top 49%",
+      },
+      {
+        raw: "Fermi · No. 97\n01  6,548×\n02  3.33×\n03  23.7×\n─────────\n42.9× score · top 90%\n<https://fermi.gg/s/daily>",
+        expectedSummary: "6,548× · 3.33× · 23.7×\n42.9× · top 90%",
+      },
+    ],
+  },
+  {
+    ref: "gerrymandle.com",
+    title: "Gerrymandle",
+    format: block(
+      LINES,
+      String.raw`
+// "Won the election in 7:47!\n💎🏆 Perfect game" → "7:47 · 💎🏆 Perfect game"
+function format(raw) {
+  var ls = lines(raw);
+  var timeLine = ls.find(function (l) { return /\d+:\d{2}/.test(l); });
+  var time = timeLine ? (timeLine.match(/\d+:\d{2}/) || [])[0] : undefined;
+  var badge = ls.find(function (l) { return /^[^A-Za-z0-9]/.test(l) && /[A-Za-z]/.test(l); });
+  if (!time) return null;
+  return badge ? time + " · " + badge : time;
+}`,
+    ),
+    examples: [
+      {
+        raw: "Gerrymandle #153\nWon the election in 7:47!\n💎🏆 Perfect game\n\nhttps://gerrymandle.com/day/153",
+        expectedSummary: "7:47 · 💎🏆 Perfect game",
+      },
+    ],
+  },
+  {
+    ref: "minutecryptic.com",
+    title: "Minute Cryptic",
+    format: block(
+      LINES,
+      String.raw`
+// Dot row, then "🏆 0 hints · 2 under par." (solver count dropped), then the bonus line if any.
+function format(raw) {
+  var ls = lines(raw);
+  var dots = ls.find(function (l) { return /^[🟣⚪️⚫️🔵]+$/u.test(l); });
+  var hint = ls.find(function (l) { return /\bhints?\b/.test(l); });
+  if (hint) {
+    hint = hint
+      .replace(/\s*\([^)]*\)\s*/g, "")
+      .replace(/\s+[–-]\s+/, " · ")
+      .replace(/the community par/, "par")
+      .trim();
+  }
+  var bonus = ls.find(function (l) { return /Bonus clues/i.test(l); });
+  if (!dots && !hint) return null;
+  return [dots, hint, bonus].filter(Boolean).join("\n");
+}`,
+    ),
+    examples: [
+      {
+        raw: 'Minute Cryptic - 31 October, 2026\n"Old snob rattled and shook tin for a bank deposit?" (5)\n🟣🟣🟣🟣🟣🟣🟣🟣\n🏆 0 hints – 2 under the community par (125,198 solvers so far).\nhttps://www.minutecryptic.com/?utm_source=share\n➕ Bonus clues: solved',
+        expectedSummary: "🟣🟣🟣🟣🟣🟣🟣🟣\n🏆 0 hints · 2 under par.\n➕ Bonus clues: solved",
+      },
+      {
+        raw: 'Minute Cryptic - 29 September, 2026\n"Annual migrants?" (5)\n⚪️⚪️🟣🟣🟣🟣🟣🟣\n🤝 2 hints – matched the community par (174,038 solvers so far).\nhttps://www.minutecryptic.com/?utm_source=share',
+        expectedSummary: "⚪️⚪️🟣🟣🟣🟣🟣🟣\n🤝 2 hints · matched par.",
+      },
+    ],
+  },
+  {
+    ref: "timeguessr.com",
+    title: "TimeGuessr",
+    format: block(
+      LINES,
+      String.raw`
+// Round scores on one line, then the "29,530/50,000" total.
+function format(raw) {
+  var ls = lines(raw);
+  var rounds = ls
+    .map(function (l) { return (l.match(/🏆\s*([\d,]+)/) || [])[1]; })
+    .filter(Boolean);
+  var header = ls.find(function (l) { return /[\d,]+\/[\d,]+/.test(l); });
+  var total = header ? (header.match(/[\d,]+\/[\d,]+/) || [])[0] : undefined;
+  if (!total) return null;
+  return rounds.length ? rounds.join(" · ") + "\n" + total : total;
+}`,
+    ),
+    examples: [
+      {
+        raw: "TimeGuessr #1245 — 29,530/50,000\n\n1️⃣ 🏆2,947 · 📅 28y · 🌍 999.0mi\n2️⃣ 🏆3,378 · 📅 12y · 🌍 1950.7mi\n3️⃣ 🏆7,283 · 📅 13y · 🌍 2143ft\n4️⃣ 🏆8,000 · 📅 5y · 🌍 321.4mi\n5️⃣ 🏆7,922 · 📅 9y · 🌍 34.3mi\n\nhttps://timeguessr.com",
+        expectedSummary: "2,947 · 3,378 · 7,283 · 8,000 · 7,922\n29,530/50,000",
+      },
+    ],
+  },
+];
