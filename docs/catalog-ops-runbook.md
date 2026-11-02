@@ -26,7 +26,9 @@ starts a task that:
 2. Reads the three sections:
    - **Candidates** — games with ≥1 player that aren't listed, each with a suggested game type
      (keyword guess), player + 30-day score counts, parser status, and flags
-     (`objectionable-title`, `no-parser`, `single-player`).
+     (`objectionable-title`, `tagline-title`, `no-parser`, `single-player`). `tagline-title`
+     means the stored title reads like a page tagline ("Krillion · the daily dive") and comes
+     with the cleaned name; a listed game with such a title is reported under health too.
    - **Listed games needing attention** — no parser, no formatter, open parse conflict, or
      > 20% of the last 30 days' scores unread.
    - **Stale extras** — listed URLs with no `games` row (prune).
@@ -50,8 +52,11 @@ starts a task that:
 Review the PR like any content decision:
 
 - **Is it a real game people should see?** Open the URL. Drop junk, duplicates, anything
-  offensive. The title ships as-is from the `games` row — fix a bad one with
-  `admin:game-code`'s neighbour scripts or directly in Neon, then re-run.
+  offensive. The title ships as-is from the `games` row. New rows get `cleanGameTitle`
+  (`lib/gameCatalog.ts`: head before the first separator, `og:site_name` when the title is
+  still a sentence — backtested 2026-11-02 against every prod game, 13 fixed, 0 regressed);
+  it is a heuristic, so the audit flags what slips through (`tagline-title`) and a bad one is
+  a hand `UPDATE games SET title = '…' WHERE normalized_url = '…'` in Neon.
 - **Is the category right?** The audit's suggestion is a regex over title + URL; the automation
   then visits the page and picks the category it believes is right, noting where it overrode
   the suggestion. You have the final say — change it in the PR.

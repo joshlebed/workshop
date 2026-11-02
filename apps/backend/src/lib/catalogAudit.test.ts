@@ -41,7 +41,7 @@ beforeAll(async () => {
         [url, `https://${url}`, title],
       )
     )[0]?.id;
-  const squaredle = await ins("squaredle.app", "Squaredle");
+  const squaredle = await ins("squaredle.app", "Squaredle · the daily word hunt");
   const nasty = await ins("nasty.example", "Fag Daily");
   await ins("lonely.example", "Lonely");
   await exec(`INSERT INTO user_games (user_id, game_id) VALUES ($1, $3), ($2, $3), ($1, $4)`, [
@@ -82,10 +82,11 @@ describe("runCatalogAudit", () => {
     expect(
       report.candidates.map((c) => [c.title, c.playerCount, c.suggestedCategory, c.flags]),
     ).toEqual([
-      ["Squaredle", 2, "words", ["no-parser"]],
+      ["Squaredle · the daily word hunt", 2, "words", ["tagline-title", "no-parser"]],
       ["Fag Daily", 1, "other", ["objectionable-title", "no-parser", "single-player"]],
     ]);
     expect(report.totals.candidates).toBe(2);
+    expect(report.candidates[0]?.suggestedTitle).toBe("Squaredle");
   });
 
   it("flags a listed game whose recent scores read badly, and nothing healthy", async () => {
@@ -110,7 +111,7 @@ describe("runCatalogAudit", () => {
   it("renders markdown with proposed extras that exclude the flagged title", async () => {
     const md = renderCatalogAuditMarkdown(await runCatalogAudit(new Date("2026-10-20T00:00:00Z")));
     expect(md).toContain(
-      "| Squaredle | https://squaredle.app | 2 | 0 | no | Word games | no-parser |",
+      '| Squaredle · the daily word hunt (→ "Squaredle") | https://squaredle.app | 2 | 0 | no | Word games | tagline-title, no-parser |',
     );
     expect(md).toContain(
       '{ normalizedUrl: "squaredle.app", title: "Squaredle", category: "words" },',

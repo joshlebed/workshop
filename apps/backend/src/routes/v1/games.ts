@@ -410,7 +410,7 @@ async function previewHintsFor(
       ? rawUrl.trim()
       : `https://${normalizedUrl}`;
     const preview = await resolveLinkPreview(parseAndValidateUrl(withScheme));
-    return { title: preview.title, iconUrl: preview.favicon };
+    return { title: preview.title, siteName: preview.siteName, iconUrl: preview.favicon };
   } catch {
     return null;
   }
