@@ -28,17 +28,17 @@ fastest way to re-check any claim below. Each variant's own rationale is at
 
 ## Status board
 
-| #   | Area                                                              | Decision                                      | Status                                                                                                                     |
-| --- | ----------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Visual language — palette, type, theme layer, icons               | **Keep. Ship a version of it.**               | Not started                                                                                                                |
-| 2   | Navigation / structure — all five round-1 models                  | **Scrap. Re-run as round 2.**                 | Done — see 3                                                                                                               |
-| 3   | Round 2 — three first-principles models                           | Under review                                  | Awaiting owner                                                                                                             |
-| 4   | Home bottom action bar (`+ GAME` / `PASTE SCORE`)                 | **Keep. In the final design.**                | Shipping — [task](https://niteshift.dev/repo/joshlebed/workshop/task_int_yaop6io22gq4w7k6), `joshlebed/hs-home-action-bar` |
-| 5   | Home card = minimal top-3 per game; raw share text only on detail | **Keep.**                                     | Not started                                                                                                                |
-| 6   | Game detail (box score) view                                      | **Rework. Current B version is ugly.**        | Needs design                                                                                                               |
-| 7   | Per-card `PASTE` button on home                                   | **Scrap.** The bottom bar is the only paste.  | Shipping with 4 (separate commit)                                                                                          |
-| 9   | Brand mark / app icon                                             | **Frozen.** External contractor owns it.      | No changes                                                                                                                 |
-| 8   | Pixel font scope                                                  | **Narrow.** Brand, game names, maybe actions. | Secondary font pick open                                                                                                   |
+| #   | Area                                                              | Decision                                                              | Status                                                                                                                     |
+| --- | ----------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Visual language — palette, type, theme layer, icons               | **Keep. Ship a version of it.**                                       | Shipping — see entry 10                                                                                                    |
+| 2   | Navigation / structure — all five round-1 models                  | **Scrap. Re-run as round 2.**                                         | Done — see 3                                                                                                               |
+| 3   | Round 2 — three first-principles models                           | Under review                                                          | Awaiting owner                                                                                                             |
+| 4   | Home bottom action bar (`+ GAME` / `PASTE SCORE`)                 | **Keep. In the final design.**                                        | Shipping — [task](https://niteshift.dev/repo/joshlebed/workshop/task_int_yaop6io22gq4w7k6), `joshlebed/hs-home-action-bar` |
+| 5   | Home card = minimal top-3 per game; raw share text only on detail | **Keep.**                                                             | Not started                                                                                                                |
+| 6   | Game detail (box score) view                                      | **Rework. Current B version is ugly.**                                | Needs design                                                                                                               |
+| 7   | Per-card `PASTE` button on home                                   | **Scrap.** The bottom bar is the only paste.                          | Shipping with 4 (separate commit)                                                                                          |
+| 9   | Brand mark / app icon                                             | **Frozen.** External contractor owns it.                              | No changes                                                                                                                 |
+| 8   | Pixel font scope + secondary face                                 | **Pixel: wordmark + game names. Body: Space Grotesk. Scores: pixel.** | Shipping with 1                                                                                                            |
 
 **Type lab (2026-11-02).** The candidates — System, Space Grotesk, Inter, IBM Plex Sans — and
 the scores question (pixel face vs secondary face bold with tabular figures) are up for
@@ -47,7 +47,11 @@ comparison as a live switcher on variant B (`src/theme/typeLab.ts` +
 `?font=` / `?scores=` / `?buttons=` on any URL, or the yellow `Aa` chip). Under the narrowed
 scope the `Text` variants map as: `display` and a new `game` variant stay pixel; `title`,
 `heading`, `body`, `caption`, `label` use the secondary face; `score` follows the scores
-switch. The pick gets recorded here.
+switch.
+
+**Picked (2026-11-02): A — Space Grotesk for the secondary face; 1 — scores stay in the pixel
+face.** Buttons: secondary face semibold (the lab default); pixel buttons were offered and not
+taken. Press Start 2P is therefore: `HIGHSCORE` wordmark, game names, score numerals.
 
 ## 9. Brand mark and app icon — frozen
 
@@ -59,3 +63,20 @@ lands as its own PR.
 
 Also accepted as defaults on the same date: spacing scale `4·8·12·16·24·32` and ~120ms
 stepped motion (no spring, no overshoot).
+
+## 10. Ship the visual language — scope
+
+**Decision: ship entries 1 and 8 now, on today's structure.** Owner, 2026-11-02. What goes in:
+
+- `DESIGN.md` from `joshlebed/highscore-design-brief`, amended: body face is Space Grotesk
+  (not the system face); pixel face is wordmark + game names + score numerals only.
+- `src/theme/` (tokens, `Text` with the `game` variant, `Button`, `Card`, `Chip`, `Sheet`,
+  `Avatar`, `PixelIcon`, `IconButton`, `Toast`, layout) with `react-native-svg`, `expo-font`,
+  `@expo-google-fonts/press-start-2p`, `@expo-google-fonts/space-grotesk`, `pixelarticons`.
+- Restyle every HighScore surface off `@workshop/ui` visual tokens, including the shipped
+  bottom bar (entry 4), with no structural or navigation change.
+- `app.json` `version` bump (native deps) and a TestFlight build before the OTA.
+
+What stays out: the brand mark and app icon (entry 9), the `index.html` / splash chrome
+colours that belong with them, any home-row / day-control / history-placement choice from
+round 2 (entries 3, 5, 6 still open).
