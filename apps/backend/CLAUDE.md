@@ -313,7 +313,9 @@ scripts/compare-game-code.ts --examples=3` prints, per game, legacy parser vs st
   read them.
 - **Hand-written formatters live in `lib/gameCode/handwritten.ts`**, one `format` block per
   game keyed by `game_key` or `normalized_url`, each with the shares it must render and the
-  reviewed `expectedSummary` (`handwritten.test.ts` runs them in the real sandbox). Install
+  reviewed `expectedSummary` (`handwritten.test.ts` runs them in the real sandbox). An entry
+  may carry a `parse` block too (Spotle): it is installed only on a game whose `parse_code` is
+  NULL, never over an existing parser, and the examples' `expected` values gate it. Install
   with `admin:handwritten-formatters` (`scripts/apply-handwritten-formatters.ts`): dry run by
   default, the same `planGameCodeChange` gate as `admin:game-code` per game, a skip when the
   stored block already matches, `--apply --by --note` to write. Edit the block there, re-run,

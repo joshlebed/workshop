@@ -20,10 +20,20 @@ interface HandwrittenFormatter {
   ref: string;
   /** For the apply script's output only. */
   title: string;
+  /**
+   * A stored `parse_code`, for a game that has none (a formatter needs a
+   * parser first). The apply script installs it only when the game's parse
+   * code is NULL; an existing parser is never replaced from here.
+   */
+  parse?: string;
   /** The stored `format_code`. */
   format: string;
   /** Shares in the shapes prod holds, with the summary each must produce. */
-  examples: ReadonlyArray<{ raw: string; expectedSummary: string | null }>;
+  examples: ReadonlyArray<{
+    raw: string;
+    expected?: number | null;
+    expectedSummary: string | null;
+  }>;
 }
 
 /** Helpers copied into every block that uses them (blocks are self-contained). */
@@ -86,6 +96,35 @@ export const HANDWRITTEN_FORMATTERS: ReadonlyArray<HandwrittenFormatter> = [
       {
         raw: "Le Mot (@WordleFR) #1758 💀/6\n\n⬛⬛🟨⬛🟩\n⬛🟩⬛🟩🟩\n🟩🟩⬛🟩🟩\n\nhttps://wordle.louan.me",
         expectedSummary: "⬛⬛🟨⬛🟩\n⬛🟩⬛🟩🟩\n🟩🟩⬛🟩🟩",
+      },
+    ],
+  },
+  {
+    ref: "spotle.io",
+    title: "Spotle",
+    // Guess the artist: one 🟩🟨⬜ row per guess over six attribute columns,
+    // under a legend row of category emoji. Score = guesses (rows); the last
+    // row all 🟩 is the win, anything else is a loss (null).
+    parse: block(String.raw`
+function parse(raw) {
+  var rows = raw
+    .split(/\r?\n/)
+    .map(function (l) { return l.trim(); })
+    .filter(function (l) { return /^[🟩🟨⬜⬛]+$/u.test(l); });
+  if (rows.length === 0) throw new Error("not a Spotle share");
+  return /^🟩+$/u.test(rows[rows.length - 1]) ? rows.length : null;
+}`),
+    format: GRID_ONLY,
+    examples: [
+      {
+        raw: "Spotle.io #1646\n\n📅🦇📈👻💽🎃\n⬜⬜⬜🟩⬜🟩\n🟨🟩⬜🟩⬜🟩\n⬜🟩⬜🟩⬜🟩\n🟩🟩🟩🟩🟩🟩",
+        expected: 4,
+        expectedSummary: "📅🦇📈👻💽🎃\n⬜⬜⬜🟩⬜🟩\n🟨🟩⬜🟩⬜🟩\n⬜🟩⬜🟩⬜🟩\n🟩🟩🟩🟩🟩🟩",
+      },
+      {
+        raw: "Spotle.io #1646\n\n📅🦇📈👻💽🎃\n⬜🟩⬜🟩⬜🟩\n⬜🟩🟨🟩🟩⬜",
+        expected: null,
+        expectedSummary: "📅🦇📈👻💽🎃\n⬜🟩⬜🟩⬜🟩\n⬜🟩🟨🟩🟩⬜",
       },
     ],
   },
