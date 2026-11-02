@@ -1,6 +1,8 @@
 // HighScore-owned Sheet: same keyboard/animation machinery as the shared
 // `@workshop/ui` Sheet (backdrop close target stays a sibling behind the
-// content — see the Sheet note in the root CLAUDE.md), restyled to the
+// content — see the Sheet note in the root CLAUDE.md; `pointerEvents` must be
+// the prop, not a style key, or the host view swallows backdrop taps on web),
+// restyled to the
 // Neon Signage spec: surface.2 fill, sharp corners, 2px purple bezel.
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -86,7 +88,7 @@ export function Sheet({
       testID={testID}
     >
       <View style={styles.modalRoot}>
-        <Animated.View style={[styles.backdrop, styles.noHits, backdropStyle]} />
+        <Animated.View pointerEvents="none" style={[styles.backdrop, backdropStyle]} />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close sheet"
@@ -94,10 +96,11 @@ export function Sheet({
           onPress={onRequestClose}
         />
         <KeyboardAvoidingView
+          pointerEvents="box-none"
           style={styles.sheetHost}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Animated.View style={[styles.passThrough, sheetStyle]}>
+          <Animated.View pointerEvents="box-none" style={sheetStyle}>
             <ToastOverlay />
             <View style={[styles.sheet, contentStyle]}>
               <View style={styles.handle} />
@@ -125,10 +128,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "flex-end",
     zIndex: 1,
-    pointerEvents: "box-none",
   },
-  passThrough: { pointerEvents: "box-none" },
-  noHits: { pointerEvents: "none" },
   sheet: {
     backgroundColor: tokens.bg.elevated,
     borderRadius: 0,
