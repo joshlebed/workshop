@@ -103,6 +103,12 @@ jobs:
         if: steps.changes.outputs.code == 'true'
         run: node scripts/check-redesign-plan-status.mjs
 
+      # actionlint locates the project by walking up to a .git directory; the
+      # tarball checkout has none, so give it an empty one.
+      - name: Mark repo root for actionlint
+        if: steps.changes.outputs.workflows == 'true'
+        run: git init -q .
+
       - name: actionlint
         if: steps.changes.outputs.workflows == 'true'
         uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2

@@ -526,46 +526,86 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
 
 ## CI speed
 
-PR wall-clock is what matters; measured on `ubuntu-latest` (4 vCPU). History: the single
-`Quality` job grew 96s → 169s over Sep–Oct 2026 (Test step 30s → 91s); #523 split it; #542
-removed the serial `changes` job, replaced tools, and sharded 3-way. Per-job fixed overhead
-is the floor — runner pick-up ~2s, checkout ~2s (10s+ on bad GitHub days), Node download
-~4s, node_modules cache restore ~9s (872 MB, cold `pnpm fetch + install --offline` is ~15s,
-so the cache is a small win) — about 20s before any step runs, on every job. Under ~40s
-end-to-end is not reachable on GitHub-hosted runners with this suite; the next step is a
-faster runner provider (Blacksmith / Depot / Namespace / WarpBuild are `runs-on:` drop-ins
-with ~2x CPU and hot caches, personal-account free tiers exist), which is an operator
-decision because it's an external service with billing.
+PR wall-clock is the number that matters, and this repo is **public**, so Actions minutes are
+free and concurrency is 20 jobs: fan-out costs nothing, serial time costs everything. History:
+the single `Quality` job grew 96s → 169s over Sep–Oct 2026 (Test step 30s → 91s); #523 split
+it; #542 removed the serial `changes` job, swapped tools, and fanned out. Measured on
+`ubuntu-latest` (4 vCPU), run created → gate done:
+
+| Shape                                                                 | End to end |
+| --------------------------------------------------------------------- | ---------- |
+| One `Quality` job (Nov 2)                                             | ~170s      |
+| #523: checks + 2 test shards                                          | 90–116s    |
+| #542 first pass: inline filter, tsgo, 3 shards                        | 70s        |
+| #542 final: tarball checkout, Node 22, lint/typecheck split, 8 shards | ~50s       |
+
+**Per-job floor is ~13s** before the first real step: runner pick-up ~2s, tarball checkout
+~2s, path filter ~2s, pnpm binary ~1s, node_modules restore ~6s (872 MB; a cold
+`pnpm fetch + install --offline` is ~15s, so the cache is a modest win). Then the `Quality`
+gate adds ~5s (its own pick-up + 3s) after the slowest job. So ~30s is the floor for a job
+with ~12s of work, and the run is as slow as its slowest job. Levers left, in order:
+
+1. **Require the real jobs in branch protection** (`Lint`, `Typecheck`, the eight `Test`
+   shards, both Metro bundles, `Migrate smoke`) and delete the `quality` gate: −5s. Admin
+   action, not something an agent can do.
+2. **A faster runner provider** (Blacksmith / Depot / Namespace / WarpBuild: `runs-on:`
+   drop-ins, ~2x CPU, cache restore at ~1 GB/s, free tiers for personal accounts): the 13s
+   floor becomes ~5s and every work step roughly halves. External service with billing.
+3. **Shared Postgres instead of per-file PGlite** in the backend tests (one service container,
+   `CREATE DATABASE … TEMPLATE` per file, ~50ms instead of ~2.5s WASM boot × 28 files): drops
+   ~70s of CPU and would let the shards go back to 3–4. A 28-file harness rewrite, and local
+   `vitest` would need Docker running. Not done.
 
 Tools and the trade-offs taken:
 
-- **Typecheck is `tsgo`** (`@typescript/native-preview`, the Go port of tsc): 17.6s → 6.6s
-  for the six packages on 4 cores, identical verdicts on every package and on an injected
-  error. It is a preview build pinned to an exact version; `pnpm -r run typecheck:tsc` is the
-  `tsc` fallback if a release ever disagrees. Editors still use tsc's language service.
-- **pnpm is a direct binary download** in `.github/actions/setup-pnpm` (sha256-pinned,
-  ~1s). `pnpm/action-setup` `standalone: true` was ~8s: it npm-installs a self-installer that
-  installs _latest_ pnpm and then switches to the pinned version. Bumping pnpm = version +
-  hash in that file plus `.mise.toml` / `packageManager`.
-- **Tests are one vitest process for the whole repo** (root `vitest.config.ts`,
-  `test.projects`), sharded `--shard=N/3` across three runners (~17s / ~25s / ~26s of work).
-  `pnpm -r --parallel test` was six vitest instances each sizing its own pool to the machine.
-  The suite is CPU-bound on PGlite WASM boot (28 backend files × ~2s) and the QuickJS sandbox;
-  caching migrated PGlite data dirs was benchmarked and rejected (migrations are 0.4s of the
-  2.4s boot), as was the threads pool (76s vs 60s). The real fix would be a shared Postgres
-  service with per-file template databases — a harness rewrite across 28 files, not done.
+- **Checkout is a tarball download of the PR head**, inlined in each job (a local composite
+  action can't check itself out). ~2s vs 6–8s for `actions/checkout` — merge ref, head sha
+  and a plain `git fetch --depth=1` all measured 6–8s on this 13 MB tree. Two consequences:
+  there is no `.git` (nothing in a PR job needs one except actionlint, which gets a
+  `git init`; push-event jobs still use `actions/checkout`), and **CI tests the branch head,
+  not the merge with `main`** — a PR green on a stale head can break `main` if `main` moved.
+  Same exposure as `ref: head.sha`, which most repos accept; "Require branches to be up to
+  date" in branch protection is the switch if it ever bites. The node_modules cache key now
+  hashes the head's lockfile, so the first run after `main` bumps deps misses once.
+- **Node is the runner image's preinstalled 22.x, not `.nvmrc`'s 20.19.4.** `setup-node`
+  spent ~4s per job downloading 20.19.4 (the image only ships 22 in its toolcache). The suite,
+  tsgo, Metro export and migrations all pass on 22. **Lambda still runs `nodejs20.x`**
+  (`infra/lambda.tf`) and `engines` says `<21`, so CI and prod now differ by a Node major —
+  pnpm prints an "Unsupported engine" warning on every CI step. AWS deprecated the Node 20
+  Lambda runtime on 2026-04-30, so the right fix is moving Lambda + `.nvmrc` + `engines` to
+  22, which is an "ask first" runtime change. `node-from-nvmrc: true` on the composite
+  restores the pinned version in CI if you'd rather pay the 4s.
+- **Typecheck is `tsgo`** (`@typescript/native-preview`, exact pin): 17.6s → 6.6s for the six
+  packages on 4 cores, identical verdicts everywhere and on an injected error. Preview
+  software; `pnpm -r run typecheck:tsc` is the `tsc` fallback. Editors still use tsc.
+- **pnpm is a direct sha256-pinned binary download** (~1s). `pnpm/action-setup
+standalone: true` was ~8s (npm-installs a self-installer that installs _latest_ pnpm and
+  then switches). Bumping pnpm = version + hash in the composite plus `.mise.toml` /
+  `packageManager`.
+- **Tests: one vitest process for the repo (root `vitest.config.ts`, `test.projects`) in
+  eight duration-balanced shards.** `scripts/ci-test-shards.mjs` globs `*.test.ts` (so a
+  new file is never dropped), weights each from `scripts/test-weights.json` (ms; regenerate
+  with `--regen` after a local `vitest run --reporter=json --outputFile=/tmp/vt.json`; the
+  script adds ~2.5s for a `new PGlite(` file and ~0.8s for a sandbox file because the
+  reporter's time excludes `beforeAll`), and assigns longest-first. `vitest --shard` splits
+  by count and put the 9s parity file next to a run of PGlite files. The floor of a shard is
+  its biggest file: `builtin.parity.test.ts` (~9s alone, 63 serial QuickJS round-trips).
   Backend tests resolve `./drizzle` from the cwd, so the backend `test-setup.ts` does
-  `process.chdir` (forks pool only). A new `apps/*` package's `vitest.config.ts` must be added
-  to the root `projects` list (`packages/*` is globbed).
-- **actionlint and terraform fmt/validate are path-gated** (`.github/**`, `infra/**`): ~16s
-  off `Checks` on every other PR. actionlint is pinned to the `.mise.toml` version (the
-  `latest` lookup was a network round-trip).
+  `process.chdir` (forks pool only; threads measured slower, 76s vs 60s). The teach "waits
+  the budget" test really sleeps: it now runs with `TEACH_TARGETS_BUDGET_MS=1000` (set in
+  `vi.hoisted`) instead of the production 4s, 6.7s → 1.9s. A new `apps/*` package's
+  `vitest.config.ts` must be added to the root `projects` list (`packages/*` is globbed).
+- **`migrate-smoke` runs on in-memory PGlite** (`apps/backend/scripts/migrate-smoke.mjs`:
+  apply, re-apply, bookkeeping count = `.sql` files) — the `postgres:16` service container
+  cost ~11s to start for ~1s of migrations. PGlite is Postgres 17, prod's major.
+- **actionlint and terraform fmt/validate are path-gated** (`.github/**`, `infra/**`);
+  actionlint pinned to the `.mise.toml` version (the `latest` lookup was a network call).
 - **Metro's transform cache (`/tmp/metro-cache`, ~90 MB) is restored from actions/cache** in
-  the bundle jobs with a per-run key + prefix `restore-keys`; a warm `expo export` is ~16s vs
-  ~31s cold.
-- **Not changed, and why:** Biome/knip/prettier are already ~1–4s. `.nvmrc` 20.19.4 is not
-  in the runner image's toolcache (it ships 22.x), so setup-node downloads it (~4s); moving
-  Node is a runtime decision, not a CI one. Metro has no faster drop-in for Expo exports.
+  the bundle jobs with a per-run key + prefix `restore-keys`; warm `expo export` ~10s vs ~31s.
+- **Rejected after measuring:** vitest threads pool (slower); caching migrated PGlite data
+  dirs (migrations are 0.4s of the 2.4s boot); a pnpm-store cache instead of node_modules
+  (14s + 7s save vs 6s restore); `actions/checkout` with `ref: head.sha` (same 6s as the
+  merge ref). Biome/knip/prettier are already ~1–4s each. Metro has no faster drop-in for Expo.
 
 ## Debugging production
 
