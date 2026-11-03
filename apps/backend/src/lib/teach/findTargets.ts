@@ -22,7 +22,10 @@ import { type OpenAiFailureReason, type OpenAiUsage, openAiJson } from "./openai
  * everything seen so far. Read `llm_ms` on `kind: "teach_targets"` in
  * CloudWatch before moving it again.
  */
-export const FIND_TARGETS_TIMEOUT_MS = 4000;
+// Test-only override (`TEACH_TARGETS_BUDGET_MS`): the budget test in
+// gameTeach.test.ts really waits this long twice, so it runs with a 1s budget
+// instead of 4s. Production never sets it.
+export const FIND_TARGETS_TIMEOUT_MS = Number(process.env.TEACH_TARGETS_BUDGET_MS) || 4000;
 /** A handful of small integers; measured ~30 tokens. The cap bounds a runaway answer. */
 const FIND_TARGETS_MAX_OUTPUT_TOKENS = 200;
 

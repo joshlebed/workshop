@@ -1,42 +1,43 @@
 name: CI
 
-# CI bills by job-minute (Ubuntu standard, rounded up), but the number the
-# operator feels is PR wall-clock. Shape, and why (see "CI speed" in CLAUDE.md
-# for the measurements behind each line):
+# Target: a PR is green in under ~30s wall-clock. This repo is public, so
+# Actions minutes are free and concurrency is 20 jobs — fan-out is the cheap
+# dimension, serial time is the expensive one. Shape, and why (measurements
+# in CLAUDE.md "CI speed"):
+#   - Every PR job pays ~13s before its first real step: runner pick-up ~2s,
+#     tarball checkout ~2s, path filter ~2s, pnpm binary ~1s, node_modules
+#     cache restore ~6s. Node is the runner's preinstalled 22.x (setup-node
+#     was ~4s). So each job gets ~12s of real work: anything bigger is split.
 #   - No separate `changes` job: every job runs the shared
 #     .github/actions/detect-changes composite after checkout and gates its
-#     own steps on the outputs. The old `needs: changes` hop cost ~17s of
-#     serial latency on every PR; inline it is ~1s.
-#   - `checks` installs deps once and runs the fast node-based checks: lint,
-#     typecheck (tsgo — the native TypeScript port, ~3x faster than tsc here),
-#     knip, prettier (md), redesign-plan consistency. actionlint and terraform
-#     fmt+validate are path-gated (`.github/**`, `infra/**`) — they only say
-#     something about those files.
-#   - `test` runs the vitest workspace (root vitest.config.ts, one process for
-#     all six packages) split into three shards on three runners. The suite is
-#     CPU-bound (28 backend files each boot an in-memory PGlite, plus the
-#     QuickJS game-code sandbox); shards run alongside `checks`, so PR
-#     wall-clock is ~max(checks, slowest shard, metro bundle).
-#   - `quality` is a zero-work gate that waits for `checks` + the shards and
-#     carries the name branch protection requires, so the required-check list
-#     doesn't change. It passes when its needs succeeded OR were skipped and
-#     fails on any failure/cancellation.
-#   - The per-app mobile bundle jobs and `migrate-smoke` stay separate (heavier
-#     or different deps — Metro exports and a Postgres service container). The
-#     Metro transform cache (/tmp/metro-cache) is restored from actions/cache;
-#     a warm export is ~half the cold one.
+#     own steps on the outputs. The old `needs: changes` hop was ~17s of
+#     serial latency on every PR.
+#   - `lint` (biome, knip, prettier-md, redesign-plan) and `typecheck` (tsgo)
+#     are separate jobs — together they were ~16s serial. actionlint and
+#     terraform fmt+validate are path-gated (`.github/**`, `infra/**`).
+#   - `test` is eight duration-balanced shards (scripts/ci-test-shards.mjs,
+#     weights in scripts/test-weights.json) over the vitest workspace (root
+#     vitest.config.ts). The suite is ~120s of CPU, dominated by 28 backend
+#     files that each boot an in-memory PGlite (~2.5s) and the QuickJS
+#     game-code parity file (~9s on its own — the floor of its shard).
+#   - `quality` is a zero-work gate that waits for lint + typecheck + the
+#     shards and carries the name branch protection requires, so the
+#     required-check list doesn't change. It passes when its needs succeeded
+#     OR were skipped and fails on any failure/cancellation. It costs ~5s
+#     (pick-up + 3s); requiring the real jobs instead would remove it.
+#   - Metro bundle jobs restore Metro's transform cache from actions/cache
+#     (warm export ~10s vs ~33s cold). `migrate-smoke` runs on in-memory
+#     PGlite (apps/backend/scripts/migrate-smoke.mjs) — no postgres service container.
 #   - `gitleaks` only runs on push-to-main and a weekly schedule (pre-commit
 #     lefthook is the PR-time guard; CI is the safety net).
 #   - PRs own full validation; push-to-main only re-checks the canonical-branch
-#     concerns (gitleaks always, migrate-smoke on migration changes). Skipping
-#     the duplicate full PR re-run on merge cuts roughly half the CI bill.
-#   - Docs-only PRs: every job still starts (~20s of setup each) but every
-#     real step is skipped by the `code` filter and the job succeeds. This
-#     replaced the ci-docs.yml shim, which posted a second, instantly-green
-#     `Quality` on any PR that touched code *and* a `.md`, and auto-merge took
-#     it (#476).
-#   - Draft PRs skip every job. Agents (Niteshift, /continue-redesign) push
-#     2–10 commits to a draft before flipping to ready-for-review.
+#     concerns (gitleaks always, migrate-smoke on migration changes).
+#   - Docs-only PRs: every job still starts (~13s each) but every real step
+#     is skipped by the `code` filter and the job succeeds. This replaced the
+#     ci-docs.yml shim, which posted a second, instantly-green `Quality` on
+#     any PR that touched code *and* a `.md`, and auto-merge took it (#476).
+#   - Draft PRs skip every job. Agents push 2–10 commits to a draft before
+#     flipping to ready-for-review.
 
 on:
   pull_request:
@@ -54,20 +55,31 @@ permissions:
   contents: read
 
 jobs:
-  # Fast checks — install deps once, run every node-based check except the
-  # test suite (which has its own sharded job below so the two overlap).
-  # PR-only: push-to-main relies on the merge being a fast-forward of an
-  # already-green PR head. If the merge introduces drift (rare; merge commits
-  # don't change file content), the next PR will catch it.
-  checks:
-    name: Checks (lint, typecheck, knip, format, terraform, actionlint)
+  lint:
+    name: Lint (biome, knip, prettier, redesign-plan)
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: read # detect-changes
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Tarball instead of actions/checkout: ~2s vs 6–8s of git fetch on this
+      # tree (measured 2026-11-03; merge ref, head sha and plain git CLI were
+      # all 6–8s). No .git afterwards — nothing in a PR job needs one
+      # (dorny/paths-filter reads the PR file list from the API). Checks out
+      # the PR head, not the synthetic merge commit, same exposure as
+      # `ref: head.sha`: a PR green on a stale head can break main if main
+      # moved underneath it. Inline (not a composite action) because a local
+      # `uses: ./…` needs the repo on disk first.
+      - name: Checkout (tarball)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
 
       - uses: ./.github/actions/detect-changes
         id: changes
@@ -78,10 +90,6 @@ jobs:
       - name: Lint (biome)
         if: steps.changes.outputs.code == 'true'
         run: pnpm run lint
-
-      - name: Typecheck (tsgo)
-        if: steps.changes.outputs.code == 'true'
-        run: pnpm run typecheck
 
       - name: Knip (unused code/deps)
         if: steps.changes.outputs.code == 'true'
@@ -107,7 +115,6 @@ jobs:
           terraform_version: 1.17.1
 
       # Cache provider plugins (~8 MB AWS provider) keyed on the lock file.
-      # Without this, every run re-downloads on `terraform init`.
       - name: Cache Terraform plugins
         if: steps.changes.outputs.infra == 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -131,12 +138,40 @@ jobs:
           terraform init -backend=false
           terraform validate
 
-  # The whole vitest workspace, split into shards. `--shard` partitions test
-  # files by count; three shards measured ~17s / ~25s / ~26s on 4 cores when
-  # this was introduced. Bump the matrix (and the `/N` below) if a shard
-  # creeps past `checks` again.
+  typecheck:
+    name: Typecheck (tsgo)
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # detect-changes
+    steps:
+      - name: Checkout (tarball) # see the comment on the lint job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
+
+      - uses: ./.github/actions/detect-changes
+        id: changes
+
+      - uses: ./.github/actions/setup-pnpm
+        if: steps.changes.outputs.code == 'true'
+
+      - name: Typecheck (tsgo)
+        if: steps.changes.outputs.code == 'true'
+        run: pnpm run typecheck
+
+  # Eight duration-balanced shards; ~10–12s of work each on 4 cores. The
+  # script is the source of truth for which files run (it globs *.test.ts),
+  # the weights only order them — a new test file is never dropped. Change
+  # the matrix and the `/8` together.
   test:
-    name: Test (shard ${{ matrix.shard }}/3)
+    name: Test (shard ${{ matrix.shard }}/8)
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
@@ -145,9 +180,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout (tarball) # see the comment on the lint job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
 
       - uses: ./.github/actions/detect-changes
         id: changes
@@ -159,25 +202,30 @@ jobs:
         if: steps.changes.outputs.code == 'true'
         env:
           SHARD: ${{ matrix.shard }}
-        run: pnpm exec vitest run --shard="$SHARD/3"
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(node scripts/ci-test-shards.mjs "$SHARD" 8)
+          echo "${#files[@]} files in this shard"
+          pnpm exec vitest run "${files[@]}"
 
   # Gate with the name branch protection requires. Does no work of its own;
-  # it reports the combined outcome of `checks` + `test`. `always()` so it
-  # still runs when a need was skipped, but it stays skipped on drafts like
-  # everything else, so a draft push costs nothing.
+  # it reports the combined outcome of lint + typecheck + test. `always()` so
+  # it still runs when a need was skipped, but it stays skipped on drafts
+  # like everything else, so a draft push costs nothing.
   quality:
     name: Quality (lint, typecheck, test, knip, format, terraform, actionlint)
-    needs: [checks, test]
+    needs: [lint, typecheck, test]
     if: always() && github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Combine results
         env:
-          CHECKS: ${{ needs.checks.result }}
+          LINT: ${{ needs.lint.result }}
+          TYPECHECK: ${{ needs.typecheck.result }}
           TEST: ${{ needs.test.result }}
         run: |
-          echo "checks=$CHECKS test=$TEST"
-          for r in "$CHECKS" "$TEST"; do
+          echo "lint=$LINT typecheck=$TYPECHECK test=$TEST"
+          for r in "$LINT" "$TYPECHECK" "$TEST"; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a required job finished with '$r'"; exit 1 ;;
@@ -194,7 +242,15 @@ jobs:
       contents: read
       pull-requests: read # detect-changes
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout (tarball) # see the comment on the lint job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
 
       - uses: ./.github/actions/detect-changes
         id: changes
@@ -208,8 +264,7 @@ jobs:
       # Expo publishes a new RN patch. The script pins the comparison to the
       # `expo/bundledNativeModules.json` the lockfile resolves — deterministic
       # per commit. `EXPO_OFFLINE=1` is not the fix; it skips validation
-      # entirely. Scoped list lives in the script (react/typescript are pinned
-      # above the SDK-preferred versions on purpose).
+      # entirely.
       - name: Verify RN deps match Expo SDK
         if: steps.changes.outputs.mobile == 'true'
         run: node scripts/check-expo-sdk-deps.mjs
@@ -242,7 +297,15 @@ jobs:
       contents: read
       pull-requests: read # detect-changes
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout (tarball) # see the comment on the lint job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
 
       - uses: ./.github/actions/detect-changes
         id: changes
@@ -269,8 +332,9 @@ jobs:
         working-directory: apps/highscore
         run: pnpm exec expo export --platform ios --output-dir dist-ci
 
-  # Guards against the migration-drift bug class. Spins up Postgres, applies,
-  # re-applies (must be a no-op). Runs on PRs that touch migrations AND on
+  # Guards against the migration-drift bug class: journal ↔ files, fresh
+  # apply, idempotent re-apply, bookkeeping row count — on in-memory PGlite
+  # (Postgres 17, prod's major). Runs on PRs that touch migrations AND on
   # push-to-main when migrations changed (canonical-branch safety net).
   migrate-smoke:
     name: Migrate smoke (fresh DB + idempotent re-run)
@@ -279,28 +343,22 @@ jobs:
     permissions:
       contents: read
       pull-requests: read # detect-changes
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: workshop
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=10
-    env:
-      STAGE: local
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/workshop
-      # 32+ char placeholder; migrate never reads it, but config.ts validates length.
-      SESSION_SECRET: ci_migrate_smoke_session_secret_padding_32
-      AWS_REGION: us-east-1
     steps:
+      - name: Checkout (tarball) # see the comment on the lint job
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
+
+      # push events have no PR file list; dorny diffs against the previous
+      # commit and needs a real checkout for that.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'push'
 
       - uses: ./.github/actions/detect-changes
         id: changes
@@ -313,27 +371,10 @@ jobs:
         working-directory: apps/backend
         run: node ../../scripts/check-drizzle-journal.mjs
 
-      - name: Apply migrations (fresh DB)
+      - name: Apply, re-apply, count (PGlite)
         if: steps.changes.outputs.migrations == 'true'
         working-directory: apps/backend
-        run: pnpm run db:migrate
-
-      - name: Re-apply migrations (must be a no-op)
-        if: steps.changes.outputs.migrations == 'true'
-        working-directory: apps/backend
-        run: pnpm run db:migrate
-
-      - name: Verify journal row count
-        if: steps.changes.outputs.migrations == 'true'
-        env:
-          PGPASSWORD: postgres
-        run: |
-          set -euo pipefail
-          applied=$(psql -h localhost -U postgres -d workshop -tAc \
-            "select count(*) from drizzle.__drizzle_migrations")
-          expected=$(find apps/backend/drizzle -maxdepth 1 -name '*.sql' | wc -l)
-          echo "applied=$applied expected=$expected"
-          test "$applied" = "$expected"
+        run: node scripts/migrate-smoke.mjs
 
   # Pre-commit lefthook runs gitleaks on staged files for any developer with
   # the binary installed. CI is the safety net: scan on every push to main

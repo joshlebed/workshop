@@ -1,9 +1,15 @@
 name: Setup pnpm + Node + cached deps
 description: |
-  Pin pnpm 10.34.9, set up Node from .nvmrc, restore the hoisted node_modules
-  cache, and install via `pnpm fetch && pnpm install --offline` on cache miss.
-  Pulls the same block out of every workflow so a pnpm/Node bump is one edit
-  instead of seven.
+  Pin pnpm 10.34.9, restore the hoisted node_modules cache, and install via
+  `pnpm fetch && pnpm install --offline` on cache miss. Pulls the same block
+  out of every workflow so a pnpm bump is one edit instead of seven.
+
+  Node is the runner image's preinstalled 22.x, NOT .nvmrc's 20.19.4:
+  actions/setup-node spent ~4s per job downloading 20.19.4 because the image
+  only ships 22 in its toolcache. The suite, typecheck, Metro export and
+  migrations all pass on 22 (verified 2026-11-03). Lambda still runs
+  nodejs20.x — see "CI speed" in CLAUDE.md for that trade-off. Set
+  `node-from-nvmrc: true` to get the pinned version back.
 
   pnpm is a direct download of the standalone Linux binary from the pnpm
   GitHub release (~1s, sha256-pinned). `pnpm/action-setup` with
@@ -12,6 +18,10 @@ description: |
   `corepack` / `npm i -g` would reach registry.npmjs.org, which timed out five
   times on 2026-11-03 (#535). To bump: change PNPM_VERSION + PNPM_SHA256 below
   (`curl -sSL .../v<ver>/pnpm-linux-x64 | sha256sum`).
+inputs:
+  node-from-nvmrc:
+    description: Install the .nvmrc Node instead of using the runner's preinstalled 22.x (~4s).
+    default: "false"
 outputs:
   cache-hit:
     description: Whether the node_modules cache was a hit (caller can skip its own install).
@@ -41,8 +51,13 @@ runs:
         "$dest/pnpm" --version
 
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      if: inputs.node-from-nvmrc == 'true'
       with:
         node-version-file: .nvmrc
+
+    - name: Node version
+      shell: bash
+      run: node --version
 
     - name: Cache hoisted node_modules
       id: nm-cache
