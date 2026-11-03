@@ -23,7 +23,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const weightsPath = join(root, "scripts/test-weights.json");
 const DEFAULT_MS = 300;
 
-// No fs.globSync: .nvmrc is Node 20 and it arrived in 22.
+// Plain readdir rather than fs.globSync (still experimental).
 function testFiles(dir = "") {
   const out = [];
   for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {

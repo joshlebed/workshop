@@ -39,7 +39,7 @@ data "archive_file" "placeholder" {
 resource "aws_lambda_function" "api" {
   function_name = "${local.prefix}-api"
   role          = aws_iam_role.lambda.arn
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs24.x"
   handler       = "lambda.handler"
   # Lambda CPU scales with memory (1,769 MB = 1 vCPU): 512 MB bought 0.29 vCPU,
   # which is what made a request's own CPU work — zod, JSON, the game-code
