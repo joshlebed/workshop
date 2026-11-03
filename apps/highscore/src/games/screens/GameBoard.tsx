@@ -606,55 +606,6 @@ function EntryRow({
             ) : null}
           </View>
         </Pressable>
-        {onEdit || onClear || onFix ? (
-          <View style={styles.scoreActions}>
-            {onFix ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Fix your score"
-                onPress={onFix}
-                testID="game-board-fix-score"
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.scoreActionButton,
-                  pressed && styles.editScorePressed,
-                ]}
-              >
-                <Text style={styles.editScoreLabel}>Fix score</Text>
-              </Pressable>
-            ) : null}
-            {onEdit ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Edit your score"
-                onPress={onEdit}
-                testID="game-board-edit-score"
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.scoreActionButton,
-                  pressed && styles.editScorePressed,
-                ]}
-              >
-                <Text style={styles.editScoreLabel}>Edit</Text>
-              </Pressable>
-            ) : null}
-            {onClear ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Clear your score"
-                onPress={onClear}
-                testID="game-board-clear-score"
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.scoreActionButton,
-                  pressed && styles.clearScorePressed,
-                ]}
-              >
-                <Text style={styles.clearScoreLabel}>Clear</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : null}
       </View>
       <View style={styles.scoreRow}>
         <View style={styles.scoreFrame}>
@@ -708,6 +659,55 @@ function EntryRow({
           />
         ) : null}
       </View>
+      {onEdit || onClear || onFix ? (
+        <View style={styles.scoreActions}>
+          {onFix ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Fix your score"
+              onPress={onFix}
+              testID="game-board-fix-score"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.scoreActionButton,
+                pressed && styles.editScorePressed,
+              ]}
+            >
+              <Text style={styles.editScoreLabel}>Fix score</Text>
+            </Pressable>
+          ) : null}
+          {onEdit ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Edit your score"
+              onPress={onEdit}
+              testID="game-board-edit-score"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.scoreActionButton,
+                pressed && styles.editScorePressed,
+              ]}
+            >
+              <Text style={styles.editScoreLabel}>Edit</Text>
+            </Pressable>
+          ) : null}
+          {onClear ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Clear your score"
+              onPress={onClear}
+              testID="game-board-clear-score"
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.scoreActionButton,
+                pressed && styles.clearScorePressed,
+              ]}
+            >
+              <Text style={styles.clearScoreLabel}>Clear</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -959,7 +959,16 @@ const styles = StyleSheet.create({
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryName: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  scoreActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  // FIX / EDIT / CLEAR sit on their own line under the score, right-aligned,
+  // never beside the name: three labels in the header squeezed the name to
+  // "Rena…" and wrapped "Posted 5h ago" on a phone width.
+  scoreActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: tokens.space.xs,
+    marginRight: -tokens.space.sm,
+  },
   scoreActionButton: {
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 4,
