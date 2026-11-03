@@ -97,6 +97,15 @@ export function ProfileMenu() {
             }}
           />
           <Button
+            label="Notifications"
+            variant="secondary"
+            testID="open-notification-settings"
+            onPress={() => {
+              setOpen(false);
+              router.push("/settings/notifications");
+            }}
+          />
+          <Button
             label="Send feedback"
             variant="secondary"
             testID="send-feedback"

@@ -599,7 +599,9 @@ lists the `version` values of binaries users still run (Store + TestFlight);
 scratch `app.json` each time, so a Store user on 1.0.1 and a TestFlight user on 1.1.0 get the
 same bundle. The JS must stay compatible with the **oldest** listed runtime: the first PR that
 imports a native module an older binary lacks must drop that runtime from the list in the same
-PR (the old binary keeps its last update and the operator nudges it to the App Store). A native
+PR (the old binary keeps its last update and the operator nudges it to the App Store) — unless
+the import is runtime-gated the way `apps/highscore/src/lib/pushNotifications.ts` gates
+`expo-notifications` (version check, then a lazy `require` in a try/catch). A native
 bump adds the new version to the list — `scripts/check-supported-runtimes.mjs` (in `Quality`)
 fails when the current `app.json` version is missing. Workshop has no such list yet; its OTA
 targets `apps/workshop/app.json` `version` only.

@@ -65,6 +65,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       "Reactions and share links — the reactions you leave on scores and the short links minted when you share.",
       "Blocks and reports — who you've blocked, and any content reports you send (including a snapshot of what was reported) so a person can review them.",
       "Security and session metadata — sign-in and refresh sessions, timestamps, and basic request details kept in server logs.",
+      "Reminder settings — only if you allow notifications: your device's push token and time zone, and whether and at what hour you want the daily play reminder. Signing out removes that device's token.",
     ],
   },
   {

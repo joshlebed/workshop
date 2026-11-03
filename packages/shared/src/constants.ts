@@ -46,6 +46,8 @@ export type GameScoreEntrySource = (typeof GAME_SCORE_ENTRY_SOURCES)[number];
 export const USER_FLAG_KEYS = {
   shareExtensionScore: "games.share-extension-score",
   appUpdateDismissed: "app.update-banner-dismissed",
+  /** HighScore's one-time "daily nudge?" pre-prompt was answered (`{ choice, at }`). */
+  playReminderPrompted: "games.play-reminder-prompted",
 } as const;
 
 // Operator-set "update from the App Store" nudge (`client_releases`, read by
