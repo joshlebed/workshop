@@ -19,7 +19,7 @@ authenticates CI, but eas-cli will not create or choose a missing certificate wh
 **Fix**:
 
 ```bash
-cd apps/highscore && npx eas-cli@18.8.1 credentials --platform ios
+cd apps/highscore && npx eas-cli@27.4.0 credentials --platform ios
 # → production → Build Credentials → All
 # → reuse the valid team certificate; create HighScore + HighScoreShare profiles
 # → do NOT delete/revoke Workshop's certificate

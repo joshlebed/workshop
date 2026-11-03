@@ -349,6 +349,18 @@ deliberate critical-fix backports may change it before then. See
   `react` and `typescript` stay out on purpose (pinned above SDK-preferred).
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
   unless there's a specific reason (security fix, unblocking work).
+- **eas-cli is pinned in six places that must move together**: `eas-cli` in
+  `apps/{workshop,highscore}/package.json` devDependencies (the OTA workflows run `pnpm exec eas`),
+  `EAS_CLI_VERSION` in `testflight.yml` + `testflight-highscore.yml` (`npx eas-cli@$VERSION build`),
+  and `cli.version` in both `eas.json` files (a `>=` floor, so `npx eas-cli@latest` keeps working
+  locally). `scripts/eas-sync-ios-capabilities.mjs` requires eas-cli internals
+  (`build/credentials/ios/appstore/*`) — smoke it after a bump with fake `EXPO_ASC_*` /
+  `EXPO_APPLE_TEAM_*` env and a nonexistent key path; reaching `ENOENT` means resolution works.
+  **`eas.json` is an `@expo/fingerprint` input**: any edit to it (even `cli.version`) moves both
+  apps' iOS hashes, so the merge cuts a new TestFlight build and `Runtime version guard` asks for
+  a version bump. Adding eas-cli to the lockfile can also re-dedupe Expo's own prebuild toolchain
+  (`@expo/json-file`, `@expo/plist`, `@expo/config-plugins` patch versions) — diff the lockfile
+  snapshots against `main` and keep Expo's entries unchanged.
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full errors:
   `logger.error("failed to x", { error })`, not `{ error: error.message }` (loses stack).
 - **Managed sessions are version-negotiated.** Updated clients send
