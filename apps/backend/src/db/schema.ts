@@ -1167,3 +1167,36 @@ export type DbGameScore = typeof gameScores.$inferSelect;
 export type DbGameShareLink = typeof gameShareLinks.$inferSelect;
 export type DbLetterboxdWatchlistFilm = typeof letterboxdWatchlistFilms.$inferSelect;
 export type DbItemAcceptance = typeof itemAcceptances.$inferSelect;
+
+/**
+ * Operator-set "update from the App Store" nudge, one row per (client,
+ * platform). Read by the public `GET /v1/client/release`; written ONLY by the
+ * operator through `PUT /v1/admin/client-release` (real-admin gate) from the
+ * HighScore admin dashboard. **No seed, migration, script, job, or agent may
+ * insert or update rows here** — no row (or nulls) means "no nudge". See
+ * docs/release-nudge-runbook.md.
+ */
+export const clientReleases = pgTable(
+  "client_releases",
+  {
+    client: text("client").notNull(),
+    platform: text("platform").notNull(),
+    latestVersion: text("latest_version"),
+    minimumVersion: text("minimum_version"),
+    storeUrl: text("store_url"),
+    message: text("message"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.client, t.platform] }),
+    clientCheck: check(
+      "client_releases_client_check",
+      sql`${t.client} in ('workshop', 'highscore')`,
+    ),
+    platformCheck: check(
+      "client_releases_platform_check",
+      sql`${t.platform} in ('ios', 'android', 'web')`,
+    ),
+  }),
+);

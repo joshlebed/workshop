@@ -7,6 +7,14 @@ import { users } from "../../db/schema.js";
 import { isAdminUser } from "../../lib/admin.js";
 import { buildAdminAnalytics } from "../../lib/adminAnalytics.js";
 import { buildAdminGraph } from "../../lib/adminGraph.js";
+import {
+  clientReleaseQuerySchema,
+  readClientRelease,
+  updateClientReleaseSchema,
+  writeClientRelease,
+} from "../../lib/clientReleases.js";
+import { logger } from "../../lib/logger.js";
+import { parseJsonBody } from "../../lib/request.js";
 import { getRequestClientContext } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
@@ -19,11 +27,19 @@ adminRoutes.use("*", requireAuth);
  * passes, a non-admin never does. Returns the error response, or null to proceed.
  */
 async function requireRealAdmin(c: Context) {
+  return (await realAdmin(c)).denied;
+}
+
+async function realAdmin(c: Context) {
   const adminUserId = c.get("impersonatorUserId") ?? c.get("userId");
   const [admin] = await getDb().select().from(users).where(eq(users.id, adminUserId)).limit(1);
-  if (!admin) return err(c, "UNAUTHORIZED", "invalid or expired session");
-  if (!isAdminUser(admin)) return err(c, "FORBIDDEN", "admin access required");
-  return null;
+  if (!admin) {
+    return { denied: err(c, "UNAUTHORIZED", "invalid or expired session"), adminUserId };
+  }
+  if (!isAdminUser(admin)) {
+    return { denied: err(c, "FORBIDDEN", "admin access required"), adminUserId };
+  }
+  return { denied: null, adminUserId };
 }
 
 const analyticsQuerySchema = z.object({
@@ -62,4 +78,44 @@ adminRoutes.get("/graph", async (c) => {
   const denied = await requireRealAdmin(c);
   if (denied) return denied;
   return ok(c, await buildAdminGraph());
+});
+
+/**
+ * Current App Store update-nudge values for one (client, platform), plus who
+ * last changed them. Admin-only read for the dashboard form.
+ */
+adminRoutes.get("/client-release", async (c) => {
+  const denied = await requireRealAdmin(c);
+  if (denied) return denied;
+  const parsed = clientReleaseQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return err(c, "VALIDATION", "invalid query", parsed.error.flatten());
+  c.header("Cache-Control", "no-store");
+  return ok(c, await readClientRelease(getDb(), parsed.data.client, parsed.data.platform));
+});
+
+/**
+ * Set the App Store update nudge. THE ONLY WRITE PATH for `client_releases`,
+ * and it is the operator's alone: real-admin gate (an impersonating admin is
+ * recorded as themselves), zod-validated. Agents, CI, scripts and jobs must
+ * never call this — see docs/release-nudge-runbook.md. Nulls clear.
+ */
+adminRoutes.put("/client-release", async (c) => {
+  const { denied, adminUserId } = await realAdmin(c);
+  if (denied) return denied;
+  const parsed = await parseJsonBody(c, updateClientReleaseSchema);
+  if (!parsed.ok) return parsed.response;
+
+  const db = getDb();
+  await writeClientRelease(db, parsed.data, adminUserId);
+  logger.info("client release nudge updated", {
+    client: parsed.data.client,
+    platform: parsed.data.platform,
+    latest_version: parsed.data.latestVersion,
+    minimum_version: parsed.data.minimumVersion,
+    has_store_url: parsed.data.storeUrl !== null,
+    has_message: parsed.data.message !== null,
+    updated_by: adminUserId,
+  });
+  c.header("Cache-Control", "no-store");
+  return ok(c, await readClientRelease(db, parsed.data.client, parsed.data.platform));
 });

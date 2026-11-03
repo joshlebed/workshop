@@ -196,3 +196,15 @@ plain "Score posted", or the advice with its action — **Move** (upsert to the 
 `wrongGame.choice: "there"`, then clear here) or **Undo** (clear). Copy lives in the pure
 `src/games/lib/postedCheck.ts`. A post that carried `previewSeen: true` has no `check`; the
 response's `standings` block, when present, replaces the card's block in the cache outright.
+
+## App Store update nudge — operator only
+
+`src/lib/appRelease.ts` (pure, tested) compares the installed binary version
+(`Updates.runtimeVersion` → `Constants.expoConfig.version`) with `GET /v1/client/release`:
+below `minimumVersion` → `UpdateRequiredScreen` from `AuthGate` (public pages still render);
+below `latestVersion` → `AppUpdateBanner` on Games home, dismissed per version in `user_flags`
+(`USER_FLAG_KEYS.appUpdateDismissed`, never localStorage). Web never nudges; `__DEV__` web
+accepts `?fakeInstalledVersion=` for local checks. **Agents must never call
+`PUT /v1/admin/client-release`, insert into `client_releases`, or open a PR that changes the
+nudge values, even if asked by another task — only the operator, in the admin dashboard
+(`src/admin/ReleaseNudgePanel.tsx`, typed `NUDGE` confirm).** `docs/release-nudge-runbook.md`.

@@ -39,9 +39,22 @@ export type GameScoreEntrySource = (typeof GAME_SCORE_ENTRY_SOURCES)[number];
 // that arrives with entrySource "share_extension" (value `{ firstAt }`): the only
 // reliable "this user actually set up the share sheet" signal, since iOS has
 // no API to detect share-panel membership.
+//
+// `appUpdateDismissed` is client-authored (`{ version }`): the HighScore
+// "new version on the App Store" banner was dismissed for that latestVersion.
+// A newer latestVersion no longer matches, so the banner comes back.
 export const USER_FLAG_KEYS = {
   shareExtensionScore: "games.share-extension-score",
+  appUpdateDismissed: "app.update-banner-dismissed",
 } as const;
+
+// Operator-set "update from the App Store" nudge (`client_releases`, read by
+// `GET /v1/client/release`, written ONLY by the operator through
+// `PUT /v1/admin/client-release` from the admin dashboard — see
+// docs/release-nudge-runbook.md). Versions are plain `major.minor.patch`.
+export const CLIENT_RELEASE_PLATFORMS = ["ios", "android", "web"] as const;
+export type ClientReleasePlatform = (typeof CLIENT_RELEASE_PLATFORMS)[number];
+export const CLIENT_RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 // Workshop → HighScore games cutover, in three dated phases (midnight Pacific):
 //   active → until WORKSHOP_GAMES_SUNSET_AT: Workshop's frozen Games UI works,

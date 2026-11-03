@@ -2,7 +2,7 @@
 //   Overview  → analytics (DAU/MAU, scores, requests) from `AnalyticsPanel`
 //   Users     → the friend graph in three designs + a sortable list, with a
 //               shared find-a-user box and detail panel
-//   Tools     → impersonation
+//   Tools     → impersonation + the App Store update nudge (operator only)
 // Tabs live in the URL (`/admin?tab=users`) so links and back/forward work.
 // The server gates every endpoint (403 for non-admins); `user.isAdmin` only
 // decides whether to render the dashboard or the "admins only" note. Not
@@ -35,6 +35,7 @@ import { UserDetailPanel } from "../admin/graph/UserDetailPanel";
 import { UserSearch } from "../admin/graph/UserSearch";
 import { UsersTable } from "../admin/graph/UsersTable";
 import { ImpersonationPanel } from "../admin/ImpersonationPanel";
+import { ReleaseNudgePanel } from "../admin/ReleaseNudgePanel";
 import { fetchAdminGraph } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
 import { Button, Card, IconButton, PixelIcon, Sheet, Text, tokens } from "../theme";
@@ -300,11 +301,14 @@ export default function Admin() {
             {tab === "overview" ? <AnalyticsPanel /> : null}
 
             {tab === "tools" ? (
-              <ImpersonationPanel
-                key={impersonateQuery}
-                onSessionChanged={onSessionChanged}
-                initialQuery={impersonateQuery}
-              />
+              <>
+                <ImpersonationPanel
+                  key={impersonateQuery}
+                  onSessionChanged={onSessionChanged}
+                  initialQuery={impersonateQuery}
+                />
+                <ReleaseNudgePanel />
+              </>
             ) : null}
 
             {tab === "users" ? (

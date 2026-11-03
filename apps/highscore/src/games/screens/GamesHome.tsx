@@ -38,6 +38,7 @@ import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppUpdateBanner } from "../../components/AppUpdateBanner";
 import { ReportSheet } from "../../moderation/ReportSheet";
 import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
 import {
@@ -620,6 +621,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           </>
         }
       />
+
+      <AppUpdateBanner />
 
       <View style={styles.body}>
         {gamesQuery.isPending ? (

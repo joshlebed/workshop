@@ -137,6 +137,8 @@ describe("anonymous /v1 routes", () => {
     "/v1/game-share/not-a-valid-slug!",
     "/v1/lists/by-slug/not-a-valid-slug!/preview",
     "/v1/friends/requests/not-a-valid-slug!",
+    // Invalid query → 400 before any DB touch; the point is "not 401".
+    "/v1/client/release?client=nope&platform=ios",
   ])("does not demand a bearer token for GET %s", async (path) => {
     const res = await buildApp().request(path, { method: "GET" });
     expect(res.status).not.toBe(401);

@@ -19,12 +19,14 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
+import { UpdateRequiredScreen } from "../src/components/UpdateRequiredScreen";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
 } from "../src/games/lib/inviteStash";
 import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { ViewDayProvider } from "../src/games/state/viewDay";
+import { useAppReleaseNudge } from "../src/hooks/useAppRelease";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { createQueryClient } from "../src/lib/query";
@@ -191,6 +193,15 @@ function AuthGate() {
       router.replace("/");
     })();
   }, [status, segments, router, onPublicRoute, shareIntentPending]);
+
+  // Operator-set minimum version (admin dashboard only): below it, nothing but
+  // the store. Checked before the auth interstitials — the release read is
+  // public, and an unsupported binary may not be able to sign in at all.
+  // Public pages (App Store support / privacy / terms URLs) still render.
+  const releaseNudge = useAppReleaseNudge();
+  if (releaseNudge.kind === "required" && !onPublicRoute) {
+    return <UpdateRequiredScreen storeUrl={releaseNudge.storeUrl} message={releaseNudge.message} />;
+  }
 
   if (status === "loading" && !onPublicRoute) {
     return (
