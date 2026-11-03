@@ -12,9 +12,10 @@ name: CI
 #     .github/actions/detect-changes composite after checkout and gates its
 #     own steps on the outputs. The old `needs: changes` hop was ~17s of
 #     serial latency on every PR.
-#   - `lint` (biome, knip, prettier-md, redesign-plan) and `typecheck` (tsgo)
-#     are separate jobs — together they were ~16s serial. actionlint and
-#     terraform fmt+validate are path-gated (`.github/**`, `infra/**`).
+#   - `lint` (biome, knip, prettier-md, redesign-plan), `typecheck` (tsgo)
+#     and `infra-lint` (actionlint + terraform fmt/validate, path-gated to
+#     `.github/**` / `infra/**`) are separate jobs so none is longer than a
+#     test shard.
 #   - `test` is ten duration-balanced shards (scripts/ci-test-shards.mjs,
 #     weights in scripts/test-weights.json) over the vitest workspace (root
 #     vitest.config.ts). The suite is ~120s of CPU, dominated by 28 backend
@@ -105,6 +106,59 @@ jobs:
 
       # actionlint locates the project by walking up to a .git directory; the
       # tarball checkout has none, so give it an empty one.
+
+  typecheck:
+    name: Typecheck (tsgo)
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # detect-changes
+    steps:
+      - name: Checkout (tarball) # see the comment on the lint job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
+
+      - uses: ./.github/actions/detect-changes
+        id: changes
+
+      - uses: ./.github/actions/setup-pnpm
+        if: steps.changes.outputs.code == 'true'
+
+      - name: Typecheck (tsgo)
+        if: steps.changes.outputs.code == 'true'
+        run: pnpm run typecheck
+
+  # actionlint + terraform fmt/validate: only when .github/** or infra/**
+  # changed, and in their own job so they never lengthen `lint` (~20s
+  # together when they run).
+  infra-lint:
+    name: Infra lint (actionlint, terraform fmt+validate)
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # detect-changes
+    steps:
+      - name: Checkout (tarball) # see the comment on the lint job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
+
+      - uses: ./.github/actions/detect-changes
+        id: changes
+
       - name: Mark repo root for actionlint
         if: steps.changes.outputs.workflows == 'true'
         run: git init -q .
@@ -143,34 +197,6 @@ jobs:
           # Skip HCP backend for validation so PRs from forks can run.
           terraform init -backend=false
           terraform validate
-
-  typecheck:
-    name: Typecheck (tsgo)
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read # detect-changes
-    steps:
-      - name: Checkout (tarball) # see the comment on the lint job
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REF: ${{ github.event.pull_request.head.sha }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
-
-      - uses: ./.github/actions/detect-changes
-        id: changes
-
-      - uses: ./.github/actions/setup-pnpm
-        if: steps.changes.outputs.code == 'true'
-
-      - name: Typecheck (tsgo)
-        if: steps.changes.outputs.code == 'true'
-        run: pnpm run typecheck
 
   # Ten duration-balanced shards; ~8–10s of work each on 4 cores. The
   # script is the source of truth for which files run (it globs *.test.ts),
@@ -222,18 +248,19 @@ jobs:
   # like everything else, so a draft push costs nothing.
   quality:
     name: Quality (lint, typecheck, test, knip, format, terraform, actionlint)
-    needs: [lint, typecheck, test]
+    needs: [lint, infra-lint, typecheck, test]
     if: always() && github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Combine results
         env:
           LINT: ${{ needs.lint.result }}
+          INFRA_LINT: ${{ needs.infra-lint.result }}
           TYPECHECK: ${{ needs.typecheck.result }}
           TEST: ${{ needs.test.result }}
         run: |
-          echo "lint=$LINT typecheck=$TYPECHECK test=$TEST"
-          for r in "$LINT" "$TYPECHECK" "$TEST"; do
+          echo "lint=$LINT infra-lint=$INFRA_LINT typecheck=$TYPECHECK test=$TEST"
+          for r in "$LINT" "$INFRA_LINT" "$TYPECHECK" "$TEST"; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a required job finished with '$r'"; exit 1 ;;
