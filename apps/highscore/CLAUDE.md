@@ -26,9 +26,14 @@ should list only those. Gotchas:
 - **Press Start 2P is for three things only**: the wordmark (`variant="display"`), game names
   (`variant="game"`), score numerals (`variant="score"` / `scoreType(px)`). Everything else is
   Space Grotesk. `overline` is the small uppercase label (TODAY, YOU, turnout, FIX/EDIT).
-- **Icons are pixelarticons path data inlined in `PixelIcon.tsx`** (`.svg` imports don't bundle
-  on Metro or Cloudflare Pages). Add a glyph with
-  `pnpm --filter highscore-app run icons:paths <name>` and paste the output. Sizes 16/24/32 only.
+- **Icons are pixelarticons path data inlined in `pixelIconPaths.ts`, drawn as plain `View`s**
+  (`pixelIconRaster.ts` rasterizes the rectilinear `M/H/V/Z` paths onto the 24px grid). There is
+  deliberately **no `react-native-svg`**: it is a native module, and adding one bumps the iOS
+  runtime version off `1.0.1`, which is what the App Store binary claims — OTAs then stop
+  reaching Store users until a new binary clears review (that is why 1.1.0 was reverted). Same
+  reason `package.json` has no `icons:paths` script: `@expo/fingerprint` hashes `scripts`. Add a
+  glyph with `node apps/highscore/scripts/pixel-icon-paths.mjs <name>` and paste the output;
+  curves throw at raster time, so stay on the pixel grid. Sizes 16/24/32 only.
 - `useColorScheme()` / `ThemeProvider` / light tokens are irrelevant here — static `tokens`.
 - The brand mark (`BrandIcon`, `assets/`, app icon, splash, `public/index.html` chrome) is
   frozen: an external contractor owns the new mark. The pixel `HIGHSCORE` wordmark is type,

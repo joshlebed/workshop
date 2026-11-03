@@ -96,9 +96,9 @@ Rules:
 ## Iconography
 
 - **Pixelarticons** (MIT, `pixelarticons` npm package, 24px-grid pixel SVGs) for all UI
-  icons. Render via `react-native-svg` (add as a dependency; verify against
-  `scripts/check-expo-sdk-deps.mjs` before bumping anything native — it may require an
-  `app.json` version bump per the runtime-version policy).
+  icons. Rendered as plain `View`s from the vendored path data (`src/theme/pixelIconRaster.ts`),
+  **not** `react-native-svg` — a native dependency would bump the runtime version and cut
+  Store users off from OTAs until the next App Store release.
 - Icons are single-color: `text.secondary` at rest, `primary` when active/selected. A
   passive affordance that only _signals_ (the reorder grip on a game card, which you
   can't tap) sits one tier lower: `text.secondary` at 50% opacity, so it's seen at a
