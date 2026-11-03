@@ -98,6 +98,13 @@ loud because deleting here really does delete there (one `users` row, see
 `apps/backend/src/lib/accountDeletion.ts`). `src/lib/legal.ts` describes this flow and is pinned
 by `legal.test.ts` — if the behavior changes, that copy changes in the same PR.
 
+## Supported OTA runtimes
+
+`supported-runtimes.json` next to `app.json` is the set of binary versions the OTA workflow
+publishes to (see root CLAUDE.md → "Runtime-version policy"). Adding a native dependency means:
+bump `version`, add it to the list, keep the older entries until a PR actually imports the new
+module, then drop them in that PR. Never remove the current `version` from the list.
+
 ## App Store release shape (1.0)
 
 `app.json` `version` is the App Store version **and** the runtime version (`appVersion` policy),

@@ -584,6 +584,17 @@ also claims. The OTA applies, then crashes on next launch with
 `Native module RNFoo cannot be null` — existing users have to delete + reinstall. Bumping to
 `0.2.0` makes the OTA target `0.2.0`, which only post-PR builds claim.
 
+**HighScore publishes every OTA to several runtimes.** `apps/highscore/supported-runtimes.json`
+lists the `version` values of binaries users still run (Store + TestFlight);
+`deploy-mobile-highscore.yml` runs `eas update` once per entry, rewriting `version` in a
+scratch `app.json` each time, so a Store user on 1.0.1 and a TestFlight user on 1.1.0 get the
+same bundle. The JS must stay compatible with the **oldest** listed runtime: the first PR that
+imports a native module an older binary lacks must drop that runtime from the list in the same
+PR (the old binary keeps its last update and the operator nudges it to the App Store). A native
+bump adds the new version to the list — `scripts/check-supported-runtimes.mjs` (in `Quality`)
+fails when the current `app.json` version is missing. Workshop has no such list yet; its OTA
+targets `apps/workshop/app.json` `version` only.
+
 We can't use `policy: "fingerprint"`: EAS's `Configure expo-updates` step fails when the
 fingerprint computed pre-submit (Linux runner) disagrees with the one computed during
 prebuild (macOS builder) — they disagree because several native package directories hash
