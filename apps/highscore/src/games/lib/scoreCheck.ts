@@ -146,13 +146,17 @@ export function resolveScoreCheck(input: {
  * The line that states a row's score in words ("Score: 270"), or null when
  * the row needs none.
  *
- * - A picked row always says it: the text on the row may not show the number
- *   at all (a count, a pick the parser disagrees with).
+ * - A picked "I didn't finish" always says so.
  * - In a game with no formatter every read row says it, however the row came
- *   to be read (at upload, by the re-read after a teach, by the one-off
- *   re-read). Without a formatter a row's text is only the cleaned share, so
- *   two rows of one board must not differ by who happened to pick.
- * - In a game with a formatter the row's text already is the score.
+ *   to be read (at upload, by a pick, by the re-read after a teach, by the
+ *   one-off re-read). Without a formatter a row's text is only the cleaned
+ *   share, so two rows of one board must not differ by who happened to pick.
+ * - In a game with a formatter the row's text already is the score, so only a
+ *   pick the parser disagrees with (`adjusted`) says it: the number on the row
+ *   may then not be the one that counts. A pick the parser agrees with is
+ *   shown exactly like the parsed rows beside it. (The row that taught a
+ *   parser stays `picked` for teach's bookkeeping; the board must not single
+ *   it out — Size It Up, 2026-11-03.)
  *
  * `everyRow` is the account's teach capability: without it only picked rows
  * get the line, as before.
@@ -162,13 +166,16 @@ export function scoreLineLabel(
     scoreSource?: string | undefined;
     parseStatus?: string | undefined;
     scoreValue: number | null;
+    adjusted?: boolean | undefined;
   },
   game: { hasFormatter?: boolean | undefined },
   everyRow: boolean,
 ): string | null {
   if (entry.scoreSource === "picked") {
     if (entry.parseStatus === "no_result") return "Didn't finish";
-    return entry.scoreValue === null ? null : `Score: ${entry.scoreValue}`;
+    if (entry.scoreValue === null) return null;
+    if (game.hasFormatter === true && !entry.adjusted) return null;
+    return `Score: ${entry.scoreValue}`;
   }
   if (!everyRow || game.hasFormatter !== false) return null;
   if (entry.parseStatus === "no_result") return "No score";

@@ -206,12 +206,29 @@ describe("scoreLineLabel — every read row of a board is shown the same way", (
     expect(scoreLineLabel({ scoreValue: 4 }, untaughtFormat, true)).toBeNull();
   });
 
-  it("a game with a formatter already shows the score: only a pick adds the line", () => {
+  it("a game with a formatter already shows the score: only a disputed pick adds the line", () => {
     const formatted = { hasFormatter: true };
     expect(scoreLineLabel(reread, formatted, true)).toBeNull();
-    expect(scoreLineLabel(picked, formatted, true)).toBe("Score: 270");
+    // Size It Up on 2026-11-03: Rachel's pick taught the parser, which now
+    // reads her text to the same value. Her row looks like everyone else's.
+    expect(scoreLineLabel(picked, formatted, true)).toBeNull();
+    expect(scoreLineLabel({ ...picked, adjusted: false }, formatted, true)).toBeNull();
+    // The parser disagrees with the pick: the row's numbers may not be the
+    // score that counts, so say it.
+    expect(scoreLineLabel({ ...picked, adjusted: true }, formatted, true)).toBe("Score: 270");
+    expect(
+      scoreLineLabel(
+        { scoreSource: "picked", parseStatus: "no_result", scoreValue: null },
+        formatted,
+        true,
+      ),
+    ).toBe("Didn't finish");
+    // Without teach the same rule holds.
+    expect(scoreLineLabel(picked, formatted, false)).toBeNull();
+    expect(scoreLineLabel({ ...picked, adjusted: true }, formatted, false)).toBe("Score: 270");
     // A server that predates the field: unchanged.
     expect(scoreLineLabel(reread, {}, true)).toBeNull();
+    expect(scoreLineLabel(picked, {}, true)).toBe("Score: 270");
   });
 
   it("changes nothing for an account without teach", () => {
