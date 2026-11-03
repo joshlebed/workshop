@@ -652,6 +652,7 @@ export interface OfficialCatalogEntry {
  * See `docs/catalog-ops-runbook.md`. Keep sorted by title.
  */
 export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
+  { normalizedUrl: "geodle.me/daily", title: "Daily Geodle", category: "geography" },
   { normalizedUrl: "hbd.gg/play", title: "EthnoGuessr", category: "geography" },
   {
     normalizedUrl: "farflung.game",
@@ -676,6 +677,7 @@ export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
     category: "music-movies",
   },
   { normalizedUrl: "krillion.io", title: "Krillion", category: "trivia" },
+  { normalizedUrl: "wordle.louan.me", title: "Le Mot", category: "words" },
   { normalizedUrl: "linxicon.com", title: "Linxicon", category: "words" },
   { normalizedUrl: "minutecryptic.com", title: "Minute Cryptic", category: "words" },
   {
