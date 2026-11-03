@@ -316,13 +316,13 @@ deliberate critical-fix backports may change it before then. See
     branch protection requires — and never make it do real work again: it exists so the
     checks and the test shards run on separate runners at the same time (PR wall-clock
     ~max of them instead of the ~170s sum the single job had grown to). The shards are
-    `vitest run --shard=N/2` over the root `vitest.workspace.ts` — one vitest process for all
+    `vitest run --shard=N/2` over the root `vitest.config.ts` (`test.projects`) — one vitest process for all
     six packages. `pnpm -r --parallel test` was six vitest instances each sizing its own
     pool to the machine, ~24 forks on 4 vCPUs; the workspace alone halved the suite on a
     4-core box. Backend tests resolve `./drizzle` from the cwd, so the backend
     `test-setup.ts` does `process.chdir` (forks pool only — the threads pool is slower here
     anyway, measured 76s vs 60s). A new package's `vitest.config.ts` under `apps/` must be
-    added to `vitest.workspace.ts` (`packages/*` is globbed).
+    added to `vitest.config.ts` (`packages/*` is globbed).
   - `Mobile Metro bundle` — runs on `apps/workshop/**`, `packages/shared/**`, or
     `pnpm-lock.yaml` changes; skipped (treated passing) otherwise. Catches RN/Expo SDK drift.
   - `Mobile Metro bundle (highscore)` — runs on `apps/highscore/**`, `packages/**`, or

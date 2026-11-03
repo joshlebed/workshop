@@ -162,7 +162,7 @@ jobs:
           terraform init -backend=false
           terraform validate
 
-  # The whole vitest workspace (vitest.workspace.ts — one process, one worker
+  # The whole vitest workspace (vitest.config.ts — one process, one worker
   # pool for all six packages), split into two shards. `--shard` partitions
   # test files by count, which balanced to ~26s / ~40s on 4 cores when it was
   # introduced; bump the matrix if a shard creeps past `checks` again.
