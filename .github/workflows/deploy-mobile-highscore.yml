@@ -41,7 +41,16 @@ jobs:
 
       # eas-cli is pinned in apps/highscore devDependencies so the OTA path
       # uses the same CLI version as the HighScore native-build workflow.
-      - name: Publish HighScore JS bundle via EAS Update
+      #
+      # Runtime-version policy is `appVersion`, so an update only reaches the
+      # binaries whose app.json `version` matches. Users keep running older
+      # binaries for weeks after a native bump, so the same bundle is published
+      # once per entry in apps/highscore/supported-runtimes.json, rewriting
+      # `version` in a scratch copy of app.json for each. The JS must therefore
+      # stay compatible with the OLDEST listed runtime: the first PR that
+      # imports a native module an older binary lacks drops that runtime from
+      # the list (scripts/check-supported-runtimes.mjs keeps the list sane).
+      - name: Publish HighScore JS bundle via EAS Update (one update per supported runtime)
         working-directory: apps/highscore
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -52,8 +61,23 @@ jobs:
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com
           COMMIT_SHA: ${{ github.sha }}
         run: |
-          pnpm exec eas update \
-            --auto \
-            --channel production \
-            --environment production \
-            --message "ci: $COMMIT_SHA"
+          node ../../scripts/check-supported-runtimes.mjs
+          cp app.json /tmp/app.json.orig
+          trap 'cp /tmp/app.json.orig app.json' EXIT
+          failed=0
+          for runtime in $(jq -r '.[]' supported-runtimes.json); do
+            echo "::group::Publish for runtime $runtime"
+            jq --arg v "$runtime" '.expo.version = $v' /tmp/app.json.orig > app.json
+            if pnpm exec eas update \
+                --channel production \
+                --environment production \
+                --non-interactive \
+                --message "ci: $COMMIT_SHA (runtime $runtime)"; then
+              echo "Published runtime $runtime"
+            else
+              echo "::error::eas update failed for runtime $runtime"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$failed"
