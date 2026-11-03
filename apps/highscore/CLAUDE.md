@@ -122,11 +122,41 @@ pinned exactly. Rules:
   there in the PR that first imports it (the two with config plugins are already "used").
 - **A feature PR that first imports one of these must drop every older runtime from
   `supported-runtimes.json` in the same PR** — an OTA that imports a native module crashes a
-  pre-1.2.0 binary (`Cannot find native module …`).
+  pre-1.2.0 binary (`Cannot find native module …`). The one alternative is a **runtime gate**
+  like `src/lib/pushNotifications.ts` (below): compare the binary version first, `require` lazily
+  inside a function, catch a throw. Then the older runtimes stay.
 - **Any further native dep, config-plugin option, entitlement, or Info.plist key is another
   `version` bump + TestFlight build + App Review.** Silent/background push
   (`enableBackgroundRemoteNotifications` → `remote-notification` mode), notification sounds, and
   a custom notification icon are all plugin options and are deliberately left off.
+
+## Play reminders (push) — `src/lib/pushNotifications.ts` is the only door
+
+**`src/lib/pushNotifications.ts` is the only module that may load `expo-notifications`**, and it
+does so with one lazy `require` inside `loadExpoNotifications()`, only after
+`runtimeHasPush(Platform.OS, Updates.runtimeVersion ?? expoConfig.version)` says ≥ `1.2.0`, inside
+a try/catch (a throw = unsupported). Never add a top-level `import`/`import()` of it anywhere —
+Store users on 1.0.1 / 1.1.0 get every OTA and would crash. `import type` is fine.
+`pushNotifications.test.ts` pins this (spy loader never called below 1.2.0; a source scan fails if
+any other file under `src/` or `app/` mentions the package). Web is always unsupported;
+`__DEV__` web accepts `?fakePushSupported=1` (fake: permission undetermined → granted, no token).
+
+- **Registration** (`src/lib/pushRegistration.ts`): `_layout.tsx` re-posts an already-granted
+  token once per launch (`POST /v1/me/push-token`, device IANA zone — the reminder hour is
+  interpreted in the latest token's zone server-side); never while impersonating. `signOut`
+  DELETEs it best-effort (3s cap) before clearing credentials.
+- **Prompt moment**: never on launch. `usePostedScoreNotice` (every post surface) calls
+  `usePlayReminderOffer()`; `PlayReminderPrompt` shows once per session if supported, OS
+  permission is `undetermined`, and `user_flags` `games.play-reminder-prompted` is unset. Any
+  answer (incl. backdrop dismiss) writes the flag; we never re-ask automatically. "Turn on" →
+  OS dialog (after the Sheet's `onClosed`) → token → `PUT` prefs at the stored hour else the
+  server's `suggestedHour`. The sheet opens 1.2s after the post so it never stacks on the
+  closing paste sheet.
+- **Settings**: `/settings/notifications` (ProfileMenu → Notifications). Unsupported builds show
+  the App Store message instead of controls. Taps route `data.url` (`highscore:///`, set by
+  `apps/backend/src/jobs/playReminders.ts`) through `notificationPath`, cold start included.
+- **Delivery needs a push key**: the operator runs `eas credentials --platform ios` → Push
+  Notifications → set up a key once; until then Expo can't deliver to iOS.
 
 ## App Store release shape (1.0)
 

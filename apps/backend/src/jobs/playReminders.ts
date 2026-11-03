@@ -188,7 +188,7 @@ export async function runPlayReminderJob(
             to: candidate.expoPushToken,
             title: "Time to play",
             body: "Your daily games are waiting",
-            data: { url: "workshop:///games" },
+            data: { url: "highscore:///" },
           })),
         ),
       });

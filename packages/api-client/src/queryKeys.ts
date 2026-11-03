@@ -26,6 +26,8 @@ export const queryKeys = {
     impersonationTargets: ["users", "impersonationTargets"] as const,
     /** `GET /v1/users/me/flags` — the caller's durable per-user flags. */
     flags: ["users", "flags"] as const,
+    /** `GET /v1/me/notification-prefs` — daily-play reminder settings. */
+    notificationPrefs: ["users", "notificationPrefs"] as const,
   },
   client: {
     /** `GET /v1/client/release` — the operator-set App Store update nudge. */

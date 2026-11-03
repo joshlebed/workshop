@@ -19,6 +19,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
+import { PlayReminderPromptProvider } from "../src/components/PlayReminderPrompt";
 import { UpdateRequiredScreen } from "../src/components/UpdateRequiredScreen";
 import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
@@ -29,6 +30,8 @@ import { ViewDayProvider } from "../src/games/state/viewDay";
 import { useAppReleaseNudge } from "../src/hooks/useAppRelease";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
 import { isPublicRoute } from "../src/lib/publicRoutes";
+import { addResponseListener, notificationPath } from "../src/lib/pushNotifications";
+import { registerPushTokenIfGranted } from "../src/lib/pushRegistration";
 import { createQueryClient } from "../src/lib/query";
 import { Button, Text, ToastProvider, tokens } from "../src/theme";
 
@@ -138,9 +141,34 @@ function buildShareIntentTelemetry(
   };
 }
 
+/**
+ * Daily-play reminders (no-ops on web and pre-1.2.0 binaries — see
+ * `src/lib/pushNotifications.ts`): re-post an already-granted push token once
+ * per launch, and route a tapped notification (`data.url`, `highscore:///`) —
+ * including the one that cold-started the app. Waits for `signed-in` so the
+ * Stack is mounted before navigating. Never while impersonating: the device's
+ * token belongs to the real account.
+ */
+function usePushNotifications(status: ReturnType<typeof useAuth>["status"]) {
+  const router = useRouter();
+  const { token, user, impersonation } = useAuth();
+  const userId = user?.id ?? null;
+  useEffect(() => {
+    if (status !== "signed-in" || !token || !userId || impersonation) return;
+    void registerPushTokenIfGranted(token, userId);
+  }, [status, token, userId, impersonation]);
+  useEffect(() => {
+    if (status !== "signed-in") return;
+    return addResponseListener((url) => {
+      router.navigate(notificationPath(url) as Href);
+    });
+  }, [status, router]);
+}
+
 function AuthGate() {
   const { status, refresh } = useAuth();
   const shareIntentPending = useShareIntentRedirect(status);
+  usePushNotifications(status);
   // Widen to `string[]` so index access typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
   // generated in CI. Group segments (`(tabs)`) are stripped so the route
@@ -252,6 +280,7 @@ function AuthGate() {
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="profile" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="settings/notifications" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="admin/index" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="admin/analytics" />
         <Stack.Screen name="admin/graph" />
@@ -299,7 +328,9 @@ export default function RootLayout() {
               <AuthProvider>
                 <GamesRuntimeBridge>
                   <ViewDayProvider>
-                    <AuthGate />
+                    <PlayReminderPromptProvider>
+                      <AuthGate />
+                    </PlayReminderPromptProvider>
                   </ViewDayProvider>
                 </GamesRuntimeBridge>
               </AuthProvider>

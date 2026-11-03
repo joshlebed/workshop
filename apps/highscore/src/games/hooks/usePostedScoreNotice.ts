@@ -2,6 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import type { UpsertGameScoreResponse } from "@workshop/shared/games";
 import { useCallback } from "react";
+import { usePlayReminderOffer } from "../../components/PlayReminderPrompt";
 import { useToast } from "../../theme";
 import { clearGameScore, upsertGameScore } from "../api/games";
 import { postedCheckNotice } from "../lib/postedCheck";
@@ -33,9 +34,13 @@ export function usePostedScoreNotice(): (input: PostedScoreInput) => void {
   const { token } = useGamesRuntime();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
+  // Every post surface lands here on success — the one place the daily-nudge
+  // pre-prompt is offered (once per session; it decides whether to show).
+  const offerReminder = usePlayReminderOffer();
 
   return useCallback(
     ({ result, gameId, periodKey, scoreRaw, today, posted }: PostedScoreInput) => {
+      offerReminder();
       const notice = postedCheckNotice(result.check, today);
       if (!notice) {
         showToast({ message: posted, tone: "success" });
@@ -84,6 +89,6 @@ export function usePostedScoreNotice(): (input: PostedScoreInput) => void {
         onAction: () => void onAction(),
       });
     },
-    [queryClient, showToast, token],
+    [offerReminder, queryClient, showToast, token],
   );
 }

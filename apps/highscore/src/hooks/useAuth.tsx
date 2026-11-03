@@ -30,6 +30,7 @@ import {
 } from "react";
 import { requestAccountDeletion } from "../api/users";
 import { runAccountDeletion } from "../lib/accountDeletion";
+import { unregisterPushToken } from "../lib/pushRegistration";
 
 const AUTO_DEV_OPT_OUT_KEY = "highscore.disable-auto-dev";
 const DEV_USER = { email: "joshlebed@gmail.com", displayName: "Josh" } as const;
@@ -292,6 +293,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     const token = state.token;
+    // Best-effort, while the session still authenticates: this device stops
+    // getting reminders for the account it's leaving. Bounded + never throws.
+    await unregisterPushToken(token);
     try {
       if (token) {
         await apiRequest({ method: "POST", path: "/v1/auth/signout", token });
