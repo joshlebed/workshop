@@ -583,8 +583,9 @@ Tools and the trade-offs taken:
   (2026-11-03): Lambda `nodejs26.x` is a public preview with no SLA ("should not be used for
   production workloads"; GA targeted Nov 2026) and the runner image doesn't cache it yet.
   Bumping is four edits once both land: `.nvmrc`, `.mise.toml`, `engines`, `infra/lambda.tf`
-  (+ the two esbuild targets). Cloudflare Pages reads `NODE_VERSION` from its own dashboard
-  env, not `.nvmrc` — set it to 24 there too.
+  (+ the two esbuild targets). Cloudflare Pages reads `NODE_VERSION` from its own project env, not
+  `.nvmrc`; both projects were set to `24` (production + preview) on 2026-11-03 via the Pages API
+  (the sandbox's `CLOUDFLARE_API_TOKEN` can PATCH `deployment_configs`). Bump it with Node.
 - **The path filter is one `gh api …/pulls/N/files` call + grep** in
   `.github/actions/detect-changes` (~1s), not dorny/paths-filter (two action downloads + two
   API calls, ~2–3s). On push events every output is true (only `migrate-smoke` reads them on
