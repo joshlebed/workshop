@@ -208,7 +208,10 @@ deliberate critical-fix backports may change it before then. See
   (`GAME_CATEGORIES` is the fallback order; `other` catches every unknown URL). "Listed" means
   `isOfficiallyListed`: a `catalog: true` registry game or an entry in `OFFICIAL_CATALOG_EXTRAS`
   (same file) — **every extra was reviewed by a human; popularity alone never lists a URL**,
-  that is the content gate. The daily "HighScore catalog audit" Niteshift automation runs
+  that is the content gate. **A catalog game must have a parser and a formatter** (operator
+  rule): an untaught extra stays out until taught, and the audit only proposes taught ones. Not
+  enforced at read time on purpose — fresh DBs (tests) lack Wordle/Framed/Strands/Spelling Bee's
+  prod-only formatters, so a `/catalog` gate would hide them. The daily "HighScore catalog audit" Niteshift automation runs
   `pnpm --filter @workshop/backend run ops:catalog-audit` (read-only, prod via SSM) and opens a
   PR proposing extras + reporting parser/formatter health; the operator edits categories and
   merges. `docs/catalog-ops-runbook.md`.

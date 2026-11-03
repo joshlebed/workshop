@@ -649,7 +649,9 @@ export interface OfficialCatalogEntry {
  * reaches people outside the adder's friend graph, so this list is the
  * content gate. The daily `catalog-audit` Niteshift automation proposes
  * entries (games with players that aren't listed) in a PR; a human merges.
- * See `docs/catalog-ops-runbook.md`. Keep sorted by title.
+ * An entry must have a parser AND a formatter on its prod `games` row — an
+ * untaught game stays out until someone teaches it. See
+ * `docs/catalog-ops-runbook.md`. Keep sorted by title.
  */
 export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
   { normalizedUrl: "hbd.gg/play", title: "EthnoGuessr", category: "geography" },
@@ -670,13 +672,8 @@ export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
     category: "geography",
   },
   { normalizedUrl: "gerrymandle.com", title: "Gerrymandle", category: "puzzles" },
-  {
-    normalizedUrl: "bandle.app/menu",
-    title: "Bandle",
-    category: "music-movies",
-  },
   { normalizedUrl: "krillion.io", title: "Krillion", category: "trivia" },
-  { normalizedUrl: "linxicon.com", title: "Linxicon", category: "words" },
+  { normalizedUrl: "wordle.louan.me", title: "Le Mot", category: "words" },
   { normalizedUrl: "minutecryptic.com", title: "Minute Cryptic", category: "words" },
   {
     normalizedUrl: "magnitudle.com/size-it-up",

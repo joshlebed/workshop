@@ -6,6 +6,9 @@
 //      game type and a content flag so the operator's review is a yes/no
 //      plus a category, not research. The automation turns these into a PR
 //      against `OFFICIAL_CATALOG_EXTRAS`; a human merges — never this code.
+//      Only a candidate with a parser AND a formatter is proposed: a catalog
+//      game must read and render scores from the first paste (operator rule,
+//      2026-11-03). The rest are reported as "not ready" until taught.
 //   2. Health of what's listed: parsers (stored code, 30-day unread rate,
 //      open pick conflicts) and formatters (stored code), so a listed game
 //      that reads scores badly gets fixed instead of quietly ranking nobody.
@@ -50,6 +53,8 @@ interface CatalogCandidate {
    * like a page tagline ("Krillion · the daily dive"); `suggestedTitle` is
    * what `cleanGameTitle` makes of it — rename the row before listing.
    * `no-parser`: scores for it are unread until someone teaches it.
+   * `no-formatter`: rows show raw share text. Either of the two keeps a
+   * candidate out of the proposed extras (`isCatalogReady`).
    * `single-player`: only one person has it.
    */
   flags: string[];
@@ -110,6 +115,18 @@ const CATEGORY_HINTS: { category: GameCategory; pattern: RegExp }[] = [
 ];
 
 /** Keyword guess at a candidate's game type — a starting point for the operator, never authoritative. */
+/** A game may be listed only once it can both read (parser) and render (formatter) a score. */
+function isCatalogReady(game: { hasParser: boolean; hasFormatter: boolean }): boolean {
+  return game.hasParser && game.hasFormatter;
+}
+
+/** Candidates the automation proposes for `OFFICIAL_CATALOG_EXTRAS`: clean title, parser + formatter. */
+function proposableCandidates(report: CatalogAuditReport): CatalogCandidate[] {
+  return report.candidates.filter(
+    (c) => !c.flags.includes("objectionable-title") && isCatalogReady(c),
+  );
+}
+
 export function suggestCategory(title: string, url: string): GameCategory {
   const haystack = `${title} ${url}`;
   for (const { category, pattern } of CATEGORY_HINTS) {
@@ -172,6 +189,7 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
       const tagline = titleLooksLikeTagline(g.title);
       if (tagline) flags.push("tagline-title");
       if (!hasParser) flags.push("no-parser");
+      if (!hasFormatter) flags.push("no-formatter");
       if (r.playerCount === 1) flags.push("single-player");
       const suggestedTitle = tagline ? cleanGameTitle(g.title) : null;
       candidates.push({
@@ -196,6 +214,11 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
     // only parses once someone taught it.
     if (!hasParser) issues.push("no parser: every score is stored unread");
     if (!hasFormatter) issues.push("no formatter: rows show raw share text");
+    // An extra is listed only by our say-so, so an untaught one comes out of
+    // the catalog until it is taught. A registry game gets its code fixed.
+    if (!isCatalogReady({ hasParser, hasFormatter }) && !gameDefinitionForKey(g.gameKey)?.catalog) {
+      issues.push("not catalog-ready: remove from OFFICIAL_CATALOG_EXTRAS until it is taught");
+    }
     if (g.parseConflictAt) issues.push("open parse conflict (two players' picks disagree)");
     if (titleLooksLikeTagline(g.title)) {
       const clean = cleanGameTitle(g.title);
@@ -271,17 +294,30 @@ export function renderCatalogAuditMarkdown(report: CatalogAuditReport): string {
       );
     }
     out.push("");
+    const proposable = proposableCandidates(report);
     out.push(
-      "Proposed `OFFICIAL_CATALOG_EXTRAS` entries (review the category; drop anything flagged `objectionable-title`):",
+      "Proposed `OFFICIAL_CATALOG_EXTRAS` entries (review the category). Only candidates with a parser and a formatter and no `objectionable-title` flag are proposed:",
     );
     out.push("");
-    out.push("```ts");
-    for (const c of report.candidates.filter((c) => !c.flags.includes("objectionable-title"))) {
+    if (proposable.length === 0) out.push("_None ready._");
+    else {
+      out.push("```ts");
+      for (const c of proposable) {
+        out.push(
+          `{ normalizedUrl: ${JSON.stringify(c.normalizedUrl)}, title: ${JSON.stringify(c.suggestedTitle ?? c.title)}, category: ${JSON.stringify(c.suggestedCategory)} },`,
+        );
+      }
+      out.push("```");
+    }
+    const notReady = report.candidates.filter(
+      (c) => !c.flags.includes("objectionable-title") && !isCatalogReady(c),
+    );
+    if (notReady.length > 0) {
+      out.push("");
       out.push(
-        `{ normalizedUrl: ${JSON.stringify(c.normalizedUrl)}, title: ${JSON.stringify(c.suggestedTitle ?? c.title)}, category: ${JSON.stringify(c.suggestedCategory)} },`,
+        `Not ready (needs a parser and a formatter before it can be listed): ${notReady.map((c) => c.title).join(", ")}`,
       );
     }
-    out.push("```");
   }
   out.push("");
 
