@@ -244,6 +244,20 @@ jobs:
           printf '%s' "$ASC_API_KEY_CONTENT" > "$ASC_API_KEY_PATH"
           chmod 600 "$ASC_API_KEY_PATH"
 
+      # eas-cli --non-interactive skips its best-effort Apple auth, so the
+      # main target's App ID capabilities are never synced from the declared
+      # entitlements (only later targets, after a lazy auth). A new entitlement
+      # then fails in Xcode with "Provisioning profile doesn't include the …
+      # capability". Sync them explicitly first; see the script header.
+      - name: Sync iOS capabilities to the App ID
+        env:
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: Q65U6C65ZZ
+          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
+        run: node scripts/eas-sync-ios-capabilities.mjs apps/workshop
+
       # No `--no-wait`: we want this step to exit on the actual build
       # outcome, not on enqueue acceptance. `--auto-submit` still chains
       # the TestFlight submit on EAS's side after the build succeeds, so
