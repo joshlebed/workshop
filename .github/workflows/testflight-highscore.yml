@@ -244,6 +244,13 @@ jobs:
           EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
           EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          # Without these, eas-cli can't pick the Apple team non-interactively
+          # ("Select your Apple Team Type" prompt), silently skips Apple auth,
+          # and reuses stored profiles without syncing capabilities — a new
+          # entitlement (Push, 2026-11-03) then fails in Xcode with
+          # "Provisioning profile doesn't include the … capability".
+          EXPO_APPLE_TEAM_ID: Q65U6C65ZZ
+          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
           BUILD_LOG: ${{ runner.temp }}/eas-build.log
         run: |
           set -euo pipefail
