@@ -81,7 +81,7 @@ permissions:
 # the JSON schema of `eas build --json` (which the build job parses) or the
 # behaviour of `--non-interactive`. Bump deliberately.
 env:
-  EAS_CLI_VERSION: "18.8.1"
+  EAS_CLI_VERSION: "27.4.0"
 
 jobs:
   fingerprint:
@@ -314,7 +314,7 @@ jobs:
             FIX="Delete the PP via \`eas credentials --platform ios\` (production → Build Credentials → Provisioning Profile → Delete one), then re-fire \`testflight-highscore.yml --field force=true\`. See CLAUDE.md → \"Provisioning profile out of sync after a capability toggle\"."
           elif ! git ls-remote --exit-code --tags origin "hs-ios-fp-*" > /dev/null 2>&1 && echo "$LOG" | grep -q "Distribution Certificate is not validated for non-interactive builds"; then
             REASON="First-build credentials are not assigned to the HighScore EAS project"
-            FIX="Run \`cd apps/highscore && npx eas-cli@18.8.1 credentials --platform ios\` locally, then production → Build Credentials → All. Reuse the valid team certificate and create profiles for HighScore + HighScoreShare; do NOT delete/revoke Workshop's certificate. Then re-fire \`testflight-highscore.yml --field force=true\`."
+            FIX="Run \`cd apps/highscore && npx eas-cli@27.4.0 credentials --platform ios\` locally, then production → Build Credentials → All. Reuse the valid team certificate and create profiles for HighScore + HighScoreShare; do NOT delete/revoke Workshop's certificate. Then re-fire \`testflight-highscore.yml --field force=true\`."
           elif echo "$LOG" | grep -q "Distribution Certificate is not validated for non-interactive builds"; then
             REASON="Distribution Certificate in EAS can't be validated non-interactively"
             FIX="Stale or pre-API-key cert. Run \`eas credentials --platform ios\` locally, delete + revoke the cert, then \"Build Credentials → All\" to regenerate. NOT a \`pnpm setup:asc-key\` issue. See CLAUDE.md → \"Distribution Certificate out of sync\"."

@@ -17,7 +17,9 @@
 //
 // Needs: EXPO_ASC_API_KEY_PATH, EXPO_ASC_KEY_ID, EXPO_ASC_ISSUER_ID,
 // EXPO_APPLE_TEAM_ID, EXPO_APPLE_TEAM_TYPE. Uses eas-cli internals (pinned
-// in each app's devDependencies); re-check the import paths on an eas-cli bump.
+// in each app's devDependencies); re-check the import paths on an eas-cli bump
+// (last verified against eas-cli 27.4.0, where non-interactive builds still
+// skip the best-effort Apple auth, so this step is still needed).
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";

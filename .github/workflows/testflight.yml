@@ -87,7 +87,7 @@ permissions:
 # the JSON schema of `eas build --json` (which the build job parses) or the
 # behaviour of `--non-interactive`. Bump deliberately.
 env:
-  EAS_CLI_VERSION: "18.8.1"
+  EAS_CLI_VERSION: "27.4.0"
 
 jobs:
   fingerprint:

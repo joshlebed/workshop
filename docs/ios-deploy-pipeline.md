@@ -92,7 +92,7 @@ the problem. eas-cli will use an assigned certificate non-interactively, but wil
 or choose a missing one. Bootstrap the affected app once from a local interactive session:
 
 ```bash
-cd apps/highscore && npx eas-cli@18.8.1 credentials --platform ios
+cd apps/highscore && npx eas-cli@27.4.0 credentials --platform ios
 # production → Build Credentials → All
 # Reuse the valid team certificate; create profiles for HighScore + HighScoreShare.
 # Do NOT delete or revoke Workshop's certificate.
