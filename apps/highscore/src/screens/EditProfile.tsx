@@ -49,6 +49,7 @@ export default function EditProfile() {
   const { user, updateProfile } = useAuth();
   const { showToast } = useToast();
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const [name, setName] = useState(user?.displayName ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
@@ -205,6 +206,11 @@ export default function EditProfile() {
 
         <Group title="Account">
           {user?.email ? <InfoRow label="Email" value={user.email} testID="profile-email" /> : null}
+          <LinkRow
+            label="Notifications"
+            onPress={() => router.push("/settings/notifications")}
+            testID="open-notification-settings"
+          />
           <BlockedUsersRow />
         </Group>
 
