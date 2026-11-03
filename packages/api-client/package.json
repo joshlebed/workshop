@@ -18,7 +18,8 @@
     "./useLivePollingInterval": "./src/useLivePollingInterval.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
+    "typecheck:tsc": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {

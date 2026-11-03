@@ -104,18 +104,20 @@ deliberate critical-fix backports may change it before then. See
 - **Workflow path-filter self-trigger**: if a workflow's `on.push.paths:` includes its own
   filename, any PR touching the workflow file fires it on `main` post-merge even if no other
   path matched. Intentional but worth knowing when a PR's diff spans multiple workflow files.
-- **Docs-only PRs skip `quality` through the `changes` job's `code` filter, not a second
-  workflow.** `ci.yml` runs on every PR; `quality` has `needs: changes` and is gated on
-  `needs.changes.outputs.code == 'true'`, and a skipped required job counts as passing. Never
-  reintroduce a sibling workflow that posts a job with a required check's name: the old
-  `ci-docs.yml` shim did, and on a PR touching code _and_ a `.md` its instant success
-  satisfied branch protection before the real `Quality` ran (#476 auto-merged that way). A
-  new required job should be gated the same way (`needs: changes` + a filter output), and a
-  new doc-ish path goes into the `code` filter's `!` list. That filter is its own
-  `dorny/paths-filter` step with `predicate-quantifier: every` — with the default `some`, the
-  `**` pattern matches every file and the `!` exclusions do nothing (#481 ran the full job on a
-  one-line `.md` change); don't fold it into the inclusive `mobile`/`migrations` step. Verified
-  2026-10-25 on a docs-only PR after #482: `Detect changes` ran, `Quality` was skipped, mergeable.
+- **Docs-only PRs do no real work, through the shared `detect-changes` composite action, not a
+  second workflow.** `ci.yml` runs on every PR; every job runs
+  `.github/actions/detect-changes` right after checkout and gates each of its own steps on the
+  outputs (`code`, `mobile`, `highscore_mobile`, `migrations`, `infra`, `workflows`). A docs-only
+  PR therefore starts every job (~20s of setup each) and skips every real step; the job still
+  reports success. There is deliberately no separate `changes` job the others `needs:` — that
+  hop was ~17s of serial latency on every PR. Never reintroduce a sibling workflow that posts a
+  job with a required check's name: the old `ci-docs.yml` shim did, and on a PR touching code
+  _and_ a `.md` its instant success satisfied branch protection before the real `Quality` ran
+  (#476 auto-merged that way). A new doc-ish path goes into the `code` filter's `!` list in the
+  composite action. That filter is its own `dorny/paths-filter` step with
+  `predicate-quantifier: every` — with the default `some`, the `**` pattern matches every file
+  and the `!` exclusions do nothing (#481 ran the full job on a one-line `.md` change); don't
+  fold it into the inclusive `mobile`/`migrations` step.
 - **iOS capabilities are config-as-code.** Declare iOS capabilities (App Groups, Push, Associated
   Domains, etc.) in `apps/workshop/app.json` (`ios.entitlements`) or via an Expo config plugin
   **before** enabling in the Apple Developer Portal. EAS's capability sync reverts portal-only
@@ -322,20 +324,11 @@ deliberate critical-fix backports may change it before then. See
   add the HighScore check after its introducing PR merges. `terraform plan` is advisory (no
   docs shim, so requiring it would block non-infra PRs). Agents get a 403 reading branch
   protection via the API — ask the operator to update this bullet if the required list changes.
-  - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs. Since
-    PR #523 it is a zero-work **gate** over `Checks (…)` (lint, typecheck, knip, format,
-    terraform, actionlint) and `Test (shard 1/2)` / `Test (shard 2/2)`; it passes when those
-    succeeded or were skipped (docs-only) and fails otherwise. Keep the name — it is what
-    branch protection requires — and never make it do real work again: it exists so the
-    checks and the test shards run on separate runners at the same time (PR wall-clock
-    ~max of them instead of the ~170s sum the single job had grown to). The shards are
-    `vitest run --shard=N/2` over the root `vitest.config.ts` (`test.projects`) — one vitest process for all
-    six packages. `pnpm -r --parallel test` was six vitest instances each sizing its own
-    pool to the machine, ~24 forks on 4 vCPUs; the workspace alone halved the suite on a
-    4-core box. Backend tests resolve `./drizzle` from the cwd, so the backend
-    `test-setup.ts` does `process.chdir` (forks pool only — the threads pool is slower here
-    anyway, measured 76s vs 60s). A new package's `vitest.config.ts` under `apps/` must be
-    added to `vitest.config.ts` (`packages/*` is globbed).
+  - `Quality (lint, typecheck, test, knip, format, terraform, actionlint)` — always runs. It is
+    a zero-work **gate** over `Checks (…)` and `Test (shard N/3)`; it passes when those succeeded
+    or were skipped and fails otherwise. Keep the name — it is what branch protection requires
+    — and never make it do real work again: it exists so the checks and the test shards run on
+    separate runners at the same time. See "CI speed" below for what each piece costs.
   - `Mobile Metro bundle` — runs on `apps/workshop/**`, `packages/shared/**`, or
     `pnpm-lock.yaml` changes; skipped (treated passing) otherwise. Catches RN/Expo SDK drift.
   - `Mobile Metro bundle (highscore)` — runs on `apps/highscore/**`, `packages/**`, or
@@ -530,6 +523,89 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
 - **Wrap top-level screens in `Screen` from `@workshop/ui`** when adding a new route.
   No-op on native; on web it constrains content to a ~560px reading column. Without it,
   RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on web.
+
+## CI speed
+
+PR wall-clock is the number that matters, and this repo is **public**, so Actions minutes are
+free and concurrency is 20 jobs: fan-out costs nothing, serial time costs everything. History:
+the single `Quality` job grew 96s → 169s over Sep–Oct 2026 (Test step 30s → 91s); #523 split
+it; #542 removed the serial `changes` job, swapped tools, and fanned out. Measured on
+`ubuntu-latest` (4 vCPU), run created → gate done:
+
+| Shape                                                                 | End to end |
+| --------------------------------------------------------------------- | ---------- |
+| One `Quality` job (Nov 2)                                             | ~170s      |
+| #523: checks + 2 test shards                                          | 90–116s    |
+| #542 first pass: inline filter, tsgo, 3 shards                        | 70s        |
+| #542 final: tarball checkout, Node 22, lint/typecheck split, 8 shards | ~50s       |
+
+**Per-job floor is ~13s** before the first real step: runner pick-up ~2s, tarball checkout
+~2s, path filter ~2s, pnpm binary ~1s, node_modules restore ~6s (872 MB; a cold
+`pnpm fetch + install --offline` is ~15s, so the cache is a modest win). Then the `Quality`
+gate adds ~5s (its own pick-up + 3s) after the slowest job. So ~30s is the floor for a job
+with ~12s of work, and the run is as slow as its slowest job. Levers left, in order:
+
+1. **Require the real jobs in branch protection** (`Lint`, `Typecheck`, the eight `Test`
+   shards, both Metro bundles, `Migrate smoke`) and delete the `quality` gate: −5s. Admin
+   action, not something an agent can do.
+2. **A faster runner provider** (Blacksmith / Depot / Namespace / WarpBuild: `runs-on:`
+   drop-ins, ~2x CPU, cache restore at ~1 GB/s, free tiers for personal accounts): the 13s
+   floor becomes ~5s and every work step roughly halves. External service with billing.
+3. **Shared Postgres instead of per-file PGlite** in the backend tests (one service container,
+   `CREATE DATABASE … TEMPLATE` per file, ~50ms instead of ~2.5s WASM boot × 28 files): drops
+   ~70s of CPU and would let the shards go back to 3–4. A 28-file harness rewrite, and local
+   `vitest` would need Docker running. Not done.
+
+Tools and the trade-offs taken:
+
+- **Checkout is a tarball download of the PR head**, inlined in each job (a local composite
+  action can't check itself out). ~2s vs 6–8s for `actions/checkout` — merge ref, head sha
+  and a plain `git fetch --depth=1` all measured 6–8s on this 13 MB tree. Two consequences:
+  there is no `.git` (nothing in a PR job needs one except actionlint, which gets a
+  `git init`; push-event jobs still use `actions/checkout`), and **CI tests the branch head,
+  not the merge with `main`** — a PR green on a stale head can break `main` if `main` moved.
+  Same exposure as `ref: head.sha`, which most repos accept; "Require branches to be up to
+  date" in branch protection is the switch if it ever bites. The node_modules cache key now
+  hashes the head's lockfile, so the first run after `main` bumps deps misses once.
+- **Node is the runner image's preinstalled 22.x, not `.nvmrc`'s 20.19.4.** `setup-node`
+  spent ~4s per job downloading 20.19.4 (the image only ships 22 in its toolcache). The suite,
+  tsgo, Metro export and migrations all pass on 22. **Lambda still runs `nodejs20.x`**
+  (`infra/lambda.tf`) and `engines` says `<21`, so CI and prod now differ by a Node major —
+  pnpm prints an "Unsupported engine" warning on every CI step. AWS deprecated the Node 20
+  Lambda runtime on 2026-04-30, so the right fix is moving Lambda + `.nvmrc` + `engines` to
+  22, which is an "ask first" runtime change. `node-from-nvmrc: true` on the composite
+  restores the pinned version in CI if you'd rather pay the 4s.
+- **Typecheck is `tsgo`** (`@typescript/native-preview`, exact pin): 17.6s → 6.6s for the six
+  packages on 4 cores, identical verdicts everywhere and on an injected error. Preview
+  software; `pnpm -r run typecheck:tsc` is the `tsc` fallback. Editors still use tsc.
+- **pnpm is a direct sha256-pinned binary download** (~1s). `pnpm/action-setup
+standalone: true` was ~8s (npm-installs a self-installer that installs _latest_ pnpm and
+  then switches). Bumping pnpm = version + hash in the composite plus `.mise.toml` /
+  `packageManager`.
+- **Tests: one vitest process for the repo (root `vitest.config.ts`, `test.projects`) in
+  eight duration-balanced shards.** `scripts/ci-test-shards.mjs` globs `*.test.ts` (so a
+  new file is never dropped), weights each from `scripts/test-weights.json` (ms; regenerate
+  with `--regen` after a local `vitest run --reporter=json --outputFile=/tmp/vt.json`; the
+  script adds ~2.5s for a `new PGlite(` file and ~0.8s for a sandbox file because the
+  reporter's time excludes `beforeAll`), and assigns longest-first. `vitest --shard` splits
+  by count and put the 9s parity file next to a run of PGlite files. The floor of a shard is
+  its biggest file: `builtin.parity.test.ts` (~9s alone, 63 serial QuickJS round-trips).
+  Backend tests resolve `./drizzle` from the cwd, so the backend `test-setup.ts` does
+  `process.chdir` (forks pool only; threads measured slower, 76s vs 60s). The teach "waits
+  the budget" test really sleeps: it now runs with `TEACH_TARGETS_BUDGET_MS=1000` (set in
+  `vi.hoisted`) instead of the production 4s, 6.7s → 1.9s. A new `apps/*` package's
+  `vitest.config.ts` must be added to the root `projects` list (`packages/*` is globbed).
+- **`migrate-smoke` runs on in-memory PGlite** (`apps/backend/scripts/migrate-smoke.mjs`:
+  apply, re-apply, bookkeeping count = `.sql` files) — the `postgres:16` service container
+  cost ~11s to start for ~1s of migrations. PGlite is Postgres 17, prod's major.
+- **actionlint and terraform fmt/validate are path-gated** (`.github/**`, `infra/**`);
+  actionlint pinned to the `.mise.toml` version (the `latest` lookup was a network call).
+- **Metro's transform cache (`/tmp/metro-cache`, ~90 MB) is restored from actions/cache** in
+  the bundle jobs with a per-run key + prefix `restore-keys`; warm `expo export` ~10s vs ~31s.
+- **Rejected after measuring:** vitest threads pool (slower); caching migrated PGlite data
+  dirs (migrations are 0.4s of the 2.4s boot); a pnpm-store cache instead of node_modules
+  (14s + 7s save vs 6s restore); `actions/checkout` with `ref: head.sha` (same 6s as the
+  merge ref). Biome/knip/prettier are already ~1–4s each. Metro has no faster drop-in for Expo.
 
 ## Debugging production
 
@@ -1162,9 +1238,9 @@ ship prod, dropping the wrangler step changed nothing about deploys.
 ## Running commit-ready checks
 
 ```bash
-pnpm run typecheck     # ~12s
+pnpm run typecheck     # ~4s (tsgo; `pnpm -r run typecheck:tsc` for plain tsc)
 pnpm run lint          # ~1s
-pnpm run test          # ~15s on 16 cores, ~70s on 4 (vitest workspace; see CI bullet)
+pnpm run test          # ~15s on 16 cores, ~70s on 4 (one vitest workspace; see "CI speed")
 pnpm run knip          # ~2s — blocks CI: an export with no consumer in the same PR fails Quality
 cd infra && terraform fmt -check -recursive && terraform validate
 ```

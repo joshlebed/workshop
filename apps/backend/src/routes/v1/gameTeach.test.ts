@@ -18,6 +18,12 @@ import type { ScorePick } from "@workshop/shared/scoreCandidates";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Must run before the route module is imported (the budget is read at import).
+vi.hoisted(() => {
+  process.env.TEACH_TARGETS_BUDGET_MS = "1000";
+});
+
 import { resetConfigForTesting } from "../../lib/config.js";
 import { signSession } from "../../lib/session.js";
 
@@ -500,7 +506,9 @@ describe("candidates — step 1 labels", () => {
     }
   });
 
-  it("waits 4s for the labels: an answer at 2.7s is used, one at 4.2s is not", async () => {
+  it("waits the budget for the labels: an answer inside it is used, one after it is not", async () => {
+    // Budget is 1s here (TEACH_TARGETS_BUDGET_MS, set in vi.hoisted above);
+    // the delays are the production 2.7s / 4.2s scaled to it.
     const gameId = await newGame();
     llm.targets = { score: 2, puzzle_number: [1] };
     const ask = () =>
@@ -508,7 +516,7 @@ describe("candidates — step 1 labels", () => {
         scoreRaw: krillion(81, 415),
       });
 
-    llm.delayMs = 2700;
+    llm.delayMs = 700;
     let res: Awaited<ReturnType<typeof ask>> | undefined;
     const [inTime] = await logged("teach_targets", async () => {
       res = await ask();
@@ -517,23 +525,23 @@ describe("candidates — step 1 labels", () => {
     expect(inTime).toMatchObject({
       step: "find_targets",
       outcome: "labelled",
-      llm_budget_ms: 4000,
+      llm_budget_ms: 1000,
       llm_timed_out: false,
     });
-    expect(inTime?.llm_ms).toBeGreaterThanOrEqual(2650);
+    expect(inTime?.llm_ms).toBeGreaterThanOrEqual(650);
     expect(inTime?.elapsed_ms).toBeGreaterThanOrEqual(Number(inTime?.llm_ms));
 
-    llm.delayMs = 4200;
+    llm.delayMs = 1200;
     const [late] = await logged("teach_targets", async () => {
       res = await ask();
     });
     // The chips are still there; only the labels are missing.
     expect(res?.body).toMatchObject({ labelled: false, scoreId: null });
     expect(res?.body.candidates.length).toBeGreaterThan(0);
-    expect(late).toMatchObject({ outcome: "timeout", llm_budget_ms: 4000, llm_timed_out: true });
+    expect(late).toMatchObject({ outcome: "timeout", llm_budget_ms: 1000, llm_timed_out: true });
     // Gave up at the budget, not when the model would have answered.
-    expect(late?.llm_ms).toBeGreaterThanOrEqual(3950);
-    expect(late?.llm_ms).toBeLessThan(4190);
+    expect(late?.llm_ms).toBeGreaterThanOrEqual(950);
+    expect(late?.llm_ms).toBeLessThan(1190);
   }, 20_000);
 
   it("drops a pre-selection that is not one of the computed candidates", async () => {
