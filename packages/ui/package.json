@@ -27,9 +27,9 @@
     "react-native-reanimated": "4.2.1"
   },
   "devDependencies": {
-    "@types/react": "19.2.14",
+    "@types/react": "19.2.18",
     "expo": "55.0.24",
     "typescript": "5.9.3",
-    "vitest": "2.1.9"
+    "vitest": "4.1.12"
   }
 }

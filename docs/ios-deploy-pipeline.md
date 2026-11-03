@@ -34,9 +34,9 @@ Almost always the deploy pipeline, not per-platform code. Check in order:
    run means no matching binary exists yet. Two common failure shapes:
    - Fails at the `Write ASC API key` step → the `ASC_API_KEY_*` GitHub Actions secrets
      are unset or stale. Recovery: `pnpm setup:asc-key`.
-   - Fails at `Build + auto-submit (await success)` with `Distribution Certificate is
-not validated for non-interactive builds` followed by `Failed to display prompt: Select
-     your Apple Team Type` → **don't rotate the ASC key first.** The most common cause is
+   - Fails at `Build + auto-submit (await success)` with
+     `Distribution Certificate is not validated for non-interactive builds` followed by
+     `Failed to display prompt: Select your Apple Team Type` → **don't rotate the ASC key first.** The most common cause is
      a distribution cert in EAS that was minted interactively (Apple ID + password) before
      the ASC API key was wired in — the API key can't adopt a cert it didn't mint, so
      eas-cli falls through to interactive Apple auth and dies. Open

@@ -18,5 +18,5 @@ export function computeNewItemsDelta(opts: {
   if (previousLength === null) return 0;
   if (scrollY <= threshold) return 0;
   const delta = currentLength - previousLength;
-  return delta > 0 ? delta : 0;
+  return Math.max(delta, 0);
 }

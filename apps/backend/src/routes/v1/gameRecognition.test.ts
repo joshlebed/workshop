@@ -322,7 +322,7 @@ describe("POST /v1/games/recognize", () => {
 });
 
 describe("shadow mode on score posts", () => {
-  const shadowLines = (spy: ReturnType<typeof vi.spyOn>) =>
+  const shadowLines = (spy: { mock: { calls: unknown[][] } }) =>
     spy.mock.calls
       .filter(([msg]) => msg === "game recognition shadow")
       .map(([, fields]) => fields as Record<string, unknown>);
@@ -445,7 +445,7 @@ describe("shadow mode on score posts", () => {
 });
 
 describe("Games beta accounts", () => {
-  const shadowLines = (spy: ReturnType<typeof vi.spyOn>) =>
+  const shadowLines = (spy: { mock: { calls: unknown[][] } }) =>
     spy.mock.calls
       .filter(([msg]) => msg === "game recognition shadow")
       .map(([, fields]) => fields as Record<string, unknown>);
