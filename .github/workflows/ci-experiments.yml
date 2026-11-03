@@ -1,0 +1,96 @@
+name: CI experiments (temporary)
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  co-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  co-head:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+  co-tarball:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tarball download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$REPO/tarball/$SHA" | tar -xz --strip-components=1
+          ls | head -5
+  co-git-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Plain git shallow fetch of head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git init -q .
+          git -c protocol.version=2 fetch -q --no-tags --depth=1 "https://x-access-token:${GH_TOKEN}@github.com/$REPO.git" "$SHA"
+          git checkout -q FETCH_HEAD
+  deps-nmcache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-pnpm
+      - run: node --version && pnpm --version
+  deps-cold-node22:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: pnpm binary
+        run: |
+          curl -fsSL -o /usr/local/bin/pnpm https://github.com/pnpm/pnpm/releases/download/v10.34.9/pnpm-linux-x64 && chmod +x /usr/local/bin/pnpm
+      - name: Cold install (preinstalled node)
+        run: |
+          node --version
+          pnpm fetch
+          pnpm install --frozen-lockfile --offline
+  deps-storecache-node22:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: pnpm binary
+        run: |
+          curl -fsSL -o /usr/local/bin/pnpm https://github.com/pnpm/pnpm/releases/download/v10.34.9/pnpm-linux-x64 && chmod +x /usr/local/bin/pnpm
+          echo "STORE=$(pnpm store path)" >> "$GITHUB_ENV"
+      - name: Cache pnpm store
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.STORE }}
+          key: pnpm-store-exp-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install from store
+        run: |
+          pnpm fetch
+          pnpm install --frozen-lockfile --offline
+  deps-nmcache-node22:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: pnpm binary
+        run: |
+          curl -fsSL -o /usr/local/bin/pnpm https://github.com/pnpm/pnpm/releases/download/v10.34.9/pnpm-linux-x64 && chmod +x /usr/local/bin/pnpm
+      - name: Restore node_modules (existing key)
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: nm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Smoke (node 22 + heaviest test file)
+        run: |
+          node --version
+          pnpm exec vitest run apps/backend/src/routes/v1/gameTeach.test.ts apps/backend/src/lib/gameCode/builtin.parity.test.ts 2>&1 | tail -5
