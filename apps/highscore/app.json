@@ -77,8 +77,7 @@
         {
           "mode": "production"
         }
-      ],
-      "expo-background-task"
+      ]
     ],
     "experiments": {
       "typedRoutes": true

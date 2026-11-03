@@ -51,7 +51,6 @@ const PACKAGES = [
 // instead of listed here.
 const PACKAGES_IF_DECLARED = [
   "expo-application",
-  "expo-background-task",
   "expo-blur",
   "expo-clipboard",
   "expo-device",
@@ -61,7 +60,6 @@ const PACKAGES_IF_DECLARED = [
   "expo-notifications",
   "expo-sharing",
   "expo-store-review",
-  "expo-task-manager",
   "react-native-svg",
 ];
 

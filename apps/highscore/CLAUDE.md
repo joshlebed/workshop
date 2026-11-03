@@ -109,9 +109,8 @@ module, then drop them in that PR. Never remove the current `version` from the l
 
 The 1.2.0 binary ships native modules **no code imports yet**, so the features that need them can
 ship by OTA instead of another App Review cycle: `expo-notifications` (push entitlement
-`aps-environment: production`), `expo-background-task` + `expo-task-manager` (adds
-`UIBackgroundModes` `fetch` + `processing` and the `com.expo.modules.backgroundtask.processing`
-identifier), `expo-haptics`, `expo-image`, `expo-clipboard`, `expo-sharing` (plugin not applied:
+`aps-environment: production`; `expo-background-task` was deliberately left out — its
+`UIBackgroundModes` draw App Review questions with nothing using them), `expo-haptics`, `expo-image`, `expo-clipboard`, `expo-sharing` (plugin not applied:
 its iOS share extension would collide with `expo-share-intent`), `expo-device`,
 `expo-application`, `expo-store-review`, `expo-blur`, `expo-linear-gradient`,
 `react-native-svg`, and `react-native-mmkv` (+ its required peer `react-native-nitro-modules`).
