@@ -133,7 +133,7 @@ account and the domain purchased.
   docs/decisions.md
   docs/manual-setup.md
   .npmrc
-  .nvmrc                # node 20.19.x (RN 0.83 / Expo 55 require 20.19+, <21)
+  .nvmrc                # node 24 (current LTS; Lambda nodejs24.x; the GitHub runner image caches it)
   pnpm-workspace.yaml
   package.json
   biome.json            # lint + format
@@ -171,7 +171,7 @@ packages:
     "test": "vitest run"
   },
   "packageManager": "pnpm@10.34.9",
-  "engines": { "node": ">=20.19 <21" },
+  "engines": { "node": ">=24 <25" },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
     "typescript": "5.9.3"
@@ -241,7 +241,7 @@ session; cost ~15 min of debug-fix-redeploy cycle.
 
 ### Lambda bundling (`scripts/bundle.mjs`)
 
-Use esbuild, target `node20`, platform `node`, format `esm`. Mark
+Use esbuild, target `node24`, platform `node`, format `esm`. Mark
 `@aws-sdk/*` as external — Lambda runtime ships AWS SDK v3. Bundle `postgres`,
 `drizzle-orm`, `hono` inline.
 

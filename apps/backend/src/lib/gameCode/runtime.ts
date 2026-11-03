@@ -50,7 +50,7 @@ function buildWorkerFromSource(): string {
     entryPoints: [fileURLToPath(new URL("./sandboxWorker.ts", import.meta.url))],
     bundle: true,
     platform: "node",
-    target: "node20",
+    target: "node24",
     format: "cjs",
     write: false,
     logLevel: "silent",

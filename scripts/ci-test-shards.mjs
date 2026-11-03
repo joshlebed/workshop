@@ -8,13 +8,14 @@
 // shard K, one per line, for `vitest run $(...)`.
 //
 // Weights come from scripts/test-weights.json (ms per file; regenerate with
-// `node scripts/ci-test-shards.mjs --regen` after a local `vitest run
-// --reporter=json --outputFile=/tmp/vt.json`). A file missing from the map
+// `node scripts/ci-test-shards.mjs --regen` after a local `vitest run`, which
+// reads vitest's own per-file duration cache). A file missing from the map
 // gets a default so new tests are never dropped — the glob here is the source
 // of truth for *which* files run, the map only orders them.
 //
 //   node scripts/ci-test-shards.mjs <K> <N>        # list files for shard K of N
 //   node scripts/ci-test-shards.mjs --plan <N>     # show every shard + its weight
+//   node scripts/ci-test-shards.mjs --regen        # refresh test-weights.json from the last run
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,7 +24,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const weightsPath = join(root, "scripts/test-weights.json");
 const DEFAULT_MS = 300;
 
-// No fs.globSync: .nvmrc is Node 20 and it arrived in 22.
+// Plain readdir rather than fs.globSync (still experimental).
 function testFiles(dir = "") {
   const out = [];
   for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
@@ -59,18 +60,27 @@ function plan(n) {
 
 const args = process.argv.slice(2);
 if (args[0] === "--regen") {
-  const report = JSON.parse(readFileSync(args[1] ?? "/tmp/vt.json", "utf8"));
+  // vitest's own sequencing cache: full per-file wall time including
+  // beforeAll (where the PGlite boot lives), unlike the JSON reporter.
+  // Run the suite first (ideally pinned to 4 cores: `taskset -c 0-3`).
+  const cacheFile = readdirSync(join(root, "node_modules/.vite/vitest"), { recursive: true })
+    .map(String)
+    .find((f) => f.endsWith("results.json"));
+  if (!cacheFile)
+    throw new Error("no node_modules/.vite/vitest/**/results.json — run vitest first");
+  const cache = JSON.parse(
+    readFileSync(join(root, "node_modules/.vite/vitest", cacheFile), "utf8"),
+  );
+  const measured = new Map(
+    cache.results.map(([k, v]) => [
+      k.includes(":") ? k.slice(k.indexOf(":") + 1) : k,
+      Math.round(v.duration),
+    ]),
+  );
   const out = {};
-  for (const f of testFiles()) {
-    const r = report.testResults.find((t) => t.name.endsWith(`/${f}`));
-    let ms = r ? Math.round(r.endTime - r.startTime) : DEFAULT_MS;
-    const src = readFileSync(join(root, f), "utf8");
-    if (src.includes("new PGlite(")) ms += 2500; // WASM boot in beforeAll — not in the reporter's time
-    if (src.includes("./runtime.js") || src.includes("gameCode/runtime")) ms += 800; // QuickJS worker
-    out[f] = ms;
-  }
-  writeFileSync(weightsPath, `${JSON.stringify(out, null, 0).replaceAll(",", ",\n")}\n`);
-  console.log(`wrote ${Object.keys(out).length} weights`);
+  for (const f of testFiles()) out[f] = measured.get(f) ?? DEFAULT_MS;
+  writeFileSync(weightsPath, `${JSON.stringify(out, null, 2)}\n`);
+  console.log(`wrote ${Object.keys(out).length} weights (${measured.size} measured)`);
 } else if (args[0] === "--plan") {
   const n = Number(args[1] ?? 8);
   plan(n).forEach((s, i) => {

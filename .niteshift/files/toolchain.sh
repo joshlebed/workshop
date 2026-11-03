@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sourced by .niteshift/setup, .niteshift/resume, and every service wrapper.
-# Puts the mise-pinned toolchain (node 20.19, pnpm 10.34 — see .mise.toml) on
+# Puts the mise-pinned toolchain (node 24, pnpm 10.34 — see .mise.toml) on
 # PATH and installs mise itself on a fresh sandbox. The sandbox image ships
 # Node 22 in /usr/local/bin; without this, every pnpm invocation warns
 # `Unsupported engine` and dev servers run on a Node CI never sees.

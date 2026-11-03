@@ -4,12 +4,11 @@ description: |
   `pnpm fetch && pnpm install --offline` on cache miss. Pulls the same block
   out of every workflow so a pnpm bump is one edit instead of seven.
 
-  Node is the runner image's preinstalled 22.x, NOT .nvmrc's 20.19.4:
-  actions/setup-node spent ~4s per job downloading 20.19.4 because the image
-  only ships 22 in its toolcache. The suite, typecheck, Metro export and
-  migrations all pass on 22 (verified 2026-11-03). Lambda still runs
-  nodejs20.x — see "CI speed" in CLAUDE.md for that trade-off. Set
-  `node-from-nvmrc: true` to get the pinned version back.
+  Node comes from .nvmrc via actions/setup-node. .nvmrc pins a major ("24")
+  on purpose: the runner image's toolcache ships 22.x and 24.x, so a
+  major-only pin resolves to the cached build (~1s) instead of downloading
+  (~4s per job, which is what 20.19.4 cost). Keep .nvmrc on a major the
+  image caches (https://github.com/actions/runner-images, "Cached Tools").
 
   pnpm is a direct download of the standalone Linux binary from the pnpm
   GitHub release (~1s, sha256-pinned). `pnpm/action-setup` with
@@ -18,10 +17,6 @@ description: |
   `corepack` / `npm i -g` would reach registry.npmjs.org, which timed out five
   times on 2026-11-03 (#535). To bump: change PNPM_VERSION + PNPM_SHA256 below
   (`curl -sSL .../v<ver>/pnpm-linux-x64 | sha256sum`).
-inputs:
-  node-from-nvmrc:
-    description: Install the .nvmrc Node instead of using the runner's preinstalled 22.x (~4s).
-    default: "false"
 outputs:
   cache-hit:
     description: Whether the node_modules cache was a hit (caller can skip its own install).
@@ -51,13 +46,8 @@ runs:
         "$dest/pnpm" --version
 
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      if: inputs.node-from-nvmrc == 'true'
       with:
         node-version-file: .nvmrc
-
-    - name: Node version
-      shell: bash
-      run: node --version
 
     - name: Cache hoisted node_modules
       id: nm-cache

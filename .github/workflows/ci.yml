@@ -5,17 +5,18 @@ name: CI
 # dimension, serial time is the expensive one. Shape, and why (measurements
 # in CLAUDE.md "CI speed"):
 #   - Every PR job pays ~13s before its first real step: runner pick-up ~2s,
-#     tarball checkout ~2s, path filter ~2s, pnpm binary ~1s, node_modules
-#     cache restore ~6s. Node is the runner's preinstalled 22.x (setup-node
-#     was ~4s). So each job gets ~12s of real work: anything bigger is split.
+#     tarball checkout ~2s, path filter ~1s, Node 24 from the runner's
+#     toolcache ~1s, pnpm binary ~1s, node_modules cache restore ~6s. So each
+#     job gets ~12s of real work: anything bigger is split.
 #   - No separate `changes` job: every job runs the shared
 #     .github/actions/detect-changes composite after checkout and gates its
 #     own steps on the outputs. The old `needs: changes` hop was ~17s of
 #     serial latency on every PR.
-#   - `lint` (biome, knip, prettier-md, redesign-plan) and `typecheck` (tsgo)
-#     are separate jobs — together they were ~16s serial. actionlint and
-#     terraform fmt+validate are path-gated (`.github/**`, `infra/**`).
-#   - `test` is eight duration-balanced shards (scripts/ci-test-shards.mjs,
+#   - `lint` (biome, knip, prettier-md, redesign-plan), `typecheck` (tsgo)
+#     and `infra-lint` (actionlint + terraform fmt/validate, path-gated to
+#     `.github/**` / `infra/**`) are separate jobs so none is longer than a
+#     test shard.
+#   - `test` is ten duration-balanced shards (scripts/ci-test-shards.mjs,
 #     weights in scripts/test-weights.json) over the vitest workspace (root
 #     vitest.config.ts). The suite is ~120s of CPU, dominated by 28 backend
 #     files that each boot an in-memory PGlite (~2.5s) and the QuickJS
@@ -105,6 +106,59 @@ jobs:
 
       # actionlint locates the project by walking up to a .git directory; the
       # tarball checkout has none, so give it an empty one.
+
+  typecheck:
+    name: Typecheck (tsgo)
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # detect-changes
+    steps:
+      - name: Checkout (tarball) # see the comment on the lint job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
+
+      - uses: ./.github/actions/detect-changes
+        id: changes
+
+      - uses: ./.github/actions/setup-pnpm
+        if: steps.changes.outputs.code == 'true'
+
+      - name: Typecheck (tsgo)
+        if: steps.changes.outputs.code == 'true'
+        run: pnpm run typecheck
+
+  # actionlint + terraform fmt/validate: only when .github/** or infra/**
+  # changed, and in their own job so they never lengthen `lint` (~20s
+  # together when they run).
+  infra-lint:
+    name: Infra lint (actionlint, terraform fmt+validate)
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # detect-changes
+    steps:
+      - name: Checkout (tarball) # see the comment on the lint job
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
+
+      - uses: ./.github/actions/detect-changes
+        id: changes
+
       - name: Mark repo root for actionlint
         if: steps.changes.outputs.workflows == 'true'
         run: git init -q .
@@ -144,40 +198,14 @@ jobs:
           terraform init -backend=false
           terraform validate
 
-  typecheck:
-    name: Typecheck (tsgo)
-    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read # detect-changes
-    steps:
-      - name: Checkout (tarball) # see the comment on the lint job
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REF: ${{ github.event.pull_request.head.sha }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" \
-            "https://api.github.com/repos/$REPO/tarball/$REF" | tar -xz --strip-components=1
-
-      - uses: ./.github/actions/detect-changes
-        id: changes
-
-      - uses: ./.github/actions/setup-pnpm
-        if: steps.changes.outputs.code == 'true'
-
-      - name: Typecheck (tsgo)
-        if: steps.changes.outputs.code == 'true'
-        run: pnpm run typecheck
-
-  # Eight duration-balanced shards; ~10–12s of work each on 4 cores. The
+  # Ten duration-balanced shards; ~8–10s of work each on 4 cores. The
   # script is the source of truth for which files run (it globs *.test.ts),
   # the weights only order them — a new test file is never dropped. Change
-  # the matrix and the `/8` together.
+  # the matrix and the `/10` together. Concurrency on the free plan is 20
+  # jobs; a PR run is 10 shards + 6 other jobs + terraform plan + the
+  # runtime-version guard = 18, so this is the ceiling without queueing.
   test:
-    name: Test (shard ${{ matrix.shard }}/8)
+    name: Test (shard ${{ matrix.shard }}/10)
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     permissions:
@@ -186,7 +214,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - name: Checkout (tarball) # see the comment on the lint job
         env:
@@ -210,7 +238,7 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
-          mapfile -t files < <(node scripts/ci-test-shards.mjs "$SHARD" 8)
+          mapfile -t files < <(node scripts/ci-test-shards.mjs "$SHARD" 10)
           echo "${#files[@]} files in this shard"
           pnpm exec vitest run "${files[@]}"
 
@@ -220,18 +248,19 @@ jobs:
   # like everything else, so a draft push costs nothing.
   quality:
     name: Quality (lint, typecheck, test, knip, format, terraform, actionlint)
-    needs: [lint, typecheck, test]
+    needs: [lint, infra-lint, typecheck, test]
     if: always() && github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Combine results
         env:
           LINT: ${{ needs.lint.result }}
+          INFRA_LINT: ${{ needs.infra-lint.result }}
           TYPECHECK: ${{ needs.typecheck.result }}
           TEST: ${{ needs.test.result }}
         run: |
-          echo "lint=$LINT typecheck=$TYPECHECK test=$TEST"
-          for r in "$LINT" "$TYPECHECK" "$TEST"; do
+          echo "lint=$LINT infra-lint=$INFRA_LINT typecheck=$TYPECHECK test=$TEST"
+          for r in "$LINT" "$INFRA_LINT" "$TYPECHECK" "$TEST"; do
             case "$r" in
               success|skipped) ;;
               *) echo "::error::a required job finished with '$r'"; exit 1 ;;
