@@ -620,13 +620,19 @@ gh workflow run testflight.yml --ref main --field force=true
 ```
 
 Build fails in Xcode with `Provisioning profile "…" doesn't include the <X> capability` after a
-PR adds an entitlement (push, app groups…): EAS reused its stored profile. In CI eas-cli only
-talks to Apple when it must create something, and only when `EXPO_APPLE_TEAM_ID` +
-`EXPO_APPLE_TEAM_TYPE` are set beside the `EXPO_ASC_*` key (otherwise it hits the "Select your
-Apple Team Type" prompt and skips auth — the "Distribution Certificate is not validated for
-non-interactive builds" line is that skip, not a cert problem). Both TestFlight workflows set
-them. Recovery is to delete the stale profile so the next build regenerates it with the current
-capabilities — from a sandbox without a Mac, via the EAS GraphQL API with `EXPO_TOKEN`:
+PR adds an entitlement (push, app groups…). Two halves, both now handled by the TestFlight
+workflows: (1) in `--non-interactive` mode eas-cli skips its best-effort Apple auth, so the
+**first** target's App ID never gets its capabilities synced from the declared entitlements
+(the share extension does, because auth happens lazily when a profile is created) — the
+`Sync iOS capabilities to the App ID` step (`scripts/eas-sync-ios-capabilities.mjs`, eas-cli
+internals + the ASC key) does that sync before `eas build`; (2) that lazy auth needs
+`EXPO_APPLE_TEAM_ID` + `EXPO_APPLE_TEAM_TYPE` beside the `EXPO_ASC_*` key or it dies on the
+"Select your Apple Team Type" prompt (the "Distribution Certificate is not validated for
+non-interactive builds" line is that skip, not a cert problem). Apple also 403s every portal
+write while a new Program License Agreement is pending — the Account Holder accepts it at
+developer.apple.com. If a profile was already minted without the capability, delete it so the
+next build regenerates it — from a sandbox without a Mac, via the EAS GraphQL API with
+`EXPO_TOKEN`:
 
 ```bash
 # find the APP_STORE profile id for the bundle id

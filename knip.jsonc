@@ -4,7 +4,9 @@
   "workspaces": {
     ".": {
       "entry": ["scripts/*.{sh,ts,mjs,js}", "functions/**/*.ts"],
-      "ignoreDependencies": ["concurrently"]
+      // eas-cli: scripts/eas-sync-ios-capabilities.mjs resolves it from the app
+      // dir it is given (apps/*/devDependencies), not the root.
+      "ignoreDependencies": ["concurrently", "eas-cli"]
     },
     "apps/backend": {
       "entry": [
