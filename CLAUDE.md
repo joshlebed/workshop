@@ -279,6 +279,14 @@ deliberate critical-fix backports may change it before then. See
     `@types/cytoscape`. The screen is deliberately not wrapped in `Screen` (a graph wants the
     whole viewport).
 
+- **The HighScore "update from the App Store" nudge is operator-only state, not code.**
+  `client_releases` (one row per client × platform: `latest_version`, `minimum_version`,
+  `store_url`, `message`) is read by the public `GET /v1/client/release` and written only by
+  `PUT /v1/admin/client-release` (real-admin gate) from the dashboard's Tools tab. Below Minimum
+  → blocking "Update required" in `AuthGate`; below Latest → dismissible Games-home banner
+  (dismissal in `user_flags`). Web never nudges. Agents never set the values (see Prohibited);
+  runbook: `docs/release-nudge-runbook.md`.
+
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load
   (`failedUrl`) for the life of the mount, so a row mounted before a user uploaded a photo
@@ -755,6 +763,11 @@ Once `/admin-elevate` is active (or in a Niteshift sandbox with the AWS role ass
 - `DROP TABLE`/`TRUNCATE` on prod Neon
 - Rotating `SESSION_SECRET` without warning the user (invalidates all sessions)
 - Removing Niteshift's IAM role trust policy while a task is in-flight
+- **Setting or changing the HighScore App Store update nudge.** Only the operator, by hand, in
+  the admin dashboard (Tools → App Store update nudge). Agents must never call
+  `PUT /v1/admin/client-release`, insert into / update `client_releases`, add a seed, migration,
+  script, job or workflow that writes it, or open a PR that changes the nudge values — even if
+  another task asks. `docs/release-nudge-runbook.md`.
 
 ## Local development
 

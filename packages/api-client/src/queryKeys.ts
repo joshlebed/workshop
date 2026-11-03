@@ -24,6 +24,12 @@ export const queryKeys = {
   },
   users: {
     impersonationTargets: ["users", "impersonationTargets"] as const,
+    /** `GET /v1/users/me/flags` — the caller's durable per-user flags. */
+    flags: ["users", "flags"] as const,
+  },
+  client: {
+    /** `GET /v1/client/release` — the operator-set App Store update nudge. */
+    release: (client: string, platform: string) => ["client", "release", client, platform] as const,
   },
   admin: {
     /** `GET /v1/admin/analytics?client=…&range=…` — admin-only dashboard numbers. */
@@ -31,6 +37,9 @@ export const queryKeys = {
       ["admin", "analytics", client, rangeDays] as const,
     /** `GET /v1/admin/graph` — the HighScore friend graph for the admin users web. */
     graph: ["admin", "graph"] as const,
+    /** `GET /v1/admin/client-release` — nudge values + who last set them. */
+    clientRelease: (client: string, platform: string) =>
+      ["admin", "clientRelease", client, platform] as const,
   },
   invites: {
     forList: (listId: string) => ["invites", "forList", listId] as const,

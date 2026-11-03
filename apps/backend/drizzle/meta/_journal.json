@@ -372,6 +372,13 @@
       "when": 1793299493532,
       "tag": "0052_request_rollups",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1793717114020,
+      "tag": "0053_client_releases",
+      "breakpoints": true
     }
   ]
 }

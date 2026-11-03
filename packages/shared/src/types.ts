@@ -10,6 +10,7 @@ import type {
   AdminAnalyticsBucket,
   AdminAnalyticsPlatform,
   AdminAnalyticsRange,
+  ClientReleasePlatform,
   WorkshopClient,
 } from "./constants.js";
 import type { ItemContent, ItemKind } from "./itemKinds.js";
@@ -218,6 +219,37 @@ export interface AdminAnalyticsStat {
   key: string;
   label: string;
   value: number;
+}
+
+/**
+ * `GET /v1/client/release?client=…&platform=…` — the operator-set App Store
+ * update nudge for one (client, platform). Every field null = no nudge (also
+ * what an unset row returns). `installed < minimumVersion` blocks the app;
+ * `installed < latestVersion` shows a dismissible banner.
+ */
+export interface ClientReleaseResponse {
+  latestVersion: string | null;
+  minimumVersion: string | null;
+  storeUrl: string | null;
+  message: string | null;
+}
+
+/** `PUT /v1/admin/client-release` body — operator-only (admin dashboard). */
+export interface UpdateClientReleaseRequest {
+  client: WorkshopClient;
+  platform: ClientReleasePlatform;
+  latestVersion: string | null;
+  minimumVersion: string | null;
+  storeUrl: string | null;
+  message: string | null;
+}
+
+/** Admin read/write shape: the public values plus who last changed them. */
+export interface AdminClientReleaseResponse extends ClientReleaseResponse {
+  client: WorkshopClient;
+  platform: ClientReleasePlatform;
+  updatedAt: string | null;
+  updatedBy: { id: string; displayName: string | null } | null;
 }
 
 export interface AdminAnalyticsResponse {
