@@ -232,18 +232,37 @@ function format(raw) {
     format: block(
       LINES,
       String.raw`
-// Five "🟥🟥⬜⬜⬜ 43" rows → "19 · 43 · 45 · 100 · 61"
+// Five "🟥🟥⬜⬜⬜ 43" rows, then the total "257/500". Shares before
+// 2026-11-03 say "Overall Score 268" with no denominator; five rounds of 100
+// make it /500, so the board reads the same on both sides of the change.
 function format(raw) {
-  var rounds = lines(raw)
+  var ls = lines(raw);
+  var rounds = ls
     .map(function (l) { return (l.match(/^[🟥⬜]+\s+(\d+)$/u) || [])[1]; })
     .filter(Boolean);
-  return rounds.length ? rounds.join(" · ") : null;
+  var total;
+  for (var i = 0; i < ls.length && !total; i++) {
+    var m = ls[i].match(/^Overall\s+Score\s+([\d,]+)$/i) || ls[i].match(/^Score\s*:\s*([\d,]+\s*\/\s*[\d,]+)$/i);
+    if (m) total = m[1].replace(/\s+/g, "");
+  }
+  if (total && total.indexOf("/") < 0 && rounds.length === 5) total += "/500";
+  if (!rounds.length) return total || null;
+  return total ? rounds.join(" · ") + "\n" + total : rounds.join(" · ");
 }`,
     ),
     examples: [
       {
         raw: "Size It Up\nOverall Score 268\n\n🟥⬜⬜⬜⬜ 19\n🟥🟥⬜⬜⬜ 43\n🟥🟥⬜⬜⬜ 45\n🟥🟥🟥🟥🟥 100\n🟥🟥🟥⬜⬜ 61\nhttps://magnitudle.com/size-it-up",
-        expectedSummary: "19 · 43 · 45 · 100 · 61",
+        expectedSummary: "19 · 43 · 45 · 100 · 61\n268/500",
+      },
+      {
+        raw: "Magnitudle — Size It Up\n2026-11-03\n\nScore: 257/500\n\n🟥🟥🟥🟥⬜ 79\n🟥🟥🟥⬜⬜ 61\n🟥🟥⬜⬜⬜ 47\n🟥🟥🟥⬜⬜ 54\n🟥⬜⬜⬜⬜ 16\nhttps://magnitudle.com/size-it-up",
+        expectedSummary: "79 · 61 · 47 · 54 · 16\n257/500",
+      },
+      {
+        // The URL glued to the last round (iOS share sheet) still reads.
+        raw: "Magnitudle — Size It Up\n2026-11-03\n\nScore: 209/500\n\n🟥🟥⬜⬜⬜ 35\n⬜⬜⬜⬜⬜ 0\n🟥🟥⬜⬜⬜ 33\n🟥🟥🟥🟥🟥 91\n🟥🟥🟥⬜⬜ 50 https://magnitudle.com/size-it-up",
+        expectedSummary: "35 · 0 · 33 · 91 · 50\n209/500",
       },
     ],
   },
