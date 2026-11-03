@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.lg,
     padding: tokens.space.lg,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.surface,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,

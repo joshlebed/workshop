@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
   root: { width: "100%" },
   legend: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginBottom: 4 },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  swatch: { width: 10, height: 10, borderRadius: 0 },
+  swatch: { width: 10, height: 10, borderRadius: theme.radius.sm },
   // Top margin leaves room for the peak label when the peak touches the ceiling.
   plot: { position: "relative", width: "100%", marginTop: 20 },
   gridline: {
@@ -343,8 +343,8 @@ const styles = StyleSheet.create({
   bar: {
     width: "100%",
     maxWidth: MAX_BAR,
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
+    borderTopLeftRadius: theme.radius.sm,
+    borderTopRightRadius: theme.radius.sm,
   },
   stackColumn: { width: "100%", maxWidth: MAX_BAR, justifyContent: "flex-end" },
   segment: { width: "100%" },
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
     top: 0,
     width: 140,
     padding: 6,
-    borderRadius: 0,
+    borderRadius: theme.radius.sm,
     borderWidth: 1,
     gap: 2,
   },

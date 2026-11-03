@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
     minHeight: 120,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
   summaryBox: {
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     backgroundColor: tokens.bg.surface,

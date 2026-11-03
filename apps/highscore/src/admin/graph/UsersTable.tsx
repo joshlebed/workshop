@@ -178,7 +178,7 @@ const styles = StyleSheet.create({
   frame: {
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.canvas,
     overflow: "hidden",
   },
@@ -198,6 +198,6 @@ const styles = StyleSheet.create({
   numeric: { alignItems: "flex-end" },
   nameCell: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   nameText: { flex: 1, minWidth: 0 },
-  dot: { width: 8, height: 8, borderRadius: 0 },
+  dot: { width: 8, height: 8, borderRadius: tokens.radius.sm },
   empty: { padding: tokens.space.lg, textAlign: "center" },
 });

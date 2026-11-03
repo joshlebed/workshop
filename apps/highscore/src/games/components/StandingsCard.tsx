@@ -465,7 +465,7 @@ const styles = StyleSheet.create({
   cardHover: { backgroundColor: tokens.bg.surface },
   cardDragging: {
     backgroundColor: tokens.bg.elevated,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderBottomColor: "transparent",
   },
   header: {
@@ -473,11 +473,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
   },
-  cover: { borderRadius: 0 },
+  cover: { borderRadius: tokens.radius.sm },
   coverImage: {
     width: COVER,
     height: COVER,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
   coverGlyph: { fontSize: 18 },
@@ -493,7 +493,7 @@ const styles = StyleSheet.create({
     maxWidth: "100%",
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   // The streak is earned, so it's the one chartreuse element on the card:
   // chartreuse bezel + count/label on transparent (DESIGN.md "Chartreuse is
@@ -505,7 +505,7 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 1,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.neon.chartreuse,
   },
@@ -547,7 +547,7 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   menuBtnHover: { backgroundColor: tokens.bg.elevated },
   standings: { gap: tokens.space.sm },
@@ -558,7 +558,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   playerLine: {
     flex: 1,
@@ -604,7 +604,7 @@ const styles = StyleSheet.create({
   rankDot: { color: tokens.text.muted, fontSize: tokens.font.size.md },
   // Rank 1 is the spotlight: neon yellow fill, dark numeral (DESIGN.md).
   rankFirst: {
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.neon.yellow,
   },
   rankFirstText: {
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.neon.pink,
   },
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   faceWrap: {
     borderWidth: 2,
     borderColor: tokens.bg.canvas,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     opacity: 0.45,
   },
   faceOverlap: { marginLeft: -10 },
@@ -653,12 +653,12 @@ const styles = StyleSheet.create({
   skeletonDot: {
     width: AVATAR_SM,
     height: AVATAR_SM,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.elevated,
   },
   skeletonBar: {
     height: 10,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.elevated,
   },
 });

@@ -541,7 +541,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 4,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.surface,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
@@ -550,7 +550,7 @@ const styles = StyleSheet.create({
   payloadDot: {
     width: 6,
     height: 6,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.accent.default,
   },
   payloadText: { flexShrink: 1 },
@@ -563,7 +563,7 @@ const styles = StyleSheet.create({
   suggestionBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.surface,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
@@ -587,7 +587,7 @@ const styles = StyleSheet.create({
     minHeight: 116,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,
@@ -603,7 +603,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
     padding: tokens.space.md,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     backgroundColor: tokens.bg.canvas,
@@ -617,7 +617,7 @@ const styles = StyleSheet.create({
   gameThumb: {
     width: 44,
     height: 44,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   gameThumbPlaceholder: { alignItems: "center", justifyContent: "center" },
   gameThumbGlyph: {

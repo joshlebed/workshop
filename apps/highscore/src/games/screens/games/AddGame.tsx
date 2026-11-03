@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: 10,
     color: tokens.text.primary,

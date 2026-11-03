@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.md,
   },
-  homeLink: { borderRadius: 0 },
+  homeLink: { borderRadius: tokens.radius.sm },
   pressed: { opacity: 0.6 },
   body: {
     paddingHorizontal: tokens.space.lg,

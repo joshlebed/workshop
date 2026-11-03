@@ -881,7 +881,7 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
   body: {
@@ -891,7 +891,7 @@ const styles = StyleSheet.create({
   titleBadge: {
     width: 32,
     height: 32,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   titleBadgePlaceholder: { alignItems: "center", justifyContent: "center" },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
@@ -907,7 +907,7 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 7,
     paddingVertical: 1,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.neon.chartreuse,
   },
@@ -953,7 +953,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   entryIdentityPressed: { opacity: 0.6 },
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
@@ -963,7 +963,7 @@ const styles = StyleSheet.create({
   scoreActionButton: {
     paddingHorizontal: tokens.space.sm,
     paddingVertical: 4,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   editScorePressed: { backgroundColor: tokens.accent.muted },
   // FIX / EDIT / CLEAR: small uppercase UI labels (DESIGN.md "Typography").
@@ -982,7 +982,7 @@ const styles = StyleSheet.create({
   youPill: {
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.neon.pink,
   },
@@ -1029,7 +1029,7 @@ const styles = StyleSheet.create({
     minHeight: 110,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.md,
     color: tokens.text.primary,

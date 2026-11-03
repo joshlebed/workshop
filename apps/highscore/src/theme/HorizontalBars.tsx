@@ -57,7 +57,12 @@ const styles = StyleSheet.create({
   root: { gap: 6 },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
   label: { width: 200 },
-  track: { flex: 1, height: 12, borderRadius: 0, backgroundColor: theme.bg.elevated },
-  bar: { height: "100%", borderRadius: 0 },
+  track: {
+    flex: 1,
+    height: 12,
+    borderRadius: theme.radius.sm,
+    backgroundColor: theme.bg.elevated,
+  },
+  bar: { height: "100%", borderRadius: theme.radius.sm },
   value: { width: 40, textAlign: "right" },
 });

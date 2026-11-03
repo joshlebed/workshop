@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     backgroundColor: tokens.bg.elevated,

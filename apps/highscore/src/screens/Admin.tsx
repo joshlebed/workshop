@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
   tabs: {
     flexDirection: "row",
     gap: tokens.space.xs,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderBottomWidth: tokens.bezel,
     borderBottomColor: tokens.border.default,
     alignSelf: "center",
@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     paddingVertical: 7,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     // Sits on the row's bezel so the active underline replaces it.
     marginBottom: -tokens.bezel,
     borderBottomWidth: tokens.bezel,
@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
   segment: {
     flexDirection: "row",
     backgroundColor: tokens.bg.surface,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     padding: 3,
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   segmentItem: {
     paddingVertical: 7,
     paddingHorizontal: tokens.space.md,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   segmentActive: { backgroundColor: tokens.accent.muted },
   loading: { paddingVertical: tokens.space.xl, alignItems: "center" },

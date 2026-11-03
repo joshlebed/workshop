@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
   button: {
     height: 30,
     paddingHorizontal: 10,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     justifyContent: "center",
     marginRight: 6,
@@ -128,12 +128,12 @@ const styles = StyleSheet.create({
     right: 8,
     bottom: 8,
     padding: 8,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     gap: 6,
   },
   legendInline: { gap: 6 },
   legendRow: { gap: 12, alignItems: "center" },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 5 },
-  dot: { width: 9, height: 9, borderRadius: 0 },
+  dot: { width: 9, height: 9, borderRadius: tokens.radius.sm },
 });

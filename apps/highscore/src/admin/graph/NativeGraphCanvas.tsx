@@ -271,14 +271,14 @@ export function NativeGraphCanvas({
 }
 
 const styles = StyleSheet.create({
-  frame: { borderRadius: 0, borderWidth: tokens.bezel, overflow: "hidden" },
+  frame: { borderRadius: tokens.radius.sm, borderWidth: tokens.bezel, overflow: "hidden" },
   stage: { flex: 1 },
   scene: { position: "absolute", left: 0, top: 0 },
   labelWrap: { position: "absolute", width: LABEL_WIDTH, alignItems: "center" },
   label: {
     fontSize: 10,
     paddingHorizontal: 3,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     maxWidth: LABEL_WIDTH,
     overflow: "hidden",
   },

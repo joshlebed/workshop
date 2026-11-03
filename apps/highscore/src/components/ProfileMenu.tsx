@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     minWidth: 17,
     height: 17,
     paddingHorizontal: 3,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.neon.pink,

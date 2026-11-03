@@ -56,7 +56,7 @@ const anchorStyle: CSSProperties = {
   fontSize: tokens.font.size.md,
   paddingTop: tokens.space.md,
   paddingBottom: tokens.space.md,
-  borderRadius: 0,
+  borderRadius: tokens.radius.sm,
   borderWidth: tokens.bezel,
   borderStyle: "solid",
   borderColor: tokens.neon.pink,
