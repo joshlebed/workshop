@@ -42,6 +42,9 @@ export const queryKeys = {
     /** `GET /v1/admin/client-release` — nudge values + who last set them. */
     clientRelease: (client: string, platform: string) =>
       ["admin", "clientRelease", client, platform] as const,
+    /** `GET /v1/admin/push/recipients` — users with a push token (operator push panel). */
+    pushRecipients: (q: string, remindersOnly: boolean) =>
+      ["admin", "pushRecipients", q, remindersOnly] as const,
   },
   invites: {
     forList: (listId: string) => ["invites", "forList", listId] as const,

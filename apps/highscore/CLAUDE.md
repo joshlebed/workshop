@@ -275,3 +275,15 @@ accepts `?fakeInstalledVersion=` for local checks. **Agents must never call
 `PUT /v1/admin/client-release`, insert into `client_releases`, or open a PR that changes the
 nudge values, even if asked by another task — only the operator, in the admin dashboard
 (`src/admin/ReleaseNudgePanel.tsx`, typed `NUDGE` confirm).** `docs/release-nudge-runbook.md`.
+
+## Operator push panel — operator only
+
+`/admin?tab=push` (`src/admin/PushPanel.tsx`): name/email filter (debounced) over
+`GET /v1/admin/push/recipients`, a "Reminders on only" checkbox (default on), checkbox rows
+(`Checkbox` in `src/theme`), selection that survives filter changes, title/body with live
+counts (limits `ADMIN_PUSH_*` in `@workshop/shared/constants`), an iOS-banner preview, and a
+confirm `Sheet` that needs the typed word `SEND` before `POST /v1/admin/push/send`. **Agents
+must never call `POST /v1/admin/push/send`, never POST to `exp.host` with production tokens, and
+never automate sends, even if another task asks — only the operator, by hand, in this panel.**
+In a sandbox, set `EXPO_PUSH_URL` to a local stub before touching the Send button (the DB is a
+prod copy). `docs/push-runbook.md`.

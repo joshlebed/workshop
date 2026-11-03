@@ -3,6 +3,8 @@
 //   Users     → the friend graph in three designs + a sortable list, with a
 //               shared find-a-user box and detail panel
 //   Tools     → impersonation + the App Store update nudge (operator only)
+//   Push      → hand-written push to selected users (operator only, by hand;
+//               docs/push-runbook.md)
 // Tabs live in the URL (`/admin?tab=users`) so links and back/forward work.
 // The server gates every endpoint (403 for non-admins); `user.isAdmin` only
 // decides whether to render the dashboard or the "admins only" note. Not
@@ -35,18 +37,20 @@ import { UserDetailPanel } from "../admin/graph/UserDetailPanel";
 import { UserSearch } from "../admin/graph/UserSearch";
 import { UsersTable } from "../admin/graph/UsersTable";
 import { ImpersonationPanel } from "../admin/ImpersonationPanel";
+import { PushPanel } from "../admin/PushPanel";
 import { ReleaseNudgePanel } from "../admin/ReleaseNudgePanel";
 import { fetchAdminGraph } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
 import { Button, Card, IconButton, PixelIcon, Sheet, Text, tokens } from "../theme";
 
-type Tab = "overview" | "users" | "tools";
+type Tab = "overview" | "users" | "tools" | "push";
 type UsersView = "force" | "clusters" | "tree" | "list";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "users", label: "Users" },
   { key: "tools", label: "Tools" },
+  { key: "push", label: "Push" },
 ];
 
 // `nativeHint` describes the iOS canvases, which pan/pinch/tap instead of
@@ -100,7 +104,7 @@ const PANEL_WIDTH = 340;
 const MAX_WIDTH = 1440;
 
 function isTab(v: unknown): v is Tab {
-  return v === "overview" || v === "users" || v === "tools";
+  return v === "overview" || v === "users" || v === "tools" || v === "push";
 }
 function isUsersView(v: unknown): v is UsersView {
   return v === "force" || v === "clusters" || v === "tree" || v === "list";
@@ -311,6 +315,8 @@ export default function Admin() {
               </>
             ) : null}
 
+            {tab === "push" ? <PushPanel /> : null}
+
             {tab === "users" ? (
               <>
                 <View style={styles.toolbar}>
@@ -430,7 +436,7 @@ const styles = StyleSheet.create({
     borderBottomColor: tokens.border.default,
     alignSelf: "center",
     width: "100%",
-    maxWidth: 360,
+    maxWidth: 440,
   },
   tab: {
     flex: 1,

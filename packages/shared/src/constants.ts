@@ -74,3 +74,11 @@ export const HIGHSCORE_WEB_URL = "https://highscore.live";
 export const HIGHSCORE_APP_STORE_URL =
   "https://apps.apple.com/us/app/highscore-daily-games/id6805206753";
 export const HIGHSCORE_APP_SCHEME = "highscore";
+
+/**
+ * Operator push panel limits (`POST /v1/admin/push/send`, HighScore admin →
+ * Push). Operator only, by hand — docs/push-runbook.md.
+ */
+export const ADMIN_PUSH_MAX_RECIPIENTS = 500;
+export const ADMIN_PUSH_TITLE_MAX = 100;
+export const ADMIN_PUSH_BODY_MAX = 500;

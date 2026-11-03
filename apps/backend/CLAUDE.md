@@ -733,7 +733,10 @@ date, and excludes anyone with `notification_prefs.last_reminded_at` in the past
 the repeated fall-back DST hour). Expo batches contain at most 100 tokens; each batch handles and
 logs failures independently, successful batches advance `last_reminded_at`, and all collected
 `DeviceNotRegistered` tickets are pruned after the loop. The spring-forward hour that does not exist
-is intentionally skipped in v1.
+is intentionally skipped in v1. Delivery (chunking, ticket parsing, pruning) lives in
+`lib/expoPush.ts` (`sendExpoPushMessages`), shared with the operator push route
+(`POST /v1/admin/push/send`, `lib/adminPush.ts`); its endpoint is `EXPO_PUSH_URL` (config,
+default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
 
 ## Lists and items are soft-deleted via `archived_at`
 

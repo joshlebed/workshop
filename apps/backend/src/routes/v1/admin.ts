@@ -8,11 +8,21 @@ import { isAdminUser } from "../../lib/admin.js";
 import { buildAdminAnalytics } from "../../lib/adminAnalytics.js";
 import { buildAdminGraph } from "../../lib/adminGraph.js";
 import {
+  adminPushRecipientsQuerySchema,
+  adminPushSendSchema,
+  listAdminPushRecipients,
+  sendAdminPush,
+} from "../../lib/adminPush.js";
+import {
   clientReleaseQuerySchema,
   readClientRelease,
   updateClientReleaseSchema,
   writeClientRelease,
 } from "../../lib/clientReleases.js";
+import {
+  containsObjectionableContent,
+  OBJECTIONABLE_CONTENT_MESSAGE,
+} from "../../lib/contentFilter.js";
 import { logger } from "../../lib/logger.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { getRequestClientContext } from "../../lib/requestContext.js";
@@ -118,4 +128,57 @@ adminRoutes.put("/client-release", async (c) => {
   });
   c.header("Cache-Control", "no-store");
   return ok(c, await readClientRelease(db, parsed.data.client, parsed.data.platform));
+});
+
+/**
+ * Users the operator push panel can reach: everyone with at least one push
+ * token, filtered by a case-insensitive substring of display name or email,
+ * newest device first, capped at 500. Real-admin only.
+ */
+adminRoutes.get("/push/recipients", async (c) => {
+  const denied = await requireRealAdmin(c);
+  if (denied) return denied;
+  const parsed = adminPushRecipientsQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return err(c, "VALIDATION", "invalid query", parsed.error.flatten());
+  c.header("Cache-Control", "no-store");
+  return ok(
+    c,
+    await listAdminPushRecipients(getDb(), {
+      q: parsed.data.q,
+      remindersOnly: parsed.data.remindersOnly === "1",
+    }),
+  );
+});
+
+/**
+ * Send one hand-written push to the selected users' devices. THE OPERATOR'S
+ * ALONE, BY HAND, from the dashboard's Push tab: real-admin gate, zod body
+ * with `confirm: "SEND"`, and the same objectionable-content filter as
+ * user-authored text. Agents, CI, scripts and jobs must never call this —
+ * see docs/push-runbook.md.
+ */
+adminRoutes.post("/push/send", async (c) => {
+  const { denied, adminUserId } = await realAdmin(c);
+  if (denied) return denied;
+  const parsed = await parseJsonBody(c, adminPushSendSchema);
+  if (!parsed.ok) return parsed.response;
+  if (
+    containsObjectionableContent(parsed.data.title) ||
+    containsObjectionableContent(parsed.data.body)
+  ) {
+    return err(c, "VALIDATION", OBJECTIONABLE_CONTENT_MESSAGE, { code: "OBJECTIONABLE_CONTENT" });
+  }
+
+  const result = await sendAdminPush(getDb(), parsed.data);
+  logger.info("admin_push_sent", {
+    adminUserId,
+    recipientCount: result.recipients,
+    tokens: result.tokens,
+    sent: result.sent,
+    failed: result.failed,
+    pruned: result.pruned,
+    title: parsed.data.title,
+  });
+  c.header("Cache-Control", "no-store");
+  return ok(c, result);
 });

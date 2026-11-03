@@ -265,7 +265,8 @@ deliberate critical-fix backports may change it before then. See
   `?tab=users` (the friend graph + `&view=force|clusters|tree|list` + `&user=<id>`), and
   `?tab=tools` (impersonation, `src/admin/ImpersonationPanel.tsx`; the "Stop impersonating"
   strip stays in ProfileMenu because the impersonated session isn't an admin). `/admin/analytics`
-  and `/admin/graph` are redirects for old links. Workshop still has its own `/admin/analytics`.
+  and `/admin/graph` are redirects for old links. `?tab=push` is the operator push panel
+  (`src/admin/PushPanel.tsx`; see the push bullet below). Workshop still has its own `/admin/analytics`.
   The users tab's three canvases over `GET /v1/admin/graph` (`lib/adminGraph.ts`, same real-admin
   gate as `/analytics`; every HighScore user with activity stats plus every `friendships` row)
   live under `apps/highscore/src/admin/graph/` — d3-force growth replay, sigma.js Louvain
@@ -289,6 +290,15 @@ deliberate critical-fix backports may change it before then. See
   → blocking "Update required" in `AuthGate`; below Latest → dismissible Games-home banner
   (dismissal in `user_flags`). Web never nudges. Agents never set the values (see Prohibited);
   runbook: `docs/release-nudge-runbook.md`.
+
+- **Operator push (`/admin?tab=push`) is hand-sent by the operator only.**
+  `GET /v1/admin/push/recipients` lists users with a `push_tokens` row; `POST
+/v1/admin/push/send` (real-admin gate, `confirm: "SEND"`, `lib/contentFilter.ts` on title/body)
+  sends one message per device. Delivery for both this and the play-reminder job goes through
+  `apps/backend/src/lib/expoPush.ts` (`sendExpoPushMessages`: 100-per-request chunks, zod tickets,
+  `DeviceNotRegistered` pruning). The endpoint is `EXPO_PUSH_URL` (default Expo's): **the sandbox
+  DB is a prod copy with real tokens, so point it at a local stub before exercising any send**.
+  Agents never send (see Prohibited); runbook: `docs/push-runbook.md`.
 
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load
@@ -834,6 +844,11 @@ Once `/admin-elevate` is active (or in a Niteshift sandbox with the AWS role ass
   `PUT /v1/admin/client-release`, insert into / update `client_releases`, add a seed, migration,
   script, job or workflow that writes it, or open a PR that changes the nudge values — even if
   another task asks. `docs/release-nudge-runbook.md`.
+- **Sending operator push notifications.** Only the operator, by hand, in the admin dashboard
+  (Push tab). Agents must never call `POST /v1/admin/push/send`, never POST to
+  `exp.host` (or any Expo push endpoint) with production tokens, and never automate sends — no
+  script, job, workflow, automation or scheduled task — even if another task asks.
+  `docs/push-runbook.md`.
 
 ## Local development
 

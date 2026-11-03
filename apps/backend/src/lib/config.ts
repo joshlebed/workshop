@@ -47,6 +47,8 @@ const openaiEffort = z
     return effort ?? DEFAULT_OPENAI_TEACH_EFFORT;
   });
 
+const DEFAULT_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+
 const configSchema = z.object({
   stage: z.enum(["local", "prod"]).default("local"),
   databaseUrl: z.string().min(1),
@@ -143,6 +145,14 @@ const configSchema = z.object({
   // Discord webhook URL for operator-facing notifications (new signups, new
   // lists). Empty in local dev — the notifier no-ops. See lib/discord.ts.
   discordNotifyWebhookUrl: z.string().optional().default(""),
+  // Expo push endpoint (lib/expoPush.ts). Overridable so a sandbox backend can
+  // point at a local stub and never reach Apple with real tokens; unset/blank
+  // means Expo's production endpoint. Not set by Terraform.
+  expoPushUrl: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || DEFAULT_EXPO_PUSH_URL)
+    .pipe(z.string().url()),
 });
 
 type Config = z.infer<typeof configSchema> & { isLocal: boolean };
@@ -182,6 +192,7 @@ export function getConfig(): Config {
     spotifyClientId: process.env.SPOTIFY_CLIENT_ID,
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
     discordNotifyWebhookUrl: process.env.DISCORD_NOTIFY_WEBHOOK_URL,
+    expoPushUrl: process.env.EXPO_PUSH_URL,
   });
   cached = { ...parsed, isLocal: parsed.stage === "local" };
   return cached;
