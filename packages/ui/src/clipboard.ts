@@ -29,3 +29,30 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Best-effort clipboard read. `null` when the clipboard is empty, holds no
+ * text, or the platform refused (web needs a user gesture + permission).
+ * Native reads go through `expo-clipboard`, which has shipped in every
+ * HighScore binary (this module backs `Toast`'s copy affordance).
+ */
+export async function readClipboard(): Promise<string | null> {
+  if (Platform.OS === "web" && typeof navigator !== "undefined") {
+    const clip = navigator.clipboard;
+    if (clip && typeof clip.readText === "function") {
+      try {
+        const text = await clip.readText();
+        return text.length > 0 ? text : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+  try {
+    const text = await Clipboard.getStringAsync();
+    return text.length > 0 ? text : null;
+  } catch {
+    return null;
+  }
+}
