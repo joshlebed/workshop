@@ -631,12 +631,12 @@ new event).
 
 **Rename in place (data-rewriting UPDATEs in the migration):**
 
-| from                         | to               | payload change                     |
-| ---------------------------- | ---------------- | ---------------------------------- | --- | ------------------------------- |
-| `album_shelf_refreshed`      | `source_synced`  | `payload                           |     | { "kind": "spotify_playlist" }` |
-| `album_shelf_source_changed` | `source_updated` | `payload                           |     | { "kind": "spotify_playlist" }` |
-| `album_promoted`             | `item_promoted`  | none — semantics already identical |
-| `album_demoted`              | `item_demoted`   | none — semantics already identical |
+| from                         | to               | payload change                                |
+| ---------------------------- | ---------------- | --------------------------------------------- |
+| `album_shelf_refreshed`      | `source_synced`  | `payload \|\| { "kind": "spotify_playlist" }` |
+| `album_shelf_source_changed` | `source_updated` | `payload \|\| { "kind": "spotify_playlist" }` |
+| `album_promoted`             | `item_promoted`  | none — semantics already identical            |
+| `album_demoted`              | `item_demoted`   | none — semantics already identical            |
 
 ```sql
 UPDATE activity_events
@@ -1210,9 +1210,7 @@ export type ListTemplate = {
   };
 };
 
-export const LIST_TEMPLATES: readonly ListTemplate[] = [
-  /* … */
-];
+export const LIST_TEMPLATES: readonly ListTemplate[] = [/* … */];
 ```
 
 Both the mobile app and the web build import this catalog. The backend

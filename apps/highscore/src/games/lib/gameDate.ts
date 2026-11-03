@@ -56,7 +56,7 @@ export function daysBack(date: string, today: string): number {
   const to = parse(today);
   if (from == null || to == null) return 0;
   const diff = Math.round((to - from) / 86_400_000);
-  return diff > 0 ? diff : 0;
+  return Math.max(diff, 0);
 }
 
 /**

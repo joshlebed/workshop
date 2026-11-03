@@ -115,7 +115,7 @@ async function sourceOf(gameId: string, asUser = userId, periodKey = DAY) {
   return row?.score_source;
 }
 
-function shadowLines(spy: ReturnType<typeof vi.spyOn>): Array<Record<string, unknown>> {
+function shadowLines(spy: { mock: { calls: unknown[][] } }): Array<Record<string, unknown>> {
   return spy.mock.calls
     .filter((call) => call[0] === "game code shadow")
     .map((call) => call[1] as Record<string, unknown>);
@@ -502,7 +502,7 @@ describe("POST /v1/games/:id/scores/preview", () => {
 });
 
 describe("the sandbox can never fail or hang a post", () => {
-  const unavailableLines = (spy: ReturnType<typeof vi.spyOn>) =>
+  const unavailableLines = (spy: { mock: { calls: unknown[][] } }) =>
     spy.mock.calls
       .filter((call) => call[0] === "game code unavailable for a score post")
       .map((call) => call[1] as Record<string, unknown>);

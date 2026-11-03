@@ -1,12 +1,28 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
-  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 100,
     "lineEnding": "lf"
+  },
+  "markdown": {
+    "formatter": {
+      "enabled": false
+    }
+  },
+  "yaml": {
+    "formatter": {
+      "enabled": false
+    }
   },
   "javascript": {
     "formatter": {
@@ -18,7 +34,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "style": {
         "noNonNullAssertion": "off",
         "useImportType": "warn"
@@ -28,7 +44,13 @@
       },
       "correctness": {
         "noUnusedVariables": "warn",
-        "noUnusedImports": "warn"
+        "noUnusedImports": "warn",
+        "noReactNativeRawText": {
+          "level": "error",
+          "options": {
+            "skip": ["RNText"]
+          }
+        }
       }
     }
   },
@@ -51,5 +73,17 @@
       "!**/playwright-report",
       "!**/.wrangler"
     ]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.web.tsx"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noReactNativeRawText": "off"
+          }
+        }
+      }
+    }
+  ]
 }
