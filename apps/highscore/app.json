@@ -2,7 +2,7 @@
   "expo": {
     "name": "HighScore",
     "slug": "highscore",
-    "version": "1.0.1",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -18,7 +18,8 @@
       "icon": "./assets/HighScore.icon",
       "associatedDomains": ["applinks:highscore.live"],
       "entitlements": {
-        "com.apple.security.application-groups": ["group.live.highscore.app"]
+        "com.apple.security.application-groups": ["group.live.highscore.app"],
+        "aps-environment": "production"
       },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -69,6 +70,12 @@
           },
           "iosHideView": true,
           "disableAndroid": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "mode": "production"
         }
       ]
     ],

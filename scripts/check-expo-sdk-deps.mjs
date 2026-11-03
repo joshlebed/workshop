@@ -43,6 +43,26 @@ const PACKAGES = [
   "react-native-worklets",
 ];
 
+// SDK-tracked natives only some apps declare (HighScore preloaded most of
+// these for 1.2.0). Checked with the same two invariants when the app
+// declares them; skipped otherwise, so one app adding a native doesn't fail
+// the other app's check. react-native-mmkv / react-native-nitro-modules are
+// not in the SDK's bundled map, so they're pinned exactly in package.json
+// instead of listed here.
+const PACKAGES_IF_DECLARED = [
+  "expo-application",
+  "expo-blur",
+  "expo-clipboard",
+  "expo-device",
+  "expo-haptics",
+  "expo-image",
+  "expo-linear-gradient",
+  "expo-notifications",
+  "expo-sharing",
+  "expo-store-review",
+  "react-native-svg",
+];
+
 const requireFromApp = createRequire(join(appDir, "package.json"));
 
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
@@ -53,9 +73,11 @@ const declaredDeps = { ...appPkg.dependencies, ...appPkg.devDependencies };
 const expoPkg = readJson(requireFromApp.resolve("expo/package.json"));
 const bundled = readJson(requireFromApp.resolve("expo/bundledNativeModules.json"));
 
+const checked = [...PACKAGES, ...PACKAGES_IF_DECLARED.filter((name) => name in declaredDeps)];
+
 const errors = [];
 
-for (const name of PACKAGES) {
+for (const name of checked) {
   const expected = bundled[name];
   if (!expected) {
     errors.push(
@@ -108,5 +130,5 @@ if (errors.length > 0) {
 }
 
 console.log(
-  `Expo SDK dependency check OK (expo@${expoPkg.version}, ${PACKAGES.length} packages match bundledNativeModules.json)`,
+  `Expo SDK dependency check OK (expo@${expoPkg.version}, ${checked.length} packages match bundledNativeModules.json)`,
 );

@@ -27,13 +27,13 @@ should list only those. Gotchas:
   (`variant="game"`), score numerals (`variant="score"` / `scoreType(px)`). Everything else is
   Space Grotesk. `overline` is the small uppercase label (TODAY, YOU, turnout, FIX/EDIT).
 - **Icons are pixelarticons path data inlined in `pixelIconPaths.ts`, drawn as plain `View`s**
-  (`pixelIconRaster.ts` rasterizes the rectilinear `M/H/V/Z` paths onto the 24px grid). There is
-  deliberately **no `react-native-svg`**: it is a native module, and adding one bumps the iOS
-  runtime version off `1.0.1`, which is what the App Store binary claims — OTAs then stop
-  reaching Store users until a new binary clears review (that is why 1.1.0 was reverted). Same
-  reason `package.json` has no `icons:paths` script: `@expo/fingerprint` hashes `scripts`. Add a
-  glyph with `node apps/highscore/scripts/pixel-icon-paths.mjs <name>` and paste the output;
-  curves throw at raster time, so stay on the pixel grid. Sizes 16/24/32 only.
+  (`pixelIconRaster.ts` rasterizes the rectilinear `M/H/V/Z` paths onto the 24px grid). That
+  predates the 1.2.0 binary, which preloads `react-native-svg` (see "Preloaded natives" below), so
+  SVG is available to a feature PR — but switching the icon renderer is a design change, not a
+  requirement. `package.json` still has no `icons:paths` script: `@expo/fingerprint` hashes
+  `scripts`, so adding one cuts a new binary. Add a glyph with
+  `node apps/highscore/scripts/pixel-icon-paths.mjs <name>` and paste the output; curves throw at
+  raster time, so stay on the pixel grid. Sizes 16/24/32 only.
 - `useColorScheme()` / `ThemeProvider` / light tokens are irrelevant here — static `tokens`.
 - The brand mark (`BrandIcon`, `assets/`, app icon, splash, `public/index.html` chrome) is
   frozen: an external contractor owns the new mark. The pixel `HIGHSCORE` wordmark is type,
@@ -104,6 +104,29 @@ by `legal.test.ts` — if the behavior changes, that copy changes in the same PR
 publishes to (see root CLAUDE.md → "Runtime-version policy"). Adding a native dependency means:
 bump `version`, add it to the list, keep the older entries until a PR actually imports the new
 module, then drop them in that PR. Never remove the current `version` from the list.
+
+## Preloaded natives (1.2.0 binary)
+
+The 1.2.0 binary ships native modules **no code imports yet**, so the features that need them can
+ship by OTA instead of another App Review cycle: `expo-notifications` (push entitlement
+`aps-environment: production`; `expo-background-task` was deliberately left out — its
+`UIBackgroundModes` draw App Review questions with nothing using them), `expo-haptics`, `expo-image`, `expo-clipboard`, `expo-sharing` (plugin not applied:
+its iOS share extension would collide with `expo-share-intent`), `expo-device`,
+`expo-application`, `expo-store-review`, `expo-blur`, `expo-linear-gradient`,
+`react-native-svg`, and `react-native-mmkv` (+ its required peer `react-native-nitro-modules`).
+Expo packages are pinned to the exact floor of SDK 55's `bundledNativeModules.json` (a `~` range
+pulled newer patches that wanted a second `expo-constants`); mmkv/nitro aren't in that map and are
+pinned exactly. Rules:
+
+- **Intentionally unused.** Each sits in knip's `ignoreDependencies` (`knip.jsonc`); remove it
+  there in the PR that first imports it (the two with config plugins are already "used").
+- **A feature PR that first imports one of these must drop every older runtime from
+  `supported-runtimes.json` in the same PR** — an OTA that imports a native module crashes a
+  pre-1.2.0 binary (`Cannot find native module …`).
+- **Any further native dep, config-plugin option, entitlement, or Info.plist key is another
+  `version` bump + TestFlight build + App Review.** Silent/background push
+  (`enableBackgroundRemoteNotifications` → `remote-notification` mode), notification sounds, and
+  a custom notification icon are all plugin options and are deliberately left off.
 
 ## App Store release shape (1.0)
 

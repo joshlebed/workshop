@@ -21,7 +21,24 @@
       "ignoreDependencies": ["@react-navigation/native"]
     },
     "apps/highscore": {
-      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "functions/**/*.ts", "scripts/*.mjs"]
+      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "functions/**/*.ts", "scripts/*.mjs"],
+      // Natives preloaded into the 1.2.0 binary so later features ship OTA-only —
+      // intentionally unused for now (apps/highscore/CLAUDE.md). Remove each one
+      // from this list in the PR that first imports it.
+      "ignoreDependencies": [
+        "expo-application",
+        "expo-blur",
+        "expo-clipboard",
+        "expo-device",
+        "expo-haptics",
+        "expo-image",
+        "expo-linear-gradient",
+        "expo-sharing",
+        "expo-store-review",
+        "react-native-mmkv",
+        "react-native-nitro-modules",
+        "react-native-svg"
+      ]
     },
     "packages/*": {}
   }

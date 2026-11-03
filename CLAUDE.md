@@ -343,7 +343,8 @@ deliberate critical-fix backports may change it before then. See
   "fix" a red check with `EXPO_OFFLINE=1`: `validateDependenciesVersionsAsync` returns early
   in offline mode and validates nothing, so the guard silently disappears while still
   printing a pass. The script also enforces that each declared range is a `semver` subset of
-  the SDK's range. Add new SDK-tracking natives to `PACKAGES` in the script; pass an app
+  the SDK's range. Add SDK-tracking natives every app declares to `PACKAGES` in the script, and app-specific
+  ones to `PACKAGES_IF_DECLARED` (checked only for an app that declares them); pass an app
   directory to check HighScore (`node scripts/check-expo-sdk-deps.mjs apps/highscore`).
   `react` and `typescript` stay out on purpose (pinned above SDK-preferred).
 - **Dependency upgrades go through Dependabot.** Don't manually bump npm/Actions/Terraform deps
