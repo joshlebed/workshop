@@ -14,7 +14,7 @@
 // A game you already have opens its board. The footer keeps the bootstrap
 // path — paste any game's URL (spec §3.3: known dailies collapse onto their
 // catalog row, unknown URLs get a link-preview title + favicon) — which adds
-// and returns home.
+// and returns home. That footer is `addByUrl/AddByUrlFooter.tsx`.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
@@ -23,23 +23,12 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { Game } from "@workshop/shared/games";
 import { haptics } from "@workshop/ui";
-import { readClipboard } from "@workshop/ui/clipboard";
 import { type Href, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  Button,
-  bodyType,
-  EmptyState,
-  homeLayout,
-  PixelIcon,
-  Screen,
-  Text,
-  tokens,
-  useToast,
-} from "../../../theme";
+import { Button, EmptyState, PixelIcon, Screen, Text, tokens, useToast } from "../../../theme";
 import { addGame, fetchGameCatalog, fetchGameDiscovery } from "../../api/games";
 import { FriendsOnlyToggle } from "../../components/FriendsOnlyToggle";
 import {
@@ -51,6 +40,7 @@ import {
 import { localDateKey } from "../../lib/gameDate";
 import { goBack } from "../../lib/navigation";
 import { useGamesRuntime } from "../../runtime";
+import { AddByUrlFooter } from "./addByUrl/AddByUrlFooter";
 import { GameCatalogList } from "./GameCatalogList";
 
 export function AddGame() {
@@ -63,12 +53,6 @@ export function AddGame() {
   const todayKey = localDateKey();
 
   const [friendsOnly, setFriendsOnly] = useState(true);
-  const [draft, setDraft] = useState("");
-  // Native: the URL box is a paste target, not a text field. Tapping it reads
-  // the clipboard (the link was almost always just copied from Safari) so the
-  // keyboard never opens by default; "Type a URL instead" swaps in a real
-  // input. Web keeps the plain input — no soft keyboard to fight there.
-  const [typing, setTyping] = useState(Platform.OS === "web");
   // Per-row add state so each row shows its own spinner / "✓ Added" pill.
   const [addingIds, setAddingIds] = useState<string[]>([]);
   const [addedIds, setAddedIds] = useState<string[]>([]);
@@ -128,34 +112,11 @@ export function AddGame() {
     },
   });
 
-  // URL add: the game lands on the home list, so go there.
-  const addUrlMutation = useMutation({
-    mutationFn: (url: string) => addGame(url, token),
-    onSuccess: async (data) => {
-      haptics.medium();
-      await invalidateGameLists();
-      showToast({ message: `Added ${data.game.title}`, tone: "success" });
-      goBack(routes.home);
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't add that game."), tone: "danger" });
-    },
-  });
-
-  const trimmed = draft.trim();
-  const canSubmitUrl = trimmed.length > 0 && !addUrlMutation.isPending;
-  const submitUrl = () => {
-    if (canSubmitUrl) addUrlMutation.mutate(trimmed);
-  };
-
-  const pasteFromClipboard = async () => {
-    const text = (await readClipboard())?.trim() ?? "";
-    if (!text) {
-      showToast({ message: "Nothing to paste. Copy a game's link first.", tone: "danger" });
-      return;
-    }
-    haptics.light();
-    setDraft(text);
+  // URL add (footer): the game lands on the home list, so go there.
+  const onUrlAdded = async (game: Game) => {
+    await invalidateGameLists();
+    showToast({ message: `Added ${game.title}`, tone: "success" });
+    goBack(routes.home);
   };
 
   const friends = friendsQuery.data?.friends ?? [];
@@ -238,71 +199,7 @@ export function AddGame() {
           />
         </View>
 
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, tokens.space.md) }]}>
-          <Text variant="caption" tone="muted" style={styles.footerLabel}>
-            Or add by URL
-          </Text>
-          <View style={styles.footerRow}>
-            {typing ? (
-              <TextInput
-                testID="add-game-url-input"
-                value={draft}
-                onChangeText={setDraft}
-                placeholder="https://example.com/daily"
-                placeholderTextColor={tokens.text.secondary}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus={Platform.OS !== "web"}
-                keyboardType="url"
-                maxLength={2000}
-                onSubmitEditing={submitUrl}
-                style={[styles.urlBox, styles.input]}
-              />
-            ) : (
-              <Pressable
-                testID="add-game-url-paste"
-                accessibilityRole="button"
-                accessibilityLabel={
-                  draft ? `Link to add: ${draft}. Tap to paste again` : "Paste a link"
-                }
-                onPress={() => void pasteFromClipboard()}
-                style={({ pressed }) => [
-                  styles.urlBox,
-                  styles.pasteBox,
-                  pressed && styles.pasteBoxPressed,
-                ]}
-              >
-                <Text
-                  numberOfLines={1}
-                  tone={draft ? "primary" : "secondary"}
-                  style={styles.pasteText}
-                >
-                  {draft || "Tap to paste a link"}
-                </Text>
-              </Pressable>
-            )}
-            <Button
-              label="Add"
-              onPress={submitUrl}
-              disabled={!canSubmitUrl}
-              loading={addUrlMutation.isPending}
-              testID="add-game-submit"
-            />
-          </View>
-          {typing ? null : (
-            <Pressable
-              onPress={() => setTyping(true)}
-              hitSlop={8}
-              accessibilityRole="button"
-              testID="add-game-url-type"
-              style={styles.typeInstead}
-            >
-              <Text variant="caption" tone="link">
-                Type a URL instead
-              </Text>
-            </Pressable>
-          )}
-        </View>
+        <AddByUrlFooter onAdded={onUrlAdded} />
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -327,35 +224,4 @@ const styles = StyleSheet.create({
   },
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
   body: { flex: 1, minHeight: 0 },
-  footer: {
-    paddingHorizontal: homeLayout.horizontalInset,
-    paddingTop: tokens.space.sm,
-    gap: tokens.space.xs,
-    borderTopWidth: tokens.bezel,
-    borderTopColor: tokens.border.default,
-    backgroundColor: tokens.bg.canvas,
-  },
-  footerLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
-  footerRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  // Same height as the input: 10px padding + the 22px body line-height.
-  pasteBox: { justifyContent: "center", paddingVertical: 10 },
-  pasteBoxPressed: { borderColor: tokens.neon.pink },
-  pasteText: { fontSize: tokens.font.size.md },
-  typeInstead: { alignSelf: "flex-start", paddingVertical: 2 },
-  // Shared frame for the text input and its native paste-box twin.
-  urlBox: {
-    flex: 1,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.sm,
-    paddingHorizontal: tokens.space.md,
-    backgroundColor: tokens.bg.elevated,
-  },
-  input: {
-    ...bodyType(),
-    paddingVertical: 10,
-    color: tokens.text.primary,
-    // ≥16 or iOS Safari zooms the page on focus (see root CLAUDE.md).
-    fontSize: tokens.font.size.md,
-  },
 });

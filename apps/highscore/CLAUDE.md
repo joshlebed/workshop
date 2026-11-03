@@ -201,10 +201,20 @@ one pads **short by exactly `insets.top`** — the focused field ends up ~60pt u
 (the Add-game URL box did; iOS 26 applied 246pt against a 309pt keyboard). Pass
 `keyboardVerticalOffset={insets.top}` (`useSafeAreaInsets`) as `AddGame.tsx` does. `GameBoard`
 and `onboarding/display-name` use the same wrapper without the offset and are likely short too;
-fix them the same way when touched. Separately: a pinned "paste a link" box should not be a
-`TextInput` at all on native — `AddGame` reads the clipboard on tap
-(`readClipboard` from `@workshop/ui/clipboard`, backed by `expo-clipboard`, in every HighScore
-binary) and only swaps in a real input behind "Type a URL instead".
+fix them the same way when touched.
+
+## Add-game "add by link" footer
+
+`src/games/screens/games/addByUrl/AddByUrlFooter.tsx` is a plain input + Add with a one-tap
+"You copied a link · Add it" suggestion above it (#544 compared five treatments; this won).
+Two rules it relies on: `clipboardHasLink` only sniffs pasteboard _types_ (`expo-clipboard`
+`hasUrlAsync`, which iOS allows without the paste prompt) so the suggestion can appear on
+mount and on foreground without a tap, and every content read (`readClipboardLink`) happens
+behind the user's tap — that tap is what triggers the prompt. `isLikelyGameUrl` is the
+client-side twin of the server's `normalizeGameUrl` gate, so a pasted score never gets POSTed
+as a URL; non-link text lands in the box with a hint. Web never sees the suggestion (browsers
+can't sniff types) and gets the bare input. Don't bring back a fake-input paste box or a
+"Type a URL instead" mode switch.
 
 ## Reorder activation vs. taps (Games home)
 

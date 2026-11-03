@@ -30,7 +30,6 @@
       "ignoreDependencies": [
         "expo-application",
         "expo-blur",
-        "expo-clipboard",
         "expo-device",
         "expo-haptics",
         "expo-image",
