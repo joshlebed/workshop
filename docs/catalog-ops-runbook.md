@@ -6,6 +6,13 @@ games plus the operator-reviewed `OFFICIAL_CATALOG_EXTRAS` in
 `packages/shared/src/gameRegistry.ts`. Nothing reaches it without a human merge — that is the
 content gate (App Review Guideline 1.2 applies here just like it does to scores and names).
 
+**Rule: a catalog game always has a parser and a formatter** (operator decision, 2026-11-03).
+A stranger who adds a game from the catalog should see their first paste read and rendered,
+not stored unread as raw text. An extra that isn't taught yet stays out — or comes out — until
+someone teaches it (a teach writes both). The audit enforces this on its side: it only proposes
+candidates with both, and reports any listed extra missing either as "not catalog-ready".
+A registry game missing one is a code fix (below), not a removal.
+
 ## What the daily automation does
 
 A Niteshift automation (**"HighScore catalog audit"**, daily 13:00 UTC, repo `joshlebed/workshop`)
@@ -26,7 +33,9 @@ starts a task that:
 2. Reads the three sections:
    - **Candidates** — games with ≥1 player that aren't listed, each with a suggested game type
      (keyword guess), player + 30-day score counts, parser status, and flags
-     (`objectionable-title`, `tagline-title`, `no-parser`, `single-player`). `tagline-title`
+     (`objectionable-title`, `tagline-title`, `no-parser`, `no-formatter`, `single-player`).
+     Only candidates with neither `objectionable-title` nor a missing parser/formatter are
+     in the proposed-extras block; the rest are listed as "Not ready". `tagline-title`
      means the stored title reads like a page tagline ("Krillion · the daily dive") and comes
      with the cleaned name; a listed game with such a title is reported under health too.
    - **Listed games needing attention** — no parser, no formatter, open parse conflict, or
@@ -34,7 +43,8 @@ starts a task that:
    - **Stale extras** — listed URLs with no `games` row (prune).
 
 3. Opens **one PR** (branch `ops/catalog-audit-YYYY-MM-DD`, never auto-merged) that adds the
-   non-flagged candidates to `OFFICIAL_CATALOG_EXTRAS` with the suggested categories, and pastes
+   proposed (catalog-ready, non-flagged) candidates to `OFFICIAL_CATALOG_EXTRAS`, removes any
+   listed extra the audit reports as "not catalog-ready", and pastes
    the full report in the description. Anything flagged `objectionable-title` is listed in the
    description for `admin:eject` review and **never** added. If there are no candidates and no
    health changes since the last run, it opens nothing and just posts its summary.
@@ -45,7 +55,9 @@ starts a task that:
    `admin:game-code` — `games.format_code` is seeded from `builtin.ts` only when the row is
    created, so a registry `formatShareBody` change alone never clears the flag. A bad unread
    rate on an **extra** is usually "nobody taught it yet": leave it, note it. Code changes need
-   a labelled example set (see `apps/backend/CLAUDE.md`, game code).
+   a labelled example set (see `apps/backend/CLAUDE.md`, game code). The exception is the
+   catalog rule above: an **extra** with no parser or no formatter is removed from
+   `OFFICIAL_CATALOG_EXTRAS` in the audit PR (it comes back through a later audit once taught).
 
 ## What the operator does
 
@@ -83,3 +95,4 @@ Against the local sandbox DB: `set -a; . apps/backend/.env; set +a` first.
 - The catalog response carries a platform-wide `playerCount` and **no user names**.
 - A flagged (`objectionable-title`) candidate is excluded from the proposed extras block.
 - A detection-only registry game (`catalog: false`, e.g. Heardle) is not listed.
+- A candidate with no parser or no formatter is never in the proposed extras block.

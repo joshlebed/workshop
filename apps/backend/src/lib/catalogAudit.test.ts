@@ -14,6 +14,7 @@ import { renderCatalogAuditMarkdown, runCatalogAudit, suggestCategory } from "./
 
 const u1 = "00000000-0000-4000-8000-0000000000f1";
 const u2 = "00000000-0000-4000-8000-0000000000f2";
+const untaughtExtra = OFFICIAL_CATALOG_EXTRAS[0]?.normalizedUrl ?? "";
 
 async function exec(query: string, params: unknown[] = []) {
   const client = (testDb as unknown as { $client: PGlite }).$client;
@@ -44,12 +45,19 @@ beforeAll(async () => {
   const squaredle = await ins("squaredle.app", "Squaredle · the daily word hunt");
   const nasty = await ins("nasty.example", "Fag Daily");
   await ins("lonely.example", "Lonely");
-  await exec(`INSERT INTO user_games (user_id, game_id) VALUES ($1, $3), ($2, $3), ($1, $4)`, [
-    u1,
-    u2,
-    squaredle,
-    nasty,
-  ]);
+  // A taught candidate (parser + formatter): the only kind the audit proposes.
+  const tiledle = await ins("tiledle.example", "Tiledle");
+  await exec(
+    `UPDATE games SET parse_code = 'function parse(raw) { return 1; }',
+       format_code = 'function format(raw) { return "1"; }', code_version = 1 WHERE id = $1`,
+    [tiledle],
+  );
+  await exec(
+    `INSERT INTO user_games (user_id, game_id) VALUES ($1, $3), ($2, $3), ($1, $4), ($1, $5), ($2, $5)`,
+    [u1, u2, squaredle, nasty, tiledle],
+  );
+  // A reviewed extra whose row was never taught: listed, but not catalog-ready.
+  await ins(untaughtExtra, "Untaught extra");
   // Wordle (listed, has seeded parser): one player, 6 recent scores, 3 unread.
   const wordle = (await exec(`SELECT id FROM games WHERE game_key = 'wordle'`))[0]?.id;
   await exec(`INSERT INTO user_games (user_id, game_id) VALUES ($1, $2)`, [u1, wordle]);
@@ -82,10 +90,21 @@ describe("runCatalogAudit", () => {
     expect(
       report.candidates.map((c) => [c.title, c.playerCount, c.suggestedCategory, c.flags]),
     ).toEqual([
-      ["Squaredle · the daily word hunt", 2, "words", ["tagline-title", "no-parser"]],
-      ["Fag Daily", 1, "other", ["objectionable-title", "no-parser", "single-player"]],
+      [
+        "Squaredle · the daily word hunt",
+        2,
+        "words",
+        ["tagline-title", "no-parser", "no-formatter"],
+      ],
+      ["Tiledle", 2, "words", []],
+      [
+        "Fag Daily",
+        1,
+        "other",
+        ["objectionable-title", "no-parser", "no-formatter", "single-player"],
+      ],
     ]);
-    expect(report.totals.candidates).toBe(2);
+    expect(report.totals.candidates).toBe(3);
     expect(report.candidates[0]?.suggestedTitle).toBe("Squaredle");
   });
 
@@ -95,28 +114,39 @@ describe("runCatalogAudit", () => {
     expect(wordle).toBeDefined();
     expect(wordle?.issues).toContain("3/6 scores unread in the last 30 days");
     expect(wordle?.hasParser).toBe(true);
+    // An extra with no code must come out of the catalog until it is taught.
+    const extra = report.unhealthy.find((h) => h.title === "Untaught extra");
+    expect(extra?.issues).toContain(
+      "not catalog-ready: remove from OFFICIAL_CATALOG_EXTRAS until it is taught",
+    );
     // Every seeded registry game has a parser and no conflict; the only other
-    // thing the audit can hold against them is a missing formatter.
-    for (const h of report.unhealthy.filter((h) => h.gameKey !== "wordle")) {
+    // thing the audit can hold against them is a missing formatter (never a
+    // removal: registry games get their code fixed).
+    for (const h of report.unhealthy.filter((h) => h.gameKey !== null && h.gameKey !== "wordle")) {
       expect(h.hasParser).toBe(true);
       expect(h.issues).toEqual(["no formatter: rows show raw share text"]);
     }
-    // The fixture DB has no row for any reviewed extra, so every extra reads
+    // The fixture DB has no row for any other reviewed extra, so the rest read
     // as stale here — and none of them may be counted as listed above.
     expect(report.staleExtras.map((e) => e.normalizedUrl)).toEqual(
-      OFFICIAL_CATALOG_EXTRAS.map((e) => e.normalizedUrl),
+      OFFICIAL_CATALOG_EXTRAS.slice(1).map((e) => e.normalizedUrl),
     );
   });
 
-  it("renders markdown with proposed extras that exclude the flagged title", async () => {
+  it("proposes only taught candidates, never the flagged title, and names the untaught", async () => {
     const md = renderCatalogAuditMarkdown(await runCatalogAudit(new Date("2026-10-20T00:00:00Z")));
     expect(md).toContain(
-      '| Squaredle · the daily word hunt (→ "Squaredle") | https://squaredle.app | 2 | 0 | no | Word games | tagline-title, no-parser |',
+      '| Squaredle · the daily word hunt (→ "Squaredle") | https://squaredle.app | 2 | 0 | no | Word games | tagline-title, no-parser, no-formatter |',
     );
     expect(md).toContain(
-      '{ normalizedUrl: "squaredle.app", title: "Squaredle", category: "words" },',
+      '{ normalizedUrl: "tiledle.example", title: "Tiledle", category: "words" },',
     );
+    expect(md).not.toContain('normalizedUrl: "squaredle.app"');
     expect(md).not.toContain('normalizedUrl: "nasty.example"');
+    expect(md).toContain(
+      "Not ready (needs a parser and a formatter before it can be listed): Squaredle · the daily word hunt",
+    );
+    expect(md).not.toMatch(/Not ready.*Fag Daily/);
     expect(md).toContain("**Wordle**");
   });
 });
