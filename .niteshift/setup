@@ -9,7 +9,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
 log() { printf '[niteshift-setup] %s\n' "$*"; }
 
-# 1) Pinned toolchain (node 20.19 / pnpm 10.19 via mise).
+# 1) Pinned toolchain (node 20.19 / pnpm 10.34 via mise).
 # shellcheck disable=SC1091
 source "$REPO_DIR/.niteshift/files/toolchain.sh"
 log "installing pinned toolchain via mise"

@@ -826,7 +826,7 @@ the primary dev surface — faster iteration, browser-automation can drive the r
 
 ### First-time setup
 
-Prereqs: Node 20.19 (`.nvmrc`), pnpm 10.19, Docker Desktop.
+Prereqs: Node 20.19 (`.nvmrc`), pnpm 10.34, Docker Desktop.
 
 ```bash
 pnpm install
