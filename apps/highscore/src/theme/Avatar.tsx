@@ -15,7 +15,7 @@ export interface AvatarProps {
   /** Display name used to derive initials. Falls back to "?" when missing. */
   name: string | null;
   imageUrl?: string | null;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   style?: StyleProp<ViewStyle>;
   testID?: string;
 }
@@ -24,12 +24,14 @@ const SIZE: Record<NonNullable<AvatarProps["size"]>, number> = {
   sm: 24,
   md: 32,
   lg: 48,
+  xl: 88,
 };
 
 const FONT_SIZE: Record<NonNullable<AvatarProps["size"]>, number> = {
   sm: 10,
   md: tokens.font.size.xs,
   lg: tokens.font.size.md,
+  xl: 32,
 };
 
 // Deterministic per-name initial color, drawn only from spec neons. These are
