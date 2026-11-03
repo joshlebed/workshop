@@ -4,7 +4,7 @@ description: |
   Runs *inside* each job after checkout rather than as a separate `changes`
   job the others `needs:` — that hop was ~17s of serial latency on every PR.
   Replaced two dorny/paths-filter steps (~2–3s: two action downloads + two
-  API round-trips) in #544.
+  API round-trips) in #546.
 
   On pull_request the file list comes from the PR (so no .git is needed —
   the tarball checkout has none). On push every filter is true: the only
