@@ -18,6 +18,8 @@ import { adminRoutes } from "./admin.js";
 const adminId = "00000000-0000-4000-8000-000000000601";
 const playerId = "00000000-0000-4000-8000-000000000602";
 const lurkerId = "00000000-0000-4000-8000-000000000603";
+/** Opens the app every day, never does anything. */
+const browserId = "00000000-0000-4000-8000-000000000606";
 const gameId = "00000000-0000-4000-8000-000000000604";
 const listId = "00000000-0000-4000-8000-000000000605";
 
@@ -58,8 +60,9 @@ describe("GET /v1/admin/analytics", () => {
       `INSERT INTO users (id, email, display_name) VALUES
        ($1, 'joshlebed@gmail.com', 'Josh'),
        ($2, 'player@example.com', 'Player'),
-       ($3, 'lurker@example.com', 'Lurker')`,
-      [adminId, playerId, lurkerId],
+       ($3, 'lurker@example.com', 'Lurker'),
+       ($4, 'browser@example.com', 'Browser')`,
+      [adminId, playerId, lurkerId, browserId],
     );
     await run(
       `INSERT INTO games (id, normalized_url, url, title) VALUES ($1, 'wordle.test', 'https://wordle.test', 'Wordle')`,
@@ -71,6 +74,11 @@ describe("GET /v1/admin/analytics", () => {
        ($1, $3, 'p1', 'Wordle 1 4/6', now(), 'web'),
        ($1, $2, 'p0', 'Wordle 0 5/6', now() - interval '2 days', NULL)`,
       [gameId, playerId, lurkerId],
+    );
+    // Admin ↔ lurker became friends yesterday: counts both, in both apps.
+    await run(
+      `INSERT INTO friendships (user_low, user_high, created_at) VALUES ($1, $2, now() - interval '1 day')`,
+      [adminId < lurkerId ? adminId : lurkerId, adminId < lurkerId ? lurkerId : adminId],
     );
     await run(
       `INSERT INTO lists (id, name, emoji, color, owner_id, share_slug) VALUES ($1, 'Books', '📚', 'ocean', $2, 'books-slug')`,
@@ -104,6 +112,9 @@ describe("GET /v1/admin/analytics", () => {
     await recordUserActivity(lurkerId, origin("highscore", "web", "0.6.0"));
     await recordUserActivity(playerId, origin("workshop", "web"));
     await recordUserActivity(playerId, origin(null, "web")); // header-less → workshop, de-duped
+    // Requests alone are not activity: the browser never shows up in any active-user number.
+    await recordUserActivity(browserId, origin("highscore", "ios", "1.4.0"));
+    await recordUserActivity(browserId, origin("workshop", "web"));
   }, 60_000);
 
   it("rejects non-admins", async () => {
@@ -130,13 +141,12 @@ describe("GET /v1/admin/analytics", () => {
     expect(body.client).toBe("highscore");
     expect(body.rangeDays).toBe(7);
     expect(series(body, "dau").points).toHaveLength(7);
+    // Today: player + lurker posted scores. The browser only made requests → not active.
     expect(series(body, "dau").points.at(-1)).toEqual({ day: today, value: 2 });
-    // Stacked by platform: the player counts under both iOS and web.
-    const dauStack = series(body, "dau").stack ?? [];
-    expect(dauStack.map((s) => [s.key, s.points.at(-1)?.value])).toEqual([
-      ["ios", 1],
-      ["web", 2],
-    ]);
+    // Yesterday: admin + lurker made friends.
+    expect(series(body, "dau").points.at(-2)?.value).toBe(2);
+    // One user is one user, however many platforms: no per-platform stack on actives.
+    expect(series(body, "dau").stack).toBeUndefined();
     const scoreStack = series(body, "scores").stack ?? [];
     expect(scoreStack.map((s) => [s.key, s.points.reduce((a, p) => a + p.value, 0)])).toEqual([
       ["ios", 1],
@@ -144,17 +154,22 @@ describe("GET /v1/admin/analytics", () => {
       ["other", 1],
     ]);
     const versions = body.breakdowns.find((b) => b.key === "versions");
+    // Versions in use still come from requests (the only place a version is recorded).
     expect(versions?.rows).toEqual([
+      { label: "iOS app · 1.4.0", value: 2, platform: "ios" },
       { label: "Web · 0.6.0", value: 2, platform: "web" },
-      { label: "iOS app · 1.4.0", value: 1, platform: "ios" },
     ]);
-    expect(series(body, "mau").points.at(-1)?.value).toBe(2);
+    // Admin, player, lurker acted in the last 30 days; browser never did.
+    expect(series(body, "mau").points.at(-1)?.value).toBe(3);
     expect(series(body, "scores").points.at(-1)?.value).toBe(2);
     expect(series(body, "scores").points.reduce((a, p) => a + p.value, 0)).toBe(3);
     expect(series(body, "scorers").points.at(-1)?.value).toBe(2);
-    expect(series(body, "new_users").points.at(-1)?.value).toBe(2);
+    // Player's first action was two days ago, admin's and lurker's yesterday: nobody is new today.
+    expect(series(body, "new_users").points.at(-1)?.value).toBe(0);
+    expect(series(body, "new_users").points.at(-2)?.value).toBe(2);
     expect(stat(body, "active_today")).toBe(2);
-    expect(stat(body, "users_total")).toBe(2);
+    expect(stat(body, "active_7d")).toBe(3);
+    expect(stat(body, "users_total")).toBe(3);
     expect(stat(body, "scores_7d")).toBe(3);
     expect(body.series.find((s) => s.key === "items")).toBeUndefined();
 
@@ -186,7 +201,11 @@ describe("GET /v1/admin/analytics", () => {
     const body = (await res.json()) as AdminAnalyticsResponse;
     expect(body.rangeDays).toBe(30);
     expect(series(body, "dau").points).toHaveLength(30);
+    // Player added items + created a list today; the friendship counts here too.
     expect(stat(body, "active_today")).toBe(1);
+    expect(series(body, "dau").points.at(-2)?.value).toBe(2);
+    expect(stat(body, "active_7d")).toBe(3);
+    expect(stat(body, "users_total")).toBe(3);
     expect(series(body, "items").points.at(-1)?.value).toBe(2);
     expect(series(body, "items").stack?.map((s) => [s.key, s.points.at(-1)?.value])).toEqual([
       ["web", 2],
@@ -208,14 +227,14 @@ describe("GET /v1/admin/analytics", () => {
     expect(series(body, "dau").points).toHaveLength(53);
     expect(series(body, "dau").label).toBe("Weekly active users");
     const lastWeek = series(body, "dau").points.at(-1);
-    expect(lastWeek?.value).toBe(2);
+    expect(lastWeek?.value).toBe(3);
     // Scores: 3 in the last 7 days (2 today + 1 two days ago) summed into one bar.
     expect(series(body, "scores").points.at(-1)?.value).toBe(3);
     // Scorers are distinct within the week (player scored twice, lurker once).
     expect(series(body, "scorers").points.at(-1)?.value).toBe(2);
     expect(stat(body, "scores_7d")).toBe(3);
     // Weekly MAU is the end-of-week snapshot, not a sum.
-    expect(series(body, "mau").points.at(-1)?.value).toBe(2);
+    expect(series(body, "mau").points.at(-1)?.value).toBe(3);
   });
 
   it("defaults the client to the calling app's X-Workshop-Client header", async () => {

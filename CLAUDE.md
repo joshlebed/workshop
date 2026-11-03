@@ -238,12 +238,18 @@ deliberate critical-fix backports may change it before then. See
 - **Admin analytics dashboards live in each app** (Workshop: `/admin/analytics`, ProfileMenu →
   "Admin: analytics"; HighScore: the Overview tab of `/admin`), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90|365` (365 is served as weekly buckets: distinct users per week, end-of-week MAU snapshot, summed counts; `bucket` on the response)
   (`routes/v1/admin.ts`, gated on the real admin via `isAdminUser`, impersonation-aware).
-  DAU/MAU come from `user_activity_days` — one row per (user, client, platform, app version,
-  UTC day; a multi-platform user appears under each platform), written by
-  the `requestLog` middleware (`lib/userActivity.ts`, memoized per Lambda container, skipped
-  for impersonated and 5xx requests). Header-less requests count as `workshop`. Rows before
-  2026-10-29 were backfilled from `game_scores` / reactions (→ highscore) and
-  `activity_events` (→ workshop), so early history is a lower bound. Per-app content series
+  **"Active" means the user took an action that day, not that the app made a request**
+  (`actionRows` in `lib/adminAnalytics.ts`): HighScore = posted a score, added a game,
+  reacted, or made a friend; Workshop = added an item, created a list, any
+  `activity_events` row, or made a friend (friendships carry no client, so they count in both
+  apps). One user is one user per day however many devices — DAU/MAU/new/ever stats have no
+  platform stack on purpose; an earlier per-platform "overlap" stack double-counted
+  multi-device users and a request-based definition counted background refreshes. **If you
+  add a new user action, add its table to `actionRows`.** `user_activity_days` — one row per
+  (user, client, platform, app version, UTC day), written by the `requestLog` middleware
+  (`lib/userActivity.ts`, memoized per Lambda container, skipped for impersonated and 5xx
+  requests; header-less requests count as `workshop`) — now only feeds the versions-in-use
+  breakdown. Per-app content series
   (scores + scorers per day for HighScore, items + lists per day for Workshop) are computed
   from their source tables in `lib/adminAnalytics.ts`; add a series there, not client-side.
   User-written rows (`game_scores`, `items`) are stamped with `client` / `platform` /

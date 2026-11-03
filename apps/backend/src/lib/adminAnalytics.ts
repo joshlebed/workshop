@@ -1,9 +1,13 @@
 // Numbers behind the per-app admin dashboards (`GET /v1/admin/analytics`).
 //
 // Everything is aggregated in JS from small day-grained result sets: the
-// tables involved (`user_activity_days`, `game_scores`, `items`, `lists`) are
+// tables involved (`game_scores`, `items`, `lists`, `friendships`, …) are
 // tiny at this product's scale, and keeping the arithmetic here means the
 // same code runs against Postgres in prod and PGlite in tests.
+//
+// "Active" means the user took an action that day (see `actionRows`), not
+// that the app made a request — a background refresh is not activity, and a
+// user is one user however many platforms they used.
 //
 // Windows longer than ADMIN_ANALYTICS_WEEKLY_BUCKET_ABOVE days are rolled up
 // into 7-day buckets (the last bucket ends today). Distinct-user series stay
@@ -28,7 +32,17 @@ import {
 } from "@workshop/shared/constants";
 import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { gameScores, items, lists, requestRollups, userActivityDays } from "../db/schema.js";
+import {
+  activityEvents,
+  friendships,
+  gameScoreReactions,
+  gameScores,
+  items,
+  lists,
+  requestRollups,
+  userActivityDays,
+  userGames,
+} from "../db/schema.js";
 import { utcDay } from "./userActivity.js";
 
 const MAU_WINDOW = 30;
@@ -153,17 +167,130 @@ interface ActivityRow {
   appVersion: string;
 }
 
+/** A (user, UTC day) pair: the user did something that counts on that day. */
+interface ActionRow {
+  userId: string;
+  day: string;
+}
+
 /**
- * Active-user series for one client from `user_activity_days`: active users
- * per bucket, rolling-30-day actives (end-of-bucket snapshot), and first-seen
- * (new) users.
+ * Every (user, day) on which the user *did something* in this app — the
+ * definition of "active" for every active-user number on the dashboard.
+ * Merely opening the app (any request, a background refresh, a poll) is not
+ * an action; `user_activity_days` records that and is only used for the
+ * versions-in-use breakdown.
+ *
+ * HighScore: posted a score, added a game, reacted to a score, or made a
+ * friend. Workshop: added an item, created a list, any activity-feed event
+ * (edits, checks, joins, …), or made a friend. Friendships are app-agnostic
+ * (both apps have the surface and the row carries no client), so a new
+ * friendship counts both users as active in both apps that day.
+ *
+ * All time: MAU needs a 30-day lookback and "new" / "ever" need the whole
+ * history. The tables are small at this scale.
+ */
+async function actionRows(db: Db, client: WorkshopClient): Promise<ActionRow[]> {
+  const out: ActionRow[] = [];
+  const push = (rows: ActionRow[]) => {
+    for (const r of rows) out.push(r);
+  };
+
+  const friendRows = await db
+    .select({
+      userLow: friendships.userLow,
+      userHigh: friendships.userHigh,
+      day: utcDayOf(friendships.createdAt),
+    })
+    .from(friendships);
+  for (const r of friendRows) {
+    out.push({ userId: r.userLow, day: r.day }, { userId: r.userHigh, day: r.day });
+  }
+
+  if (client === "highscore") {
+    push(
+      await db
+        .select({ userId: gameScores.userId, day: utcDayOf(gameScores.createdAt) })
+        .from(gameScores)
+        .groupBy(gameScores.userId, utcDayOf(gameScores.createdAt)),
+    );
+    push(
+      await db
+        .select({ userId: userGames.userId, day: utcDayOf(userGames.addedAt) })
+        .from(userGames)
+        .groupBy(userGames.userId, utcDayOf(userGames.addedAt)),
+    );
+    push(
+      await db
+        .select({
+          userId: gameScoreReactions.reactorUserId,
+          day: utcDayOf(gameScoreReactions.createdAt),
+        })
+        .from(gameScoreReactions)
+        .groupBy(gameScoreReactions.reactorUserId, utcDayOf(gameScoreReactions.createdAt)),
+    );
+  } else {
+    push(
+      await db
+        .select({ userId: items.addedBy, day: utcDayOf(items.createdAt) })
+        .from(items)
+        .groupBy(items.addedBy, utcDayOf(items.createdAt)),
+    );
+    push(
+      await db
+        .select({ userId: lists.ownerId, day: utcDayOf(lists.createdAt) })
+        .from(lists)
+        .groupBy(lists.ownerId, utcDayOf(lists.createdAt)),
+    );
+    push(
+      await db
+        .select({ userId: activityEvents.actorId, day: utcDayOf(activityEvents.createdAt) })
+        .from(activityEvents)
+        .groupBy(activityEvents.actorId, utcDayOf(activityEvents.createdAt)),
+    );
+  }
+  return out;
+}
+
+/**
+ * Active-user series for one client: users who took an action per bucket,
+ * rolling-30-day actives (end-of-bucket snapshot), and first-seen (new)
+ * users — all from `actionRows`, each user counted once per day no matter
+ * how many actions or platforms. The versions-in-use breakdown is the one
+ * number still read from `user_activity_days` (it is the only place the app
+ * version is recorded).
  */
 async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[]) {
   const days = buckets.flatMap((b) => b.days);
   const first = days[0] ?? utcDay(new Date());
   const last = days[days.length - 1] ?? first;
-  const lookbackStart = addDays(first, -(MAU_WINDOW - 1));
 
+  const actions = await actionRows(db, client);
+  const usersByDay = usersByDayOf(actions);
+
+  const active = distinctSeries(buckets, usersByDay);
+  const mau = buckets.map((b) => {
+    const end = b.days[b.days.length - 1] ?? b.start;
+    return {
+      day: b.start,
+      value: distinctOver(dayRange(addDays(end, -(MAU_WINDOW - 1)), end), usersByDay),
+    };
+  });
+
+  // "New" = first day this user ever took an action in this app, computed
+  // over the whole history so returning users never re-count.
+  const firstDayByUser = new Map<string, string>();
+  for (const row of actions) {
+    const prev = firstDayByUser.get(row.userId);
+    if (!prev || row.day < prev) firstDayByUser.set(row.userId, row.day);
+  }
+  const newByDay = new Map<string, number>();
+  for (const day of firstDayByUser.values()) newByDay.set(day, (newByDay.get(day) ?? 0) + 1);
+
+  const activeWithin = (n: number) =>
+    distinctOver(dayRange(addDays(last, -(n - 1)), last), usersByDay);
+
+  // Versions in use over the last 7 days: distinct users per (platform, version).
+  const versionStart = addDays(last, -6);
   const rows: ActivityRow[] = await db
     .select({
       userId: userActivityDays.userId,
@@ -172,26 +299,13 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
       appVersion: userActivityDays.appVersion,
     })
     .from(userActivityDays)
-    .where(and(eq(userActivityDays.client, client), gte(userActivityDays.day, lookbackStart)));
-  const usersByDay = usersByDayOf(rows);
-
-  const active = distinctSeries(buckets, usersByDay);
-  const activeStack = stackOf(
-    byPlatform(rows).map((g) => ({
-      seg: g.seg,
-      label: g.label,
-      points: distinctSeries(buckets, usersByDayOf(g.rows)),
-    })),
-  );
-
-  // Versions in use over the last 7 days: distinct users per (platform, version).
-  const versionWindow = new Set(dayRange(addDays(last, -6), last));
+    .where(and(eq(userActivityDays.client, client), gte(userActivityDays.day, versionStart)));
   const usersByVersion = new Map<
     string,
     { platform: AdminAnalyticsPlatform; users: Set<string> }
   >();
   for (const row of rows) {
-    if (!versionWindow.has(row.day)) continue;
+    if (row.day > last) continue;
     const seg = platformSegment(row.platform);
     const key = `${seg}\u0000${row.appVersion}`;
     let entry = usersByVersion.get(key);
@@ -208,35 +322,9 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
       platform: entry.platform,
     }))
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
-  const mau = buckets.map((b) => {
-    const end = b.days[b.days.length - 1] ?? b.start;
-    return {
-      day: b.start,
-      value: distinctOver(dayRange(addDays(end, -(MAU_WINDOW - 1)), end), usersByDay),
-    };
-  });
-
-  // "New" = first day this user ever appeared for this client, computed over
-  // the whole table (not just the window) so returning users never re-count.
-  const firstDayByUser = new Map<string, string>();
-  const allRows: { userId: string; day: string }[] = await db
-    .select({
-      userId: userActivityDays.userId,
-      day: sql<string>`min(${userActivityDays.day})::text`,
-    })
-    .from(userActivityDays)
-    .where(eq(userActivityDays.client, client))
-    .groupBy(userActivityDays.userId);
-  for (const row of allRows) firstDayByUser.set(row.userId, row.day);
-  const newByDay = new Map<string, number>();
-  for (const day of firstDayByUser.values()) newByDay.set(day, (newByDay.get(day) ?? 0) + 1);
-
-  const activeWithin = (n: number) =>
-    distinctOver(dayRange(addDays(last, -(n - 1)), last), usersByDay);
 
   return {
     active,
-    activeStack,
     versions,
     mau,
     newUsers: sumSeries(buckets, newByDay),
@@ -412,27 +500,29 @@ export async function buildAdminAnalytics(
   const per = bucket === "week" ? "week" : "day";
   const active = await activeUserSeries(db, client, buckets);
 
+  const actionsNoun =
+    client === "highscore"
+      ? "posted a score, added a game, reacted, or made a friend"
+      : "added an item, created a list, edited a list, or made a friend";
   const stats: AdminAnalyticsStat[] = [
     { key: "active_today", label: "Active today", value: active.activeToday },
     { key: "active_7d", label: "Active last 7 days", value: active.active7 },
     { key: "active_30d", label: "Active last 30 days", value: active.active30 },
-    { key: "users_total", label: "Users ever seen", value: active.totalUsers },
+    { key: "users_total", label: "Users ever active", value: active.totalUsers },
   ];
   const series: AdminAnalyticsSeries[] = [
     {
       key: "dau",
       label: bucket === "week" ? "Weekly active users" : "Daily active users",
-      description: `Distinct signed-in users who made at least one request from this app ${
+      description: `Distinct users who ${actionsNoun} ${
         bucket === "week" ? "during that week" : "that UTC day"
-      }, split by platform (a person on both counts in both).`,
+      }. Each person counts once, however many actions or devices. Opening the app without doing anything doesn't count.`,
       points: active.active,
-      stack: active.activeStack,
-      stackMode: "overlap",
     },
     {
       key: "mau",
       label: "Monthly active users",
-      description: `Distinct users active in the 30 days ending on each ${per} (rolling).`,
+      description: `Distinct users who took an action in the 30 days ending on each ${per} (rolling).`,
       points: active.mau,
     },
   ];
@@ -488,7 +578,7 @@ export async function buildAdminAnalytics(
   series.push({
     key: "new_users",
     label: `New users per ${per}`,
-    description: `Users whose first-ever activity in this app fell in that ${per}.`,
+    description: `Users whose first-ever action in this app fell in that ${per}.`,
     points: active.newUsers,
   });
 
