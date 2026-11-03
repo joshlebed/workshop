@@ -14,8 +14,7 @@
 // A game you already have opens its board. The footer keeps the bootstrap
 // path — paste any game's URL (spec §3.3: known dailies collapse onto their
 // catalog row, unknown URLs get a link-preview title + favicon) — which adds
-// and returns home. That footer is `addByUrl/AddByUrlFooter.tsx`, currently in
-// five treatments under evaluation (picker in the footer, persisted).
+// and returns home. That footer is `addByUrl/AddByUrlFooter.tsx`.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";

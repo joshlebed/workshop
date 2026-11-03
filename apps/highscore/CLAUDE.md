@@ -203,18 +203,18 @@ one pads **short by exactly `insets.top`** — the focused field ends up ~60pt u
 and `onboarding/display-name` use the same wrapper without the offset and are likely short too;
 fix them the same way when touched.
 
-## Add-game "add by link" footer — five variants under evaluation
+## Add-game "add by link" footer
 
-`src/games/screens/games/addByUrl/` replaced the fake-input footer (a box styled like a
-`TextInput` that pasted on tap, with a "Type a URL instead" link). `AddByUrlFooter` renders one
-of five treatments (`Variant1PasteInField` … `Variant5Sheet`, each file's header says why),
-picked with the `VariantPicker` chips and persisted under `highscore.addGame.urlFooterVariant`.
-They share `useAddByUrl` (the POST + toast + go home), `footerStyles`, and `clipboardLink.ts`.
-Two rules the variants rely on: `clipboardHasLink` only sniffs pasteboard _types_
-(`expo-clipboard` `hasUrlAsync`, no iOS paste prompt) so a suggestion can appear without a
-tap, and every content read (`readClipboardLink`) happens behind a user tap. `isLikelyGameUrl`
-is the client-side twin of the server's `normalizeGameUrl` gate, so a pasted score never gets
-POSTed as a URL. Once a variant wins, delete the picker and the other four.
+`src/games/screens/games/addByUrl/AddByUrlFooter.tsx` is a plain input + Add with a one-tap
+"You copied a link · Add it" suggestion above it (#544 compared five treatments; this won).
+Two rules it relies on: `clipboardHasLink` only sniffs pasteboard _types_ (`expo-clipboard`
+`hasUrlAsync`, which iOS allows without the paste prompt) so the suggestion can appear on
+mount and on foreground without a tap, and every content read (`readClipboardLink`) happens
+behind the user's tap — that tap is what triggers the prompt. `isLikelyGameUrl` is the
+client-side twin of the server's `normalizeGameUrl` gate, so a pasted score never gets POSTed
+as a URL; non-link text lands in the box with a hint. Web never sees the suggestion (browsers
+can't sniff types) and gets the bare input. Don't bring back a fake-input paste box or a
+"Type a URL instead" mode switch.
 
 ## Reorder activation vs. taps (Games home)
 
