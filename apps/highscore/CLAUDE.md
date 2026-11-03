@@ -192,6 +192,20 @@ from `friendsFeedRows` / `catalogRows`. One-tap Add stays on the screen and flip
 footer URL add returns home. With "Friends only" off the list shows only what the backend lists
 (`docs/catalog-ops-runbook.md`); do not add a client-side "all games" fallback.
 
+## Keyboard avoidance under the root SafeAreaView
+
+`app/_layout.tsx` wraps the `Stack` in `SafeAreaView edges={["top"]}`, so every screen's frame
+starts `insets.top` (~62pt) below the window top. keyboard-controller's `KeyboardAvoidingView`
+measures its frame with `onLayout` (parent coordinates, not `measureInWindow`), so a screen-level
+one pads **short by exactly `insets.top`** — the focused field ends up ~60pt under the keyboard
+(the Add-game URL box did; iOS 26 applied 246pt against a 309pt keyboard). Pass
+`keyboardVerticalOffset={insets.top}` (`useSafeAreaInsets`) as `AddGame.tsx` does. `GameBoard`
+and `onboarding/display-name` use the same wrapper without the offset and are likely short too;
+fix them the same way when touched. Separately: a pinned "paste a link" box should not be a
+`TextInput` at all on native — `AddGame` reads the clipboard on tap
+(`readClipboard` from `@workshop/ui/clipboard`, backed by `expo-clipboard`, in every HighScore
+binary) and only swaps in a real input behind "Type a URL instead".
+
 ## Reorder activation vs. taps (Games home)
 
 Every Games-home card is both a drag handle and a stack of tap targets, and once a drag
