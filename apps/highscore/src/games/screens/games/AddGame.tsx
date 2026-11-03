@@ -25,7 +25,8 @@ import type { Game } from "@workshop/shared/games";
 import { haptics } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Button,
@@ -176,67 +177,75 @@ export function AddGame() {
   );
 
   return (
-    <Screen style={styles.root} testID="add-game-screen">
-      <View style={styles.headerNav}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => goBack(routes.home)}
-          testID="add-game-back"
-          hitSlop={10}
-          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-        >
-          <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
-        </Pressable>
-        <Text variant="title">Add a game</Text>
-        <View style={styles.navButton} />
-      </View>
+    // Same shape as GameBoard: the URL footer is pinned to the bottom, so
+    // without keyboard avoidance the iOS keyboard slides up over it and the
+    // input you just tapped is hidden (can't see it, can't paste into it).
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <Screen style={styles.root} testID="add-game-screen">
+        <View style={styles.headerNav}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back"
+            onPress={() => goBack(routes.home)}
+            testID="add-game-back"
+            hitSlop={10}
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+          >
+            <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
+          </Pressable>
+          <Text variant="title">Add a game</Text>
+          <View style={styles.navButton} />
+        </View>
 
-      <FriendsOnlyToggle value={friendsOnly} onChange={setFriendsOnly} />
+        <FriendsOnlyToggle value={friendsOnly} onChange={setFriendsOnly} />
 
-      <View style={styles.body}>
-        <GameCatalogList
-          sections={sections}
-          addingGameIds={addingIds}
-          addedGameIds={addedIds}
-          onAdd={(row: CatalogRow) => addRowMutation.mutate(row.game)}
-          onOpen={(gameId) => router.push(routes.game(gameId) as Href)}
-          refreshing={activeQuery.isRefetching && !activeQuery.isPending}
-          onRefresh={() => activeQuery.refetch()}
-          bottomInset={0}
-          empty={empty}
-          testIDPrefix={onFriends ? "friends-games" : "catalog-games"}
-        />
-      </View>
-
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, tokens.space.md) }]}>
-        <Text variant="caption" tone="muted" style={styles.footerLabel}>
-          Or add by URL
-        </Text>
-        <View style={styles.footerRow}>
-          <TextInput
-            testID="add-game-url-input"
-            value={draft}
-            onChangeText={setDraft}
-            placeholder="https://example.com/daily"
-            placeholderTextColor={tokens.text.secondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            maxLength={2000}
-            onSubmitEditing={submitUrl}
-            style={styles.input}
-          />
-          <Button
-            label="Add"
-            onPress={submitUrl}
-            disabled={!canSubmitUrl}
-            loading={addUrlMutation.isPending}
-            testID="add-game-submit"
+        <View style={styles.body}>
+          <GameCatalogList
+            sections={sections}
+            addingGameIds={addingIds}
+            addedGameIds={addedIds}
+            onAdd={(row: CatalogRow) => addRowMutation.mutate(row.game)}
+            onOpen={(gameId) => router.push(routes.game(gameId) as Href)}
+            refreshing={activeQuery.isRefetching && !activeQuery.isPending}
+            onRefresh={() => activeQuery.refetch()}
+            bottomInset={0}
+            empty={empty}
+            testIDPrefix={onFriends ? "friends-games" : "catalog-games"}
           />
         </View>
-      </View>
-    </Screen>
+
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, tokens.space.md) }]}>
+          <Text variant="caption" tone="muted" style={styles.footerLabel}>
+            Or add by URL
+          </Text>
+          <View style={styles.footerRow}>
+            <TextInput
+              testID="add-game-url-input"
+              value={draft}
+              onChangeText={setDraft}
+              placeholder="https://example.com/daily"
+              placeholderTextColor={tokens.text.secondary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              maxLength={2000}
+              onSubmitEditing={submitUrl}
+              style={styles.input}
+            />
+            <Button
+              label="Add"
+              onPress={submitUrl}
+              disabled={!canSubmitUrl}
+              loading={addUrlMutation.isPending}
+              testID="add-game-submit"
+            />
+          </View>
+        </View>
+      </Screen>
+    </KeyboardAvoidingView>
   );
 }
 
