@@ -50,7 +50,14 @@ runs:
           echo "non-PR event: every filter true"
           exit 0
         fi
-        files=$(gh api --paginate "repos/$REPO/pulls/$PR/files?per_page=100" --jq '.[].filename')
+        # curl, not `gh api`: gh's startup is ~1s per call on the runner.
+        files=""
+        for page in 1 2 3 4 5; do
+          chunk=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/pulls/$PR/files?per_page=100&page=$page" | jq -r '.[].filename')
+          files="$files${files:+$'\n'}$chunk"
+          [ "$(echo "$chunk" | grep -c .)" -lt 100 ] && break
+        done
         echo "$files" | sed 's/^/  /'
         any() { echo "$files" | grep -qE "$1" && echo true || echo false; }
         # Docs-only means every changed file matches one of these.

@@ -542,16 +542,25 @@ it; #542 removed the serial `changes` job, swapped tools, and fanned out. Measur
 **Per-job floor is ~13s** before the first real step: runner pick-up ~2s, tarball checkout
 ~2s, path filter ~1s, Node from toolcache ~1s, pnpm binary ~1s, node_modules restore ~6s (872 MB; a cold
 `pnpm fetch + install --offline` is ~15s, so the cache is a modest win). Then the `Quality`
-gate adds ~5s (its own pick-up + 3s) after the slowest job. So ~30s is the floor for a job
-with ~12s of work, and the run is as slow as its slowest job. Levers left, in order:
+gate adds ~6s (its own pick-up + 4s) after the slowest job. Jobs now finish in 20–28s
+(setup ~9s: toolcache Node ~1s, pnpm ~1s, 258 MB / 70k-file node_modules cache ~5s; work
+8–13s), so the run is ~31s to the last real job and ~37s with the gate. Levers left, in order:
 
-1. **Require the real jobs in branch protection** (`Lint`, `Typecheck`, the ten `Test`
-   shards, both Metro bundles, `Migrate smoke`) and delete the `quality` gate: −5s. Admin
-   action, not something an agent can do.
-2. **A faster runner provider** (Blacksmith / Depot / Namespace / WarpBuild: `runs-on:`
+1. **Require the real jobs in branch protection** (`Lint (biome, knip, prettier,
+redesign-plan)`, `Infra lint (actionlint, terraform fmt+validate)`, `Typecheck (tsgo)`,
+   `Test (shard 1/10)` … `Test (shard 10/10)`, both Metro bundles, `Migrate smoke (…)`) and
+   delete the `quality` gate: −6s, which is the difference between ~37s and ~31s. Admin
+   action, not something an agent can do. Also frees a runner slot: a PR run is 19 jobs
+   against the free plan's 20-job concurrency cap, so a second PR or a `main` deploy running
+   at the same time queues jobs.
+2. **Smaller node_modules for the test shards** (a `pnpm install --filter` of backend +
+   packages: no Expo/Metro/Hermes/Biome, roughly half the 70k files, ~2s off the restore)
+   and 12 shards once the gate's slot is free (~2s off the longest shard). Together they are
+   the last ~4s on GitHub-hosted runners.
+3. **A faster runner provider — ruled out by the operator (2026-11-03)** (Blacksmith / Depot / Namespace / WarpBuild: `runs-on:`
    drop-ins, ~2x CPU, cache restore at ~1 GB/s, free tiers for personal accounts): the 13s
    floor becomes ~5s and every work step roughly halves. External service with billing.
-3. **Shared Postgres instead of per-file PGlite** in the backend tests (one service container,
+4. **Shared Postgres instead of per-file PGlite** in the backend tests (one service container,
    `CREATE DATABASE … TEMPLATE` per file, ~50ms instead of ~2.5s WASM boot × 28 files): drops
    ~70s of CPU and would let the shards go back to 3–4. A 28-file harness rewrite, and local
    `vitest` would need Docker running. Not done.
@@ -589,10 +598,12 @@ standalone: true` was ~8s (npm-installs a self-installer that installs _latest_ 
   `packageManager`.
 - **Tests: one vitest process for the repo (root `vitest.config.ts`, `test.projects`) in
   ten duration-balanced shards.** `scripts/ci-test-shards.mjs` globs `*.test.ts` (so a
-  new file is never dropped), weights each from `scripts/test-weights.json` (ms; regenerate
-  with `--regen` after a local `vitest run --reporter=json --outputFile=/tmp/vt.json`; the
-  script adds ~2.5s for a `new PGlite(` file and ~0.8s for a sandbox file because the
-  reporter's time excludes `beforeAll`), and assigns longest-first. `vitest --shard` splits
+  new file is never dropped), weights each from `scripts/test-weights.json` (ms per file;
+  regenerate with `node scripts/ci-test-shards.mjs --regen` after a local `vitest run` — it
+  reads vitest's own sequencing cache under `node_modules/.vite/vitest/`, which includes
+  `beforeAll` time, unlike the JSON reporter), and assigns longest-first. Refresh the weights
+  when a shard drifts past the others in CI; the sandbox CPU is ~2.5x slower than the runner,
+  so only the ratios matter. `vitest --shard` splits
   by count and put the 9s parity file next to a run of PGlite files. The floor of a shard is
   its biggest file: `builtin.parity.test.ts` (~9s alone, 63 serial QuickJS round-trips).
   Backend tests resolve `./drizzle` from the cwd, so the backend `test-setup.ts` does
