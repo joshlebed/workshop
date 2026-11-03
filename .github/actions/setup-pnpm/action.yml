@@ -2,8 +2,16 @@ name: Setup pnpm + Node + cached deps
 description: |
   Pin pnpm 10.34.9, set up Node from .nvmrc, restore the hoisted node_modules
   cache, and install via `pnpm fetch && pnpm install --offline` on cache miss.
-  Pulls the same 5-step block out of every workflow so a pnpm/Node bump is one
-  edit instead of seven.
+  Pulls the same block out of every workflow so a pnpm/Node bump is one edit
+  instead of seven.
+
+  pnpm is a direct download of the standalone Linux binary from the pnpm
+  GitHub release (~1s, sha256-pinned). `pnpm/action-setup` with
+  `standalone: true` took ~8s per job: it npm-installs a self-installer, which
+  installs the *latest* pnpm and then "switches" it to the pinned version.
+  `corepack` / `npm i -g` would reach registry.npmjs.org, which timed out five
+  times on 2026-11-03 (#535). To bump: change PNPM_VERSION + PNPM_SHA256 below
+  (`curl -sSL .../v<ver>/pnpm-linux-x64 | sha256sum`).
 outputs:
   cache-hit:
     description: Whether the node_modules cache was a hit (caller can skip its own install).
@@ -11,14 +19,26 @@ outputs:
 runs:
   using: composite
   steps:
-    # `standalone: true` downloads the self-contained pnpm binary from GitHub
-    # releases instead of registry.npmjs.org. The registry tarball download
-    # timed out in five runs on 2026-11-03 (`self-installer exits with code 1`),
-    # taking an OTA publish and a TestFlight build down with it.
-    - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
-      with:
-        version: 10.34.9
-        standalone: true
+    - name: Install pnpm (standalone binary from GitHub releases)
+      shell: bash
+      env:
+        PNPM_VERSION: 10.34.9
+        PNPM_SHA256: 3ec79240658f0ee4e8977f21ee2c598c7a8b8d06b86dc564f2ec6cb099fd8ac2
+      run: |
+        set -euo pipefail
+        if [ "$(uname -s)-$(uname -m)" != "Linux-x86_64" ]; then
+          echo "::error::setup-pnpm only ships a Linux x64 binary; add an arch mapping"
+          exit 1
+        fi
+        dest="$RUNNER_TEMP/pnpm-bin"
+        mkdir -p "$dest"
+        curl -fsSL --retry 3 --retry-all-errors \
+          -o "$dest/pnpm" \
+          "https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-linux-x64"
+        echo "${PNPM_SHA256}  $dest/pnpm" | sha256sum -c -
+        chmod +x "$dest/pnpm"
+        echo "$dest" >> "$GITHUB_PATH"
+        "$dest/pnpm" --version
 
     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:

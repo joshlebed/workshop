@@ -1,0 +1,71 @@
+name: Detect changes
+description: |
+  Path filters shared by every CI job. Runs *inside* each job (after checkout)
+  rather than as a separate `changes` job the others `needs:` — the separate
+  job put a ~17s serial hop (runner pick-up + checkout + filter) in front of
+  every heavy job on every PR. Inline it costs ~1s. The trade: a docs-only PR
+  now spins up each job for ~20s of setup instead of skipping them, which is
+  rare enough to be the cheaper side of the ledger.
+
+  Callers need `permissions: pull-requests: read` (dorny reads the PR's file
+  list on pull_request events).
+outputs:
+  code:
+    description: Anything but docs changed (gates checks + tests).
+    value: ${{ steps.code.outputs.code }}
+  mobile:
+    description: Workshop app / shared package / lockfile changed.
+    value: ${{ steps.filter.outputs.mobile }}
+  highscore_mobile:
+    description: HighScore app / any package / lockfile changed.
+    value: ${{ steps.filter.outputs.highscore_mobile }}
+  migrations:
+    description: Drizzle migrations / db schema / lockfile changed.
+    value: ${{ steps.filter.outputs.migrations }}
+  infra:
+    description: Terraform changed.
+    value: ${{ steps.filter.outputs.infra }}
+  workflows:
+    description: GitHub Actions workflows / composite actions changed.
+    value: ${{ steps.filter.outputs.workflows }}
+runs:
+  using: composite
+  steps:
+    - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+      id: filter
+      with:
+        filters: |
+          mobile:
+            - 'apps/workshop/**'
+            - 'packages/shared/**'
+            - 'pnpm-lock.yaml'
+          highscore_mobile:
+            - 'apps/highscore/**'
+            - 'packages/**'
+            - 'pnpm-lock.yaml'
+          migrations:
+            - 'apps/backend/drizzle/**'
+            - 'apps/backend/src/db/**'
+            - 'pnpm-lock.yaml'
+          infra:
+            - 'infra/**'
+          workflows:
+            - '.github/**'
+    # Anything but docs, so a docs-only PR skips the real work (every job
+    # still reports success — the gate counts skipped steps as fine). Its own
+    # step because the `!` exclusions only work with
+    # `predicate-quantifier: every` (a file must match every pattern), and
+    # that quantifier would break the inclusive filters above. With the
+    # default `some`, `**` alone matched everything and docs-only PRs still
+    # ran the full job (#481).
+    - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+      id: code
+      with:
+        predicate-quantifier: every
+        filters: |
+          code:
+            - '**'
+            - '!**/*.md'
+            - '!docs/**'
+            - '!.prettierrc.json'
+            - '!.prettierignore'
