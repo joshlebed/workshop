@@ -527,7 +527,7 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
 ## CI speed
 
 PR wall-clock is what matters; measured on `ubuntu-latest` (4 vCPU). History: the single
-`Quality` job grew 96s → 169s over Sep–Oct 2026 (Test step 30s → 91s); #523 split it; #539
+`Quality` job grew 96s → 169s over Sep–Oct 2026 (Test step 30s → 91s); #523 split it; #542
 removed the serial `changes` job, replaced tools, and sharded 3-way. Per-job fixed overhead
 is the floor — runner pick-up ~2s, checkout ~2s (10s+ on bad GitHub days), Node download
 ~4s, node_modules cache restore ~9s (872 MB, cold `pnpm fetch + install --offline` is ~15s,
