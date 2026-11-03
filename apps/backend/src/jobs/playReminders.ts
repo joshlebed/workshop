@@ -1,31 +1,16 @@
 import { desc, eq, inArray, sql } from "drizzle-orm";
-import { z } from "zod";
 import { getDb } from "../db/client.js";
 import { withDbRetry } from "../db/retry.js";
 import { gameScores, notificationPrefs, pushTokens } from "../db/schema.js";
 import { getConfig } from "../lib/config.js";
+import { sendExpoPushMessages } from "../lib/expoPush.js";
 import { logger } from "../lib/logger.js";
 import { type DbClient, executeRows } from "../lib/sql.js";
 
 const FALLBACK_REMINDER_TIMEZONE = "America/New_York";
 const FALLBACK_REMINDER_HOUR = 11;
 
-const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-const EXPO_CHUNK_SIZE = 100;
 const REMINDER_DEDUP_HOURS = 20;
-
-const expoTicketResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      status: z.enum(["ok", "error"]),
-      details: z
-        .object({
-          error: z.string().optional(),
-        })
-        .optional(),
-    }),
-  ),
-});
 
 interface CandidateTokenRow {
   userId: string;
@@ -137,12 +122,6 @@ async function selectCandidateTokens(db: DbClient, now: Date): Promise<Candidate
   );
 }
 
-function chunksOf<T>(values: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < values.length; i += size) chunks.push(values.slice(i, i + size));
-  return chunks;
-}
-
 /** Hourly scheduled job invoked by the Lambda's `{ "job": "play-reminders" }` branch. */
 export async function runPlayReminderJob(
   args: { db?: DbClient; now?: Date; fetchFn?: typeof fetch } = {},
@@ -175,64 +154,52 @@ export async function runPlayReminderJob(
   const skippedPlayed = new Set(rows.filter((row) => row.playedToday).map((row) => row.userId))
     .size;
   const sendable = rows.filter((row) => !row.playedToday);
+  if (sendable.length === 0) {
+    logger.info("play reminder job complete", {
+      candidates,
+      skipped_played: skippedPlayed,
+      sent: 0,
+      pruned: 0,
+    });
+    return { candidates, skippedPlayed, sent: 0, pruned: 0 };
+  }
+
+  const delivery = await sendExpoPushMessages(
+    sendable.map((candidate) => ({
+      to: candidate.expoPushToken,
+      title: "Time to play",
+      body: "Your daily games are waiting",
+      data: { url: "highscore:///" },
+    })),
+    {
+      db,
+      fetchFn,
+      onChunkError: (error, chunkIndex, tokenCount) =>
+        logger.error("play reminder push chunk failed", {
+          error,
+          chunk_index: chunkIndex,
+          token_count: tokenCount,
+        }),
+    },
+  );
+
+  // "Sent" for the job = Expo answered for the message (an error ticket still
+  // counts as an attempt); a user is reminded once any of their tokens was.
   let sent = 0;
-  const tokensToPrune = new Set<string>();
-
-  for (const [chunkIndex, chunk] of chunksOf(sendable, EXPO_CHUNK_SIZE).entries()) {
-    try {
-      const response = await fetchFn(EXPO_PUSH_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          chunk.map((candidate) => ({
-            to: candidate.expoPushToken,
-            title: "Time to play",
-            body: "Your daily games are waiting",
-            data: { url: "highscore:///" },
-          })),
-        ),
-      });
-      if (!response.ok) {
-        throw new Error(`Expo push request failed with status ${response.status}`);
-      }
-
-      const parsed = expoTicketResponseSchema.safeParse(await response.json());
-      if (!parsed.success) throw new Error("Expo push response had an invalid ticket payload");
-      if (parsed.data.data.length !== chunk.length) {
-        throw new Error("Expo push response ticket count did not match the request");
-      }
-
-      sent += chunk.length;
-      for (const [index, ticket] of parsed.data.data.entries()) {
-        const candidate = chunk[index];
-        if (!candidate) continue;
-        if (ticket.status === "error" && ticket.details?.error === "DeviceNotRegistered") {
-          tokensToPrune.add(candidate.expoPushToken);
-        }
-      }
-
-      const remindedUserIds = [...new Set(chunk.map((candidate) => candidate.userId))];
-      await db
-        .update(notificationPrefs)
-        .set({ lastRemindedAt: now })
-        .where(inArray(notificationPrefs.userId, remindedUserIds));
-    } catch (error) {
-      logger.error("play reminder push chunk failed", {
-        error,
-        chunk_index: chunkIndex,
-        token_count: chunk.length,
-      });
-    }
+  const remindedUserIds = new Set<string>();
+  for (const [index, outcome] of delivery.outcomes.entries()) {
+    if (outcome.status === "request_failed") continue;
+    sent++;
+    const candidate = sendable[index];
+    if (candidate) remindedUserIds.add(candidate.userId);
   }
-
-  let pruned = 0;
-  if (tokensToPrune.size > 0) {
-    const deleted = await db
-      .delete(pushTokens)
-      .where(inArray(pushTokens.expoPushToken, [...tokensToPrune]))
-      .returning({ expoPushToken: pushTokens.expoPushToken });
-    pruned = deleted.length;
+  if (remindedUserIds.size > 0) {
+    await db
+      .update(notificationPrefs)
+      .set({ lastRemindedAt: now })
+      .where(inArray(notificationPrefs.userId, [...remindedUserIds]));
   }
+  const pruned = delivery.prunedTokens.length;
 
   const result = { candidates, skippedPlayed, sent, pruned };
   logger.info("play reminder job complete", {

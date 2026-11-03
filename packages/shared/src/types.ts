@@ -315,6 +315,75 @@ export interface AdminGraphResponse {
 }
 
 /**
+ * One user the operator push panel can reach (`GET /v1/admin/push/recipients`):
+ * anyone with at least one `push_tokens` row. Operator surface, so the email is
+ * included (same as `AdminGraphNode`).
+ */
+export interface AdminPushRecipient {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  /** Distinct `push_tokens.platform` values, sorted. */
+  platforms: string[];
+  tokenCount: number;
+  /** Latest `push_tokens.last_seen_at` across the user's devices (ISO). */
+  lastSeenAt: string;
+  /** `notification_prefs.play_reminder_enabled` (false with no row). */
+  playReminderEnabled: boolean;
+}
+
+export interface AdminPushRecipientsResponse {
+  /** At most 500, newest `lastSeenAt` first. */
+  recipients: AdminPushRecipient[];
+  /** Users with a push token matching the filter, before the 500 cap. */
+  total: number;
+}
+
+/**
+ * `POST /v1/admin/push/send` — operator only, by hand, from the admin
+ * dashboard's Push tab. Agents and automation must never call it
+ * (docs/push-runbook.md).
+ */
+export interface AdminPushSendRequest {
+  userIds: string[];
+  title: string;
+  body: string;
+  /** Deep link opened on tap; must start with `highscore://`. Default `highscore:///`. */
+  url?: string;
+  /** Explicit-intent guard: the literal string `SEND`. */
+  confirm: "SEND";
+}
+
+/**
+ * Per selected user: `sent` = every device accepted, `partial` = some,
+ * `failed` = none, `no_tokens` = the user has no push token any more.
+ */
+export type AdminPushUserStatus = "sent" | "partial" | "failed" | "no_tokens";
+
+export interface AdminPushUserResult {
+  userId: string;
+  displayName: string | null;
+  status: AdminPushUserStatus;
+  tokens: number;
+  sent: number;
+  failed: number;
+  pruned: number;
+  /** Distinct Expo ticket errors / `request_failed` for this user's devices. */
+  errors: string[];
+}
+
+export interface AdminPushSendResponse {
+  /** Selected users that had at least one push token. */
+  recipients: number;
+  /** Messages attempted (one per token). */
+  tokens: number;
+  sent: number;
+  failed: number;
+  pruned: number;
+  perUser: AdminPushUserResult[];
+}
+
+/**
  * Partial profile update. Both fields are optional and updated independently —
  * send only what changed. `avatarUrl: null` clears the profile picture; omitting
  * a field leaves it untouched.

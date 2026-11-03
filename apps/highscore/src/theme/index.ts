@@ -6,6 +6,7 @@ export { Avatar, type AvatarProps } from "./Avatar";
 export { BarChart, type BarChartPoint, type BarChartProps, type BarChartSegment } from "./BarChart";
 export { Button, type ButtonProps } from "./Button";
 export { Card, type CardProps } from "./Card";
+export { Checkbox, type CheckboxProps } from "./Checkbox";
 export { Chip, type ChipProps } from "./Chip";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { type HorizontalBarRow, HorizontalBars, type HorizontalBarsProps } from "./HorizontalBars";
