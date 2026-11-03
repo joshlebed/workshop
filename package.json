@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Josh's personal monorepo for apps, scripts, and experiments.",
-  "packageManager": "pnpm@10.19.0",
+  "packageManager": "pnpm@10.34.9",
   "engines": {
     "node": ">=20.19 <21"
   },

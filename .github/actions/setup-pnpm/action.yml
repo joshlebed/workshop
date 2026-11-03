@@ -1,6 +1,6 @@
 name: Setup pnpm + Node + cached deps
 description: |
-  Pin pnpm 10.19.0, set up Node from .nvmrc, restore the hoisted node_modules
+  Pin pnpm 10.34.9, set up Node from .nvmrc, restore the hoisted node_modules
   cache, and install via `pnpm fetch && pnpm install --offline` on cache miss.
   Pulls the same 5-step block out of every workflow so a pnpm/Node bump is one
   edit instead of seven.
@@ -15,18 +15,18 @@ runs:
     # releases instead of registry.npmjs.org. The registry tarball download
     # timed out in five runs on 2026-11-03 (`self-installer exits with code 1`),
     # taking an OTA publish and a TestFlight build down with it.
-    - uses: pnpm/action-setup@903f9c1a6ebcba6cf41d87230be49611ac97822e # v6.0.3
+    - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
       with:
-        version: 10.19.0
+        version: 10.34.9
         standalone: true
 
-    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:
         node-version-file: .nvmrc
 
     - name: Cache hoisted node_modules
       id: nm-cache
-      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: |
           node_modules

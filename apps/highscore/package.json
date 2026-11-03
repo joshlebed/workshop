@@ -2,7 +2,7 @@
   "name": "highscore-app",
   "version": "0.0.0",
   "private": true,
-  "packageManager": "pnpm@10.19.0",
+  "packageManager": "pnpm@10.34.9",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",

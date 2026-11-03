@@ -170,7 +170,7 @@ packages:
     "lint:fix": "biome check --write .",
     "test": "pnpm -r --parallel test"
   },
-  "packageManager": "pnpm@10.19.0",
+  "packageManager": "pnpm@10.34.9",
   "engines": { "node": ">=20.19 <21" },
   "devDependencies": {
     "@biomejs/biome": "^2.0.0",
@@ -682,7 +682,7 @@ Three jobs: `terraform` (read outputs only), `migrate`, `deploy`. The
 ```yaml
 - uses: hashicorp/setup-terraform@v3
   with:
-    terraform_version: 1.14.7
+    terraform_version: 1.17.1
     cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 - name: terraform init
   working-directory: infra
