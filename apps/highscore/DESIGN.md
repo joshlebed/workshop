@@ -81,7 +81,8 @@ Rules:
 
 ## Shape & texture
 
-- **Corner radius: 0 everywhere** (2px max where a hard 0 renders badly on iOS). No
+- **Corner radius: 2px everywhere** (`tokens.radius.*`, never a literal). Hard 0 aliases
+  on iOS; anything larger goes soft. No
   pills, no rounded cards.
 - **Bezels: 2px solid `border`** on cards, buttons, inputs, sheets. Chunky and honest.
 - **Neon glow** (`shadow`/`boxShadow` in the matching `.glow` token, ~8–12px blur, no
@@ -136,7 +137,7 @@ Rules:
 
 ## Do / don't quick check
 
-- ✅ Sharp corners, 2px purple bezels, dark grey ground, purple surfaces.
+- ✅ Near-sharp 2px corners, 2px purple bezels, dark grey ground, purple surfaces.
 - ✅ Pink for anything tappable; chartreuse only when something good happened; yellow
   only to spotlight the leader/today/badges.
 - ✅ ALL-CAPS Press Start 2P for the wordmark, game names, and score numerals; Space

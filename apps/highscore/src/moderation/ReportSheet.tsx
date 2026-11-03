@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
     minHeight: 72,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
     color: tokens.text.primary,

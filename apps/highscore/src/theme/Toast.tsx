@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     paddingLeft: tokens.space.lg,
     paddingRight: tokens.space.sm,
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.xs,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   actionLabel: { ...bodyType("semibold"), fontSize: tokens.font.size.sm },
   iconBtn: {
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
     height: 28,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   iconBtnHover: { backgroundColor: tokens.bg.raised },
 });

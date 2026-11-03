@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
   base: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.xs,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     minHeight: 32,
     alignItems: "center",

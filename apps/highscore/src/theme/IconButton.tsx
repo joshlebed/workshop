@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   pressed: { backgroundColor: tokens.bg.elevated },
   disabled: { opacity: 0.4 },

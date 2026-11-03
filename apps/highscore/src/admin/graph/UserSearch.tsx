@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
     minHeight: 40,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingLeft: tokens.space.md,
     paddingRight: 36,
     backgroundColor: tokens.bg.elevated,
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.elevated,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     overflow: "hidden",
   },
   option: {

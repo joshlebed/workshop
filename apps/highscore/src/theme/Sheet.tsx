@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: tokens.bg.elevated,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderColor: tokens.border.default,
     borderTopWidth: tokens.bezel,
     paddingHorizontal: tokens.space.xl,
@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: 32,
     height: 4,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.border.default,
   },
 });

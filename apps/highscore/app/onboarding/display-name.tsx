@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     ...bodyType(),
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.lg,
     paddingVertical: 14,
     color: tokens.text.primary,

@@ -560,7 +560,7 @@ const styles = StyleSheet.create({
   inviteCard: {
     gap: tokens.space.md,
     padding: tokens.space.lg,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     backgroundColor: tokens.bg.elevated,
@@ -605,7 +605,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
     paddingVertical: tokens.space.md,
     paddingHorizontal: tokens.space.md,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
@@ -631,7 +631,7 @@ const styles = StyleSheet.create({
   acceptBtn: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.accent.muted,
     borderWidth: tokens.bezel,
     borderColor: tokens.neon.pink,
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   addBtn: {
     width: 36,
     height: 36,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
@@ -656,7 +656,7 @@ const styles = StyleSheet.create({
   requestedPill: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
   },
   requestedText: {
     ...bodyType("semibold"),

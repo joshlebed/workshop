@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: tokens.space.md,
     paddingVertical: 6,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,

@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     paddingHorizontal: tokens.space.md,
     backgroundColor: tokens.bg.elevated,
     color: tokens.text.primary,

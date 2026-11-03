@@ -15,7 +15,7 @@ export interface CardProps extends ViewProps {
 export function Card({ elevated = false, padded = true, style, ...rest }: CardProps) {
   const computed: ViewStyle = {
     backgroundColor: elevated ? tokens.bg.elevated : "transparent",
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.border.default,
     padding: padded ? tokens.space.lg : 0,

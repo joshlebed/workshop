@@ -87,8 +87,9 @@ export const tokens = {
     danger: palette.danger,
   },
   space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 },
-  // Corner radius 0 everywhere (2 max where hard 0 renders badly on iOS).
-  radius: { sm: 0, md: 0, lg: 0, pill: 0 },
+  // Corner radius 2px everywhere — every box, chip, swatch and bezel. Not 0:
+  // a hard corner aliases on iOS and reads as a rendering bug, not a style.
+  radius: { sm: 2, md: 2, lg: 2, pill: 2 },
   /** Standard bezel width — cards, buttons, inputs, sheets. */
   bezel: 2,
   font: {

@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    borderRadius: 0,
+    borderRadius: tokens.radius.sm,
     borderWidth: tokens.bezel,
     borderColor: tokens.status.warning,
     backgroundColor: tokens.bg.surface,
