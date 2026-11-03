@@ -351,11 +351,6 @@ function PlayerRow({ row, isMe, onReact, onOpenReactionPicker }: PlayerRowProps)
               {[row.picked, row.adjusted ? "adjusted" : null].filter(Boolean).join(" · ")}
             </Text>
           ) : null}
-          {isMe ? (
-            <View style={styles.youPill}>
-              <Text style={styles.youPillText}>you</Text>
-            </View>
-          ) : null}
         </View>
       </View>
       {row.onFix ? (
@@ -397,7 +392,7 @@ function RankMark({ rank }: { rank: number | null }) {
   }
   if (rank === 1) {
     return (
-      <View style={[styles.rankSlot, styles.rankFirst]}>
+      <View style={styles.rankSlot}>
         <Text style={styles.rankFirstText}>1</Text>
       </View>
     );
@@ -602,25 +597,10 @@ const styles = StyleSheet.create({
     color: tokens.text.muted,
   },
   rankDot: { color: tokens.text.muted, fontSize: tokens.font.size.md },
-  // Rank 1 is the spotlight: neon yellow fill, dark numeral (DESIGN.md).
-  rankFirst: {
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.neon.yellow,
-  },
+  // Rank 1 is the spotlight: neon yellow numeral, no box (matches GameBoard).
   rankFirstText: {
     ...scoreType(10),
-    color: tokens.text.onAccent,
-  },
-  youPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.neon.pink,
-  },
-  youPillText: {
-    ...uiType(8),
-    color: tokens.neon.pinkTint,
+    color: tokens.neon.yellow,
   },
   scoreBody: {
     flex: 1,
