@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { HIGHSCORE_APP_SCHEME, HIGHSCORE_APP_STORE_URL } from "@workshop/shared/constants";
 import { describe, expect, it } from "vitest";
+import appJson from "../../app.json";
 import {
   APP_LINK_META_SELECTORS,
   buildAppLinkMetaTags,
@@ -31,9 +32,6 @@ function selectorParts(selector: string): ["property" | "name", string] {
 describe("HighScore App Links metadata", () => {
   it("stays in sync with the app scheme and App Store listing", () => {
     expect(HIGHSCORE_NATIVE_SCHEME).toBe(HIGHSCORE_APP_SCHEME);
-    const appJson = JSON.parse(readFileSync(join(APP_DIR, "app.json"), "utf8")) as {
-      expo: { scheme: string };
-    };
     expect(appJson.expo.scheme).toBe(HIGHSCORE_NATIVE_SCHEME);
     expect(HIGHSCORE_APP_STORE_URL.endsWith(`/id${HIGHSCORE_APP_STORE_ID}`)).toBe(true);
   });
