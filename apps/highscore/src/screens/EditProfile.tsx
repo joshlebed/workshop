@@ -7,7 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { goBack } from "@workshop/ui/navigation";
 import Constants from "expo-constants";
-import { useRouter } from "expo-router";
+import { type Href, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   Linking,
@@ -22,6 +22,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { ImpersonationStatus } from "../admin/ImpersonationPanel";
 import { blockedUsersQueryKey, fetchBlockedUsers, unblockUser } from "../api/moderation";
 import { useAuth } from "../hooks/useAuth";
+import { SHARE_SETUP_SUPPORTED } from "../hooks/useShareAnnouncement";
 import {
   ACCOUNT_DELETION_CONSEQUENCES,
   accountDeletionBlockReason,
@@ -211,6 +212,14 @@ export default function EditProfile() {
             onPress={() => router.push("/settings/notifications")}
             testID="open-notification-settings"
           />
+          {SHARE_SETUP_SUPPORTED ? (
+            <LinkRow
+              label="Share sheet setup"
+              detail="Post scores straight from a game's Share button"
+              onPress={() => router.push("/share-setup" as Href)}
+              testID="profile-share-setup"
+            />
+          ) : null}
           <BlockedUsersRow />
         </Group>
 
