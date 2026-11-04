@@ -15,15 +15,18 @@ import { fetchUserFlags, putUserFlag } from "../api/release";
 import {
   dismissedFlagValue,
   runtimeHasShareSetup,
+  SHARE_SETUP_ENABLED,
   shouldShowShareAnnouncement,
 } from "../lib/shareOnboarding";
 import { useAuth } from "./useAuth";
 
-/** iOS on a 1.2.0+ binary. Fixed for the life of the JS bundle. */
-export const SHARE_SETUP_SUPPORTED = runtimeHasShareSetup(
-  Platform.OS,
-  Updates.runtimeVersion ?? Constants.expoConfig?.version ?? null,
-);
+/** Kill switch on, iOS, 1.2.0+ binary. Fixed for the life of the JS bundle. */
+export const SHARE_SETUP_SUPPORTED =
+  SHARE_SETUP_ENABLED &&
+  runtimeHasShareSetup(
+    Platform.OS,
+    Updates.runtimeVersion ?? Constants.expoConfig?.version ?? null,
+  );
 
 export function useShareAnnouncement() {
   const { token, status } = useAuth();

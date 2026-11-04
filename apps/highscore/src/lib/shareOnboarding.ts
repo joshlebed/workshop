@@ -30,6 +30,14 @@ export function completedFlagValue(now: Date): ShareAnnouncementFlagValue {
  */
 export const SHARE_SETUP_MIN_RUNTIME = "1.2.0";
 
+/**
+ * Kill switch for the share-setup entry points (Games-home card, You → Account
+ * row). Off until real-device 3x share-sheet screenshots replace the 1x
+ * simulator captures in `assets/share-setup/`; set back to true to relaunch.
+ * The `/share-setup` route still renders when linked directly.
+ */
+export const SHARE_SETUP_ENABLED = false;
+
 /** iOS only (the share sheet is native), and only on a 1.2.0+ binary. */
 export function runtimeHasShareSetup(os: string, runtimeVersion: string | null): boolean {
   if (os !== "ios" || !runtimeVersion) return false;
