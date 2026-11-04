@@ -44,6 +44,17 @@ but each app owns its screen implementation so either frontend can evolve indepe
 
 ## Share flow
 
+Shared links have two opening mechanisms: iOS Universal Links (the existing
+`applinks:highscore.live` entitlement + deployed AASA) and server-rendered App Links
+metadata in the Pages HTML for `/g/:token` and `/friends/accept/:token`. Meta browsers
+may keep either link on the web; `OpenInAppCard/impl.web.tsx` then attempts the iOS
+scheme once and keeps a real anchor for browsers requiring a tap. Never promise a
+forced handoff: Messenger controls it. Keep the exact token in each native target,
+cancel manual-open fallback timers when the page loses focus/visibility, and retain
+the per-tab web choice across sign-in (`useInAppBrowserPrompt`) to avoid reopening
+the app after “Continue here”. Desktop browser checks cannot prove the final
+Messenger-to-installed-iOS-app transition; that requires an iPhone check.
+
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so
 `_layout.tsx` sends the iOS share intent straight to `/share/pick-game` and `app/share/index.tsx`
 renders the same `PickGame` screen. Every share affordance Workshop puts on its chooser has to live

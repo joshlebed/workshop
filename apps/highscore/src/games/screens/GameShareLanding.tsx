@@ -2,12 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Platform, StyleSheet, View } from "react-native";
+import { useEffect } from "react";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { Button, Card, Text, tokens } from "../../theme";
 import { fetchGameShareLink } from "../api/games";
 import { OpenInAppCard } from "../components/OpenInAppCard";
-import { isInAppBrowser } from "../lib/inAppBrowser";
+import { useInAppBrowserPrompt } from "../hooks/useInAppBrowserPrompt";
 import { PENDING_GAME_SHARE_TOKEN_KEY } from "../lib/inviteStash";
 import { useGamesRuntime } from "../runtime";
 
@@ -23,11 +23,8 @@ import { useGamesRuntime } from "../runtime";
  * signed-out recipient who signs in mid-flow lands back here (AuthGate consults
  * the stash in its post-sign-in bounce, and lets `/g/*` mount signed-out).
  *
- * In a third-party in-app browser (Messenger / Instagram) we don't resolve at
- * all — iOS can't auto-open the app from a Universal Link there — so we surface
- * an "Open in app" card (`OpenInAppCard`) whose button is the app's custom
- * scheme (which routes to the installed app on a tap regardless
- * of Universal Link state), and only proceed on web if the user opts out.
+ * In a third-party browser, pause web resolution while OpenInAppCard attempts
+ * an iOS handoff. Browsers that block it still offer a real link and web fallback.
  */
 export default function GameShareLanding() {
   const params = useLocalSearchParams<{ token?: string }>();
@@ -35,12 +32,10 @@ export default function GameShareLanding() {
   const { status, token: authToken, appName, appScheme, routes } = useGamesRuntime();
   const router = useRouter();
 
-  // Inside an in-app browser, offer "Open in app" instead of silently resolving
-  // on web (the page load can't trigger the Universal Link — only a user tap
-  // can). `continuedOnWeb` is the escape hatch back to the normal web flow.
-  const inAppBrowser = useMemo(() => isInAppBrowser(), []);
-  const [continuedOnWeb, setContinuedOnWeb] = useState(false);
-  const showAppPrompt = Platform.OS === "web" && !!linkToken && inAppBrowser && !continuedOnWeb;
+  // Let the handoff card run before resolving or redirecting through sign-in.
+  const { showAppPrompt, continueOnWeb } = useInAppBrowserPrompt(
+    linkToken ? `/g/${encodeURIComponent(linkToken)}` : null,
+  );
 
   // Stash on mount so a redirect through /sign-in can recover the token. Gated
   // on the flag so a stale link can never strand a prod (flag-off) user.
@@ -82,18 +77,13 @@ export default function GameShareLanding() {
     }
   }, [resolveQuery.isSuccess, resolveQuery.data, router, linkToken, routes]);
 
-  // In-app browser: offer the app before doing anything web-side. The button
-  // targets the host app's custom scheme, which a tap routes
-  // straight to the installed app — unlike the https Universal Link, which (being
-  // the same URL this page is on) just reloads into a loop and, per reports,
-  // doesn't reliably open the app even from native contexts like iMessage.
   if (showAppPrompt) {
     return (
       <Centered testID="game-share-open-in-app">
         <OpenInAppCard
           appName={appName}
           url={`${appScheme}:///g/${encodeURIComponent(linkToken ?? "")}`}
-          onContinue={() => setContinuedOnWeb(true)}
+          onContinue={continueOnWeb}
         />
       </Centered>
     );

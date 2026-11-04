@@ -1,7 +1,7 @@
 // Native stub. The "open in app" affordance is web-only — there is no in-app
 // browser to escape on native (you're already in the app). `isInAppBrowser()`
 // is always false on native, so this never renders; it exists only so the
-// shared import resolves. The real card is `OpenInAppCard.web.tsx`.
+// shared import resolves. The real card is `impl.web.tsx`.
 
 export interface OpenInAppCardProps {
   /** Product name shown in the prompt and CTA. */
