@@ -77,7 +77,9 @@ while flags load, hidden once dismissed/completed/already-adopted) that leads in
 "Share sheet setup" row in Edit profile → Account). **Both entry points are runtime-gated to iOS
 1.2.0+** (`runtimeHasShareSetup`, `SHARE_SETUP_SUPPORTED`): the code is JS-only and reaches every
 supported runtime, but the rollout plan is 1.2.0 users first while 1.0.1/1.1.0 get the App Store
-nudge. Lower `SHARE_SETUP_MIN_RUNTIME` to widen it; the route itself renders on any binary. Each "how" step shows a screenshot of the real iOS 26 share sheet
+nudge. Lower `SHARE_SETUP_MIN_RUNTIME` to widen it; the route itself renders on any binary.
+**Currently switched off** (`SHARE_SETUP_ENABLED = false`) until real-device 3x screenshots
+replace the simulator ones; flip it back in the PR that swaps the images. Each "how" step shows a screenshot of the real iOS 26 share sheet
 (`assets/share-setup/*.png`) with the control to tap ringed — rings are fractions of the image in
 `SHARE_WALKTHROUGH_STEPS`, so re-cropping an image means re-measuring its ring (the simulator
 only captures at 1x; real-device 3x captures can replace them). The last step opens a live share
