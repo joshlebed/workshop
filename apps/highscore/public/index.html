@@ -20,6 +20,19 @@
     <meta name="apple-itunes-app" content="app-id=6805206753" />
 
     <!--
+      App Links (https://developers.facebook.com/docs/applinks/metadata-reference/):
+      Meta's apps (Facebook, Messenger) read these server-side to find the
+      native app. Default = open the app's root; al:web:url is omitted (the
+      spec defaults it to this page's URL) and web fallback stays on (spec
+      default). /g/:token and /friends/accept/:token replace all of these via
+      `buildRouteAppLinkTags` + `APP_LINK_META_SELECTORS` in
+      `apps/highscore/functions/_lib/og.ts`.
+    -->
+    <meta property="al:ios:url" content="highscore:///" />
+    <meta property="al:ios:app_store_id" content="6805206753" />
+    <meta property="al:ios:app_name" content="HighScore" />
+
+    <!--
       Default Open Graph + Twitter Card tags. Every URL on the domain that
       doesn't have a route-specific Pages Function override renders these for
       iMessage, Slack, Twitter, etc.

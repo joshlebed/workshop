@@ -33,6 +33,100 @@ export const OG_META_SELECTORS = [
   'meta[name="description"]',
 ] as const;
 
+/**
+ * App Links (https://developers.facebook.com/docs/applinks/metadata-reference/)
+ * and Apple's Smart App Banner. Meta's in-app browsers (Facebook, Messenger)
+ * read `al:*` tags server-side to find a native target, so they must be in the
+ * HTML the Pages Function returns — client-rendered tags are never seen.
+ * Keep the app id in sync with `HIGHSCORE_APP_STORE_URL` and the scheme with
+ * `apps/highscore/app.json` `scheme`.
+ */
+export const HIGHSCORE_APP_STORE_ID = "6805206753";
+export const HIGHSCORE_APP_NAME = "HighScore";
+export const HIGHSCORE_NATIVE_SCHEME = "highscore";
+
+/** Default App Links + Smart App Banner tags that route overrides replace. */
+export const APP_LINK_META_SELECTORS = [
+  'meta[property="al:ios:url"]',
+  'meta[property="al:ios:app_store_id"]',
+  'meta[property="al:ios:app_name"]',
+  'meta[property="al:web:url"]',
+  'meta[property="al:web:should_fallback"]',
+  'meta[name="apple-itunes-app"]',
+] as const;
+
+/** Every default tag a route override strips before appending its own. */
+export const ROUTE_META_SELECTORS = [...OG_META_SELECTORS, ...APP_LINK_META_SELECTORS] as const;
+
+export interface AppLinkValues {
+  /** In-app path, e.g. `/g/<encoded token>`; becomes `highscore:///g/<token>`. */
+  appPath: string;
+  /** Exact web URL of the page (`al:web:url`). Omit to default to the page URL. */
+  webUrl?: string;
+  /**
+   * `al:web:should_fallback`. `false` tells Meta's apps not to fall back to the
+   * web URL when the app isn't installed (they offer the App Store instead).
+   * Omit to leave the spec default (`true`).
+   */
+  shouldFallback?: boolean;
+  /** Smart App Banner `app-argument`; a URL the installed app can open. */
+  appArgument?: string;
+}
+
+/** `/g/abc` → `highscore:///g/abc` (empty host, matching expo-router's linking). */
+export function nativeAppUrl(appPath: string): string {
+  const path = appPath.startsWith("/") ? appPath : `/${appPath}`;
+  return `${HIGHSCORE_NATIVE_SCHEME}://${path}`;
+}
+
+/**
+ * App Links tags plus the Smart App Banner. Order matters to Meta's resolver:
+ * the iOS url / app_store_id / app_name are zipped by index into one target.
+ */
+export function buildAppLinkMetaTags(values: AppLinkValues): string {
+  const tags = [
+    `<meta property="al:ios:url" content="${escapeXml(nativeAppUrl(values.appPath))}" />`,
+    `<meta property="al:ios:app_store_id" content="${HIGHSCORE_APP_STORE_ID}" />`,
+    `<meta property="al:ios:app_name" content="${HIGHSCORE_APP_NAME}" />`,
+  ];
+  if (values.webUrl !== undefined) {
+    tags.push(`<meta property="al:web:url" content="${escapeXml(values.webUrl)}" />`);
+  }
+  if (values.shouldFallback !== undefined) {
+    tags.push(
+      `<meta property="al:web:should_fallback" content="${values.shouldFallback ? "true" : "false"}" />`,
+    );
+  }
+  // `app-argument` is comma-delimited inside `content`; a raw comma would
+  // truncate it, so percent-encode any (route paths are already encoded).
+  const banner = values.appArgument
+    ? `app-id=${HIGHSCORE_APP_STORE_ID}, app-argument=${values.appArgument.replace(/,/g, "%2C")}`
+    : `app-id=${HIGHSCORE_APP_STORE_ID}`;
+  tags.push(`<meta name="apple-itunes-app" content="${escapeXml(banner)}" />`);
+  return tags.join("\n    ");
+}
+
+/**
+ * Route-specific App Links for a deep-linkable HighScore page (`/g/:token`,
+ * `/friends/accept/:token`), taken from the request URL itself: the native
+ * target and Smart App Banner argument carry the exact requested path, and
+ * `al:web:url` is the exact landing URL (query included). Don't rebuild the
+ * path from Pages `params` — those arrive still percent-encoded, so
+ * `encodeURIComponent` would double-encode. App-first: no web fallback in
+ * Meta's apps (they offer the App Store instead); the page itself still
+ * serves the web hand-off to every other client.
+ */
+export function buildRouteAppLinkTags(requestUrl: string): string {
+  const url = new URL(requestUrl);
+  const canonical = `${url.origin}${url.pathname}`;
+  return buildAppLinkMetaTags({
+    appPath: url.pathname,
+    webUrl: `${canonical}${url.search}`,
+    shouldFallback: false,
+    appArgument: canonical,
+  });
+}
+
 /** Same-origin static assets the card renderer draws. */
 export function ogAssetsFor(requestUrl: string): OgAssets {
   return {
