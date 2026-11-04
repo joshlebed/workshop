@@ -104,6 +104,7 @@ export default function ShareSetupWalkthrough() {
   const steps = SHARE_WALKTHROUGH_STEPS;
   const step = steps[Math.min(stepIndex, steps.length - 1)];
   const isLast = stepIndex >= steps.length - 1;
+  const confirming = Boolean(step?.tryIt) && sheetClosed;
 
   const complete = useMutation({
     mutationFn: () =>
@@ -148,10 +149,10 @@ export default function ShareSetupWalkthrough() {
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text variant="caption" tone="muted" style={styles.eyebrow}>
-            One-time setup
+            Setup
           </Text>
           <Text variant="heading" numberOfLines={1} accessibilityRole="header">
-            Share sheet setup
+            Add HighScore to Share
           </Text>
         </View>
         <IconButton
@@ -168,11 +169,10 @@ export default function ShareSetupWalkthrough() {
           <View style={styles.stepCard} testID="share-setup-tested">
             <Text style={styles.stepGlyph}>🎉</Text>
             <Text variant="title" style={styles.stepTitle}>
-              It works
+              You're set
             </Text>
             <Text tone="secondary" style={styles.stepBody}>
-              HighScore is in your share sheet. Next time you finish a game, tap Share, then
-              HighScore — your score posts itself.
+              Finish a game, tap Share, tap HighScore.
             </Text>
             <Button
               label="Done"
@@ -192,30 +192,30 @@ export default function ShareSetupWalkthrough() {
             )}
             <View style={styles.stepText} testID={`share-setup-step-${stepIndex}`}>
               <Text variant="caption" tone="muted" style={styles.eyebrow}>
-                Step {stepIndex + 1} of {steps.length}
+                {stepIndex + 1} of {steps.length}
               </Text>
+              {/* Back from the live sheet: the question replaces the instructions. */}
               <Text variant="title" style={styles.stepTitle}>
-                {step?.title}
+                {confirming ? "Is HighScore first in the row?" : step?.title}
               </Text>
-              <Text tone="secondary" style={styles.stepBody}>
-                {step?.body}
-              </Text>
+              {confirming ? null : (
+                <Text tone="secondary" style={styles.stepBody}>
+                  {step?.body}
+                </Text>
+              )}
             </View>
 
-            {step?.tryIt && sheetClosed ? (
+            {confirming ? (
               <View style={styles.tryIt} testID="share-setup-confirm">
-                <Text variant="heading" style={styles.stepBody}>
-                  Is HighScore at the front of the app row now?
-                </Text>
                 <Button
-                  label="Yes, all set"
+                  label="Yes"
                   size="lg"
                   loading={complete.isPending}
                   onPress={() => complete.mutate()}
                   testID="share-setup-confirm-yes"
                 />
                 <Button
-                  label="Open share sheet again"
+                  label="Try again"
                   variant="secondary"
                   size="lg"
                   onPress={() => void openShareSheet()}
@@ -231,7 +231,7 @@ export default function ShareSetupWalkthrough() {
                   testID="share-setup-open-sheet"
                 />
                 <Text variant="caption" tone="muted" style={styles.stepBody}>
-                  In the sheet: More → Edit → + HighScore → ✓
+                  More → Edit → + HighScore → ✓
                 </Text>
               </View>
             ) : null}
@@ -258,7 +258,7 @@ export default function ShareSetupWalkthrough() {
               ) : null}
               {isLast && sheetClosed ? null : (
                 <Button
-                  label={isLast ? "I've added it" : "Next"}
+                  label={isLast ? "Already done" : "Next"}
                   variant={isLast ? "secondary" : "primary"}
                   size="lg"
                   loading={complete.isPending}
@@ -275,11 +275,10 @@ export default function ShareSetupWalkthrough() {
           <View style={styles.stepCard} testID="share-setup-web-fallback">
             <Text style={styles.stepGlyph}>📱</Text>
             <Text variant="title" style={styles.stepTitle}>
-              Grab the iPhone app
+              iPhone only
             </Text>
             <Text tone="secondary" style={styles.stepBody}>
-              Posting scores straight from the share sheet is an iPhone feature. Open HighScore on
-              your iPhone and revisit this setup from your profile.
+              Open HighScore on your iPhone to set this up.
             </Text>
           </View>
         )}
@@ -323,8 +322,6 @@ const styles = StyleSheet.create({
     maxHeight: 420,
     borderRadius: tokens.radius.lg,
     overflow: "hidden",
-    borderWidth: tokens.bezel,
-    borderColor: tokens.border.default,
     backgroundColor: tokens.bg.surface,
   },
   shotImage: { width: "100%", height: "100%" },
