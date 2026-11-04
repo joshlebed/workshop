@@ -1,43 +1,15 @@
-// Web-only "Open in app" card for the play-link landing, shown when the page is
-// opened inside a third-party in-app browser (Messenger / Instagram).
-//
-// The CTA is a REAL `<a href>` (a genuine user tap, not a programmatic
-// navigation) pointing at the host app's **custom scheme**, NOT the
-// https Universal Link. Why the scheme and not the Universal Link:
-//   - The Universal Link is the *same* https URL the page is already on, so a
-//     tap just reloads it (Apple won't fire a Universal Link to the same domain
-//     you're already viewing) → an endless in-app-browser loop. The custom
-//     scheme is not an http navigation, so it never reloads the page.
-//   - The scheme is registered by the app's Info.plist (`CFBundleURLSchemes`),
-//     so iOS routes it to the installed app regardless of AASA / Universal Link
-//     association state — which, for this app, is exactly what's failing (links
-//     don't reliably open the app even from iMessage).
-//
-// A custom scheme has no graceful no-app fallback of its own: tapped without the
-// app installed it pops iOS's "Cannot Open Page" alert (or nothing). So we add a
-// **timed fallback** — after the tap, if the page is still foregrounded a beat
-// later (the app didn't take over), we continue on the web automatically instead
-// of stranding the user on a dead button. If the app DID open, iOS backgrounds
-// this WebView and *pauses* JS timers, so the callback only runs after a long
-// wall-clock gap, which we detect and ignore. (`Continue here instead` is still
-// there for anyone who'd rather not wait.)
-//
-// The `<a>` also needs an explicit `fontFamily`: a raw DOM element doesn't
-// inherit RN-Web's injected text font, so without this it renders in the UA
-// serif (Times). It uses the theme's button face (Space Grotesk 600, registered
-// by expo-font under `SECONDARY_FONT.semibold`) with a system fallback stack.
+// Web fallback when the source app keeps a share link in its own browser.
+// Try the iOS scheme once on arrival; keep a real anchor for browsers that
+// require a user gesture. A same-domain HTTPS link could just reload this page.
 
 import { type CSSProperties, useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { Button, Card, SECONDARY_FONT, Text, tokens } from "../../../theme";
+import { scheduleAppOpen, watchAppOpen } from "../../lib/appHandoff";
+import { canAutoOpenApp } from "../../lib/inAppBrowser";
 import type { OpenInAppCardProps } from "./impl";
 
 export type { OpenInAppCardProps } from "./impl";
-
-// How long to wait after the tap before assuming the app didn't open and
-// continuing on the web. Long enough that a real app-open backgrounds us first
-// (iOS scheme opens are sub-second); short enough to not feel stuck.
-const FALLBACK_MS = 2000;
 
 // Theme button face first, then RN-Web's default stack as the fallback.
 const BUTTON_FONT = `"${SECONDARY_FONT.semibold}", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif`;
@@ -64,29 +36,23 @@ const anchorStyle: CSSProperties = {
 };
 
 export function OpenInAppCard({ appName, url, onContinue }: OpenInAppCardProps) {
-  const fallbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelAttempt = useRef<(() => void) | null>(null);
+  const autoOpen = canAutoOpenApp();
 
-  // Clear a pending fallback if we unmount first (e.g. onContinue already fired).
-  useEffect(
-    () => () => {
-      if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    if (autoOpen) cancelAttempt.current = scheduleAppOpen(url);
+    return () => cancelAttempt.current?.();
+  }, [url, autoOpen]);
 
-  // NOTE: no preventDefault — the anchor's own navigation is the real user
-  // gesture that opens the app (a scripted `window.location` wouldn't). We only
-  // arm the web fallback alongside it.
+  const continueOnWeb = () => {
+    cancelAttempt.current?.();
+    onContinue();
+  };
+
+  // Don't preventDefault: the anchor itself preserves the user gesture.
   const onOpenTap = () => {
-    if (fallbackTimer.current) clearTimeout(fallbackTimer.current);
-    const tappedAt = Date.now();
-    fallbackTimer.current = setTimeout(() => {
-      fallbackTimer.current = null;
-      // Fired roughly on schedule ⇒ still foregrounded ⇒ the app didn't open, so
-      // fall back to the web. A much larger gap ⇒ we were backgrounded while the
-      // app was open ⇒ leave the user where they are.
-      if (Date.now() - tappedAt < FALLBACK_MS + 750) onContinue();
-    }, FALLBACK_MS);
+    cancelAttempt.current?.();
+    cancelAttempt.current = watchAppOpen(onContinue);
   };
 
   return (
@@ -97,7 +63,9 @@ export function OpenInAppCard({ appName, url, onContinue }: OpenInAppCardProps) 
           Open in {appName}
         </Text>
         <Text tone="secondary" style={styles.body}>
-          Tap below to jump to the app — or keep going here in your browser.
+          {autoOpen
+            ? `If ${appName} doesn’t open automatically, tap below or continue in your browser.`
+            : "Tap below to open the app, or continue in your browser."}
         </Text>
       </View>
 
@@ -111,7 +79,7 @@ export function OpenInAppCard({ appName, url, onContinue }: OpenInAppCardProps) 
       <Button
         label="Continue here instead"
         variant="ghost"
-        onPress={onContinue}
+        onPress={continueOnWeb}
         testID="open-in-app-continue"
       />
     </Card>

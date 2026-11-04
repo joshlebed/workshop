@@ -1,10 +1,7 @@
 import { Platform } from "react-native";
 
-// Third-party in-app browsers (embedded WKWebViews) where iOS does NOT auto-open
-// the native app from a Universal Link: the WebView's page *load* isn't a user
-// tap, so the OS-level interception never fires (Apple's documented behavior).
-// Only a real user tap on a Universal Link inside the WebView can route to the
-// app — which is what the "Open in app" card on the play-link landing offers.
+// Third-party browsers can keep Universal Links inside their own WebView.
+// Their support and user settings decide whether a link opens the native app.
 //
 // These tokens cover the surfaces people actually share through (the Meta family
 // is the live complaint). UA sniffing is heuristic, but reliable for these apps;
@@ -23,4 +20,10 @@ export function isInAppBrowser(userAgent?: string): boolean {
   if (Platform.OS !== "web") return false;
   const ua = userAgent ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");
   return ua.length > 0 && IN_APP_BROWSER_UA_RE.test(ua);
+}
+
+/** HighScore ships on iOS; don't attempt its scheme on Android or desktop. */
+export function canAutoOpenApp(userAgent?: string): boolean {
+  const ua = userAgent ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");
+  return isInAppBrowser(ua) && /iPhone|iPad|iPod/i.test(ua);
 }

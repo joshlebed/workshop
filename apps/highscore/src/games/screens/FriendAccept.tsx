@@ -11,6 +11,8 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Avatar, Button, Card, Text, tokens } from "../../theme";
 import { addGame, fetchGameDiscovery } from "../api/games";
+import { OpenInAppCard } from "../components/OpenInAppCard";
+import { useInAppBrowserPrompt } from "../hooks/useInAppBrowserPrompt";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { localDateKey } from "../lib/gameDate";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../lib/inviteStash";
@@ -39,7 +41,10 @@ import { FriendGameSuggestions } from "./games/FriendGameSuggestions";
 export default function AcceptFriendInvite() {
   const params = useLocalSearchParams<{ token?: string }>();
   const inviteToken = Array.isArray(params.token) ? params.token[0] : params.token;
-  const { status, token: authToken, user, routes } = useGamesRuntime();
+  const { status, token: authToken, user, routes, appName, appScheme } = useGamesRuntime();
+  const { showAppPrompt, continueOnWeb } = useInAppBrowserPrompt(
+    inviteToken ? `/friends/accept/${encodeURIComponent(inviteToken)}` : null,
+  );
   const router = useRouter();
   const openProfile = useOpenProfile();
   const queryClient = useQueryClient();
@@ -59,15 +64,15 @@ export default function AcceptFriendInvite() {
   // Signed-out → send through sign-in. AuthGate bounces back here once signed
   // in (it consults the friend stash, same as the list-invite stash).
   useEffect(() => {
-    if (status === "signed-out" && inviteToken) {
+    if (!showAppPrompt && status === "signed-out" && inviteToken) {
       router.replace(routes.signIn as Href);
     }
-  }, [status, inviteToken, router, routes.signIn]);
+  }, [status, inviteToken, router, routes.signIn, showAppPrompt]);
 
   const previewQuery = useQuery({
     queryKey: queryKeys.friends.requestPreview(inviteToken ?? ""),
     queryFn: () => fetchFriendRequestPreview(inviteToken ?? "", authToken),
-    enabled: !!inviteToken && status === "signed-in" && !acceptedFriend,
+    enabled: !!inviteToken && status === "signed-in" && !acceptedFriend && !showAppPrompt,
   });
 
   const acceptMutation = useMutation({
@@ -89,6 +94,18 @@ export default function AcceptFriendInvite() {
       setError(errorMessage(e, "Couldn't accept the invite"));
     },
   });
+
+  if (showAppPrompt) {
+    return (
+      <Centered testID="friend-accept-open-in-app">
+        <OpenInAppCard
+          appName={appName}
+          url={`${appScheme}:///friends/accept/${encodeURIComponent(inviteToken ?? "")}`}
+          onContinue={continueOnWeb}
+        />
+      </Centered>
+    );
+  }
 
   if (!inviteToken) {
     return (

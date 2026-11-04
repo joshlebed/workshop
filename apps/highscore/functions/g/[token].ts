@@ -1,8 +1,9 @@
 import {
   buildGameShareMetaTags,
+  buildRouteAppLinkTags,
   fetchGameSharePreview,
-  OG_META_SELECTORS,
   type PagesEnv,
+  ROUTE_META_SELECTORS,
 } from "../_lib/og.js";
 
 interface PagesContext {
@@ -30,11 +31,14 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
     pageUrl: `${origin}/g/${encodedToken}`,
     imageUrl: `${origin}/og/g/${encodedToken}.png`,
   });
+  const appLinks = buildRouteAppLinkTags(context.request.url);
   const name = preview?.sharerName?.trim();
   const title = name ? `Play games with ${name} · HighScore` : "Play games · HighScore";
 
   const rewriter = new HTMLRewriter();
-  for (const selector of OG_META_SELECTORS) {
+  // Strip every default OG / App Links / Smart Banner tag so each property
+  // appears once, with this route's value.
+  for (const selector of ROUTE_META_SELECTORS) {
     rewriter.on(selector, {
       element(element) {
         element.remove();
@@ -49,7 +53,7 @@ export const onRequestGet = async (context: PagesContext): Promise<Response> => 
     })
     .on("head", {
       element(element) {
-        element.append(meta, { html: true });
+        element.append(`${meta}\n    ${appLinks}`, { html: true });
       },
     });
 
