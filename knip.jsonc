@@ -6,7 +6,9 @@
       "entry": ["scripts/*.{sh,ts,mjs,js}", "functions/**/*.ts"],
       // eas-cli: scripts/eas-sync-ios-capabilities.mjs resolves it from the app
       // dir it is given (apps/*/devDependencies), not the root.
-      "ignoreDependencies": ["concurrently", "eas-cli"]
+      // @expo/fingerprint: scripts/expo-fingerprint-config.cjs is loaded by each
+      // app's fingerprint.config.cjs; the dependency is declared by the apps.
+      "ignoreDependencies": ["concurrently", "eas-cli", "@expo/fingerprint"]
     },
     "apps/backend": {
       "entry": [
@@ -19,11 +21,17 @@
       ]
     },
     "apps/workshop": {
-      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"],
+      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "fingerprint.config.cjs"],
       "ignoreDependencies": ["@react-navigation/native"]
     },
     "apps/highscore": {
-      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "functions/**/*.ts", "scripts/*.mjs"],
+      "entry": [
+        "app/**/*.{ts,tsx}",
+        "src/**/*.{ts,tsx}",
+        "functions/**/*.ts",
+        "scripts/*.mjs",
+        "fingerprint.config.cjs"
+      ],
       // Natives preloaded into the 1.2.0 binary so later features ship OTA-only —
       // intentionally unused for now (apps/highscore/CLAUDE.md). Remove each one
       // from this list in the PR that first imports it.

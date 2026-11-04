@@ -106,22 +106,41 @@ and then fails.
 **Fix**: Wait 5-10 minutes, retry the same `eas credentials` command. Recovery is usually
 quick. Apple doesn't have a machine-readable status; the outage is transparent.
 
+### Symptom: TestFlight build fails with "This account has used its iOS builds from the Free plan this month"
+
+**Cause**: EAS Free plan quota exhausted. Each fingerprint change is one iOS build per app;
+2026-11-03 spent the month's allowance on pipeline iterations, JS-only fingerprint moves
+(`package.json` `scripts`, `eas.json` `cli.version` — both excluded from the hash since) and
+duplicate builds of one fingerprint (fixed by the build job's tag re-check).
+
+**Fix**: Nothing in the repo. JS keeps shipping by OTA. Wait for the reset (1st of the month)
+or upgrade (`eas billing:subscribe starter --account joshlebed`, operator decision), then:
+
+```bash
+gh workflow run testflight-highscore.yml --ref main --field force=true   # or testflight.yml
+```
+
+Before that, check whether the pending native change actually needs a binary: compare the
+fingerprint sources (`CLAUDE.md` → "EAS builds are metered").
+
 ### Symptom: TestFlight workflow run is stuck `in_progress` for 30+ min
 
-**Cause**: The workflow's `eas build --auto-submit --wait` (in the old single-job
-implementation) or `eas submit --wait` (current split) is waiting for an EAS submission
-that's queued indefinitely. The `concurrency: testflight, cancel-in-progress: false`
-setting blocks new pushes from preempting it.
+**Cause**: Usually not stuck. On the Free plan an iOS build waits 30–50 min in EAS's queue
+before it starts, then ~15 min to build, then `eas submit --wait` waits for Apple; ~1h total
+is normal (the job allows 150 min). The build job's `cancel-in-progress: false` concurrency
+group blocks new pushes from preempting it — on purpose.
 
-**Fix**:
+**Fix**: Wait. If the EAS dashboard shows the build finished long ago and the submission is
+queued indefinitely:
 
 ```bash
 gh run cancel <run-id>
 ```
 
 This frees the GitHub Actions runner and the concurrency lock; queued runs proceed. The
-EAS build itself keeps running on EAS's servers regardless — cancelling the workflow only
-stops the GitHub runner from waiting for it.
+fingerprint tag was written when the build finished, so the next push does not rebuild; the
+binary can be re-submitted with `eas submit --platform ios --profile production --id <build-id>`
+from the app directory.
 
 If you also want to clear the queued submissions, cancel them in the EAS dashboard
 (submissions page → "Cancel").
