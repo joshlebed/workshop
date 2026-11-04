@@ -78,11 +78,15 @@ while flags load, hidden once dismissed/completed/already-adopted) that leads in
 1.2.0+** (`runtimeHasShareSetup`, `SHARE_SETUP_SUPPORTED`): the code is JS-only and reaches every
 supported runtime, but the rollout plan is 1.2.0 users first while 1.0.1/1.1.0 get the App Store
 nudge. Lower `SHARE_SETUP_MIN_RUNTIME` to widen it; the route itself renders on any binary.
-**Currently switched off** (`SHARE_SETUP_ENABLED = false`) until real-device 3x screenshots
-replace the simulator ones; flip it back in the PR that swaps the images. Each "how" step shows a screenshot of the real iOS 26 share sheet
+`SHARE_SETUP_ENABLED` is the kill switch for both entry points. Each "how" step shows a screenshot of the real iOS 26 share sheet
 (`assets/share-setup/*.png`) with the control to tap ringed — rings are fractions of the image in
-`SHARE_WALKTHROUGH_STEPS`, so re-cropping an image means re-measuring its ring (the simulator
-only captures at 1x; real-device 3x captures can replace them). The last step opens a live share
+`SHARE_WALKTHROUGH_STEPS`, so re-cropping an image means re-measuring its ring. **Capture them at
+3x from a rented simulator with `lim ios record start --quality 10`** and pull stills with
+`ffmpeg -ss <t> -i rec.mp4 -frames:v 1` — quality 10 records the native 1206×2622, while
+`lim ios screenshot` is 1x (402×874) and default-quality recordings are 1.5x. Crops are the 1x
+regions ×3 (share-row `1146:1050:30:1524`, the other two `1206:720:0:210`); each sheet's outer
+corners are filled with the canvas colour, and share-row's glass band above the app row is
+desaturated so the button behind the sheet doesn't tint it. The last step opens a live share
 sheet (`Share.share` with `SHARE_PRACTICE_TEXT`) and asks for confirmation when it closes. Don't
 make the user tap HighScore in that sheet to "test" it: sharing to the app's own extension from
 inside the app reuses the same `dataUrl` deep link, which `useShareIntent` only re-reads when the

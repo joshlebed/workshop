@@ -196,7 +196,7 @@ export default function ShareSetupWalkthrough() {
               </Text>
               {/* Back from the live sheet: the question replaces the instructions. */}
               <Text variant="title" style={styles.stepTitle}>
-                {confirming ? "Is HighScore first in the row?" : step?.title}
+                {confirming ? "Is HighScore at the front of the row?" : step?.title}
               </Text>
               {confirming ? null : (
                 <Text tone="secondary" style={styles.stepBody}>
@@ -221,6 +221,9 @@ export default function ShareSetupWalkthrough() {
                   onPress={() => void openShareSheet()}
                   testID="share-setup-open-sheet"
                 />
+                <Text variant="caption" tone="muted" style={styles.stepBody}>
+                  Not in the list? Restart your iPhone.
+                </Text>
               </View>
             ) : step?.tryIt ? (
               <View style={styles.tryIt}>

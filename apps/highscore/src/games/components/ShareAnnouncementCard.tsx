@@ -17,7 +17,7 @@ export function ShareAnnouncementCard() {
       <View style={styles.copy}>
         <Text variant="label">Post from the Share button</Text>
         <Text variant="caption" tone="secondary">
-          Add HighScore to your share sheet once. After that, Share → HighScore posts your score.
+          Add HighScore to your share sheet once. Then it's Share → HighScore → Post.
         </Text>
       </View>
       <Button

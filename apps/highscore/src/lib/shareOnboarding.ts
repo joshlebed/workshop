@@ -32,11 +32,9 @@ export const SHARE_SETUP_MIN_RUNTIME = "1.2.0";
 
 /**
  * Kill switch for the share-setup entry points (Games-home card, You → Account
- * row). Off until real-device 3x share-sheet screenshots replace the 1x
- * simulator captures in `assets/share-setup/`; set back to true to relaunch.
- * The `/share-setup` route still renders when linked directly.
+ * row). The `/share-setup` route still renders when linked directly.
  */
-export const SHARE_SETUP_ENABLED = false;
+export const SHARE_SETUP_ENABLED = true;
 
 /** iOS only (the share sheet is native), and only on a 1.2.0+ binary. */
 export function runtimeHasShareSetup(os: string, runtimeVersion: string | null): boolean {
@@ -103,7 +101,7 @@ export interface ShareWalkthroughStep {
 export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
   {
     title: "Tap More",
-    body: "Open any share sheet and scroll the row of apps to the end.",
+    body: "Tap Share in any game, then scroll the row of apps to the end.",
     illustration: "share-row",
     // The More tile at the end of the app row.
     highlight: { x: 0.5, y: 0.29, width: 0.23, height: 0.31 },
@@ -118,7 +116,7 @@ export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
   },
   {
     title: "Tap + next to HighScore",
-    body: "Then tap ✓. HighScore now comes first.",
+    body: "Drag it to the top, then tap ✓ twice.",
     illustration: "edit-favorites",
     // The green + beside HighScore.
     highlight: { x: 0.075, y: 0.75, width: 0.47, height: 0.2 },
@@ -126,7 +124,7 @@ export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
   },
   {
     title: "Your turn",
-    body: "Try it here. Close the sheet once HighScore is first in the row.",
+    body: "Try it here. Close the sheet when HighScore is at the front of the row.",
     illustration: null,
     highlight: null,
     tryIt: true,
