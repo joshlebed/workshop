@@ -214,8 +214,8 @@ export default function EditProfile() {
           />
           {SHARE_SETUP_SUPPORTED ? (
             <LinkRow
-              label="Share sheet setup"
-              detail="Post scores straight from a game's Share button"
+              label="Share sheet"
+              detail="Post from any game's Share button"
               onPress={() => router.push("/share-setup" as Href)}
               testID="profile-share-setup"
             />

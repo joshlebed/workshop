@@ -102,8 +102,8 @@ export interface ShareWalkthroughStep {
  */
 export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
   {
-    title: "Scroll the app row to More",
-    body: "When you finish a game, tap its Share button. In the share sheet, swipe the row of apps all the way left and tap More.",
+    title: "Tap More",
+    body: "Open any share sheet and scroll the row of apps to the end.",
     illustration: "share-row",
     // The More tile at the end of the app row.
     highlight: { x: 0.5, y: 0.29, width: 0.23, height: 0.31 },
@@ -111,14 +111,14 @@ export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
   },
   {
     title: "Tap Edit",
-    body: "More lists every app that can take your result. Tap Edit in the top corner.",
+    body: "Top-right corner.",
     illustration: "more-list",
     highlight: { x: 0.79, y: 0.05, width: 0.185, height: 0.23 },
     tryIt: false,
   },
   {
-    title: "Add HighScore to Favorites",
-    body: "Tap the green + next to HighScore to move it into Favorites, then tap ✓. It now sits at the front of every share sheet.",
+    title: "Tap + next to HighScore",
+    body: "Then tap ✓. HighScore now comes first.",
     illustration: "edit-favorites",
     // The green + beside HighScore.
     highlight: { x: 0.075, y: 0.75, width: 0.47, height: 0.2 },
@@ -126,7 +126,7 @@ export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
   },
   {
     title: "Your turn",
-    body: "Open the share sheet and add HighScore to Favorites. Once it's at the front of the app row, close the sheet.",
+    body: "Try it here. Close the sheet once HighScore is first in the row.",
     illustration: null,
     highlight: null,
     tryIt: true,
@@ -141,7 +141,7 @@ export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
  * text back and the share-intent redirect shows the "it works" screen instead
  * of offering to post it as a score.
  */
-export const SHARE_PRACTICE_TEXT = "Testing my HighScore share sheet ✅";
+export const SHARE_PRACTICE_TEXT = "HighScore share test";
 
 /** Whether a share-intent payload is the walkthrough's practice share. */
 export function isSharePractice(text: string | null | undefined): boolean {

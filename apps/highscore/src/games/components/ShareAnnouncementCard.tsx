@@ -15,9 +15,9 @@ export function ShareAnnouncementCard() {
   return (
     <View style={styles.card} testID="share-announcement" accessibilityRole="summary">
       <View style={styles.copy}>
-        <Text variant="label">Post scores from the share sheet</Text>
+        <Text variant="label">Post from the Share button</Text>
         <Text variant="caption" tone="secondary">
-          Finish a game, tap Share, tap HighScore — your score posts itself. 30-second setup.
+          Add HighScore to your share sheet once. After that, Share → HighScore posts your score.
         </Text>
       </View>
       <Button

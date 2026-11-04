@@ -74,7 +74,7 @@ Discoverability: the Games home shows a one-time share-sheet announcement card
 (`ShareAnnouncementCard` + `useShareAnnouncement`, rules in `src/lib/shareOnboarding.ts` — hidden
 while flags load, hidden once dismissed/completed/already-adopted) that leads into the
 `/share-setup` walkthrough (`src/screens/ShareSetupWalkthrough.tsx`; persistent entry is the
-"Share sheet setup" row in Edit profile → Account). **Both entry points are runtime-gated to iOS
+"Share sheet" row in You → Account). **Both entry points are runtime-gated to iOS
 1.2.0+** (`runtimeHasShareSetup`, `SHARE_SETUP_SUPPORTED`): the code is JS-only and reaches every
 supported runtime, but the rollout plan is 1.2.0 users first while 1.0.1/1.1.0 get the App Store
 nudge. Lower `SHARE_SETUP_MIN_RUNTIME` to widen it; the route itself renders on any binary.
@@ -87,7 +87,7 @@ sheet (`Share.share` with `SHARE_PRACTICE_TEXT`) and asks for confirmation when 
 make the user tap HighScore in that sheet to "test" it: sharing to the app's own extension from
 inside the app reuses the same `dataUrl` deep link, which `useShareIntent` only re-reads when the
 URL changes or the app re-activates, and the extension's blank view can stay up until swiped away.
-If they do tap it, `Share.share` reports our extension (→ "It works", pending payload cleared) and
+If they do tap it, `Share.share` reports our extension (→ "You're set", pending payload cleared) and
 `_layout.tsx` routes the practice text to `/share-setup?tested=1`, never the score picker.
 Dismiss/complete state is the server-side
 `games.share-sheet-announcement` user flag — never a local storage key, so reinstalls and second

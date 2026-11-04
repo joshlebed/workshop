@@ -2,7 +2,7 @@
 // user taps HighScore in the walkthrough's live share sheet, the payload comes
 // back through the share extension to `_layout.tsx`, which calls
 // `markSharePracticeReceived()`. A walkthrough already on screen flips to its
-// "It works" state from this signal rather than from navigation: replacing the
+// "You're set" state from this signal rather than from navigation: replacing the
 // route it is already on proved unreliable. A walkthrough that isn't mounted
 // gets `?tested=1` instead.
 
