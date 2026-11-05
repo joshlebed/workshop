@@ -194,15 +194,46 @@ jobs:
     concurrency:
       group: testflight-build
       cancel-in-progress: false
-    # EAS iOS builds are ~25–30 min wall-clock plus a few minutes for
-    # auto-submit. 60 min gives slack for slow EAS queues / submit
-    # contention without burning runner time on a wedged build.
-    timeout-minutes: 60
+    # eas-cli ≥27 waits for the TestFlight submission too, and the Free plan's
+    # queue can hold a build for 30+ min before it starts. 2026-11-03: two
+    # HighScore jobs hit the old 60-min limit *after* "✔ Build finished", so
+    # no fingerprint tag was written and the next push rebuilt the same
+    # fingerprint — two EAS builds for one binary. Runner minutes are free
+    # on a public repo; a wedged build is caught by the EAS-side timeout.
+    timeout-minutes: 150
     outputs:
       failure_reason: ${{ steps.diagnose.outputs.reason }}
       failure_fix: ${{ steps.diagnose.outputs.fix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The fingerprint job decided "no tag → build" while an earlier run may
+      # still have been building the *same* fingerprint (builds take ~1h and
+      # this job waits its turn in the concurrency group). Re-check
+      # once we hold the slot so the second push skips instead of paying for
+      # a duplicate binary (2026-11-03: the same Workshop fingerprint was
+      # built three times this way).
+      - name: Re-check fingerprint tag
+        id: recheck
+        env:
+          FP_HASH: ${{ needs.fingerprint.outputs.hash }}
+        run: |
+          set -euo pipefail
+          TAG="ios-fp-$FP_HASH"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG appeared while this run was queued — a binary with this fingerprint already shipped. Skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "## 🟡 Skipped — built by an earlier run"
+              echo ""
+              echo "**Fingerprint**: \`$FP_HASH\`"
+              echo ""
+              echo "Tag \`$TAG\` was written by a run that finished while this one waited in the"
+              echo "concurrency queue. No EAS build consumed."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # `eas build` runs the actual build remotely on EAS infra, but the
       # _local_ eas-cli still has to read `app.json` via `npx expo config
@@ -213,6 +244,7 @@ jobs:
       # it's not — every TestFlight run since has been red. Cache hit is
       # ~10s, miss is ~30s.
       - uses: ./.github/actions/setup-pnpm
+        if: steps.recheck.outputs.skip != 'true'
 
       # Write the App Store Connect API key to disk so eas-cli can
       # authenticate with Apple non-interactively. Required whenever a
@@ -229,6 +261,7 @@ jobs:
       # mint an ASC API key without an interactive Apple-ID session).
       # See `docs/manual-setup.md` §5 for the website-only flow.
       - name: Write ASC API key
+        if: steps.recheck.outputs.skip != 'true'
         env:
           ASC_API_KEY_CONTENT: ${{ secrets.ASC_API_KEY_CONTENT }}
           ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
@@ -250,6 +283,7 @@ jobs:
       # then fails in Xcode with "Provisioning profile doesn't include the …
       # capability". Sync them explicitly first; see the script header.
       - name: Sync iOS capabilities to the App ID
+        if: steps.recheck.outputs.skip != 'true'
         env:
           EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
           EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
@@ -259,11 +293,13 @@ jobs:
         run: node scripts/eas-sync-ios-capabilities.mjs apps/workshop
 
       # No `--no-wait`: we want this step to exit on the actual build
-      # outcome, not on enqueue acceptance. `--auto-submit` still chains
-      # the TestFlight submit on EAS's side after the build succeeds, so
-      # this step blocks on the build (~30 min) but not on the submit.
-      - name: Build + auto-submit (await success)
+      # outcome, not on enqueue acceptance. Submission is a separate step
+      # below (no `--auto-submit`) so the fingerprint tag can be written the
+      # moment the binary exists: a submit failure is then a re-submit of the
+      # existing build, never a rebuild.
+      - name: Build (await success)
         id: build
+        if: steps.recheck.outputs.skip != 'true'
         working-directory: apps/workshop
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -273,9 +309,9 @@ jobs:
           EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: 267582241036-cpnoae8vhaj8e3ftq3lmldef2c7hco33.apps.googleusercontent.com
           EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 267582241036-vpbho0utb64bpvsjhkkk0cv14lp0dbie.apps.googleusercontent.com
           CLI_VERSION: ${{ env.EAS_CLI_VERSION }}
-          # ASC API key auth for both credentials management (cert/profile
-          # generation) and `--auto-submit`. Takes precedence over any
-          # ASC key registered server-side on EAS for this project.
+          # ASC API key auth for credentials management (cert/profile
+          # generation). Takes precedence over any ASC key registered
+          # server-side on EAS for this project.
           EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
           EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
@@ -297,18 +333,91 @@ jobs:
             --platform ios \
             --profile production \
             --non-interactive \
-            --auto-submit \
             --json 2> >(tee -a "$BUILD_LOG" >&2))
           # `eas build --json` returns an array; the [0]th element is this build.
           BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id')
-          BUILD_STATUS=$(echo "$BUILD_JSON" | jq -r '.[0].status')
           if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
             echo "Failed to extract build ID from eas build output:"
             echo "$BUILD_JSON" | tee -a "$BUILD_LOG"
             exit 1
           fi
+          # eas-cli exits non-zero when the awaited build errors, so reaching
+          # here means FINISHED (the JSON's `.status` is the enqueue-time
+          # snapshot — `NEW` — under eas-cli 27, not the final state).
           echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
-          echo "build_status=$BUILD_STATUS" >> "$GITHUB_OUTPUT"
+          echo "build_status=FINISHED" >> "$GITHUB_OUTPUT"
+
+      # Tag the fingerprint the moment the binary exists. With `--no-wait` we
+      # used to tag on enqueue, which let an EAS-side failure poison later
+      # pushes (they'd see the tag and skip). Tagging after the awaited build
+      # — but *before* the TestFlight submit — keeps that property while
+      # making a submit failure or a job timeout cost a re-submit, not another
+      # EAS build. Retried: a transient 403 here on 2026-11-03 lost the tag
+      # for a finished build and the next push rebuilt it.
+      - name: Tag built fingerprint
+        id: tag
+        if: steps.recheck.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FP_HASH: ${{ needs.fingerprint.outputs.hash }}
+          HEAD_SHA: ${{ github.sha }}
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
+        run: |
+          set -euo pipefail
+          TAG="ios-fp-$FP_HASH"
+          # Create the lightweight tag ref directly against the build's commit
+          # (already on the remote) via the API — do NOT `git push` the tag.
+          # This job's checkout is shallow (fetch-depth 1), so `git push origin
+          # <tag>` re-sends the commit's tree, which includes .github/workflows/*
+          # blobs. The Actions GITHUB_TOKEN can't carry the `workflows`
+          # permission (not grantable via the permissions: block — only a PAT/App
+          # with the Workflows scope has it), so GitHub rejects the push with
+          # "refusing to allow a GitHub App to create or update workflow ...".
+          # Creating a ref to an existing SHA touches no blobs, so the
+          # contents:write permission above is sufficient.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — nothing to do."
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+                -f "ref=refs/tags/$TAG" \
+                -f "sha=$HEAD_SHA"; then
+              echo "Tagged $TAG -> $HEAD_SHA"
+              exit 0
+            fi
+            echo "Tag create attempt $attempt failed; retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+          echo "::error::Build $BUILD_ID finished but tag $TAG could not be written. Write it by hand so the next push does not rebuild this fingerprint:"
+          echo "::error::  git tag $TAG $HEAD_SHA && git push origin refs/tags/$TAG"
+          exit 1
+
+      # Submission is separate from the build (see above). `--wait` so a
+      # rejected or stuck submit is red CI; the binary and its tag already
+      # exist, so recovery is `eas submit --id <build>` — never a rebuild.
+      - name: Submit to TestFlight (await)
+        id: submit
+        if: steps.recheck.outputs.skip != 'true'
+        working-directory: apps/workshop
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          CLI_VERSION: ${{ env.EAS_CLI_VERSION }}
+          EXPO_ASC_API_KEY_PATH: ${{ runner.temp }}/asc-api-key.p8
+          EXPO_ASC_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          EXPO_ASC_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          EXPO_APPLE_TEAM_ID: Q65U6C65ZZ
+          EXPO_APPLE_TEAM_TYPE: INDIVIDUAL
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
+          BUILD_LOG: ${{ runner.temp }}/eas-build.log
+        run: |
+          set -euo pipefail
+          npx "eas-cli@$CLI_VERSION" submit \
+            --platform ios \
+            --profile production \
+            --id "$BUILD_ID" \
+            --non-interactive \
+            --wait 2> >(tee -a "$BUILD_LOG" >&2)
 
       # Pattern-match the eas-cli stderr against known failure modes so
       # the Discord ping can name the specific recovery instead of dumping
@@ -318,9 +427,11 @@ jobs:
       # generic hint.
       - name: Diagnose failure
         id: diagnose
-        if: failure() && steps.build.conclusion == 'failure'
+        if: failure() && (steps.build.conclusion == 'failure' || steps.submit.conclusion == 'failure')
         env:
           BUILD_LOG: ${{ runner.temp }}/eas-build.log
+          SUBMIT_FAILED: ${{ steps.submit.conclusion == 'failure' }}
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
         run: |
           set -euo pipefail
           if [ ! -s "$BUILD_LOG" ]; then
@@ -330,7 +441,13 @@ jobs:
           fi
           LOG=$(cat "$BUILD_LOG")
           # The order matters: more specific patterns first, broadest last.
-          if echo "$LOG" | grep -q "doesn't include the .* capability\|doesn't include the .* entitlement"; then
+          if [ "$SUBMIT_FAILED" = "true" ]; then
+            REASON="EAS build $BUILD_ID finished but the TestFlight submission failed"
+            FIX="The binary exists and its fingerprint tag is written — do NOT rebuild. Re-submit it: \`cd apps/workshop && npx eas-cli@27.4.0 submit --platform ios --profile production --id $BUILD_ID\`. Apple-side rejections (export compliance, missing agreement) show in the EAS submission log."
+          elif echo "$LOG" | grep -q "has used its iOS builds from the Free plan"; then
+            REASON="EAS Free plan iOS build quota is exhausted for this month"
+            FIX="Nothing in the repo to fix: no native build can run until the quota resets (date in the job log) or the account upgrades (\`eas billing:subscribe starter --account joshlebed\`). JS still ships by OTA. Re-fire \`testflight.yml --field force=true\` once builds are available. See CLAUDE.md → \"EAS build quota\"."
+          elif echo "$LOG" | grep -q "doesn't include the .* capability\|doesn't include the .* entitlement"; then
             REASON="Provisioning profile missing a capability declared in app.json"
             FIX="Delete the PP via \`eas credentials --platform ios\` (production → Build Credentials → Provisioning Profile → Delete one), then re-fire \`testflight.yml --field force=true\`. See CLAUDE.md → \"Provisioning profile out of sync after a capability toggle\"."
           elif echo "$LOG" | grep -q "Distribution Certificate is not validated for non-interactive builds"; then
@@ -382,8 +499,9 @@ jobs:
             echo "[View build on EAS](https://expo.dev/accounts/joshlebed/projects/workshop/builds/$BUILD_ID)"
             echo ""
             if [ "$BUILD_STATUS" = "FINISHED" ]; then
-              echo "Auto-submit to TestFlight is queued on EAS (separate from this build)."
-              echo "Check [App Store Connect](https://appstoreconnect.apple.com) once the submission lands."
+              echo "Fingerprint tag written. If the submit step is red, re-submit this build (no rebuild):"
+              echo "\`cd apps/workshop && npx eas-cli@27.4.0 submit --platform ios --profile production --id $BUILD_ID\`."
+              echo "Otherwise check [App Store Connect](https://appstoreconnect.apple.com) once Apple finishes processing."
             else
               echo "Build did not finish cleanly. See the EAS build log linked above for the failing step."
               echo "Recovery: fix the underlying issue, delete the fingerprint tag (\`ios-fp-$FP_HASH\`),"
@@ -391,37 +509,6 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # Tag the fingerprint only after the build is confirmed green. With
-      # `--no-wait` we used to tag on enqueue, which let an EAS-side failure
-      # poison subsequent pushes (they'd see the tag and skip). Waiting +
-      # tag-after-success removes that footgun.
-      - name: Tag successful fingerprint
-        if: success()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FP_HASH: ${{ needs.fingerprint.outputs.hash }}
-          HEAD_SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          TAG="ios-fp-$FP_HASH"
-          # Create the lightweight tag ref directly against the build's commit
-          # (already on the remote) via the API — do NOT `git push` the tag.
-          # This job's checkout is shallow (fetch-depth 1), so `git push origin
-          # <tag>` re-sends the commit's tree, which includes .github/workflows/*
-          # blobs. The Actions GITHUB_TOKEN can't carry the `workflows`
-          # permission (not grantable via the permissions: block — only a PAT/App
-          # with the Workflows scope has it), so GitHub rejects the push with
-          # "refusing to allow a GitHub App to create or update workflow ...".
-          # Creating a ref to an existing SHA touches no blobs, so the
-          # contents:write permission above is sufficient.
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists — nothing to do."
-            exit 0
-          fi
-          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
-            -f "ref=refs/tags/$TAG" \
-            -f "sha=$HEAD_SHA"
-          echo "Tagged $TAG -> $HEAD_SHA"
 
   # Wake the operator when a TestFlight run fails. Native iOS builds happen
   # ~5×/month on personal-project cadence, so a silent red run is easy to
