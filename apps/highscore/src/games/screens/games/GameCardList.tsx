@@ -8,7 +8,7 @@
 //
 // The list owns its own scroll. It used to be a `NestedReorderableList` inside a
 // `ScrollViewContainer` — the library's nesting API — but Games home has no
-// sibling content to co-scroll (the DayRail is pinned above the list, outside
+// sibling content to co-scroll (the header is pinned above the list, outside
 // it), so the outer ScrollView bought nothing and cost two things: RN's
 // VirtualizedList dev check fired "VirtualizedLists should never be nested
 // inside plain ScrollViews with the same orientation" on every launch, and

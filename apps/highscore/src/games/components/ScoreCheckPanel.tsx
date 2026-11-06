@@ -1,4 +1,5 @@
 import type { GameScoreDirection } from "@workshop/shared/games";
+import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Button, Chip, Text, tokens } from "../../theme";
 import { ROLE_TAG, SCORE_COPY } from "../lib/scoreCheck";
@@ -13,11 +14,17 @@ import type { ScoreCheck } from "../lib/useScoreCheck";
 export function ScoreCheckPanel({
   check,
   onPostToOther,
+  scoreRead,
   testID = "score-check",
 }: {
   check: ScoreCheck;
   /** "Post to Daily Tens" on a wrong-game warning. Omit to hide that action. */
   onPostToOther?: (gameId: string, title: string) => void;
+  /**
+   * Replaces the "Score: 944" line beside "Not right?" (e.g. a boxed score).
+   * Only used when a score was read.
+   */
+  scoreRead?: ReactNode;
   testID?: string;
 }) {
   const { view } = check;
@@ -77,9 +84,11 @@ export function ScoreCheckPanel({
 
       {view.kind === "score" ? (
         <View style={styles.readRow}>
-          <Text variant="label" testID={`${testID}-read`}>
-            {view.copy}
-          </Text>
+          {scoreRead ?? (
+            <Text variant="label" testID={`${testID}-read`}>
+              {view.copy}
+            </Text>
+          )}
           {check.pickerOpen ? null : (
             <Pressable
               accessibilityRole="button"

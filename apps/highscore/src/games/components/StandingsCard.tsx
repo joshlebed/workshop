@@ -9,7 +9,7 @@
 //
 // Pure presentation: rows arrive pre-distilled (the caller runs each player's
 // raw result through the `scoresSummary` distiller) and surface-specific copy
-// (turnout line, CTA visibility) is computed at the call site. What lives
+// (CTA visibility) is computed at the call site. What lives
 // here is the standings rendering itself: rank marks, top-N cut with a pinned
 // "you" row, the dimmed empty facepile, skeletons, and the Play affordance.
 // There is no per-card paste: the home's bottom action bar is the only paste
@@ -19,17 +19,24 @@
 // Both drag stacks compose this inside their own drag-aware wrappers. On
 // native the whole card is the reorder handle: the cover, title, Play and
 // standings Pressables each take `onLongPressBody`, and the wrapper
-// catches a long-press on the gaps between them — only the kebab menu opts out
-// (a press there opens the menu instead of starting a drag). Web drags via the
+// catches a long-press on the gaps between them. Web drags via the
 // wrapper's pointer listeners. A short tap on any control still runs that
 // control's own action.
 
-import { type ScoreReactionSummary, STREAK_MIN_DAYS } from "@workshop/shared/games";
+import { STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { REORDER_ACTIVATION } from "@workshop/ui";
 import { memo } from "react";
-import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
-import { Avatar, bodyType, PixelIcon, scoreType, Text, tokens, uiType } from "../../theme";
-import { ScoreReactions } from "./ScoreReactions";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+import {
+  Avatar,
+  bodyType,
+  PixelIcon,
+  scoreType,
+  shareTextType,
+  Text,
+  tokens,
+  uiType,
+} from "../../theme";
 
 const TOP_N = 5;
 const RANK_SLOT = 20;
@@ -46,8 +53,8 @@ export interface StandingsRow {
   /** Standard competition rank (1, 2, 2, 4); null when no numeric score. */
   rank: number | null;
   body: string | null;
-  /** Emoji reactions on this score (Games surface only). Undefined → none rendered. */
-  reactions?: ScoreReactionSummary[];
+  /** The parsed numeric score, shown boxed at the row's end. Null → no box. */
+  scoreValue?: number | null;
   /** The player picked this score and the game's parser reads the text differently. */
   adjusted?: boolean;
   /** "Score: 80" / "Didn't finish" when the score is the player's own pick. */
@@ -71,13 +78,9 @@ export interface StandingsCardProps {
   /** Surface accent — tints the cover placeholder only (identity, per DESIGN.md). */
   accent: string;
   isDragging: boolean;
-  /** One-line social signal under the title ("3 of 5 played today"). */
-  turnout: string;
   /**
    * The viewer's consecutive-day play streak for this game (0 = none). Once it
-   * reaches `STREAK_MIN_DAYS` a flame badge shows next to the title — a "play
-   * today to keep your streak" CTA. Tapping it plays the game (calls `onPlay`),
-   * so it stays useful whether or not today's already logged.
+   * reaches `STREAK_MIN_DAYS` a grey "· 🔥N" follows the title.
    */
   streak?: number;
   /**
@@ -90,11 +93,13 @@ export interface StandingsCardProps {
   loading?: boolean;
   /** Dimmed facepile shown when nobody has played (may be empty). */
   emptyFaces: StandingsFace[];
-  /** Show the Play pill (caller gates on "viewer hasn't played today"). */
+  /** Show the Play arrow (caller gates on viewing today). */
   showCta: boolean;
+  /** The viewer already played — the Play arrow stays, greyed out. */
+  played?: boolean;
   /**
    * Tap anywhere on the card → detail. The only parts that don't are the
-   * Play triangle, the kebab menu, the reaction chips and the Fix link.
+   * Play triangle and the Fix link.
    */
   onPressBody?: () => void;
   /**
@@ -102,20 +107,8 @@ export interface StandingsCardProps {
    * card is the drag handle.
    */
   onLongPressBody?: () => void;
-  onMenu: () => void;
   /** Open the game externally + arm the paste-on-return prompt. */
   onPlay: () => void;
-  /**
-   * Tap an existing reaction chip on a friend's row (Games surface only). When
-   * omitted, chips render but aren't interactive.
-   */
-  onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
-  /**
-   * Open the reaction picker for a friend's row. When omitted, no add
-   * affordance shows (and the whole reaction row is hidden on rows with no
-   * reactions) — this is what keeps the Lists surface reaction-free.
-   */
-  onOpenReactionPicker?: (userId: string) => void;
 }
 
 export const StandingsCard = memo(function StandingsCard({
@@ -125,19 +118,16 @@ export const StandingsCard = memo(function StandingsCard({
   coverGlyph,
   accent,
   isDragging,
-  turnout,
   streak,
   rows,
   selfId,
   loading,
   emptyFaces,
   showCta,
+  played,
   onPressBody,
   onLongPressBody,
-  onMenu,
   onPlay,
-  onReact,
-  onOpenReactionPicker,
 }: StandingsCardProps) {
   const scored = rows;
   const playedCount = scored.length;
@@ -158,7 +148,7 @@ export const StandingsCard = memo(function StandingsCard({
 
   // The card itself is the tap target for detail (and the native drag
   // handle). It carries no accessibilityRole so RN-Web renders a <div>, not a
-  // <button> — the Play / menu / reaction / Fix controls inside are real
+  // <button> — the Play / Fix controls inside are real
   // buttons and nested buttons are invalid DOM. The title row is the named,
   // focusable "open leaderboard" control for assistive tech.
   return (
@@ -217,23 +207,18 @@ export const StandingsCard = memo(function StandingsCard({
                 testID={`game-card-streak-${cardId}`}
                 style={styles.streak}
               >
+                <Text style={styles.streakDot}>·</Text>
                 <Text style={styles.streakFlame}>🔥</Text>
                 <Text style={styles.streakCount}>{streak}</Text>
-                <Text style={styles.streakLabel}>day streak</Text>
               </View>
             ) : null}
-          </View>
-          <View style={styles.metaRow}>
-            <Text variant="overline" tone="muted" numberOfLines={1} style={styles.turnout}>
-              {turnout}
-            </Text>
           </View>
         </View>
 
         {ctaVisible ? (
           <Pressable
             accessibilityRole="link"
-            accessibilityLabel={`Play ${title}`}
+            accessibilityLabel={played ? `Play ${title} again` : `Play ${title}`}
             onPress={onPlay}
             hitSlop={8}
             testID={`game-card-play-${cardId}`}
@@ -242,29 +227,18 @@ export const StandingsCard = memo(function StandingsCard({
               (pressed || hovered) && styles.playBtnHover,
             ]}
           >
-            <PixelIcon name="play" size={32} color={tokens.neon.pink} />
+            <PixelIcon
+              name="play"
+              size={32}
+              color={played ? tokens.text.muted : tokens.neon.pink}
+            />
           </Pressable>
         ) : null}
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open menu for ${title}`}
-          onPress={onMenu}
-          hitSlop={10}
-          testID={`game-card-menu-${cardId}`}
-          style={({ pressed, hovered }) => [
-            styles.menuBtn,
-            (pressed || hovered) && styles.menuBtnHover,
-          ]}
-        >
-          <PixelIcon name="more-horizontal" size={16} color={tokens.text.secondary} />
-        </Pressable>
       </View>
 
-      {/* Standings — only when there's something to show. The turnout line
-          already carries the nobody-played story; an empty game stays one
-          header row tall. Rows are plain views: the card's own press opens
-          detail, and the reaction controls are the only buttons inside. */}
+      {/* Standings — only when there's something to show; an empty game
+          stays one header row tall. Rows are plain views: the card's own
+          press opens detail. */}
       {loading ? (
         <SkeletonRows />
       ) : emptyShown ? (
@@ -274,23 +248,12 @@ export const StandingsCard = memo(function StandingsCard({
       ) : (
         <View style={styles.standings}>
           {topRows.map((row) => (
-            <PlayerRow
-              key={row.userId}
-              row={row}
-              isMe={row.userId === selfId}
-              onReact={onReact}
-              onOpenReactionPicker={onOpenReactionPicker}
-            />
+            <PlayerRow key={row.userId} row={row} isMe={row.userId === selfId} />
           ))}
           {pinnedSelf ? (
             <>
               <View style={styles.pinnedDivider} />
-              <PlayerRow
-                row={pinnedSelf}
-                isMe
-                onReact={onReact}
-                onOpenReactionPicker={onOpenReactionPicker}
-              />
+              <PlayerRow row={pinnedSelf} isMe />
             </>
           ) : null}
           {overflow > 0 ? (
@@ -307,18 +270,12 @@ export const StandingsCard = memo(function StandingsCard({
 interface PlayerRowProps {
   row: StandingsRow;
   isMe: boolean;
-  onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
-  onOpenReactionPicker?: (userId: string) => void;
 }
 
-function PlayerRow({ row, isMe, onReact, onOpenReactionPicker }: PlayerRowProps) {
+function PlayerRow({ row, isMe }: PlayerRowProps) {
   const name = row.displayName ?? "Someone";
-  const reactions = row.reactions ?? [];
-  // The viewer reacts to friends' scores, never their own — so the add
-  // affordance + chip toggles are wired only on other people's rows. The
-  // viewer's own row still shows reactions others left, read-only.
-  const canReact = !isMe && !!onOpenReactionPicker;
-  const showReactions = reactions.length > 0 || canReact;
+  const scoreValue =
+    row.scoreValue != null && Number.isFinite(row.scoreValue) ? row.scoreValue : null;
   // Names are dropped from the row to save vertical space — the score sits
   // inline next to the avatar so each player is one line, not two. Identity
   // rides on the avatar circle; the full name stays in the accessibility
@@ -364,18 +321,9 @@ function PlayerRow({ row, isMe, onReact, onOpenReactionPicker }: PlayerRowProps)
           <Text style={styles.fixLinkText}>Fix score</Text>
         </Pressable>
       ) : null}
-      {showReactions ? (
-        <View style={styles.reactionsWrap}>
-          <ScoreReactions
-            reactions={reactions}
-            testIDPrefix={`game-card-react-${row.userId}`}
-            {...(canReact && onReact
-              ? { onToggle: (emoji, cur) => onReact(row.userId, emoji, cur) }
-              : {})}
-            {...(canReact && onOpenReactionPicker
-              ? { onAdd: () => onOpenReactionPicker(row.userId) }
-              : {})}
-          />
+      {scoreValue !== null ? (
+        <View style={styles.scoreBox} testID={`game-card-value-${row.userId}`}>
+          <Text style={styles.scoreBoxText}>{scoreValue.toLocaleString()}</Text>
         </View>
       ) : null}
     </View>
@@ -490,44 +438,23 @@ const styles = StyleSheet.create({
     marginHorizontal: -tokens.space.xs,
     borderRadius: tokens.radius.sm,
   },
-  // The streak is earned, so it's the one chartreuse element on the card:
-  // chartreuse bezel + count/label on transparent (DESIGN.md "Chartreuse is
-  // earned"), reading as "tap to keep your run going", not decor.
+  // Streak: "· 🔥7" inline after the title, grey, no box.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.neon.chartreuse,
+    gap: 2,
   },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
   // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
+  streakDot: { ...scoreType(10), lineHeight: 16, color: tokens.text.muted, marginRight: 4 },
   streakFlame: { fontSize: 12, lineHeight: 16 },
   // Streak counts are score numerals (pixel face).
   streakCount: {
     ...scoreType(10),
     lineHeight: 16,
-    color: tokens.neon.chartreuse,
+    color: tokens.text.secondary,
   },
-  // The unit lives next to the count: "🔥 4 day streak". Secondary face so
-  // the numeral stays the focal point; same colour + lineHeight.
-  streakLabel: {
-    ...bodyType("medium"),
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    color: tokens.neon.chartreuse,
-  },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.xs,
-    marginTop: 1,
-  },
-  turnout: { ...uiType(8), flexShrink: 1 },
   // Play is a tap target → pink: neon bezel + neon label on transparent.
   // Bare pink hollow triangle — no box, no label.
   playBtn: {
@@ -537,14 +464,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   playBtnHover: { opacity: 0.7 },
-  menuBtn: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.sm,
-  },
-  menuBtnHover: { backgroundColor: tokens.bg.elevated },
   standings: { gap: tokens.space.sm },
   playerRow: {
     flexDirection: "row",
@@ -569,9 +488,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.sm,
   },
-  // Reactions ride to the right of the score on the same line — no extra row
-  // height. They keep their natural width; the score line flexes to fill.
-  reactionsWrap: { flexShrink: 0 },
+  // The parsed score rides to the right of the share text on the same line,
+  // boxed so the number reads at a glance; the share text flexes to fill.
+  scoreBox: {
+    flexShrink: 0,
+    minWidth: 32,
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: 4,
+    alignItems: "center",
+    borderRadius: tokens.radius.sm,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+  },
+  scoreBoxText: {
+    ...scoreType(10),
+    lineHeight: 14,
+    color: tokens.text.primary,
+  },
   adjusted: {
     ...bodyType(),
     fontSize: tokens.font.size.xs,
@@ -605,9 +538,7 @@ const styles = StyleSheet.create({
   scoreBody: {
     flex: 1,
     color: tokens.text.secondary,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 5,
+    ...shareTextType(tokens.font.size.xs),
   },
   scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
   pinnedDivider: {

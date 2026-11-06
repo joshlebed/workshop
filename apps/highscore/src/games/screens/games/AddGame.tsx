@@ -178,7 +178,7 @@ export function AddGame() {
           >
             <PixelIcon name="chevron-left" size={24} color={tokens.text.primary} />
           </Pressable>
-          <Text variant="title">Add a game</Text>
+          <Text variant="title">Add game</Text>
           <View style={styles.navButton} />
         </View>
 

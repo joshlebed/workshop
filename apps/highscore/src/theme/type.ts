@@ -1,7 +1,7 @@
 // The type rules from DESIGN.md, hard-coded (UX-DECISIONS.md entry 8):
 // Press Start 2P for the wordmark, game names and score numerals; Space
 // Grotesk for everything else; buttons in Space Grotesk 600.
-import type { TextStyle } from "react-native";
+import { Platform, type TextStyle } from "react-native";
 import { PIXEL_FONT, SECONDARY_FONT } from "./tokens";
 
 export type SecondaryWeight = keyof typeof SECONDARY_FONT;
@@ -42,4 +42,17 @@ export function scoreType(px: number): TextStyle {
 /** Button labels: Space Grotesk 600, 16px. Never pixel. */
 export function buttonType(): TextStyle {
   return { ...bodyType("semibold"), fontSize: 16 };
+}
+
+/**
+ * Formatted share text (score bodies, emoji grids): monospace, single-spaced
+ * so multi-line emoji grids read as one block. 1.2× still clears an emoji
+ * glyph's line box on iOS (a lineHeight under the glyph clips it).
+ */
+export function shareTextType(px: number): TextStyle {
+  return {
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    fontSize: px,
+    lineHeight: Math.round(px * 1.2),
+  };
 }

@@ -46,8 +46,8 @@ Rules:
 
 - **Pink is the one interactive color.** Buttons, links, tab-active, focus rings. Never
   use chartreuse for a CTA.
-- **Chartreuse is earned.** Success states, streak flames, personal bests, positive score
-  deltas. It's the celebration color; overuse kills it.
+- **Chartreuse is earned.** Success states, personal bests, positive score
+  deltas. It's the celebration color; overuse kills it. Streaks are a quiet grey "· 🔥N" after the title.
 - **Yellow is the spotlight.** #1 rank / leader crowns, "today" markers, badges and
   medals, and brand decoration (wordmark accent, marketing surfaces). It marks _what to
   look at_, never _what to tap_ (pink) or _what went well_ (chartreuse). Keep it distinct
@@ -81,7 +81,7 @@ Rules:
 
 ## Shape & texture
 
-- **Corner radius: 2px everywhere** (`tokens.radius.*`, never a literal). Hard 0 aliases
+- **Corner radius: 4px everywhere** (`tokens.radius.*`, never a literal). Hard 0 aliases
   on iOS; anything larger goes soft. No
   pills, no rounded cards.
 - **Bezels: 2px solid `border`** on cards, buttons, inputs, sheets. Chunky and honest.
@@ -106,7 +106,7 @@ Rules:
   glance but never reads as a control. Keep
   them on the 24px grid (16/24/32) — fractional scaling blurs the pixels and breaks the
   aesthetic.
-- Emoji already in the product (reactions, game emoji) stay as-is.
+- Emoji already in the product (game emoji) stay as-is.
 
 ## Motion
 
@@ -137,7 +137,7 @@ Rules:
 
 ## Do / don't quick check
 
-- ✅ Near-sharp 2px corners, 2px purple bezels, dark grey ground, purple surfaces.
+- ✅ Near-sharp 4px corners, 2px purple bezels, dark grey ground, purple surfaces.
 - ✅ Pink for anything tappable; chartreuse only when something good happened; yellow
   only to spotlight the leader/today/badges.
 - ✅ ALL-CAPS Press Start 2P for the wordmark, game names, and score numerals; Space

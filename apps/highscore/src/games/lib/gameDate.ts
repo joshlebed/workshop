@@ -60,7 +60,7 @@ export function daysBack(date: string, today: string): number {
 }
 
 /**
- * Resolve a `?date=` route param to a day the DayRail can show: a valid
+ * Resolve a `?date=` route param to a day the day picker can show: a valid
  * YYYY-MM-DD within `length` days of `today` (today inclusive). Anything
  * else — missing, malformed, future, older than the rail — falls back to
  * `today`, so a stale or hand-edited link never strands the board on a day

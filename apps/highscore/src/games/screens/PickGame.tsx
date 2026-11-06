@@ -20,6 +20,7 @@ import {
   EmptyState,
   PixelIcon,
   Screen,
+  scoreType,
   Text,
   tokens,
   useToast,
@@ -223,14 +224,6 @@ export default function PickGame() {
           <Text variant="title" style={styles.title}>
             Post to your Games
           </Text>
-          <View style={styles.payloadPill} testID="share-game-payload">
-            <View style={styles.payloadDot} />
-            <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.payloadText}>
-              {detected
-                ? `${detected.gameLabel} ${resultlessDraft ? "link" : "score"} detected`
-                : "Score share"}
-            </Text>
-          </View>
         </View>
       </View>
 
@@ -239,28 +232,7 @@ export default function PickGame() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
-        {detected ? (
-          <DetectedScoreSuggestion
-            label={detected.gameLabel}
-            suggestion={suggestion}
-            loading={suggestionLoading}
-            pending={submitScore.isPending}
-            resultless={resultlessDraft || serverResultless}
-            check={check}
-            onPost={() => {
-              if (!suggestion) return;
-              postScore(check.available ? { ...suggestion, extras: check.extras() } : suggestion);
-            }}
-          />
-        ) : null}
-
         <View style={styles.scoreBox}>
-          <View style={styles.scoreHeader}>
-            <Text variant="label">Score</Text>
-            <Text variant="caption" tone="muted">
-              Posts to today
-            </Text>
-          </View>
           <TextInput
             testID="share-game-score-input"
             value={scoreDraft}
@@ -277,14 +249,47 @@ export default function PickGame() {
           />
         </View>
 
+        {detected ? (
+          <DetectedScoreSuggestion
+            label={detected.gameLabel}
+            suggestion={suggestion}
+            iconUrl={
+              (suggestion?.gameId
+                ? myGames.find((g) => g.gameId === suggestion.gameId)?.game.iconUrl
+                : null) ?? null
+            }
+            loading={suggestionLoading}
+            pending={submitScore.isPending}
+            resultless={resultlessDraft || serverResultless}
+            check={check}
+            onPost={() => {
+              if (!suggestion) return;
+              postScore(check.available ? { ...suggestion, extras: check.extras() } : suggestion);
+            }}
+          />
+        ) : null}
+
         <View style={styles.gameSectionHeader}>
           <Text variant="heading" style={styles.gameSectionTitle}>
             Your games
           </Text>
-          <Text variant="caption" tone="muted">
-            {suggestion ? "Or pick a different game." : "Pick the game to update."}
-          </Text>
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push(routes.addGame as Href)}
+          testID="share-game-add-games"
+          style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+            styles.addGames,
+            (pressed || hovered) && styles.addGamesPressed,
+          ]}
+        >
+          <View style={styles.addGamesIcon}>
+            <PixelIcon name="plus" size={24} color={tokens.neon.pink} />
+          </View>
+          <Text style={styles.addGamesLabel}>Add game</Text>
+          <PixelIcon name="chevron-right" size={16} color={tokens.neon.pink} />
+        </Pressable>
 
         {myGamesQuery.isPending ? (
           <View style={styles.center}>
@@ -304,12 +309,7 @@ export default function PickGame() {
             description={
               suggestion
                 ? `Post above and we'll add ${suggestion.title} to your games.`
-                : "Add games on the Games tab, then share a score to post it here."
-            }
-            action={
-              suggestion ? undefined : (
-                <Button label="Open Games" onPress={() => router.replace(routes.home as Href)} />
-              )
+                : "Add a game above, then paste a score to post it here."
             }
           />
         ) : (
@@ -335,12 +335,14 @@ export default function PickGame() {
   );
 }
 
-// The one-tap post surface for an auto-detected score. Mirrors the Workshop
-// share sheet's affordance: a named destination plus a "Post" button, so the
-// common case never requires hunting for a row in the list below.
+// The one-tap post surface for an auto-detected score, under the paste box:
+// the game and Post, then the score we read (boxed, like the leaderboard rows)
+// beside "Not right?". The list below is the
+// fallback for "post it somewhere else".
 function DetectedScoreSuggestion({
   label,
   suggestion,
+  iconUrl,
   loading,
   pending,
   resultless,
@@ -349,6 +351,7 @@ function DetectedScoreSuggestion({
 }: {
   label: string;
   suggestion: ShareGameTarget | null;
+  iconUrl: string | null;
   loading: boolean;
   pending: boolean;
   resultless: boolean;
@@ -374,38 +377,38 @@ function DetectedScoreSuggestion({
       <View style={styles.suggestionBox} testID="share-game-detection-loading">
         <View style={styles.loadingRow}>
           <ActivityIndicator color={tokens.accent.default} size="small" />
-          <Text variant="label">{label} score detected</Text>
+          <Text variant="game" numberOfLines={1}>
+            {label}
+          </Text>
         </View>
-        <Text variant="caption" tone="muted">
-          Looking for a matching game.
-        </Text>
       </View>
     );
   }
 
-  if (!suggestion) {
-    return (
-      <View style={styles.suggestionBox} testID="share-game-detection-empty">
-        <Text variant="label">{label} score detected</Text>
-        <Text variant="caption" tone="muted">
-          Pick where to post it below.
-        </Text>
-      </View>
-    );
-  }
+  // Recognised but nowhere to post it yet: the list below is the answer.
+  if (!suggestion) return null;
 
-  const destination = suggestion.gameId
-    ? `Post to ${suggestion.title} in your games`
-    : `Post to ${suggestion.title} — we'll add it to your games`;
+  const scoreValue = check.view.kind === "score" ? check.view.value : null;
 
   return (
     <View style={styles.suggestionBox} testID="share-game-detection-suggestion">
       <View style={styles.suggestionHeader}>
+        {iconUrl ? (
+          <Image source={{ uri: iconUrl }} style={styles.suggestionIcon} />
+        ) : (
+          <View style={[styles.suggestionIcon, styles.gameThumbPlaceholder]}>
+            <Text style={styles.suggestionGlyph}>🎮</Text>
+          </View>
+        )}
         <View style={styles.suggestionText}>
-          <Text variant="label">{label} score detected</Text>
-          <Text variant="caption" tone="muted" numberOfLines={2}>
-            {destination}
+          <Text variant="game" numberOfLines={1}>
+            {suggestion.title}
           </Text>
+          {suggestion.gameId ? null : (
+            <Text variant="caption" tone="muted" numberOfLines={1}>
+              New · adds it to your games
+            </Text>
+          )}
         </View>
         <Button
           label="Post"
@@ -416,7 +419,17 @@ function DetectedScoreSuggestion({
           testID="share-game-post-suggestion"
         />
       </View>
-      <ScoreCheckPanel check={check} testID="share-game-check" />
+      <ScoreCheckPanel
+        check={check}
+        testID="share-game-check"
+        scoreRead={
+          scoreValue !== null ? (
+            <View style={styles.scoreValueBox} testID="share-game-score-value">
+              <Text style={styles.scoreValueText}>{scoreValue.toLocaleString()}</Text>
+            </View>
+          ) : undefined
+        }
+      />
     </View>
   );
 }
@@ -534,26 +547,6 @@ const styles = StyleSheet.create({
   navButtonPressed: { backgroundColor: tokens.bg.elevated },
   headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
   title: { fontSize: tokens.font.size.xl },
-  payloadPill: {
-    alignSelf: "flex-start",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 4,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.border.default,
-    maxWidth: "100%",
-  },
-  payloadDot: {
-    width: 6,
-    height: 6,
-    borderRadius: tokens.radius.sm,
-    backgroundColor: tokens.accent.default,
-  },
-  payloadText: { flexShrink: 1 },
   center: { alignItems: "center", justifyContent: "center", padding: tokens.space.xl },
   body: {
     paddingHorizontal: tokens.space.lg,
@@ -574,14 +567,40 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
   },
   suggestionText: { flex: 1, minWidth: 0, gap: 2 },
-  loadingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
-  scoreBox: { gap: tokens.space.sm },
-  scoreHeader: {
+  suggestionIcon: { width: 32, height: 32, borderRadius: tokens.radius.sm },
+  suggestionGlyph: { fontSize: 18, lineHeight: 22 },
+  // Same boxed numeral as the leaderboard rows.
+  scoreValueBox: {
+    flexShrink: 0,
+    minWidth: 32,
+    paddingHorizontal: tokens.space.sm,
+    paddingVertical: 4,
+    alignItems: "center",
+    borderRadius: tokens.radius.sm,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+  },
+  scoreValueText: { ...scoreType(10), lineHeight: 14, color: tokens.text.primary },
+  addGames: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: tokens.space.md,
+    padding: tokens.space.md,
+    borderRadius: tokens.radius.sm,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.neon.pink,
+    marginTop: -tokens.space.sm,
   },
+  addGamesPressed: { backgroundColor: tokens.accent.muted },
+  addGamesIcon: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  addGamesLabel: {
+    ...bodyType("semibold"),
+    flex: 1,
+    fontSize: tokens.font.size.md,
+    color: tokens.neon.pink,
+  },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  scoreBox: { gap: tokens.space.sm },
   scoreInput: {
     ...bodyType(),
     minHeight: 116,

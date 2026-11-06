@@ -55,10 +55,11 @@ describe("resolveScoreCheck — a game known to have no parser never waits", () 
 
 describe("resolveScoreCheck — the spec's states and copy", () => {
   it("score read: the value, with its derivation when it was computed", () => {
-    expect(resolve(preview())).toEqual({ kind: "score", copy: "Score: 944" });
+    expect(resolve(preview())).toEqual({ kind: "score", copy: "Score: 944", value: 944 });
     expect(resolve(preview({ scoreValue: 7 }, { derivation: "counted 🏆" }))).toEqual({
       kind: "score",
       copy: "Score: 7 (counted 🏆)",
+      value: 7,
     });
   });
 

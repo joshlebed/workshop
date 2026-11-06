@@ -19,7 +19,7 @@ export type ScoreCheckView =
   | { kind: "no_result_text"; copy: string }
   /** The text positively matches another game; the user chooses where it goes. */
   | { kind: "wrong_game"; copy: string; otherGameId: string; otherTitle: string }
-  | { kind: "score"; copy: string }
+  | { kind: "score"; copy: string; value: number }
   | { kind: "no_result"; copy: string }
   | { kind: "unread"; copy: string };
 
@@ -136,6 +136,7 @@ export function resolveScoreCheck(input: {
     return {
       kind: "score",
       copy: scoreReadCopy(preview.scoreValue, preview.teach?.derivation ?? null),
+      value: preview.scoreValue,
     };
   }
   if (preview.parseStatus === "no_result") return { kind: "no_result", copy: SCORE_COPY.noResult };

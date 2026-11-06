@@ -18,9 +18,28 @@ interface ScreenProps {
   testID?: string;
 }
 
+/**
+ * A header icon button's box: 44px wide when there's room, squeezing to the
+ * icon (`minWidth`) on narrow screens before the icon row wraps under the
+ * wordmark. Spread into every control in `HomeHeader`'s `right`.
+ */
+export const homeHeaderIcon = {
+  flexBasis: 44,
+  flexShrink: 1,
+  minWidth: 28,
+  height: 40,
+  alignItems: "center",
+  justifyContent: "center",
+} as const;
+
 interface HomeHeaderProps {
   left?: ReactNode;
   right?: ReactNode;
+  /**
+   * The icon row's narrowest width (sum of its controls' `minWidth`s). Below
+   * this, the row drops onto its own line instead of overlapping the wordmark.
+   */
+  rightMinWidth?: number;
   testID?: string;
 }
 
@@ -33,11 +52,16 @@ export function Screen({ children, style, testID }: ScreenProps) {
   );
 }
 
-export function HomeHeader({ left, right, testID }: HomeHeaderProps) {
+// Wordmark on the left at its natural width; the icon row takes the rest,
+// its buttons squeezing toward their icons as space runs out, and wraps to a
+// second line (right-aligned) once even the squeezed row doesn't fit.
+export function HomeHeader({ left, right, rightMinWidth = 0, testID }: HomeHeaderProps) {
   return (
     <View style={styles.homeHeader} testID={testID}>
       <View style={styles.homeHeaderLeft}>{left}</View>
-      {right ? <View style={styles.homeHeaderRight}>{right}</View> : null}
+      {right ? (
+        <View style={[styles.homeHeaderRight, { minWidth: rightMinWidth }]}>{right}</View>
+      ) : null}
     </View>
   );
 }
@@ -55,22 +79,26 @@ const styles = StyleSheet.create({
   },
   homeHeader: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: tokens.space.md,
+    columnGap: tokens.space.md,
+    rowGap: tokens.space.xs,
     paddingHorizontal: homeLayout.horizontalInset,
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.md,
   },
   homeHeaderLeft: {
-    flex: 1,
-    minWidth: 0,
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
   },
   homeHeaderRight: {
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.sm,
+    justifyContent: "flex-end",
   },
 });
