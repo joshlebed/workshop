@@ -221,11 +221,12 @@ export function useToast(): ToastContextValue {
   return ctx;
 }
 
-// Sheet-coloured slab with a 2px bezel; the bezel is the only tone signal
-// (chartreuse = success, red = danger). No radius, no drop shadow.
+// Sheet-coloured slab with a 2px bezel; the bezel is the only tone signal.
+// Success reads as the default purple (a confirmation isn't a celebration);
+// only danger is red. No drop shadow.
 const toneStyle = {
   default: { backgroundColor: tokens.bg.elevated, borderColor: tokens.border.default },
-  success: { backgroundColor: tokens.bg.elevated, borderColor: tokens.neon.chartreuse },
+  success: { backgroundColor: tokens.bg.elevated, borderColor: tokens.border.default },
   danger: { backgroundColor: tokens.bg.elevated, borderColor: tokens.status.danger },
 } as const;
 
