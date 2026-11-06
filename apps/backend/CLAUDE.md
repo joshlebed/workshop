@@ -155,7 +155,7 @@ registry), which strips URLs/headers so a URL-only share shows "Played", never t
 Games recaps append a **play link** (`/g/:token`, see `game_share_links` below), not a
 friend-invite or list link. The paste sheet previews the parse client-side
 (`apps/highscore/src/games/lib/scoreSpecs.ts` mirrors the backend chain) — keep the two chains in
-sync. Workshop's `src/legacyGames` versions are frozen snapshots, not the live mirror.
+sync. (Workshop's old copies were deleted with its Games UI on 2026-11-06.)
 
 ## Game code sandbox (`lib/gameCode/`) — stored JS runs in QuickJS, in a worker thread
 

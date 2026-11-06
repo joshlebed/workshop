@@ -12,7 +12,7 @@ import {
   Text,
   tokens,
 } from "@workshop/ui";
-import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { fetchActivity, markActivityRead } from "../src/api/activity";
@@ -32,9 +32,7 @@ type FeedItem =
 export default function Activity() {
   const { token } = useAuth();
   const router = useRouter();
-  const params = useLocalSearchParams<{ from?: string }>();
-  const from = Array.isArray(params.from) ? params.from[0] : params.from;
-  const backFallback = from === "games" ? "/games" : "/";
+  const backFallback = "/";
   const livePoll = useLivePollingInterval();
 
   const feedQuery = useInfiniteQuery<ActivityFeedResponse>({

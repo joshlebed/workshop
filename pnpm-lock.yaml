@@ -430,9 +430,6 @@ importers:
       react-native-worklets:
         specifier: 0.7.4
         version: 0.7.4(@babel/core@7.29.0)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)
-      zod:
-        specifier: 4.6.7
-        version: 4.6.7
     devDependencies:
       '@babel/core':
         specifier: 7.29.0

@@ -114,12 +114,17 @@ Workshop.dev iOS (exists) → EAS project workshop          → apps/workshop
 
 ### Phase 5 — Workshop cutover: remove games, point users at HighScore
 
-> **Status (2026-10-24):** App Store listing live (`id6805206753`, v1.0.1). Cutover PR shipped
-> as a date gate — countdown banner now, hard hand-off at `WORKSHOP_GAMES_SUNSET_AT`
-> (2026-10-31 07:00Z), Games tab removed at `WORKSHOP_GAMES_REMOVED_AT` (2026-11-14 07:00Z) —
+> **Status (2026-11-06): done.** App Store listing live (`id6805206753`). The cutover shipped
+> as a date gate (countdown banner, hand-off from `WORKSHOP_GAMES_SUNSET_AT` 2026-10-31 07:00Z),
 > plus a backend 410 for Workshop clients on games routes and 301s for the old `/g/*` Pages
-> routes. Remaining: PR-10 (delete `src/legacyGames`, the phases, the games e2e specs) after
-> the removal date.
+> routes. PR-10 was pulled forward from 2026-11-14 to 2026-11-06 (prod showed 2 Workshop-client
+> scores from 1 user in the prior 30 days, the last on 2026-10-29): it deleted
+> `apps/workshop/src/legacyGames/`, the Games tab + switch, the phase gate
+> (`WORKSHOP_GAMES_REMOVED_AT`, `featureFlags.ts`), the share-to-games options and
+> `/share/pick-game`, the games e2e specs, and the `EXPO_PUBLIC_ENABLE_GAMES` reads. Kept: the
+> `/g/:token` → HighScore hand-off (installed Workshop apps still intercept `/g/*` via AASA)
+> and the backend 410 (`middleware/workshop-games-sunset.ts`, for binaries without the OTA).
+> JS-only — the Workshop iOS fingerprint did not move.
 
 - Existing Workshop users first learn about HighScore here: once the App Store listing
   is live, the Workshop games tab is replaced (via OTA) with a **persistent** "Daily

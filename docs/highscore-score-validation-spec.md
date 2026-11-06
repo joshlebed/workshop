@@ -5,7 +5,7 @@ parse, teach and recognition workstreams of the score-parsing overhaul. The obse
 section applies to all of them.
 
 **Scope:** what happens when a pasted score is invalid, lands in the wrong game, or can't be
-read, and who may change a game's parser. HighScore only; Workshop's `legacyGames` is frozen.
+read, and who may change a game's parser. HighScore only; Workshop has no Games UI.
 
 ## Premises (fixed elsewhere)
 

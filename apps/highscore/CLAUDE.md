@@ -5,9 +5,8 @@ client behavior should be implemented locally so they cannot change Workshop use
 presentation code back into a shared package.
 
 Shared boundaries are contracts and primitives only: `@workshop/api-client`, `@workshop/shared`
-(`games`, `gameRegistry`, `scoreParsing`, `summarySpec`), and `@workshop/ui`. Workshop's current
-Games UI is a frozen snapshot at `apps/workshop/src/legacyGames/`; never update it in lockstep with
-HighScore. Only an explicitly requested critical-fix backport may touch both copies.
+(`games`, `gameRegistry`, `scoreParsing`, `summarySpec`), and `@workshop/ui`. Workshop has had no
+Games UI since 2026-11-06 (it only forwards old `/g/:token` links here).
 
 ## Theme (`src/theme/`) — the only source of visual tokens
 
@@ -121,7 +120,7 @@ over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) on
 - **Guideline 1.2 (UGC):** `/terms` EULA, Report (profile page + long-press a friend's score on
   the per-game board → `ReportSheet`), Block (profile page; unblock in Edit profile → Blocked
   users). Emoji reactions were removed from the HighScore client; the backend reaction
-  endpoints stay for old binaries and Workshop's frozen legacy Games. Backend + operator side:
+  endpoints stay for old binaries. Backend + operator side:
   `docs/moderation-runbook.md`.
 
 ## Account deletion

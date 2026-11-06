@@ -6,9 +6,7 @@ import {
 import { Linking } from "react-native";
 import { type HandoffPlatform, type HighScoreTarget, highscorePath } from "./target";
 
-export type { HandoffPlatform, HighScoreTarget };
-export { HIGHSCORE_APP_STORE_URL, HIGHSCORE_WEB_URL };
-
+export type { HighScoreTarget };
 /** Native build — the HighScore iOS app is the destination to push. */
 export const HANDOFF_PLATFORM: HandoffPlatform = "ios";
 
