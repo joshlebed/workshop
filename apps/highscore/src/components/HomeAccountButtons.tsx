@@ -8,7 +8,7 @@ import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInter
 import { useRouter } from "expo-router";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useAuth } from "../hooks/useAuth";
-import { Avatar, bodyType, PixelIcon, Text, tokens } from "../theme";
+import { Avatar, bodyType, homeHeaderIcon, PixelIcon, Text, tokens } from "../theme";
 
 export function HomeAccountButtons() {
   const { token, user } = useAuth();
@@ -45,7 +45,11 @@ export function HomeAccountButtons() {
         onPress={() => router.push("/profile")}
         testID="profile-menu-trigger"
         hitSlop={6}
-        style={({ pressed, hovered }) => [styles.btn, (pressed || hovered) && styles.btnHover]}
+        style={({ pressed, hovered }) => [
+          styles.btn,
+          styles.avatarBtn,
+          (pressed || hovered) && styles.btnHover,
+        ]}
       >
         <Avatar
           name={user?.displayName ?? user?.email ?? null}
@@ -58,7 +62,9 @@ export function HomeAccountButtons() {
 }
 
 const styles = StyleSheet.create({
-  btn: { width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 0 },
+  btn: { ...homeHeaderIcon, borderRadius: 0 },
+  // The avatar is 32px, so its button never squeezes below that.
+  avatarBtn: { minWidth: 32 },
   btnHover: { backgroundColor: tokens.bg.elevated },
   badge: {
     position: "absolute",

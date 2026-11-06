@@ -11,7 +11,7 @@ export { Chip, type ChipProps } from "./Chip";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { type HorizontalBarRow, HorizontalBars, type HorizontalBarsProps } from "./HorizontalBars";
 export { IconButton, type IconButtonProps } from "./IconButton";
-export { HomeHeader, homeLayout, Screen } from "./layout";
+export { HomeHeader, homeHeaderIcon, homeLayout, Screen } from "./layout";
 export { PixelIcon, type PixelIconName, type PixelIconProps } from "./PixelIcon";
 export { PullToRefresh, type PullToRefreshProps } from "./PullToRefresh";
 export { Sheet, type SheetProps } from "./Sheet";

@@ -38,7 +38,16 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppUpdateBanner } from "../../components/AppUpdateBanner";
-import { Button, EmptyState, HomeHeader, PixelIcon, Screen, tokens, useToast } from "../../theme";
+import {
+  Button,
+  EmptyState,
+  HomeHeader,
+  homeHeaderIcon,
+  PixelIcon,
+  Screen,
+  tokens,
+  useToast,
+} from "../../theme";
 import {
   addGame,
   createGameShareLink,
@@ -473,6 +482,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     <Screen style={styles.root} testID="games-home">
       <HomeHeader
         left={headerLeft}
+        // calendar + copy + friends at 28 each, the avatar at 32
+        rightMinWidth={(isEmpty ? 2 : 3) * homeHeaderIcon.minWidth + 32}
         right={
           <>
             {isEmpty ? null : (
@@ -611,13 +622,7 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.lg,
   },
   body: { flex: 1 },
-  headerIconBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.sm,
-  },
+  headerIconBtn: { ...homeHeaderIcon, borderRadius: tokens.radius.sm },
   headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
   headerIconBtnDisabled: { opacity: 0.6 },
   center: {

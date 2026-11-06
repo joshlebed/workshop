@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { bodyType, PixelIcon, Sheet, Text, tokens } from "../../theme";
+import { bodyType, homeHeaderIcon, PixelIcon, Sheet, Text, tokens } from "../../theme";
 import { daysBack, formatGameDateLabel, shiftDateKey } from "../lib/gameDate";
 
 /** Days offered by default, today inclusive. */
@@ -108,13 +108,7 @@ export function DayPicker({
 
 const styles = StyleSheet.create({
   // Same 40×40 icon button as the header's copy / friends controls.
-  button: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.sm,
-  },
+  button: { ...homeHeaderIcon, borderRadius: tokens.radius.sm },
   buttonHover: { backgroundColor: tokens.bg.elevated },
   sheetTitle: { marginBottom: tokens.space.sm },
   list: { maxHeight: 420 },
