@@ -65,7 +65,11 @@ function Illustration({
   source: ImageSourcePropType;
   highlight: IllustrationHighlight | null;
 }) {
-  const { width, height } = Image.resolveAssetSource(source);
+  // RN 0.88 types resolveAssetSource as possibly undefined; fall back to a
+  // phone-ish ratio rather than crash the walkthrough.
+  const resolved = Image.resolveAssetSource(source);
+  const width = resolved?.width ?? 9;
+  const height = resolved?.height ?? 16;
   return (
     <View style={[styles.shot, { aspectRatio: width / height }]}>
       <Image source={source} style={styles.shotImage} resizeMode="cover" />

@@ -18,7 +18,7 @@ import { CSS } from "@dnd-kit/utilities";
 import type { MyGame } from "@workshop/shared/games";
 import { homeLayout, PullToRefresh } from "@workshop/ui";
 import { useCallback, useMemo } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View, type ViewInstance } from "react-native";
 import type { GameCardListProps } from "./gameCardListProps";
 
 export function GameCardList({
@@ -93,7 +93,7 @@ function SortableCard({ game, render }: SortableCardProps) {
 
   return (
     <View
-      ref={setNodeRef as unknown as React.Ref<View>}
+      ref={setNodeRef as unknown as React.Ref<ViewInstance>}
       style={webStyle}
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
       {...(wrapperAttributes as unknown as Record<string, unknown>)}

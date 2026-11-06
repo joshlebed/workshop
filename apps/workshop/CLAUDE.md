@@ -234,7 +234,7 @@ platform-variant package export is a fixed shim — `src/storage/index.ts` doing
 
 Web-compatible by default: `expo-router`, `expo-linking`, `expo-constants`,
 `expo-status-bar`, `expo-updates` (stub), `react-native-safe-area-context`,
-`react-native-screens`, `react-native-gesture-handler`, `@react-navigation/native`.
+`react-native-screens`, `react-native-gesture-handler`.
 Re-check when adding a new native module.
 
 ## Managed auth credentials

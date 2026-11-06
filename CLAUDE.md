@@ -35,7 +35,11 @@ deliberate critical-fix backports may change it before then. See
 ## Stack at a glance
 
 - **pnpm workspaces** (`apps/*`, `packages/*`), hoisted node_modules for Expo (see `.npmrc`).
-  Expo SDK 55, RN 0.83.6 — `node scripts/check-expo-sdk-deps.mjs` before bumping mobile deps.
+  Expo SDK 58, RN 0.88.1, React 19.3 — `node scripts/check-expo-sdk-deps.mjs` before bumping
+  mobile deps. RN 0.88 ships generated strict types: `View`/`TextInput` are values, so ref types
+  are `ViewInstance`/`TextInputInstance`, and `StyleSheet.absoluteFillObject` is gone (spell out
+  `position: "absolute", top: 0, …`). React Navigation is forked into expo-router 58 — import
+  `ThemeProvider`/`DarkTheme`/`DefaultTheme` from `expo-router`; `@react-navigation/*` isn't installed.
 - **Expo (React Native) + expo-router + TypeScript**. Bundle id `dev.josh.workshop`,
   EAS project `@joshlebed/workshop`.
 - **Hono on AWS Lambda + API Gateway HTTP API**, PostgreSQL on **Neon**, Drizzle ORM with
@@ -1110,7 +1114,7 @@ strips the unused variant.
 
 Web-compatible: `expo-router`, `expo-linking`, `expo-constants`, `expo-status-bar`,
 `expo-updates` (stub), `react-native-safe-area-context`, `react-native-screens`,
-`react-native-gesture-handler`, `@react-navigation/native`. Re-check when adding native modules.
+`react-native-gesture-handler`. Re-check when adding native modules.
 
 ### Web HTML shell lives in `apps/workshop/public/index.html`
 
