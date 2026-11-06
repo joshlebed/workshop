@@ -1043,6 +1043,12 @@ the preview build command. It requires the declared `backend` service, routed to
 simulator's localhost. There is no `expo-dev-client` dependency or Metro launch URL:
 rebuild with `ns mobile build highscore` after JS changes too. Do not distribute this
 dev-auth binary through TestFlight or the App Store; production still uses EAS.
+The build command pins `--xcode-version 26`: Limrun builders can default to Xcode 27.x, which
+fails Expo SDK 55 (pod deployment targets below iOS 15 are hard errors, and expo-router's
+Swift doesn't compile). Drop the pin when the SDK supports 27. The builder's toolchain is the
+root `mise.limrun.toml` (node + pnpm only), which Limrun reads instead of `.mise.toml`; keep
+its versions in step. After a build: `rent_simulator` (bundleId `live.highscore.app`),
+`ns mobile login highscore`, then `lim ios tap-element --ax-label-contains …` to navigate.
 
 Committed config that Niteshift replays on every task. `.niteshift/setup` (finite: mise
 toolchain, `pnpm install`, Playwright chromium, `apps/backend/.env`, migrations, seed) runs

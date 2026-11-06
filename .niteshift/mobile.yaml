@@ -8,6 +8,7 @@ targets:
     buildCommands:
       - >-
         lim xcode build . --expo-app-dir apps/highscore --configuration Release
+        --xcode-version 26
         --env EXPO_PUBLIC_API_URL=http://localhost:8787
         --env EXPO_PUBLIC_DEV_AUTH=1
     serviceDependencies: [backend]
