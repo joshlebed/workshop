@@ -5,11 +5,27 @@
 
 import { haptics } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
-import { homeLayout, PixelIcon, tokens } from "../../theme";
+import { homeLayout, tokens } from "../../theme";
 import { actionBarBottomPadding } from "../lib/actionBar";
 
-const FAB_SIZE = 60;
+// The button is drawn on a 4px pixel grid (15×15 cells = 60px): a stair-
+// stepped disc and a chunky plus, both plain Views — no SVG (see DESIGN.md
+// "Iconography": pixel art drawn from Views keeps the runtime OTA-safe).
+const PX = 4;
+const CELLS = 15;
+const FAB_SIZE = PX * CELLS;
 const FAB_GAP = tokens.space.md;
+/** Cells filled on each row of the disc (odd, so every row centres on the grid). */
+const DISC_ROWS: { id: string; cells: number }[] = Array.from({ length: CELLS }, (_, i) => {
+  const r = CELLS / 2;
+  const y = i + 0.5 - r;
+  const w = 2 * Math.sqrt(Math.max(0, r * r - y * y));
+  const odd = Math.round((w - 1) / 2) * 2 + 1;
+  return { id: `row-${i}`, cells: Math.max(1, Math.min(CELLS, odd)) };
+});
+/** Plus: 3 cells thick, 9 cells long (12px × 36px bars). */
+const PLUS_THICK = PX * 3;
+const PLUS_LONG = PX * 9;
 
 /** Tail room the card list needs so the last card clears the floating button. */
 export function homeActionBarListInset(insetBottom: number): number {
@@ -33,12 +49,25 @@ export function HomeActionBar({ insetBottom, onPress }: HomeActionBarProps) {
           onPress();
         }}
         testID="home-paste-score"
-        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-          styles.fab,
-          (pressed || hovered) && styles.fabPressed,
-        ]}
+        style={styles.fab}
       >
-        <PixelIcon name="plus" size={32} color={tokens.text.onAccent} />
+        {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => {
+          const fill = pressed || hovered ? tokens.accent.hover : tokens.neon.pink;
+          return (
+            <>
+              <View style={styles.disc} pointerEvents="none">
+                {DISC_ROWS.map((row) => (
+                  <View
+                    key={row.id}
+                    style={[styles.discRow, { width: row.cells * PX, backgroundColor: fill }]}
+                  />
+                ))}
+              </View>
+              <View style={[styles.bar, styles.barH]} pointerEvents="none" />
+              <View style={[styles.bar, styles.barV]} pointerEvents="none" />
+            </>
+          );
+        }}
       </Pressable>
     </View>
   );
@@ -50,19 +79,17 @@ const styles = StyleSheet.create({
     right: homeLayout.horizontalInset,
   },
   // The one round control in the app, on purpose: it floats over the list.
-  // Filled pink with a dark glyph (DESIGN.md: dark-on-neon reads as a lit
-  // sign), plus the pink glow reserved for primary elements.
+  // Filled pink with a dark plus (DESIGN.md: dark-on-neon reads as a lit
+  // sign), stepped like the rest of the pixel art.
   fab: {
     width: FAB_SIZE,
     height: FAB_SIZE,
-    borderRadius: FAB_SIZE / 2,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.neon.pink,
-    shadowColor: tokens.neon.pink,
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 0 },
   },
-  fabPressed: { backgroundColor: tokens.accent.hover },
+  disc: { ...StyleSheet.absoluteFillObject, alignItems: "center" },
+  discRow: { height: PX },
+  bar: { position: "absolute", backgroundColor: tokens.text.onAccent },
+  barH: { width: PLUS_LONG, height: PLUS_THICK },
+  barV: { width: PLUS_THICK, height: PLUS_LONG },
 });
