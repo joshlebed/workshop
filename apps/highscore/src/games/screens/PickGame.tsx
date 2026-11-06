@@ -232,6 +232,23 @@ export default function PickGame() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
       >
+        <View style={styles.scoreBox}>
+          <TextInput
+            testID="share-game-score-input"
+            value={scoreDraft}
+            onChangeText={setScoreDraft}
+            placeholder="Paste score text"
+            placeholderTextColor={tokens.text.secondary}
+            // Opened by hand (home's Paste score) there is nothing to post yet,
+            // so land in the box with the keyboard up. A share-intent arrival
+            // already has its text; the Post button is the primary there.
+            autoFocus={sharedPayload.length === 0}
+            multiline
+            maxLength={2000}
+            style={styles.scoreInput}
+          />
+        </View>
+
         {detected ? (
           <DetectedScoreSuggestion
             label={detected.gameLabel}
@@ -251,23 +268,6 @@ export default function PickGame() {
             }}
           />
         ) : null}
-
-        <View style={styles.scoreBox}>
-          <TextInput
-            testID="share-game-score-input"
-            value={scoreDraft}
-            onChangeText={setScoreDraft}
-            placeholder="Paste score text"
-            placeholderTextColor={tokens.text.secondary}
-            // Opened by hand (home's Paste score) there is nothing to post yet,
-            // so land in the box with the keyboard up. A share-intent arrival
-            // already has its text; the Post button is the primary there.
-            autoFocus={sharedPayload.length === 0}
-            multiline
-            maxLength={2000}
-            style={styles.scoreInput}
-          />
-        </View>
 
         <View style={styles.gameSectionHeader}>
           <Text variant="heading" style={styles.gameSectionTitle}>
@@ -335,8 +335,9 @@ export default function PickGame() {
   );
 }
 
-// The one-tap post surface for an auto-detected score: the game, the score we
-// read (boxed, like the leaderboard rows), and Post. The list below is the
+// The one-tap post surface for an auto-detected score, under the paste box:
+// the game and Post, then the score we read (boxed, like the leaderboard rows)
+// beside "Not right?". The list below is the
 // fallback for "post it somewhere else".
 function DetectedScoreSuggestion({
   label,
@@ -409,11 +410,6 @@ function DetectedScoreSuggestion({
             </Text>
           )}
         </View>
-        {scoreValue !== null ? (
-          <View style={styles.scoreValueBox} testID="share-game-score-value">
-            <Text style={styles.scoreValueText}>{scoreValue.toLocaleString()}</Text>
-          </View>
-        ) : null}
         <Button
           label="Post"
           size="md"
@@ -423,7 +419,17 @@ function DetectedScoreSuggestion({
           testID="share-game-post-suggestion"
         />
       </View>
-      <ScoreCheckPanel check={check} hideScoreRead testID="share-game-check" />
+      <ScoreCheckPanel
+        check={check}
+        testID="share-game-check"
+        scoreRead={
+          scoreValue !== null ? (
+            <View style={styles.scoreValueBox} testID="share-game-score-value">
+              <Text style={styles.scoreValueText}>{scoreValue.toLocaleString()}</Text>
+            </View>
+          ) : undefined
+        }
+      />
     </View>
   );
 }
