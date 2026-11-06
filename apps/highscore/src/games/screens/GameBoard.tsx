@@ -40,12 +40,6 @@ import {
   upsertGameScore,
 } from "../api/games";
 import { setScoreDirection } from "../api/teach";
-import {
-  BOARD_ROW_VARIANTS,
-  BoardRow,
-  type BoardRowChoice,
-  BoardRowVariantSwitcher,
-} from "../components/BoardRowVariants";
 import { DAY_PICKER_LENGTH, DayPicker } from "../components/DayPicker";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { useOpenProfile } from "../hooks/useOpenProfile";
@@ -73,10 +67,8 @@ import { useViewDay } from "../state/viewDay";
  *     and Clear follow the same day.
  *   - Going past today on the day rail isn't offered.
  */
-let sessionRowVariant: BoardRowChoice = "ledger";
-
 export default function GameBoard() {
-  const params = useLocalSearchParams<{ id: string; date?: string; rows?: string }>();
+  const params = useLocalSearchParams<{ id: string; date?: string }>();
   const gameId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { token, user, routes } = useGamesRuntime();
   const openProfile = useOpenProfile();
@@ -98,18 +90,6 @@ export default function GameBoard() {
     }
   }, []);
   const [draft, setDraft] = useState("");
-  // Dev-only design comparison: `?rows=<variant>` or the switcher above the
-  // board picks one of the candidate row layouts. Sticks for the session.
-  const [rowVariant, setRowVariantState] = useState<BoardRowChoice>(() => {
-    const raw = Array.isArray(params.rows) ? params.rows[0] : params.rows;
-    const fromUrl =
-      raw === "current" ? "current" : BOARD_ROW_VARIANTS.find((v) => v.key === raw)?.key;
-    return fromUrl ?? sessionRowVariant;
-  });
-  const setRowVariant = (v: BoardRowChoice) => {
-    sessionRowVariant = v;
-    setRowVariantState(v);
-  };
   const [editingScore, setEditingScore] = useState(false);
   // Teach v2: every read row states its score; the ranking footer.
   const teachAvailable = useTeachAvailable();
@@ -522,11 +502,6 @@ export default function GameBoard() {
             </View>
           ) : (
             <View style={styles.leaderboard}>
-              {__DEV__ ? (
-                <View style={styles.variantSwitcher}>
-                  <BoardRowVariantSwitcher value={rowVariant} onChange={setRowVariant} />
-                </View>
-              ) : null}
               {/* Before I've posted for this day, the paste composer leads.
                   Once posted, my row sits at its rank among everyone else's;
                   editing swaps the composer in at that same spot. */}
@@ -536,8 +511,7 @@ export default function GameBoard() {
                   if (!myScore) return null;
                   if (editingScore) return <View key={entry.userId}>{composer}</View>;
                   return (
-                    <ScoreRow
-                      variant={rowVariant}
+                    <EntryRow
                       key={entry.userId}
                       entry={entry}
                       game={game}
@@ -552,8 +526,7 @@ export default function GameBoard() {
                   );
                 }
                 return (
-                  <ScoreRow
-                    variant={rowVariant}
+                  <EntryRow
                     key={entry.userId}
                     entry={entry}
                     game={game}
@@ -604,11 +577,6 @@ export default function GameBoard() {
       </Screen>
     </KeyboardAvoidingView>
   );
-}
-
-/** Dev comparison: today's row (`EntryRow`) or one of the candidate layouts. */
-function ScoreRow({ variant, ...rest }: EntryRowProps & { variant: BoardRowChoice }) {
-  return variant === "current" ? <EntryRow {...rest} /> : <BoardRow variant={variant} {...rest} />;
 }
 
 interface EntryRowProps {
@@ -981,7 +949,6 @@ const styles = StyleSheet.create({
   leaderboard: {
     paddingHorizontal: tokens.space.xl,
   },
-  variantSwitcher: { marginHorizontal: -tokens.space.xl, marginBottom: tokens.space.md },
   // Teach v2 ranking direction — a quiet footer, not a header control.
   directionLink: { alignSelf: "center", marginTop: tokens.space.lg, padding: tokens.space.xs },
   directionChange: { textDecorationLine: "underline" },
@@ -1013,8 +980,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.xs,
   },
-  // Indent = rank slot + gap + avatar + gap, so the text starts under the name.
-  entryBody: { minWidth: 0, gap: 2, paddingLeft: 20 + tokens.space.sm + 24 + tokens.space.sm },
+  // Indent = rank slot + gap + avatar: the text starts flush with the avatar's
+  // right edge.
+  entryBody: { minWidth: 0, gap: 2, paddingLeft: 20 + tokens.space.sm + 24 },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryNamePress: { flexShrink: 1, minWidth: 0 },
   entryName: { fontSize: tokens.font.size.sm, color: tokens.text.primary },
