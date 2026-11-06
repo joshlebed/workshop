@@ -39,10 +39,8 @@ test("games home: add by URL → paste result → reorder persists → board", a
   await page.getByTestId("game-paste-input").fill("Daily #12\n🟩🟩🟨\nScore: 42");
   await page.getByTestId("game-paste-submit").click();
 
-  // The result lands on today's card: my row renders the distilled score
-  // and the turnout flips to played.
+  // The result lands on today's card: my row renders the distilled score.
   await expect(cardA.locator('[data-testid^="game-card-score-"]')).toContainText("Score: 42");
-  await expect(cardA.getByText("You've played today")).toBeVisible();
 
   // Add a second game → it appends after the first.
   await page.getByTestId("fab-add-game").click();

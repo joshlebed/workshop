@@ -39,8 +39,6 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppUpdateBanner } from "../../components/AppUpdateBanner";
-import { ReportSheet } from "../../moderation/ReportSheet";
-import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
 import {
   Button,
   bodyType,
@@ -68,12 +66,10 @@ import { setScoreDirection } from "../api/teach";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
-import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
-import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { daysBack, localDateKey } from "../lib/gameDate";
 import { writePostedScore } from "../lib/postedScore";
@@ -94,19 +90,6 @@ import type { GameReorderEvent } from "./games/gameCardListProps";
 
 function hasScore(entry: GameStandingsEntry): boolean {
   return entry.scoreRaw != null && entry.scoreRaw.length > 0;
-}
-
-/**
- * Turnout line for the viewed day. Unlike the Lists card there's no roster
- * denominator — the standings only carry players who posted — so the line
- * reads off the played count alone. Past days drop the present tense.
- */
-function turnoutLine(playedCount: number, viewerHasPlayed: boolean, viewingToday: boolean): string {
-  if (playedCount === 0) return viewingToday ? "No one's played yet" : "No one played";
-  if (playedCount === 1 && viewerHasPlayed) {
-    return viewingToday ? "You've played today" : "You played";
-  }
-  return `${playedCount} played${viewingToday ? " today" : ""}`;
 }
 
 export interface GamesHomeProps {
@@ -189,36 +172,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     for (const g of viewQuery.data?.games ?? []) byGameId.set(g.gameId, g.standings);
     return byGameId;
   }, [viewQuery.data]);
-
-  // Emoji reactions on friends' scores (G2c). Targets the displayed day's
-  // standings cache (`viewDate`), which equals `gamesKey` while viewing today.
-  const reactionCtl = useScoreReactions<GamesResponse>({
-    periodKey: viewDate,
-    token,
-    viewer: user ? { userId: user.id, displayName: user.displayName ?? null } : null,
-    queryKey: queryKeys.games.mine(viewDate),
-    readReactions: (data, gameId, scoreUserId) =>
-      data.games
-        .find((g) => g.gameId === gameId)
-        ?.standings.entries.find((e) => e.userId === scoreUserId)?.reactions ?? [],
-    writeReactions: (data, gameId, scoreUserId, next) => ({
-      ...data,
-      games: data.games.map((g) =>
-        g.gameId === gameId
-          ? {
-              ...g,
-              standings: {
-                ...g.standings,
-                entries: g.standings.entries.map((e) =>
-                  e.userId === scoreUserId ? { ...e, reactions: next } : e,
-                ),
-              },
-            }
-          : g,
-      ),
-    }),
-  });
-  const reportFlow = useScoreReportFlow(reactionCtl.closePicker);
 
   // Friends drive which empty-state variant shows; discovery powers the
   // friends-but-no-games suggestions. Both only matter while the home is
@@ -521,7 +474,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           avatarUrl: userAvatarImageUrl(entry.userId, entry.avatarVersion),
           rank: entry.rank,
           body: summarizeGameScoreBody(mg.game, entry),
-          reactions: entry.reactions,
+          scoreValue: entry.scoreValue,
           ...(entry.adjusted ? { adjusted: true } : {}),
           ...(scoreLine ? { picked: scoreLine } : {}),
           // Only the poster sees "Fix score", and only on a score nothing read.
@@ -547,7 +500,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           coverGlyph="🎮"
           accent={tokens.accent.default}
           isDragging={isDragging}
-          turnout={turnoutLine(rows.length, standings?.viewerHasPlayed ?? false, viewingToday)}
           // Streak rides on the today-pinned `mg` (not the rail's viewed day) so
           // the flame always reflects today's run — a stable "play today" nudge.
           streak={mg.standings.viewerStreak}
@@ -565,16 +517,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           {...(onLongPressBody ? { onLongPressBody } : {})}
           onMenu={() => setMenuGame(mg)}
           onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
-          onReact={(userId, emoji, currentlyReacted) =>
-            reactionCtl.react(mg.gameId, userId, emoji, currentlyReacted)
-          }
-          onOpenReactionPicker={(userId) =>
-            reactionCtl.openPicker(
-              mg.gameId,
-              userId,
-              entries.find((e) => e.userId === userId)?.displayName ?? null,
-            )
-          }
         />
       );
     },
@@ -587,8 +529,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       viewDate,
       viewingToday,
       viewQuery.isPending,
-      reactionCtl.react,
-      reactionCtl.openPicker,
       routes.game,
     ],
   );
@@ -732,27 +672,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         onClose={dismiss}
       />
 
-      <ReactionPickerSheet
-        visible={!!reactionCtl.target}
-        targetName={reactionCtl.target?.name ?? null}
-        current={reactionCtl.currentEmoji}
-        onPick={reactionCtl.pick}
-        onRemove={reactionCtl.removeReaction}
-        onClose={reactionCtl.closePicker}
-        onClosed={reportFlow.onPickerClosed}
-        onReport={() => {
-          const t = reactionCtl.target;
-          if (!t) return;
-          reportFlow.requestReport({
-            userId: t.scoreUserId,
-            name: t.name,
-            kind: "score",
-            gameId: t.gameId,
-            periodKey: viewDate,
-          });
-        }}
-      />
-      <ReportSheet target={reportFlow.target} token={token} onClose={reportFlow.close} />
       <FixScoreSheet target={fixTarget} today={todayKey} onClose={() => setFixTarget(null)} />
 
       {/* Card menu — Open game / (admin) Re-teach scoring / Remove. */}
