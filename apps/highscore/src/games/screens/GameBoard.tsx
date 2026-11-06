@@ -980,9 +980,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.xs,
   },
-  // Indent = rank slot + gap + avatar: the text starts flush with the avatar's
-  // right edge.
-  entryBody: { minWidth: 0, gap: 2, paddingLeft: 20 + tokens.space.sm + 24 },
+  // Indent = rank slot + gap: the text starts flush with the avatar's left edge.
+  entryBody: { minWidth: 0, gap: 2, paddingLeft: 20 + tokens.space.sm },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryNamePress: { flexShrink: 1, minWidth: 0 },
   entryName: { fontSize: tokens.font.size.sm, color: tokens.text.primary },
