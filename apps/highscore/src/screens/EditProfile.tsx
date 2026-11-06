@@ -166,18 +166,20 @@ export default function EditProfile() {
             returnKeyType="done"
             onSubmitEditing={onSave}
           />
-          <View style={styles.hintRow}>
-            <Text variant="caption" tone="secondary" style={styles.hintText}>
-              {trimmed.length === 0
-                ? "Pick a name so friends can find you on the board."
-                : "How you appear on your friends' leaderboards."}
-            </Text>
-            {name.length >= 30 ? (
-              <Text variant="caption" tone={name.length >= 40 ? "danger" : "secondary"}>
-                {name.length}/40
-              </Text>
-            ) : null}
-          </View>
+          {trimmed.length === 0 || name.length >= 30 ? (
+            <View style={styles.hintRow}>
+              {trimmed.length === 0 ? (
+                <Text variant="caption" tone="secondary" style={styles.hintText}>
+                  Pick a name so friends can find you on the board.
+                </Text>
+              ) : null}
+              {name.length >= 30 ? (
+                <Text variant="caption" tone={name.length >= 40 ? "danger" : "secondary"}>
+                  {name.length}/40
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
           {saveError ? (
             <Text variant="caption" tone="danger" testID="profile-save-error">
               {saveError}
@@ -215,7 +217,6 @@ export default function EditProfile() {
           {SHARE_SETUP_SUPPORTED ? (
             <LinkRow
               label="Share sheet"
-              detail="Post from any game's Share button"
               onPress={() => router.push("/share-setup" as Href)}
               testID="profile-share-setup"
             />
@@ -599,7 +600,12 @@ const styles = StyleSheet.create({
   identityActions: { flex: 1, gap: tokens.space.md },
   textActionHover: { opacity: 0.7 },
   field: { gap: tokens.space.sm, paddingBottom: tokens.space.sm },
-  hintRow: { flexDirection: "row", alignItems: "flex-start", gap: tokens.space.md },
+  hintRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "flex-end",
+    gap: tokens.space.md,
+  },
   hintText: { flex: 1, minWidth: 0 },
   saveRow: { flexDirection: "row", gap: tokens.space.sm, paddingTop: tokens.space.xs },
   // A group is a small section label + ruled rows. Rows are tight; groups are
