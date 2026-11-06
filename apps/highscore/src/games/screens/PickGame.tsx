@@ -222,7 +222,7 @@ export default function PickGame() {
         </Pressable>
         <View style={styles.headerTitleBlock}>
           <Text variant="title" style={styles.title}>
-            Post to your Games
+            Add score
           </Text>
         </View>
       </View>
