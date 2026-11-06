@@ -40,6 +40,8 @@ deliberate critical-fix backports may change it before then. See
   are `ViewInstance`/`TextInputInstance`, and `StyleSheet.absoluteFillObject` is gone (spell out
   `position: "absolute", top: 0, …`). React Navigation is forked into expo-router 58 — import
   `ThemeProvider`/`DarkTheme`/`DefaultTheme` from `expo-router`; `@react-navigation/*` isn't installed.
+  Both apps set the `expo-router` plugin's `asyncRoutes: { web: false }`: SDK 58 defaults web to
+  one lazy chunk per route, and a Pages deploy would 404 an open tab's stale chunk hashes.
 - **Expo (React Native) + expo-router + TypeScript**. Bundle id `dev.josh.workshop`,
   EAS project `@joshlebed/workshop`.
 - **Hono on AWS Lambda + API Gateway HTTP API**, PostgreSQL on **Neon**, Drizzle ORM with
@@ -1047,9 +1049,9 @@ the preview build command. It requires the declared `backend` service, routed to
 simulator's localhost. There is no `expo-dev-client` dependency or Metro launch URL:
 rebuild with `ns mobile build highscore` after JS changes too. Do not distribute this
 dev-auth binary through TestFlight or the App Store; production still uses EAS.
-The build command pins `--xcode-version 26`: Limrun builders can default to Xcode 27.x, which
-fails Expo SDK 55 (pod deployment targets below iOS 15 are hard errors, and expo-router's
-Swift doesn't compile). Drop the pin when the SDK supports 27. The builder's toolchain is the
+The build command takes the builder's default Xcode (27.1 as of 2026-11): SDK 58 builds on it
+(SDK 55 didn't — #558 pinned `--xcode-version 26` until the SDK 58 upgrade). SDK 58 needs Xcode
+≥ 26.4, so don't pin an older one. The builder's toolchain is the
 root `mise.limrun.toml` (node + pnpm only), which Limrun reads instead of `.mise.toml`; keep
 its versions in step. After a build: `rent_simulator` (bundleId `live.highscore.app`),
 `ns mobile login highscore`, then `lim ios tap-element --ax-label-contains …` to navigate.
