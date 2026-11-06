@@ -35,7 +35,13 @@ deliberate critical-fix backports may change it before then. See
 ## Stack at a glance
 
 - **pnpm workspaces** (`apps/*`, `packages/*`), hoisted node_modules for Expo (see `.npmrc`).
-  Expo SDK 55, RN 0.83.6 — `node scripts/check-expo-sdk-deps.mjs` before bumping mobile deps.
+  Expo SDK 58, RN 0.88.1, React 19.3 — `node scripts/check-expo-sdk-deps.mjs` before bumping
+  mobile deps. RN 0.88 ships generated strict types: `View`/`TextInput` are values, so ref types
+  are `ViewInstance`/`TextInputInstance`, and `StyleSheet.absoluteFillObject` is gone (spell out
+  `position: "absolute", top: 0, …`). React Navigation is forked into expo-router 58 — import
+  `ThemeProvider`/`DarkTheme`/`DefaultTheme` from `expo-router`; `@react-navigation/*` isn't installed.
+  Both apps set the `expo-router` plugin's `asyncRoutes: { web: false }`: SDK 58 defaults web to
+  one lazy chunk per route, and a Pages deploy would 404 an open tab's stale chunk hashes.
 - **Expo (React Native) + expo-router + TypeScript**. Bundle id `dev.josh.workshop`,
   EAS project `@joshlebed/workshop`.
 - **Hono on AWS Lambda + API Gateway HTTP API**, PostgreSQL on **Neon**, Drizzle ORM with
@@ -1043,9 +1049,9 @@ the preview build command. It requires the declared `backend` service, routed to
 simulator's localhost. There is no `expo-dev-client` dependency or Metro launch URL:
 rebuild with `ns mobile build highscore` after JS changes too. Do not distribute this
 dev-auth binary through TestFlight or the App Store; production still uses EAS.
-The build command pins `--xcode-version 26`: Limrun builders can default to Xcode 27.x, which
-fails Expo SDK 55 (pod deployment targets below iOS 15 are hard errors, and expo-router's
-Swift doesn't compile). Drop the pin when the SDK supports 27. The builder's toolchain is the
+The build command takes the builder's default Xcode (27.1 as of 2026-11): SDK 58 builds on it
+(SDK 55 didn't — #558 pinned `--xcode-version 26` until the SDK 58 upgrade). SDK 58 needs Xcode
+≥ 26.4, so don't pin an older one. The builder's toolchain is the
 root `mise.limrun.toml` (node + pnpm only), which Limrun reads instead of `.mise.toml`; keep
 its versions in step. After a build: `rent_simulator` (bundleId `live.highscore.app`),
 `ns mobile login highscore`, then `lim ios tap-element --ax-label-contains …` to navigate.
@@ -1110,7 +1116,7 @@ strips the unused variant.
 
 Web-compatible: `expo-router`, `expo-linking`, `expo-constants`, `expo-status-bar`,
 `expo-updates` (stub), `react-native-safe-area-context`, `react-native-screens`,
-`react-native-gesture-handler`, `@react-navigation/native`. Re-check when adding native modules.
+`react-native-gesture-handler`. Re-check when adding native modules.
 
 ### Web HTML shell lives in `apps/workshop/public/index.html`
 

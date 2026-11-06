@@ -2,7 +2,7 @@
   "expo": {
     "name": "Workshop.dev",
     "slug": "workshop",
-    "version": "0.6.0",
+    "version": "0.7.0",
     "orientation": "portrait",
     "scheme": "workshop",
     "userInterfaceStyle": "automatic",
@@ -34,7 +34,7 @@
       "output": "single"
     },
     "plugins": [
-      "expo-router",
+      ["expo-router", { "asyncRoutes": { "web": false } }],
       "expo-secure-store",
       "expo-web-browser",
       "expo-apple-authentication",

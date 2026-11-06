@@ -1,13 +1,15 @@
-import {
-  DarkTheme,
-  DefaultTheme as LightNavigationTheme,
-  ThemeProvider as NavigationThemeProvider,
-} from "@react-navigation/native";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { configureApiClient } from "@workshop/api-client/api";
 import { getItem, removeItem } from "@workshop/api-client/storage";
 import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
-import { Stack, useRouter, useSegments } from "expo-router";
+import {
+  DarkTheme,
+  DefaultTheme as LightNavigationTheme,
+  ThemeProvider as NavigationThemeProvider,
+  Stack,
+  useRouter,
+  useSegments,
+} from "expo-router";
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";

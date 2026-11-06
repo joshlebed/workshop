@@ -9,7 +9,7 @@
 // to keep a real GIS click without giving up the visual.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { View, type ViewInstance } from "react-native";
 import { Button } from "../Button";
 import { tokens } from "../theme";
 
@@ -101,10 +101,10 @@ export function GoogleSignInButton({
   onCredentialRef.current = onCredential;
   onErrorRef.current = onError;
 
-  const setOverlay = useCallback((node: View | null) => {
+  const setOverlay = useCallback((node: ViewInstance | null) => {
     overlayRef.current = node as unknown as HTMLDivElement | null;
   }, []);
-  const setWrapper = useCallback((node: View | null) => {
+  const setWrapper = useCallback((node: ViewInstance | null) => {
     wrapperRef.current = node as unknown as HTMLDivElement | null;
   }, []);
 

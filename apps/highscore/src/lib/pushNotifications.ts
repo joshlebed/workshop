@@ -114,7 +114,7 @@ export function createPushNotifications(env: PushEnv): PushNotifications {
     }
     try {
       const m = env.load();
-      // Foreground notifications show as a banner (the default is silent).
+      // Foreground notifications show as a banner (explicit; SDK 58 also defaults to showing them).
       m.setNotificationHandler({
         handleNotification: async () => ({
           shouldShowBanner: true,

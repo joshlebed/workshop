@@ -153,9 +153,12 @@ ship by OTA instead of another App Review cycle: `expo-notifications` (push enti
 its iOS share extension would collide with `expo-share-intent`), `expo-device`,
 `expo-application`, `expo-store-review`, `expo-blur`, `expo-linear-gradient`,
 `react-native-svg`, and `react-native-mmkv` (+ its required peer `react-native-nitro-modules`).
-Expo packages are pinned to the exact floor of SDK 55's `bundledNativeModules.json` (a `~` range
-pulled newer patches that wanted a second `expo-constants`); mmkv/nitro aren't in that map and are
-pinned exactly. Rules:
+Expo packages are pinned exactly to a version inside the current SDK's `bundledNativeModules.json`
+range (a `~` range once pulled newer patches that wanted a second `expo-constants` — check
+`find node_modules -path '*/node_modules/expo-*/node_modules/expo-*'` is empty after a bump);
+mmkv/nitro aren't in that map and are pinned exactly. Since 1.3.0 (SDK 58) every supported
+runtime already carries all of these, so the "drop older runtimes" rule below only bites again
+once a pre-1.3.0 runtime is re-added (it won't be). Rules:
 
 - **Intentionally unused.** Each sits in knip's `ignoreDependencies` (`knip.jsonc`); remove it
   there in the PR that first imports it (the two with config plugins are already "used").
