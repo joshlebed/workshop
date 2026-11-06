@@ -13,11 +13,14 @@ import type { ScoreCheck } from "../lib/useScoreCheck";
 export function ScoreCheckPanel({
   check,
   onPostToOther,
+  hideScoreRead = false,
   testID = "score-check",
 }: {
   check: ScoreCheck;
   /** "Post to Daily Tens" on a wrong-game warning. Omit to hide that action. */
   onPostToOther?: (gameId: string, title: string) => void;
+  /** The caller shows the read score itself (a score box); keep only "Not right?". */
+  hideScoreRead?: boolean;
   testID?: string;
 }) {
   const { view } = check;
@@ -77,9 +80,11 @@ export function ScoreCheckPanel({
 
       {view.kind === "score" ? (
         <View style={styles.readRow}>
-          <Text variant="label" testID={`${testID}-read`}>
-            {view.copy}
-          </Text>
+          {hideScoreRead ? null : (
+            <Text variant="label" testID={`${testID}-read`}>
+              {view.copy}
+            </Text>
+          )}
           {check.pickerOpen ? null : (
             <Pressable
               accessibilityRole="button"

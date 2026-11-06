@@ -13,12 +13,11 @@
 // suggestions when you do. The home card list itself stays purely your own
 // games.
 //
-// The two writes live in a floating bottom action bar (UX-DECISIONS entry 4,
-// `HomeActionBar`): "Add game" opens the Add-game screen (`/games/add`:
-// "Friends only" checkbox over a list grouped by game type, plus add-by-URL — see
-// `games/AddGame.tsx`) and "Paste score" goes to the share flow (`/share`),
-// which recognises the game from the pasted text and posts to today. The bar
-// is hidden on the empty state, whose onboarding card owns those actions.
+// One floating pink "+" (`HomeActionBar`) opens the post screen (`/share`),
+// which recognises the game from the pasted text and posts to today. Adding a
+// game (`/games/add`, see `games/AddGame.tsx`) is the "Add games" row at the
+// top of that screen's game list. The button is hidden on the empty state,
+// whose onboarding card owns those actions.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
@@ -548,13 +547,13 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         )}
       </View>
 
-      {/* The only two writes, always reachable, one-handed. Hidden on the
-          empty state — the onboarding card owns those actions there. */}
+      {/* The one write, always reachable, one-handed: post a score (adding
+          games lives at the top of that screen's list). Hidden on the empty
+          state — the onboarding card owns those actions there. */}
       {barVisible ? (
         <HomeActionBar
           insetBottom={insets.bottom}
-          onAddGame={() => router.push(routes.addGame as Href)}
-          onPasteScore={() => router.push(routes.share as Href)}
+          onPress={() => router.push(routes.share as Href)}
         />
       ) : null}
 
