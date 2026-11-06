@@ -30,7 +30,6 @@ import {
   shareTextType,
   Text,
   tokens,
-  uiType,
   useToast,
 } from "../../theme";
 import {
@@ -42,7 +41,6 @@ import {
 } from "../api/games";
 import { setScoreDirection } from "../api/teach";
 import { DAY_PICKER_LENGTH, DayPicker } from "../components/DayPicker";
-import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
@@ -93,9 +91,8 @@ export default function GameBoard() {
   }, []);
   const [draft, setDraft] = useState("");
   const [editingScore, setEditingScore] = useState(false);
-  // Teach v2: "Fix score" on my own row. Absent without the capability.
+  // Teach v2: every read row states its score; the ranking footer.
   const teachAvailable = useTeachAvailable();
-  const [fixTarget, setFixTarget] = useState<FixScoreTarget | null>(null);
 
   // The catalog row (title / URL) comes from the My Games query — there's no
   // standalone `GET /v1/games/:id`. Navigation always arrives from the home
@@ -364,7 +361,16 @@ export default function GameBoard() {
         setDraft("");
         setEditingScore(false);
       }}
-      pending={upsertMutation.isPending}
+      onClear={async () => {
+        const ok = await confirm({
+          title: isToday ? "Clear your score for today?" : `Clear your score for ${dateLabel}?`,
+          message: "Your result is removed. Scores on other days are kept.",
+          confirmLabel: "Clear",
+          destructive: true,
+        });
+        if (ok) clearMutation.mutate(date);
+      }}
+      pending={upsertMutation.isPending || clearMutation.isPending}
       userName={user?.displayName ?? null}
       userAvatarUrl={user?.avatarUrl ?? null}
     />
@@ -516,28 +522,6 @@ export default function GameBoard() {
                         setDraft(entry.scoreRaw ?? "");
                         setEditingScore(true);
                       }}
-                      {...(teachAvailable && myScore && gameId
-                        ? {
-                            onFix: () =>
-                              setFixTarget({
-                                gameId,
-                                gameTitle: game.title,
-                                periodKey: date,
-                                scoreRaw: myScore,
-                              }),
-                          }
-                        : {})}
-                      onClear={async () => {
-                        const ok = await confirm({
-                          title: isToday
-                            ? "Clear your score for today?"
-                            : `Clear your score for ${dateLabel}?`,
-                          message: "Your result is removed. Scores on other days are kept.",
-                          confirmLabel: "Clear",
-                          destructive: true,
-                        });
-                        if (ok) clearMutation.mutate(date);
-                      }}
                     />
                   );
                 }
@@ -590,7 +574,6 @@ export default function GameBoard() {
         </ScrollView>
 
         <ReportSheet target={reportTarget} token={token} onClose={() => setReportTarget(null)} />
-        <FixScoreSheet target={fixTarget} today={today} onClose={() => setFixTarget(null)} />
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -602,10 +585,8 @@ interface EntryRowProps {
   /** Teach v2 is on for the viewer: every read row states its score. */
   teachAvailable: boolean;
   isMe: boolean;
+  /** My row only: the pencil left of the score box opens the editor. */
   onEdit?: () => void;
-  onClear?: () => void;
-  /** Teach v2 "Fix score" — the poster's own row only. */
-  onFix?: () => void;
   /** Long-press a friend's score → report it (Guideline 1.2). */
   onReport?: () => void;
   /** Tap the avatar or name → that player's profile. */
@@ -618,8 +599,6 @@ function EntryRow({
   teachAvailable,
   isMe,
   onEdit,
-  onClear,
-  onFix,
   onReport,
   onPressPlayer,
 }: EntryRowProps) {
@@ -732,61 +711,27 @@ function EntryRow({
             ) : null}
           </View>
         </View>
+        {onEdit ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Edit your score"
+            onPress={onEdit}
+            testID="game-board-edit-score"
+            hitSlop={8}
+            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+              styles.editBtn,
+              (pressed || hovered) && styles.editBtnHover,
+            ]}
+          >
+            <PixelIcon name="pencil" size={16} color={tokens.text.secondary} />
+          </Pressable>
+        ) : null}
         {scoreValue !== null ? (
           <View style={styles.scoreBox} testID={`game-board-value-${entry.userId}`}>
             <Text style={styles.scoreBoxText}>{scoreValue.toLocaleString()}</Text>
           </View>
         ) : null}
       </Pressable>
-      {onEdit || onClear || onFix ? (
-        <View style={styles.scoreActions}>
-          {onFix ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Fix your score"
-              onPress={onFix}
-              testID="game-board-fix-score"
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.scoreActionButton,
-                pressed && styles.editScorePressed,
-              ]}
-            >
-              <Text style={styles.editScoreLabel}>Fix score</Text>
-            </Pressable>
-          ) : null}
-          {onEdit ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Edit your score"
-              onPress={onEdit}
-              testID="game-board-edit-score"
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.scoreActionButton,
-                pressed && styles.editScorePressed,
-              ]}
-            >
-              <Text style={styles.editScoreLabel}>Edit</Text>
-            </Pressable>
-          ) : null}
-          {onClear ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Clear your score"
-              onPress={onClear}
-              testID="game-board-clear-score"
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.scoreActionButton,
-                pressed && styles.clearScorePressed,
-              ]}
-            >
-              <Text style={styles.clearScoreLabel}>Clear</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      ) : null}
     </View>
   );
 }
@@ -808,6 +753,8 @@ interface ScoreComposerProps {
   onSubmit: (extras?: ScorePostExtras) => void;
   onPostToOther: (other: { id: string; title: string }) => void;
   onCancel: () => void;
+  /** Edit mode: remove my score for this day. */
+  onClear: () => void;
   pending: boolean;
   userName: string | null;
   userAvatarUrl?: string | null;
@@ -830,6 +777,7 @@ function ScoreComposer({
   onSubmit,
   onPostToOther,
   onCancel,
+  onClear,
   pending,
   userName,
   userAvatarUrl,
@@ -900,6 +848,16 @@ function ScoreComposer({
             onPress={onCancel}
             disabled={pending}
             testID="game-board-edit-cancel"
+          />
+        ) : null}
+        {isEdit ? (
+          <Button
+            label="Clear"
+            variant="secondary"
+            size="md"
+            onPress={onClear}
+            disabled={pending}
+            testID="game-board-clear-score"
           />
         ) : null}
         {isEdit || !empty ? (
@@ -1043,35 +1001,14 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.default,
   },
   scoreBoxText: { ...scoreType(10), lineHeight: 14, color: tokens.text.primary },
-  // FIX / EDIT / CLEAR sit on their own line under the score, right-aligned,
-  // never beside the name: three labels in the header squeezed the name to
-  // "Rena…" and wrapped "Posted 5h ago" on a phone width.
-  scoreActions: {
-    flexDirection: "row",
+  editBtn: {
+    width: 28,
+    height: 28,
     alignItems: "center",
-    justifyContent: "flex-end",
-    gap: tokens.space.xs,
-    marginRight: -tokens.space.sm,
-  },
-  scoreActionButton: {
-    paddingHorizontal: tokens.space.sm,
-    paddingVertical: 4,
+    justifyContent: "center",
     borderRadius: tokens.radius.sm,
   },
-  editScorePressed: { backgroundColor: tokens.accent.muted },
-  // FIX / EDIT / CLEAR: small uppercase UI labels (DESIGN.md "Typography").
-  editScoreLabel: {
-    ...uiType(11),
-    color: tokens.neon.pink,
-  },
-  // Clear is the quieter, destructive sibling of Edit: neutral text, neutral
-  // press tint. The confirm dialog (and "Clear" wording) carry the weight, so
-  // the control itself stays calm rather than a loud red on a daily screen.
-  clearScorePressed: { backgroundColor: tokens.bg.elevated },
-  clearScoreLabel: {
-    ...uiType(11),
-    color: tokens.text.secondary,
-  },
+  editBtnHover: { backgroundColor: tokens.bg.elevated },
   // Same share-text style as the home card's rows.
   scoreText: {
     color: tokens.text.secondary,
