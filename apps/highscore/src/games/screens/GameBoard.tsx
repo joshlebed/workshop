@@ -376,9 +376,8 @@ export default function GameBoard() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Screen testID="game-board">
-        {/* Compact pinned header: back · icon · title (+streak) · open-game.
-            The day rail below never scrolls away — it's the screen's primary
-            control. */}
+        {/* Compact pinned header: back · icon · title (+streak) · play · day ·
+            copy · remove. */}
         <View style={styles.headerNav}>
           <Pressable
             accessibilityRole="button"
@@ -417,12 +416,38 @@ export default function GameBoard() {
               </View>
             ) : null}
           </View>
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={playedToday ? `Play ${game.title} again` : `Play ${game.title}`}
+            onPress={() => openExternalUrl(game.url)}
+            testID="game-board-title-link"
+            hitSlop={6}
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+          >
+            <PixelIcon
+              name="play"
+              size={32}
+              color={playedToday ? tokens.text.muted : tokens.neon.pink}
+            />
+          </Pressable>
           <DayPicker
             selectedDate={date}
             today={today}
             onSelectDate={onDate}
             testID="game-board-day-picker"
           />
+          {myScore ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Copy your score"
+              onPress={onCopyMine}
+              testID="game-board-copy"
+              hitSlop={6}
+              style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+            >
+              <PixelIcon name="copy" size={24} color={tokens.text.secondary} />
+            </Pressable>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Remove ${game.title} from My Games`}
@@ -441,32 +466,6 @@ export default function GameBoard() {
             style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
           >
             <PixelIcon name="trash" size={24} color={tokens.text.secondary} />
-          </Pressable>
-          {myScore ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Copy your score"
-              onPress={onCopyMine}
-              testID="game-board-copy"
-              hitSlop={6}
-              style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-            >
-              <PixelIcon name="copy" size={24} color={tokens.text.secondary} />
-            </Pressable>
-          ) : null}
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel={playedToday ? `Play ${game.title} again` : `Play ${game.title}`}
-            onPress={() => openExternalUrl(game.url)}
-            testID="game-board-title-link"
-            hitSlop={6}
-            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-          >
-            <PixelIcon
-              name="play"
-              size={32}
-              color={playedToday ? tokens.text.muted : tokens.neon.pink}
-            />
           </Pressable>
         </View>
 
