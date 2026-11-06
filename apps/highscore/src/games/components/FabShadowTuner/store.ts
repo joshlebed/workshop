@@ -11,6 +11,8 @@ export interface FabShadow {
   keyRadius: number;
   keyOffsetX: number;
   keyOffsetY: number;
+  /** How far the key shadow grows past the caster before blurring (px). */
+  keySpread: number;
   /** Tight contact shadow right under the disc (0 opacity = off). */
   ambientOpacity: number;
   ambientRadius: number;
@@ -30,6 +32,7 @@ export const FAB_SHADOW_DEFAULTS: FabShadow = {
   keyRadius: 16,
   keyOffsetX: 0,
   keyOffsetY: 12,
+  keySpread: 8,
   ambientOpacity: 0.5,
   ambientRadius: 4,
   ambientOffsetY: 3,

@@ -15,7 +15,7 @@ import { haptics } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
 import { homeLayout, tokens } from "../../theme";
 import { actionBarBottomPadding } from "../lib/actionBar";
-import { FabShadowTuner, useFabShadow } from "./FabShadowTuner";
+import { type FabShadow, FabShadowTuner, useFabShadow } from "./FabShadowTuner";
 
 const PX = 3;
 const CELLS = 16;
@@ -86,6 +86,18 @@ const PLUS_THICK = PX * 2;
 const PLUS_OFFSET = (DISC - PLUS_LONG) / 2; // 12
 const PLUS_BAR = (DISC - PLUS_THICK) / 2; // 21
 
+function rgba(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+/** Key drop shadow; `k` scales it down while pressed. */
+function keyShadow(sh: FabShadow, k: number): string {
+  return `${sh.keyOffsetX * k}px ${sh.keyOffsetY * k}px ${sh.keyRadius * k}px ${
+    sh.keySpread * k
+  }px ${rgba(sh.keyColor, sh.keyOpacity)}`;
+}
+
 /** Tail room the card list needs so the last card clears the floating button. */
 export function homeActionBarListInset(insetBottom: number): number {
   return FAB_SIZE + FAB_GAP + actionBarBottomPadding(insetBottom, tokens.space.md);
@@ -149,14 +161,9 @@ export function HomeActionBar({ insetBottom, onPress }: HomeActionBarProps) {
                 style={[
                   caster,
                   {
-                    shadowColor: sh.keyColor,
-                    shadowOpacity: sh.keyOpacity,
-                    shadowRadius: sh.keyRadius * (pressed ? sh.pressedScale : 1),
-                    shadowOffset: {
-                      width: sh.keyOffsetX * (pressed ? sh.pressedScale : 1),
-                      height: sh.keyOffsetY * (pressed ? sh.pressedScale : 1),
-                    },
-                    elevation: 12,
+                    // boxShadow (not shadow*) so the shadow can spread past the
+                    // disc; RN new arch + react-native-web both support it.
+                    boxShadow: keyShadow(sh, pressed ? sh.pressedScale : 1),
                   },
                 ]}
               />

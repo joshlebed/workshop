@@ -11,6 +11,7 @@ const SLIDERS: { key: NumKey; label: string; min: number; max: number; step: num
   { key: "keyRadius", label: "Key blur", min: 0, max: 40, step: 1 },
   { key: "keyOffsetX", label: "Key offset X", min: -20, max: 20, step: 1 },
   { key: "keyOffsetY", label: "Key offset Y", min: -10, max: 40, step: 1 },
+  { key: "keySpread", label: "Key spread (size)", min: -10, max: 30, step: 1 },
   { key: "ambientOpacity", label: "Contact opacity", min: 0, max: 1, step: 0.05 },
   { key: "ambientRadius", label: "Contact blur", min: 0, max: 20, step: 1 },
   { key: "ambientOffsetY", label: "Contact offset Y", min: 0, max: 12, step: 1 },
@@ -22,6 +23,7 @@ const SLIDERS: { key: NumKey; label: string; min: number; max: number; step: num
 
 const PRESETS: Record<string, Partial<FabShadow>> = {
   Original: {
+    keySpread: 0,
     keyOpacity: 0.6,
     keyRadius: 10,
     keyOffsetX: 0,
