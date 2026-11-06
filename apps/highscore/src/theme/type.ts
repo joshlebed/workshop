@@ -45,14 +45,15 @@ export function buttonType(): TextStyle {
 }
 
 /**
- * Formatted share text (score bodies, emoji grids): monospace, single-spaced
- * so multi-line emoji grids read as one block. 1.2× still clears an emoji
- * glyph's line box on iOS (a lineHeight under the glyph clips it).
+ * Formatted share text (score bodies, emoji grids): monospace, tight enough
+ * that multi-line emoji grids read as one block. iOS clips any glyph taller
+ * than the line box, and an Apple Color Emoji glyph is ~1.3× the font size:
+ * 1.2× (14px at 12) cut the tops off every emoji on the game board, so 1.4×.
  */
 export function shareTextType(px: number): TextStyle {
   return {
     fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
     fontSize: px,
-    lineHeight: Math.round(px * 1.2),
+    lineHeight: Math.round(px * 1.4),
   };
 }
