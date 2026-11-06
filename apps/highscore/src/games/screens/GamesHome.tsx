@@ -510,7 +510,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           // The home Play pill is a today-only nudge — past days are read-only
           // here (post a past day from the per-game board), so it hides
           // off-today.
-          showCta={viewingToday && !mg.standings.viewerHasPlayed}
+          showCta={viewingToday}
+          played={mg.standings.viewerHasPlayed}
           // Hand the rail's day to the board so "Yesterday" stays selected
           // when drilling in from a past-day view.
           onPressBody={() => router.push(routes.game(mg.gameId, viewDate) as Href)}

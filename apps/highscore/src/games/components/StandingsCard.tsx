@@ -87,8 +87,10 @@ export interface StandingsCardProps {
   loading?: boolean;
   /** Dimmed facepile shown when nobody has played (may be empty). */
   emptyFaces: StandingsFace[];
-  /** Show the Play pill (caller gates on "viewer hasn't played today"). */
+  /** Show the Play arrow (caller gates on viewing today). */
   showCta: boolean;
+  /** The viewer already played — the Play arrow stays, greyed out. */
+  played?: boolean;
   /**
    * Tap anywhere on the card → detail. The only parts that don't are the
    * Play triangle, the kebab menu and the Fix link.
@@ -117,6 +119,7 @@ export const StandingsCard = memo(function StandingsCard({
   loading,
   emptyFaces,
   showCta,
+  played,
   onPressBody,
   onLongPressBody,
   onMenu,
@@ -211,7 +214,7 @@ export const StandingsCard = memo(function StandingsCard({
         {ctaVisible ? (
           <Pressable
             accessibilityRole="link"
-            accessibilityLabel={`Play ${title}`}
+            accessibilityLabel={played ? `Play ${title} again` : `Play ${title}`}
             onPress={onPlay}
             hitSlop={8}
             testID={`game-card-play-${cardId}`}
@@ -220,7 +223,11 @@ export const StandingsCard = memo(function StandingsCard({
               (pressed || hovered) && styles.playBtnHover,
             ]}
           >
-            <PixelIcon name="play" size={32} color={tokens.neon.pink} />
+            <PixelIcon
+              name="play"
+              size={32}
+              color={played ? tokens.text.muted : tokens.neon.pink}
+            />
           </Pressable>
         ) : null}
 
