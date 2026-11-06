@@ -1,0 +1,7 @@
+# Toolchain for the Limrun iOS builder (`ns mobile build highscore`). Limrun reads this
+# file instead of .mise.toml, so the builder installs only what the Expo build needs —
+# terraform/actionlint/gitleaks resolve through the GitHub API and fail the install there.
+# Keep node/pnpm in sync with .mise.toml.
+[tools]
+node = "24"
+pnpm = "10.34.9"
