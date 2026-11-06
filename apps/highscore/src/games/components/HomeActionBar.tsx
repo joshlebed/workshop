@@ -26,14 +26,12 @@ const FAB_GAP = tokens.space.md;
 
 // A muted pink ramp, narrow on purpose: enough steps to read as a lit dome,
 // not so many that it turns into a glossy candy.
-// TEMPORARY: blue while tuning the shadow (pink ramp: F3A6C9 / EA84B4 /
-// DE689F / CA5A8F / AE4C7B — restore before merge).
 const TONE = {
-  shine: "#A6D2F3",
-  light: "#84B8EA",
-  base: "#689EDE",
-  shade: "#5A88CA",
-  rim: "#4C72AE",
+  shine: "#F3A6C9",
+  light: "#EA84B4",
+  base: "#DE689F",
+  shade: "#CA5A8F",
+  rim: "#AE4C7B",
 } as const;
 type Tone = keyof typeof TONE;
 const PLUS = "#2A0E21";
