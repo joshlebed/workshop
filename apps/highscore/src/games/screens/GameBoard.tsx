@@ -33,7 +33,14 @@ import {
   uiType,
   useToast,
 } from "../../theme";
-import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
+import {
+  clearGameScore,
+  fetchGameLeaderboard,
+  fetchMyGames,
+  removeGame,
+  upsertGameScore,
+} from "../api/games";
+import { setScoreDirection } from "../api/teach";
 import { DAY_PICKER_LENGTH, DayPicker } from "../components/DayPicker";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
@@ -207,6 +214,37 @@ export default function GameBoard() {
     },
   });
 
+  const removeMutation = useMutation({
+    mutationFn: (id: string) => removeGame(id, token),
+    onSuccess: async () => {
+      haptics.medium();
+      goBack(routes.home);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(today) });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't remove that game."), tone: "danger" });
+    },
+  });
+
+  // Teach v2: whoever set a game's direction changes it outright; anyone
+  // else's request waits for a second player asking for the same thing.
+  const directionMutation = useMutation({
+    mutationFn: ({ id, to }: { id: string; title: string; to: "asc" | "desc" }) =>
+      setScoreDirection(id, to, token),
+    onSuccess: async (data, { title }) => {
+      if (data.applied) await queryClient.invalidateQueries({ queryKey: ["games"] });
+      showToast({
+        message: data.applied
+          ? `${title} now ranks ${data.game.scoreDirection === "asc" ? "lower" : "higher"} scores first.`
+          : "Noted. It changes when one more player asks for the same.",
+        tone: "success",
+      });
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't change the ranking"), tone: "danger" });
+    },
+  });
+
   // Guideline 1.2: long-press a friend's score to report it.
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
@@ -364,22 +402,46 @@ export default function GameBoard() {
             </View>
           )}
           <View style={styles.titleText}>
-            <Text variant="game" numberOfLines={1}>
+            <Text variant="game" numberOfLines={1} style={styles.titleLabel}>
               {game.title}
             </Text>
+            {streak >= STREAK_MIN_DAYS ? (
+              <View
+                style={styles.streak}
+                accessibilityLabel={`${streak} day streak`}
+                testID="game-board-streak"
+              >
+                <Text style={styles.streakDot}>·</Text>
+                <Text style={styles.streakFlame}>🔥</Text>
+                <Text style={styles.streakCount}>{streak}</Text>
+              </View>
+            ) : null}
           </View>
-          {streak >= STREAK_MIN_DAYS ? (
-            <View style={styles.streak} testID="game-board-streak">
-              <Text style={styles.streakFlame}>🔥</Text>
-              <Text style={styles.streakCount}>{streak}</Text>
-            </View>
-          ) : null}
           <DayPicker
             selectedDate={date}
             today={today}
             onSelectDate={onDate}
             testID="game-board-day-picker"
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${game.title} from My Games`}
+            onPress={async () => {
+              const ok = await confirm({
+                title: `Remove ${game.title} from My Games?`,
+                message: "Your past scores stay — re-adding the game brings them back.",
+                confirmLabel: "Remove",
+                destructive: true,
+              });
+              if (ok && gameId) removeMutation.mutate(gameId);
+            }}
+            disabled={removeMutation.isPending}
+            testID="game-board-remove"
+            hitSlop={6}
+            style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
+          >
+            <PixelIcon name="trash" size={24} color={tokens.text.secondary} />
+          </Pressable>
           {myScore ? (
             <Pressable
               accessibilityRole="button"
@@ -500,6 +562,30 @@ export default function GameBoard() {
                   />
                 );
               })}
+              {teachAvailable ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    directionMutation.mutate({
+                      id: game.id,
+                      title: game.title,
+                      to: game.scoreDirection === "asc" ? "desc" : "asc",
+                    })
+                  }
+                  disabled={directionMutation.isPending}
+                  hitSlop={6}
+                  style={styles.directionLink}
+                  testID="game-board-direction"
+                >
+                  <Text variant="caption" tone="muted">
+                    {game.scoreDirection === "asc" ? "Lower is better" : "Higher is better"}
+                    {" · "}
+                    <Text variant="caption" tone="muted" style={styles.directionChange}>
+                      Change
+                    </Text>
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           )}
         </ScrollView>
@@ -868,25 +954,24 @@ const styles = StyleSheet.create({
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
   // glyph to the inherited line box otherwise (see app CLAUDE.md).
   titleBadgeGlyph: { fontSize: 18, lineHeight: 22 },
-  titleText: { flex: 1, minWidth: 0 },
-  // Streak badge mirrors the home card's (StandingsCard): chartreuse bezel +
-  // pixel count, earned (DESIGN.md); static here — Play lives in the my-slot.
+  titleText: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 4 },
+  titleLabel: { flexShrink: 1 },
+  // Streak: "· 🔥7" inline after the title, grey, no box.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.neon.chartreuse,
+    gap: 2,
   },
+  // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
+  // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
+  streakDot: { ...scoreType(10), lineHeight: 16, color: tokens.text.muted, marginRight: 4 },
   streakFlame: { fontSize: 12, lineHeight: 16 },
+  // Streak counts are score numerals (pixel face).
   streakCount: {
     ...scoreType(10),
     lineHeight: 16,
-    color: tokens.neon.chartreuse,
+    color: tokens.text.secondary,
   },
   helper: {
     paddingVertical: tokens.space.lg,
@@ -901,6 +986,9 @@ const styles = StyleSheet.create({
   leaderboard: {
     paddingHorizontal: tokens.space.xl,
   },
+  // Teach v2 ranking direction — a quiet footer, not a header control.
+  directionLink: { alignSelf: "center", marginTop: tokens.space.lg, padding: tokens.space.xs },
+  directionChange: { textDecorationLine: "underline" },
   // Rows mirror the home card's standings: rank · avatar · name/time over the
   // share text · boxed parsed score. No rules between rows.
   entry: { gap: tokens.space.xs, paddingVertical: tokens.space.xs },

@@ -33,35 +33,22 @@ import type {
   GamesResponse,
   MyGame,
 } from "@workshop/shared/games";
-import { confirm, haptics, openExternalUrl } from "@workshop/ui";
+import { haptics } from "@workshop/ui";
 import { type Href, useRouter } from "expo-router";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppUpdateBanner } from "../../components/AppUpdateBanner";
-import {
-  Button,
-  bodyType,
-  EmptyState,
-  HomeHeader,
-  PixelIcon,
-  Screen,
-  Sheet,
-  Text,
-  tokens,
-  useToast,
-} from "../../theme";
+import { Button, EmptyState, HomeHeader, PixelIcon, Screen, tokens, useToast } from "../../theme";
 import {
   addGame,
   createGameShareLink,
   fetchGameDiscovery,
   fetchMyGames,
   moveGame,
-  removeGame,
   setGameScoreSpec,
   upsertGameScore,
 } from "../api/games";
-import { setScoreDirection } from "../api/teach";
 import { DayPicker } from "../components/DayPicker";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
@@ -118,15 +105,10 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const { viewDate, setViewDate } = useViewDay();
   const viewingToday = viewDate === todayKey;
 
-  const [menuGame, setMenuGame] = useState<MyGame | null>(null);
   // Teach v2: "Fix score" on my own unread row, and the direction control in
-  // the card menu. Both are absent for an account without the capability.
+  // the per-game board. Both are absent for an account without the capability.
   const teachAvailable = useTeachAvailable();
   const [fixTarget, setFixTarget] = useState<FixScoreTarget | null>(null);
-  // Admin "Re-teach scoring": remembered while the kebab menu sheet animates
-  // out, then handed to the paste sheet in the menu's `onClosed` — never open
-  // the second Sheet in the same tick (two stacked Modals wedge iOS).
-  const [reteachAfterMenu, setReteachAfterMenu] = useState<MyGame | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   // The copy-scores recap appends a per-day "play with me" link (`/g/:token`),
   // distinct from the friend-invite link the empty-state "Add friends" CTA uses.
@@ -318,17 +300,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     },
   });
 
-  const removeMutation = useMutation({
-    mutationFn: (gameId: string) => removeGame(gameId, token),
-    onSuccess: async () => {
-      haptics.medium();
-      await queryClient.invalidateQueries({ queryKey: gamesKey });
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't remove that game."), tone: "danger" });
-    },
-  });
-
   // Play-then-paste loop, scoped to the Games surface so a pending play
   // armed here never pops the Lists surface's sheet (and vice versa).
   const hasMyScore = useCallback(
@@ -336,7 +307,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       myGames.find((g) => g.gameId === gameId)?.standings.viewerHasPlayed ?? false,
     [myGames],
   );
-  const { promptItemId, markPlaying, openPasteFor, dismiss } = useReturnToPaste({
+  const { promptItemId, markPlaying, dismiss } = useReturnToPaste({
     todayKey,
     hasScoreForItem: hasMyScore,
     scope: "games",
@@ -413,26 +384,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     },
   });
 
-  // Teach v2: whoever set a game's direction changes it outright; anyone
-  // else's request waits for a second player asking for the same thing.
-  const directionMutation = useMutation({
-    mutationFn: ({ game, to }: { game: Game; to: "asc" | "desc" }) =>
-      setScoreDirection(game.id, to, token),
-    onSuccess: async (data, { game }) => {
-      setMenuGame(null);
-      if (data.applied) await queryClient.invalidateQueries({ queryKey: ["games"] });
-      showToast({
-        message: data.applied
-          ? `${game.title} now ranks ${data.game.scoreDirection === "asc" ? "lower" : "higher"} scores first.`
-          : "Noted. It changes when one more player asks for the same.",
-        tone: "success",
-      });
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't change the ranking"), tone: "danger" });
-    },
-  });
-
   const onReorder = ({ fromIndex, toIndex }: GameReorderEvent) => {
     const neighbors = neighborsForOrderedReorder(myGames, fromIndex, toIndex);
     if (!neighbors) return;
@@ -446,16 +397,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     });
   };
 
-  const onRemove = async (mg: MyGame) => {
-    setMenuGame(null);
-    const ok = await confirm({
-      title: `Remove ${mg.game.title} from My Games?`,
-      message: "Your past scores stay — re-adding the game brings them back.",
-      confirmLabel: "Remove",
-      destructive: true,
-    });
-    if (ok) removeMutation.mutate(mg.gameId);
-  };
   const renderCard = useCallback(
     (mg: MyGame, isDragging: boolean, onLongPressBody?: () => void) => {
       // Standings follow the rail's selected day; the game list itself (which
@@ -512,7 +453,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           // when drilling in from a past-day view.
           onPressBody={() => router.push(routes.game(mg.gameId, viewDate) as Href)}
           {...(onLongPressBody ? { onLongPressBody } : {})}
-          onMenu={() => setMenuGame(mg)}
           onPlay={() => markPlaying({ id: mg.gameId, url: mg.game.url })}
         />
       );
@@ -661,98 +601,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       />
 
       <FixScoreSheet target={fixTarget} today={todayKey} onClose={() => setFixTarget(null)} />
-
-      {/* Card menu — Open game / (admin) Re-teach scoring / Remove. */}
-      <Sheet
-        visible={!!menuGame}
-        onRequestClose={() => setMenuGame(null)}
-        onClosed={() => {
-          // Chain the paste/teach sheet open only after this one is fully
-          // closed — see `reteachAfterMenu`.
-          if (reteachAfterMenu) {
-            openPasteFor({ id: reteachAfterMenu.gameId, url: reteachAfterMenu.game.url });
-            setReteachAfterMenu(null);
-          }
-        }}
-        testID="game-menu-sheet"
-      >
-        {menuGame ? (
-          <>
-            <View style={styles.sheetHeader}>
-              <Text variant="game" numberOfLines={1}>
-                {menuGame.game.title}
-              </Text>
-            </View>
-            <View style={styles.sheetActions}>
-              <Button
-                testID="game-menu-open"
-                label="Open game"
-                onPress={() => {
-                  setMenuGame(null);
-                  openExternalUrl(menuGame.game.url);
-                }}
-              />
-              {/* The v1 admin re-teach; teach v2 accounts correct a score instead. */}
-              {user?.isAdmin && !teachAvailable && isGameReteachable(menuGame.game) ? (
-                <>
-                  <View style={styles.sheetDivider} />
-                  <Button
-                    testID="game-menu-reteach"
-                    variant="ghost"
-                    label="Re-teach scoring"
-                    onPress={() => {
-                      // Remember the target, close this sheet; `onClosed` opens
-                      // the paste sheet once the modal has animated away.
-                      setReteachAfterMenu(menuGame);
-                      setMenuGame(null);
-                    }}
-                  />
-                </>
-              ) : null}
-              {teachAvailable ? (
-                <>
-                  <View style={styles.sheetDivider} />
-                  <Text variant="caption" tone="muted" testID="game-menu-direction-current">
-                    {menuGame.game.scoreDirection === "asc"
-                      ? "Ranking: lower is better."
-                      : "Ranking: higher is better."}
-                  </Text>
-                  <Button
-                    testID="game-menu-direction"
-                    variant="ghost"
-                    label={
-                      menuGame.game.scoreDirection === "asc"
-                        ? "Change to higher is better"
-                        : "Change to lower is better"
-                    }
-                    loading={directionMutation.isPending}
-                    onPress={() =>
-                      directionMutation.mutate({
-                        game: menuGame.game,
-                        to: menuGame.game.scoreDirection === "asc" ? "desc" : "asc",
-                      })
-                    }
-                  />
-                </>
-              ) : null}
-              <View style={styles.sheetDivider} />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${menuGame.game.title} from My Games`}
-                onPress={() => onRemove(menuGame)}
-                testID="game-menu-remove"
-                hitSlop={6}
-                style={({ pressed }) => [
-                  styles.sheetDangerRow,
-                  pressed && styles.sheetDangerPressed,
-                ]}
-              >
-                <Text style={styles.sheetDangerLabel}>Remove from My Games</Text>
-              </Pressable>
-            </View>
-          </>
-        ) : null}
-      </Sheet>
     </Screen>
   );
 }
@@ -778,26 +626,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: tokens.space.lg,
-  },
-  sheetHeader: { gap: 4 },
-  sheetActions: { gap: tokens.space.sm },
-  sheetDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: tokens.border.default,
-    marginVertical: tokens.space.xs,
-  },
-  sheetDangerRow: {
-    paddingVertical: tokens.space.md,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.sm,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.status.danger,
-  },
-  sheetDangerPressed: { backgroundColor: "rgba(255,77,94,0.12)" },
-  sheetDangerLabel: {
-    ...bodyType("semibold"),
-    color: tokens.status.danger,
-    fontSize: tokens.font.size.md,
   },
 });

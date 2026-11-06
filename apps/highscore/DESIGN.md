@@ -46,8 +46,8 @@ Rules:
 
 - **Pink is the one interactive color.** Buttons, links, tab-active, focus rings. Never
   use chartreuse for a CTA.
-- **Chartreuse is earned.** Success states, streak flames, personal bests, positive score
-  deltas. It's the celebration color; overuse kills it.
+- **Chartreuse is earned.** Success states, personal bests, positive score
+  deltas. It's the celebration color; overuse kills it. Streaks are a quiet grey "· 🔥N" after the title.
 - **Yellow is the spotlight.** #1 rank / leader crowns, "today" markers, badges and
   medals, and brand decoration (wordmark accent, marketing surfaces). It marks _what to
   look at_, never _what to tap_ (pink) or _what went well_ (chartreuse). Keep it distinct

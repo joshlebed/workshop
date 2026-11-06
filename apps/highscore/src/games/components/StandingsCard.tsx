@@ -19,8 +19,7 @@
 // Both drag stacks compose this inside their own drag-aware wrappers. On
 // native the whole card is the reorder handle: the cover, title, Play and
 // standings Pressables each take `onLongPressBody`, and the wrapper
-// catches a long-press on the gaps between them — only the kebab menu opts out
-// (a press there opens the menu instead of starting a drag). Web drags via the
+// catches a long-press on the gaps between them. Web drags via the
 // wrapper's pointer listeners. A short tap on any control still runs that
 // control's own action.
 
@@ -81,9 +80,7 @@ export interface StandingsCardProps {
   isDragging: boolean;
   /**
    * The viewer's consecutive-day play streak for this game (0 = none). Once it
-   * reaches `STREAK_MIN_DAYS` a flame badge shows next to the title — a "play
-   * today to keep your streak" CTA. Tapping it plays the game (calls `onPlay`),
-   * so it stays useful whether or not today's already logged.
+   * reaches `STREAK_MIN_DAYS` a grey "· 🔥N" follows the title.
    */
   streak?: number;
   /**
@@ -102,7 +99,7 @@ export interface StandingsCardProps {
   played?: boolean;
   /**
    * Tap anywhere on the card → detail. The only parts that don't are the
-   * Play triangle, the kebab menu and the Fix link.
+   * Play triangle and the Fix link.
    */
   onPressBody?: () => void;
   /**
@@ -110,7 +107,6 @@ export interface StandingsCardProps {
    * card is the drag handle.
    */
   onLongPressBody?: () => void;
-  onMenu: () => void;
   /** Open the game externally + arm the paste-on-return prompt. */
   onPlay: () => void;
 }
@@ -131,7 +127,6 @@ export const StandingsCard = memo(function StandingsCard({
   played,
   onPressBody,
   onLongPressBody,
-  onMenu,
   onPlay,
 }: StandingsCardProps) {
   const scored = rows;
@@ -153,7 +148,7 @@ export const StandingsCard = memo(function StandingsCard({
 
   // The card itself is the tap target for detail (and the native drag
   // handle). It carries no accessibilityRole so RN-Web renders a <div>, not a
-  // <button> — the Play / menu / Fix controls inside are real
+  // <button> — the Play / Fix controls inside are real
   // buttons and nested buttons are invalid DOM. The title row is the named,
   // focusable "open leaderboard" control for assistive tech.
   return (
@@ -212,9 +207,9 @@ export const StandingsCard = memo(function StandingsCard({
                 testID={`game-card-streak-${cardId}`}
                 style={styles.streak}
               >
+                <Text style={styles.streakDot}>·</Text>
                 <Text style={styles.streakFlame}>🔥</Text>
                 <Text style={styles.streakCount}>{streak}</Text>
-                <Text style={styles.streakLabel}>day streak</Text>
               </View>
             ) : null}
           </View>
@@ -239,20 +234,6 @@ export const StandingsCard = memo(function StandingsCard({
             />
           </Pressable>
         ) : null}
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Open menu for ${title}`}
-          onPress={onMenu}
-          hitSlop={10}
-          testID={`game-card-menu-${cardId}`}
-          style={({ pressed, hovered }) => [
-            styles.menuBtn,
-            (pressed || hovered) && styles.menuBtnHover,
-          ]}
-        >
-          <PixelIcon name="more-horizontal" size={16} color={tokens.text.secondary} />
-        </Pressable>
       </View>
 
       {/* Standings — only when there's something to show; an empty game
@@ -457,36 +438,22 @@ const styles = StyleSheet.create({
     marginHorizontal: -tokens.space.xs,
     borderRadius: tokens.radius.sm,
   },
-  // The streak is earned, so it's the one chartreuse element on the card:
-  // chartreuse bezel + count/label on transparent (DESIGN.md "Chartreuse is
-  // earned"), reading as "tap to keep your run going", not decor.
+  // Streak: "· 🔥7" inline after the title, grey, no box.
   streak: {
     flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
-    borderRadius: tokens.radius.sm,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.neon.chartreuse,
+    gap: 2,
   },
   // Emoji/glyph styles pin an explicit lineHeight ≥ fontSize — iOS clips a
   // glyph to the inherited (22px body) line box otherwise (see app CLAUDE.md).
+  streakDot: { ...scoreType(10), lineHeight: 16, color: tokens.text.muted, marginRight: 4 },
   streakFlame: { fontSize: 12, lineHeight: 16 },
   // Streak counts are score numerals (pixel face).
   streakCount: {
     ...scoreType(10),
     lineHeight: 16,
-    color: tokens.neon.chartreuse,
-  },
-  // The unit lives next to the count: "🔥 4 day streak". Secondary face so
-  // the numeral stays the focal point; same colour + lineHeight.
-  streakLabel: {
-    ...bodyType("medium"),
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    color: tokens.neon.chartreuse,
+    color: tokens.text.secondary,
   },
   // Play is a tap target → pink: neon bezel + neon label on transparent.
   // Bare pink hollow triangle — no box, no label.
@@ -497,14 +464,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   playBtnHover: { opacity: 0.7 },
-  menuBtn: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.sm,
-  },
-  menuBtnHover: { backgroundColor: tokens.bg.elevated },
   standings: { gap: tokens.space.sm },
   playerRow: {
     flexDirection: "row",
