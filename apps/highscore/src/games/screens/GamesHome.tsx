@@ -44,7 +44,6 @@ import {
   bodyType,
   EmptyState,
   HomeHeader,
-  homeLayout,
   PixelIcon,
   Screen,
   Sheet,
@@ -63,7 +62,7 @@ import {
   upsertGameScore,
 } from "../api/games";
 import { setScoreDirection } from "../api/teach";
-import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
+import { DayPicker } from "../components/DayPicker";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
@@ -71,7 +70,7 @@ import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { daysBack, localDateKey } from "../lib/gameDate";
+import { localDateKey } from "../lib/gameDate";
 import { writePostedScore } from "../lib/postedScore";
 import { prewarmGameShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
@@ -111,16 +110,13 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   const todayKey = localDateKey();
   const gamesKey = queryKeys.games.mine(todayKey);
 
-  // The day rail re-dates every card's standings. The home play→paste loop
+  // The header day picker re-dates every card's standings. The home play→paste loop
   // stays pinned to `todayKey`; only the displayed standings follow
   // `viewDate`. Posting to a past day lives on the per-game board. The
   // selection is shared with each game board (state/viewDay.tsx), so paging
   // days over there leaves home on the same day when you come back.
   const { viewDate, setViewDate } = useViewDay();
   const viewingToday = viewDate === todayKey;
-  // A board's "Earlier" chip can select a day beyond our 7-day rail; grow the
-  // rail to keep the shared selection visible.
-  const railLength = Math.max(DAY_RAIL_DEFAULT_LENGTH, daysBack(viewDate, todayKey) + 1);
 
   const [menuGame, setMenuGame] = useState<MyGame | null>(null);
   // Teach v2: "Fix score" on my own unread row, and the direction control in
@@ -540,6 +536,9 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         left={headerLeft}
         right={
           <>
+            {isEmpty ? null : (
+              <DayPicker selectedDate={viewDate} today={todayKey} onSelectDate={setViewDate} />
+            )}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Copy today's scores to clipboard"
@@ -598,26 +597,14 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
             addedGameIds={addedDiscoveryIds}
           />
         ) : (
-          <>
-            <View style={styles.dayRail}>
-              <DayRail
-                selectedDate={viewDate}
-                today={todayKey}
-                onSelectDate={setViewDate}
-                length={railLength}
-                testIDPrefix="games-day"
-                horizontalInset={homeLayout.horizontalInset}
-              />
-            </View>
-            <GameCardList
-              games={myGames}
-              renderCard={renderCard}
-              onReorder={onReorder}
-              refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
-              onRefresh={() => gamesQuery.refetch()}
-              bottomInset={listInset}
-            />
-          </>
+          <GameCardList
+            games={myGames}
+            renderCard={renderCard}
+            onReorder={onReorder}
+            refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
+            onRefresh={() => gamesQuery.refetch()}
+            bottomInset={listInset}
+          />
         )}
       </View>
 
@@ -786,9 +773,6 @@ const styles = StyleSheet.create({
   },
   headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
   headerIconBtnDisabled: { opacity: 0.6 },
-  dayRail: {
-    paddingBottom: tokens.space.sm,
-  },
   center: {
     flex: 1,
     alignItems: "center",
