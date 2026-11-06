@@ -33,5 +33,6 @@ export {
   type SecondaryWeight,
   scoreType,
   sectionLabelType,
+  shareTextType,
   uiType,
 } from "./type";

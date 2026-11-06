@@ -27,8 +27,17 @@
 import { STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { REORDER_ACTIVATION } from "@workshop/ui";
 import { memo } from "react";
-import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
-import { Avatar, bodyType, PixelIcon, scoreType, Text, tokens, uiType } from "../../theme";
+import { Image, Pressable, StyleSheet, View } from "react-native";
+import {
+  Avatar,
+  bodyType,
+  PixelIcon,
+  scoreType,
+  shareTextType,
+  Text,
+  tokens,
+  uiType,
+} from "../../theme";
 
 const TOP_N = 5;
 const RANK_SLOT = 20;
@@ -570,9 +579,7 @@ const styles = StyleSheet.create({
   scoreBody: {
     flex: 1,
     color: tokens.text.secondary,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 5,
+    ...shareTextType(tokens.font.size.sm),
   },
   scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
   pinnedDivider: {

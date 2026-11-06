@@ -26,6 +26,7 @@ import {
   PixelIcon,
   Screen,
   scoreType,
+  shareTextType,
   Text,
   tokens,
   uiType,
@@ -980,9 +981,7 @@ const styles = StyleSheet.create({
   rankBadgeTextTop1: { color: tokens.neon.yellow },
   scoreText: {
     color: tokens.text.primary,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 6,
+    ...shareTextType(tokens.font.size.sm),
   },
   scoreTextMuted: {
     color: tokens.text.muted,

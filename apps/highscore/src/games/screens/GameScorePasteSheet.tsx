@@ -50,7 +50,7 @@ import {
 } from "@workshop/shared/summarySpec";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { Avatar, Button, Chip, Sheet, Text, tokens } from "../../theme";
+import { Avatar, Button, Chip, Sheet, shareTextType, Text, tokens } from "../../theme";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { WrongGameNotice } from "../components/WrongGameNotice";
 import { pasteSheetCaption } from "../lib/scorePreview";
@@ -459,9 +459,7 @@ const styles = StyleSheet.create({
   },
   summaryLine: {
     color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 6,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    ...shareTextType(tokens.font.size.sm),
   },
   summaryLineExcluded: {
     color: tokens.text.muted,

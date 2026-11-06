@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/apiError";
 import { useEffect, useState } from "react";
-import { Platform, StyleSheet, View } from "react-native";
-import { Button, Sheet, Text, tokens, useToast } from "../../theme";
+import { StyleSheet, View } from "react-native";
+import { Button, Sheet, shareTextType, Text, tokens, useToast } from "../../theme";
 import { applyScorePick } from "../api/teach";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
@@ -146,9 +146,7 @@ const styles = StyleSheet.create({
   },
   raw: {
     color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 6,
-    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+    ...shareTextType(tokens.font.size.sm),
   },
   actions: {
     flexDirection: "row",
