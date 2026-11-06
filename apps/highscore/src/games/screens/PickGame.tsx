@@ -287,7 +287,7 @@ export default function PickGame() {
           <View style={styles.addGamesIcon}>
             <PixelIcon name="plus" size={24} color={tokens.neon.pink} />
           </View>
-          <Text style={styles.addGamesLabel}>Add games</Text>
+          <Text style={styles.addGamesLabel}>Add game</Text>
           <PixelIcon name="chevron-right" size={16} color={tokens.neon.pink} />
         </Pressable>
 

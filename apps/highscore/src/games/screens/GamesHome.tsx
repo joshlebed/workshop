@@ -15,7 +15,7 @@
 //
 // One floating pink "+" (`HomeActionBar`) opens the post screen (`/share`),
 // which recognises the game from the pasted text and posts to today. Adding a
-// game (`/games/add`, see `games/AddGame.tsx`) is the "Add games" row at the
+// game (`/games/add`, see `games/AddGame.tsx`) is the "Add game" row at the
 // top of that screen's game list. The button is hidden on the empty state,
 // whose onboarding card owns those actions.
 
