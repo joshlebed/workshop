@@ -118,9 +118,10 @@ over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) on
 - **Guideline 5.1.2 (consent before uploading scores):** the sign-in legal line and the paste
   sheet caption both say scores are uploaded and shown to friends; the privacy page says the same
   and that there is no global leaderboard. `legal.test.ts` pins those sentences.
-- **Guideline 1.2 (UGC):** `/terms` EULA, Report (profile page + reaction picker row → `ReportSheet`),
-  Block (profile page; unblock in Edit profile → Blocked users). The reaction-picker → report
-  hand-off goes through `useScoreReportFlow` so two Sheets never stack. Backend + operator side:
+- **Guideline 1.2 (UGC):** `/terms` EULA, Report (profile page + long-press a friend's score on
+  the per-game board → `ReportSheet`), Block (profile page; unblock in Edit profile → Blocked
+  users). Emoji reactions were removed from the HighScore client; the backend reaction
+  endpoints stay for old binaries and Workshop's frozen legacy Games. Backend + operator side:
   `docs/moderation-runbook.md`.
 
 ## Account deletion

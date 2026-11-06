@@ -106,7 +106,7 @@ Rules:
   glance but never reads as a control. Keep
   them on the 24px grid (16/24/32) — fractional scaling blurs the pixels and breaks the
   aesthetic.
-- Emoji already in the product (reactions, game emoji) stay as-is.
+- Emoji already in the product (game emoji) stay as-is.
 
 ## Motion
 

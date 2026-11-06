@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
+import type { Game, GameStandingsEntry } from "@workshop/shared/games";
 import { STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { confirm, formatRelative, haptics, openExternalUrl } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
@@ -18,8 +18,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { ReportSheet } from "../../moderation/ReportSheet";
-import { useScoreReportFlow } from "../../moderation/useScoreReportFlow";
+import { ReportSheet, type ReportTarget } from "../../moderation/ReportSheet";
 import {
   Avatar,
   Button,
@@ -35,12 +34,9 @@ import {
 import { clearGameScore, fetchGameLeaderboard, fetchMyGames, upsertGameScore } from "../api/games";
 import { DAY_RAIL_DEFAULT_LENGTH, DayRail } from "../components/DayRail";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
-import { ReactionPickerSheet } from "../components/ReactionPickerSheet";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
-import { ScoreReactions } from "../components/ScoreReactions";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
-import { useScoreReactions } from "../hooks/useScoreReactions";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { daysBack, formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
@@ -212,20 +208,8 @@ export default function GameBoard() {
     },
   });
 
-  // Emoji reactions on friends' scores for the day being viewed (G2c).
-  const reactionCtl = useScoreReactions<GameLeaderboardResponse>({
-    periodKey: date,
-    token,
-    viewer: user ? { userId: user.id, displayName: user.displayName ?? null } : null,
-    queryKey: queryKeys.games.leaderboard(gameId ?? "", date),
-    readReactions: (data, _gameId, scoreUserId) =>
-      data.entries.find((e) => e.userId === scoreUserId)?.reactions ?? [],
-    writeReactions: (data, _gameId, scoreUserId, next) => ({
-      ...data,
-      entries: data.entries.map((e) => (e.userId === scoreUserId ? { ...e, reactions: next } : e)),
-    }),
-  });
-  const reportFlow = useScoreReportFlow(reactionCtl.closePicker);
+  // Guideline 1.2: long-press a friend's score to report it.
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   if (!gameId) {
     return (
@@ -486,11 +470,14 @@ export default function GameBoard() {
                   teachAvailable={teachAvailable}
                   isMe={false}
                   onPressPlayer={openProfile}
-                  onReact={(userId, emoji, currentlyReacted) =>
-                    reactionCtl.react(gameId, userId, emoji, currentlyReacted)
-                  }
-                  onOpenReactionPicker={(userId) =>
-                    reactionCtl.openPicker(gameId, userId, entry.displayName ?? null)
+                  onReport={() =>
+                    setReportTarget({
+                      userId: entry.userId,
+                      name: entry.displayName ?? null,
+                      kind: "score",
+                      gameId,
+                      periodKey: date,
+                    })
                   }
                 />
               ))}
@@ -498,27 +485,7 @@ export default function GameBoard() {
           )}
         </ScrollView>
 
-        <ReactionPickerSheet
-          visible={!!reactionCtl.target}
-          targetName={reactionCtl.target?.name ?? null}
-          current={reactionCtl.currentEmoji}
-          onPick={reactionCtl.pick}
-          onRemove={reactionCtl.removeReaction}
-          onClose={reactionCtl.closePicker}
-          onClosed={reportFlow.onPickerClosed}
-          onReport={() => {
-            const t = reactionCtl.target;
-            if (!t) return;
-            reportFlow.requestReport({
-              userId: t.scoreUserId,
-              name: t.name,
-              kind: "score",
-              gameId: t.gameId,
-              periodKey: date,
-            });
-          }}
-        />
-        <ReportSheet target={reportFlow.target} token={token} onClose={reportFlow.close} />
+        <ReportSheet target={reportTarget} token={token} onClose={() => setReportTarget(null)} />
         <FixScoreSheet target={fixTarget} today={today} onClose={() => setFixTarget(null)} />
       </Screen>
     </KeyboardAvoidingView>
@@ -535,8 +502,8 @@ interface EntryRowProps {
   onClear?: () => void;
   /** Teach v2 "Fix score" — the poster's own row only. */
   onFix?: () => void;
-  onReact?: (userId: string, emoji: string, currentlyReacted: boolean) => void;
-  onOpenReactionPicker?: (userId: string) => void;
+  /** Long-press a friend's score → report it (Guideline 1.2). */
+  onReport?: () => void;
   /** Tap the avatar or name → that player's profile. */
   onPressPlayer?: (userId: string) => void;
 }
@@ -549,8 +516,7 @@ function EntryRow({
   onEdit,
   onClear,
   onFix,
-  onReact,
-  onOpenReactionPicker,
+  onReport,
   onPressPlayer,
 }: EntryRowProps) {
   const name = entry.displayName ?? "Someone";
@@ -561,10 +527,6 @@ function EntryRow({
   // text differently. Tapping it shows the text as it was posted.
   const [showOriginal, setShowOriginal] = useState(false);
   const picked = scoreLineLabel(entry, game, teachAvailable);
-  // You react to friends' scores, not your own — so the controls only wire up
-  // on other people's rows; your own row shows others' reactions read-only.
-  const canReact = !isMe && !!onOpenReactionPicker;
-  const showReactions = entry.reactions.length > 0 || canReact;
   return (
     <View style={[styles.entry, isMe && styles.entryMe]} testID={`game-board-row-${entry.userId}`}>
       <View style={styles.entryHeader}>
@@ -607,7 +569,13 @@ function EntryRow({
           </View>
         </Pressable>
       </View>
-      <View style={styles.scoreRow}>
+      <Pressable
+        style={styles.scoreRow}
+        onLongPress={onReport}
+        disabled={!onReport}
+        accessibilityHint={onReport ? "Long-press to report this score" : undefined}
+        testID={`game-board-score-row-${entry.userId}`}
+      >
         <View style={styles.scoreFrame}>
           <Text
             style={[styles.scoreText, body ? null : styles.scoreTextMuted]}
@@ -646,19 +614,7 @@ function EntryRow({
             </Text>
           ) : null}
         </View>
-        {showReactions ? (
-          <ScoreReactions
-            reactions={entry.reactions}
-            testIDPrefix={`game-board-react-${entry.userId}`}
-            {...(canReact && onReact
-              ? { onToggle: (emoji, cur) => onReact(entry.userId, emoji, cur) }
-              : {})}
-            {...(canReact && onOpenReactionPicker
-              ? { onAdd: () => onOpenReactionPicker(entry.userId) }
-              : {})}
-          />
-        ) : null}
-      </View>
+      </Pressable>
       {onEdit || onClear || onFix ? (
         <View style={styles.scoreActions}>
           {onFix ? (
@@ -999,8 +955,6 @@ const styles = StyleSheet.create({
     ...uiType(8),
     color: tokens.neon.pinkTint,
   },
-  // Score box + reactions share one row so reactions sit to the right of the
-  // score instead of below it (no extra row height).
   scoreRow: {
     flexDirection: "row",
     alignItems: "center",
