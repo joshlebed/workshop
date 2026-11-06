@@ -1013,7 +1013,7 @@ const styles = StyleSheet.create({
   entryHeader: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
   entryIdentityPressed: { opacity: 0.6 },
-  entryMain: { flex: 1, minWidth: 0, gap: tokens.space.xs },
+  entryMain: { flex: 1, minWidth: 0, gap: tokens.space.sm },
   entryHead: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   entryHeadName: {
     flex: 1,
