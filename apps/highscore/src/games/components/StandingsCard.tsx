@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
   scoreBody: {
     flex: 1,
     color: tokens.text.secondary,
-    ...shareTextType(tokens.font.size.sm),
+    ...shareTextType(tokens.font.size.xs),
   },
   scoreBodyMuted: { color: tokens.text.muted, fontStyle: "italic" },
   pinnedDivider: {

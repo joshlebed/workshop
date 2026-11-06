@@ -685,7 +685,7 @@ function EntryRow({
             </Pressable>
             {entry.updatedAt ? (
               <Text variant="caption" tone="muted" numberOfLines={1} style={styles.entryAgo}>
-                {formatRelative(entry.updatedAt)}
+                · {formatRelative(entry.updatedAt)}
               </Text>
             ) : null}
           </View>
@@ -1056,9 +1056,10 @@ const styles = StyleSheet.create({
     ...uiType(11),
     color: tokens.text.secondary,
   },
+  // Same share-text style as the home card's rows.
   scoreText: {
-    color: tokens.text.primary,
-    ...shareTextType(tokens.font.size.sm),
+    color: tokens.text.secondary,
+    ...shareTextType(tokens.font.size.xs),
   },
   scoreTextMuted: {
     color: tokens.text.muted,
