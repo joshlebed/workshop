@@ -998,6 +998,10 @@ not re-copied on resume. Re-copy (drops local data) with:
 
 Prod is PG 17 — keep the local image on the same major, or `pg_dump` refuses the server.
 
+If the sandbox DB looks empty (one user, no games), the setup-time dump failed — Neon sometimes
+resets the TLS stream mid-`COPY`. The snapshot now retries and fails loudly (setup falls back to
+the synthetic seed); re-run `.niteshift/files/snapshot-prod.sh` to get the prod copy.
+
 **PII caveat**: every sandbox gets a copy of real user data.
 
 ### Dev data seed
