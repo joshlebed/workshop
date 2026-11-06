@@ -643,88 +643,94 @@ function EntryRow({
         accessibilityHint={onReport ? "Long-press to report this score" : undefined}
         testID={`game-board-score-row-${entry.userId}`}
       >
-        <View style={styles.rankSlot}>
-          <Text
-            style={
-              entry.rank == null
-                ? styles.rankDot
-                : [styles.rankText, entry.rank === 1 && styles.rankTextTop1]
-            }
-          >
-            {entry.rank ?? "·"}
-          </Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`View ${name}'s profile`}
-          onPress={openPlayer}
-          disabled={!openPlayer}
-          hitSlop={4}
-          style={({ pressed }) => [styles.entryAvatar, pressed && styles.entryIdentityPressed]}
-          testID={`game-board-player-${entry.userId}`}
-        >
-          <Avatar
-            name={entry.displayName}
-            imageUrl={userAvatarImageUrl(entry.userId, entry.avatarVersion)}
-            size="sm"
-          />
-        </Pressable>
-        <View style={styles.entryBody}>
-          <View style={styles.entryNameRow}>
+        <View style={styles.entryMain}>
+          {/* Rank · avatar · "Name · 3h ago" on one centred line… */}
+          <View style={styles.entryHead}>
+            <View style={styles.rankSlot}>
+              <Text
+                style={
+                  entry.rank == null
+                    ? styles.rankDot
+                    : [styles.rankText, entry.rank === 1 && styles.rankTextTop1]
+                }
+              >
+                {entry.rank ?? "·"}
+              </Text>
+            </View>
             <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`View ${name}'s profile`}
               onPress={openPlayer}
               disabled={!openPlayer}
-              style={({ pressed }) => [
-                styles.entryNamePress,
-                pressed && styles.entryIdentityPressed,
-              ]}
+              hitSlop={4}
+              style={({ pressed }) => [styles.entryAvatar, pressed && styles.entryIdentityPressed]}
+              testID={`game-board-player-${entry.userId}`}
             >
-              <Text variant="label" style={styles.entryName} numberOfLines={1}>
-                {name}
-              </Text>
+              <Avatar
+                name={entry.displayName}
+                imageUrl={userAvatarImageUrl(entry.userId, entry.avatarVersion)}
+                size="sm"
+              />
             </Pressable>
-            {entry.updatedAt ? (
-              <Text variant="caption" tone="muted" numberOfLines={1} style={styles.entryAgo}>
-                · {formatRelative(entry.updatedAt)}
+            <View style={styles.entryHeadName}>
+              <Pressable
+                onPress={openPlayer}
+                disabled={!openPlayer}
+                style={({ pressed }) => [
+                  styles.entryNamePress,
+                  pressed && styles.entryIdentityPressed,
+                ]}
+              >
+                <Text variant="label" style={styles.entryName} numberOfLines={1}>
+                  {name}
+                </Text>
+              </Pressable>
+              {entry.updatedAt ? (
+                <Text variant="caption" tone="muted" numberOfLines={1} style={styles.entryAgo}>
+                  · {formatRelative(entry.updatedAt)}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          {/* …then the share text, indented under the name. */}
+          <View style={styles.entryBody}>
+            <Text
+              style={[styles.scoreText, body ? null : styles.scoreTextMuted]}
+              testID={`game-board-score-${entry.userId}`}
+            >
+              {body ?? "Played"}
+            </Text>
+            {/* A picked score is not necessarily legible in the text above, so
+                say what counts — and flag it while the parser reads otherwise. */}
+            {picked ? (
+              <View style={styles.pickedRow}>
+                <Text variant="caption" tone="muted" testID={`game-board-picked-${entry.userId}`}>
+                  {picked}
+                </Text>
+                {entry.adjusted ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Adjusted score. Show the original text"
+                    onPress={() => setShowOriginal((shown) => !shown)}
+                    hitSlop={8}
+                    testID={`game-board-adjusted-${entry.userId}`}
+                  >
+                    <Text variant="caption" tone="muted" style={styles.adjustedLabel}>
+                      adjusted
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+            {entry.adjusted && showOriginal ? (
+              <Text
+                style={[styles.scoreText, styles.scoreTextMuted]}
+                testID={`game-board-original-${entry.userId}`}
+              >
+                {entry.scoreRaw}
               </Text>
             ) : null}
           </View>
-          <Text
-            style={[styles.scoreText, body ? null : styles.scoreTextMuted]}
-            testID={`game-board-score-${entry.userId}`}
-          >
-            {body ?? "Played"}
-          </Text>
-          {/* A picked score is not necessarily legible in the text above, so
-              say what counts — and flag it while the parser reads otherwise. */}
-          {picked ? (
-            <View style={styles.pickedRow}>
-              <Text variant="caption" tone="muted" testID={`game-board-picked-${entry.userId}`}>
-                {picked}
-              </Text>
-              {entry.adjusted ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Adjusted score. Show the original text"
-                  onPress={() => setShowOriginal((shown) => !shown)}
-                  hitSlop={8}
-                  testID={`game-board-adjusted-${entry.userId}`}
-                >
-                  <Text variant="caption" tone="muted" style={styles.adjustedLabel}>
-                    adjusted
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
-          {entry.adjusted && showOriginal ? (
-            <Text
-              style={[styles.scoreText, styles.scoreTextMuted]}
-              testID={`game-board-original-${entry.userId}`}
-            >
-              {entry.scoreRaw}
-            </Text>
-          ) : null}
         </View>
         {scoreValue !== null ? (
           <View style={styles.scoreBox} testID={`game-board-value-${entry.userId}`}>
@@ -1007,7 +1013,17 @@ const styles = StyleSheet.create({
   entryHeader: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   entryNameWrap: { flex: 1, minWidth: 0, gap: 2 },
   entryIdentityPressed: { opacity: 0.6 },
-  entryBody: { flex: 1, minWidth: 0, gap: 2 },
+  entryMain: { flex: 1, minWidth: 0, gap: tokens.space.xs },
+  entryHead: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  entryHeadName: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+  },
+  // Indent = rank slot + gap + avatar + gap, so the text starts under the name.
+  entryBody: { minWidth: 0, gap: 2, paddingLeft: 20 + tokens.space.sm + 24 + tokens.space.sm },
   entryNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   entryNamePress: { flexShrink: 1, minWidth: 0 },
   entryName: { fontSize: tokens.font.size.sm, color: tokens.text.primary },
