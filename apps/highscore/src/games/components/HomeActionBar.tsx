@@ -5,7 +5,7 @@
 //
 // The disc is pixel art on a 3px grid, drawn from plain Views (no SVG —
 // DESIGN.md "Iconography": View-drawn pixel art keeps the runtime OTA-safe):
-// 18×18 cells shaded per cell like a softly lit arcade button (light from the
+// 14×14 cells shaded per cell like a softly lit arcade button (light from the
 // top-left), in a muted pink ramp so the filled shape doesn't shout. The drop
 // shadow is a native one, cast by a round View tucked just inside the stepped
 // edge so its blur reads as a soft circle under the pixels. Pressing sinks the
@@ -17,8 +17,8 @@ import { homeLayout, tokens } from "../../theme";
 import { actionBarBottomPadding } from "../lib/actionBar";
 
 const PX = 3;
-const CELLS = 18;
-const DISC = PX * CELLS; // 54
+const CELLS = 14;
+const DISC = PX * CELLS; // 42
 const SHADOW_ROOM = 6; // blur/offset headroom below the disc
 const FAB_SIZE = DISC + SHADOW_ROOM;
 const FAB_GAP = tokens.space.md;
@@ -79,11 +79,11 @@ function normalize([x, y, z]: [number, number, number]): [number, number, number
 
 const DISC_RUNS = buildDisc();
 
-// Plus: 8 cells long, 2 thick (24px × 6px), centred on the 18-cell grid.
+// Plus: 8 cells long, 2 thick (24px × 6px), centred on the 14-cell grid.
 const PLUS_LONG = PX * 8;
 const PLUS_THICK = PX * 2;
-const PLUS_OFFSET = (DISC - PLUS_LONG) / 2; // 15
-const PLUS_BAR = (DISC - PLUS_THICK) / 2; // 24
+const PLUS_OFFSET = (DISC - PLUS_LONG) / 2; // 9
+const PLUS_BAR = (DISC - PLUS_THICK) / 2; // 18
 // The shadow caster sits a cell inside the stepped edge so it never peeks out.
 const CASTER_INSET = PX;
 
