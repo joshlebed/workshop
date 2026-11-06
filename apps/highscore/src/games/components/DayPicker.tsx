@@ -1,6 +1,6 @@
-// Header day dropdown for the Games home: a compact "Today ▾" button that
-// opens a sheet listing recent days (newest first). Replaces the horizontal
-// day rail there; the per-game board keeps its rail.
+// Header day picker: a pixel calendar icon (pink while a past day is showing)
+// that opens a sheet listing recent days (newest first). Used by the Games home
+// and the per-game board (both share the selected day via state/viewDay).
 //
 // Controlled: the parent owns `selectedDate` and the fetch keyed off it.
 // Future days aren't offered — daily puzzles have no future bucket.
@@ -11,7 +11,7 @@ import { bodyType, PixelIcon, Sheet, Text, tokens } from "../../theme";
 import { daysBack, formatGameDateLabel, shiftDateKey } from "../lib/gameDate";
 
 /** Days offered by default, today inclusive. */
-const DAY_PICKER_LENGTH = 14;
+export const DAY_PICKER_LENGTH = 30;
 
 export interface DayPickerProps {
   /** Currently selected day, YYYY-MM-DD. */
@@ -56,21 +56,17 @@ export function DayPicker({
         accessibilityRole="button"
         accessibilityLabel={`Showing ${optionLabel(selectedDate, today)}. Change day`}
         onPress={() => setOpen(true)}
-        hitSlop={6}
+        hitSlop={8}
         testID={testID}
         style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
           styles.button,
-          !isToday && styles.buttonPast,
           (pressed || hovered) && styles.buttonHover,
         ]}
       >
-        <Text style={[styles.buttonLabel, !isToday && styles.buttonLabelPast]} numberOfLines={1}>
-          {formatGameDateLabel(selectedDate, today)}
-        </Text>
         <PixelIcon
-          name="chevron-down"
-          size={16}
-          color={isToday ? tokens.text.secondary : tokens.neon.pinkTint}
+          name="calendar"
+          size={24}
+          color={isToday ? tokens.text.secondary : tokens.neon.pink}
         />
       </Pressable>
 
@@ -111,24 +107,15 @@ export function DayPicker({
 }
 
 const styles = StyleSheet.create({
+  // Same 40×40 icon button as the header's copy / friends controls.
   button: {
-    height: 32,
-    flexDirection: "row",
+    width: 40,
+    height: 40,
     alignItems: "center",
-    gap: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
+    justifyContent: "center",
     borderRadius: tokens.radius.sm,
-    borderWidth: tokens.bezel,
-    borderColor: tokens.border.default,
   },
-  buttonPast: { borderColor: tokens.neon.pink },
   buttonHover: { backgroundColor: tokens.bg.elevated },
-  buttonLabel: {
-    ...bodyType("semibold"),
-    fontSize: tokens.font.size.sm,
-    color: tokens.text.secondary,
-  },
-  buttonLabelPast: { color: tokens.neon.pinkTint },
   sheetTitle: { marginBottom: tokens.space.sm },
   list: { maxHeight: 420 },
   option: {

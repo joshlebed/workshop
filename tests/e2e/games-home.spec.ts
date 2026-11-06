@@ -89,10 +89,10 @@ test("games home: add by URL → paste result → reorder persists → board", a
   await expect(cardBody(page, hostA)).toBeVisible();
   expect(await cardOrder(page, idA, idB)).toBe("B-first");
 
-  // Tap through to the per-game board: day rail + my posted result.
+  // Tap through to the per-game board: day picker + my posted result.
   await cardBody(page, hostA).click();
   await expect(page.getByTestId("game-board")).toBeVisible();
-  await expect(page.locator('[data-testid^="game-board-day-"]').first()).toBeVisible();
+  await expect(page.getByTestId("game-board-day-picker")).toBeVisible();
   await expect(page.locator('[data-testid^="game-board-score-"]').first()).toContainText(
     "Score: 42",
   );
