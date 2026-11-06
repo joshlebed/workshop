@@ -6,10 +6,11 @@
 // The disc is pixel art on a 3px grid, drawn from plain Views (no SVG —
 // DESIGN.md "Iconography": View-drawn pixel art keeps the runtime OTA-safe):
 // 16×16 cells shaded per cell like a softly lit arcade button (light from the
-// top-left), in a muted pink ramp so the filled shape doesn't shout. The drop
-// shadow is a native one, cast by a round View tucked just inside the stepped
-// edge so its blur reads as a soft circle under the pixels. Pressing sinks the
-// button and tightens the shadow.
+// top-left), in a muted pink ramp so the filled shape doesn't shout. Two drop
+// shadows are cast by round Views tucked just inside the stepped edge: a tight
+// contact shadow, and a deep key shadow whose `boxShadow` spread carries it
+// past the disc so the button reads as floating. Pressing sinks the button and
+// tightens both shadows. (Values picked live with a temporary slider panel.)
 
 import { haptics } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -19,7 +20,7 @@ import { actionBarBottomPadding } from "../lib/actionBar";
 const PX = 3;
 const CELLS = 16;
 const DISC = PX * CELLS; // 48
-const SHADOW_ROOM = 6; // blur/offset headroom below the disc
+const SHADOW_ROOM = 12; // blur/offset headroom below the disc
 const FAB_SIZE = DISC + SHADOW_ROOM;
 const FAB_GAP = tokens.space.md;
 
@@ -34,6 +35,10 @@ const TONE = {
 } as const;
 type Tone = keyof typeof TONE;
 const PLUS = "#2A0E21";
+const SHADOW = "#05030A";
+// The shadow casters sit a cell inside the stepped edge so they never peek out.
+const CASTER_INSET = PX;
+const CASTER_SIZE = PX * CELLS - CASTER_INSET * 2;
 
 interface Run {
   id: string;
@@ -84,8 +89,6 @@ const PLUS_LONG = PX * 8;
 const PLUS_THICK = PX * 2;
 const PLUS_OFFSET = (DISC - PLUS_LONG) / 2; // 12
 const PLUS_BAR = (DISC - PLUS_THICK) / 2; // 21
-// The shadow caster sits a cell inside the stepped edge so it never peeks out.
-const CASTER_INSET = PX;
 
 /** Tail room the card list needs so the last card clears the floating button. */
 export function homeActionBarListInset(insetBottom: number): number {
@@ -120,7 +123,8 @@ export function HomeActionBar({ insetBottom, onPress }: HomeActionBarProps) {
               pressed && styles.buttonPressed,
             ]}
           >
-            <View style={[styles.caster, pressed && styles.casterPressed]} />
+            <View style={[styles.caster, styles.contact, pressed && styles.contactPressed]} />
+            <View style={[styles.caster, styles.key, pressed && styles.keyPressed]} />
             {DISC_RUNS.map((r) => (
               <View
                 key={r.id}
@@ -152,26 +156,27 @@ const styles = StyleSheet.create({
   button: { position: "absolute", left: 0, top: 0, width: DISC, height: DISC },
   buttonHover: { transform: [{ translateY: 1 }] },
   buttonPressed: { transform: [{ translateY: 2 }] },
-  // Native drop shadow: a soft plum-black halo, offset down.
   caster: {
     position: "absolute",
     left: CASTER_INSET,
     top: CASTER_INSET,
-    width: DISC - CASTER_INSET * 2,
-    height: DISC - CASTER_INSET * 2,
-    borderRadius: (DISC - CASTER_INSET * 2) / 2,
+    width: CASTER_SIZE,
+    height: CASTER_SIZE,
+    borderRadius: CASTER_SIZE / 2,
     backgroundColor: TONE.rim,
-    shadowColor: "#05030A",
-    shadowOpacity: 0.6,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
   },
-  casterPressed: {
-    shadowOpacity: 0.45,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
+  contact: {
+    shadowColor: SHADOW,
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
   },
+  contactPressed: { shadowOffset: { width: 0, height: 1 } },
+  // boxShadow (not shadow*) because only it has a spread, which grows the
+  // shadow past the disc; RN's new architecture and react-native-web both
+  // render it. Pressed = the same shadow at 0.4x.
+  key: { boxShadow: "0px 12px 40px 13px rgba(5, 3, 10, 0.75)" },
+  keyPressed: { boxShadow: "0px 4.8px 16px 5.2px rgba(5, 3, 10, 0.75)" },
   bar: { position: "absolute", backgroundColor: PLUS },
   barH: { left: PLUS_OFFSET, top: PLUS_BAR, width: PLUS_LONG, height: PLUS_THICK },
   barV: { left: PLUS_BAR, top: PLUS_OFFSET, width: PLUS_THICK, height: PLUS_LONG },
