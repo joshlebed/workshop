@@ -3,41 +3,37 @@
 // "Your games", add more games. The card list pads its tail by
 // `homeActionBarListInset` so the last card clears the button.
 //
-// Drawn as pixel art on a 4px grid, from plain Views (no SVG — DESIGN.md
-// "Iconography": View-drawn pixel art keeps the runtime OTA-safe):
-//   - a 16×16-cell disc, shaded per cell like a lit arcade button (light from
-//     the top-left: highlight → base → shade → rim), in a softer pink than the
-//     interactive neon so the big filled shape doesn't shout;
-//   - a hard, stepped drop shadow in deep plum, offset down-right, so the
-//     button sits *on* the page;
-//   - a 2-cell-thick plus with its own 1-cell shadow.
-// Pressing pushes the button down onto its shadow, like a real arcade button.
+// The disc is pixel art on a 3px grid, drawn from plain Views (no SVG —
+// DESIGN.md "Iconography": View-drawn pixel art keeps the runtime OTA-safe):
+// 18×18 cells shaded per cell like a softly lit arcade button (light from the
+// top-left), in a muted pink ramp so the filled shape doesn't shout. The drop
+// shadow is a native one, cast by a round View tucked just inside the stepped
+// edge so its blur reads as a soft circle under the pixels. Pressing sinks the
+// button and tightens the shadow.
 
 import { haptics } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
 import { homeLayout, tokens } from "../../theme";
 import { actionBarBottomPadding } from "../lib/actionBar";
 
-const PX = 4;
-const CELLS = 16;
-const DISC = PX * CELLS; // 64
-const SHADOW_OFFSET = PX * 2; // two cells down-right
-const FAB_SIZE = DISC + SHADOW_OFFSET;
+const PX = 3;
+const CELLS = 18;
+const DISC = PX * CELLS; // 54
+const SHADOW_ROOM = 6; // blur/offset headroom below the disc
+const FAB_SIZE = DISC + SHADOW_ROOM;
 const FAB_GAP = tokens.space.md;
 
-// Button palette: a softened pink ramp (the neon #FF3D9A is the spec's
-// interactive accent; at this size a full fill of it is glaring).
+// A muted pink ramp, narrow on purpose: enough steps to read as a lit dome,
+// not so many that it turns into a glossy candy.
 const TONE = {
-  shine: "#FFB3D6",
-  light: "#F77DB6",
-  base: "#E2589A",
-  shade: "#B9437F",
-  rim: "#8A2F5E",
-  shadow: "#4E1C44",
-  plus: "#2A0E21",
-  plusShadow: "#A23A70",
+  shine: "#F3A6C9",
+  light: "#EA84B4",
+  base: "#DE689F",
+  shade: "#CA5A8F",
+  rim: "#AE4C7B",
 } as const;
 type Tone = keyof typeof TONE;
+const PLUS = "#2A0E21";
 
 interface Run {
   id: string;
@@ -47,47 +43,33 @@ interface Run {
   tone: Tone;
 }
 
-/** Per-cell lighting for a sphere-ish disc, merged into horizontal runs. */
-function buildDisc(): { shape: Run[]; lit: Run[] } {
+/** Per-cell lighting for a dome-ish disc, merged into horizontal runs. */
+function buildDisc(): Run[] {
   const r = CELLS / 2;
   // Light from the top-left, a little in front.
-  const L = normalize([-0.55, -0.65, 0.52]);
-  const shape: Run[] = [];
-  const lit: Run[] = [];
+  const [lx, ly, lz] = normalize([-0.55, -0.65, 0.52]);
+  const runs: Run[] = [];
   for (let row = 0; row < CELLS; row++) {
-    let shapeStart = -1;
-    let shapeEnd = -1;
     let run: Run | null = null;
     for (let col = 0; col < CELLS; col++) {
       const x = col + 0.5 - r;
       const y = row + 0.5 - r;
       const d2 = x * x + y * y;
       if (d2 > r * r) continue;
-      if (shapeStart < 0) shapeStart = col;
-      shapeEnd = col;
       const d = Math.sqrt(d2) / r;
       const z = Math.sqrt(Math.max(0, 1 - d * d));
-      const i = (x / r) * L[0] + (y / r) * L[1] + z * L[2];
+      const i = (x / r) * lx + (y / r) * ly + z * lz;
       const tone: Tone =
-        d > 0.86 ? "rim" : i > 0.9 ? "shine" : i > 0.62 ? "light" : i > 0.25 ? "base" : "shade";
+        d > 0.9 ? "rim" : i > 0.92 ? "shine" : i > 0.66 ? "light" : i > 0.3 ? "base" : "shade";
       if (run && run.tone === tone && run.x + run.w === col) {
         run.w += 1;
       } else {
         run = { id: `${row}-${col}`, x: col, y: row, w: 1, tone };
-        lit.push(run);
+        runs.push(run);
       }
     }
-    if (shapeStart >= 0) {
-      shape.push({
-        id: `s${row}`,
-        x: shapeStart,
-        y: row,
-        w: shapeEnd - shapeStart + 1,
-        tone: "shadow",
-      });
-    }
   }
-  return { shape, lit };
+  return runs;
 }
 
 function normalize([x, y, z]: [number, number, number]): [number, number, number] {
@@ -95,13 +77,15 @@ function normalize([x, y, z]: [number, number, number]): [number, number, number
   return [x / m, y / m, z / m];
 }
 
-const { shape: SHADOW_RUNS, lit: DISC_RUNS } = buildDisc();
+const DISC_RUNS = buildDisc();
 
-// Plus: 8 cells long, 2 thick (32px × 8px), centred on the 16-cell grid.
+// Plus: 8 cells long, 2 thick (24px × 6px), centred on the 18-cell grid.
 const PLUS_LONG = PX * 8;
 const PLUS_THICK = PX * 2;
-const PLUS_OFFSET = (DISC - PLUS_LONG) / 2; // 16
-const PLUS_BAR = (DISC - PLUS_THICK) / 2; // 28
+const PLUS_OFFSET = (DISC - PLUS_LONG) / 2; // 15
+const PLUS_BAR = (DISC - PLUS_THICK) / 2; // 24
+// The shadow caster sits a cell inside the stepped edge so it never peeks out.
+const CASTER_INSET = PX;
 
 /** Tail room the card list needs so the last card clears the floating button. */
 export function homeActionBarListInset(insetBottom: number): number {
@@ -128,46 +112,33 @@ export function HomeActionBar({ insetBottom, onPress }: HomeActionBarProps) {
         style={styles.fab}
       >
         {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
-          <>
-            <Pixels runs={SHADOW_RUNS} offset={SHADOW_OFFSET} />
-            <View
-              pointerEvents="none"
-              style={[
-                styles.button,
-                pressed && styles.buttonPressed,
-                hovered && !pressed && styles.buttonHover,
-              ]}
-            >
-              <Pixels runs={DISC_RUNS} offset={0} />
-              {/* plus shadow, one cell down-right */}
-              <View style={[styles.bar, styles.barH, styles.plusShadow, styles.nudge]} />
-              <View style={[styles.bar, styles.barV, styles.plusShadow, styles.nudge]} />
-              <View style={[styles.bar, styles.barH]} />
-              <View style={[styles.bar, styles.barV]} />
-            </View>
-          </>
+          <View
+            pointerEvents="none"
+            style={[
+              styles.button,
+              hovered && !pressed && styles.buttonHover,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            <View style={[styles.caster, pressed && styles.casterPressed]} />
+            {DISC_RUNS.map((r) => (
+              <View
+                key={r.id}
+                style={{
+                  position: "absolute",
+                  left: r.x * PX,
+                  top: r.y * PX,
+                  width: r.w * PX,
+                  height: PX,
+                  backgroundColor: TONE[r.tone],
+                }}
+              />
+            ))}
+            <View style={[styles.bar, styles.barH]} />
+            <View style={[styles.bar, styles.barV]} />
+          </View>
         )}
       </Pressable>
-    </View>
-  );
-}
-
-function Pixels({ runs, offset }: { runs: Run[]; offset: number }) {
-  return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-      {runs.map((r) => (
-        <View
-          key={r.id}
-          style={{
-            position: "absolute",
-            left: offset + r.x * PX,
-            top: offset + r.y * PX,
-            width: r.w * PX,
-            height: PX,
-            backgroundColor: TONE[r.tone],
-          }}
-        />
-      ))}
     </View>
   );
 }
@@ -177,14 +148,31 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: homeLayout.horizontalInset,
   },
-  fab: { width: FAB_SIZE, height: FAB_SIZE },
+  fab: { width: DISC, height: FAB_SIZE },
   button: { position: "absolute", left: 0, top: 0, width: DISC, height: DISC },
-  // Pressed: the button sinks onto its shadow.
-  buttonPressed: { transform: [{ translateX: SHADOW_OFFSET }, { translateY: SHADOW_OFFSET }] },
-  buttonHover: { transform: [{ translateX: PX }, { translateY: PX }] },
-  bar: { position: "absolute", backgroundColor: TONE.plus },
+  buttonHover: { transform: [{ translateY: 1 }] },
+  buttonPressed: { transform: [{ translateY: 2 }] },
+  // Native drop shadow: a soft plum-black halo, offset down.
+  caster: {
+    position: "absolute",
+    left: CASTER_INSET,
+    top: CASTER_INSET,
+    width: DISC - CASTER_INSET * 2,
+    height: DISC - CASTER_INSET * 2,
+    borderRadius: (DISC - CASTER_INSET * 2) / 2,
+    backgroundColor: TONE.rim,
+    shadowColor: "#05030A",
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  casterPressed: {
+    shadowOpacity: 0.45,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  bar: { position: "absolute", backgroundColor: PLUS },
   barH: { left: PLUS_OFFSET, top: PLUS_BAR, width: PLUS_LONG, height: PLUS_THICK },
   barV: { left: PLUS_BAR, top: PLUS_OFFSET, width: PLUS_THICK, height: PLUS_LONG },
-  plusShadow: { backgroundColor: TONE.plusShadow },
-  nudge: { transform: [{ translateX: PX / 2 }, { translateY: PX / 2 }] },
 });
