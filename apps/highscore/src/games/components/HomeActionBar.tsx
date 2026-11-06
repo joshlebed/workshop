@@ -15,11 +15,12 @@ import { haptics } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
 import { homeLayout, tokens } from "../../theme";
 import { actionBarBottomPadding } from "../lib/actionBar";
+import { FabShadowTuner, useFabShadow } from "./FabShadowTuner";
 
 const PX = 3;
 const CELLS = 16;
 const DISC = PX * CELLS; // 48
-const SHADOW_ROOM = 6; // blur/offset headroom below the disc
+const SHADOW_ROOM = 12; // blur/offset headroom below the disc
 const FAB_SIZE = DISC + SHADOW_ROOM;
 const FAB_GAP = tokens.space.md;
 
@@ -84,8 +85,6 @@ const PLUS_LONG = PX * 8;
 const PLUS_THICK = PX * 2;
 const PLUS_OFFSET = (DISC - PLUS_LONG) / 2; // 12
 const PLUS_BAR = (DISC - PLUS_THICK) / 2; // 21
-// The shadow caster sits a cell inside the stepped edge so it never peeks out.
-const CASTER_INSET = PX;
 
 /** Tail room the card list needs so the last card clears the floating button. */
 export function homeActionBarListInset(insetBottom: number): number {
@@ -99,47 +98,104 @@ export interface HomeActionBarProps {
 
 export function HomeActionBar({ insetBottom, onPress }: HomeActionBarProps) {
   const bottom = actionBarBottomPadding(insetBottom, tokens.space.md);
+  const sh = useFabShadow();
+  const casterSize = DISC - sh.casterInset * 2;
+  const caster = {
+    position: "absolute" as const,
+    left: sh.casterInset,
+    top: sh.casterInset,
+    width: casterSize,
+    height: casterSize,
+    borderRadius: casterSize / 2,
+    backgroundColor: TONE.rim,
+  };
   return (
-    <View style={[styles.wrap, { bottom }]} pointerEvents="box-none" testID="home-action-bar">
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Post a score or add a game"
-        onPress={() => {
-          haptics.light();
-          onPress();
-        }}
-        testID="home-paste-score"
-        style={styles.fab}
-      >
-        {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
-          <View
-            pointerEvents="none"
-            style={[
-              styles.button,
-              hovered && !pressed && styles.buttonHover,
-              pressed && styles.buttonPressed,
-            ]}
-          >
-            <View style={[styles.caster, pressed && styles.casterPressed]} />
-            {DISC_RUNS.map((r) => (
+    <>
+      <FabShadowTuner />
+      <View style={[styles.wrap, { bottom }]} pointerEvents="box-none" testID="home-action-bar">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Post a score or add a game"
+          onPress={() => {
+            haptics.light();
+            onPress();
+          }}
+          testID="home-paste-score"
+          style={styles.fab}
+        >
+          {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+            <View
+              pointerEvents="none"
+              style={[
+                styles.button,
+                hovered && !pressed && styles.buttonHover,
+                pressed && styles.buttonPressed,
+              ]}
+            >
+              {sh.ambientOpacity > 0 ? (
+                <View
+                  style={[
+                    caster,
+                    {
+                      shadowColor: "#05030A",
+                      shadowOpacity: sh.ambientOpacity,
+                      shadowRadius: sh.ambientRadius,
+                      shadowOffset: { width: 0, height: pressed ? 1 : sh.ambientOffsetY },
+                    },
+                  ]}
+                />
+              ) : null}
               <View
-                key={r.id}
-                style={{
-                  position: "absolute",
-                  left: r.x * PX,
-                  top: r.y * PX,
-                  width: r.w * PX,
-                  height: PX,
-                  backgroundColor: TONE[r.tone],
-                }}
+                style={[
+                  caster,
+                  {
+                    shadowColor: sh.keyColor,
+                    shadowOpacity: sh.keyOpacity,
+                    shadowRadius: sh.keyRadius * (pressed ? sh.pressedScale : 1),
+                    shadowOffset: {
+                      width: sh.keyOffsetX * (pressed ? sh.pressedScale : 1),
+                      height: sh.keyOffsetY * (pressed ? sh.pressedScale : 1),
+                    },
+                    elevation: 12,
+                  },
+                ]}
               />
-            ))}
-            <View style={[styles.bar, styles.barH]} />
-            <View style={[styles.bar, styles.barV]} />
-          </View>
-        )}
-      </Pressable>
-    </View>
+              {sh.pixelOffset > 0
+                ? DISC_RUNS.map((r) => (
+                    <View
+                      key={`px-${r.id}`}
+                      style={{
+                        position: "absolute",
+                        left: r.x * PX + (pressed ? PX : sh.pixelOffset),
+                        top: r.y * PX + (pressed ? PX : sh.pixelOffset),
+                        width: r.w * PX,
+                        height: PX,
+                        backgroundColor: "#05030A",
+                        opacity: sh.pixelOpacity,
+                      }}
+                    />
+                  ))
+                : null}
+              {DISC_RUNS.map((r) => (
+                <View
+                  key={r.id}
+                  style={{
+                    position: "absolute",
+                    left: r.x * PX,
+                    top: r.y * PX,
+                    width: r.w * PX,
+                    height: PX,
+                    backgroundColor: TONE[r.tone],
+                  }}
+                />
+              ))}
+              <View style={[styles.bar, styles.barH]} />
+              <View style={[styles.bar, styles.barV]} />
+            </View>
+          )}
+        </Pressable>
+      </View>
+    </>
   );
 }
 
@@ -152,26 +208,6 @@ const styles = StyleSheet.create({
   button: { position: "absolute", left: 0, top: 0, width: DISC, height: DISC },
   buttonHover: { transform: [{ translateY: 1 }] },
   buttonPressed: { transform: [{ translateY: 2 }] },
-  // Native drop shadow: a soft plum-black halo, offset down.
-  caster: {
-    position: "absolute",
-    left: CASTER_INSET,
-    top: CASTER_INSET,
-    width: DISC - CASTER_INSET * 2,
-    height: DISC - CASTER_INSET * 2,
-    borderRadius: (DISC - CASTER_INSET * 2) / 2,
-    backgroundColor: TONE.rim,
-    shadowColor: "#05030A",
-    shadowOpacity: 0.6,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 8,
-  },
-  casterPressed: {
-    shadowOpacity: 0.45,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-  },
   bar: { position: "absolute", backgroundColor: PLUS },
   barH: { left: PLUS_OFFSET, top: PLUS_BAR, width: PLUS_LONG, height: PLUS_THICK },
   barV: { left: PLUS_BAR, top: PLUS_OFFSET, width: PLUS_THICK, height: PLUS_LONG },
