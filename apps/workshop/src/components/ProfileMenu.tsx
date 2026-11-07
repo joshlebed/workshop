@@ -29,7 +29,6 @@ import {
 import { unarchiveList } from "../api/lists";
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
-import { GAMES_TAB_ENABLED } from "../lib/featureFlags";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -76,7 +75,7 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
   const requestsQuery = useQuery({
     queryKey: queryKeys.friends.requests,
     queryFn: () => fetchFriendRequests(token),
-    enabled: !!token && GAMES_TAB_ENABLED,
+    enabled: !!token,
     refetchInterval: livePoll,
   });
   const inboundRequestCount = requestsQuery.data?.inbound.length ?? 0;
@@ -193,21 +192,19 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
             }}
             testID="open-edit-profile"
           />
-          {GAMES_TAB_ENABLED ? (
-            <Button
-              label={
-                inboundRequestCount > 0
-                  ? `Friends (${inboundRequestCount} ${inboundRequestCount === 1 ? "request" : "requests"})`
-                  : "Friends"
-              }
-              variant="secondary"
-              onPress={() => {
-                setProfileOpen(false);
-                router.push("/friends");
-              }}
-              testID="open-friends"
-            />
-          ) : null}
+          <Button
+            label={
+              inboundRequestCount > 0
+                ? `Friends (${inboundRequestCount} ${inboundRequestCount === 1 ? "request" : "requests"})`
+                : "Friends"
+            }
+            variant="secondary"
+            onPress={() => {
+              setProfileOpen(false);
+              router.push("/friends");
+            }}
+            testID="open-friends"
+          />
           {archivedLists.length > 0 ? (
             <Button
               label={`Archived lists (${archivedLists.length})`}

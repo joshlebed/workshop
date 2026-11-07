@@ -57,14 +57,12 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
   in `apps/workshop/CLAUDE.md` listing the three modes Ã— two vars. The sandbox already
   bakes the flags; this is purely a "make the contract discoverable" doc edit.
 
-- **Six e2e specs assert the removed `home-greeting` testID.** The greeting was dropped
+- **Four e2e specs assert the removed `home-greeting` testID.** The greeting was dropped
   when the tab home headers were simplified (#314), so `getByTestId("home-greeting")`
   matches nothing. `signInAsDev` in `tests/e2e/helpers.ts` was moved onto the create-list
-  FAB, but `sign-in`, `sign-in-google`, `activity-feed`, `share-link-accept`,
-  `games-onboarding`, and `games-social` still assert the greeting inline and time out.
-  **Fix:** swap those assertions for `fab-create-list`, or export the module-local
-  `goToListsHome` from the same helpers file (it also handles the Games-tab landing).
-  ~20min, mechanical.
+  FAB, but `sign-in`, `sign-in-google`, `activity-feed`, and `share-link-accept` still
+  assert the greeting inline and time out. **Fix:** swap those assertions for
+  `fab-create-list`. ~15min, mechanical.
 
 - **Specs interfere when run as a batch.** `tags-filter`, `saved-views` and
   `add-item-tags` each pass alone but fail when run in one `playwright test` invocation
@@ -220,14 +218,12 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
   in `apps/workshop/CLAUDE.md` listing the three modes Ã— two vars. The sandbox already
   bakes the flags; this is purely a "make the contract discoverable" doc edit.
 
-- **Six e2e specs assert the removed `home-greeting` testID.** The greeting was dropped
+- **Four e2e specs assert the removed `home-greeting` testID.** The greeting was dropped
   when the tab home headers were simplified (#314), so `getByTestId("home-greeting")`
   matches nothing. `signInAsDev` in `tests/e2e/helpers.ts` was moved onto the create-list
-  FAB, but `sign-in`, `sign-in-google`, `activity-feed`, `share-link-accept`,
-  `games-onboarding`, and `games-social` still assert the greeting inline and time out.
-  **Fix:** swap those assertions for `fab-create-list`, or export the module-local
-  `goToListsHome` from the same helpers file (it also handles the Games-tab landing).
-  ~20min, mechanical.
+  FAB, but `sign-in`, `sign-in-google`, `activity-feed`, and `share-link-accept` still
+  assert the greeting inline and time out. **Fix:** swap those assertions for
+  `fab-create-list`. ~15min, mechanical.
 
 - **Specs interfere when run as a batch.** `tags-filter`, `saved-views` and
   `add-item-tags` each pass alone but fail when run in one `playwright test` invocation

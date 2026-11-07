@@ -36,8 +36,7 @@ import { shareOrCopyLink } from "../lib/share";
 
 /**
  * Friends screen (G2b, issue #286; directed requests + mutuals added with the
- * social-features pass) — behind the Games surface flag. Reachable from the
- * Games header and the profile/settings sheet.
+ * social-features pass). Reachable from the profile/settings sheet.
  *
  * Three sections: pending inbound requests (accept/deny inline), my friends,
  * and "people you may know" (friends of friends, most-connected first, with a
@@ -147,12 +146,7 @@ export default function FriendsScreen() {
     mutationFn: (userId: string) => unfriend(userId, token),
     onSuccess: async () => {
       haptics.medium();
-      // Drop them from My Games / per-game standings too — friendship gates
-      // score visibility, so the social board must re-fetch without them.
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.friends.all }),
-        queryClient.invalidateQueries({ queryKey: ["games"] }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't remove that friend."), tone: "danger" });
@@ -171,10 +165,7 @@ export default function FriendsScreen() {
           message: `You're now friends with ${data.friend?.displayName?.trim() || "them"}!`,
           tone: "success",
         });
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.friends.all }),
-          queryClient.invalidateQueries({ queryKey: ["games"] }),
-        ]);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
       } else {
         await queryClient.invalidateQueries({ queryKey: queryKeys.friends.requests });
       }
@@ -198,10 +189,7 @@ export default function FriendsScreen() {
         message: `You're now friends with ${data.friend.displayName?.trim() || "them"}!`,
         tone: "success",
       });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.friends.all }),
-        queryClient.invalidateQueries({ queryKey: ["games"] }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't accept that request."), tone: "danger" });
@@ -252,7 +240,7 @@ export default function FriendsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Back"
-          onPress={() => goBack(routes.home)}
+          onPress={() => goBack(routes.root)}
           testID="friends-back"
           hitSlop={10}
           style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}

@@ -6,9 +6,7 @@ import {
   isIosUserAgent,
 } from "./target";
 
-export type { HandoffPlatform, HighScoreTarget };
-export { HIGHSCORE_APP_STORE_URL, HIGHSCORE_WEB_URL };
-
+export type { HighScoreTarget };
 /**
  * Web build. On an iPhone/iPad browser the push is still the iOS app (App
  * Store); desktop and Android get highscore.live.

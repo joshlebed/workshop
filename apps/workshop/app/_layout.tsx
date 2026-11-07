@@ -18,7 +18,6 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
-import { PENDING_GAME_SHARE_TOKEN_KEY } from "../src/legacyGames/lib/inviteStash";
 import { type ClientRoutes, ClientRuntimeProvider } from "../src/lib/clientRuntime";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY, PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
@@ -36,24 +35,19 @@ function useApplyOtaUpdatesOnArrival() {
 
 const WORKSHOP_CLIENT_ROUTES: ClientRoutes = {
   root: "/",
-  home: "/games",
   signIn: "/sign-in",
   friends: "/friends",
-  game: (gameId, date) =>
-    `/games/${encodeURIComponent(gameId)}${date ? `?date=${encodeURIComponent(date)}` : ""}`,
   friendProfile: (userId, via) =>
     `/friends/${encodeURIComponent(userId)}${via ? `?via=${encodeURIComponent(via)}` : ""}`,
 };
 
-function GamesRuntimeBridge({ children }: { children: ReactNode }) {
+function ClientRuntimeBridge({ children }: { children: ReactNode }) {
   const { token, user, status } = useAuth();
   const value = useMemo(
     () => ({
       token,
       user,
       status,
-      appName: "Workshop",
-      appScheme: "workshop",
       routes: WORKSHOP_CLIENT_ROUTES,
     }),
     [status, token, user],
@@ -65,8 +59,7 @@ function GamesRuntimeBridge({ children }: { children: ReactNode }) {
 // another app, expo-share-intent's native code stashes the payload in App
 // Group UserDefaults and opens `workshop:///dataUrl=workshopShareKey`; the
 // hook reads it back and surfaces a `shareIntent`. We forward to `/share`
-// with either `url` or `text` so the share landing screen can choose between
-// list saves and leaderboard score saves. The sentinel URL is swallowed by
+// with `url` and/or `text`, which hands straight to the list-add flow. The sentinel URL is swallowed by
 // `app/+native-intent.tsx`; without that, expo-router would render its
 // "Unmatched Route" screen before this hook fires.
 // Signed-out users currently lose the payload — AuthGate bounces them to
@@ -164,8 +157,8 @@ function AuthGate() {
     // invite, it must mount while signed-out so it can stash its token before
     // forwarding to /sign-in.
     const onFriendAccept = first === "friends" && segments[1] === "accept";
-    // Play link (`/g/:token`, Games copy-scores CTA). Same deal — mount
-    // signed-out so it can stash before /sign-in, then resolve + route.
+    // Play link (`/g/:token`). Games live in HighScore now; the route is a
+    // pure hand-off that needs no session, so it mounts signed-out.
     const onGameShare = first === "g";
 
     if (status !== "signed-in") {
@@ -221,13 +214,6 @@ function AuthGate() {
       const stashedFriend = await getItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => null);
       if (stashedFriend) {
         router.replace(`/friends/accept/${encodeURIComponent(stashedFriend)}`);
-        return;
-      }
-      // Same round-trip for a play link (`/g/:token`) — land back on the
-      // resolver, which forwards to Games home or the sharer's profile.
-      const stashedGameShare = await getItem(PENDING_GAME_SHARE_TOKEN_KEY).catch(() => null);
-      if (stashedGameShare) {
-        router.replace({ pathname: "/g/[token]", params: { token: stashedGameShare } });
         return;
       }
       const returnPath = await getItem(PENDING_RETURN_PATH_KEY).catch(() => null);
@@ -312,7 +298,6 @@ function AuthGate() {
         <Stack.Screen name="g/[token]" />
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
       </Stack>
     </SafeAreaView>
   );
@@ -335,9 +320,9 @@ export default function RootLayout() {
                 <ToastProvider>
                   <OfflineRetryWatcher />
                   <AuthProvider>
-                    <GamesRuntimeBridge>
+                    <ClientRuntimeBridge>
                       <AuthGate />
-                    </GamesRuntimeBridge>
+                    </ClientRuntimeBridge>
                   </AuthProvider>
                 </ToastProvider>
               </PersistQueryClientProvider>

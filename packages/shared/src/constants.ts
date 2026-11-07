@@ -63,18 +63,13 @@ export const CLIENT_RELEASE_PLATFORMS = ["ios", "android", "web"] as const;
 export type ClientReleasePlatform = (typeof CLIENT_RELEASE_PLATFORMS)[number];
 export const CLIENT_RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
-// Workshop → HighScore games cutover, in three dated phases (midnight Pacific):
-//   active → until WORKSHOP_GAMES_SUNSET_AT: Workshop's frozen Games UI works,
-//            under a countdown banner.
-//   moved  → from the sunset: every Workshop games surface is a hand-off to
-//            HighScore, and the backend answers Workshop clients' games calls
-//            with 410.
-//   gone   → from WORKSHOP_GAMES_REMOVED_AT (two weeks later): the Games tab
-//            and switch disappear; only link / share hand-offs remain.
-// One set of constants drives the client phases, the backend gate, and the
-// banner copy so they can't disagree.
+// Workshop → HighScore games cutover. From WORKSHOP_GAMES_SUNSET_AT (midnight
+// Pacific) the backend answers Workshop clients' games calls with 410
+// (`middleware/workshop-games-sunset.ts`) — the backstop for installs that
+// never took the OTA. The Workshop client itself dropped every games surface
+// on 2026-11-06; only the `/g/:token` → HighScore link hand-off remains, which
+// uses the HighScore URLs below.
 export const WORKSHOP_GAMES_SUNSET_AT = "2026-10-31T07:00:00Z";
-export const WORKSHOP_GAMES_REMOVED_AT = "2026-11-14T07:00:00Z";
 export const HIGHSCORE_WEB_URL = "https://highscore.live";
 export const HIGHSCORE_APP_STORE_URL =
   "https://apps.apple.com/us/app/highscore-daily-games/id6805206753";

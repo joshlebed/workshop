@@ -14,8 +14,8 @@
 // shared modules use for each other, so a client bundle that imports this file
 // must find everything it needs inside it. That is also why the literal-number
 // pass below is its own copy rather than a call into `tokenizeScoreCandidates`
-// (`./scoreParsing`) — which the frozen Workshop `legacyGames` snapshot still
-// calls, and which must keep its behaviour.
+// (`./scoreParsing`), which other callers rely on and which must keep its
+// behaviour.
 
 import type { GameScoreDirection } from "./games.js";
 
