@@ -311,10 +311,10 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
   ids) and `node scripts/discord.mjs post [--reply-to <id>] "text"` work in any sandbox: config
   is SSM `/workshop-prod/discord/bot_config` (JSON, read via the sandbox AWS role). The same
   bot starts Niteshift tasks from Discord — `/niteshift <prompt>`, the "Send to Niteshift"
-  message command, or an `@Niteshift` mention (polled each minute by
+  message command, an `@Niteshift` mention or a text `/niteshift …` (polled each minute by
   `{ "job": "discord-mentions" }`) — all through `routes/discordInteractions.ts` /
   `jobs/discordMentions.ts` and one Niteshift webhook automation. Only `allowedUserIds` can
-  start tasks. A config change reaches the Lambda only on a Terraform apply. Setup, rotation,
+  start tasks. The Lambda reads the config from SSM at runtime (5-min cache). Setup, rotation,
   troubleshooting: `docs/discord-bot-runbook.md`.
 
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**

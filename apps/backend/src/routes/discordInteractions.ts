@@ -95,7 +95,9 @@ function taskRequestFor(
     const target = data.resolved?.messages?.[data.target_id];
     if (!target) return { error: "Couldn't read that message." };
     return {
-      prompt: `Act on this Discord message from ${nameOf(target.author)} (message ${target.id}). If it is feedback or a bug report, implement the fix.\n\n${quote(target.content)}`,
+      // Neutral on purpose: who wrote it, which message, the text. What to do
+      // about it is the agent's call (or the operator's, via /niteshift).
+      prompt: `Discord message from ${nameOf(target.author)} (message ${target.id}):\n\n${quote(target.content)}`,
       author: nameOf(user),
       messageId: target.id,
       source: "message_command",
@@ -105,7 +107,7 @@ function taskRequestFor(
 }
 
 discordInteractionRoutes.post("/interactions", async (c) => {
-  const config = getDiscordBotConfig();
+  const config = await getDiscordBotConfig();
   if (!config) return c.json({ error: "not found" }, 404);
 
   const rawBody = await c.req.text();

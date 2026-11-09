@@ -90,6 +90,9 @@ importers:
       '@aws-sdk/client-cloudwatch-logs':
         specifier: 3.1161.0
         version: 3.1161.0
+      '@aws-sdk/client-ssm':
+        specifier: 3.1161.0
+        version: 3.1161.0
       '@electric-sql/pglite':
         specifier: ^0.5.15
         version: 0.5.15
@@ -564,6 +567,10 @@ packages:
 
   '@aws-sdk/client-cloudwatch-logs@3.1161.0':
     resolution: {integrity: sha512-t2maD8t8+BkzZfJ/zAvxQMTWcdJApQqp54B9Oww0OAczaZBT0K4XqilkoahIpKVWxdT7qZIQ2E4iCXNxR297PA==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/client-ssm@3.1161.0':
+    resolution: {integrity: sha512-UVO4TLYKtkEC3Rme+xiOZn8FzyvAUmufDtkzFtAccGTuGBBeG53Or09UaGwmDBAps/pN0sZ8pYn36Pa/ocJn3w==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.979.1':
@@ -6890,6 +6897,17 @@ snapshots:
       graphql: 16.8.1
 
   '@aws-sdk/client-cloudwatch-logs@3.1161.0':
+    dependencies:
+      '@aws-sdk/core': 3.979.1
+      '@aws-sdk/credential-provider-node': 3.972.92
+      '@aws-sdk/types': 3.975.0
+      '@smithy/core': 3.38.0
+      '@smithy/fetch-http-handler': 5.8.0
+      '@smithy/node-http-handler': 4.14.0
+      '@smithy/types': 4.19.0
+      tslib: 2.8.1
+
+  '@aws-sdk/client-ssm@3.1161.0':
     dependencies:
       '@aws-sdk/core': 3.979.1
       '@aws-sdk/credential-provider-node': 3.972.92

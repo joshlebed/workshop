@@ -11,9 +11,12 @@
 //   - `scripts/discord.mjs` (agents): read / post / register commands. Same
 //     config, read from SSM.
 //
-// All config is one JSON blob in SSM `/workshop-prod/discord/bot_config`,
-// passed to the Lambda as `DISCORD_BOT_CONFIG`. Empty = feature off (local dev,
-// tests). Shape: {@link DiscordBotConfig}. Runbook: docs/discord-bot-runbook.md.
+// All config is one JSON blob in SSM `/workshop-prod/discord/bot_config`. The
+// Lambda reads it at runtime (`DISCORD_BOT_CONFIG_PARAM` = the parameter name,
+// cached CACHE_MS per container) so `scripts/discord.mjs setup` takes effect
+// within minutes, no Terraform apply. `DISCORD_BOT_CONFIG` (inline JSON) wins
+// when set — tests and local dev. Neither set, or invalid = feature off.
+// Shape: {@link DiscordBotConfig}. Runbook: docs/discord-bot-runbook.md.
 
 import { createPublicKey, verify } from "node:crypto";
 import { z } from "zod";
@@ -22,6 +25,8 @@ import { logger } from "./logger.js";
 const discordBotConfigSchema = z.object({
   botToken: z.string().min(1),
   applicationId: z.string().min(1),
+  /** The bot's managed role; `@Niteshift` often autocompletes to it. Set by `setup`. */
+  botRoleId: z.string().min(1).optional(),
   /** Hex Ed25519 key from the Developer Portal (General Information). */
   publicKey: z.string().regex(/^[0-9a-f]{64}$/i),
   guildId: z.string().min(1),
@@ -33,25 +38,55 @@ const discordBotConfigSchema = z.object({
 });
 export type DiscordBotConfig = z.infer<typeof discordBotConfigSchema>;
 
-let cached: { raw: string | undefined; config: DiscordBotConfig | null } | null = null;
+const CACHE_MS = 5 * 60 * 1000;
+let cached: { key: string; at: number; config: DiscordBotConfig | null } | null = null;
 
-/** Parsed `DISCORD_BOT_CONFIG`, or null when unset/invalid (feature off). */
-export function getDiscordBotConfig(raw = process.env.DISCORD_BOT_CONFIG): DiscordBotConfig | null {
-  if (cached && cached.raw === raw) return cached.config;
+function parseDiscordBotConfig(raw: string | undefined): DiscordBotConfig | null {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = discordBotConfigSchema.safeParse(JSON.parse(raw));
+    if (parsed.success) return parsed.data;
+    logger.warn("discord bot config invalid", {
+      issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.code}`),
+    });
+  } catch {
+    logger.warn("discord bot config is not JSON");
+  }
+  return null;
+}
+
+async function readSsmParameter(name: string): Promise<string | undefined> {
+  // Lazy: the SDK is provided by the Lambda runtime and only this path needs it.
+  const { SSMClient, GetParameterCommand } = await import("@aws-sdk/client-ssm");
+  const out = await new SSMClient({}).send(
+    new GetParameterCommand({ Name: name, WithDecryption: true }),
+  );
+  return out.Parameter?.Value;
+}
+
+/** The bot config, or null when unset/invalid/unreadable (feature off). */
+export async function getDiscordBotConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  now = Date.now(),
+): Promise<DiscordBotConfig | null> {
+  const inline = env.DISCORD_BOT_CONFIG;
+  const param = env.DISCORD_BOT_CONFIG_PARAM;
+  const key = inline?.trim() ? `inline:${inline}` : param ? `ssm:${param}` : "";
+  if (cached && cached.key === key && (key.startsWith("inline:") || now - cached.at < CACHE_MS)) {
+    return cached.config;
+  }
   let config: DiscordBotConfig | null = null;
-  if (raw?.trim()) {
+  if (inline?.trim()) config = parseDiscordBotConfig(inline);
+  else if (param) {
     try {
-      const parsed = discordBotConfigSchema.safeParse(JSON.parse(raw));
-      if (parsed.success) config = parsed.data;
-      else
-        logger.warn("discord bot config invalid", {
-          issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.code}`),
-        });
-    } catch {
-      logger.warn("discord bot config is not JSON");
+      config = parseDiscordBotConfig(await readSsmParameter(param));
+    } catch (error) {
+      logger.warn("discord bot config: SSM read failed", { error });
+      // Keep serving the last good config through a transient SSM failure.
+      if (cached?.key === key) config = cached.config;
     }
   }
-  cached = { raw, config };
+  cached = { key, at: now, config };
   return config;
 }
 
@@ -92,8 +127,8 @@ export interface TaskRequest {
 
 /**
  * Fire the "Discord /niteshift → task" automation. The payload's top-level
- * fields are interpolated into the automation prompt (`{{prompt}}`,
- * `{{author}}`, `{{messageId}}`). Niteshift answers `{ ok, taskIds }`;
+ * fields are prepended verbatim (as JSON) to the automation prompt, which
+ * refers to them by name — Niteshift does not fill in `{{placeholders}}`. Niteshift answers `{ ok, taskIds }`;
  * returns the new task's URL, `""` when accepted without an id, or null when
  * it was not accepted.
  */
@@ -172,6 +207,7 @@ export const discordMessageSchema = z.object({
     bot: z.boolean().optional(),
   }),
   mentions: z.array(z.object({ id: z.string() })).default([]),
+  mention_roles: z.array(z.string()).default([]),
   reactions: z
     .array(z.object({ me: z.boolean(), emoji: z.object({ name: z.string().nullable() }) }))
     .optional(),
@@ -197,18 +233,38 @@ export function snowflakeTime(id: string): number {
   return Number((BigInt(id) >> 22n) + 1420070400000n);
 }
 
-/** Strip `<@botId>` / `<@!botId>` mentions and trim. */
-function stripMention(content: string, botId: string): string {
-  return content.replace(new RegExp(`<@!?${botId}>`, "g"), "").trim();
+// Discord doesn't run a slash command typed inside a reply — it posts the text.
+// Treat a message that starts with `/niteshift` as a trigger, so "reply to a
+// feedback message with /niteshift fix this" works like an @mention.
+const TEXT_COMMAND = /^\s*\/niteshift\b/i;
+
+/**
+ * Does this message ask the bot for a task? An @mention of the bot user (a bot
+ * user's id is its application id), of its managed role, or a text
+ * `/niteshift …`.
+ */
+export function triggersBot(message: DiscordMessage, config: DiscordBotConfig): boolean {
+  return (
+    message.mentions.some((u) => u.id === config.applicationId) ||
+    (config.botRoleId !== undefined && message.mention_roles.includes(config.botRoleId)) ||
+    TEXT_COMMAND.test(message.content)
+  );
+}
+
+/** Strip the trigger (mentions of the bot / its role, a leading `/niteshift`). */
+function stripTrigger(content: string, config: DiscordBotConfig): string {
+  let out = content.replace(new RegExp(`<@!?${config.applicationId}>`, "g"), "");
+  if (config.botRoleId) out = out.replace(new RegExp(`<@&${config.botRoleId}>`, "g"), "");
+  return out.replace(TEXT_COMMAND, "").trim();
 }
 
 /**
- * The task prompt for a message that mentions the bot. A reply carries the
+ * The task prompt for a message that triggers the bot. A reply carries the
  * message it replied to, so "@Niteshift implement this" under a feedback
  * message hands the agent both.
  */
-export function promptFromMention(message: DiscordMessage, botId: string): string {
-  const ask = stripMention(message.content, botId) || "Act on the message below.";
+export function promptFromMention(message: DiscordMessage, config: DiscordBotConfig): string {
+  const ask = stripTrigger(message.content, config) || "Act on the message below.";
   const ref = message.referenced_message;
   if (!ref) return ask;
   return `${ask}\n\nIn reply to this message from ${displayName(ref.author)} (Discord message ${ref.id}):\n\n${quote(ref.content)}`;

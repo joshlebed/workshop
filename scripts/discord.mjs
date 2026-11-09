@@ -7,7 +7,8 @@
 //       one-time: derive app id / public key / guild, write SSM bot_config
 //   node scripts/discord.mjs register [--api-url <url>]
 //       (re)register /niteshift + "Send to Niteshift" and point Discord's
-//       Interactions Endpoint URL at the API. Run after the Lambda has the config.
+//       Interactions Endpoint URL at the API. Run after the Lambda has the config,
+//       and again after any Save in the Developer Portal (it can blank the URL).
 //
 // Config: $DISCORD_BOT_CONFIG (JSON) or SSM /workshop-prod/discord/bot_config,
 // read with the ambient AWS credentials (the Niteshift sandbox role has them).
@@ -145,6 +146,8 @@ async function setup(args) {
 
   const app = await discord(botToken, "/applications/@me");
   const channel = await discord(botToken, `/channels/${channelId}`);
+  const roles = await discord(botToken, `/guilds/${channel.guild_id}/roles`);
+  const botRoleId = roles.find((r) => r.tags?.bot_id === app.id)?.id;
   const owners = app.team ? app.team.members.map((m) => m.user.id) : [app.owner.id];
 
   // Keeps niteshiftWebhookUrl / niteshiftWebhookSecret (the automation's, set once).
@@ -158,6 +161,7 @@ async function setup(args) {
     ...existing,
     botToken,
     applicationId: app.id,
+    ...(botRoleId ? { botRoleId } : {}),
     publicKey: app.verify_key,
     guildId: channel.guild_id,
     channelId,
@@ -222,6 +226,14 @@ async function register(args) {
     method: "PATCH",
     body: { interactions_endpoint_url: endpoint },
   });
+  // The Developer Portal's Save button writes the whole form, so saving any
+  // other setting there (e.g. an intent) can blank this field again. Check it.
+  const after = await discord(config.botToken, "/applications/@me");
+  if (after.interactions_endpoint_url !== endpoint) {
+    throw new Error(
+      `Interactions Endpoint URL did not stick (now ${after.interactions_endpoint_url}); re-run register`,
+    );
+  }
   console.log(
     `registered ${commands.length} commands in guild ${config.guildId}; interactions → ${endpoint}`,
   );
