@@ -735,7 +735,9 @@ logs failures independently, successful batches advance `last_reminded_at`, and 
 `DeviceNotRegistered` tickets are pruned after the loop. The spring-forward hour that does not exist
 is intentionally skipped in v1. Delivery (chunking, ticket parsing, pruning) lives in
 `lib/expoPush.ts` (`sendExpoPushMessages`), shared with the operator push route
-(`POST /v1/admin/push/send`, `lib/adminPush.ts`); its endpoint is `EXPO_PUSH_URL` (config,
+(`POST /v1/admin/push/send`, `lib/adminPush.ts`) and the recipient push on a fresh directed
+friend request (`lib/friendRequestPush.ts`: best-effort, 3s fetch cap, never fails the route,
+`data: { kind: "friend_request", userId }`); its endpoint is `EXPO_PUSH_URL` (config,
 default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
 
 ## Lists and items are soft-deleted via `archived_at`
