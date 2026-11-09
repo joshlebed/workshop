@@ -306,6 +306,17 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
   DB is a prod copy with real tokens, so point it at a local stub before exercising any send**.
   Agents never send (see Prohibited); runbook: `docs/push-runbook.md`.
 
+- **Discord admin channel: agents can read and post `#workshop-admin`.** User feedback and
+  ops pings land there. `node scripts/discord.mjs read --limit 30` (oldest first, with message
+  ids) and `node scripts/discord.mjs post [--reply-to <id>] "text"` work in any sandbox: config
+  is SSM `/workshop-prod/discord/bot_config` (JSON, read via the sandbox AWS role). The same
+  bot starts Niteshift tasks from Discord — `/niteshift <prompt>`, the "Send to Niteshift"
+  message command, or an `@Niteshift` mention (polled each minute by
+  `{ "job": "discord-mentions" }`) — all through `routes/discordInteractions.ts` /
+  `jobs/discordMentions.ts` and one Niteshift webhook automation. Only `allowedUserIds` can
+  start tasks. A config change reaches the Lambda only on a Terraform apply. Setup, rotation,
+  troubleshooting: `docs/discord-bot-runbook.md`.
+
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load
   (`failedUrl`) for the life of the mount, so a row mounted before a user uploaded a photo
