@@ -4,9 +4,11 @@ import {
   completedFlagValue,
   dismissedFlagValue,
   isSharePractice,
+  onboardedFlagValue,
   runtimeHasShareSetup,
   SHARE_PRACTICE_TEXT,
   SHARE_WALKTHROUGH_STEPS,
+  shouldAutoOpenShareSetup,
   shouldShowShareAnnouncement,
 } from "./shareOnboarding";
 
@@ -45,6 +47,53 @@ describe("shouldShowShareAnnouncement", () => {
       }),
     ).toBe(false);
   });
+
+  it("keeps showing after the walkthrough merely auto-opened and was skipped", () => {
+    const value = onboardedFlagValue(undefined, new Date("2026-11-09T00:00:00Z"));
+    expect(
+      shouldShowShareAnnouncement({
+        flags: { [USER_FLAG_KEYS.shareSheetAnnouncement]: value },
+        supported: true,
+      }),
+    ).toBe(true);
+  });
+});
+
+describe("shouldAutoOpenShareSetup", () => {
+  const at = new Date("2026-11-09T00:00:00Z");
+
+  it("opens once for a supported binary with loaded, empty flags", () => {
+    expect(shouldAutoOpenShareSetup({ flags: {}, supported: true })).toBe(true);
+  });
+
+  it("never opens unsupported or while flags load", () => {
+    expect(shouldAutoOpenShareSetup({ flags: {}, supported: false })).toBe(false);
+    expect(shouldAutoOpenShareSetup({ flags: undefined, supported: true })).toBe(false);
+  });
+
+  it("never opens again once auto-opened, dismissed, or completed", () => {
+    for (const value of [
+      onboardedFlagValue(undefined, at),
+      dismissedFlagValue(at),
+      completedFlagValue(at),
+    ]) {
+      expect(
+        shouldAutoOpenShareSetup({
+          flags: { [USER_FLAG_KEYS.shareSheetAnnouncement]: value },
+          supported: true,
+        }),
+      ).toBe(false);
+    }
+  });
+
+  it("never opens for a user already posting through the share sheet", () => {
+    expect(
+      shouldAutoOpenShareSetup({
+        flags: { [USER_FLAG_KEYS.shareExtensionScore]: { firstAt: "2026-08-30T00:00:00Z" } },
+        supported: true,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("runtimeHasShareSetup", () => {
@@ -72,6 +121,16 @@ describe("flag values", () => {
     const at = new Date("2026-08-31T12:34:56.000Z");
     expect(dismissedFlagValue(at)).toEqual({ dismissedAt: "2026-08-31T12:34:56.000Z" });
     expect(completedFlagValue(at)).toEqual({ completedAt: "2026-08-31T12:34:56.000Z" });
+  });
+
+  it("onboardedFlagValue keeps whatever was already on the flag", () => {
+    const at = new Date("2026-11-09T00:00:00.000Z");
+    expect(onboardedFlagValue(undefined, at)).toEqual({ onboardedAt: "2026-11-09T00:00:00.000Z" });
+    expect(onboardedFlagValue({ dismissedAt: "2026-08-31T00:00:00.000Z" }, at)).toEqual({
+      dismissedAt: "2026-08-31T00:00:00.000Z",
+      onboardedAt: "2026-11-09T00:00:00.000Z",
+    });
+    expect(onboardedFlagValue("garbage", at)).toEqual({ onboardedAt: "2026-11-09T00:00:00.000Z" });
   });
 });
 

@@ -1,16 +1,32 @@
-// One-time "post scores from the share sheet" announcement on Games home:
-// a pitch, a CTA into the /share-setup walkthrough, and an X that dismisses
-// it for good. Same shape as AppUpdateBanner; visibility is
-// useShareAnnouncement (iOS, 1.2.0+ binary, not dismissed/completed/adopted).
+// "Post scores from the share sheet" on Games home. Two jobs, one hook
+// (useShareAnnouncement — iOS, 1.2.0+ binary, flags loaded):
+//   1. Onboarding: the first time a signed-in account lands here with no
+//      share-setup history, push the /share-setup walkthrough itself. Once
+//      per account (`onboardedAt`), only while this screen is focused so it
+//      never fights a deep-link or share-intent redirect.
+//   2. Reminder: the card below — a pitch, a CTA into the walkthrough, and an
+//      X that dismisses it for good. It stays after a skipped onboarding.
 
-import { type Href, useRouter } from "expo-router";
+import { type Href, useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useRef } from "react";
 import { StyleSheet, View } from "react-native";
 import { useShareAnnouncement } from "../../hooks/useShareAnnouncement";
 import { Button, IconButton, PixelIcon, Text, tokens } from "../../theme";
 
 export function ShareAnnouncementCard() {
   const router = useRouter();
-  const { visible, dismiss } = useShareAnnouncement();
+  const { visible, dismiss, autoOpen, markOnboarded } = useShareAnnouncement();
+  // One push per mount even if the flags query refetches before the
+  // optimistic `onboardedAt` lands.
+  const openedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (!autoOpen || openedRef.current) return;
+      openedRef.current = true;
+      markOnboarded();
+      router.push("/share-setup?onboarding=1" as Href);
+    }, [autoOpen, markOnboarded, router]),
+  );
   if (!visible) return null;
   return (
     <View style={styles.card} testID="share-announcement" accessibilityRole="summary">
