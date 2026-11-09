@@ -10,11 +10,16 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   type DiscordBotConfig,
+  discordApi,
   getDiscordBotConfig,
+  openTaskThread,
+  postTaskUpdate,
   quote,
   startedText,
   startNiteshiftTask,
   type TaskRequest,
+  threadName,
+  untrustedBlock,
   verifyDiscordSignature,
 } from "../lib/discordBot.js";
 import { logger } from "../lib/logger.js";
@@ -95,9 +100,10 @@ function taskRequestFor(
     const target = data.resolved?.messages?.[data.target_id];
     if (!target) return { error: "Couldn't read that message." };
     return {
-      // Neutral on purpose: who wrote it, which message, the text. What to do
-      // about it is the agent's call (or the operator's, via /niteshift).
-      prompt: `Discord message from ${nameOf(target.author)} (message ${target.id}):\n\n${quote(target.content)}`,
+      // Neutral on purpose: who wrote it, which message, the text — fenced as
+      // untrusted (it is often a ping quoting app users). What to do about it
+      // is the agent's call (or the operator's, via /niteshift).
+      prompt: `The operator sent this Discord message to Niteshift:\n\n${untrustedBlock(nameOf(target.author), target.id, target.content)}`,
       author: nameOf(user),
       messageId: target.id,
       source: "message_command",
@@ -137,10 +143,54 @@ discordInteractionRoutes.post("/interactions", async (c) => {
     logger.info("discord interaction refused", { reason: req.error });
     return c.json(reply(req.error, true));
   }
-  // Discord gives us 3s to answer; startNiteshiftTask caps itself at 2.5s.
-  const taskUrl = await startNiteshiftTask(config, req);
-  if (taskUrl === null)
-    return c.json(reply("⚠️ Niteshift didn't accept the task — check the API logs.", true));
-  const shown = req.source === "slash_command" ? `\n${quote(req.prompt.slice(0, 1500))}` : "";
-  return c.json(reply(`${startedText(taskUrl)} (for ${req.author})${shown}`));
+  return c.json(await startFromInteraction(config, req, Date.now()));
 });
+
+// Discord gives us 3s to answer. Each Discord call is capped at 1.5s and the
+// Niteshift call gets what is left of a 2.7s budget (at least 0.8s).
+const BUDGET_MS = 2700;
+
+async function startFromInteraction(config: DiscordBotConfig, req: TaskRequest, startedAt: number) {
+  const remaining = () => Math.max(800, BUDGET_MS - (Date.now() - startedAt));
+
+  // The thread's starter: the targeted message, or for /niteshift a message the
+  // bot posts with the request (a slash command has no message of its own).
+  let starterId = req.messageId;
+  if (req.source === "slash_command") {
+    const res = await discordApi(config, `/channels/${config.channelId}/messages`, {
+      method: "POST",
+      body: {
+        content: `🌒 **/niteshift** from ${req.author}\n${quote(req.prompt.slice(0, 1800))}`,
+        allowed_mentions: { parse: [] },
+      },
+      timeoutMs: 1500,
+    }).catch(() => null);
+    const posted = res?.ok ? z.object({ id: z.string() }).safeParse(await res.json()) : null;
+    starterId = posted?.success ? posted.data.id : undefined;
+  }
+
+  const thread = starterId
+    ? await openTaskThread(config, starterId, threadName(req.prompt.split("\n")[0] ?? ""))
+    : null;
+  if (thread && "existing" in thread) {
+    return reply(`That message already has a task thread: <#${thread.existing}>`, true);
+  }
+  const threadId = thread?.threadId;
+  const taskUrl = await startNiteshiftTask(
+    config,
+    { ...req, ...(starterId ? { messageId: starterId } : {}), ...(threadId ? { threadId } : {}) },
+    fetch,
+    remaining(),
+  );
+  if (taskUrl === null) {
+    if (threadId) await postTaskUpdate(config, { threadId }, "⚠️ Niteshift didn't accept the task.");
+    return reply("⚠️ Niteshift didn't accept the task — check the API logs.", true);
+  }
+  if (threadId) {
+    await postTaskUpdate(config, { threadId }, startedText(taskUrl));
+    return reply(`${startedText(taskUrl)} — follow along in <#${threadId}>`, true);
+  }
+  // No thread (missing permission, Discord hiccup): answer in the channel.
+  const shown = req.source === "slash_command" ? `\n${quote(req.prompt.slice(0, 1500))}` : "";
+  return reply(`${startedText(taskUrl)} (for ${req.author})${shown}`);
+}
