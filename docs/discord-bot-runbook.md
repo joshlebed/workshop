@@ -8,16 +8,20 @@ operator start a Niteshift task from Discord three ways:
 | `/niteshift prompt:<text>`                               | Discord → `POST <api>/discord/interactions` → Niteshift      | instant |
 | Right-click a message → Apps → **Send to Niteshift**     | same; the message text is the prompt, the task replies to it | instant |
 | `@Niteshift <text>` (optionally as a reply to a message) | `{job: "discord-mentions"}` polls every minute               | ≤ 1 min |
+| A message starting `/niteshift <text>` (e.g. in a reply) | same poll — Discord doesn't run slash commands in replies    | ≤ 1 min |
 
 Each one fires the Niteshift automation **"Discord /niteshift → task"**
 (<https://niteshift.dev/automations/aut__pCmyroVGLTOEY-mPObcx>, repo `joshlebed/workshop`),
-whose prompt wraps `{{prompt}}`, `{{author}}`, `{{messageId}}`. Only Discord user ids in
+which sends `{ prompt, author, messageId, source }`. Niteshift prepends that JSON to the
+automation prompt as-is and does **not** fill in `{{placeholders}}`, so the automation prompt
+names the fields instead. Only Discord user ids in
 `allowedUserIds` can start tasks; the commands are also limited to server admins and to the
 configured channel. A handled mention gets the bot's 🌒 reaction.
 
 ## Config
 
-One SecureString, `/workshop-prod/discord/bot_config` → Lambda env `DISCORD_BOT_CONFIG`:
+One SecureString, `/workshop-prod/discord/bot_config`, read by the Lambda at runtime (env
+`DISCORD_BOT_CONFIG_PARAM` holds its name; cached 5 minutes per container):
 
 ```json
 {
@@ -33,9 +37,9 @@ One SecureString, `/workshop-prod/discord/bot_config` → Lambda env `DISCORD_BO
 ```
 
 Terraform only adopts the parameter (`ignore_changes = [value]`); the value is written by
-`node scripts/discord.mjs setup`. **The Lambda only sees a new value after a Terraform apply**
-(any merged `infra/**` change, or set the env var by hand — see root CLAUDE.md on why to
-prefer an apply). Empty/partial config = everything is a no-op (route 404s, job returns).
+`node scripts/discord.mjs setup`. A new value reaches the Lambda within ~5 minutes; no apply.
+Empty/partial config = everything is a no-op (route 404s, job returns). `botRoleId` is
+optional (`setup` fills it): `@Niteshift` often autocompletes to the bot's role, not its user.
 
 ## One-time setup (operator)
 
@@ -62,7 +66,9 @@ node scripts/discord.mjs register   # slash + message command, Interactions Endp
 ```
 
 `register` fails if the Lambda isn't serving the config yet — Discord PINGs the endpoint
-before saving it.
+before saving it. **Re-run it after any Save in the Developer Portal**: the portal writes the
+whole form and can blank the Interactions Endpoint URL (that happened when the Message Content
+Intent was turned on); `register` now checks the URL stuck.
 
 ## Agents
 
@@ -80,8 +86,8 @@ Message text is real user feedback — fine in the sandbox, never in a public Ac
   `niteshift webhook non-2xx`, `discord mentions: …`, `discord bot config invalid`.
 - **"This interaction failed"** in Discord: the route took > 3s or 5xx'd. Niteshift's webhook is
   capped at 2.5s.
-- **Rotate the bot token**: Reset Token in the portal, re-run `setup`, then apply.
+- **Rotate the bot token**: Reset Token in the portal, re-run `setup`, then `register`.
 - **Rotate the Niteshift webhook secret**: on the automation page, then edit
-  `niteshiftWebhookSecret` in the SSM JSON and apply.
+  `niteshiftWebhookSecret` in the SSM JSON.
 - **Mentions not picked up**: the bot needs Read Message History + Message Content Intent; the
   message must be < 10 min old, from an allowed user, and not already 🌒-reacted by the bot.

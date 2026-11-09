@@ -3,6 +3,7 @@ import {
   daysBack,
   formatGameDateLabel,
   localDateKey,
+  msUntilNextLocalMidnight,
   resolveRailDate,
   shiftDateKey,
 } from "./gameDate";
@@ -116,5 +117,24 @@ describe("resolveRailDate", () => {
   it("falls back to today when outside the rail", () => {
     expect(resolveRailDate("2026-09-07", today, 7)).toBe(today);
     expect(resolveRailDate("2026-08-30", today, 7)).toBe(today);
+  });
+});
+
+describe("msUntilNextLocalMidnight", () => {
+  it("counts to the next local midnight", () => {
+    const now = new Date(2026, 10, 9, 23, 59, 30);
+    expect(msUntilNextLocalMidnight(now)).toBe(30_000);
+  });
+
+  it("is a full day at midnight itself", () => {
+    const now = new Date(2026, 10, 9, 0, 0, 0);
+    expect(msUntilNextLocalMidnight(now)).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it("lands on the day localDateKey rolls over to", () => {
+    const now = new Date(2026, 10, 9, 18, 0, 0);
+    const next = new Date(now.getTime() + msUntilNextLocalMidnight(now));
+    expect(localDateKey(next)).toBe("2026-11-10");
+    expect(localDateKey(new Date(next.getTime() - 1))).toBe("2026-11-09");
   });
 });

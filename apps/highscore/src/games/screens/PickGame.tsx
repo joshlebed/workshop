@@ -29,7 +29,6 @@ import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { localDateKey } from "../lib/gameDate";
 import { writePostedScore } from "../lib/postedScore";
 import { recognizedGameLabel, recognizedGameTarget } from "../lib/recognition";
 import {
@@ -48,6 +47,7 @@ import {
 } from "../lib/useScoreCheck";
 import { useSharePreview } from "../lib/useSharePreview";
 import { useGamesRuntime } from "../runtime";
+import { useToday } from "../state/viewDay";
 
 // The Games-surface score picker for the share flow (the leaderboard-list
 // picker's successor): a detected-score card with a one-tap Post button, a
@@ -76,7 +76,7 @@ export default function PickGame() {
   // matches the game's text pattern, so `detectedScore` is non-null, but there
   // is no result to post — one-tap posting would store a bare link.
   const resultlessDraft = isResultlessShare(scoreDraft);
-  const today = localDateKey();
+  const today = useToday();
 
   const myGamesQuery = useQuery({
     queryKey: queryKeys.games.mine(today),

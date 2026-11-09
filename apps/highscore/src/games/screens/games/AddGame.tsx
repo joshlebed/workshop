@@ -37,9 +37,9 @@ import {
   friendsFeedRows,
   groupCatalogRows,
 } from "../../lib/catalogSections";
-import { localDateKey } from "../../lib/gameDate";
 import { goBack } from "../../lib/navigation";
 import { useGamesRuntime } from "../../runtime";
+import { useToday } from "../../state/viewDay";
 import { AddByUrlFooter } from "./addByUrl/AddByUrlFooter";
 import { GameCatalogList } from "./GameCatalogList";
 
@@ -50,7 +50,7 @@ export function AddGame() {
   const { showToast } = useToast();
   const livePoll = useLivePollingInterval();
   const insets = useSafeAreaInsets();
-  const todayKey = localDateKey();
+  const todayKey = useToday();
 
   const [friendsOnly, setFriendsOnly] = useState(true);
   // Per-row add state so each row shows its own spinner / "✓ Added" pill.

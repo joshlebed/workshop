@@ -1,5 +1,6 @@
 // `{ "job": "discord-mentions" }` — every minute, start a Niteshift task for
-// each new `@Niteshift` mention in #workshop-admin.
+// each new `@Niteshift` mention (bot user or its role) or text `/niteshift …`
+// message in #workshop-admin.
 //
 // Mentions only arrive over Discord's gateway websocket, which a Lambda can't
 // hold, so this polls the channel over REST instead. It is stateless: a handled
@@ -19,6 +20,7 @@ import {
   snowflakeTime,
   startedText,
   startNiteshiftTask,
+  triggersBot,
 } from "../lib/discordBot.js";
 import { logger } from "../lib/logger.js";
 
@@ -36,13 +38,12 @@ export function pendingMentions(
   config: DiscordBotConfig,
   now: number,
 ): DiscordMessage[] {
-  const botId = config.applicationId; // a bot user's id is its application id
   return messages
     .filter(
       (m) =>
         !m.author.bot &&
         config.allowedUserIds.includes(m.author.id) &&
-        m.mentions.some((u) => u.id === botId) &&
+        triggersBot(m, config) &&
         now - snowflakeTime(m.id) <= MAX_AGE_MS &&
         !m.reactions?.some((r) => r.me && r.emoji.name === HANDLED_EMOJI),
     )
@@ -50,7 +51,7 @@ export function pendingMentions(
 }
 
 export async function runDiscordMentionsJob(deps: Deps = {}): Promise<{ started: number }> {
-  const config = deps.config === undefined ? getDiscordBotConfig() : deps.config;
+  const config = deps.config === undefined ? await getDiscordBotConfig() : deps.config;
   if (!config) return { started: 0 };
   const fetcher = deps.fetcher ?? fetch;
   const now = deps.now ?? Date.now();
@@ -87,7 +88,7 @@ export async function runDiscordMentionsJob(deps: Deps = {}): Promise<{ started:
     const taskUrl = await startNiteshiftTask(
       config,
       {
-        prompt: promptFromMention(message, config.applicationId),
+        prompt: promptFromMention(message, config),
         author: displayName(message.author),
         messageId: message.id,
         source: "mention",

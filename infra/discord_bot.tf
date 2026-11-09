@@ -4,8 +4,35 @@
 # hold, so EventBridge Scheduler invokes the API Lambda with
 # `{ "job": "discord-mentions" }` once a minute; the job reads the last 50
 # channel messages over REST and starts a Niteshift task for each new mention
-# (apps/backend/src/jobs/discordMentions.ts). No-op until DISCORD_BOT_CONFIG is
+# (apps/backend/src/jobs/discordMentions.ts). No-op until the bot config is
 # filled in. Reuses the scheduler role from request_rollups.tf.
+#
+# The Lambda reads /workshop-prod/discord/bot_config at runtime (cached 5 min,
+# DISCORD_BOT_CONFIG_PARAM = its name), so `scripts/discord.mjs setup` takes
+# effect without an apply and the token never sits in the Lambda env.
+
+resource "aws_iam_role_policy" "lambda_discord_bot_config" {
+  name = "${local.prefix}-lambda-discord-bot-config"
+  role = aws_iam_role.lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = aws_ssm_parameter.discord_bot_config.arn
+      },
+      {
+        # SecureString under the AWS-managed aws/ssm key, only via SSM.
+        Effect    = "Allow"
+        Action    = ["kms:Decrypt"]
+        Resource  = "*"
+        Condition = { StringEquals = { "kms:ViaService" = "ssm.us-east-1.amazonaws.com" } }
+      },
+    ]
+  })
+}
 #
 # The /niteshift slash command needs no infra: Discord POSTs it to
 # `<api>/discord/interactions`, served by the same Lambda.

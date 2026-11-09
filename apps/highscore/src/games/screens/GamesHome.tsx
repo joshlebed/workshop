@@ -65,7 +65,6 @@ import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { localDateKey } from "../lib/gameDate";
 import { writePostedScore } from "../lib/postedScore";
 import { prewarmGameShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
@@ -102,7 +101,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   // home indicator itself.
   const insets = useSafeAreaInsets();
 
-  const todayKey = localDateKey();
+  const { today: todayKey, viewDate, setViewDate } = useViewDay();
   const gamesKey = queryKeys.games.mine(todayKey);
 
   // The header day picker re-dates every card's standings. The home play→paste loop
@@ -110,7 +109,6 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   // `viewDate`. Posting to a past day lives on the per-game board. The
   // selection is shared with each game board (state/viewDay.tsx), so paging
   // days over there leaves home on the same day when you come back.
-  const { viewDate, setViewDate } = useViewDay();
   const viewingToday = viewDate === todayKey;
 
   // Teach v2: "Fix score" on my own unread row, and the direction control in

@@ -401,7 +401,7 @@ friendRoutes.post(
     // accept satisfied it.
     const formed = await addFriendship(request.inviterId, userId);
     await deleteDirectedPending(request.inviterId, userId);
-    if (formed) await notifyFriendshipFormed(userId, request.inviterId, "accepted invite link");
+    if (formed) await notifyFriendshipFormed(userId, request.inviterId, "invite_link");
     if (formed) await notifyFirstFriendAfterSignup(userId, request.inviterId);
 
     const pair = canonicalPair(request.inviterId, userId);
@@ -534,7 +534,7 @@ friendRoutes.post(
       await deleteDirectedPending(userId, targetId);
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
-      if (formed) await notifyFriendshipFormed(userId, targetId, "mutual request");
+      if (formed) await notifyFriendshipFormed(userId, targetId, "mutual_request");
       if (formed) await notifyFirstFriendAfterSignup(userId, targetId);
       const response: SendFriendRequestResponse = {
         status: "accepted",
@@ -592,7 +592,7 @@ friendRoutes.post(
 
     const formed = await addFriendship(senderId, userId);
     await deleteDirectedPending(userId, senderId);
-    if (formed) await notifyFriendshipFormed(userId, senderId, "accepted request");
+    if (formed) await notifyFriendshipFormed(userId, senderId, "request");
     if (formed) await notifyFirstFriendAfterSignup(userId, senderId);
 
     const [edge, [sender]] = await Promise.all([
