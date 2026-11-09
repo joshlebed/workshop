@@ -12,7 +12,9 @@ operator start a Niteshift task from Discord three ways:
 
 Each one fires the Niteshift automation **"Discord /niteshift → task"**
 (<https://niteshift.dev/automations/aut__pCmyroVGLTOEY-mPObcx>, repo `joshlebed/workshop`),
-whose prompt wraps `{{prompt}}`, `{{author}}`, `{{messageId}}`. Only Discord user ids in
+which sends `{ prompt, author, messageId, source }`. Niteshift prepends that JSON to the
+automation prompt as-is and does **not** fill in `{{placeholders}}`, so the automation prompt
+names the fields instead. Only Discord user ids in
 `allowedUserIds` can start tasks; the commands are also limited to server admins and to the
 configured channel. A handled mention gets the bot's 🌒 reaction.
 

@@ -127,8 +127,8 @@ export interface TaskRequest {
 
 /**
  * Fire the "Discord /niteshift → task" automation. The payload's top-level
- * fields are interpolated into the automation prompt (`{{prompt}}`,
- * `{{author}}`, `{{messageId}}`). Niteshift answers `{ ok, taskIds }`;
+ * fields are prepended verbatim (as JSON) to the automation prompt, which
+ * refers to them by name — Niteshift does not fill in `{{placeholders}}`. Niteshift answers `{ ok, taskIds }`;
  * returns the new task's URL, `""` when accepted without an id, or null when
  * it was not accepted.
  */
