@@ -21,6 +21,10 @@ export const WORKSHOP_GAMES_SUNSET_MS = Date.parse(WORKSHOP_GAMES_SUNSET_AT);
 export function workshopGamesSunset(now: () => number = Date.now): MiddlewareHandler {
   return async (c, next) => {
     if (getRequestClientContext()?.client === "workshop" && now() >= WORKSHOP_GAMES_SUNSET_MS) {
+      // 410 is heuristically cacheable (RFC 9110 §15.5.11): without this a
+      // browser keeps serving the sunset answer for the URL even after the
+      // client starts identifying itself correctly.
+      c.header("Cache-Control", "no-store");
       return err(c, "GONE", "Daily games moved to HighScore", {
         highscoreUrl: HIGHSCORE_WEB_URL,
         appStoreUrl: HIGHSCORE_APP_STORE_URL,

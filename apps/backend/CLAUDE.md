@@ -625,8 +625,11 @@ resolving). `GET /v1/game-share/:token` is **optional-auth** (`optionalAuth` in
 `middleware/auth.ts`): a crawler / signed-out request gets just `{ user }` for the OG card; a
 signed-in request also gets `{ viewer: { isSelf, isFriend } }`, which the in-app `/g/:token`
 resolver uses to route (already-connected → Games home, else → the sharer's profile via the
-`?via=` vouch above). Unlike `friend_requests` share links this is **not** an accept surface —
-opening a play link never forms an edge. Helpers: `lib/gameShareLinks.ts`
+`?via=` vouch above). Opening a play link never forms an edge by itself, but the same token
+vouches a friend request: `POST /v1/friends/requests { userId, via }` with a play link the
+target minted forms the friendship immediately (`accepted`, Discord `play_link`) instead of
+leaving a `pending` row — holding someone's play link is the same social proof as holding
+their invite link. A `via` for anyone else is ignored and the request stays `pending`. Helpers: `lib/gameShareLinks.ts`
 (`findOrCreateGameShareLink` / `resolveGameShareLink`); same games flag gate; OG card +
 `/g/:token` Pages function live in `functions/`. Tests: `gameShare.test.ts` (PGlite).
 

@@ -69,7 +69,15 @@ function normalizeStatus(value: string): FriendRequestStatus {
   return value === "accepted" || value === "declined" ? value : "pending";
 }
 
-const sendRequestSchema = z.object({ userId: z.string().uuid() });
+const sendRequestSchema = z.object({
+  userId: z.string().uuid(),
+  /**
+   * A play-link token (`/g/:token`) the target minted. Holding one is the
+   * same social proof as holding their invite link, so a vouched request
+   * forms the friendship at once instead of waiting for the target to approve.
+   */
+  via: z.string().optional(),
+});
 const workshopClientHeaderSchema = z.enum(WORKSHOP_CLIENTS).default("workshop");
 
 const FRIEND_INVITE_BASE_URLS = {
@@ -516,6 +524,29 @@ friendRoutes.post(
         friend: friendShape(existingEdge.createdAt),
       };
       return ok(c, response);
+    }
+
+    // A play link the target minted vouches the sender in: they were handed
+    // it by the target (the same trust an invite link carries), so form the
+    // edge now rather than parking a pending request the target has to find.
+    const via = parsed.data.via;
+    const vouched =
+      via !== undefined &&
+      isValidShareSlug(via) &&
+      (await resolveGameShareLink(via))?.userId === targetId;
+    if (vouched) {
+      const formed = await addFriendship(userId, targetId);
+      await deleteDirectedPending(userId, targetId);
+      await deleteDirectedPending(targetId, userId);
+      const edge = await friendshipEdge(userId, targetId);
+      if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
+      if (formed) await notifyFriendshipFormed(userId, targetId, "play_link");
+      if (formed) await notifyFirstFriendAfterSignup(userId, targetId);
+      const response: SendFriendRequestResponse = {
+        status: "accepted",
+        friend: friendShape(edge.createdAt),
+      };
+      return ok(c, response, 201);
     }
 
     const [inbound] = await db

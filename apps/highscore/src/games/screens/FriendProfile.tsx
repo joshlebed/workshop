@@ -98,7 +98,8 @@ export default function FriendProfileScreen() {
     ]);
 
   const sendMutation = useMutation({
-    mutationFn: () => sendFriendRequest(userId, token),
+    // From a play link (`via`), the backend forms the friendship at once.
+    mutationFn: () => sendFriendRequest(userId, token, via ? { via } : {}),
     onSuccess: async (data) => {
       haptics.medium();
       if (data.status === "accepted") {
