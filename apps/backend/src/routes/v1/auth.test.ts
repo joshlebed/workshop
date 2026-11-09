@@ -19,6 +19,16 @@ describe("buildSignInNotification", () => {
     });
   });
 
+  it("appends how a new user found the app, never on a returning sign-in", () => {
+    expect(
+      buildSignInNotification(user, "google", true, "invited by Philip (friend invite link)")
+        .content,
+    ).toBe("👋 new signup — Ada via google — invited by Philip (friend invite link)");
+    expect(buildSignInNotification(user, "google", false, "ignored").content).toBe(
+      "👤 signed in — Ada via google",
+    );
+  });
+
   it("falls back display name → email → id for the label", () => {
     expect(buildSignInNotification({ ...user, displayName: null }, "apple", false).content).toBe(
       "👤 signed in — a@b.test via apple",

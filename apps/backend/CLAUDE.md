@@ -887,6 +887,27 @@ when no webhook is set. Tiers + kinds:
   When you add a new gated-by-newness ping, return a created/newly-X boolean from the writer
   (see `addFriendship` / `addToMyGames`) rather than re-querying — and add a builder + test here.
 
+**A 👋 signup ping says how they found the app** (`lib/signupAttribution.ts`). Apple/Google
+sign-in bodies carry an optional `acquisition` (`SignupAcquisition` in `@workshop/shared`;
+built client-side by `@workshop/api-client/signupAcquisition`): the friend-invite / play-link /
+list-invite token the app stashed before bouncing a signed-out visitor through sign-in, plus on
+web the first page load's cross-site referrer, pathname and `utm_*` (first touch, stashed at
+module load in each app's root `_layout.tsx`). For a **brand-new** user only, the token resolves
+to its owner and lands on `users.signup_source` / `referred_by_user_id` / `signup_context`
+(write-once; `SIGNUP_SOURCES`); the ping reads `— invited by Philip (friend invite link)`,
+`— via Philip's play link`, `— from news.ycombinator.com · utm_source=hn`, or says plainly
+`no referral recorded (App Store / direct)`. An absent `acquisition` (pre-attribution OTA) leaves
+the columns NULL and the ping says `app version predates attribution`; a rotated token keeps its
+source with a NULL referrer (`…no longer resolves — inviter unknown`). The zod schema drops bad
+fields one by one and the whole step is try/caught — attribution can never fail a sign-in. iOS has
+no deferred deep linking: someone who taps an invite, installs from the App Store, then opens the
+app arrives with no token, so their signup honestly reads `none`. For those, the **first
+friendship within 24h of a signup with no recorded inviter** sends a 🧭 `signup_first_friend`
+follow-up after the 🤝 ping (`notifyFirstFriendAfterSignup`, called at every `addFriendship`
+site in `routes/v1/friends.ts` — add it to any new one). The HighScore admin users tab shows the
+recorded source in the user panel (`signupSourceLabel`), separate from the inferred invite tree.
+`new signup` log lines carry `signupSource` / `referredByUserId` / `signupContext`.
+
 **Every ping ends with the requesting client — `· HighScore · iOS 1.4.0`.** `notifyDiscord`
 appends `describeRequestClient()` (`src/lib/requestContext.ts`), which reads
 `X-Workshop-Client` / `X-Workshop-Platform` / `X-Workshop-App-Version` off an

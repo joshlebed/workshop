@@ -379,6 +379,13 @@
       "when": 1793717114020,
       "tag": "0053_client_releases",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1794257199827,
+      "tag": "0054_signup_attribution",
+      "breakpoints": true
     }
   ]
 }

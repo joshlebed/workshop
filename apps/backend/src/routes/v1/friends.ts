@@ -41,7 +41,11 @@ import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../..
 import { scoreCodeFields } from "../../lib/gameCodeService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { resolveGameShareLink } from "../../lib/gameShareLinks.js";
-import { notifyFriendRequestSent, notifyFriendshipFormed } from "../../lib/opsNotifications.js";
+import {
+  notifyFirstFriendAfterSignup,
+  notifyFriendRequestSent,
+  notifyFriendshipFormed,
+} from "../../lib/opsNotifications.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -398,6 +402,7 @@ friendRoutes.post(
     const formed = await addFriendship(request.inviterId, userId);
     await deleteDirectedPending(request.inviterId, userId);
     if (formed) await notifyFriendshipFormed(userId, request.inviterId, "accepted invite link");
+    if (formed) await notifyFirstFriendAfterSignup(userId, request.inviterId);
 
     const pair = canonicalPair(request.inviterId, userId);
     const [edge] = await db
@@ -530,6 +535,7 @@ friendRoutes.post(
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
       if (formed) await notifyFriendshipFormed(userId, targetId, "mutual request");
+      if (formed) await notifyFirstFriendAfterSignup(userId, targetId);
       const response: SendFriendRequestResponse = {
         status: "accepted",
         friend: friendShape(edge.createdAt),
@@ -587,6 +593,7 @@ friendRoutes.post(
     const formed = await addFriendship(senderId, userId);
     await deleteDirectedPending(userId, senderId);
     if (formed) await notifyFriendshipFormed(userId, senderId, "accepted request");
+    if (formed) await notifyFirstFriendAfterSignup(userId, senderId);
 
     const [edge, [sender]] = await Promise.all([
       friendshipEdge(userId, senderId),

@@ -236,6 +236,39 @@ export function formatDay(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+const SIGNUP_LINK_LABEL: Record<string, string> = {
+  friend_invite: "friend invite link",
+  play_link: "play link",
+  list_invite: "list invite",
+};
+
+/**
+ * The recorded (not inferred) answer to "how did they find the app", from
+ * `users.signup_source` / `referred_by_user_id`. Null when the server sent no
+ * field at all (an older backend) so the panel can omit the line.
+ */
+export function signupSourceLabel(
+  node: Pick<AdminGraphNode, "signupSource" | "referredByUserId">,
+  nodesById: Map<string, Pick<AdminGraphNode, "displayName" | "email">>,
+): string | null {
+  if (node.signupSource === undefined) return null;
+  const source = node.signupSource;
+  if (source === null) return "Signup source: not recorded (joined before attribution)";
+  const link = SIGNUP_LINK_LABEL[source];
+  if (link) {
+    if (!node.referredByUserId) return `Signed up from a ${link} that no longer resolves`;
+    const referrer = nodesById.get(node.referredByUserId);
+    const who = referrer ? displayName(referrer) : "a user outside this graph";
+    if (source !== "play_link") return `Invited by ${who} (${link})`;
+    return referrer
+      ? `Signed up via ${who}'s play link`
+      : "Signed up via a play link (sharer not in this graph)";
+  }
+  if (source === "web_referral") return "Signed up from a web referral";
+  if (source === "none") return "Signup source: no referral (App Store / direct)";
+  return `Signup source: ${source}`;
+}
+
 export function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
