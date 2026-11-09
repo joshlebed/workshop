@@ -48,10 +48,16 @@ describe("ops notification builders", () => {
   });
 
   it("friendship formed names the path taken", () => {
-    expect(buildFriendshipFormedNotification("Josh", "Alex", "accepted request")).toEqual({
-      content: "🤝 new friendship — Josh ↔ Alex (accepted request)",
+    expect(buildFriendshipFormedNotification("Renata", "Rachel", "request")).toEqual({
+      content: "🤝 new friendship — Renata accepted Rachel's friend request",
       kind: "friend_added",
     });
+    expect(buildFriendshipFormedNotification("Finley", "Philip", "invite_link").content).toBe(
+      "🤝 new friendship — Finley accepted Philip's invite link",
+    );
+    expect(buildFriendshipFormedNotification("Josh", "Alex", "mutual_request").content).toBe(
+      "🤝 new friendship — Josh sent Alex a friend request while Alex's request was pending, so it auto-accepted",
+    );
   });
 
   it("list joined", () => {
