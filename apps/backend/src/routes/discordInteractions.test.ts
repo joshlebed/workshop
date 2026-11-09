@@ -151,8 +151,9 @@ describe("POST /discord/interactions", () => {
     );
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     const payload = JSON.parse(init.body as string) as { prompt: string; messageId: string };
-    expect(payload.prompt).toContain("> the share button is broken");
-    expect(payload.prompt).toContain("from pat");
+    expect(payload.prompt).toBe(
+      "Discord message from pat (message 555):\n\n> the share button is broken",
+    );
     expect(payload.messageId).toBe("555");
   });
 
