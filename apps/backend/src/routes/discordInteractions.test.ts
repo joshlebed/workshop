@@ -2,7 +2,11 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp } from "../app.js";
 import { resetConfigForTesting } from "../lib/config.js";
-import { type DiscordBotConfig, verifyDiscordSignature } from "../lib/discordBot.js";
+import {
+  type DiscordBotConfig,
+  UNTRUSTED_NOTE,
+  verifyDiscordSignature,
+} from "../lib/discordBot.js";
 
 const { publicKey, privateKey } = generateKeyPairSync("ed25519");
 const publicKeyHex = publicKey.export({ format: "der", type: "spki" }).subarray(12).toString("hex");
@@ -44,6 +48,18 @@ const slash = (userId: string, prompt: string, channel = CHANNEL) => ({
 
 describe("POST /discord/interactions", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
+  let calls: string[] = [];
+  let hookResponse: () => Response;
+  let threadResponse: () => Response;
+  const hookPayload = () => {
+    const call = fetchMock.mock.calls.find(([url]) => url === config.niteshiftWebhookUrl) as
+      | [string, RequestInit]
+      | undefined;
+    return {
+      init: call?.[1],
+      body: JSON.parse((call?.[1].body as string) ?? "null") as Record<string, string>,
+    };
+  };
 
   beforeEach(() => {
     process.env.STAGE = "local";
@@ -52,7 +68,17 @@ describe("POST /discord/interactions", () => {
     process.env.LOG_LEVEL = "error";
     process.env.DISCORD_BOT_CONFIG = JSON.stringify(config);
     resetConfigForTesting();
-    fetchMock = vi.fn(async () => new Response("{}", { status: 202 }));
+    hookResponse = () => Response.json({ ok: true, taskIds: ["task_abc"] });
+    threadResponse = () => Response.json({ id: "t" }, { status: 201 });
+    // Route by URL: Discord REST (starter message, thread, thread post) and the Niteshift hook.
+    fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? "GET"} ${url.replace("https://discord.com/api/v10", "")}`);
+      if (url === config.niteshiftWebhookUrl) return hookResponse();
+      if (url.endsWith("/threads")) return threadResponse();
+      if (url.endsWith(`/channels/${CHANNEL}/messages`)) return Response.json({ id: "900" });
+      return Response.json({ id: "901" });
+    });
+    calls = [];
     vi.stubGlobal("fetch", fetchMock);
   });
   afterEach(() => {
@@ -86,27 +112,42 @@ describe("POST /discord/interactions", () => {
     expect(res.status).toBe(401);
   });
 
-  it("starts a task for the operator's slash command", async () => {
-    fetchMock.mockResolvedValueOnce(Response.json({ ok: true, taskIds: ["task_abc"] }));
+  it("slash command: posts a starter, opens a thread, starts the task, answers privately", async () => {
     const res = await buildApp().request(
       "/discord/interactions",
       signed(slash(OPERATOR, "fix the bug")),
     );
     const body = (await res.json()) as { data: { content: string; flags: number } };
-    expect(body.data.content).toContain(
-      "Started a Niteshift task: <https://niteshift.dev/t/task_abc>",
+    expect(body.data.content).toBe(
+      "🌒 Started a Niteshift task: <https://niteshift.dev/t/task_abc> — follow along in <#900>",
     );
-    expect(body.data.flags).toBe(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(config.niteshiftWebhookUrl);
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer hook-secret");
-    expect(JSON.parse(init.body as string)).toMatchObject({
+    expect(body.data.flags).toBe(64);
+    expect(calls).toEqual([
+      "POST /channels/222/messages",
+      "POST /channels/222/messages/900/threads",
+      `POST ${config.niteshiftWebhookUrl}`,
+      "POST /channels/900/messages",
+    ]);
+    const { init, body: payload } = hookPayload();
+    expect((init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
+      "Bearer hook-secret",
+    );
+    expect(payload).toMatchObject({
       prompt: "fix the bug",
       author: "Josh",
-      messageId: "none",
+      messageId: "900",
+      threadId: "900",
       source: "slash_command",
     });
+  });
+
+  it("slash command without thread permission still starts the task and answers publicly", async () => {
+    threadResponse = () => Response.json({ code: 50013 }, { status: 403 });
+    const res = await buildApp().request("/discord/interactions", signed(slash(OPERATOR, "x")));
+    const body = (await res.json()) as { data: { content: string; flags: number } };
+    expect(body.data.content).toContain("Started a Niteshift task");
+    expect(body.data.flags).toBe(0);
+    expect(hookPayload().body.threadId).toBe("none");
   });
 
   it("refuses anyone not on the allowlist, without calling Niteshift", async () => {
@@ -149,16 +190,39 @@ describe("POST /discord/interactions", () => {
         },
       }),
     );
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    const payload = JSON.parse(init.body as string) as { prompt: string; messageId: string };
+    const payload = hookPayload().body;
     expect(payload.prompt).toBe(
-      "Discord message from pat (message 555):\n\n> the share button is broken",
+      'The operator sent this Discord message to Niteshift:\n\n<untrusted_discord_message author="pat" message_id="555">\nthe share button is broken\n</untrusted_discord_message>\n' +
+        UNTRUSTED_NOTE,
     );
     expect(payload.messageId).toBe("555");
+    expect(payload.threadId).toBe("555");
+  });
+
+  it("message command on a message that already has a task thread starts nothing", async () => {
+    threadResponse = () => Response.json({ code: 160004 }, { status: 400 });
+    const res = await buildApp().request(
+      "/discord/interactions",
+      signed({
+        type: 2,
+        channel_id: CHANNEL,
+        member: { user: { id: OPERATOR, username: "josh" } },
+        data: {
+          name: "Send to Niteshift",
+          target_id: "555",
+          resolved: {
+            messages: { "555": { id: "555", content: "x", author: { id: "7", username: "pat" } } },
+          },
+        },
+      }),
+    );
+    const body = (await res.json()) as { data: { content: string } };
+    expect(body.data.content).toBe("That message already has a task thread: <#555>");
+    expect(hookPayload().init).toBeUndefined();
   });
 
   it("tells the operator when Niteshift rejects the task", async () => {
-    fetchMock.mockResolvedValueOnce(new Response("nope", { status: 500 }));
+    hookResponse = () => new Response("nope", { status: 500 });
     const res = await buildApp().request("/discord/interactions", signed(slash(OPERATOR, "x")));
     const body = (await res.json()) as { data: { content: string } };
     expect(body.data.content).toContain("didn't accept");

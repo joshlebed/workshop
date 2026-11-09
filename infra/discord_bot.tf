@@ -61,3 +61,53 @@ resource "aws_scheduler_schedule" "discord_mentions" {
     }
   }
 }
+
+# Daily self-check (token, intent, endpoint URL — re-set if blanked — commands,
+# channel access). Problems are posted via the notify webhook, not the bot.
+resource "aws_scheduler_schedule" "discord_health" {
+  name        = "${local.prefix}-discord-health"
+  description = "Daily health check of the #workshop-admin Niteshift bot"
+
+  schedule_expression          = "cron(0 15 * * ? *)"
+  schedule_expression_timezone = "UTC"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.api.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ job = "discord-health" })
+
+    retry_policy {
+      maximum_retry_attempts       = 1
+      maximum_event_age_in_seconds = 3600
+    }
+  }
+}
+
+# ✅ on the Discord message behind a task once its PR (body line
+# `Discord-Message: <id>`) merges. One anonymous GitHub API call per run.
+resource "aws_scheduler_schedule" "discord_merged" {
+  name        = "${local.prefix}-discord-merged"
+  description = "Mark Discord-started tasks whose PR merged"
+
+  schedule_expression          = "rate(10 minutes)"
+  schedule_expression_timezone = "UTC"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.api.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ job = "discord-merged" })
+
+    retry_policy {
+      maximum_retry_attempts       = 0
+      maximum_event_age_in_seconds = 300
+    }
+  }
+}

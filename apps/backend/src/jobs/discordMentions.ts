@@ -16,10 +16,13 @@ import {
   displayName,
   getDiscordBotConfig,
   HANDLED_EMOJI,
+  openTaskThread,
+  postTaskUpdate,
   promptFromMention,
   snowflakeTime,
   startedText,
   startNiteshiftTask,
+  threadName,
   triggersBot,
 } from "../lib/discordBot.js";
 import { logger } from "../lib/logger.js";
@@ -85,32 +88,33 @@ export async function runDiscordMentionsJob(deps: Deps = {}): Promise<{ started:
       logger.warn("discord mentions: could not mark message", { status: claim.status });
       continue;
     }
+    const prompt = promptFromMention(message, config);
+    const thread = await openTaskThread(
+      config,
+      message.id,
+      threadName(prompt.split("\n")[0] ?? ""),
+      fetcher,
+    );
+    const threadId = thread && "threadId" in thread ? thread.threadId : undefined;
     const taskUrl = await startNiteshiftTask(
       config,
       {
-        prompt: promptFromMention(message, config),
+        prompt,
         author: displayName(message.author),
         messageId: message.id,
+        ...(threadId ? { threadId } : {}),
         source: "mention",
       },
       fetcher,
     );
-    await discordApi(
+    await postTaskUpdate(
       config,
-      `/channels/${config.channelId}/messages`,
-      {
-        method: "POST",
-        body: {
-          content:
-            taskUrl !== null
-              ? startedText(taskUrl)
-              : "⚠️ Niteshift didn't accept the task — check the API logs.",
-          message_reference: { message_id: message.id, fail_if_not_exists: false },
-          allowed_mentions: { parse: [] },
-        },
-      },
+      { threadId, replyTo: message.id },
+      taskUrl !== null
+        ? startedText(taskUrl)
+        : "⚠️ Niteshift didn't accept the task — check the API logs.",
       fetcher,
-    ).catch((error: unknown) => logger.warn("discord mentions: ack failed", { error }));
+    );
     if (taskUrl !== null) started++;
   }
   if (started) logger.info("discord mentions: tasks started", { started });
