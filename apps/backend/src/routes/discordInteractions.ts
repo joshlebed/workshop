@@ -105,7 +105,7 @@ function taskRequestFor(
 }
 
 discordInteractionRoutes.post("/interactions", async (c) => {
-  const config = getDiscordBotConfig();
+  const config = await getDiscordBotConfig();
   if (!config) return c.json({ error: "not found" }, 404);
 
   const rawBody = await c.req.text();

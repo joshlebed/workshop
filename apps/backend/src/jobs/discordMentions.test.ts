@@ -31,6 +31,7 @@ function msg(
     content: `<@${BOT}> fix the share sheet`,
     author: { id: OPERATOR, username: "josh" },
     mentions: [{ id: BOT }],
+    mention_roles: [],
     ...rest,
   };
 }
@@ -71,6 +72,22 @@ describe("pendingMentions", () => {
   });
 });
 
+describe("triggers", () => {
+  const roleConfig = { ...config, botRoleId: "777" };
+  it("accepts a role mention and a text /niteshift", () => {
+    const role = msg({ content: "<@&777> do it", mentions: [], mention_roles: ["777"] });
+    const text = msg({ content: "/niteshift fix it", mentions: [], seq: 5 });
+    expect(pendingMentions([role, text], roleConfig, NOW)).toHaveLength(2);
+    expect(promptFromMention(role, roleConfig)).toBe("do it");
+    expect(promptFromMention(text, roleConfig)).toBe("fix it");
+  });
+  it("ignores /niteshift mid-sentence and other roles", () => {
+    const mid = msg({ content: "try /niteshift later", mentions: [] });
+    const other = msg({ content: "<@&888>", mentions: [], mention_roles: ["888"] });
+    expect(pendingMentions([mid, other], roleConfig, NOW)).toEqual([]);
+  });
+});
+
 describe("promptFromMention", () => {
   it("strips the mention and carries the replied-to message", () => {
     const prompt = promptFromMention(
@@ -82,7 +99,7 @@ describe("promptFromMention", () => {
           author: { username: "pat" },
         },
       }),
-      BOT,
+      config,
     );
     expect(prompt).toBe(
       "implement this\n\nIn reply to this message from pat (Discord message 42):\n\n> line one\n> line two",
