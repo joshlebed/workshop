@@ -69,11 +69,13 @@ send `"paste"`); the redirect also reports the intent snapshot to the log-only
 redirect — it's the only thing distinguishing a share-sheet post from a manual paste, and the
 backend derives the durable `user_flags` adoption marker from it (see root CLAUDE.md).
 
-Discoverability: share-sheet setup is an onboarding step. The first time a signed-in account
-lands on the Games home with no share-setup history, `ShareAnnouncementCard` pushes the
-`/share-setup` walkthrough itself (`useShareAnnouncement().autoOpen`, inside a `useFocusEffect` so
+Discoverability: share-sheet setup is an onboarding step timed to the first game. The first
+time a signed-in account lands on the Games home with **at least one game** and no share-setup
+history, `ShareAnnouncementCard` pushes the `/share-setup` walkthrough itself (`useShareAnnouncement().autoOpen`, inside a `useFocusEffect` so
 it never fights a deep-link or share-intent redirect — an invite or play link finishes first and
-the walkthrough opens when that flow hands off to home) and stamps `onboardedAt` on the
+the walkthrough opens when that flow hands off to home with a game added; an empty home runs its
+own friends → games onboarding and shows neither the walkthrough nor the card) and stamps
+`onboardedAt` on the
 `games.share-sheet-announcement` flag so it happens once per account. Skipping it (X) leaves the
 announcement card on the home as the reminder; only the card's X (`dismissedAt`) or finishing the
 walkthrough (`completedAt`) retires the card. Rules in `src/lib/shareOnboarding.ts` (hidden while

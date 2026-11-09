@@ -14,15 +14,19 @@ import {
 
 describe("shouldShowShareAnnouncement", () => {
   it("shows on a supported binary with loaded, empty flags", () => {
-    expect(shouldShowShareAnnouncement({ flags: {}, supported: true })).toBe(true);
+    expect(shouldShowShareAnnouncement({ flags: {}, supported: true, hasGames: true })).toBe(true);
   });
 
   it("never shows on an unsupported binary", () => {
-    expect(shouldShowShareAnnouncement({ flags: {}, supported: false })).toBe(false);
+    expect(shouldShowShareAnnouncement({ flags: {}, supported: false, hasGames: true })).toBe(
+      false,
+    );
   });
 
   it("never shows while flags are still loading (no flash for already-dismissed users)", () => {
-    expect(shouldShowShareAnnouncement({ flags: undefined, supported: true })).toBe(false);
+    expect(shouldShowShareAnnouncement({ flags: undefined, supported: true, hasGames: true })).toBe(
+      false,
+    );
   });
 
   it("stays hidden once dismissed or completed", () => {
@@ -34,6 +38,7 @@ describe("shouldShowShareAnnouncement", () => {
         shouldShowShareAnnouncement({
           flags: { [USER_FLAG_KEYS.shareSheetAnnouncement]: value },
           supported: true,
+          hasGames: true,
         }),
       ).toBe(false);
     }
@@ -44,8 +49,18 @@ describe("shouldShowShareAnnouncement", () => {
       shouldShowShareAnnouncement({
         flags: { [USER_FLAG_KEYS.shareExtensionScore]: { firstAt: "2026-08-30T00:00:00Z" } },
         supported: true,
+        hasGames: true,
       }),
     ).toBe(false);
+  });
+
+  it("waits for the first game — an empty home shows its own onboarding", () => {
+    expect(shouldShowShareAnnouncement({ flags: {}, supported: true, hasGames: false })).toBe(
+      false,
+    );
+    expect(shouldShowShareAnnouncement({ flags: {}, supported: true, hasGames: undefined })).toBe(
+      false,
+    );
   });
 
   it("keeps showing after the walkthrough merely auto-opened and was skipped", () => {
@@ -54,6 +69,7 @@ describe("shouldShowShareAnnouncement", () => {
       shouldShowShareAnnouncement({
         flags: { [USER_FLAG_KEYS.shareSheetAnnouncement]: value },
         supported: true,
+        hasGames: true,
       }),
     ).toBe(true);
   });
@@ -63,12 +79,21 @@ describe("shouldAutoOpenShareSetup", () => {
   const at = new Date("2026-11-09T00:00:00Z");
 
   it("opens once for a supported binary with loaded, empty flags", () => {
-    expect(shouldAutoOpenShareSetup({ flags: {}, supported: true })).toBe(true);
+    expect(shouldAutoOpenShareSetup({ flags: {}, supported: true, hasGames: true })).toBe(true);
+  });
+
+  it("never opens on an empty home or while games load", () => {
+    expect(shouldAutoOpenShareSetup({ flags: {}, supported: true, hasGames: false })).toBe(false);
+    expect(shouldAutoOpenShareSetup({ flags: {}, supported: true, hasGames: undefined })).toBe(
+      false,
+    );
   });
 
   it("never opens unsupported or while flags load", () => {
-    expect(shouldAutoOpenShareSetup({ flags: {}, supported: false })).toBe(false);
-    expect(shouldAutoOpenShareSetup({ flags: undefined, supported: true })).toBe(false);
+    expect(shouldAutoOpenShareSetup({ flags: {}, supported: false, hasGames: true })).toBe(false);
+    expect(shouldAutoOpenShareSetup({ flags: undefined, supported: true, hasGames: true })).toBe(
+      false,
+    );
   });
 
   it("never opens again once auto-opened, dismissed, or completed", () => {
@@ -81,6 +106,7 @@ describe("shouldAutoOpenShareSetup", () => {
         shouldAutoOpenShareSetup({
           flags: { [USER_FLAG_KEYS.shareSheetAnnouncement]: value },
           supported: true,
+          hasGames: true,
         }),
       ).toBe(false);
     }
@@ -91,6 +117,7 @@ describe("shouldAutoOpenShareSetup", () => {
       shouldAutoOpenShareSetup({
         flags: { [USER_FLAG_KEYS.shareExtensionScore]: { firstAt: "2026-08-30T00:00:00Z" } },
         supported: true,
+        hasGames: true,
       }),
     ).toBe(false);
   });

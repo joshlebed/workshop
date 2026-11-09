@@ -72,21 +72,32 @@ export function runtimeHasShareSetup(os: string, runtimeVersion: string | null):
   return cmp !== null && cmp >= 0;
 }
 
+export interface ShareSetupGateInput {
+  /** `GET /v1/users/me/flags` payload; `undefined` until it resolves. */
+  flags: Record<string, unknown> | undefined;
+  /** `runtimeHasShareSetup` for this binary. */
+  supported: boolean;
+  /**
+   * The home has at least one game. Both surfaces wait for this: there is
+   * nothing to share from until a game exists, and the empty home already
+   * has its own onboarding (friends → games). Undefined while games load.
+   */
+  hasGames: boolean | undefined;
+}
+
 /**
- * Whether to render the announcement card. `flags` is `undefined` until the
- * `GET /v1/users/me/flags` query resolves — never show while loading, so a
- * user who already dismissed it doesn't get a flash of the card. `supported`
- * is `runtimeHasShareSetup` for this binary.
+ * Whether to render the announcement card. Never while flags or games are
+ * still loading, so a user who already dismissed it doesn't get a flash of
+ * the card.
  */
 export function shouldShowShareAnnouncement({
   flags,
   supported,
-}: {
-  flags: Record<string, unknown> | undefined;
-  supported: boolean;
-}): boolean {
+  hasGames,
+}: ShareSetupGateInput): boolean {
   if (!supported) return false;
   if (flags === undefined) return false;
+  if (!hasGames) return false;
   // Already dealt with (dismissed or completed the walkthrough)…
   const value = flagValueOf(flags[USER_FLAG_KEYS.shareSheetAnnouncement]);
   if (value?.dismissedAt || value?.completedAt) return false;
@@ -97,19 +108,20 @@ export function shouldShowShareAnnouncement({
 
 /**
  * Whether the Games home should open the walkthrough on its own — the
- * onboarding step. Once per account: any value on the flag (auto-opened,
- * dismissed, or completed) ends it, as does a score already posted through
- * the share sheet. Same no-show-while-loading rule as the card.
+ * onboarding step, timed to the first game: it fires on the first home
+ * landing *with a game* (right after the invite picker or the Add-game
+ * screen), not on an empty home. Once per account: any value on the flag
+ * (auto-opened, dismissed, or completed) ends it, as does a score already
+ * posted through the share sheet. Same no-show-while-loading rule as the card.
  */
 export function shouldAutoOpenShareSetup({
   flags,
   supported,
-}: {
-  flags: Record<string, unknown> | undefined;
-  supported: boolean;
-}): boolean {
+  hasGames,
+}: ShareSetupGateInput): boolean {
   if (!supported) return false;
   if (flags === undefined) return false;
+  if (!hasGames) return false;
   if (flags[USER_FLAG_KEYS.shareSheetAnnouncement] !== undefined) return false;
   if (flags[USER_FLAG_KEYS.shareExtensionScore]) return false;
   return true;

@@ -1,9 +1,12 @@
 // "Post scores from the share sheet" on Games home. Two jobs, one hook
 // (useShareAnnouncement — iOS, 1.2.0+ binary, flags loaded):
-//   1. Onboarding: the first time a signed-in account lands here with no
-//      share-setup history, push the /share-setup walkthrough itself. Once
-//      per account (`onboardedAt`), only while this screen is focused so it
-//      never fights a deep-link or share-intent redirect.
+//   1. Onboarding: the first time a signed-in account lands here with at
+//      least one game and no share-setup history, push the /share-setup
+//      walkthrough itself. Once per account (`onboardedAt`), only while this
+//      screen is focused so it never fights a deep-link or share-intent
+//      redirect. `hasGames` comes from the home's games query (undefined while
+//      loading) — the empty home runs its own friends → games onboarding and
+//      there is nothing to share from yet.
 //   2. Reminder: the card below — a pitch, a CTA into the walkthrough, and an
 //      X that dismisses it for good. It stays after a skipped onboarding.
 
@@ -13,9 +16,9 @@ import { StyleSheet, View } from "react-native";
 import { useShareAnnouncement } from "../../hooks/useShareAnnouncement";
 import { Button, IconButton, PixelIcon, Text, tokens } from "../../theme";
 
-export function ShareAnnouncementCard() {
+export function ShareAnnouncementCard({ hasGames }: { hasGames: boolean | undefined }) {
   const router = useRouter();
-  const { visible, dismiss, autoOpen, markOnboarded } = useShareAnnouncement();
+  const { visible, dismiss, autoOpen, markOnboarded } = useShareAnnouncement({ hasGames });
   // One push per mount even if the flags query refetches before the
   // optimistic `onboardedAt` lands.
   const openedRef = useRef(false);

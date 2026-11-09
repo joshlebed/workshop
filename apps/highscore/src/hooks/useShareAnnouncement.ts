@@ -32,7 +32,7 @@ export const SHARE_SETUP_SUPPORTED =
     Updates.runtimeVersion ?? Constants.expoConfig?.version ?? null,
   );
 
-export function useShareAnnouncement() {
+export function useShareAnnouncement({ hasGames }: { hasGames: boolean | undefined }) {
   const { token, status, impersonation } = useAuth();
   const queryClient = useQueryClient();
 
@@ -90,9 +90,9 @@ export function useShareAnnouncement() {
   const markOnboarded = useCallback(() => onboardedMutation.mutate(), [onboardedMutation]);
 
   const flags = flagsQuery.data?.flags;
-  const visible = shouldShowShareAnnouncement({ flags, supported: SHARE_SETUP_SUPPORTED });
+  const gate = { flags, supported: SHARE_SETUP_SUPPORTED, hasGames };
+  const visible = shouldShowShareAnnouncement(gate);
   // An admin impersonating someone must never be walked through their onboarding.
-  const autoOpen =
-    impersonation === null && shouldAutoOpenShareSetup({ flags, supported: SHARE_SETUP_SUPPORTED });
+  const autoOpen = impersonation === null && shouldAutoOpenShareSetup(gate);
   return { visible, dismiss, autoOpen, markOnboarded };
 }

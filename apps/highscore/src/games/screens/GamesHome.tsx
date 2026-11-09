@@ -512,7 +512,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       />
 
       <AppUpdateBanner />
-      <ShareAnnouncementCard />
+      <ShareAnnouncementCard hasGames={gamesQuery.data ? myGames.length > 0 : undefined} />
 
       <View style={styles.body}>
         {gamesQuery.isPending ? (
