@@ -607,7 +607,11 @@ it attaches the target's game list for every viewer who gets a 200 (games are pu
 the period scores on those rows only for friends/self (`score: null` otherwise).
 `GET /v1/games/discovery` (friends' games, ranked by how many friends play each) is
 registered **before** the `/:id` routes so the literal path isn't shadowed; its `?friend=`
-filter 404s for non-friends so the endpoint can't be used to probe a stranger's games. The
+filter 404s for non-friends so the endpoint can't be used to probe a stranger's games.
+`?users=a,b,c` (≤20 ids) ranks across an explicit set of people — friends **and**
+friends-of-friends (`friendsOfFriends` in `lib/friends.ts`, blocked users dropped), the same
+visibility a profile grants — so the post-accept onboarding can rank the new friend's games
+together with the mutuals just requested; any other id 404s, a malformed list 400s. The
 default feed omits games I already added; `?includeOwned=1` keeps them in the list (tagged
 `inMyGames`, rendered non-addable client-side, sorted after every addable game) so the +
 add-game sheet shows the full "what my friends play" picture instead of an empty section

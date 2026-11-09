@@ -83,6 +83,9 @@ export const queryKeys = {
      * `friendUserId` form (post-accept picker) sorts under the all-friends
      * key so invalidating `["games", "discovery"]` clears both.
      */
+    /** `GET /v1/games/discovery?users=…` — ranked across an explicit set of people. */
+    discoveryAcross: (userIds: readonly string[]) =>
+      ["games", "discovery", "users", [...userIds].sort().join(",")] as const,
     discovery: (friendUserId?: string) =>
       friendUserId
         ? (["games", "discovery", friendUserId] as const)

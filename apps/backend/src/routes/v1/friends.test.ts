@@ -417,6 +417,43 @@ describe("GET /v1/games/discovery", () => {
     expect(res.status).toBe(404);
   });
 
+  it("?users= ranks games across friends and friends-of-friends, and 404s a stranger", async () => {
+    // `mutualUser` is friends with `friend` only — a friend-of-friend to `me`.
+    const mutualUser = "00000000-0000-4000-8000-000000000016";
+    await rows(
+      `INSERT INTO users (id, email, display_name) VALUES ($1, 'mutual@example.com', 'Mutual')`,
+      [mutualUser],
+    );
+    const [low, high] = friend < mutualUser ? [friend, mutualUser] : [mutualUser, friend];
+    await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2)`, [low, high]);
+    const mutualGameId = await addGame("https://worldle.teuteuf.fr/", mutualUser);
+    // The mutual also plays the friend-only game, so it ranks first (2 players).
+    await addGame("https://www.nytimes.com/games/wordle/index.html", mutualUser);
+
+    const res = await gameRoutes.request(`/discovery?users=${friend},${mutualUser}`, {
+      headers: authHeaders(me),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      games: { game: { id: string }; friends: { userId: string }[] }[];
+      friendGameCount?: number;
+    };
+    expect(body.games.map((g) => g.game.id)).toEqual([friendOnlyGameId, mutualGameId]);
+    expect(body.games[0]?.friends.map((f) => f.userId).sort()).toEqual([friend, mutualUser].sort());
+    expect(body.friendGameCount).toBeUndefined();
+
+    // A stranger with no mutual friends is not a valid member of the set.
+    const probe = await gameRoutes.request(`/discovery?users=${friend},${stranger}`, {
+      headers: authHeaders(me),
+    });
+    expect(probe.status).toBe(404);
+    const bad = await gameRoutes.request("/discovery?users=nope", { headers: authHeaders(me) });
+    expect(bad.status).toBe(400);
+
+    await rows(`DELETE FROM friendships WHERE user_low = $1 AND user_high = $2`, [low, high]);
+    await rows(`DELETE FROM user_games WHERE user_id = $1`, [mutualUser]);
+  });
+
   it("a user with no friends gets an empty list", async () => {
     const res = await discovery(stranger);
     expect(res.status).toBe(200);
