@@ -50,16 +50,42 @@ workshop_snapshot_prod_into_local() {
     echo "prod DATABASE_URL not readable from SSM ($WORKSHOP_PROD_DB_SSM_PARAM)" >&2
     return 1
   fi
-  dump="$(mktemp -d)/prod.dump"
-  echo "dumping prod → $dump"
-  docker run --rm --network=host -v "$(dirname "$dump"):/out" "$WORKSHOP_PG_IMAGE" \
-    pg_dump --no-owner --no-privileges --format=custom --file=/out/prod.dump "$prod_url"
+  # Every step checks its own status: callers run this as `if fn; then`, which
+  # disables `set -e` inside the function, so a failed dump used to fall
+  # through, drop the local DB, and still report success (empty sandbox DB).
+  # The dump is taken (with retries — Neon occasionally resets the TLS stream
+  # mid-COPY) before the local DB is touched.
+  local dir attempt
+  dir="$(mktemp -d)"
+  dump="$dir/prod.dump"
+  for attempt in 1 2 3; do
+    echo "dumping prod → $dump (attempt $attempt)"
+    if docker run --rm --network=host -v "$dir:/out" "$WORKSHOP_PG_IMAGE" \
+      pg_dump --no-owner --no-privileges --format=custom --file=/out/prod.dump "$prod_url" &&
+      docker run --rm -v "$dir:/out" "$WORKSHOP_PG_IMAGE" \
+        pg_restore --list /out/prod.dump >/dev/null; then
+      break
+    fi
+    if [ "$attempt" = 3 ]; then
+      echo "pg_dump failed 3 times; local DB left untouched" >&2
+      rm -rf "$dir"
+      return 1
+    fi
+    sleep 5
+  done
   echo "restoring into local workshop db"
   docker exec workshop-pg psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
-    -c "DROP DATABASE IF EXISTS workshop WITH (FORCE);" -c "CREATE DATABASE workshop;"
-  docker run --rm --network=host -v "$(dirname "$dump"):/out" "$WORKSHOP_PG_IMAGE" \
+    -c "DROP DATABASE IF EXISTS workshop WITH (FORCE);" -c "CREATE DATABASE workshop;" || {
+    rm -rf "$dir"
+    return 1
+  }
+  if ! docker run --rm --network=host -v "$dir:/out" "$WORKSHOP_PG_IMAGE" \
     pg_restore --no-owner --no-privileges --exit-on-error \
-    --dbname="$WORKSHOP_LOCAL_DB_URL" /out/prod.dump
-  rm -rf "$(dirname "$dump")"
+    --dbname="$WORKSHOP_LOCAL_DB_URL" /out/prod.dump; then
+    echo "pg_restore failed; local DB is partial — re-run .niteshift/files/snapshot-prod.sh" >&2
+    rm -rf "$dir"
+    return 1
+  fi
+  rm -rf "$dir"
   echo "local workshop db now mirrors prod"
 }
