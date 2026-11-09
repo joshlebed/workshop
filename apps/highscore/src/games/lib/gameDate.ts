@@ -14,6 +14,16 @@ export function localDateKey(d: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * Milliseconds from `now` until the next local midnight (the moment
+ * `localDateKey()` changes). DST-safe: built from calendar parts, not by
+ * adding 24h. Always > 0.
+ */
+export function msUntilNextLocalMidnight(now: Date = new Date()): number {
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return Math.max(next.getTime() - now.getTime(), 1);
+}
+
 /** Add (or subtract, with negatives) `delta` days to a YYYY-MM-DD string. */
 export function shiftDateKey(date: string, delta: number): string {
   const [y, m, d] = date.split("-").map(Number);

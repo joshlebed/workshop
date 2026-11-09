@@ -1,4 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// viewDay.tsx imports `AppState` for the live-today refresh; vitest can't
+// parse react-native's Flow source, so stub the one export it touches.
+vi.mock("react-native", () => ({ AppState: { addEventListener: vi.fn() } }));
+
 import { resolveViewDay } from "./viewDay";
 
 describe("resolveViewDay", () => {
