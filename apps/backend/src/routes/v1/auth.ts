@@ -28,8 +28,18 @@ import {
   setRefreshCredential,
 } from "../../lib/refreshCookie.js";
 import { parseJsonBody } from "../../lib/request.js";
+import { getRequestClientContext } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
 import { signSession } from "../../lib/session.js";
+import {
+  dbLinkOwnerLookup,
+  describeSignupAttribution,
+  recordSignupAttribution,
+  resolveSignupAttribution,
+  type SignupAcquisitionInput,
+  type SignupAttribution,
+  signupAcquisitionSchema,
+} from "../../lib/signupAttribution.js";
 import { requireAuth } from "../../middleware/auth.js";
 
 export const authRoutes = new Hono();
@@ -46,10 +56,12 @@ const appleBodySchema = z.object({
    * account deletion can revoke it. See lib/providerRevocation.ts.
    */
   authorizationCode: z.string().min(1).max(2048).optional(),
+  acquisition: signupAcquisitionSchema.optional(),
 });
 
 const googleBodySchema = z.object({
   idToken: z.string().min(1),
+  acquisition: signupAcquisitionSchema.optional(),
 });
 
 const impersonateBodySchema = z.object({
@@ -227,17 +239,20 @@ async function upsertIdentity({
 // Build the operator-channel message for a sign-in. A genuinely new user gets
 // the high-signal "👋 new signup" copy; a returning user — including one
 // linking a second provider to a known email (`createdUser: false`) — gets a
-// quieter "signed in" line. Label falls back display name → email → id. Pure so
-// it's unit-tested without a DB or Discord (see auth.test.ts).
+// quieter "signed in" line. Label falls back display name → email → id. A
+// signup also says how they found the app (`attribution`, from
+// describeSignupAttribution). Pure so it's unit-tested without a DB or Discord
+// (see auth.test.ts).
 export function buildSignInNotification(
   user: Pick<DbUser, "id" | "email" | "displayName">,
   provider: AuthProvider,
   createdUser: boolean,
+  attribution?: string,
 ): { content: string; kind: string } {
   const label = userLabel(user);
-  return createdUser
-    ? { content: `👋 new signup — ${label} via ${provider}`, kind: "signup" }
-    : { content: `👤 signed in — ${label} via ${provider}`, kind: "signin" };
+  if (!createdUser) return { content: `👤 signed in — ${label} via ${provider}`, kind: "signin" };
+  const how = attribution ? ` — ${attribution}` : "";
+  return { content: `👋 new signup — ${label} via ${provider}${how}`, kind: "signup" };
 }
 
 export function buildImpersonationNotification(
@@ -289,20 +304,70 @@ async function notifySignIn(
   user: DbUser,
   provider: AuthProvider,
   createdUser: boolean,
+  acquisition: SignupAcquisitionInput | undefined,
 ): Promise<void> {
-  const { content, kind } = buildSignInNotification(user, provider, createdUser);
+  const signup = createdUser ? await attributeSignup(user.id, acquisition) : null;
+  const { content, kind } = buildSignInNotification(
+    user,
+    provider,
+    createdUser,
+    signup?.description,
+  );
   logger.info(createdUser ? "new signup" : "sign-in", {
     userId: user.id,
     provider,
     label: user.displayName ?? user.email ?? user.id,
+    ...(createdUser
+      ? {
+          signupSource: signup?.attribution?.source ?? null,
+          referredByUserId: signup?.attribution?.referredByUserId ?? null,
+          signupContext: signup?.attribution?.context ?? null,
+        }
+      : {}),
   });
   await notifyDiscord(content, { kind });
+}
+
+// Resolve + persist how a brand-new account found the app (see
+// lib/signupAttribution.ts) and phrase it for the ping. Never throws: a failed
+// lookup/write is logged and the ping says the attribution is unknown, but the
+// sign-in itself always proceeds.
+async function attributeSignup(
+  userId: string,
+  acquisition: SignupAcquisitionInput | undefined,
+): Promise<{ attribution: SignupAttribution | null; description: string }> {
+  const platform = getRequestClientContext()?.platform ?? null;
+  try {
+    const attribution = await resolveSignupAttribution(acquisition, userId, dbLinkOwnerLookup());
+    if (attribution) await recordSignupAttribution(userId, attribution);
+    const referrer = attribution?.referredByUserId
+      ? await userById(attribution.referredByUserId)
+      : null;
+    return {
+      attribution,
+      description: describeSignupAttribution(
+        attribution,
+        referrer ? userLabel(referrer) : null,
+        platform,
+      ),
+    };
+  } catch (error) {
+    logger.warn("signup attribution failed", { error, userId });
+    return { attribution: null, description: "attribution lookup failed" };
+  }
 }
 
 authRoutes.post("/apple", async (c) => {
   const parsed = await parseJsonBody(c, appleBodySchema);
   if (!parsed.ok) return parsed.response;
-  const { identityToken, nonce, email: clientEmail, fullName, authorizationCode } = parsed.data;
+  const {
+    identityToken,
+    nonce,
+    email: clientEmail,
+    fullName,
+    authorizationCode,
+    acquisition,
+  } = parsed.data;
 
   let claims: VerifiedClaims;
   try {
@@ -329,7 +394,7 @@ authRoutes.post("/apple", async (c) => {
     email,
     displayName: fullName ?? null,
   });
-  await notifySignIn(user, "apple", createdUser);
+  await notifySignIn(user, "apple", createdUser, acquisition);
 
   // Apple's `aud` claim IS the client id the credential was minted for (iOS
   // bundle id or web Services ID), and revocation is per-client — so persist
@@ -372,7 +437,7 @@ authRoutes.post("/google", async (c) => {
     email,
     displayName,
   });
-  await notifySignIn(user, "google", createdUser);
+  await notifySignIn(user, "google", createdUser, parsed.data.acquisition);
 
   return issueSignIn(c, user);
 });

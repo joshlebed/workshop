@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   date,
@@ -52,6 +53,28 @@ export const users = pgTable(
     letterboxdUsername: text("letterboxd_username"),
     /** When the user's cached watchlist (`letterboxd_watchlist_films`) was last refreshed. */
     letterboxdSyncedAt: timestamp("letterboxd_synced_at", { withTimezone: true }),
+    /**
+     * How this account found the app, recorded once at signup from what the
+     * signing-in client knew (`lib/signupAttribution.ts`). One of
+     * `SIGNUP_SOURCES` (`friend_invite` | `play_link` | `list_invite` |
+     * `web_referral` | `none`). NULL = the account predates attribution, or
+     * signed up on a client that sent nothing (pre-1.2.x OTA / dev auth).
+     */
+    signupSource: text("signup_source"),
+    /**
+     * Whose link brought them in (friend-invite inviter, play-link sharer,
+     * list-invite sender). NULL when unknown. SET NULL so deleting the referrer
+     * never blocks or cascades into the referred account.
+     */
+    referredByUserId: uuid("referred_by_user_id").references((): AnyPgColumn => users.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Raw acquisition details for the operator: `{ referrer, landingPath, utm,
+     * linkResolved }` (`SignupContext` in lib/signupAttribution.ts). NULL with
+     * `signup_source` NULL; may be `{}` when the client knew nothing.
+     */
+    signupContext: jsonb("signup_context"),
   },
   (t) => ({
     emailLowerIdx: uniqueIndex("users_email_lower_idx")

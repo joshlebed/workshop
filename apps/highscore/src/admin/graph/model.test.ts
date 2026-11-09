@@ -9,6 +9,7 @@ import {
   friendsOf,
   inferInviteTree,
   radiusFor,
+  signupSourceLabel,
   sortUsers,
   subtreeSize,
   timeDomain,
@@ -105,5 +106,34 @@ describe("admin graph model", () => {
     expect(sortUsers(rows, "lastActiveDay", false).map((r) => r.id)).toEqual(["y", "z", "x"]);
     expect(sortUsers(rows, "scoreCount", true).map((r) => r.id)).toEqual(["z", "x", "y"]);
     expect(sortUsers(rows, "name", false).map((r) => r.id)).toEqual(["x", "y", "z"]);
+  });
+});
+
+describe("signupSourceLabel", () => {
+  const byId = new Map(data.nodes.map((n) => [n.id, n]));
+
+  it("names the recorded referrer", () => {
+    expect(signupSourceLabel({ signupSource: "friend_invite", referredByUserId: "a" }, byId)).toBe(
+      "Invited by A (friend invite link)",
+    );
+    expect(signupSourceLabel({ signupSource: "play_link", referredByUserId: "b" }, byId)).toBe(
+      "Signed up via B's play link",
+    );
+    expect(signupSourceLabel({ signupSource: "play_link", referredByUserId: "zz" }, byId)).toBe(
+      "Signed up via a play link (sharer not in this graph)",
+    );
+  });
+
+  it("is honest about unknowns", () => {
+    expect(signupSourceLabel({ signupSource: "friend_invite", referredByUserId: null }, byId)).toBe(
+      "Signed up from a friend invite link that no longer resolves",
+    );
+    expect(signupSourceLabel({ signupSource: null, referredByUserId: null }, byId)).toBe(
+      "Signup source: not recorded (joined before attribution)",
+    );
+    expect(signupSourceLabel({ signupSource: "none", referredByUserId: null }, byId)).toBe(
+      "Signup source: no referral (App Store / direct)",
+    );
+    expect(signupSourceLabel({}, byId)).toBeNull();
   });
 });

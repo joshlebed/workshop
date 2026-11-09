@@ -7,6 +7,7 @@ import {
 } from "@expo-google-fonts/space-grotesk";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { configureApiClient } from "@workshop/api-client/api";
+import { stashSignupLanding } from "@workshop/api-client/signupAcquisition";
 import { getItem } from "@workshop/api-client/storage";
 import { useFonts } from "expo-font";
 import { type Href, Stack, useRouter, useSegments } from "expo-router";
@@ -36,6 +37,11 @@ import { createQueryClient } from "../src/lib/query";
 import { isSharePractice } from "../src/lib/shareOnboarding";
 import { markSharePracticeReceived } from "../src/lib/sharePractice";
 import { Button, Text, ToastProvider, tokens } from "../src/theme";
+
+// Web: remember the very first page load's referrer / landing path / utm_* for
+// signup attribution, before any redirect rewrites the URL (no-op on native and
+// after the first visit). Sent with the next Apple/Google sign-in.
+void stashSignupLanding();
 
 configureApiClient({ client: "highscore" });
 

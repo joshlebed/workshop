@@ -5,6 +5,7 @@ import {
 } from "@react-navigation/native";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { configureApiClient } from "@workshop/api-client/api";
+import { stashSignupLanding } from "@workshop/api-client/signupAcquisition";
 import { getItem, removeItem } from "@workshop/api-client/storage";
 import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -23,6 +24,11 @@ import { PENDING_FRIEND_INVITE_TOKEN_KEY, PENDING_INVITE_TOKEN_KEY } from "../sr
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
 import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
+
+// Web: remember the very first page load's referrer / landing path / utm_* for
+// signup attribution, before any redirect rewrites the URL (no-op on native and
+// after the first visit). Sent with the next Apple/Google sign-in.
+void stashSignupLanding();
 
 configureApiClient({ client: "workshop" });
 

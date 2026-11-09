@@ -34,6 +34,19 @@ export type AdminAnalyticsRange = (typeof ADMIN_ANALYTICS_RANGES)[number];
 export const GAME_SCORE_ENTRY_SOURCES = ["share_extension", "paste"] as const;
 export type GameScoreEntrySource = (typeof GAME_SCORE_ENTRY_SOURCES)[number];
 
+// `users.signup_source` — how a new account found the app, recorded once at
+// signup (apps/backend/src/lib/signupAttribution.ts). `none` = the client sent
+// attribution and it was empty (App Store / direct / typed URL). NULL in the
+// column (not a member here) = pre-attribution account or client.
+export const SIGNUP_SOURCES = [
+  "friend_invite",
+  "play_link",
+  "list_invite",
+  "web_referral",
+  "none",
+] as const;
+export type SignupSource = (typeof SIGNUP_SOURCES)[number];
+
 // Canonical `user_flags` keys — shared so backend writers and client readers
 // can't drift. `shareExtensionScore` is written server-side on the first score
 // that arrives with entrySource "share_extension" (value `{ firstAt }`): the only

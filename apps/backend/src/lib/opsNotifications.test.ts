@@ -3,6 +3,7 @@ import { resetConfigForTesting } from "./config.js";
 import {
   buildContentReportNotification,
   buildDirectionChangedNotification,
+  buildFirstFriendAfterSignupNotification,
   buildFirstScoreNotification,
   buildFriendRequestSentNotification,
   buildFriendshipFormedNotification,
@@ -17,6 +18,7 @@ import {
   buildSessionsRevokedNotification,
   buildSourceWebhookNotification,
   buildUserBlockedNotification,
+  formatSinceSignup,
   opsNotificationsEnabled,
 } from "./opsNotifications.js";
 
@@ -228,6 +230,23 @@ describe("teach v2 notifications", () => {
       kind: "direction_changed",
       content:
         '↕️ score direction changed — Josh set "Krillion" to lower is better (was higher is better)',
+    });
+  });
+});
+
+describe("first friend after signup", () => {
+  it("formats the time since signup", () => {
+    expect(formatSinceSignup(20_000)).toBe("under a minute");
+    expect(formatSinceSignup(12 * 60_000)).toBe("12m");
+    expect(formatSinceSignup(3 * 3_600_000)).toBe("3h");
+    expect(formatSinceSignup(3 * 3_600_000 + 5 * 60_000)).toBe("3h 5m");
+  });
+
+  it("builds the follow-up ping", () => {
+    expect(buildFirstFriendAfterSignupNotification("Vienna", "Philip", "12m")).toEqual({
+      content:
+        "🧭 first friend since signing up 12m ago — Vienna ↔ Philip (no inviter recorded at signup)",
+      kind: "signup_first_friend",
     });
   });
 });

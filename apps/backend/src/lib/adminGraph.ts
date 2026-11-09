@@ -131,6 +131,8 @@ export async function buildAdminGraph(now = new Date()): Promise<AdminGraphRespo
       displayName: users.displayName,
       email: users.email,
       createdAt: users.createdAt,
+      signupSource: users.signupSource,
+      referredByUserId: users.referredByUserId,
       avatarVersion: sql<string | null>`left(md5(${users.avatarUrl}), 8)`,
     })
     .from(users)
@@ -161,6 +163,8 @@ export async function buildAdminGraph(now = new Date()): Promise<AdminGraphRespo
         activeDaysTotal: act?.days.size ?? 0,
         platforms: act ? [...act.platforms].sort() : [],
         usedShareExtension: shareUsers.has(u.id),
+        signupSource: u.signupSource,
+        referredByUserId: u.referredByUserId,
       };
     })
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));

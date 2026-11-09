@@ -16,6 +16,7 @@ import {
   formatDate,
   friendsOf,
   type InviteTree,
+  signupSourceLabel,
   subtreeSize,
 } from "./model";
 
@@ -93,6 +94,7 @@ export function UserDetailPanel({
   const parent = parentId ? nodesById.get(parentId) : undefined;
   const broughtIn = tree ? subtreeSize(tree, node.id) : null;
   const band = activityBand(node, new Date());
+  const signup = signupSourceLabel(node, nodesById);
 
   return (
     <Card style={[styles.panel, style]} testID="admin-graph-panel">
@@ -114,6 +116,11 @@ export function UserDetailPanel({
             <Text variant="caption" tone="secondary">
               Joined {formatDate(node.createdAt)} · {ACTIVITY_BAND_LABEL[band]}
             </Text>
+            {signup ? (
+              <Text variant="caption" tone="secondary" testID="admin-graph-panel-signup">
+                {signup}
+              </Text>
+            ) : null}
             {extra ? (
               <Text variant="caption" tone="secondary">
                 {extra}
