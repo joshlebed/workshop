@@ -2,7 +2,7 @@
 // one row per unordered pair, canonically `user_low < user_high` — this
 // module is the only writer, so the invariant lives here, not in a CHECK.
 
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { friendships } from "../db/schema.js";
 
@@ -49,4 +49,35 @@ export async function removeFriendship(a: string, b: string): Promise<void> {
   await getDb()
     .delete(friendships)
     .where(and(eq(friendships.userLow, pair.userLow), eq(friendships.userHigh, pair.userHigh)));
+}
+
+/**
+ * Friends of my friends who aren't me and aren't already my friends — the
+ * "people you may know" candidate set. Blocked users (either direction) are
+ * dropped. Pure graph walk; callers that need names or mutual counts join
+ * `users` themselves (see `GET /v1/friends/mutuals`).
+ */
+export async function friendsOfFriends(
+  userId: string,
+  myFriends: string[],
+  blocked: Set<string>,
+): Promise<Set<string>> {
+  if (myFriends.length === 0) return new Set();
+  const friendSet = new Set(myFriends);
+  const edges = await getDb()
+    .select({ userLow: friendships.userLow, userHigh: friendships.userHigh })
+    .from(friendships)
+    .where(or(inArray(friendships.userLow, myFriends), inArray(friendships.userHigh, myFriends)));
+  const candidates = new Set<string>();
+  for (const e of edges) {
+    for (const [mine, other] of [
+      [e.userLow, e.userHigh],
+      [e.userHigh, e.userLow],
+    ] as const) {
+      if (!friendSet.has(mine)) continue;
+      if (other === userId || friendSet.has(other) || blocked.has(other)) continue;
+      candidates.add(other);
+    }
+  }
+  return candidates;
 }

@@ -192,10 +192,20 @@ export function setGameScoreSpec(
  */
 export function fetchGameDiscovery(
   token: string | null,
-  options: { friendUserId?: string; includeOwned?: boolean } = {},
+  options: {
+    friendUserId?: string;
+    includeOwned?: boolean;
+    /**
+     * Rank across these people instead of all friends — friends and
+     * friends-of-friends only (the post-accept picker: new friend + the
+     * mutuals just requested). Takes precedence over `friendUserId`.
+     */
+    userIds?: readonly string[];
+  } = {},
 ): Promise<GameDiscoveryResponse> {
   const params = new URLSearchParams();
   if (options.friendUserId) params.set("friend", options.friendUserId);
+  if (options.userIds && options.userIds.length > 0) params.set("users", options.userIds.join(","));
   if (options.includeOwned) params.set("includeOwned", "1");
   const qs = params.toString();
   return apiRequest<GameDiscoveryResponse>({

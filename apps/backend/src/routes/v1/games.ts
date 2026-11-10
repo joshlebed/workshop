@@ -38,13 +38,14 @@ import {
   users,
 } from "../../db/schema.js";
 import { isAdminUser } from "../../lib/admin.js";
+import { blockedIdsFor } from "../../lib/blocks.js";
 import { getConfig } from "../../lib/config.js";
 import {
   containsObjectionableContent,
   OBJECTIONABLE_CONTENT_MESSAGE,
 } from "../../lib/contentFilter.js";
 import { toIsoString } from "../../lib/dates.js";
-import { friendsOf } from "../../lib/friends.js";
+import { friendsOf, friendsOfFriends } from "../../lib/friends.js";
 import {
   catalogEntryForKey,
   findOrCreateGame,
@@ -258,6 +259,38 @@ gameRoutes.get("/discovery", async (c) => {
     }
     scopedFriendIds = [parsed.data];
     scopedFriendId = parsed.data;
+  }
+
+  // `?users=a,b,c` — rank games across an explicit set of people: friends
+  // and friends-of-friends (the post-accept onboarding ranks the new friend's
+  // games together with the mutuals just requested, before those requests
+  // are accepted). The same visibility rule as a profile: a stranger with no
+  // mutual friends 404s, so the endpoint can't be used to probe their games.
+  const usersFilter = c.req.query("users");
+  if (usersFilter !== undefined) {
+    const ids = [
+      ...new Set(
+        usersFilter
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      ),
+    ];
+    if (
+      ids.length === 0 ||
+      ids.length > 20 ||
+      !ids.every((id) => uuidSchema.safeParse(id).success)
+    ) {
+      return err(c, "VALIDATION", "users must be 1–20 user ids");
+    }
+    const friendSet = new Set(friendIds);
+    const unknown = ids.filter((id) => !friendSet.has(id));
+    if (unknown.length > 0) {
+      const mutuals = await friendsOfFriends(userId, friendIds, await blockedIdsFor(userId));
+      if (!unknown.every((id) => mutuals.has(id))) return err(c, "NOT_FOUND", "user not found");
+    }
+    scopedFriendIds = ids;
+    scopedFriendId = undefined;
   }
 
   const includeOwnedFlag = c.req.query("includeOwned");
