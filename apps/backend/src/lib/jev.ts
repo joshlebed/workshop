@@ -73,7 +73,13 @@ export async function systemOne(
       signal: AbortSignal.timeout(options.timeoutMs ?? JEV_TIMEOUT_MS),
     });
     if (!res.ok) {
-      logger.warn("jev non-2xx", { status: res.status, durationMs: Date.now() - startedAt });
+      // The body is what says "out of credits" vs. a bad request; the
+      // vendor-credit alarm filters on status (infra/vendor_alarms.tf).
+      logger.warn("jev non-2xx", {
+        status: res.status,
+        body: (await res.text().catch(() => "")).slice(0, 300),
+        durationMs: Date.now() - startedAt,
+      });
       return null;
     }
     const parsed = responseSchema.safeParse(await res.json());
