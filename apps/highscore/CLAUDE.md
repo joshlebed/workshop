@@ -69,11 +69,19 @@ send `"paste"`); the redirect also reports the intent snapshot to the log-only
 redirect — it's the only thing distinguishing a share-sheet post from a manual paste, and the
 backend derives the durable `user_flags` adoption marker from it (see root CLAUDE.md).
 
-Discoverability: the Games home shows a one-time share-sheet announcement card
-(`ShareAnnouncementCard` + `useShareAnnouncement`, rules in `src/lib/shareOnboarding.ts` — hidden
-while flags load, hidden once dismissed/completed/already-adopted) that leads into the
-`/share-setup` walkthrough (`src/screens/ShareSetupWalkthrough.tsx`; persistent entry is the
-"Share sheet" row in You → Account). **Both entry points are runtime-gated to iOS
+Discoverability: share-sheet setup is an onboarding step timed to the first game. The first
+time a signed-in account lands on the Games home with **at least one game** and no share-setup
+history, `ShareAnnouncementCard` pushes the `/share-setup` walkthrough itself (`useShareAnnouncement().autoOpen`, inside a `useFocusEffect` so
+it never fights a deep-link or share-intent redirect — an invite or play link finishes first and
+the walkthrough opens when that flow hands off to home with a game added; an empty home runs its
+own friends → games onboarding and shows neither the walkthrough nor the card) and stamps
+`onboardedAt` on the
+`games.share-sheet-announcement` flag so it happens once per account. Skipping it (X) leaves the
+announcement card on the home as the reminder; only the card's X (`dismissedAt`) or finishing the
+walkthrough (`completedAt`) retires the card. Rules in `src/lib/shareOnboarding.ts` (hidden while
+flags load, hidden once already-adopted via `games.share-extension-score`); the walkthrough is
+`src/screens/ShareSetupWalkthrough.tsx` and the persistent entry is the "Share sheet" row in
+You → Account. **Both entry points are runtime-gated to iOS
 1.2.0+** (`runtimeHasShareSetup`, `SHARE_SETUP_SUPPORTED`): the code is JS-only and reaches every
 supported runtime, but the rollout plan is 1.2.0 users first while 1.0.1/1.1.0 get the App Store
 nudge. Lower `SHARE_SETUP_MIN_RUNTIME` to widen it; the route itself renders on any binary.

@@ -1,16 +1,45 @@
-// Rules for the one-time share-sheet announcement + walkthrough, kept out of
-// the components so they're testable without a renderer (same shape as
-// accountDeletion.ts). The announcement is a one-shot blast on the Games home:
-// it shows until the user deals with it (X or walkthrough) or proves they
-// don't need it (a score already posted through the share sheet).
+// Rules for the share-sheet onboarding: the walkthrough that opens itself once
+// after sign-in, and the announcement card on the Games home that stays until
+// the user deals with it. Kept out of the components so they're testable
+// without a renderer (same shape as accountDeletion.ts).
+//
+// Three signals live on one `games.share-sheet-announcement` flag:
+//   onboardedAt — the walkthrough auto-opened once (never auto-opens again)
+//   dismissedAt — X on the home card (card gone for good)
+//   completedAt — finished the walkthrough (card gone for good)
+// A score already posted through the share sheet (`games.share-extension-score`,
+// server-authored) ends both the auto-open and the card.
 
 import { USER_FLAG_KEYS } from "@workshop/shared/constants";
 import { compareReleaseVersions } from "./appRelease";
 
 /** Client-authored value of the `games.share-sheet-announcement` flag. */
 export interface ShareAnnouncementFlagValue {
+  /** The walkthrough was auto-opened as an onboarding step at this time. */
+  onboardedAt?: string;
   dismissedAt?: string;
   completedAt?: string;
+}
+
+function flagValueOf(raw: unknown): ShareAnnouncementFlagValue | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  const pick = (key: keyof ShareAnnouncementFlagValue) =>
+    typeof value[key] === "string" ? (value[key] as string) : undefined;
+  return {
+    onboardedAt: pick("onboardedAt"),
+    dismissedAt: pick("dismissedAt"),
+    completedAt: pick("completedAt"),
+  };
+}
+
+/**
+ * Stamp the auto-open without touching anything else on the flag. The card
+ * on the Games home keeps showing after a skipped onboarding — `onboardedAt`
+ * is "we showed it", not "they dealt with it".
+ */
+export function onboardedFlagValue(previous: unknown, now: Date): ShareAnnouncementFlagValue {
+  return { ...(flagValueOf(previous) ?? {}), onboardedAt: now.toISOString() };
 }
 
 export function dismissedFlagValue(now: Date): ShareAnnouncementFlagValue {
@@ -43,24 +72,57 @@ export function runtimeHasShareSetup(os: string, runtimeVersion: string | null):
   return cmp !== null && cmp >= 0;
 }
 
+export interface ShareSetupGateInput {
+  /** `GET /v1/users/me/flags` payload; `undefined` until it resolves. */
+  flags: Record<string, unknown> | undefined;
+  /** `runtimeHasShareSetup` for this binary. */
+  supported: boolean;
+  /**
+   * The home has at least one game. Both surfaces wait for this: there is
+   * nothing to share from until a game exists, and the empty home already
+   * has its own onboarding (friends → games). Undefined while games load.
+   */
+  hasGames: boolean | undefined;
+}
+
 /**
- * Whether to render the announcement card. `flags` is `undefined` until the
- * `GET /v1/users/me/flags` query resolves — never show while loading, so a
- * user who already dismissed it doesn't get a flash of the card. `supported`
- * is `runtimeHasShareSetup` for this binary.
+ * Whether to render the announcement card. Never while flags or games are
+ * still loading, so a user who already dismissed it doesn't get a flash of
+ * the card.
  */
 export function shouldShowShareAnnouncement({
   flags,
   supported,
-}: {
-  flags: Record<string, unknown> | undefined;
-  supported: boolean;
-}): boolean {
+  hasGames,
+}: ShareSetupGateInput): boolean {
   if (!supported) return false;
   if (flags === undefined) return false;
+  if (!hasGames) return false;
   // Already dealt with (dismissed or completed the walkthrough)…
-  if (flags[USER_FLAG_KEYS.shareSheetAnnouncement]) return false;
+  const value = flagValueOf(flags[USER_FLAG_KEYS.shareSheetAnnouncement]);
+  if (value?.dismissedAt || value?.completedAt) return false;
   // …or already using the share sheet (server-authored adoption marker).
+  if (flags[USER_FLAG_KEYS.shareExtensionScore]) return false;
+  return true;
+}
+
+/**
+ * Whether the Games home should open the walkthrough on its own — the
+ * onboarding step, timed to the first game: it fires on the first home
+ * landing *with a game* (right after the invite picker or the Add-game
+ * screen), not on an empty home. Once per account: any value on the flag
+ * (auto-opened, dismissed, or completed) ends it, as does a score already
+ * posted through the share sheet. Same no-show-while-loading rule as the card.
+ */
+export function shouldAutoOpenShareSetup({
+  flags,
+  supported,
+  hasGames,
+}: ShareSetupGateInput): boolean {
+  if (!supported) return false;
+  if (flags === undefined) return false;
+  if (!hasGames) return false;
+  if (flags[USER_FLAG_KEYS.shareSheetAnnouncement] !== undefined) return false;
   if (flags[USER_FLAG_KEYS.shareExtensionScore]) return false;
   return true;
 }
