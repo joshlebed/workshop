@@ -41,7 +41,7 @@ export function buildFriendRequestSentNotification(sender: string, target: strin
 }
 
 /** How a friendship edge was formed, from the acceptor's side. */
-export type FriendshipVia = "request" | "invite_link" | "mutual_request";
+export type FriendshipVia = "request" | "invite_link" | "mutual_request" | "play_link";
 
 /**
  * Tier 1: a friendship edge was formed. Directional on purpose — the operator
@@ -59,7 +59,9 @@ export function buildFriendshipFormedNotification(
       ? `${acceptor} accepted ${other}'s friend request`
       : via === "invite_link"
         ? `${acceptor} accepted ${other}'s invite link`
-        : `${acceptor} sent ${other} a friend request while ${other}'s request was pending, so it auto-accepted`;
+        : via === "play_link"
+          ? `${acceptor} added ${other} from ${other}'s play link`
+          : `${acceptor} sent ${other} a friend request while ${other}'s request was pending, so it auto-accepted`;
   return { content: `🤝 new friendship — ${what}`, kind: "friend_added" };
 }
 

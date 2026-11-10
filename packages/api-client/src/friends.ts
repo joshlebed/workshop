@@ -191,12 +191,20 @@ export async function fetchFriendRequests(token: string | null): Promise<FriendR
 export async function sendFriendRequest(
   userId: string,
   token: string | null,
+  options: {
+    /**
+     * A play-link token (`/g/:token`) the target minted. The backend treats
+     * holding it like holding their invite link and forms the friendship
+     * immediately (`accepted`) instead of leaving a `pending` request.
+     */
+    via?: string;
+  } = {},
 ): Promise<SendFriendRequestResponse> {
   const raw = await apiRequest<unknown>({
     method: "POST",
     path: "/v1/friends/requests",
     token,
-    body: { userId },
+    body: options.via ? { userId, via: options.via } : { userId },
   });
   return sendFriendRequestResponseSchema.parse(raw);
 }

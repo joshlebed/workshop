@@ -39,6 +39,8 @@ describe("workshopGamesSunset", () => {
       headers: { "X-Workshop-Client": "workshop" },
     });
     expect(res.status).toBe(410);
+    // 410 is heuristically cacheable; the browser must not keep this answer.
+    expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as {
       code: string;
       details: { highscoreUrl: string; appStoreUrl: string };

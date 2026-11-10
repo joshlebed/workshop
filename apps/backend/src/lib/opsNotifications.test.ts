@@ -60,6 +60,9 @@ describe("ops notification builders", () => {
     expect(buildFriendshipFormedNotification("Josh", "Alex", "mutual_request").content).toBe(
       "🤝 new friendship — Josh sent Alex a friend request while Alex's request was pending, so it auto-accepted",
     );
+    expect(buildFriendshipFormedNotification("Sam", "Josh", "play_link").content).toBe(
+      "🤝 new friendship — Sam added Josh from Josh's play link",
+    );
   });
 
   it("list joined", () => {

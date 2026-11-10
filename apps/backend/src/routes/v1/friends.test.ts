@@ -8,6 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { findOrCreateGameShareLink } from "../../lib/gameShareLinks.js";
 import { signSession } from "../../lib/session.js";
 
 let testDb: ReturnType<typeof drizzle>;
@@ -547,6 +548,52 @@ describe("directed friend requests — send / list / accept / deny / cancel", ()
     const res = await sendRequest(friend, me);
     expect(res.status).toBe(201);
     expect(await directedRowCount()).toBe(1);
+  });
+
+  it("a request carrying the target's play link forms the friendship at once", async () => {
+    // `stranger` holds `me`'s play link (as a score-share recipient would).
+    const playToken = await findOrCreateGameShareLink(me, PERIOD);
+    const res = await friendRoutes.request("/requests", {
+      method: "POST",
+      headers: authHeaders(stranger),
+      body: JSON.stringify({ userId: me, via: playToken }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { status: string; friend: { userId: string } | null };
+    expect(body.status).toBe("accepted");
+    expect(body.friend?.userId).toBe(me);
+    const edges = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM friendships WHERE user_low = $1 AND user_high = $2`,
+      [me < stranger ? me : stranger, me < stranger ? stranger : me],
+    );
+    expect(edges[0]?.n).toBe(1);
+    // No pending row is left behind for either side.
+    const pending = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM friend_requests WHERE invitee_id IS NOT NULL
+         AND ((inviter_id = $1 AND invitee_id = $2) OR (inviter_id = $2 AND invitee_id = $1))`,
+      [me, stranger],
+    );
+    expect(pending[0]?.n).toBe(0);
+    // Clean up so the later block-and-unfriend tests see the graph they expect.
+    await rows(`DELETE FROM friendships WHERE user_low = $1 AND user_high = $2`, [
+      me < stranger ? me : stranger,
+      me < stranger ? stranger : me,
+    ]);
+  });
+
+  it("a play link for someone else does not vouch — the request stays pending", async () => {
+    const othersToken = await findOrCreateGameShareLink(friend, PERIOD);
+    const res = await friendRoutes.request("/requests", {
+      method: "POST",
+      headers: authHeaders(stranger),
+      body: JSON.stringify({ userId: me, via: othersToken }),
+    });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { status: string }).status).toBe("pending");
+    await rows(`DELETE FROM friend_requests WHERE inviter_id = $1 AND invitee_id = $2`, [
+      stranger,
+      me,
+    ]);
   });
 
   it("rejects self-requests and unknown targets", async () => {

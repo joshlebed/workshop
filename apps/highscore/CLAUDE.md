@@ -54,6 +54,15 @@ the per-tab web choice across sign-in (`useInAppBrowserPrompt`) to avoid reopeni
 the app after “Continue here”. Desktop browser checks cannot prove the final
 Messenger-to-installed-iOS-app transition; that requires an iPhone check.
 
+Both link kinds converge after the friendship forms. `/friends/accept/:token`
+(`FriendAccept.tsx`) previews the inviter and accepts the invite; `/g/:token`
+(`GameShareLanding.tsx`) resolves the sharer and, for a non-friend, shows the same shape of
+accept card whose "Add" sends `POST /v1/friends/requests` with `via: <play token>` — the backend
+forms the edge at once (see apps/backend/CLAUDE.md). Both then render the shared
+`friendAccept/PostAcceptPicker.tsx` (the new friend's games, one-tap add / Add all) and hand off
+to home. A play-link recipient never lands on a pending request anymore; the profile route keeps
+its `?via=` vouch for the avatar tap and also passes `via` on its Add button.
+
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so
 `_layout.tsx` sends the iOS share intent straight to `/share/pick-game` and `app/share/index.tsx`
 renders the same `PickGame` screen. Every share affordance Workshop puts on its chooser has to live
