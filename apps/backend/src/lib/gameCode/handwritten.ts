@@ -273,10 +273,15 @@ function format(raw) {
       LINES,
       String.raw`
 // Round errors on one line, then "4.36× · top 49%". The share wraps its URL in <…>.
+// Since No. 103 each round carries a ↑/↓ (guessed over/under) and may end in a
+// free-text comment; keep the arrow, drop the comment.
 function format(raw) {
   var ls = lines(raw);
   var rounds = ls
-    .map(function (l) { return (l.match(/^\d{2}\s+(\S+×)$/) || [])[1]; })
+    .map(function (l) {
+      var m = l.match(/^\d{2}\s+([↑↓]?)\s*(\S+×)(?:\s|$)/u);
+      return m ? m[1] + m[2] : undefined;
+    })
     .filter(Boolean);
   var total = ls.find(function (l) { return /×\s*score/.test(l); });
   if (!total) return null;
@@ -292,6 +297,14 @@ function format(raw) {
       {
         raw: "Fermi · No. 97\n01  6,548×\n02  3.33×\n03  23.7×\n─────────\n42.9× score · top 90%\n<https://fermi.gg/s/daily>",
         expectedSummary: "6,548× · 3.33× · 23.7×\n42.9× · top 90%",
+      },
+      {
+        raw: "Fermi · No. 107\n01 ↓ 2.43×\n02 ↑ 2.00×\n03 ↑ 1.07×\n─────────\n1.73× score · top 5%\n<https://fermi.gg/s/daily>",
+        expectedSummary: "↓2.43× · ↑2.00× · ↑1.07×\n1.73× · top 5%",
+      },
+      {
+        raw: "Fermi · No. 106\n01 ↓ 16.9× (I forgot how to multiply :( )\n02 ↓ 1.30×\n03 ↓ 1.14×\n─────────\n2.93× score · top 56%\n<https://fermi.gg/s/daily>",
+        expectedSummary: "↓16.9× · ↓1.30× · ↓1.14×\n2.93× · top 56%",
       },
     ],
   },
