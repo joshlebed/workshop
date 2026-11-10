@@ -307,6 +307,16 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
   DB is a prod copy with real tokens, so point it at a local stub before exercising any send**.
   Agents never send (see Prohibited); runbook: `docs/push-runbook.md`.
 
+- **Vendor-credit alarms are reactive and live in `infra/vendor_alarms.tf`.** OpenAI
+  (`lib/teach/openai.ts`) and TypeSafe (`lib/jev.ts`) swallow every non-2xx and fall back,
+  so a dead balance or revoked key is only visible as a `logger.warn` line. CloudWatch
+  metric filters on `openai non-2xx` / `jev non-2xx` with status 401/402/403/429 feed two
+  alarms → SNS `workshop-prod-vendor-alarms` → the API Lambda (SNS event shape, handled by
+  `jobs/vendorAlarm.ts`, pings `#workshop-admin`) + an email subscription (needs a one-time
+  confirmation click). **Keep those two `msg` strings and the `status` field stable** — the
+  filter patterns match them verbatim. Reading an alarm and the per-vendor pre-emptive
+  settings: `docs/vendor-credits-runbook.md`.
+
 - **Discord admin channel: agents can read and post `#workshop-admin`.** User feedback and
   ops pings land there. `node scripts/discord.mjs read --limit 30` (oldest first, with message
   ids) and `node scripts/discord.mjs post [--thread <id> | --reply-to <id>] "text"` work in any
