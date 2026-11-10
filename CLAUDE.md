@@ -300,7 +300,8 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
 - **Operator push (`/admin?tab=push`) is hand-sent by the operator only.**
   `GET /v1/admin/push/recipients` lists users with a `push_tokens` row; `POST
 /v1/admin/push/send` (real-admin gate, `confirm: "SEND"`, `lib/contentFilter.ts` on title/body)
-  sends one message per device. Delivery for both this and the play-reminder job goes through
+  sends one message per device. Delivery for this, the play-reminder job and the inbound friend-request
+  push (`lib/friendRequestPush.ts`) goes through
   `apps/backend/src/lib/expoPush.ts` (`sendExpoPushMessages`: 100-per-request chunks, zod tickets,
   `DeviceNotRegistered` pruning). The endpoint is `EXPO_PUSH_URL` (default Expo's): **the sandbox
   DB is a prod copy with real tokens, so point it at a local stub before exercising any send**.

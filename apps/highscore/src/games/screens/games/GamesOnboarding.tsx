@@ -81,6 +81,17 @@ export function GamesOnboarding({
             onPress={onAddByUrl}
             testID="games-empty-add-url"
           />
+          {/* New users often install from a friend's link that iOS can't hand
+              over after install; both link kinds are reusable, so re-tapping works. */}
+          <Text
+            variant="caption"
+            tone="muted"
+            style={styles.linkHint}
+            testID="games-empty-link-hint"
+          >
+            Got a link from a friend? Open it again now that you're signed in — it adds them
+            straight away.
+          </Text>
         </View>
         {inviteUrl ? (
           <View style={styles.inviteBlock}>
@@ -177,6 +188,7 @@ const styles = StyleSheet.create({
   introBody: { maxWidth: 420, lineHeight: 22 },
   ctaStack: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
   emptyHint: { maxWidth: 420 },
+  linkHint: { marginTop: tokens.space.xs, lineHeight: 18 },
   inviteBlock: { gap: tokens.space.sm, width: "100%", maxWidth: 420 },
   inviteHint: { maxWidth: 420 },
   inviteUrlRow: {

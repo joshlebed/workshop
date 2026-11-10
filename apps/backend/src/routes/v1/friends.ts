@@ -37,6 +37,7 @@ import {
 import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
+import { sendFriendRequestPush } from "../../lib/friendRequestPush.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
 import { scoreCodeFields } from "../../lib/gameCodeService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
@@ -549,8 +550,14 @@ friendRoutes.post(
       .onConflictDoNothing()
       .returning({ id: friendRequests.id });
     // Only ping when a fresh pending row was actually created — a duplicate
-    // send no-ops on the partial unique index and shouldn't re-notify.
-    if (insertedRequest.length > 0) await notifyFriendRequestSent(userId, targetId);
+    // send no-ops on the partial unique index and shouldn't re-notify. The
+    // recipient's push runs beside the Discord ping; both swallow failures.
+    if (insertedRequest.length > 0) {
+      await Promise.all([
+        notifyFriendRequestSent(userId, targetId),
+        sendFriendRequestPush(userId, targetId),
+      ]);
+    }
     const response: SendFriendRequestResponse = { status: "pending", friend: null };
     return ok(c, response, 201);
   },

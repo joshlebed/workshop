@@ -16,6 +16,17 @@ vi.mock("../../db/client.js", () => ({
   getDb: () => testDb,
 }));
 
+// Never reach Expo from tests: the friend-request push goes through this mock.
+const { sendExpoPushMessages } = vi.hoisted(() => ({
+  sendExpoPushMessages: vi.fn(async (messages: { to: string }[]) => ({
+    sent: messages.length,
+    failed: 0,
+    prunedTokens: [] as string[],
+    outcomes: messages.map((m) => ({ to: m.to, status: "ok" as const })),
+  })),
+}));
+vi.mock("../../lib/expoPush.js", () => ({ sendExpoPushMessages }));
+
 // Imported after the mock so both routers' `getDb` resolves to PGlite.
 import { __internal, friendRoutes } from "./friends.js";
 import { gameRoutes } from "./games.js";
@@ -790,5 +801,77 @@ describe("GET /v1/friends/users/:userId — profile", () => {
       headers: authHeaders(me),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /v1/friends/requests — recipient push", () => {
+  const sender = "00000000-0000-4000-8000-000000000031";
+  const recipient = "00000000-0000-4000-8000-000000000032";
+  const anonymous = "00000000-0000-4000-8000-000000000033";
+
+  beforeAll(async () => {
+    await rows(
+      `INSERT INTO users (id, email, display_name) VALUES
+         ($1, 'sender@example.com', 'Sendy'),
+         ($2, 'recipient@example.com', 'Recip'),
+         ($3, 'anon@example.com', NULL)`,
+      [sender, recipient, anonymous],
+    );
+    await rows(
+      `INSERT INTO push_tokens (user_id, expo_push_token, platform, timezone) VALUES
+         ($1, 'ExponentPushToken[recip-a]', 'ios', 'UTC'),
+         ($1, 'ExponentPushToken[recip-b]', 'ios', 'UTC')`,
+      [recipient],
+    );
+  });
+
+  it("pushes every device of the recipient on a fresh request, once", async () => {
+    sendExpoPushMessages.mockClear();
+    const res = await sendRequest(sender, recipient);
+    expect(res.status).toBe(201);
+    expect(sendExpoPushMessages).toHaveBeenCalledTimes(1);
+    const messages = sendExpoPushMessages.mock.calls[0]?.[0];
+    expect(messages).toEqual(
+      ["ExponentPushToken[recip-a]", "ExponentPushToken[recip-b]"].map((to) => ({
+        to,
+        title: "New friend request",
+        body: "Sendy wants to be friends on HighScore",
+        data: { kind: "friend_request", userId: sender },
+        sound: "default",
+      })),
+    );
+
+    // A duplicate send no-ops on the unique index and must not re-push.
+    const again = await sendRequest(sender, recipient);
+    expect(again.status).toBe(201);
+    expect(sendExpoPushMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to 'Someone' for a sender with no display name", async () => {
+    sendExpoPushMessages.mockClear();
+    const res = await sendRequest(anonymous, recipient);
+    expect(res.status).toBe(201);
+    expect(sendExpoPushMessages.mock.calls[0]?.[0][0]).toMatchObject({
+      body: "Someone wants to be friends on HighScore",
+    });
+  });
+
+  it("skips the push when the recipient has no registered device", async () => {
+    sendExpoPushMessages.mockClear();
+    const res = await sendRequest(anonymous, sender);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ status: "pending", friend: null });
+    expect(sendExpoPushMessages).not.toHaveBeenCalled();
+  });
+
+  it("still answers 201 when the push helper throws", async () => {
+    // Clear both directions so this send inserts a fresh pending row.
+    await rows(`DELETE FROM friend_requests WHERE inviter_id IN ($1, $2)`, [sender, recipient]);
+    sendExpoPushMessages.mockClear();
+    sendExpoPushMessages.mockRejectedValueOnce(new Error("expo down"));
+    const res = await sendRequest(sender, recipient);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ status: "pending", friend: null });
+    expect(sendExpoPushMessages).toHaveBeenCalledTimes(1);
   });
 });

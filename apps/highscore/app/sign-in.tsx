@@ -159,6 +159,14 @@ export default function SignIn() {
             </Text>
           </View>
           <AppStoreBadge />
+          <Text
+            variant="caption"
+            tone="muted"
+            style={styles.appCardText}
+            testID="sign-in-app-store-relink"
+          >
+            After installing, tap your friend's link again to pick up where you left off.
+          </Text>
         </View>
       ) : null}
 
