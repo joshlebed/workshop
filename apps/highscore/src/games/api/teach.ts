@@ -38,6 +38,7 @@ const gameRefSchema = z.object({ id: z.string(), title: z.string(), url: z.strin
 const previewSchema = z.object({
   parseStatus: z.enum(["score", "no_result", "failed"]),
   scoreValue: z.number().nullable(),
+  scoreUnit: z.enum(["seconds"]).nullable().optional(),
   scoreSummary: z.string().nullable(),
   teach: z
     .object({

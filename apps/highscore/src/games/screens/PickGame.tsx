@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Game, MyGame } from "@workshop/shared/games";
+import { formatScoreValue } from "@workshop/shared/games";
 import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
@@ -388,7 +389,8 @@ function DetectedScoreSuggestion({
   // Recognised but nowhere to post it yet: the list below is the answer.
   if (!suggestion) return null;
 
-  const scoreValue = check.view.kind === "score" ? check.view.value : null;
+  const scoreValue =
+    check.view.kind === "score" ? formatScoreValue(check.view.value, check.view.unit) : null;
 
   return (
     <View style={styles.suggestionBox} testID="share-game-detection-suggestion">
@@ -425,7 +427,7 @@ function DetectedScoreSuggestion({
         scoreRead={
           scoreValue !== null ? (
             <View style={styles.scoreValueBox} testID="share-game-score-value">
-              <Text style={styles.scoreValueText}>{scoreValue.toLocaleString()}</Text>
+              <Text style={styles.scoreValueText}>{scoreValue}</Text>
             </View>
           ) : undefined
         }

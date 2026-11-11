@@ -23,7 +23,8 @@
 // wrapper's pointer listeners. A short tap on any control still runs that
 // control's own action.
 
-import { STREAK_MIN_DAYS } from "@workshop/shared/games";
+import type { GameScoreUnit } from "@workshop/shared/games";
+import { formatScoreValue, STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { REORDER_ACTIVATION } from "@workshop/ui";
 import { memo } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
@@ -55,6 +56,8 @@ export interface StandingsRow {
   body: string | null;
   /** The parsed numeric score, shown boxed at the row's end. Null → no box. */
   scoreValue?: number | null;
+  /** How `scoreValue` is shown: a time for `seconds`, a plain number otherwise. */
+  scoreUnit?: GameScoreUnit | null;
   /** The player picked this score and the game's parser reads the text differently. */
   adjusted?: boolean;
   /** "Score: 80" / "Didn't finish" when the score is the player's own pick. */
@@ -323,7 +326,7 @@ function PlayerRow({ row, isMe }: PlayerRowProps) {
       ) : null}
       {scoreValue !== null ? (
         <View style={styles.scoreBox} testID={`game-card-value-${row.userId}`}>
-          <Text style={styles.scoreBoxText}>{scoreValue.toLocaleString()}</Text>
+          <Text style={styles.scoreBoxText}>{formatScoreValue(scoreValue, row.scoreUnit)}</Text>
         </View>
       ) : null}
     </View>

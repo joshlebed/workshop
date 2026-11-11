@@ -418,6 +418,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
           rank: entry.rank,
           body: summarizeGameScoreBody(mg.game, entry),
           scoreValue: entry.scoreValue,
+          scoreUnit: mg.game.scoreUnit ?? null,
           ...(entry.adjusted ? { adjusted: true } : {}),
           ...(scoreLine ? { picked: scoreLine } : {}),
           // Only the poster sees "Fix score", and only on a score nothing read.
