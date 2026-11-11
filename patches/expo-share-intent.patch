@@ -1,8 +1,31 @@
 diff --git a/plugin/build/ios/ShareExtensionViewController.swift b/plugin/build/ios/ShareExtensionViewController.swift
-index 9400ec3ba81402c67fc35c9bbb7e6a63fef5ab17..9e7c84384f16cd8b1f86f1775d0b67574fd5e211 100644
+index 9400ec3ba81402c67fc35c9bbb7e6a63fef5ab17..c201e41109ded942e06aae2b7cc5c5e02813f15f 100644
 --- a/plugin/build/ios/ShareExtensionViewController.swift
 +++ b/plugin/build/ios/ShareExtensionViewController.swift
-@@ -46,19 +46,52 @@ class ShareViewController: UIViewController {
+@@ -32,13 +32,20 @@ class ShareViewController: UIViewController {
+     if hideView {
+       view.backgroundColor = .clear
+       view.isOpaque = false
+-      handleViewLoad()
+     }
+   }
+ 
++  // PATCH (workshop): upstream starts the hand-off from `viewDidLoad` when the
++  // view is hidden, so `completeRequest` can run while iOS is still presenting
++  // the extension's sheet. The host then never dismisses it: a clear sheet stays
++  // over the app and swallows every tap until it is swiped away. Always wait for
++  // `viewDidAppear`, once.
++  private var didHandleViewLoad = false
++
+   override func viewDidAppear(_ animated: Bool) {
+     super.viewDidAppear(animated)
+-    if !hideView {
++    if !didHandleViewLoad {
++      didHandleViewLoad = true
+       handleViewLoad()
+     }
+   }
+@@ -46,19 +53,52 @@ class ShareViewController: UIViewController {
    private func handleViewLoad() {
      Task {
        guard let extensionContext = self.extensionContext,

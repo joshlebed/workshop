@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   expo-share-intent:
-    hash: 900f7dce947f1f2175b405d422476088655b49684335a55b8e6a4d04e2e864bd
+    hash: 68628f28e151af9ad35a17abb823efe3a2e2403f24893660e06a8652226db001
     path: patches/expo-share-intent.patch
   react-native-reorderable-list:
     hash: db1a08a184a534bdac2cced5f5e1982ecdc9a923024fe9ae1c7a9df00256276e
@@ -206,7 +206,7 @@ importers:
         version: 55.0.14(expo@55.0.24)
       expo-share-intent:
         specifier: ^6.1.0
-        version: 6.1.0(patch_hash=900f7dce947f1f2175b405d422476088655b49684335a55b8e6a4d04e2e864bd)(expo-constants@55.0.16)(expo-linking@55.0.15)(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)
+        version: 6.1.0(patch_hash=68628f28e151af9ad35a17abb823efe3a2e2403f24893660e06a8652226db001)(expo-constants@55.0.16)(expo-linking@55.0.15)(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)
       expo-sharing:
         specifier: 55.0.19
         version: 55.0.19(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)
@@ -387,7 +387,7 @@ importers:
         version: 55.0.14(expo@55.0.24)
       expo-share-intent:
         specifier: ^6.1.0
-        version: 6.1.0(patch_hash=900f7dce947f1f2175b405d422476088655b49684335a55b8e6a4d04e2e864bd)(expo-constants@55.0.16)(expo-linking@55.0.15)(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)
+        version: 6.1.0(patch_hash=68628f28e151af9ad35a17abb823efe3a2e2403f24893660e06a8652226db001)(expo-constants@55.0.16)(expo-linking@55.0.15)(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)
       expo-status-bar:
         specifier: 55.0.6
         version: 55.0.6(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)
@@ -11185,7 +11185,7 @@ snapshots:
 
   expo-server@55.0.9: {}
 
-  expo-share-intent@6.1.0(patch_hash=900f7dce947f1f2175b405d422476088655b49684335a55b8e6a4d04e2e864bd)(expo-constants@55.0.16)(expo-linking@55.0.15)(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0):
+  expo-share-intent@6.1.0(patch_hash=68628f28e151af9ad35a17abb823efe3a2e2403f24893660e06a8652226db001)(expo-constants@55.0.16)(expo-linking@55.0.15)(expo@55.0.24)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0):
     dependencies:
       '@expo/config-plugins': 55.0.9
       expo: 55.0.24(@babel/core@7.29.0)(@expo/dom-webview@55.0.5)(@expo/metro-runtime@55.0.11)(expo-router@55.0.14)(react-dom@19.2.0(react@19.2.0))(react-native-worklets@0.7.4(@babel/core@7.29.0)(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0))(react-native@0.83.6(@babel/core@7.29.0)(@react-native/metro-config@0.85.2(@babel/core@7.29.0))(@types/react@19.2.18)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)

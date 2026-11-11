@@ -187,6 +187,16 @@ providers" approach was a no-op (the url provider doesn't conform to `public.tex
 reintroduce it. If you bump `expo-share-intent`, re-verify the patch applies and re-test a real
 game share on a TestFlight build (the extension isn't exercised by CI or web).
 
+**The same patch also moves the hide-view hand-off from `viewDidLoad` to `viewDidAppear`.**
+With `iosHideView: true` upstream starts in `viewDidLoad`, so `completeRequest` can land while
+iOS is still presenting the extension's sheet; the host drops the dismiss and a clear sheet
+stays over the app swallowing every tap until it is swiped away (upstream #231 / #217, open and
+unfixed through v9). It hit HighScore's share-setup walkthrough ("Done and X don't work"), and
+the source app of any share is exposed the same way. Simulator repro, practice shares
+stuck before → after the patch: iOS 26 3 of 41 → 0 of 26, iOS 27 10 of 35 → 0 of 30. The Limrun builder reuses a generated
+`ios/` directory, so a patch edit only reaches a simulator build with
+`lim xcode build … --expo-force-prebuild` (check the log for `Compiling ShareViewController.swift`).
+
 ## Universal Links: AASA path allowlist lives in two places
 
 The iOS app advertises which domain to fetch via `ios.associatedDomains` in `app.json`.
