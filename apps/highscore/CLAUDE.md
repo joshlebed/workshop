@@ -171,6 +171,16 @@ publishes to (see root CLAUDE.md → "Runtime-version policy"). Adding a native 
 bump `version`, add it to the list, keep the older entries until a PR actually imports the new
 module, then drop them in that PR. Never remove the current `version` from the list.
 
+**Shipping a JS fix to pre-1.3.0 binaries** (1.0.1 / 1.1.0 / 1.2.0, SDK 55): `main` is SDK 58 and
+publishes only to 1.3.0, so those runtimes are served from the maintenance branch
+`joshlebed/hs-1.2-practice-in-safari` (branched from the last SDK 55 commit, with its own
+three-entry `supported-runtimes.json`). Commit the fix there, then
+`gh workflow run deploy-mobile-highscore.yml --ref joshlebed/hs-1.2-practice-in-safari` — the
+workflow runs from that ref and publishes one update per runtime in that branch's list. Never
+merge the branch into `main`; port the change to `main` separately. Web assets (`public/`, Pages
+Functions) only deploy from `main`, so land those first. Verify on a simulator from that branch
+with the `--xcode-version 26` build command it carries.
+
 ## Preloaded natives (1.2.0 binary)
 
 The 1.2.0 binary ships native modules **no code imports yet**, so the features that need them can
