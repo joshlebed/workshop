@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   computeGameStreak,
+  formatScoreValue,
   isReactionEmoji,
   normalizeGameUrl,
   REACTION_QUICK_EMOJIS,
@@ -121,6 +122,22 @@ describe("normalizeGameUrl", () => {
   it("rejects undotted hosts and unparseable input", () => {
     expect(normalizeGameUrl("wordle")).toBeNull();
     expect(normalizeGameUrl("not a url")).toBeNull();
+  });
+});
+
+describe("formatScoreValue", () => {
+  it("shows seconds as a time: m:ss under an hour, h and m past it", () => {
+    expect(formatScoreValue(42, "seconds")).toBe("0:42");
+    expect(formatScoreValue(252, "seconds")).toBe("4:12");
+    expect(formatScoreValue(82800, "seconds")).toBe("23h 00m");
+    expect(formatScoreValue(70800, "seconds")).toBe("19h 40m");
+    expect(formatScoreValue(3930, "seconds")).toBe("1h 05m 30s");
+  });
+
+  it("leaves a plain number alone", () => {
+    expect(formatScoreValue(944, null)).toBe("944");
+    expect(formatScoreValue(4250, undefined)).toBe((4250).toLocaleString());
+    expect(formatScoreValue(-5, "seconds")).toBe("-5");
   });
 });
 

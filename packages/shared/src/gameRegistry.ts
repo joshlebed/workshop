@@ -16,7 +16,7 @@
 // sibling shared modules are avoided for the same reason — only type imports
 // (which Metro elides) are safe.
 
-import type { GameScoreDirection } from "./games.js";
+import type { GameScoreDirection, GameScoreUnit } from "./games.js";
 import type { ScoreSpec } from "./scoreParsing.js";
 
 // Detection order matters: more specific games come first so e.g. "Worldle"
@@ -76,6 +76,8 @@ export interface GameDefinition {
   catalog: boolean;
   /** 'desc' = bigger is better, 'asc' = lower is better. */
   scoreDirection: GameScoreDirection;
+  /** Set when `spec` reads a time in seconds, so clients show it as one. */
+  scoreUnit?: GameScoreUnit;
   /** Game type — the catalog section this game is listed under. */
   category: GameCategory;
   /** How to parse a numeric score out of a share; null = no reliable parse. */
@@ -531,6 +533,7 @@ export const GAME_REGISTRY: GameDefinition[] = [
     canonicalUrl: "https://www.nytimes.com/crosswords/game/mini",
     catalog: true,
     scoreDirection: "asc",
+    scoreUnit: "seconds",
     category: "puzzles",
     // "I solved the 5/20/2026 New York Times Mini Crossword in 0:16!" → 16
     // seconds. The date is a fraction-shaped trap for naive number parsing —

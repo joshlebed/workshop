@@ -582,6 +582,14 @@ async function applyNewCode(input: {
   // the direction endpoint's two-user rule.
   const directionSet =
     game.parseCode === null && input.scoreDirection ? input.scoreDirection : null;
+  // The accepted pick says what the parser reads: a time (`0:42`, `23h 00m`,
+  // stored in seconds) is shown as one. A "didn't finish" pick says nothing.
+  const scoreUnit =
+    input.pick.kind === "feature"
+      ? input.pick.feature.kind === "duration"
+        ? "seconds"
+        : null
+      : undefined;
   // An unread row has nothing to protect — a failed read, or the first-number
   // guess on a game that had no parser — so it takes the new reading whoever
   // owns it. A switch moves real readings: those stay put for accounts teach
@@ -621,6 +629,7 @@ async function applyNewCode(input: {
       .set({
         parseConflictAt: null,
         ...(directionSet ? { scoreDirection: directionSet, directionSetBy: userId } : {}),
+        ...(scoreUnit !== undefined ? { scoreUnit } : {}),
       })
       .where(eq(games.id, game.id))
       .returning();

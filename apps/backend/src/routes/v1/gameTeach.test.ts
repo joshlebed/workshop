@@ -62,6 +62,16 @@ const READS_SCORE = `function parse(raw) {
   if (!m) throw new Error("no score line");
   return Number(m[1].replace(/,/g, ""));
 }`;
+// Krillion shares with a solve time instead of a score line, for the time-score tests.
+const timed = (puzzle: number, time: string) =>
+  `Krillion #${puzzle} 🦐\nSolved in ${time}\n\n🦑🏮🫧🦑🫧🏮`;
+const TIME_AT = SCORE_AT + "Solved in ".length;
+const timePick: ScorePick = { kind: "feature", featureId: `duration@${TIME_AT}` };
+const READS_TIME = `function parse(raw) {
+  var m = raw.match(/(\\d+)h\\s*(\\d+)m/);
+  if (!m) throw new Error("no time");
+  return Number(m[1]) * 3600 + Number(m[2]) * 60;
+}`;
 const READS_PUZZLE_NUMBER = `function parse(raw) {
   var m = raw.match(/#(\\d+)/);
   if (!m) throw new Error("no puzzle number");
@@ -188,6 +198,7 @@ async function gameRow(gameId: string) {
     parse_code: string | null;
     code_version: number;
     score_direction: string;
+    score_unit: string | null;
     direction_set_by: string | null;
     parse_conflict_at: string | null;
   }>(`SELECT * FROM games WHERE id = $1`, [gameId]);
@@ -661,6 +672,23 @@ describe("the entry surface — share-panel observability", () => {
 });
 
 describe("teaching the parser from a pick", () => {
+  it("a time pick marks the game's score as seconds, and the preview says so", async () => {
+    const gameId = await newGame();
+    const before = await preview(josh, gameId, timed(81, "23h 00m"));
+    expect(before.body.preview.scoreUnit).toBeNull();
+    expect(before.body.preview.teach?.candidates.map((c) => c.label)).toContain("23h 00m");
+
+    await post(josh, gameId, today, timed(81, "23h 00m"), { pick: timePick });
+    llm.code = [READS_TIME];
+    const res = await teach(josh, gameId, today, { scoreDirection: "asc" });
+    expect(res.body.outcome).toBe("accepted");
+    expect(await gameRow(gameId)).toMatchObject({ score_unit: "seconds", score_direction: "asc" });
+    expect(await scoreRow(gameId, josh, today)).toMatchObject({ score_value: "82800" });
+
+    const after = await preview(josh, gameId, timed(82, "19h 40m"));
+    expect(after.body.preview).toMatchObject({ scoreValue: 70800, scoreUnit: "seconds" });
+  });
+
   it("accepts code that passes every gate: new version, revision, direction, re-read, one ping", async () => {
     const gameId = await newGame();
     // Dag posted before anyone taught the game: unread.
@@ -678,6 +706,7 @@ describe("teaching the parser from a pick", () => {
       parse_code: READS_SCORE,
       code_version: 1,
       score_direction: "desc",
+      score_unit: null,
       direction_set_by: josh,
     });
     const [revision] = await rows<{

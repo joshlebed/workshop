@@ -55,11 +55,26 @@ describe("resolveScoreCheck — a game known to have no parser never waits", () 
 
 describe("resolveScoreCheck — the spec's states and copy", () => {
   it("score read: the value, with its derivation when it was computed", () => {
-    expect(resolve(preview())).toEqual({ kind: "score", copy: "Score: 944", value: 944 });
+    expect(resolve(preview())).toEqual({
+      kind: "score",
+      copy: "Score: 944",
+      value: 944,
+      unit: null,
+    });
     expect(resolve(preview({ scoreValue: 7 }, { derivation: "counted 🏆" }))).toEqual({
       kind: "score",
       copy: "Score: 7 (counted 🏆)",
       value: 7,
+      unit: null,
+    });
+  });
+
+  it("score read: a time game's seconds read as a time", () => {
+    expect(resolve(preview({ scoreValue: 82800, scoreUnit: "seconds" }))).toEqual({
+      kind: "score",
+      copy: "Score: 23h 00m",
+      value: 82800,
+      unit: "seconds",
     });
   });
 
@@ -168,6 +183,7 @@ describe("copy", () => {
 
   it("score line and fixed strings", () => {
     expect(scoreReadCopy(42, null)).toBe("Score: 42");
+    expect(scoreReadCopy(42, null, "seconds")).toBe("Score: 0:42");
     expect(SCORE_COPY.didNotFinish).toBe("I didn't finish");
     expect(SCORE_COPY.fixScore).toBe("Fix score");
   });
@@ -183,6 +199,14 @@ describe("scoreLineLabel — every read row of a board is shown the same way", (
   it("a picked row and a parsed or re-read row both state their score", () => {
     expect(scoreLineLabel(picked, untaughtFormat, true)).toBe("Score: 270");
     expect(scoreLineLabel(reread, untaughtFormat, true)).toBe("Score: 415");
+    // A time game (City2City) states its seconds as a time.
+    expect(
+      scoreLineLabel(
+        { ...picked, scoreValue: 82800 },
+        { ...untaughtFormat, scoreUnit: "seconds" },
+        true,
+      ),
+    ).toBe("Score: 23h 00m");
     // A re-read row carries no source of its own on an older server.
     expect(scoreLineLabel({ parseStatus: "score", scoreValue: 415 }, untaughtFormat, true)).toBe(
       "Score: 415",
