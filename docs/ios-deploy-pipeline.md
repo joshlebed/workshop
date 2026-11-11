@@ -10,9 +10,13 @@ Per-symptom incident recovery for TestFlight / EAS lives in `docs/recovery-runbo
   publishes through `deploy-mobile.yml`; HighScore publishes independently through
   `deploy-mobile-highscore.yml`. Phones pick the matching update up on next launch.
 - **Native changes** → `testflight.yml` (Workshop) and `testflight-highscore.yml`
-  (HighScore) run `eas build --auto-submit` and **await the build** so CI red/green matches
-  the EAS outcome. Last-built fingerprints use `ios-fp-<hash>` and `hs-ios-fp-<hash>`,
-  respectively, and are written only on success.
+  (HighScore) run `eas build` and **await the build**, tag the fingerprint, then
+  `eas submit --id <build>` and await the submission, so CI red/green matches the EAS
+  outcome. Last-built fingerprints use `ios-fp-<hash>` and `hs-ios-fp-<hash>`, respectively,
+  and are written as soon as the binary exists — a submit failure is a re-submit, not a
+  rebuild. `package.json` `scripts` and `eas.json` `cli` are excluded from the hash
+  (`fingerprint.config.cjs` in each app → `scripts/expo-fingerprint-config.cjs`) so JS-only
+  tooling changes don't spend EAS builds.
 
 ## First diagnostic: "feature shipped on web but missing on iOS"
 
@@ -74,7 +78,27 @@ every host.
 
 ## Recovery
 
-### Stuck fingerprint tag (build succeeded but auto-submit failed)
+### Build succeeded but the TestFlight submit failed
+
+The binary exists and its fingerprint tag is already written. Re-submit it (the run's
+`::error` names the build id); do not delete the tag or force a rebuild:
+
+```bash
+cd apps/workshop && npx eas-cli@27.4.0 submit --platform ios --profile production --id <build-id>
+```
+
+For HighScore, `cd apps/highscore`.
+
+### EAS Free plan iOS build quota exhausted
+
+The `Build (await success)` step ends with `This account has used its iOS builds from the
+Free plan this month, which will reset in N days`. Nothing in the repo is broken: JS keeps
+shipping by OTA, and the next native change builds after the reset (1st of the month) or an
+upgrade (`eas billing:subscribe starter --account joshlebed` — operator decision). Re-fire
+with `--field force=true` once builds are available. Keep the quota in mind when iterating on
+the pipeline itself: every red EAS build counts.
+
+### Fingerprint tag written for a binary you want to rebuild anyway
 
 ```bash
 git tag -d ios-fp-<hash>

@@ -48,9 +48,10 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
 - **EAS Update** for JS-only OTA (~60s after merge), independently via `deploy-mobile.yml`
   (Workshop) and `deploy-mobile-highscore.yml` (HighScore). TestFlight builds trigger on native
   change via `@expo/fingerprint`; `testflight.yml` and `testflight-highscore.yml` run
-  `eas build --auto-submit` and **await the build** so CI red/green matches EAS outcome.
-  Last-built fingerprints use `ios-fp-<hash>` (Workshop) and `hs-ios-fp-<hash>` (HighScore),
-  written only on success via the GitHub **refs API**
+  `eas build` and **await the build**, tag the fingerprint, then `eas submit --id` and await
+  the submission, so CI red/green matches EAS outcome and a submit failure is a re-submit,
+  never a rebuild. Last-built fingerprints use `ios-fp-<hash>` (Workshop) and
+  `hs-ios-fp-<hash>` (HighScore), written as soon as the binary exists via the GitHub **refs API**
   (`gh api .../git/refs`), not `git push`. The build job's checkout is shallow, so a
   `git push origin <tag>` re-sends the commit's tree (incl. `.github/workflows/*` blobs); if
   a workflow file changed on `main` after the build started, GitHub rejects the push
@@ -403,11 +404,29 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
   locally). `scripts/eas-sync-ios-capabilities.mjs` requires eas-cli internals
   (`build/credentials/ios/appstore/*`) — smoke it after a bump with fake `EXPO_ASC_*` /
   `EXPO_APPLE_TEAM_*` env and a nonexistent key path; reaching `ENOENT` means resolution works.
-  **`eas.json` is an `@expo/fingerprint` input**: any edit to it (even `cli.version`) moves both
-  apps' iOS hashes, so the merge cuts a new TestFlight build and `Runtime version guard` asks for
-  a version bump. Adding eas-cli to the lockfile can also re-dedupe Expo's own prebuild toolchain
+  `eas.json` `cli` is stripped from the fingerprint (see "EAS builds are metered" below), so a
+  `cli.version` bump no longer cuts a TestFlight build; other `eas.json` edits still do. Adding
+  eas-cli to the lockfile can also re-dedupe Expo's own prebuild toolchain
   (`@expo/json-file`, `@expo/plist`, `@expo/config-plugins` patch versions) — diff the lockfile
   snapshots against `main` and keep Expo's entries unchanged.
+- **EAS builds are metered — every fingerprint move is a real iOS build on a capped Free
+  plan.** `@expo/fingerprint` hashes more than native code: `package.json` `scripts` and
+  `eas.json` are sources too, so on 2026-11-03 a typecheck-script rename (#542) and the
+  eas-cli `cli.version` bump (#536) each rebuilt both apps, and seven iterations on the push
+  entitlement plus three duplicate builds of one Workshop fingerprint exhausted the month's
+  quota ("This account has used its iOS builds from the Free plan"; reset on the 1st). Both
+  apps load `fingerprint.config.cjs` → `scripts/expo-fingerprint-config.cjs`, which skips
+  `scripts` entirely and strips `eas.json` `cli`; add a new JS-only source there rather than
+  bumping `version` to get past the guard. **The sandbox reproduces CI's hash exactly** (same
+  Linux + full install): `cd apps/<app> && node -e "require('@expo/fingerprint').createProjectHashAsync('.').then(console.log)"`
+  — diff `createFingerprintAsync(...).sources` between two checkouts to see _why_ a hash moved.
+  Changing the config changes every hash, so seed `ios-fp-<new>` / `hs-ios-fp-<new>` tags
+  pointing at the commits whose binaries already shipped before merging (refs API, as the
+  workflow does), or the next push to `main` builds again. The build job re-checks the tag
+  after it wins the concurrency slot, so two pushes with the same fingerprint cost one build.
+  Quota-exhausted runs are red with a named reason in the Discord ping; nothing to fix in the
+  repo — wait for the reset or `eas billing:subscribe starter --account joshlebed` (operator
+  decision), then `--field force=true`.
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full errors:
   `logger.error("failed to x", { error })`, not `{ error: error.message }` (loses stack).
 - **Managed sessions are version-negotiated.** Updated clients send
@@ -730,7 +749,7 @@ Almost always the deploy pipeline, not per-platform code. Check in order:
    no matching binary exists yet. Two common failure shapes:
    - Fails at the `Write ASC API key` step → the `ASC_API_KEY_*` GitHub Actions secrets are
      unset or stale. One-time fix via the website in `docs/manual-setup.md` §5.
-   - Fails at `Build + auto-submit (await success)` with `Distribution Certificate is not
+   - Fails at `Build (await success)` with `Distribution Certificate is not
 validated for non-interactive builds` → inspect whether this is the app's first build. A new
      EAS project needs one local `eas credentials --platform ios` run (production → Build
      Credentials → All) to reuse/create the team certificate and create every target profile;
@@ -771,7 +790,14 @@ differently across OSes. `appVersion` produces identical values on every host.
 
 ### Recovery
 
-Stuck fingerprint tag (e.g. build succeeded but auto-submit failed):
+Build finished but `Submit to TestFlight (await)` failed: the binary and its fingerprint tag
+exist, so re-submit instead of rebuilding (the run's `::error` names the build id):
+
+```bash
+cd apps/workshop && npx eas-cli@27.4.0 submit --platform ios --profile production --id <build-id>
+```
+
+Fingerprint tag written for a binary you want to rebuild anyway:
 
 ```bash
 git tag -d ios-fp-<hash>
