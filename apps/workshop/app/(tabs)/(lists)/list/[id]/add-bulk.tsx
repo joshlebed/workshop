@@ -1,10 +1,19 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import { Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
+import {
+  Button,
+  Screen,
+  ScreenHeader,
+  SectionHeader,
+  Text,
+  TextField,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { createItemsBulk } from "../../../../../src/api/items";
 import { useAuth } from "../../../../../src/hooks/useAuth";
@@ -73,13 +82,13 @@ export default function AddBulk() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <IconButton accessibilityLabel="Cancel" onPress={() => goBack(id ? `/list/${id}` : "/")}>
-          <Text style={styles.headerGlyph}>✕</Text>
-        </IconButton>
-        <Text variant="heading">Paste many</Text>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader
+        leading="close"
+        leadingLabel="Cancel"
+        leadingTestID="add-bulk-cancel"
+        onLeadingPress={() => goBack(id ? `/list/${id}` : "/")}
+        title="Paste many"
+      />
 
       <KeyboardAwareScrollView
         style={styles.scroll}
@@ -94,16 +103,15 @@ export default function AddBulk() {
           <Text style={styles.code}>*</Text> markers are stripped automatically.
         </Text>
 
-        <TextInput
+        <TextField
           testID="add-bulk-input"
           value={paste}
           onChangeText={setPaste}
           placeholder={`Hereditary\nPast Lives\nThe Bear S2`}
-          placeholderTextColor={tokens.text.muted}
           multiline
           autoFocus
           textAlignVertical="top"
-          style={styles.input}
+          inputStyle={styles.input}
           accessibilityLabel="Paste items, one per line"
         />
 
@@ -117,9 +125,7 @@ export default function AddBulk() {
 
         {parsed.length > 0 ? (
           <View style={styles.previewBlock}>
-            <Text variant="caption" tone="muted" style={styles.previewLabel}>
-              Preview
-            </Text>
+            <SectionHeader title="Preview" />
             <View style={styles.previewList}>
               {parsed.slice(0, 8).map((title) => (
                 <View key={title} style={styles.previewRow}>
@@ -160,19 +166,10 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.xl,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-  },
-  headerGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
-  headerSpacer: { width: 40 },
   scroll: { flex: 1 },
   body: {
+    paddingTop: tokens.space.md,
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.lg,
@@ -180,28 +177,19 @@ const styles = StyleSheet.create({
   intro: { fontSize: tokens.font.size.sm, lineHeight: 20 },
   code: {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: 13,
+    fontSize: tokens.font.size.sm,
     color: tokens.text.secondary,
   },
   input: {
     minHeight: 220,
     maxHeight: 360,
     paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    lineHeight: 22,
   },
   countRow: { flexDirection: "row", justifyContent: "flex-end" },
   count: { fontSize: tokens.font.size.xs, letterSpacing: 0.2 },
   previewBlock: { gap: tokens.space.sm },
-  previewLabel: { textTransform: "uppercase", letterSpacing: 0.6 },
   previewList: {
-    gap: 4,
+    gap: tokens.space.xs,
     paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.md,
     borderRadius: tokens.radius.md,
@@ -209,9 +197,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.border.subtle,
   },
-  previewRow: { paddingVertical: 4 },
+  previewRow: { paddingVertical: tokens.space.xs },
   previewTitle: { fontSize: tokens.font.size.sm },
-  previewMore: { paddingTop: 4, fontSize: tokens.font.size.xs },
+  previewMore: { paddingTop: tokens.space.xs, fontSize: tokens.font.size.xs },
   footer: {
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xl,

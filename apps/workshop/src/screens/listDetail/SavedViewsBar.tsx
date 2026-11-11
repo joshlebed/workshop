@@ -6,9 +6,9 @@
 // everyone.
 
 import type { SavedView } from "@workshop/shared";
-import { Button, Chip, Sheet, Text, tokens } from "@workshop/ui";
+import { Button, Chip, Sheet, Text, TextField, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
-import { Platform, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 
 interface SavedViewsBarProps {
   views: SavedView[];
@@ -81,8 +81,8 @@ export function SavedViewsBar({
   };
 
   // The view (if any) the current selection exactly reproduces — drives the
-  // contextual trailing chip: "＋ Save view" when the filter is unsaved,
-  // "✕ Delete view" once it matches a stored one.
+  // contextual trailing chip: "Save view" (plus icon) when the filter is
+  // unsaved, "Delete view" (close icon, danger outline) once it matches one.
   const activeView =
     selectedTags.length > 0
       ? (views.find((v) => sameTagSet(v.config.tags, selectedTags)) ?? null)
@@ -131,17 +131,19 @@ export function SavedViewsBar({
         })}
         {canSave ? (
           <Chip
-            label="＋ Save view"
+            label="Save view"
+            icon="plus"
             disabled={busy}
             onPress={() => setSaveOpen(true)}
             testID="saved-view-save"
           />
         ) : activeView && canDelete(activeView) ? (
           <Chip
-            label="✕ Delete view"
+            label="Delete view"
+            icon="close"
+            tone="danger"
             disabled={busy}
             onPress={() => onDelete(activeView)}
-            style={styles.deleteChip}
             testID="saved-view-delete"
           />
         ) : null}
@@ -156,17 +158,16 @@ export function SavedViewsBar({
               : "Everyone on the list sees it."}
           </Text>
         </View>
-        <TextInput
+        <TextField
           testID="saved-view-name-input"
           value={draft}
           onChangeText={setDraft}
           placeholder="View name"
-          placeholderTextColor={tokens.text.muted}
+          accessibilityLabel="View name"
           maxLength={60}
           autoFocus
           returnKeyType="done"
           onSubmitEditing={submit}
-          style={styles.input}
           {...webSubmitProps}
         />
         <View style={styles.actions}>
@@ -195,18 +196,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     paddingHorizontal: tokens.space.xl,
   },
-  deleteChip: { borderColor: tokens.status.danger },
-  sheetHeader: { gap: 2 },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
-  },
+  sheetHeader: { gap: tokens.space.xxs },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",

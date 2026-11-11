@@ -1,6 +1,18 @@
 import { setItem } from "@workshop/api-client/storage";
 import type { Item, ListItemsResponse, ListPreview } from "@workshop/shared";
-import { Button, Card, type ListColorKey, Screen, Text, tokens } from "@workshop/ui";
+import {
+  Button,
+  Card,
+  EmojiBadge,
+  Icon,
+  type ListColorKey,
+  Screen,
+  ScreenHeader,
+  SectionHeader,
+  Skeleton,
+  Text,
+  tokens,
+} from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
@@ -83,22 +95,14 @@ export function ListPublicLanding({
 
   return (
     <Screen style={styles.screen}>
-      <View style={styles.headerNav}>
-        <Button
-          variant="ghost"
-          size="md"
-          label="‹ Back"
-          onPress={() => goBack("/")}
-          testID="list-landing-back"
-        />
-      </View>
+      <ScreenHeader
+        leading="back"
+        onLeadingPress={() => goBack("/")}
+        leadingTestID="list-landing-back"
+      />
 
       <View style={styles.hero}>
-        <View
-          style={[styles.badge, { backgroundColor: `${accent}1F`, borderColor: `${accent}33` }]}
-        >
-          <Text style={styles.badgeEmoji}>{preview.emoji}</Text>
-        </View>
+        <EmojiBadge emoji={preview.emoji} color={accent} size={72} shape="rounded" />
         <Text variant="title" style={styles.title} testID="list-landing-name">
           {preview.name}
         </Text>
@@ -193,15 +197,15 @@ export function ListPublicLanding({
 
       {visibility === "view" && allItems.length > 0 ? (
         <ScrollView contentContainerStyle={styles.itemsBody} testID="list-landing-items">
-          <Text variant="caption" tone="muted" style={styles.itemsLabel}>
-            Items
-          </Text>
+          <SectionHeader title="Items" style={styles.itemsLabel} />
           {allItems.map((item) => (
             <View key={item.id} style={styles.itemRow}>
               {item.completed ? (
-                <Text style={styles.itemCheck}>✓</Text>
+                <Icon name="check" size={18} tone="muted" />
               ) : (
-                <View style={styles.itemDot} />
+                <View style={styles.itemMark}>
+                  <View style={styles.itemDot} />
+                </View>
               )}
               <Text
                 variant="body"
@@ -218,58 +222,63 @@ export function ListPublicLanding({
   );
 }
 
+/** First-load placeholder in the landing's shape: header, badge, title, CTA card. */
+export function ListPublicLandingSkeleton() {
+  return (
+    <Screen style={styles.screen}>
+      <ScreenHeader
+        leading="back"
+        onLeadingPress={() => goBack("/")}
+        leadingTestID="list-landing-back"
+      />
+      <View style={styles.hero} testID="list-landing-loading">
+        <Skeleton.Block width={72} height={72} radius={tokens.radius.md} />
+        <Skeleton.Block width="60%" height={28} />
+        <Skeleton.Block width="45%" height={14} />
+      </View>
+      <View style={styles.ctaSkeleton}>
+        <Skeleton.Block height={180} radius={tokens.radius.lg} />
+      </View>
+    </Screen>
+  );
+}
+
 const styles = StyleSheet.create({
+  ctaSkeleton: { marginHorizontal: tokens.space.xl, marginTop: tokens.space.xl },
   screen: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.xl,
+    // ScreenHeader adds its own space.sm on top.
+    paddingTop: tokens.space.lg,
     gap: tokens.space.xl,
-  },
-  headerNav: {
-    paddingHorizontal: tokens.space.sm,
-    alignSelf: "flex-start",
   },
   hero: {
     alignItems: "center",
     paddingHorizontal: tokens.space.xl,
     gap: tokens.space.md,
   },
-  badge: {
-    width: 88,
-    height: 88,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeEmoji: { fontSize: 48, lineHeight: 56 },
-  title: {
-    textAlign: "center",
-    letterSpacing: -0.5,
-    fontSize: 28,
-    lineHeight: 32,
-  },
+  title: { textAlign: "center", letterSpacing: -0.5 },
   byline: {
     textAlign: "center",
     letterSpacing: 0.2,
   },
+  // `Screen`'s style lands on its outer wrapper, so `gap` above never
+  // reached these children; space the card from the hero explicitly.
   cta: {
+    marginTop: tokens.space.xl,
     marginHorizontal: tokens.space.xl,
     gap: tokens.space.md,
     padding: tokens.space.xl,
   },
-  ctaHeading: { fontSize: 20, lineHeight: 24 },
+  ctaHeading: { fontSize: tokens.font.size.xl, lineHeight: 28 },
   ctaBody: { lineHeight: 20 },
   itemsBody: {
     paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.sm,
   },
-  itemsLabel: {
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    marginBottom: tokens.space.xs,
-  },
+  itemsLabel: { marginBottom: tokens.space.xs },
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -278,19 +287,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.border.subtle,
   },
-  itemCheck: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.md,
-    width: 18,
-    textAlign: "center",
-  },
+  itemMark: { width: 18, alignItems: "center" },
   itemDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: tokens.border.default,
-    marginLeft: 5,
-    marginRight: 5,
   },
   itemTitle: { flex: 1, color: tokens.text.primary },
   itemTitleDone: { flex: 1, color: tokens.text.muted, textDecorationLine: "line-through" },

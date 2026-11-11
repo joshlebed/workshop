@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { StyleSheet, TextInput, View, type ViewStyle } from "react-native";
+import { StyleSheet, View, type ViewStyle } from "react-native";
 import { Chip } from "./Chip";
+import { TextField } from "./TextField";
 import { tokens } from "./theme";
 
 /** Mirror of the server's tag normalization (trim, lowercase, collapse). */
@@ -78,14 +79,15 @@ export function TagEditor({
         />
       ))}
       {full ? null : (
-        <TextInput
+        <TextField
+          variant="bare"
           testID={`${testIDPrefix}-input`}
           value={draft}
           onChangeText={setDraft}
           onSubmitEditing={addDraft}
           onBlur={addDraft}
           placeholder={tags.length === 0 && suggestions.length === 0 ? "Add a tag" : "Add tag"}
-          placeholderTextColor={tokens.text.muted}
+          accessibilityLabel="Add a tag"
           autoCapitalize="none"
           autoCorrect={false}
           maxLength={40}
@@ -93,6 +95,7 @@ export function TagEditor({
           // ignores this and keeps focus anyway.
           blurOnSubmit={false}
           style={styles.input}
+          inputStyle={styles.inputText}
         />
       )}
     </View>
@@ -106,12 +109,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.sm,
   },
-  input: {
-    color: tokens.text.primary,
-    // 16px floor: iOS Safari zooms into smaller focused inputs.
-    fontSize: tokens.font.size.md,
-    paddingVertical: 6,
-    paddingHorizontal: tokens.space.sm,
-    minWidth: 96,
-  },
+  // A quiet inline input among the chips; TextField keeps it at 16px (iOS
+  // Safari zoom) and 44pt tall.
+  input: { minWidth: 96 },
+  inputText: { paddingHorizontal: tokens.space.sm },
 });

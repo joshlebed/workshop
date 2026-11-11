@@ -1,49 +1,83 @@
-import { Pressable, type PressableProps, StyleSheet, type ViewStyle } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  type PressableProps,
+  StyleSheet,
+  type ViewStyle,
+} from "react-native";
+import { Icon, type IconName, type IconTone } from "./Icon";
+import { interaction, type PressState, webAria } from "./interaction";
 import { tokens } from "./theme";
 
 export interface IconButtonProps extends Omit<PressableProps, "children" | "style"> {
-  children: React.ReactNode;
+  /** A named icon from `Icon`. Use `children` for anything custom. */
+  icon?: IconName;
+  iconTone?: IconTone;
+  iconSize?: number;
+  children?: React.ReactNode;
   accessibilityLabel: string;
   onPress?: () => void;
   disabled?: boolean;
+  /** Shows a spinner in place of the icon and sets `aria-busy`. */
+  busy?: boolean;
+  /** Toggle buttons: exposes `aria-pressed` on web. */
+  toggled?: boolean;
   style?: ViewStyle;
 }
 
+/** A 44×44 icon-only button with hover, pressed and focus-visible states. */
 export function IconButton({
+  icon,
+  iconTone = "primary",
+  iconSize = 20,
   children,
   accessibilityLabel,
   onPress,
   disabled = false,
+  busy = false,
+  toggled,
   style,
   ...rest
 }: IconButtonProps) {
+  const inert = disabled || busy;
   return (
     <Pressable
       {...rest}
-      onPress={disabled ? undefined : onPress}
+      onPress={inert ? undefined : onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-      style={({ pressed }) => [
+      accessibilityState={{ disabled: inert, busy, selected: toggled }}
+      aria-disabled={inert}
+      aria-busy={busy}
+      {...webAria({ "aria-pressed": toggled })}
+      style={({ pressed, hovered }: PressState) => [
         styles.base,
-        pressed && !disabled ? styles.pressed : null,
+        hovered && !inert ? styles.hovered : null,
+        pressed && !inert ? styles.pressed : null,
         disabled ? styles.disabled : null,
         style,
       ]}
     >
-      {children}
+      {busy ? (
+        <ActivityIndicator size="small" color={tokens.text.secondary} />
+      ) : icon ? (
+        <Icon name={icon} tone={iconTone} size={iconSize} />
+      ) : (
+        children
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   base: {
-    width: 40,
-    height: 40,
+    width: tokens.hit,
+    height: tokens.hit,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: tokens.radius.md,
   },
-  pressed: { backgroundColor: tokens.bg.elevated },
+  hovered: { backgroundColor: interaction.hover },
+  pressed: { backgroundColor: interaction.pressed },
   disabled: { opacity: 0.4 },
 });

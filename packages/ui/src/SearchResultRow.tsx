@@ -1,5 +1,6 @@
 import { Image, type ImageStyle, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
 import { Button } from "./Button";
+import type { PressState } from "./interaction";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -39,7 +40,13 @@ export function SearchResultRow({
       accessibilityRole="button"
       accessibilityLabel={`Add ${fullTitle}`}
       onPress={disabled || loading ? undefined : onAdd}
-      style={({ pressed }) => [styles.row, pressed && !disabled ? styles.rowPressed : null]}
+      accessibilityState={{ disabled: disabled || loading }}
+      aria-disabled={disabled || loading}
+      style={({ pressed, hovered }: PressState) => [
+        styles.row,
+        hovered && !disabled ? styles.rowHovered : null,
+        pressed && !disabled ? styles.rowPressed : null,
+      ]}
     >
       {imageUrl ? (
         <Image source={{ uri: imageUrl }} style={styles.image} accessibilityIgnoresInvertColors />
@@ -94,13 +101,16 @@ const image: ImageStyle = {
 
 const styles = StyleSheet.create({
   row,
-  rowPressed: { opacity: 0.85 },
+  // Background steps, not an opacity fade: surface → elevated on hover,
+  // one more step while pressed.
+  rowHovered: { backgroundColor: tokens.bg.elevated },
+  rowPressed: { backgroundColor: tokens.border.subtle },
   image,
   imagePlaceholder: {
     alignItems: "center",
     justifyContent: "center",
   },
   placeholderGlyph: { fontSize: tokens.font.size.lg },
-  body: { flex: 1, gap: 2 },
+  body: { flex: 1, gap: tokens.space.xxs },
   addButton: { minWidth: 72 },
 });

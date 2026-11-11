@@ -1,21 +1,15 @@
 import { Alert, Platform } from "react-native";
-
-interface ConfirmOptions {
-  title: string;
-  message?: string;
-  confirmLabel?: string;
-  cancelLabel?: string;
-  destructive?: boolean;
-}
+import { type ConfirmOptions, confirmStore } from "./confirmStore";
 
 /**
- * Cross-platform confirm dialog. React Native Web's `Alert.alert` with custom
- * buttons silently no-ops, which has bitten us on the desktop sign-out flow
- * and elsewhere — sign-out tapped nothing. Use `window.confirm` on web and
- * `Alert.alert` on native (where it renders a native modal).
+ * Cross-platform confirm. Returns a Promise<boolean>: `true` when the user
+ * picked the confirm button, `false` when they cancelled.
  *
- * Returns a Promise<boolean>: `true` when the user picked the confirm button,
- * `false` when they cancelled.
+ * - Native: the system alert (`Alert.alert`).
+ * - Web with a mounted `ConfirmDialogHost` (Workshop): the in-app dialog —
+ *   focus-trapped, Escape cancels, Enter confirms, destructive styling.
+ * - Web without a host (HighScore): `window.confirm`. React Native Web's
+ *   `Alert.alert` with custom buttons silently no-ops, so never use it there.
  */
 export function confirm({
   title,
@@ -25,6 +19,9 @@ export function confirm({
   destructive = false,
 }: ConfirmOptions): Promise<boolean> {
   if (Platform.OS === "web") {
+    if (confirmStore.hasHost()) {
+      return confirmStore.request({ title, message, confirmLabel, cancelLabel, destructive });
+    }
     if (typeof window === "undefined" || typeof window.confirm !== "function") {
       // SSR / older runtimes — no confirm available, treat as confirmed so
       // we don't strand the user with an inert button.

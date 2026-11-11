@@ -3,6 +3,7 @@ import {
   Platform,
   Pressable,
   Modal as RNModal,
+  ScrollView,
   StyleSheet,
   View,
   type ViewStyle,
@@ -28,18 +29,24 @@ export interface SheetProps {
    */
   onClosed?: () => void;
   children: React.ReactNode;
+  /** Style for the scrolling content container (padding, gap). */
   contentStyle?: ViewStyle;
   testID?: string;
 }
 
-const ENTER_DURATION_MS = 280;
-const EXIT_DURATION_MS = 220;
+const ENTER_DURATION_MS = tokens.motion.slow;
+const EXIT_DURATION_MS = tokens.motion.base;
 const SHEET_OFFSCREEN_PX = 600;
 
 /**
  * Bottom sheet with Reanimated-driven enter/exit. The internal `rendered`
  * state delays unmount until the exit animation completes; otherwise RNModal
  * would tear the view down immediately on `visible={false}`.
+ *
+ * Capped at 85% of the screen with its content scrolling inside, so a tall
+ * sheet never runs off the top. There is no drag handle: the sheet has no
+ * pan-to-dismiss, so it doesn't draw an affordance that implies one. Dismiss
+ * by tapping the backdrop, Escape / back, or the sheet's own controls.
  */
 export function Sheet({
   visible,
@@ -64,7 +71,7 @@ export function Sheet({
       setRendered(true);
       progress.value = withTiming(1, {
         duration: ENTER_DURATION_MS,
-        easing: Easing.out(Easing.cubic),
+        easing: Easing.bezier(...tokens.motion.easeOut),
       });
       return;
     }
@@ -103,11 +110,18 @@ export function Sheet({
           style={styles.sheetHost}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Animated.View pointerEvents="box-none" style={sheetStyle}>
+          <Animated.View pointerEvents="box-none" style={[styles.sheetFrame, sheetStyle]}>
             <ToastOverlay />
-            <View style={[styles.sheet, contentStyle]}>
-              <View style={styles.handle} />
-              {children}
+            <View style={styles.sheet} aria-modal accessibilityViewIsModal>
+              <ScrollView
+                style={styles.scroll}
+                contentContainerStyle={[styles.content, contentStyle]}
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+              >
+                {children}
+              </ScrollView>
             </View>
           </Animated.View>
         </KeyboardAvoidingView>
@@ -140,22 +154,21 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     zIndex: 1,
   },
+  sheetFrame: { maxHeight: "85%" },
   sheet: {
+    flexShrink: 1,
     backgroundColor: tokens.bg.surface,
     borderTopLeftRadius: tokens.radius.lg,
     borderTopRightRadius: tokens.radius.lg,
     borderColor: tokens.border.subtle,
     borderTopWidth: 1,
+    overflow: "hidden",
+  },
+  scroll: { flexGrow: 0 },
+  content: {
     paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.md,
+    paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.lg,
-  },
-  handle: {
-    alignSelf: "center",
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: tokens.border.strong,
   },
 });

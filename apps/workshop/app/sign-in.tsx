@@ -84,9 +84,7 @@ export default function SignIn() {
           <>
             <View style={styles.divider} accessibilityElementsHidden>
               <View style={styles.dividerLine} />
-              <Text tone="muted" style={styles.dividerText}>
-                or
-              </Text>
+              <Text variant="eyebrow">or</Text>
               <View style={styles.dividerLine} />
             </View>
             <Button
@@ -140,7 +138,7 @@ const styles = StyleSheet.create({
   wordmarkRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    gap: 6,
+    gap: tokens.space.xsm,
   },
   // lineHeight must be set explicitly: the shared <Text> defaults to the
   // `body` variant (lineHeight 22), and overriding only fontSize would leave a
@@ -148,14 +146,14 @@ const styles = StyleSheet.create({
   // tracks the design system's large-text ratio with headroom for ascenders.
   wordmark: {
     color: tokens.text.primary,
-    fontSize: 34,
+    fontSize: tokens.font.size.xxxl,
     lineHeight: 42,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: -1.0,
   },
   wordmarkAccent: {
     color: tokens.text.muted,
-    fontSize: 34,
+    fontSize: tokens.font.size.xxxl,
     lineHeight: 42,
     fontWeight: tokens.font.weight.regular,
     letterSpacing: -1.0,
@@ -185,10 +183,5 @@ const styles = StyleSheet.create({
     flex: 1,
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.border.subtle,
-  },
-  dividerText: {
-    fontSize: 11,
-    letterSpacing: 1,
-    textTransform: "uppercase",
   },
 });

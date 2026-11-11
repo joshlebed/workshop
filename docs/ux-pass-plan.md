@@ -111,6 +111,32 @@ being a matter of discipline.
 | `Toast`                                                           | —                                                                       | Enter/exit motion, live region, bottom inset so it stops covering the FAB      |
 | `Sheet`                                                           | —                                                                       | Max height + internal scroll; pan to dismiss or drop the handle                |
 
+**Phase 1 status (2026-11-11): done, all 13 rows**, in the `joshlebed/ux-pass-phase-1` PR
+(stacked on Phase 0). Every Workshop screen is on the primitives; they are documented in
+`DESIGN.md` → Components, which later phases should treat as the vocabulary. Verified in the
+running web app at 390×844 and 1440×900 on 16 routes: no control under 44×44, no input under
+16px, Tab reaches every control with the accent ring, no console errors; HighScore home and a
+game screen are pixel-identical. Decisions and deviations:
+
+- `Icon` is drawn from Views. `react-native-svg` is in HighScore's native set but not
+  Workshop's, so using it would force a version bump.
+- The in-app `ConfirmDialog` is opt-in: `confirm()` uses it on web only where
+  `ConfirmDialogHost` is mounted (Workshop). HighScore keeps `window.confirm`; native keeps
+  the system alert.
+- `Sheet` dropped its handle instead of gaining pan-to-dismiss (no gesture-handler in
+  `packages/ui`, and a Modal needs its own gesture root). Phase 5 can revisit.
+- Kept on purpose for later phases: the `⋯` list-settings control (gear is 3.4), the activity
+  button's glyph (bell is 3.6), the profile sheet's structure (3.5), copy that contains glyphs
+  ("tap ↻ to pull from source", "tap ⋯ → Move to ranked"), and activity's text verb marks
+  (`− · ↺ ★ → ←`) that have no icon. Two spinners stay because no skeleton shape is honest:
+  the auth bootstrap (destination unknown) and "Joining list…" (an action, not content).
+- Extras found on the way: Escape in the list filter never cleared it (react-native-web's
+  input swallows the keydown); a `Screen` `gap` never reached its children on the public
+  landing; list settings flashed "Leave list" and an empty Members section while loading.
+- Not verifiable on web, owed a device check: native rendering of the View-drawn icons, the
+  Sheet's internal scroll with the keyboard up, Switch/RadioRow VoiceOver state, and the
+  system Alert path of `confirm()`.
+
 ### Phase 2 — The core list loop (the reason people open the app)
 
 | #    | Change                                                                                                                                                                                                   | Size | Backend                        |

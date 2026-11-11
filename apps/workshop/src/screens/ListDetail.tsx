@@ -15,32 +15,30 @@ import type {
 import { hasModule } from "@workshop/shared/modules";
 import {
   Avatar,
+  alpha,
   Button,
   confirm,
+  EmojiBadge,
   EmptyState,
+  Fab,
   formatRelative,
   haptics,
+  IconButton,
   type ListColorKey,
   normalizeExternalUrl,
   openExternalUrl,
   Screen,
+  ScreenHeader,
+  Skeleton,
   TagFilterBar,
   Text,
+  TextField,
   tokens,
   useToast,
 } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Platform,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  type TextInputInstance,
-  View,
-} from "react-native";
+import { Platform, StyleSheet, type TextInputInstance, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { archiveItem, completeItem, fetchItems, moveItem, uncompleteItem } from "../api/items";
 import { syncSource } from "../api/sources";
@@ -611,65 +609,39 @@ export function ListDetail({ list, members, sources, token }: Props) {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Screen style={styles.column}>
-        <View style={styles.headerNav}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            onPress={() => goBack("/")}
-            testID="list-detail-back"
-            hitSlop={10}
-            style={styles.navButton}
-          >
-            <Text style={styles.navGlyph}>‹</Text>
-          </Pressable>
-          <View style={styles.navActions}>
-            {hasSources ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Sync source"
-                onPress={() => refreshMutation.mutate()}
-                disabled={refreshing}
-                testID="list-detail-refresh"
-                hitSlop={10}
-                style={styles.navButton}
-              >
-                {refreshing ? (
-                  <ActivityIndicator color={tokens.accent.default} />
-                ) : (
-                  <Text style={styles.navGlyph}>↻</Text>
-                )}
-              </Pressable>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Open list settings"
-              onPress={() => router.push(`/list/${list.id}/settings`)}
-              testID="list-detail-settings"
-              hitSlop={10}
-              style={styles.navButton}
-            >
-              <Text style={styles.navGlyph}>⋯</Text>
-            </Pressable>
-          </View>
-        </View>
+        <ScreenHeader
+          leading="back"
+          onLeadingPress={() => goBack("/")}
+          leadingTestID="list-detail-back"
+          trailing={
+            <>
+              {hasSources ? (
+                <IconButton
+                  icon="refresh"
+                  accessibilityLabel="Sync source"
+                  onPress={() => refreshMutation.mutate()}
+                  busy={refreshing}
+                  testID="list-detail-refresh"
+                />
+              ) : null}
+              <IconButton
+                icon="more"
+                accessibilityLabel="Open list settings"
+                onPress={() => router.push(`/list/${list.id}/settings`)}
+                testID="list-detail-settings"
+              />
+            </>
+          }
+        />
 
         <View style={styles.titleBlock}>
-          {list.coverPhotoUrl ? (
-            <Image
-              source={{ uri: list.coverPhotoUrl }}
-              style={[styles.titleBadge, { borderColor: `${accent}55` }]}
-              accessibilityIgnoresInvertColors
-            />
-          ) : (
-            <View
-              style={[
-                styles.titleBadge,
-                { backgroundColor: `${accent}1F`, borderColor: `${accent}33` },
-              ]}
-            >
-              <Text style={styles.titleEmoji}>{list.emoji}</Text>
-            </View>
-          )}
+          <EmojiBadge
+            emoji={list.emoji}
+            color={accent}
+            imageUrl={list.coverPhotoUrl}
+            size={44}
+            shape="rounded"
+          />
           <View style={styles.titleText}>
             <Text variant="title" numberOfLines={2} style={styles.titleName}>
               {list.name}
@@ -689,44 +661,38 @@ export function ListDetail({ list, members, sources, token }: Props) {
         </View>
 
         <View style={styles.toolbar}>
-          <View style={[styles.filterPill, filter.length > 0 && styles.filterPillActive]}>
-            <Text style={styles.filterGlyph} tone="muted">
-              ⌕
-            </Text>
-            <TextInput
-              ref={filterInputRef}
-              testID="list-detail-filter"
-              value={filter}
-              onChangeText={setFilter}
-              placeholder={isSpotifyShelf ? "Search this shelf" : "Search this list"}
-              placeholderTextColor={tokens.text.muted}
-              style={styles.filterInput}
-              accessibilityLabel="Search items in this list"
-              onSubmitEditing={() => filterInputRef.current?.blur()}
-            />
-            {filterActive && totalRows > 0 && totalRows < totalRowsUnfiltered ? (
-              <Text style={styles.filterCount} tone="muted" testID="list-detail-filter-count">
-                {totalRows}/{totalRowsUnfiltered}
-              </Text>
-            ) : null}
-            {filter.length > 0 ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Clear filter"
-                onPress={() => setFilter("")}
-                hitSlop={8}
-                style={styles.filterClear}
-              >
-                <Text tone="muted" style={styles.filterClearGlyph}>
-                  ✕
-                </Text>
-              </Pressable>
-            ) : Platform.OS === "web" ? (
-              <Text style={styles.filterKbd} tone="muted" accessibilityElementsHidden>
-                /
-              </Text>
-            ) : null}
-          </View>
+          <TextField
+            ref={filterInputRef}
+            variant="search"
+            testID="list-detail-filter"
+            value={filter}
+            onChangeText={setFilter}
+            onClear={() => setFilter("")}
+            placeholder={isSpotifyShelf ? "Search this shelf" : "Search this list"}
+            accessibilityLabel="Search items in this list"
+            onSubmitEditing={() => filterInputRef.current?.blur()}
+            // react-native-web's TextInput stops keydown propagation, so the
+            // window-level Escape handler never sees keys typed in here.
+            onKeyPress={(e) => {
+              if (e.nativeEvent.key !== "Escape") return;
+              setFilter("");
+              filterInputRef.current?.blur();
+            }}
+            trailing={
+              <>
+                {filterActive && totalRows > 0 && totalRows < totalRowsUnfiltered ? (
+                  <Text style={styles.filterCount} tone="muted" testID="list-detail-filter-count">
+                    {totalRows}/{totalRowsUnfiltered}
+                  </Text>
+                ) : null}
+                {filter.length === 0 && Platform.OS === "web" ? (
+                  <Text style={styles.filterKbd} tone="muted" accessibilityElementsHidden>
+                    /
+                  </Text>
+                ) : null}
+              </>
+            }
+          />
         </View>
 
         {!itemsQuery.isPending && !itemsLoadFailed && (savedViews.length > 0 || canSaveView) ? (
@@ -762,9 +728,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
         ) : null}
 
         {itemsQuery.isPending ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
-          </View>
+          <Skeleton.Rows count={6} badge={0} testID="list-detail-loading" />
         ) : itemsLoadFailed ? (
           <View style={styles.center}>
             <EmptyState
@@ -959,17 +923,11 @@ export function ListDetail({ list, members, sources, token }: Props) {
         )}
 
         {!isSpotifyShelf && !(isEmptyAfterFetch && !hasSources) ? (
-          <Pressable
-            accessibilityRole="button"
+          <Fab
             accessibilityLabel="Add item"
             onPress={() => router.push(`/list/${list.id}/add`)}
-            style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
             testID="fab-add-item"
-          >
-            <Text style={styles.fabGlyph} tone="onAccent">
-              +
-            </Text>
-          </Pressable>
+          />
         ) : null}
 
         <ItemRowMenu item={menuItem} actions={menuActions} onClose={closeMenu} />
@@ -998,7 +956,7 @@ function tagSetsEqual(a: readonly string[], b: readonly string[]): boolean {
 function ListEmptyHalo({ accent, emoji }: { accent: string; emoji: string }) {
   return (
     <View
-      style={[emptyHaloStyles.disc, { backgroundColor: `${accent}1F` }]}
+      style={[emptyHaloStyles.disc, { backgroundColor: alpha(accent, 0.12) }]}
       accessibilityElementsHidden
       importantForAccessibility="no"
     >
@@ -1082,7 +1040,7 @@ function MemberStack({ members, accent }: { members: ListMemberSummary[]; accent
             size="sm"
             style={[
               memberStackStyles.avatar,
-              { backgroundColor: `${accent}26`, borderColor: tokens.bg.canvas },
+              { backgroundColor: alpha(accent, 0.15), borderColor: tokens.bg.canvas },
             ]}
           />
         </View>
@@ -1109,27 +1067,8 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.xl,
   },
   column: { flex: 1 },
-  headerNav: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.sm,
-  },
-  navButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.md,
-  },
-  navGlyph: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.xl,
-  },
-  navActions: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   titleBlock: {
     flexDirection: "row",
     alignItems: "center",
@@ -1138,17 +1077,8 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.sm,
   },
-  titleBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  titleEmoji: { fontSize: 24, lineHeight: 28 },
-  titleText: { flex: 1, minWidth: 0, gap: 5 },
-  titleName: { fontSize: 23, lineHeight: 28, letterSpacing: -0.3 },
+  titleText: { flex: 1, minWidth: 0, gap: tokens.space.xs },
+  titleName: { fontSize: tokens.font.size.xl, lineHeight: 28, letterSpacing: -0.3 },
   sublineRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1173,51 +1103,23 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xs,
     paddingBottom: tokens.space.sm,
   },
-  filterPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 2,
-    borderRadius: tokens.radius.md,
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-  },
-  filterPillActive: {
-    backgroundColor: tokens.bg.surface,
-    borderColor: tokens.border.default,
-  },
-  filterGlyph: {
-    fontSize: tokens.font.size.md,
-    marginRight: tokens.space.sm,
-    color: tokens.text.muted,
-  },
-  filterInput: {
-    flex: 1,
-    paddingVertical: 8,
-    color: tokens.text.primary,
-    // 16px floor: iOS Safari zooms into smaller focused inputs.
-    fontSize: tokens.font.size.md,
-  },
-  filterClear: { paddingHorizontal: tokens.space.xs, paddingVertical: tokens.space.xs },
-  filterClearGlyph: { fontSize: tokens.font.size.sm },
   filterCount: {
-    fontSize: 11,
+    fontSize: tokens.font.size.xs,
     fontVariant: ["tabular-nums"],
     letterSpacing: 0.4,
     paddingHorizontal: tokens.space.sm,
   },
   filterKbd: {
-    fontSize: 11,
+    fontSize: tokens.font.size.xs,
     fontVariant: ["tabular-nums"],
-    paddingHorizontal: 6,
+    paddingHorizontal: tokens.space.xsm,
     paddingVertical: 1,
-    borderRadius: 4,
+    borderRadius: tokens.space.xs,
     borderWidth: 1,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.surface,
     lineHeight: 14,
-    marginLeft: tokens.space.xs,
+    marginRight: tokens.space.sm,
   },
   emptyHintGroup: {
     alignItems: "center",
@@ -1234,11 +1136,11 @@ const styles = StyleSheet.create({
     gap: tokens.space.xs,
   },
   emptyKbd: {
-    fontSize: 12,
+    fontSize: tokens.font.size.xs,
     fontWeight: tokens.font.weight.semibold,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: tokens.space.xsm,
+    paddingVertical: tokens.space.xxs,
+    borderRadius: tokens.space.xs,
     borderWidth: 1,
     borderColor: tokens.border.subtle,
     backgroundColor: tokens.bg.surface,
@@ -1252,22 +1154,4 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xxl,
   },
   listWrap: { flex: 1 },
-  fab: {
-    position: "absolute",
-    right: tokens.space.xl,
-    bottom: tokens.space.xl,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: tokens.accent.default,
-    alignItems: "center",
-    justifyContent: "center",
-    // Calm neutral elevation, not an amber glow. The accent fill carries the
-    // warmth; a colored halo would read as the "glow aesthetic" the brand
-    // explicitly avoids.
-    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
-    elevation: 6,
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.bold, lineHeight: 32 },
 });

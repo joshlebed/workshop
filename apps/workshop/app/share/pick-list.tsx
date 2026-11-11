@@ -4,16 +4,21 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ItemKind, ListSummary } from "@workshop/shared";
 import {
   Button,
+  EmojiBadge,
   EmptyState,
+  Icon,
   type ListColorKey,
+  ListRow,
   PullToRefresh,
   Screen,
+  ScreenHeader,
+  Skeleton,
   Text,
   tokens,
 } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { FlatList, StyleSheet, View } from "react-native";
 import { fetchActivity } from "../../src/api/activity";
 import { fetchLists } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
@@ -106,37 +111,25 @@ export default function PickList() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Cancel"
-          onPress={onCancel}
-          testID="share-pick-cancel"
-          hitSlop={10}
-          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-        >
-          <Text style={styles.navGlyph}>✕</Text>
-        </Pressable>
-        <View style={styles.headerTitleBlock}>
-          <Text variant="title" style={styles.title}>
-            Add to a list
+      <ScreenHeader
+        leading="close"
+        leadingLabel="Cancel"
+        leadingTestID="share-pick-cancel"
+        onLeadingPress={onCancel}
+        title="Add to a list"
+      />
+      {normalizedSharedUrl || sharedText ? (
+        <View style={styles.urlPill} testID="share-pick-url">
+          <View style={styles.urlGlobe} />
+          <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.urlText}>
+            {normalizedSharedUrl ? `Saving from ${host ?? normalizedSharedUrl}` : "Shared text"}
           </Text>
-          {normalizedSharedUrl || sharedText ? (
-            <View style={styles.urlPill} testID="share-pick-url">
-              <View style={styles.urlGlobe} />
-              <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.urlText}>
-                {normalizedSharedUrl ? `Saving from ${host ?? normalizedSharedUrl}` : "Shared text"}
-              </Text>
-            </View>
-          ) : null}
         </View>
-      </View>
+      ) : null}
 
       <View style={styles.body}>
         {listsQuery.isPending ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
-          </View>
+          <Skeleton.Rows count={6} testID="share-pick-loading" />
         ) : listsQuery.isError && !listsQuery.data ? (
           <View style={styles.center}>
             <EmptyState
@@ -171,27 +164,29 @@ export default function PickList() {
               contentContainerStyle={styles.listContent}
               ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
               renderItem={({ item }) => (
-                <ListRow
+                <PickRow
                   list={item}
                   hasSharedUrl={!!normalizedSharedUrl}
                   onPress={() => onPick(item)}
                 />
               )}
               ListFooterComponent={
-                <Pressable
-                  accessibilityRole="button"
+                <ListRow
+                  title={
+                    <Text tone="secondary" style={styles.createLabel}>
+                      Create new list
+                    </Text>
+                  }
+                  leading={
+                    <View style={styles.createGlyphBadge}>
+                      <Icon name="plus" size={18} tone="secondary" />
+                    </View>
+                  }
                   accessibilityLabel="Create new list"
                   onPress={onCreateNew}
                   testID="share-pick-create-new"
-                  style={({ pressed }) => [styles.createRow, pressed && styles.createRowPressed]}
-                >
-                  <View style={styles.createGlyphBadge}>
-                    <Text style={styles.createGlyph}>+</Text>
-                  </View>
-                  <Text variant="label" style={styles.createLabel}>
-                    Create new list
-                  </Text>
-                </Pressable>
+                  style={styles.createRow}
+                />
               }
             />
           </PullToRefresh>
@@ -216,7 +211,7 @@ function isLikelyUrl(value: string): boolean {
   }
 }
 
-function ListRow({
+function PickRow({
   list,
   hasSharedUrl,
   onPress,
@@ -238,25 +233,15 @@ function ListRow({
   const dim = hasSharedUrl && !isUrlFriendly(list);
 
   return (
-    <Pressable
-      accessibilityRole="button"
+    <ListRow
+      title={list.name}
+      subtitle={subtitle}
+      leading={<EmojiBadge emoji={list.emoji} color={accent} />}
       accessibilityLabel={`Add to ${list.name}`}
       onPress={onPress}
       testID={`share-pick-row-${list.id}`}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed, dim && styles.rowDim]}
-    >
-      <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
-        <Text style={styles.avatarEmoji}>{list.emoji}</Text>
-      </View>
-      <View style={styles.rowBody}>
-        <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
-          {list.name}
-        </Text>
-        <Text variant="caption" tone="muted" numberOfLines={1}>
-          {subtitle}
-        </Text>
-      </View>
-    </Pressable>
+      style={dim ? styles.rowDim : undefined}
+    />
   );
 }
 
@@ -264,36 +249,18 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.xl,
+    paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.lg,
     gap: tokens.space.md,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
-    paddingRight: tokens.space.lg,
-    paddingBottom: tokens.space.sm,
-  },
-  navButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.md,
-  },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
-  headerTitleBlock: { flex: 1, minWidth: 0, gap: tokens.space.xs, paddingTop: 4 },
-  title: { fontSize: tokens.font.size.xl, letterSpacing: -0.3 },
   urlPill: {
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: tokens.space.xsm,
+    marginHorizontal: tokens.space.lg,
     paddingHorizontal: tokens.space.md,
-    paddingVertical: 4,
+    paddingVertical: tokens.space.xs,
     borderRadius: tokens.radius.pill,
     backgroundColor: tokens.bg.surface,
     borderWidth: 1,
@@ -309,40 +276,14 @@ const styles = StyleSheet.create({
   urlText: { letterSpacing: 0.1, flexShrink: 1 },
   body: { flex: 1 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  listContent: { paddingBottom: tokens.space.xxl },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: tokens.space.md,
-  },
-  rowPressed: { backgroundColor: tokens.bg.surface },
+  listContent: { paddingTop: tokens.space.xs, paddingBottom: tokens.space.xxl },
   rowDim: { opacity: 0.55 },
   rowSeparator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.border.subtle,
     marginLeft: tokens.space.lg + 44 + tokens.space.md,
   },
-  rowBody: { flex: 1, gap: 2, minWidth: 0 },
-  rowTitle: { fontSize: tokens.font.size.md },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarEmoji: { fontSize: 22, lineHeight: 26 },
-  createRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: tokens.space.md,
-    marginTop: tokens.space.sm,
-  },
-  createRowPressed: { backgroundColor: tokens.bg.surface },
+  createRow: { marginTop: tokens.space.sm },
   createGlyphBadge: {
     width: 44,
     height: 44,
@@ -353,11 +294,5 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.default,
     borderStyle: "dashed",
   },
-  createGlyph: {
-    fontSize: tokens.font.size.lg,
-    color: tokens.text.secondary,
-    fontWeight: tokens.font.weight.semibold,
-    lineHeight: tokens.font.size.lg + 2,
-  },
-  createLabel: { fontSize: tokens.font.size.md, color: tokens.text.secondary },
+  createLabel: { fontWeight: tokens.font.weight.medium },
 });

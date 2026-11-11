@@ -15,17 +15,23 @@ import {
   Avatar,
   Button,
   confirm,
+  EmojiBadge,
   formatRelative,
-  IconButton,
   type ListColorKey,
+  RadioRow,
   Screen,
+  ScreenHeader,
+  SectionHeader,
+  Skeleton,
+  Switch,
   Text,
+  TextField,
   tokens,
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { Image, Linking, Platform, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import {
   archiveListEntirely,
@@ -524,34 +530,17 @@ export default function ListSettings() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <View style={styles.headerIdentity}>
-          {list ? (
-            <View
-              style={[styles.headerEmoji, { backgroundColor: `${headerAccent}1F` }]}
-              accessibilityElementsHidden
-              importantForAccessibility="no"
-            >
-              <Text style={styles.headerEmojiGlyph}>{emoji ?? list.emoji}</Text>
-            </View>
-          ) : null}
-          <View style={styles.headerText}>
-            <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
-              Settings
-            </Text>
-            <Text variant="heading" numberOfLines={1}>
-              {list?.name ?? "List settings"}
-            </Text>
-          </View>
-        </View>
-        <IconButton
-          accessibilityLabel="Close settings"
-          onPress={() => goBack(`/list/${id}`)}
-          testID="settings-close"
-        >
-          <Text style={styles.closeGlyph}>✕</Text>
-        </IconButton>
-      </View>
+      <ScreenHeader
+        leading="close"
+        onLeadingPress={() => goBack(`/list/${id}`)}
+        leadingLabel="Close settings"
+        leadingTestID="settings-close"
+        eyebrow="Settings"
+        title={list?.name ?? "List settings"}
+        titleAccessory={
+          list ? <EmojiBadge emoji={emoji ?? list.emoji} color={headerAccent} size={44} /> : null
+        }
+      />
 
       <KeyboardAwareScrollView
         contentContainerStyle={styles.body}
@@ -559,430 +548,410 @@ export default function ListSettings() {
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
       >
-        {/* --- Details --- */}
-        {isOwner ? (
-          <View style={styles.section}>
-            <Text variant="caption" tone="muted" style={styles.sectionLabel}>
-              Details
-            </Text>
-            <View style={styles.field}>
-              <Text variant="caption" tone="muted">
-                Name
-              </Text>
-              <TextInput
-                testID="settings-name"
-                value={name ?? ""}
-                onChangeText={setName}
-                maxLength={100}
-                style={styles.input}
-              />
-            </View>
-            <View style={styles.field}>
-              <Text variant="caption" tone="muted">
-                Cover photo
-              </Text>
-              <View style={styles.coverRow}>
-                {coverPhotoUrl ? (
-                  <Image
-                    source={{ uri: coverPhotoUrl }}
-                    style={styles.coverPreview}
-                    accessibilityIgnoresInvertColors
-                  />
-                ) : (
-                  <View style={[styles.coverPreview, styles.coverPreviewEmpty]}>
-                    <Text style={styles.coverPreviewEmoji}>{emoji ?? list?.emoji ?? "🖼"}</Text>
+        {/* First load: placeholders shaped like the details and members
+            sections, instead of member-only chrome ("Leave list") flashing
+            before the list resolves. */}
+        {!list && listQuery.isPending ? (
+          <View style={styles.section} testID="settings-skeleton">
+            <Skeleton.Block width={72} height={12} />
+            <Skeleton.Block height={44} radius={tokens.radius.md} />
+            <Skeleton.Block height={44} radius={tokens.radius.md} />
+            <Skeleton.Block width={120} height={12} style={styles.skeletonGap} />
+            <Skeleton.Rows count={2} badge={24} />
+          </View>
+        ) : (
+          <>
+            {/* --- Details --- */}
+            {isOwner ? (
+              <View style={styles.section}>
+                <SectionHeader title="Details" />
+                <TextField
+                  label="Name"
+                  testID="settings-name"
+                  value={name ?? ""}
+                  onChangeText={setName}
+                  maxLength={100}
+                />
+                <View style={styles.field}>
+                  <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+                    Cover photo
+                  </Text>
+                  <View style={styles.coverRow}>
+                    {coverPhotoUrl ? (
+                      <Image
+                        source={{ uri: coverPhotoUrl }}
+                        style={styles.coverPreview}
+                        accessibilityIgnoresInvertColors
+                      />
+                    ) : (
+                      <View style={[styles.coverPreview, styles.coverPreviewEmpty]}>
+                        <Text style={styles.coverPreviewEmoji}>{emoji ?? list?.emoji ?? "🖼"}</Text>
+                      </View>
+                    )}
+                    <View style={styles.coverButtons}>
+                      <Button
+                        testID="settings-cover-pick"
+                        label={coverPhotoUrl ? "Change photo" : "Upload photo"}
+                        variant="secondary"
+                        size="md"
+                        onPress={async () => {
+                          const picked = await pickCoverPhoto();
+                          if (picked) setCoverPhotoUrl(picked.dataUrl);
+                        }}
+                      />
+                      {coverPhotoUrl ? (
+                        <Button
+                          testID="settings-cover-remove"
+                          label="Remove"
+                          variant="secondary"
+                          size="md"
+                          onPress={() => setCoverPhotoUrl(null)}
+                        />
+                      ) : null}
+                    </View>
                   </View>
-                )}
-                <View style={styles.coverButtons}>
+                </View>
+                <View style={styles.field}>
+                  <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+                    Emoji
+                  </Text>
+                  <View style={styles.emojiRow}>
+                    {EMOJI_CHOICES.map((choice) => (
+                      <Pressable
+                        key={choice}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use emoji ${choice}`}
+                        accessibilityState={{ selected: choice === emoji }}
+                        aria-pressed={choice === emoji}
+                        onPress={() => setEmoji(choice)}
+                        style={({ pressed }) => [
+                          styles.emojiCell,
+                          choice === emoji && styles.emojiCellSelected,
+                          pressed && styles.emojiCellPressed,
+                        ]}
+                      >
+                        <Text style={styles.emojiGlyph}>{choice}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.field}>
+                  <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+                    Color
+                  </Text>
+                  <View style={styles.colorRow}>
+                    {COLOR_KEYS.map((key) => (
+                      <Pressable
+                        key={key}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use color ${key}`}
+                        accessibilityState={{ selected: key === color }}
+                        aria-pressed={key === color}
+                        onPress={() => setColor(key)}
+                        style={styles.colorTarget}
+                      >
+                        {({ pressed }) => (
+                          <View
+                            style={[
+                              styles.colorCell,
+                              { backgroundColor: tokens.list[key] },
+                              key === color && styles.colorCellSelected,
+                              pressed && styles.colorCellPressed,
+                            ]}
+                          />
+                        )}
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+                <TextField
+                  label="Description"
+                  testID="settings-description"
+                  value={description ?? ""}
+                  onChangeText={setDescription}
+                  multiline
+                  maxLength={280}
+                />
+                <View style={styles.actionRow}>
                   <Button
-                    testID="settings-cover-pick"
-                    label={coverPhotoUrl ? "Change photo" : "Upload photo"}
-                    variant="secondary"
+                    testID="settings-save"
+                    label="Save changes"
                     size="md"
-                    onPress={async () => {
-                      const picked = await pickCoverPhoto();
-                      if (picked) setCoverPhotoUrl(picked.dataUrl);
-                    }}
+                    disabled={!detailsDirty || updateMutation.isPending}
+                    loading={updateMutation.isPending}
+                    onPress={() => updateMutation.mutate()}
+                    style={styles.actionPrimary}
                   />
-                  {coverPhotoUrl ? (
+                  {detailsDirty ? (
                     <Button
-                      testID="settings-cover-remove"
-                      label="Remove"
-                      variant="secondary"
+                      testID="settings-discard"
+                      label="Discard"
+                      variant="ghost"
                       size="md"
-                      onPress={() => setCoverPhotoUrl(null)}
+                      disabled={updateMutation.isPending}
+                      onPress={discardDetails}
                     />
                   ) : null}
                 </View>
               </View>
-            </View>
-            <View style={styles.field}>
-              <Text variant="caption" tone="muted">
-                Emoji
-              </Text>
-              <View style={styles.emojiRow}>
-                {EMOJI_CHOICES.map((choice) => (
-                  <Pressable
-                    key={choice}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Use emoji ${choice}`}
-                    accessibilityState={{ selected: choice === emoji }}
-                    onPress={() => setEmoji(choice)}
-                    style={({ pressed }) => [
-                      styles.emojiCell,
-                      choice === emoji && styles.emojiCellSelected,
-                      pressed && styles.emojiCellPressed,
-                    ]}
-                  >
-                    <Text style={styles.emojiGlyph}>{choice}</Text>
-                  </Pressable>
-                ))}
+            ) : null}
+
+            {/* --- Modules (owner-only) --- */}
+            {isOwner && selectedModules ? (
+              <View style={styles.section}>
+                <SectionHeader title="Modules" />
+                <View style={styles.moduleList}>
+                  {EDITABLE_MODULE_NAMES.map((mod) => {
+                    const labels = MODULE_LABELS[mod];
+                    return (
+                      <Switch
+                        key={mod}
+                        label={labels.label}
+                        description={labels.description}
+                        value={selectedModules.includes(mod)}
+                        onValueChange={() => toggleModule(mod)}
+                        testID={`settings-module-${mod}`}
+                      />
+                    );
+                  })}
+                </View>
+                {previewWarnings && previewWarnings.length > 0 ? (
+                  <View style={styles.warningBox}>
+                    {previewWarnings.map((w) => {
+                      const copy = formatConfigWarning(w);
+                      return (
+                        <View key={w.code} style={styles.warningEntry}>
+                          <Text variant="label" tone="danger">
+                            {copy.headline}
+                          </Text>
+                          <Text tone="secondary">{copy.detail}</Text>
+                        </View>
+                      );
+                    })}
+                    <Button
+                      testID="settings-modules-confirm"
+                      label="Apply anyway"
+                      variant="danger"
+                      size="md"
+                      loading={modulesMutation.isPending}
+                      onPress={onConfirmModules}
+                    />
+                  </View>
+                ) : null}
+                <View style={styles.actionRow}>
+                  <Button
+                    testID="settings-modules-save"
+                    label="Save"
+                    size="md"
+                    disabled={
+                      !modulesDirty || modulesMutation.isPending || previewMutation.isPending
+                    }
+                    loading={modulesMutation.isPending || previewMutation.isPending}
+                    onPress={onSaveModules}
+                    style={styles.actionPrimary}
+                  />
+                  {modulesDirty ? (
+                    <Button
+                      testID="settings-modules-discard"
+                      label="Discard"
+                      variant="ghost"
+                      size="md"
+                      disabled={modulesMutation.isPending || previewMutation.isPending}
+                      onPress={discardModules}
+                    />
+                  ) : null}
+                </View>
               </View>
-            </View>
-            <View style={styles.field}>
-              <Text variant="caption" tone="muted">
-                Color
-              </Text>
-              <View style={styles.colorRow}>
-                {COLOR_KEYS.map((key) => (
-                  <Pressable
-                    key={key}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Use color ${key}`}
-                    accessibilityState={{ selected: key === color }}
-                    onPress={() => setColor(key)}
-                    style={({ pressed }) => [
-                      styles.colorCell,
-                      { backgroundColor: tokens.list[key] },
-                      key === color && styles.colorCellSelected,
-                      pressed && styles.colorCellPressed,
-                    ]}
+            ) : null}
+
+            {/* --- Members --- */}
+            <View style={styles.section}>
+              <SectionHeader title="Members" />
+              <View style={styles.memberList}>
+                {members.map((m) => (
+                  <MemberRow
+                    key={m.userId}
+                    member={m}
+                    isCurrentUser={!!user && m.userId === user.id}
+                    isOwner={isOwner}
+                    disabled={removeMemberMutation.isPending || transferMutation.isPending}
+                    onRemove={() => void onRemoveMember(m)}
+                    onMakeOwner={() => void onMakeOwner(m)}
                   />
                 ))}
               </View>
             </View>
-            <View style={styles.field}>
-              <Text variant="caption" tone="muted">
-                Description
-              </Text>
-              <TextInput
-                testID="settings-description"
-                value={description ?? ""}
-                onChangeText={setDescription}
-                multiline
-                maxLength={280}
-                style={[styles.input, styles.inputMultiline]}
-              />
-            </View>
-            <View style={styles.actionRow}>
-              <Button
-                testID="settings-save"
-                label="Save changes"
-                size="md"
-                disabled={!detailsDirty || updateMutation.isPending}
-                loading={updateMutation.isPending}
-                onPress={() => updateMutation.mutate()}
-                style={styles.actionPrimary}
-              />
-              {detailsDirty ? (
-                <Button
-                  testID="settings-discard"
-                  label="Discard"
-                  variant="ghost"
-                  size="md"
-                  disabled={updateMutation.isPending}
-                  onPress={discardDetails}
-                />
-              ) : null}
-            </View>
-          </View>
-        ) : null}
 
-        {/* --- Modules (owner-only) --- */}
-        {isOwner && selectedModules ? (
-          <View style={styles.section}>
-            <Text variant="caption" tone="muted" style={styles.sectionLabel}>
-              Modules
-            </Text>
-            <View style={styles.moduleList}>
-              {EDITABLE_MODULE_NAMES.map((mod) => {
-                const isOn = selectedModules.includes(mod);
-                const labels = MODULE_LABELS[mod];
-                return (
-                  <Pressable
-                    key={mod}
-                    onPress={() => toggleModule(mod)}
-                    testID={`settings-module-${mod}`}
-                    style={({ pressed }) => [
-                      styles.moduleRow,
-                      isOn && styles.moduleRowOn,
-                      pressed && styles.moduleRowPressed,
-                    ]}
-                  >
-                    <View style={styles.moduleText}>
-                      <Text variant="label">{labels.label}</Text>
-                      <Text variant="caption" tone="muted">
-                        {labels.description}
-                      </Text>
-                    </View>
-                    <View style={[styles.toggle, isOn ? styles.toggleOn : styles.toggleOff]}>
-                      <View style={[styles.toggleKnob, isOn ? styles.toggleKnobOn : null]} />
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-            {previewWarnings && previewWarnings.length > 0 ? (
-              <View style={styles.warningBox}>
-                {previewWarnings.map((w) => {
-                  const copy = formatConfigWarning(w);
+            {/* --- Sources --- */}
+            {sources.length > 0 ? (
+              <View style={styles.section}>
+                <SectionHeader title="Sources" />
+                {sources.map((src) => {
+                  // Each source kind stashes its primary URL on a kind-specific
+                  // config field. Extending this means one more case here.
+                  const sourceUrl: string | null =
+                    src.kind === "spotify_playlist" &&
+                    typeof src.config.spotifyPlaylistUrl === "string"
+                      ? src.config.spotifyPlaylistUrl
+                      : src.kind === "letterboxd_list" &&
+                          typeof src.config.letterboxdUrl === "string"
+                        ? src.config.letterboxdUrl
+                        : null;
                   return (
-                    <View key={w.code} style={styles.warningEntry}>
-                      <Text variant="label" tone="danger">
-                        {copy.headline}
+                    <View key={src.id} style={styles.field}>
+                      <Text variant="label">{src.kind.replace(/_/g, " ")}</Text>
+                      {sourceUrl ? (
+                        <Pressable
+                          accessibilityRole="link"
+                          onPress={() => {
+                            Linking.openURL(sourceUrl).catch(() => {});
+                          }}
+                          testID={`settings-source-${src.id}-open`}
+                          style={styles.sourceLink}
+                        >
+                          <Text style={styles.urlText} numberOfLines={1}>
+                            {sourceUrl}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                      <Text variant="caption" tone="muted">
+                        {src.lastSyncedAt
+                          ? `Last synced ${formatRelative(src.lastSyncedAt)}`
+                          : "Not yet synced."}
                       </Text>
-                      <Text tone="secondary">{copy.detail}</Text>
+                      <Button
+                        testID={`settings-source-${src.id}-sync`}
+                        label="Refresh now"
+                        variant="secondary"
+                        size="md"
+                        loading={syncMutation.isPending}
+                        disabled={syncMutation.isPending}
+                        onPress={() => syncMutation.mutate(src.id)}
+                      />
                     </View>
                   );
                 })}
-                <Button
-                  testID="settings-modules-confirm"
-                  label="Apply anyway"
-                  variant="danger"
-                  size="md"
-                  loading={modulesMutation.isPending}
-                  onPress={onConfirmModules}
-                />
               </View>
             ) : null}
-            <View style={styles.actionRow}>
+
+            {/* --- Duplicate --- */}
+            <View style={styles.section}>
+              <SectionHeader title="Duplicate" />
+              <Text tone="secondary">
+                Make a copy of this list. Items come along, but completion and sources start fresh.
+              </Text>
               <Button
-                testID="settings-modules-save"
-                label="Save"
+                testID="settings-duplicate-list"
+                label="Duplicate list"
+                variant="secondary"
                 size="md"
-                disabled={!modulesDirty || modulesMutation.isPending || previewMutation.isPending}
-                loading={modulesMutation.isPending || previewMutation.isPending}
-                onPress={onSaveModules}
-                style={styles.actionPrimary}
+                loading={duplicateMutation.isPending}
+                disabled={duplicateMutation.isPending}
+                onPress={() => duplicateMutation.mutate()}
               />
-              {modulesDirty ? (
-                <Button
-                  testID="settings-modules-discard"
-                  label="Discard"
-                  variant="ghost"
-                  size="md"
-                  disabled={modulesMutation.isPending || previewMutation.isPending}
-                  onPress={discardModules}
-                />
-              ) : null}
             </View>
-          </View>
-        ) : null}
 
-        {/* --- Members --- */}
-        <View style={styles.section}>
-          <Text variant="caption" tone="muted" style={styles.sectionLabel}>
-            Members
-          </Text>
-          <View style={styles.memberList}>
-            {members.map((m) => (
-              <MemberRow
-                key={m.userId}
-                member={m}
-                isCurrentUser={!!user && m.userId === user.id}
-                isOwner={isOwner}
-                disabled={removeMemberMutation.isPending || transferMutation.isPending}
-                onRemove={() => void onRemoveMember(m)}
-                onMakeOwner={() => void onMakeOwner(m)}
-              />
-            ))}
-          </View>
-        </View>
-
-        {/* --- Sources --- */}
-        {sources.length > 0 ? (
-          <View style={styles.section}>
-            <Text variant="caption" tone="muted" style={styles.sectionLabel}>
-              Sources
-            </Text>
-            {sources.map((src) => {
-              // Each source kind stashes its primary URL on a kind-specific
-              // config field. Extending this means one more case here.
-              const sourceUrl: string | null =
-                src.kind === "spotify_playlist" && typeof src.config.spotifyPlaylistUrl === "string"
-                  ? src.config.spotifyPlaylistUrl
-                  : src.kind === "letterboxd_list" && typeof src.config.letterboxdUrl === "string"
-                    ? src.config.letterboxdUrl
-                    : null;
-              return (
-                <View key={src.id} style={styles.field}>
-                  <Text variant="label">{src.kind.replace(/_/g, " ")}</Text>
-                  {sourceUrl ? (
-                    <Pressable
-                      accessibilityRole="link"
-                      onPress={() => {
-                        Linking.openURL(sourceUrl).catch(() => {});
-                      }}
-                      testID={`settings-source-${src.id}-open`}
+            {/* --- Share link (owner-only) --- */}
+            {isOwner && list ? (
+              <View style={styles.section}>
+                <SectionHeader title="Share link" />
+                <View style={styles.field}>
+                  <View style={styles.urlBox}>
+                    <Text
+                      style={styles.urlText}
+                      numberOfLines={1}
+                      selectable
+                      testID="settings-share-url"
                     >
-                      <Text style={styles.urlText} numberOfLines={1}>
-                        {sourceUrl}
-                      </Text>
-                    </Pressable>
-                  ) : null}
+                      {buildListShareUrl(list.shareSlug)}
+                    </Text>
+                  </View>
+                  <View style={styles.actionRow}>
+                    <Button
+                      testID="settings-copy-link"
+                      label="Copy link"
+                      variant="secondary"
+                      size="md"
+                      onPress={async () => {
+                        const ok = await copyToClipboard(buildListShareUrl(list.shareSlug));
+                        showToast({
+                          message: ok ? "Copied" : "Couldn't copy. Copy the link manually.",
+                          tone: ok ? "success" : "danger",
+                        });
+                      }}
+                    />
+                    <Button
+                      testID="settings-reset-link"
+                      label="Reset link"
+                      variant="ghost"
+                      size="md"
+                      loading={resetSlugMutation.isPending}
+                      disabled={resetSlugMutation.isPending}
+                      onPress={() => void onResetLink()}
+                    />
+                  </View>
                   <Text variant="caption" tone="muted">
-                    {src.lastSyncedAt
-                      ? `Last synced ${formatRelative(src.lastSyncedAt)}`
-                      : "Not yet synced."}
+                    Resetting kills the current link everywhere it's been pasted. Existing members
+                    keep access.
+                  </Text>
+                </View>
+                <View
+                  style={styles.visibilityList}
+                  role="radiogroup"
+                  aria-label="Who can use the share link"
+                >
+                  {(["join", "view", "off"] as const).map((opt) => {
+                    const labels = SHARE_VISIBILITY_LABELS[opt];
+                    return (
+                      <RadioRow
+                        key={opt}
+                        label={labels.title}
+                        description={labels.help}
+                        selected={list.shareVisibility === opt}
+                        onSelect={() => shareVisibilityMutation.mutate(opt)}
+                        testID={`settings-visibility-${opt}`}
+                      />
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+
+            <View style={[styles.section, styles.sectionDanger]}>
+              <SectionHeader title="Danger zone" />
+              {isOwner ? (
+                <>
+                  <Text tone="secondary">
+                    Deleting archives the list and removes it from everyone&apos;s home. Items stay
+                    recoverable but no one can see them.
                   </Text>
                   <Button
-                    testID={`settings-source-${src.id}-sync`}
-                    label="Refresh now"
-                    variant="secondary"
+                    testID="settings-delete-list"
+                    label="Delete list"
+                    variant="danger"
                     size="md"
-                    loading={syncMutation.isPending}
-                    disabled={syncMutation.isPending}
-                    onPress={() => syncMutation.mutate(src.id)}
+                    loading={archiveListMutation.isPending}
+                    disabled={archiveListMutation.isPending}
+                    onPress={() => void onDeleteList()}
                   />
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
-
-        {/* --- Duplicate --- */}
-        <View style={styles.section}>
-          <Text variant="caption" tone="muted" style={styles.sectionLabel}>
-            Duplicate
-          </Text>
-          <Text tone="secondary">
-            Make a copy of this list. Items come along, but completion and sources start fresh.
-          </Text>
-          <Button
-            testID="settings-duplicate-list"
-            label="Duplicate list"
-            variant="secondary"
-            size="md"
-            loading={duplicateMutation.isPending}
-            disabled={duplicateMutation.isPending}
-            onPress={() => duplicateMutation.mutate()}
-          />
-        </View>
-
-        {/* --- Share link (owner-only) --- */}
-        {isOwner && list ? (
-          <View style={styles.section}>
-            <Text variant="caption" tone="muted" style={styles.sectionLabel}>
-              Share link
-            </Text>
-            <View style={styles.field}>
-              <View style={styles.urlBox}>
-                <Text
-                  style={styles.urlText}
-                  numberOfLines={1}
-                  selectable
-                  testID="settings-share-url"
-                >
-                  {buildListShareUrl(list.shareSlug)}
-                </Text>
-              </View>
-              <View style={styles.actionRow}>
-                <Button
-                  testID="settings-copy-link"
-                  label="Copy link"
-                  variant="secondary"
-                  size="md"
-                  onPress={async () => {
-                    const ok = await copyToClipboard(buildListShareUrl(list.shareSlug));
-                    showToast({
-                      message: ok ? "Copied" : "Couldn't copy. Copy the link manually.",
-                      tone: ok ? "success" : "danger",
-                    });
-                  }}
-                />
-                <Button
-                  testID="settings-reset-link"
-                  label="Reset link"
-                  variant="ghost"
-                  size="md"
-                  loading={resetSlugMutation.isPending}
-                  disabled={resetSlugMutation.isPending}
-                  onPress={() => void onResetLink()}
-                />
-              </View>
-              <Text variant="caption" tone="muted">
-                Resetting kills the current link everywhere it's been pasted. Existing members keep
-                access.
-              </Text>
+                </>
+              ) : (
+                <>
+                  <Text tone="secondary">Items you added stay on the list.</Text>
+                  <Button
+                    testID="settings-leave-list"
+                    label="Leave list"
+                    variant="danger"
+                    size="md"
+                    loading={removeMemberMutation.isPending}
+                    disabled={!user || removeMemberMutation.isPending}
+                    onPress={() => void onLeaveList()}
+                  />
+                </>
+              )}
             </View>
-            <View style={styles.visibilityList}>
-              {(["join", "view", "off"] as const).map((opt) => {
-                const labels = SHARE_VISIBILITY_LABELS[opt];
-                const selected = list.shareVisibility === opt;
-                return (
-                  <Pressable
-                    key={opt}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    onPress={() => shareVisibilityMutation.mutate(opt)}
-                    testID={`settings-visibility-${opt}`}
-                    style={({ pressed }) => [
-                      styles.visibilityRow,
-                      selected && styles.visibilityRowSelected,
-                      pressed && styles.visibilityRowPressed,
-                    ]}
-                  >
-                    <View style={[styles.radio, selected && styles.radioSelected]}>
-                      {selected ? <View style={styles.radioDot} /> : null}
-                    </View>
-                    <View style={styles.visibilityText}>
-                      <Text variant="label">{labels.title}</Text>
-                      <Text variant="caption" tone="muted">
-                        {labels.help}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
-
-        <View style={[styles.section, styles.sectionDanger]}>
-          <Text variant="caption" tone="muted" style={styles.sectionLabel}>
-            Danger zone
-          </Text>
-          {isOwner ? (
-            <>
-              <Text tone="secondary">
-                Deleting archives the list and removes it from everyone&apos;s home. Items stay
-                recoverable but no one can see them.
-              </Text>
-              <Button
-                testID="settings-delete-list"
-                label="Delete list"
-                variant="danger"
-                size="md"
-                loading={archiveListMutation.isPending}
-                disabled={archiveListMutation.isPending}
-                onPress={() => void onDeleteList()}
-              />
-            </>
-          ) : (
-            <>
-              <Text tone="secondary">Items you added stay on the list.</Text>
-              <Button
-                testID="settings-leave-list"
-                label="Leave list"
-                variant="danger"
-                size="md"
-                loading={removeMemberMutation.isPending}
-                disabled={!user || removeMemberMutation.isPending}
-                onPress={() => void onLeaveList()}
-              />
-            </>
-          )}
-        </View>
+          </>
+        )}
       </KeyboardAwareScrollView>
     </Screen>
   );
@@ -1053,36 +1022,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: tokens.bg.canvas,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.xxl,
-    paddingBottom: tokens.space.lg,
-  },
-  headerIdentity: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    flex: 1,
-    minWidth: 0,
-  },
-  headerEmoji: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerEmojiGlyph: { fontSize: 22, lineHeight: 26 },
-  headerText: { flex: 1, minWidth: 0, gap: 1 },
-  headerEyebrow: {
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  closeGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
   body: {
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
@@ -1097,11 +1036,10 @@ const styles = StyleSheet.create({
   sectionDanger: {
     marginTop: tokens.space.md,
   },
-  sectionLabel: {
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
   field: { gap: tokens.space.sm },
+  fieldLabel: { marginLeft: tokens.space.xxs },
+  skeletonGap: { marginTop: tokens.space.md },
+  sourceLink: { minHeight: tokens.hit, justifyContent: "center" },
   actionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1109,17 +1047,6 @@ const styles = StyleSheet.create({
     marginTop: tokens.space.xs,
   },
   actionPrimary: { flexShrink: 0 },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 12,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
-  },
-  inputMultiline: { minHeight: 80, textAlignVertical: "top" },
   emojiRow: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
   emojiCell: {
     width: 44,
@@ -1134,7 +1061,15 @@ const styles = StyleSheet.create({
   emojiCellSelected: { borderColor: tokens.accent.default, backgroundColor: tokens.accent.muted },
   emojiCellPressed: { opacity: 0.7 },
   emojiGlyph: { fontSize: tokens.font.size.lg },
-  colorRow: { flexDirection: "row", gap: tokens.space.md },
+  // Each swatch sits in a 44pt press target (web ignores hitSlop).
+  colorRow: { flexDirection: "row", flexWrap: "wrap" },
+  colorTarget: {
+    width: tokens.hit,
+    height: tokens.hit,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.pill,
+  },
   colorCell: {
     width: 36,
     height: 36,
@@ -1171,40 +1106,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: tokens.border.subtle,
   },
-  memberInfo: { flex: 1, gap: 2 },
+  memberInfo: { flex: 1, gap: tokens.space.xxs },
   visibilityList: { gap: tokens.space.xs, marginTop: tokens.space.sm },
-  visibilityRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: tokens.space.md,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-  },
-  visibilityRowSelected: {
-    borderColor: tokens.accent.default,
-    backgroundColor: tokens.accent.muted,
-  },
-  visibilityRowPressed: { opacity: 0.7 },
-  visibilityText: { flex: 1, gap: 2 },
-  radio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: tokens.border.default,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
-  },
-  radioSelected: { borderColor: tokens.accent.default },
-  radioDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: tokens.accent.default,
-  },
   urlBox: {
     borderWidth: 1,
     borderColor: tokens.border.default,
@@ -1220,34 +1123,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   moduleList: { gap: tokens.space.sm },
-  moduleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.surface,
-  },
-  moduleRowOn: { backgroundColor: tokens.accent.muted },
-  moduleRowPressed: { opacity: 0.7 },
-  moduleText: { flex: 1, gap: 2 },
-  toggle: {
-    width: 40,
-    height: 24,
-    borderRadius: 12,
-    padding: 2,
-    justifyContent: "center",
-  },
-  toggleOn: { backgroundColor: tokens.accent.default },
-  toggleOff: { backgroundColor: tokens.border.subtle },
-  toggleKnob: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: tokens.text.primary,
-  },
-  toggleKnobOn: { transform: [{ translateX: 16 }] },
   warningBox: {
     gap: tokens.space.sm,
     padding: tokens.space.md,

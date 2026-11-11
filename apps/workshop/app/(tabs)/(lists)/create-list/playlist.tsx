@@ -3,10 +3,19 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ListColor, SourcePreview } from "@workshop/shared";
 import type { SourceKind } from "@workshop/shared/sourceKinds";
 import { LIST_TEMPLATES, type ListTemplate } from "@workshop/shared/templates";
-import { Button, Card, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
+import {
+  Button,
+  Card,
+  Screen,
+  ScreenHeader,
+  Text,
+  TextField,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { createList } from "../../../../src/api/lists";
 import { previewSource } from "../../../../src/api/sources";
@@ -185,21 +194,19 @@ export default function CreateListPlaylist() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <IconButton
-          accessibilityLabel="Back"
-          onPress={() => goBack("/create-list/type")}
-          testID="source-playlist-back"
-        >
-          <Text style={styles.backGlyph}>‹</Text>
-        </IconButton>
-        <View style={styles.stepDots} accessibilityLabel="Step 3 of 3">
-          <View style={[styles.stepDot, styles.stepDotActive]} />
-          <View style={[styles.stepDot, styles.stepDotActive]} />
-          <View style={[styles.stepDot, styles.stepDotActive]} />
-        </View>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader
+        leading="back"
+        onLeadingPress={() => goBack("/create-list/type")}
+        leadingTestID="source-playlist-back"
+        center={
+          <View style={styles.stepDots} accessibilityLabel="Step 3 of 3">
+            <View style={[styles.stepDot, styles.stepDotActive]} />
+            <View style={[styles.stepDot, styles.stepDotActive]} />
+            <View style={[styles.stepDot, styles.stepDotActive]} />
+          </View>
+        }
+        trailing={<View style={styles.headerSpacer} />}
+      />
 
       <KeyboardAwareScrollView
         style={styles.scroll}
@@ -218,21 +225,17 @@ export default function CreateListPlaylist() {
         </View>
 
         <View style={styles.field}>
-          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-            {copy.fieldLabel}
-          </Text>
-          <TextInput
+          <TextField
+            label={copy.fieldLabel}
             testID="source-playlist-url"
             value={url}
             onChangeText={setUrl}
             placeholder={copy.placeholder}
-            placeholderTextColor={tokens.text.muted}
             autoCapitalize="none"
             autoCorrect={false}
             autoFocus
             keyboardType="url"
             maxLength={2048}
-            style={styles.input}
           />
           {previewing ? (
             <View style={styles.previewStatus}>
@@ -318,15 +321,13 @@ function SourcePreviewBody({ preview }: { preview: SourcePreview }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
   scroll: { flex: 1 },
-  header: {
+  stepDots: {
+    flex: 1,
     flexDirection: "row",
+    justifyContent: "center",
+    gap: tokens.space.xsm,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.md,
   },
-  stepDots: { flexDirection: "row", gap: 6, alignItems: "center" },
   stepDot: {
     width: 18,
     height: 3,
@@ -334,8 +335,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.border.subtle,
   },
   stepDotActive: { backgroundColor: tokens.accent.default },
-  backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
-  headerSpacer: { width: 40 },
+  // Balances the leading back button so the step dots sit centred.
+  headerSpacer: { width: tokens.hit },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.sm,
@@ -358,18 +359,7 @@ const styles = StyleSheet.create({
   },
   previewKind: { letterSpacing: 0.2 },
   field: { gap: tokens.space.sm },
-  fieldLabel: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   hint: { lineHeight: 16 },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 12,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.surface,
-  },
   previewStatus: {
     flexDirection: "row",
     alignItems: "center",

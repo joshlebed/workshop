@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { darkTokens, lightTokens, tokens } from "./theme";
+import { alpha, darkTokens, lightTokens, tokens } from "./theme";
 
 describe("theme tokens", () => {
   it("dark and light expose identical semantic key shapes", () => {
@@ -49,6 +49,7 @@ describe("theme tokens", () => {
             "xl": 22,
             "xs": 12,
             "xxl": 28,
+            "xxxl": 34,
           },
           "weight": {
             "bold": "700",
@@ -57,6 +58,7 @@ describe("theme tokens", () => {
             "semibold": "600",
           },
         },
+        "hit": 44,
         "list": {
           "forest": "#3DD68C",
           "grape": "#A78BFA",
@@ -65,6 +67,17 @@ describe("theme tokens", () => {
           "sand": "#D4B896",
           "slate": "#94A3B8",
           "sunset": "#F5A524",
+        },
+        "motion": {
+          "base": 220,
+          "easeOut": [
+            0.16,
+            1,
+            0.3,
+            1,
+          ],
+          "fast": 150,
+          "slow": 320,
         },
         "radius": {
           "lg": 14,
@@ -78,7 +91,9 @@ describe("theme tokens", () => {
           "sm": 8,
           "xl": 24,
           "xs": 4,
+          "xsm": 6,
           "xxl": 32,
+          "xxs": 2,
         },
         "status": {
           "danger": "#F05252",
@@ -121,6 +136,7 @@ describe("theme tokens", () => {
             "xl": 22,
             "xs": 12,
             "xxl": 28,
+            "xxxl": 34,
           },
           "weight": {
             "bold": "700",
@@ -129,6 +145,7 @@ describe("theme tokens", () => {
             "semibold": "600",
           },
         },
+        "hit": 44,
         "list": {
           "forest": "#3DD68C",
           "grape": "#A78BFA",
@@ -137,6 +154,17 @@ describe("theme tokens", () => {
           "sand": "#D4B896",
           "slate": "#94A3B8",
           "sunset": "#F5A524",
+        },
+        "motion": {
+          "base": 220,
+          "easeOut": [
+            0.16,
+            1,
+            0.3,
+            1,
+          ],
+          "fast": 150,
+          "slow": 320,
         },
         "radius": {
           "lg": 14,
@@ -150,7 +178,9 @@ describe("theme tokens", () => {
           "sm": 8,
           "xl": 24,
           "xs": 4,
+          "xsm": 6,
           "xxl": 32,
+          "xxs": 2,
         },
         "status": {
           "danger": "#F05252",
@@ -177,3 +207,26 @@ function deepKeys(obj: unknown): unknown {
   }
   return out;
 }
+
+describe("alpha()", () => {
+  it("appends an 8-bit alpha to a 6-digit hex", () => {
+    expect(alpha("#F5A524", 0.2)).toBe("#F5A52433");
+    expect(alpha("#f5a524", 0.12)).toBe("#F5A5241F");
+    expect(alpha("#F5A524", 0)).toBe("#F5A52400");
+    expect(alpha("#F5A524", 1)).toBe("#F5A524FF");
+  });
+
+  it("expands 3-digit hex", () => {
+    expect(alpha("#abc", 0.5)).toBe("#AABBCC80");
+  });
+
+  it("multiplies an existing alpha instead of corrupting it", () => {
+    expect(alpha("#F5A52480", 0.5)).toBe("#F5A52440");
+  });
+
+  it("clamps the level and passes non-hex colors through", () => {
+    expect(alpha("#000000", 2)).toBe("#000000FF");
+    expect(alpha("#000000", -1)).toBe("#00000000");
+    expect(alpha("rgba(0,0,0,0.5)", 0.2)).toBe("rgba(0,0,0,0.5)");
+  });
+});

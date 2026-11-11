@@ -2,9 +2,9 @@
 
 ## Theme
 
-Default to dark; light mode follows the system. A couple thumbing through a
-shared list at night on the couch is the scene that forced the answer; light
-mode exists so the same screens stay readable on a sunny train.
+Dark. A couple thumbing through a shared list at night on the couch is the scene
+that forced the answer. Light mode is pinned off for now (usability pass, 2026-11-11):
+the light palette below is kept for when it returns as its own project.
 
 ## Color strategy
 
@@ -44,35 +44,76 @@ Shared:
 ## Typography
 
 System font stack (SF on iOS, system-ui on web). Size scale (`font.size`):
-12/13/16/18/22/28. Weights: 400/500/600/700. Hierarchy through scale + weight
+12/13/16/18/22/28/34. Weights: 400/500/600/700. Hierarchy through scale + weight
 contrast. Each `Text` variant carries its own line-height so vertical rhythm is
-correct by default: title 28/600 (line-height 34, tracking -0.4), heading 18/600
-(24, -0.2), body 16/400 (22), label 13/500 (18), caption 12/400 (16). Captions
-used as uppercase eyebrows track +0.5–0.8. Large titles take negative tracking;
-RN's auto line-height runs tight on heavy weights, so lean on the variant's.
+correct by default: display 34/700 (40, -0.6), title 28/600 (line-height 34,
+tracking -0.4), heading 18/600 (24, -0.2), body 16/400 (22), label 13/500 (18),
+caption 12/400 (16), eyebrow 12/600 uppercase (16, +0.8, muted by default). Large
+titles take negative tracking; RN's auto line-height runs tight on heavy weights, so
+lean on the variant's. `display` and `title` announce as level-1 headings and
+`heading` as level 2 (`headerRole={false}` opts out for text that only borrows the
+look).
 
 ## Spacing & radius
 
-Spacing: 4 · 8 · 12 · 16 · 24 · 32. Radius: 6 · 10 · 14 · pill.
+Spacing: 4 · 8 · 12 · 16 · 24 · 32 (plus 2 and 6 for optical nudges). Radius: 6 · 10 ·
+14 · pill. Touch targets: 44.
 
 ## Components
 
-- **Row.** Avatar + body + chevron. The dominant pattern on every list-bearing
-  screen (home, list-detail item rows, type picker). Avatars are 44 with a
-  20% tinted background of the row's accent + a 22 emoji.
+Every Workshop screen is built from the primitives in `packages/ui` (`@workshop/ui`). Reach
+for these before writing a `Pressable` or a `TextInput` by hand; if one is missing a case,
+extend it rather than copying it into a screen.
+
+| Primitive                         | Use it for                         | API in one line                                                                                                                                                     |
+| --------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ScreenHeader`                    | Every screen header                | `leading="back" \| "close" \| "none"`, `onLeadingPress`, `title`, `eyebrow`, `titleAccessory`, `trailing`, `center`                                                 |
+| `Icon`                            | Every control glyph                | `name` (back, chevron, chevron-down, close, more, check, plus, refresh, drag, external, search, share, settings, bell, pin, trash, copy), `size`, `tone` or `color` |
+| `IconButton`                      | Icon-only actions                  | 44×44; `icon`, `iconTone`, `accessibilityLabel`, `busy`, `toggled` (`aria-pressed`)                                                                                 |
+| `Button`                          | Text actions                       | `variant="primary" \| "secondary" \| "ghost" \| "danger"`, `size`, `loading`, `leftIcon`                                                                            |
+| `ListRow`                         | Every row that opens something     | `[leading] title / subtitle [trailing]`, `chevron`, `onPress`, `onLongPress`, `selected`, `pressableProps`                                                          |
+| `EmojiBadge`                      | A list's identity mark             | `emoji`, `color` (list hue, 20% fill), `size={24 \| 44 \| 72}`, `imageUrl`, `shape`                                                                                 |
+| `TextField`                       | Every text input                   | `label` (wired), `hint`, `error`, `multiline`, `variant="search"` + `onClear`, `trailing`; font never below 16                                                      |
+| `ActionSheet`                     | Menus of actions                   | `items=[{label, icon?, tone?: "default" \| "danger", onPress}]`, `title` or `header`; runs the choice after the sheet closes                                        |
+| `confirm()` + `ConfirmDialogHost` | Irreversible actions               | `confirm({title, message, confirmLabel, destructive})` → `Promise<boolean>`; in-app dialog on web, system alert on native                                           |
+| `Sheet`                           | Anything else that slides up       | ≤85% of the screen, scrolls inside, no drag handle (no pan to dismiss)                                                                                              |
+| `Skeleton`                        | First load only                    | `Skeleton.Rows count`, `Skeleton.Row` (ListRow metrics), `Skeleton.Block`; still under reduced motion                                                               |
+| `Fab`                             | The one primary action of a screen | bottom-right 56pt accent disc; lifts toasts above itself                                                                                                            |
+| `Switch`                          | On/off settings                    | labelled row, `role="switch"`, `aria-checked`                                                                                                                       |
+| `RadioRow`                        | Single choice                      | `role="radio"` row; wrap a set in `role="radiogroup"`                                                                                                               |
+| `SectionHeader`                   | Labels above groups                | uppercase tracked `eyebrow` text + optional trailing                                                                                                                |
+| `Badge`                           | Counts, one-word statuses          | `label`, `tone="accent" \| "neutral" \| "danger"`, `ringColor`                                                                                                      |
+| `Chip`                            | Tags and filters                   | 32pt pill in a 44pt target, `aria-pressed`                                                                                                                          |
+| `Toast` (`useToast`)              | Feedback after an action           | enter/exit on the motion tokens, `role="status"` (alert for danger)                                                                                                 |
+
+Rules the primitives encode:
+
+- **Header.** Destinations are pushes with back on the left. Flows that create or edit
+  something are modals with close on the left and the commit action in `trailing`. One top
+  padding, one title style (`heading`, left aligned).
+- **Row.** Leading badge 44 (24 inline, 72 for a hero), title 16/500, one quiet 12px subtitle,
+  min height 56; the whole row is the target. Hover and pressed are translucent steps of
+  `text.primary` (`interaction.hover` / `interaction.pressed`), so they read on any surface.
+- **Targets and inputs.** Every target is at least 44×44 on every platform (web ignores
+  `hitSlop`, so the box itself is 44). Every input is at least 16px.
+- **Focus.** One focus style: a 2px ring in the accent at low emphasis
+  (`interaction.focus`), offset 2px, keyboard only (`:focus-visible`, installed by
+  `installWebFocusRing()` in Workshop's root layout). Inputs show it as their border instead.
+- **Danger** is always `status.danger`, never the accent, in menus, buttons and dialogs.
 - **Card.** Used sparingly; never nested. Default to no container.
-- **FAB.** Bottom-right; 56/28-radius primary accent; only on screens with a
-  single primary action. Elevation is a **neutral** drop shadow
-  (`rgba(0,0,0,…)`), never a colored/accent halo: the accent fill carries the
-  warmth, a glow would read as the "AI app" aesthetic the brand avoids.
-- **Button.** Primary (filled accent), secondary (outlined), ghost (text).
-- **Filter pill.** Rounded `radius.pill` input with leading icon; lives inside
-  list-detail.
+- **FAB.** Elevation is a **neutral** drop shadow (`rgba(0,0,0,…)`), never a colored halo: the
+  accent fill carries the warmth, a glow would read as the "AI app" aesthetic the brand avoids.
+
+Tokens beyond color: spacing adds `space.xxs` (2) and `space.xsm` (6) for optical nudges;
+`tokens.hit` is 44; translucent colors come from `alpha(color, level)`, never from
+concatenating a hex suffix.
 
 ## Motion
 
-System defaults plus exponential ease-out where animation is added. No bounce.
-No animated layout properties.
+Three durations and one curve, in `tokens.motion`: `fast` 150ms (exits, toggles, dialogs),
+`base` 220ms (toasts, sheet exit), `slow` 320ms (sheet entrance, empty states), all on
+`easeOut` (cubic-bezier 0.16, 1, 0.3, 1; `Easing.bezier(...tokens.motion.easeOut)`). No bounce.
+No animated layout properties. Respect reduced motion: drop translation, keep or skip the fade.
 
 ## Anti-patterns to refuse
 
