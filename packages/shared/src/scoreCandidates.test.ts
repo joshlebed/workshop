@@ -16,9 +16,9 @@ const shape = (key: string) => {
 };
 const labels = (raw: string) => computeScoreFeatures(raw).map((f) => f.label);
 
-describe("computeScoreFeatures — the 19 prod share shapes", () => {
-  it("covers all 19 surveyed games", () => {
-    expect(SCORE_SHAPE_FIXTURES).toHaveLength(19);
+describe("computeScoreFeatures — the prod share shapes", () => {
+  it("covers all 19 surveyed games plus City2City", () => {
+    expect(SCORE_SHAPE_FIXTURES).toHaveLength(20);
   });
 
   for (const fixture of SCORE_SHAPE_FIXTURES) {
@@ -125,6 +125,41 @@ describe("gridLines / symbolsIn", () => {
 
   it("treats flags, keycaps and ZWJ sequences as one symbol each", () => {
     expect(symbolsIn("🇫🇷1️⃣👨‍👩‍👧👍🏽")).toEqual(["🇫🇷", "1⃣", "👨‍👩‍👧", "👍🏽"]);
+  });
+});
+
+describe("durations written in words", () => {
+  const values = (raw: string) =>
+    computeScoreFeatures(raw)
+      .filter((f) => f.kind === "duration")
+      .map((f) => [f.label, f.value]);
+
+  it("reads hours, minutes and seconds in any spelling, as seconds", () => {
+    expect(values("23h 00m (fastest 19h 40m)")).toEqual([
+      ["23h 00m", 82800],
+      ["19h 40m", 70800],
+    ]);
+    expect(values("1h 05m 30s")).toEqual([["1h 05m 30s", 3930]]);
+    expect(values("done in 4m 12s")).toEqual([["4m 12s", 252]]);
+    expect(values("2 hours")).toEqual([["2 hours", 7200]]);
+    expect(values("1 hr 3 mins")).toEqual([["1 hr 3 mins", 3780]]);
+    expect(values("5 min")).toEqual([["5 min", 300]]);
+    expect(values("42s")).toEqual([["42s", 42]]);
+  });
+
+  it("consumes the digits, so `23h 00m` is not also 23 and 00", () => {
+    expect(labels("23h 00m, 3 flights")).toEqual(["23h 00m", "3"]);
+  });
+
+  it("does not read a bare m as minutes, or a unit that starts a word", () => {
+    expect(values("812m")).toEqual([]);
+    expect(values("12 km")).toEqual([]);
+    expect(values("2 stars")).toEqual([]);
+    expect(values("3 flights, 5m")).toEqual([]);
+  });
+
+  it("keeps the m:ss form (NYT Mini)", () => {
+    expect(values("Mini Crossword in 0:42!")).toEqual([["0:42 → 42s", 42]]);
   });
 });
 

@@ -1,5 +1,6 @@
 // The 19 share shapes found in prod `game_scores.score_raw` (survey of
-// 2026-10-04), one representative text each, with which feature is the score.
+// 2026-10-04) plus City2City (2026-11-11, the first `23h 00m` time score),
+// one representative text each, with which feature is the score.
 // Test data only: shared by the candidate tests here and the teach tests in
 // the backend, so both sides are checked against the same shapes. The texts
 // are made up to the surveyed shapes — none is a real player's paste.
@@ -209,5 +210,14 @@ export const SCORE_SHAPE_FIXTURES: ScoreShapeFixture[] = [
     pick: { kind: "number", text: "4120" },
     value: 4120,
     direction: "desc",
+  },
+  {
+    key: "city2city",
+    title: "City2City",
+    normalizedUrl: "city2city.goldfishwatercooler.com",
+    raw: "City2City 31\nSan Pedro Sula to Kinshasa\n🟩🟥🟨🟩\n23h 00m (fastest 19h 40m), 3 flights\nCan you beat my time?\nhttps://city2city.goldfishwatercooler.com/?s",
+    pick: { kind: "duration", text: "23h 00m" },
+    value: 82800,
+    direction: "asc",
   },
 ];
