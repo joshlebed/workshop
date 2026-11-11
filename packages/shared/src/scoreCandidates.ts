@@ -1,7 +1,8 @@
 // Score candidates ("teach v2") — everything in a pasted share that could be
 // the score, computed deterministically from the text. A candidate is a
 // *feature*: a literal number, a symbol count scoped to the result grid, a
-// grid row count, the position of a marker symbol, or a duration.
+// grid row count, the position of a marker symbol, or a duration (`0:42`,
+// `23h 00m`, `4m 12s` — always in seconds).
 //
 // The server is the authority: a pick names a feature by `id`, and the server
 // recomputes the features from the stored text and reads the value itself, so
@@ -123,6 +124,44 @@ function literal(
   };
 }
 
+// A time written in words: `23h 00m`, `1h 05m 30s`, `4m 12s`, `2 hours`, `5 min`,
+// `42s`, `1 hr 3 mins`. Hours and seconds may stand alone; a bare `m` may not
+// (`5m` is as likely a distance), so minutes alone need `min` or a neighbour.
+const UNIT_H = "(?:h|hr|hrs|hour|hours)";
+const UNIT_M = "(?:m|min|mins|minute|minutes)";
+const UNIT_M_ALONE = "(?:min|mins|minute|minutes)";
+const UNIT_S = "(?:s|sec|secs|second|seconds)";
+const WORD_DURATION_SOURCE = [
+  // hours [minutes [seconds]]
+  `(\\d+)\\s*${UNIT_H}(?:\\s*(\\d+)\\s*${UNIT_M})?(?:\\s*(\\d+)\\s*${UNIT_S})?`,
+  // minutes seconds
+  `()(\\d+)\\s*${UNIT_M}\\s*(\\d+)\\s*${UNIT_S}`,
+  // minutes alone (spelled out)
+  `()(\\d+)\\s*${UNIT_M_ALONE}()`,
+  // seconds alone
+  `()()(\\d+)\\s*${UNIT_S}`,
+].join("|");
+
+function wordDurationRegExp(): RegExp {
+  // Each alternative yields three groups (h, m, s); unused ones are empty.
+  return new RegExp(`(?<![\\d.,:])(?:${WORD_DURATION_SOURCE})(?![\\w])`, "gi");
+}
+
+function wordDurationSeconds(m: RegExpMatchArray): number | null {
+  // Each alternative owns three consecutive groups (h, m, s); the groups of
+  // the alternatives that did not match are undefined, an unmatched optional
+  // part inside the matching one too.
+  const groups = m.slice(1);
+  for (let i = 0; i < groups.length; i += 3) {
+    const block = groups.slice(i, i + 3);
+    if (block.every((g) => g === undefined)) continue;
+    const [h, min, s] = block.map((g) => (g ? Number(g) : 0));
+    const value = (h ?? 0) * 3600 + (min ?? 0) * 60 + (s ?? 0);
+    return Number.isFinite(value) ? value : null;
+  }
+  return null;
+}
+
 /**
  * The literal numbers in a share, richest reading first: a time (`0:42` → 42
  * seconds), a fraction (`3/6` → 3), a plus score (`+2`), then any bare number
@@ -148,6 +187,12 @@ function literalFeatures(raw: string): ScoreFeature[] {
   for (const m of raw.matchAll(/\b(?:(\d+):)?(\d+):(\d{2})\b/g)) {
     const value = (m[1] ? Number(m[1]) * 3600 : 0) + Number(m[2]) * 60 + Number(m[3]);
     push(literal("duration", m[0], m.index, value, `${m[0]} → ${value}s`), spanOf(m));
+  }
+  for (const m of raw.matchAll(wordDurationRegExp())) {
+    const value = wordDurationSeconds(m);
+    if (value === null) continue;
+    // `23h 00m` already reads as a time; no `→ 82800s` needed on the chip.
+    push(literal("duration", m[0], m.index, value, m[0]), spanOf(m));
   }
   for (const m of raw.matchAll(/(?<![\d,:.])([\d,]+)\s*\/\s*([\d,]+)\b/g)) {
     const value = toFiniteNumber(m[1] ?? "");

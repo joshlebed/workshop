@@ -9,7 +9,7 @@ function featureOf(raw: string, id: string) {
   return feature;
 }
 
-describe("alterationsFor — the 19 prod share shapes", () => {
+describe("alterationsFor — the prod share shapes", () => {
   for (const fixture of SCORE_SHAPE_FIXTURES) {
     it(`${fixture.title}: alters the picked feature and nothing else`, () => {
       const feature = fixtureFeature(computeScoreFeatures(fixture.raw), fixture.pick);
