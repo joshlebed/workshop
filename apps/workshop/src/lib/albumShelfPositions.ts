@@ -106,9 +106,15 @@ export function applyOptimisticMove(
   itemId: string,
   beforeItemId: string | null,
   afterItemId: string | null,
+  ordered = false,
 ): ListItemsResponse {
   if (!beforeItemId && !afterItemId) {
-    return applyPositionPatch(data, itemId, null);
+    if (!ordered) return applyPositionPatch(data, itemId, null);
+    // Mirror the server's `appendPosition`: end of the ordered block, or the
+    // first slot when the block is empty.
+    const last = data.ordered.filter((i) => i.id !== itemId).at(-1);
+    const lastPos = last ? positionOf(last) : null;
+    return applyPositionPatch(data, itemId, midpointBetween(lastPos, null));
   }
   const all = [...data.ordered, ...data.unordered];
   const findPos = (id: string | null) => {

@@ -314,6 +314,16 @@ describe("moveItemSchema", () => {
   it("accepts an empty object (treated as demote)", () => {
     expect(moveItemSchema.safeParse({}).success).toBe(true);
   });
+
+  it("accepts `ordered: true` with both neighbours null (rank into an empty section)", () => {
+    const r = moveItemSchema.safeParse({ beforeItemId: null, afterItemId: null, ordered: true });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.ordered).toBe(true);
+  });
+
+  it("rejects a non-boolean `ordered`", () => {
+    expect(moveItemSchema.safeParse({ ordered: "yes" }).success).toBe(false);
+  });
 });
 
 describe("updateItemTagsSchema", () => {

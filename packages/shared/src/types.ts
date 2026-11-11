@@ -710,13 +710,20 @@ export interface UpdateItemRequest {
 
 /**
  * `POST /v1/items/:id/move` — server computes the new `position` per the
- * sparse-integer allocator (§3.4 of the redesign). Both null → demote to
- * unordered (`position = NULL`). Only one of beforeItemId/afterItemId is
- * required; both → insert between.
+ * sparse-integer allocator (§3.4 of the redesign). Only one of
+ * beforeItemId/afterItemId is required; both → insert between.
+ *
+ * Both null is ambiguous on the wire: it is "demote to unordered"
+ * (`position = NULL`) unless `ordered: true`, which means "put it in the
+ * ordered section" — appended to the end of the block, or as its first row
+ * when the block is empty. Promote paths must send `ordered: true` whenever
+ * they have no neighbour to name (an empty Ranked section), otherwise the
+ * server reads the request as a demote and the first item can never be ranked.
  */
 export interface MoveItemRequest {
   beforeItemId?: string | null;
   afterItemId?: string | null;
+  ordered?: boolean;
 }
 
 /**

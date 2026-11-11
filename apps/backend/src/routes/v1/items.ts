@@ -100,6 +100,10 @@ const updateItemSchema = z
 const moveItemSchema = z.object({
   beforeItemId: z.union([z.string().uuid(), z.null()]).optional(),
   afterItemId: z.union([z.string().uuid(), z.null()]).optional(),
+  // Disambiguates a neighbour-less body: `true` → append to the ordered
+  // section (the only way to rank the first item of an empty block);
+  // absent/false → demote. See `MoveItemRequest` in @workshop/shared.
+  ordered: z.boolean().optional(),
 });
 
 // Tags are manual lowercase labels (spec §2.1): trim, lowercase, collapse
@@ -877,6 +881,7 @@ itemRoutes.post(
       itemId,
       beforeItemId: parsed.data.beforeItemId ?? null,
       afterItemId: parsed.data.afterItemId ?? null,
+      ordered: parsed.data.ordered ?? false,
       db,
     });
 

@@ -103,7 +103,8 @@ export function uncompleteItem(itemId: string, token: string | null): Promise<It
  * Move an item to a new position via the sparse-integer allocator. The
  * server computes the new `position` from `beforeItemId` / `afterItemId`
  * and rebalances the list's ordered section on collision. Both ids null →
- * demote to unordered.
+ * demote to unordered, unless `ordered: true` (append to the ordered section;
+ * required to rank the first item when the Ranked section is empty).
  */
 export function moveItem(
   itemId: string,
