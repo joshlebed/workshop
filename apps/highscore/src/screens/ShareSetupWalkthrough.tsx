@@ -4,20 +4,20 @@
 // and from Edit profile, and routable directly at /share-setup.
 //
 // Each "how" step shows a screenshot of the real iOS share sheet with the
-// control to tap ringed. The last step opens a live share sheet (sharing
-// SHARE_PRACTICE_TEXT) so the user does the setup right there, then asks
-// whether HighScore is at the front when the sheet closes. If the user taps
-// HighScore in that sheet instead, that proves it: `Share.share` reports our
-// extension, or `_layout.tsx` routes the practice payload to
-// `/share-setup?tested=1` — either way the "it works" state.
+// control to tap ringed. The last step opens a practice page in Safari
+// (`SHARE_PRACTICE_URL`) whose Share button shares SHARE_PRACTICE_TEXT, so the
+// user does the setup in a real share sheet. Tapping HighScore there proves it:
+// `_layout.tsx` routes the practice payload to `/share-setup?tested=1` — the
+// "it works" state. Coming back without it, the screen asks whether HighScore
+// is at the front of the row.
 //
-// That share can leave the extension's sheet up (expo-share-intent #231: it
-// completes before iOS has finished presenting it). On a device the sheet is
-// clear, so "You're set" shows through while every tap lands on the sheet and
-// Done / X look dead. JS can't dismiss it — popping a modal host under it was
-// tried and the sheet survives — so the card says to swipe it away, and the
-// completion is saved without waiting for Done. The extension-side fix is in
-// patches/expo-share-intent.patch; this covers binaries built before it.
+// The practice share used to be an in-app `Share.share`. A share to our own
+// extension from inside the app can leave the extension's sheet up over this
+// screen (expo-share-intent #231) — clear on a device, so "You're set" showed
+// through while Done and X were dead — and JS cannot dismiss it. From Safari
+// the hand-off brings HighScore forward with nothing over it. The proof is
+// saved as soon as it arrives rather than on Done. (1.3.0+ also fixes the
+// extension itself: patches/expo-share-intent.patch.)
 //
 // Finishing writes the `games.share-sheet-announcement` flag with
 // `{ completedAt }` — server-side, so no other device re-blasts the
@@ -28,16 +28,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { USER_FLAG_KEYS } from "@workshop/shared/constants";
 import { goBack } from "@workshop/ui/navigation";
-import Constants from "expo-constants";
 import { useLocalSearchParams } from "expo-router";
-import { getShareExtensionKey, ShareIntentModule } from "expo-share-intent";
 import { useEffect, useRef, useState } from "react";
 import {
+  AppState,
   Image,
   type ImageSourcePropType,
+  Linking,
   Platform,
   ScrollView,
-  Share,
   StyleSheet,
   View,
 } from "react-native";
@@ -46,11 +45,11 @@ import { useAuth } from "../hooks/useAuth";
 import {
   completedFlagValue,
   type IllustrationHighlight,
-  SHARE_PRACTICE_TEXT,
+  SHARE_PRACTICE_URL,
   SHARE_WALKTHROUGH_STEPS,
   type ShareIllustration,
 } from "../lib/shareOnboarding";
-import { markSharePracticeReceived, useSharePracticeReceivedAt } from "../lib/sharePractice";
+import { useSharePracticeReceivedAt } from "../lib/sharePractice";
 import { Button, IconButton, PixelIcon, Screen, Text, tokens } from "../theme";
 
 const ILLUSTRATIONS: Record<ShareIllustration, ImageSourcePropType> = {
@@ -58,18 +57,6 @@ const ILLUSTRATIONS: Record<ShareIllustration, ImageSourcePropType> = {
   "more-list": require("../../assets/share-setup/more-list.png"),
   "edit-favorites": require("../../assets/share-setup/edit-favorites.png"),
 };
-
-/**
- * How long the live sheet may outlast the practice share coming back before
- * the card calls it stuck. A sheet that closes normally is gone well inside it.
- */
-const STUCK_SHEET_GRACE_MS = 1500;
-
-/** The share extension's bundle id is the app's, plus a suffix. */
-function isOwnShareExtension(activityType: string | null | undefined): boolean {
-  const appId = Constants.expoConfig?.ios?.bundleIdentifier;
-  return !!appId && !!activityType?.startsWith(`${appId}.`);
-}
 
 /** A share-sheet screenshot with the control to tap ringed in the accent color. */
 function Illustration({
@@ -116,19 +103,19 @@ export default function ShareSetupWalkthrough() {
   const practiceAt = useSharePracticeReceivedAt();
   const tested = params.tested === "1" || practiceAt >= mountedAt;
   const [stepIndex, setStepIndex] = useState(0);
-  // The live sheet was opened and closed: ask whether HighScore made it in.
+  // Back from the practice page without the proof: ask whether HighScore
+  // made it in.
   const [sheetClosed, setSheetClosed] = useState(false);
-  // `Share.share` hasn't settled: the sheet (or what iOS left of it) is up.
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sheetStuck, setSheetStuck] = useState(false);
+  const awayRef = useRef(false);
   useEffect(() => {
-    if (!tested || !sheetOpen) {
-      setSheetStuck(false);
-      return;
-    }
-    const timer = setTimeout(() => setSheetStuck(true), STUCK_SHEET_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [tested, sheetOpen]);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active" && awayRef.current) {
+        awayRef.current = false;
+        setSheetClosed(true);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
 
   const steps = SHARE_WALKTHROUGH_STEPS;
   const step = steps[Math.min(stepIndex, steps.length - 1)];
@@ -146,8 +133,7 @@ export default function ShareSetupWalkthrough() {
     },
   });
 
-  // The practice share proves the setup, so save it now: a user stuck behind
-  // the sheet who quits the app shouldn't get the announcement card again.
+  // The practice share proves the setup, so save it now rather than on Done.
   const savedRef = useRef(false);
   useEffect(() => {
     if (!tested || savedRef.current) return;
@@ -159,26 +145,12 @@ export default function ShareSetupWalkthrough() {
       });
   }, [tested, token, queryClient]);
 
-  const openShareSheet = async () => {
-    setSheetOpen(true);
-    try {
-      const result = await Share.share({ message: SHARE_PRACTICE_TEXT });
-      // iOS names the activity the user picked; ours is the share extension.
-      // This is the reliable signal: the extension's hand-off back into an
-      // app that never left the foreground reuses the same deep link, which
-      // `useShareIntent` doesn't re-read. Clear that pending payload so it
-      // can't surface on the next foreground as a second "it works".
-      if (result.action === Share.sharedAction && isOwnShareExtension(result.activityType)) {
-        markSharePracticeReceived();
-        ShareIntentModule?.clearShareIntent(getShareExtensionKey());
-      } else {
-        setSheetClosed(true);
-      }
-    } catch {
-      // The user can still tap "Already done".
-    } finally {
-      setSheetOpen(false);
-    }
+  const openPracticePage = () => {
+    awayRef.current = true;
+    Linking.openURL(SHARE_PRACTICE_URL).catch(() => {
+      // Safari didn't open: the user can still tap "Already done".
+      awayRef.current = false;
+    });
   };
 
   const onNext = () => {
@@ -216,15 +188,9 @@ export default function ShareSetupWalkthrough() {
             <Text variant="title" style={styles.stepTitle}>
               You're set
             </Text>
-            {sheetStuck ? (
-              <Text style={styles.stepBody} testID="share-setup-stuck-hint">
-                Swipe down to close the share sheet.
-              </Text>
-            ) : (
-              <Text tone="secondary" style={styles.stepBody}>
-                Finish a game, tap Share, tap HighScore.
-              </Text>
-            )}
+            <Text tone="secondary" style={styles.stepBody}>
+              Finish a game, tap Share, tap HighScore.
+            </Text>
             <Button
               label="Done"
               size="lg"
@@ -245,7 +211,7 @@ export default function ShareSetupWalkthrough() {
               <Text variant="caption" tone="muted" style={styles.eyebrow}>
                 {stepIndex + 1} of {steps.length}
               </Text>
-              {/* Back from the live sheet: the question replaces the instructions. */}
+              {/* Back from the practice page: the question replaces the instructions. */}
               <Text variant="title" style={styles.stepTitle}>
                 {confirming ? "Is HighScore at the front of the row?" : step?.title}
               </Text>
@@ -269,7 +235,7 @@ export default function ShareSetupWalkthrough() {
                   label="Try again"
                   variant="secondary"
                   size="lg"
-                  onPress={() => void openShareSheet()}
+                  onPress={openPracticePage}
                   testID="share-setup-open-sheet"
                 />
                 <Text variant="caption" tone="muted" style={styles.stepBody}>
@@ -279,9 +245,9 @@ export default function ShareSetupWalkthrough() {
             ) : step?.tryIt ? (
               <View style={styles.tryIt}>
                 <Button
-                  label="Open share sheet"
+                  label="Open practice page"
                   size="lg"
-                  onPress={() => void openShareSheet()}
+                  onPress={openPracticePage}
                   testID="share-setup-open-sheet"
                 />
                 <Text variant="caption" tone="muted" style={styles.stepBody}>
