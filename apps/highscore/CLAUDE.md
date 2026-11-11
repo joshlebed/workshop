@@ -110,7 +110,14 @@ desaturated so the button behind the sheet doesn't tint it. The last step opens 
 sheet (`Share.share` with `SHARE_PRACTICE_TEXT`) and asks for confirmation when it closes. Don't
 make the user tap HighScore in that sheet to "test" it: sharing to the app's own extension from
 inside the app reuses the same `dataUrl` deep link, which `useShareIntent` only re-reads when the
-URL changes or the app re-activates, and the extension's blank view can stay up until swiped away.
+URL changes or the app re-activates, and the extension's sheet can stay
+up until swiped away — clear on a device, so "You're set" shows through and Done / X look dead
+(expo-share-intent #231: the extension completes before iOS has finished presenting it). The
+card says "Swipe down to close the share
+sheet" while `Share.share` is still pending 1.5s after the practice share came back, and the
+completion flag is saved as soon as the share comes back rather than on Done. JS cannot dismiss
+that sheet: hosting it on an RN `Modal` or a `transparentModal` route and popping the host was
+tried and the sheet survives; `excludedActivityTypes` doesn't hide our own extension either.
 If they do tap it, `Share.share` reports our extension (→ "You're set", pending payload cleared) and
 `_layout.tsx` routes the practice text to `/share-setup?tested=1`, never the score picker.
 Dismiss/complete state is the server-side
