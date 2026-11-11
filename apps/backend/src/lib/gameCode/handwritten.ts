@@ -395,4 +395,44 @@ function format(raw) {
       },
     ],
   },
+  {
+    ref: "city2city.goldfishwatercooler.com",
+    title: "City2City",
+    // Route, the per-flight grid, then the time line without its question:
+    // "23h 00m · fastest 19h 40m · 3 flights".
+    format: block(
+      LINES,
+      IS_GRID,
+      String.raw`
+function format(raw) {
+  var ls = lines(raw).filter(function (l) { return !/^City2City\b/i.test(l); });
+  var route = ls.find(function (l) { return /\bto\b/i.test(l) && !/\d+\s*h\b/i.test(l); });
+  var grid = ls.filter(isGrid);
+  var timeLine = ls.find(function (l) { return /\d+\s*h\s*\d+\s*m/i.test(l); });
+  if (!timeLine) return null;
+  var parts = timeLine
+    .replace(/\(([^)]*)\)/g, ", $1")
+    .split(/\s*,\s*/)
+    .map(function (p) { return p.trim(); })
+    .filter(Boolean);
+  var out = [];
+  if (route) out.push(route);
+  if (grid.length) out.push(grid.join("\n"));
+  out.push(parts.join(" · "));
+  return out.join("\n");
+}`,
+    ),
+    examples: [
+      {
+        raw: "City2City 31\nSan Pedro Sula to Kinshasa\n🟩🟥🟨🟩\n23h 00m (fastest 19h 40m), 3 flights\nCan you beat my time?\nhttps://city2city.goldfishwatercooler.com/?s",
+        expectedSummary:
+          "San Pedro Sula to Kinshasa\n🟩🟥🟨🟩\n23h 00m · fastest 19h 40m · 3 flights",
+      },
+      {
+        raw: "City2City 32\nOslo to Lima\n🟩🟩\n19h 40m (fastest 19h 40m), 2 flights\nCan you beat my time?",
+        expectedSummary: "Oslo to Lima\n🟩🟩\n19h 40m · fastest 19h 40m · 2 flights",
+      },
+      { raw: "https://city2city.goldfishwatercooler.com/?s", expectedSummary: null },
+    ],
+  },
 ];
