@@ -1,6 +1,6 @@
 # Workshop — usability pass: audit and engineering plan
 
-Status: proposed · Opened: 2026-11-11 · Scope: `apps/workshop` + `packages/ui` (HighScore untouched)
+Status: approved 2026-11-11, in progress · Opened: 2026-11-11 · Scope: `apps/workshop` + `packages/ui` (HighScore untouched)
 
 The feature set is settled. This document is the audit of how the app feels to use today and the
 plan for making it production grade. It follows `PRODUCT.md` and `DESIGN.md`; nothing here changes
@@ -54,26 +54,26 @@ separate tasks. Sizes: S under a day, M one to three days, L more.
 
 Shippable as two or three PRs with no design decisions.
 
-| #    | Fix                                                                                                                                                                                        | Where                                                             |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| 0.1  | **Confirm before Delete list, Leave list, Remove member, Make owner, Reset link.** All five fire on one tap today.                                                                         | `list/[id]/settings.tsx:909,922,736,737,851`                      |
-| 0.2  | **Item detail autosave overwrites what you are typing.** Seed drafts once per item; never reset a dirty or focused field; flush the pending save on back _(suspected loss of last 700ms)_. | `item/[itemId].tsx:87-93,231`                                     |
-| 0.3  | **New user from a share link loses the list.** The stashed `/l/:slug` return path is ignored (only `/list/` is honoured) and never cleared.                                                | `app/_layout.tsx:228`, `ListPublicLanding.tsx:66`                 |
-| 0.4  | **Signed-in non-member on `/list/:id` sees "joining is disabled".** The route never passes `onJoin`.                                                                                       | `list/[id]/index.tsx:104`                                         |
-| 0.5  | Join failure is silent (spinner stops, no message).                                                                                                                                        | `app/l/[slug].tsx:105`                                            |
-| 0.6  | Return / Enter submits the add form; URL field gets `keyboardType="url"`.                                                                                                                  | `list/[id]/add.tsx:514-540`                                       |
-| 0.7  | Row taps eaten by drag: adopt the shared `REORDER_ACTIVATION` thresholds (500ms / 10px) that HighScore already uses.                                                                       | `ItemRow.tsx:251`, `ItemList.web.tsx:101`                         |
-| 0.8  | Rank numbers and "move to top/bottom" are wrong while a filter is active (they use the filtered index).                                                                                    | `ItemList*.tsx`, `ListDetail.tsx:489,497`                         |
-| 0.9  | A failed background refetch replaces cached lists with a full-screen error. Gate on `isError && !data`.                                                                                    | home, activity, friends, share picker                             |
-| 0.10 | Inputs under 16px zoom iOS Safari: list search, tag input, item URL, Letterboxd username.                                                                                                  | `ListDetail.tsx:1189`, `TagEditor.tsx:111`, `[itemId].tsx:934`    |
-| 0.11 | Item detail opened cold has no "Mark done" (parent list read once from cache, not subscribed).                                                                                             | `item/[itemId].tsx:75`                                            |
-| 0.12 | Module save has no spinner and swallows errors.                                                                                                                                            | `settings.tsx:245`                                                |
-| 0.13 | Sheet-then-confirm races the sheet exit on iOS (sign out, delete item) _(suspected)_. Run from `onClosed`.                                                                                 | `ProfileMenu.tsx:99`, `[itemId].tsx:273`, `ItemRowMenu.tsx:44`    |
-| 0.14 | Row menu "Delete" is drawn in the amber accent; use `status.danger`. Danger button label fails AA (3.06:1); use `text.onAccent`.                                                           | `ItemRowMenu.tsx:154`, `Button.tsx:108`                           |
-| 0.15 | Light-mode phones get dark status-bar glyphs on a dark app (the app always paints dark tokens). Pin status bar, nav theme and `userInterfaceStyle` to dark until light mode ships.         | `app/_layout.tsx:325`, `app.json`                                 |
-| 0.16 | Web shell still paints the retired navy `#081325` (URL bar, overscroll).                                                                                                                   | `public/index.html:52,66`                                         |
-| 0.17 | Share picker lists archived lists and sorts differently from home; "Any member" is offered "Delete view" then gets a 403; bell badge is stale after visiting Activity _(suspected)_.       | `share/pick-list.tsx:67`, `SavedViewsBar.tsx:114`, `activity.tsx` |
-| 0.18 | Friends copy still describes games ("comparing daily scores", "lists and leaderboards").                                                                                                   | `FriendsHome.tsx:222,404`, `profile.tsx:122`                      |
+| #    | Fix                                                                                                                                                                                                                                                                                              | Where                                                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| 0.1  | **Confirm before Delete list, Leave list, Remove member, Make owner, Reset link.** All five fire on one tap today.                                                                                                                                                                               | `list/[id]/settings.tsx:909,922,736,737,851`                           |
+| 0.2  | **Item detail autosave overwrites what you are typing.** Seed drafts once per item; never reset a dirty or focused field; flush the pending save on back _(suspected loss of last 700ms)_.                                                                                                       | `item/[itemId].tsx:87-93,231`                                          |
+| 0.3  | **New user from a share link loses the list.** The stashed `/l/:slug` return path is ignored (only `/list/` is honoured) and never cleared.                                                                                                                                                      | `app/_layout.tsx:228`, `ListPublicLanding.tsx:66`                      |
+| 0.4  | **Signed-in non-member on `/list/:id` sees "joining is disabled".** The route never passes `onJoin`.                                                                                                                                                                                             | `list/[id]/index.tsx:104`                                              |
+| 0.5  | Join failure is silent (spinner stops, no message).                                                                                                                                                                                                                                              | `app/l/[slug].tsx:105`                                                 |
+| 0.6  | Return / Enter submits the add form; URL field gets `keyboardType="url"`.                                                                                                                                                                                                                        | `list/[id]/add.tsx:514-540`                                            |
+| 0.7  | Row taps eaten by drag: adopt the shared `REORDER_ACTIVATION` thresholds (500ms / 10px) that HighScore already uses.                                                                                                                                                                             | `ItemRow.tsx:251`, `ItemList.web.tsx:101`                              |
+| 0.8  | Rank numbers and "move to top/bottom" are wrong while a filter is active (they use the filtered index).                                                                                                                                                                                          | `ItemList*.tsx`, `ListDetail.tsx:489,497`                              |
+| 0.9  | A failed background refetch replaces cached lists with a full-screen error. Gate on `isError && !data`.                                                                                                                                                                                          | home, activity, friends, share picker                                  |
+| 0.10 | Inputs under 16px zoom iOS Safari: list search, tag input, item URL, Letterboxd username.                                                                                                                                                                                                        | `ListDetail.tsx:1189`, `TagEditor.tsx:111`, `[itemId].tsx:934`         |
+| 0.11 | Item detail opened cold has no "Mark done" (parent list read once from cache, not subscribed).                                                                                                                                                                                                   | `item/[itemId].tsx:75`                                                 |
+| 0.12 | Module save has no spinner and swallows errors.                                                                                                                                                                                                                                                  | `settings.tsx:245`                                                     |
+| 0.13 | Sheet-then-confirm races the sheet exit on iOS (sign out, delete item) _(suspected)_. Run from `onClosed`.                                                                                                                                                                                       | `ProfileMenu.tsx:99`, `[itemId].tsx:273`, `ItemRowMenu.tsx:44`         |
+| 0.14 | Row menu "Delete" is drawn in the amber accent; use `status.danger`. Danger button label fails AA (3.06:1); use `text.onAccent`.                                                                                                                                                                 | `ItemRowMenu.tsx:154`, `Button.tsx:108`                                |
+| 0.15 | Light-mode phones get dark status-bar glyphs on a dark app (the app always paints dark tokens). Pin status bar, nav theme and `userInterfaceStyle` to dark until light mode ships.                                                                                                               | `app/_layout.tsx:325`, `app.json`                                      |
+| 0.16 | Web shell still paints the retired navy `#081325` (URL bar, overscroll).                                                                                                                                                                                                                         | `public/index.html:52,66`                                              |
+| 0.17 | Share picker lists archived lists and sorts differently from home; "Any member" is offered "Delete view" then gets a 403; bell badge is stale after visiting Activity _(suspected)_.                                                                                                             | `share/pick-list.tsx:67`, `SavedViewsBar.tsx:114`, `activity.tsx`      |
+| 0.18 | **Remove the Friends surface from Workshop** (decided: multiplayer is per list). Delete `/friends`, `/friends/:id`, `src/friends/*` and the menu entry. `/friends/accept/:token` stays as a hand-off to HighScore, like `/g/:token`. Backend friends routes are untouched (HighScore uses them). | `app/friends/*`, `src/friends/*`, `ProfileMenu.tsx`, `profile.tsx:122` |
 
 ### Phase 1 — Foundations in `packages/ui` (M–L, unblocks everything)
 
@@ -106,7 +106,7 @@ being a matter of discipline.
 | 2.4  | **Quick add.** The add surface stays open after each add, clears, refocuses, and confirms inline. For plain lists this is a single-line composer; URL, note and tags sit behind "Details".               | M    | —                              |
 | 2.5  | Pasting a URL fills the title from the preview. Search-backed lists get an `Add "query" anyway` row and Paste many. Results already on the list show "On list".                                          | S–M  | —                              |
 | 2.6  | After adding, the list scrolls to and highlights the new row (the `newItemIds` mechanism exists, only source sync uses it).                                                                              | S    | —                              |
-| 2.7  | **Manual order for every list**, not only the Ranked block. Today unranked rows show a drag handle whose drop is silently discarded. Interim (S): remove the handle and the false hint.                  | L    | position on unranked items     |
+| 2.7  | **Manual order for every list** (decided: yes), not only the Ranked block. Today unranked rows show a drag handle whose drop is silently discarded.                                                      | L    | position on unranked items     |
 | 2.8  | **Drag parity.** Web cannot demote by drag; native cannot drag into an empty Ranked section yet shows "Drag a row up here". Add "Move up / Move down" to the row menu (keyboard and screen-reader path). | M    | —                              |
 | 2.9  | Rows show what people wrote: note wins over the fetched overview, tags as a quiet line. The cover stops being a hidden second tap target that leaves the app; "Open" moves to detail.                    | S    | —                              |
 | 2.10 | Done section: expands while filtering, remembers its state, never makes a completion look like a deletion. Item count in the header excludes done.                                                       | S    | —                              |
@@ -125,7 +125,7 @@ being a matter of discipline.
 | 3.4 | **List settings restructure.** Order: Share and members, Details, Features (was "Modules"), then destructive actions. Details and features autosave. The header control becomes a gear, since `⋯` means "actions" everywhere else. | M    |
 | 3.5 | **Profile sheet becomes a Settings screen** with grouped rows: You, Lists (archived), Connections (Letterboxd), About (feedback, privacy, version), and admin tools in their own group at the bottom.                              | M    |
 | 3.6 | **Activity deep-links to the item**, shows a "New" divider, and marks read on leave so home pips are not wiped by one visit. The header control becomes a bell. Verbs follow the glossary.                                         | M    |
-| 3.7 | **Friends gets a job or gets demoted.** Recommended: friends appear as one-tap invitees in a list's share sheet. Requests move above the invite card; "Remove" leaves the row and lives on the profile only.                       | M    |
+| 3.7 | _Dropped._ Friends are removed from Workshop in 0.18; people reach a list through its share link only.                                                                                                                             | —    |
 | 3.8 | Modal vs push made uniform per the header rule; create, join and accept flows keep home beneath the list so back works _(suspected)_.                                                                                              | S    |
 
 ### Phase 4 — First run and the edges
@@ -148,13 +148,13 @@ being a matter of discipline.
 | 5.3 | **Haptics map**: selection for toggles and pickers, success for creates, warning for destructive confirms. Settings and create flows have none today.                              | S    |
 | 5.4 | **Type and spacing sweep** onto the scale once the `eyebrow` variant and `space.xxs` exist.                                                                                        | M    |
 | 5.5 | **Accessibility to AA**: labels on all inputs, state on switches and radios, announced toasts, keyboard reorder, focus-visible everywhere on web.                                  | M    |
-| 5.6 | **Light mode**: either ship it properly (primitives on `useTheme()`, light-specific accent and status text tokens; accent text is 1.99:1 on the light canvas today) or stay dark.  | L    |
+| 5.6 | _Deferred._ Light mode stays off; 0.15 pins the app to dark. Revisit as its own project (primitives on `useTheme()`, light-specific accent and status text tokens).                | —    |
 | 5.7 | **Desktop web**: the page scrolls instead of an inner box, hover states, and a two-pane layout (lists left, list right) above about 900px.                                         | L    |
 
 ## 4. Sequencing
 
 ```
-Phase 0 (bugs) ──► ship immediately, 2–3 PRs
+Phase 0 (bugs) ──► first
 Phase 1 (ui primitives) ──► then in parallel:
     Phase 2 (list loop)      ← highest user value, start first
     Phase 3 (navigation/IA)
@@ -193,9 +193,14 @@ above as each lands, so they cannot regress.
 | Optional list behaviours   | **Features**                                                       | modules                                            |
 | Silencing unread dots      | **Mute activity**                                                  | Mute notifications                                 |
 
-## 7. Decisions needed
+## 7. Decisions (2026-11-11)
 
-1. **Friends in Workshop**: wire into list sharing (recommended, 3.7) or remove the surface.
-2. **Light mode**: stay dark-only for now (recommended; 0.15 makes that honest) or fund 5.6.
-3. **Manual order on every list** (2.7): needs a backend position for unranked items. Recommended,
-   since "I can't reorder my list" is the most natural expectation the app currently refuses.
+1. **Friends in Workshop**: remove the surface. No friend management in Workshop; multiplayer is per list (0.18).
+2. **Light mode**: pinned dark for now (0.15); 5.6 deferred.
+3. **Manual order on every list**: yes (2.7).
+
+## 8. Delivery
+
+One Graphite stack, one PR per phase, each verified in the running app before the next starts:
+plan (#585) ← phase 0 ← phase 1 ← phase 2 ← phase 3 ← phase 4 ← phase 5. Nothing merges until the
+human review pass at the end.
