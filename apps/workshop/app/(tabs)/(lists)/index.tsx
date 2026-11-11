@@ -39,6 +39,7 @@ import {
 import { HeaderActivityButton } from "../../../src/components/HeaderActivityButton";
 import { ProfileMenu } from "../../../src/components/ProfileMenu";
 import { useAuth } from "../../../src/hooks/useAuth";
+import { homeListOrder } from "../../../src/lib/homeListOrder";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -163,17 +164,11 @@ export default function Home() {
   // Pinned first (pinned-most-recently within pinned), then by recency of
   // last activity (or updatedAt fallback). Archived lists are filtered out
   // of the main view and only visible from the profile sheet.
-  const visibleLists = useMemo(() => {
-    const lists = allLists.filter((l) => !l.archivedAt);
-    return [...lists].sort((a, b) => {
-      const ap = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
-      const bp = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
-      if (ap !== bp) return bp - ap; // pinned (highest pinnedAt) first
-      const ta = latestByList.get(a.id)?.createdAt ?? a.updatedAt;
-      const tb = latestByList.get(b.id)?.createdAt ?? b.updatedAt;
-      return new Date(tb).getTime() - new Date(ta).getTime();
-    });
-  }, [allLists, latestByList]);
+  // `homeListOrder` is shared with the share-sheet picker.
+  const visibleLists = useMemo(
+    () => homeListOrder(allLists, (id) => latestByList.get(id)?.createdAt),
+    [allLists, latestByList],
+  );
 
   const archivedLists = useMemo(() => allLists.filter((l) => !!l.archivedAt), [allLists]);
 
@@ -271,7 +266,7 @@ export default function Home() {
           <View style={styles.center}>
             <ActivityIndicator color={tokens.accent.default} />
           </View>
-        ) : listsQuery.isError ? (
+        ) : listsQuery.isError && !listsQuery.data ? (
           <View style={styles.center}>
             <EmptyState
               title="Couldn't load your lists"

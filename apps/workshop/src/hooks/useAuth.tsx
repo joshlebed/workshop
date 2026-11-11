@@ -21,11 +21,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { PENDING_FRIEND_INVITE_TOKEN_KEY, PENDING_INVITE_TOKEN_KEY } from "../lib/inviteStash";
+import { PENDING_INVITE_TOKEN_KEY } from "../lib/inviteStash";
 
-// Pending-link stashes read at sign-in for signup attribution.
+// Pending-link stashes read at sign-in for signup attribution. (Friend invites
+// hand off to HighScore and stash nothing here.)
 const PENDING_LINK_KEYS: PendingLinkKeys = {
-  friendInvite: PENDING_FRIEND_INVITE_TOKEN_KEY,
   listInvite: PENDING_INVITE_TOKEN_KEY,
 };
 

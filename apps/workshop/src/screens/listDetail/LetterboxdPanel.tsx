@@ -305,7 +305,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.md,
     paddingVertical: 10,
     color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
+    // 16px floor: iOS Safari zooms into smaller focused inputs.
+    fontSize: tokens.font.size.md,
     backgroundColor: tokens.bg.surface,
   },
   suggestions: { gap: tokens.space.sm },

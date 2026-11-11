@@ -9,7 +9,7 @@
 // cover from `metadata.posterUrl` or `metadata.coverUrl` / `image`.
 
 import type { Item, ItemKind } from "@workshop/shared";
-import { formatRelative, Text, tokens } from "@workshop/ui";
+import { formatRelative, REORDER_ACTIVATION, Text, tokens } from "@workshop/ui";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -243,12 +243,12 @@ export function ItemRow({
           accessibilityRole={view.bodyRole}
           accessibilityLabel={view.bodyLabel}
           onPress={onPressBody}
-          // ~250ms feels like iOS's native edit-mode press without
-          // intercepting honest taps. The kebab Pressable inside this row
-          // owns its own touch via the responder system, so long-press
-          // here doesn't compete with the menu button.
+          // Shared hold threshold (500ms, the iOS long-press minimum): 250ms
+          // turned hesitant taps into drags that swallowed the open. The
+          // kebab Pressable inside this row owns its own touch via the
+          // responder system, so long-press here doesn't compete with it.
           onLongPress={onLongPressBody}
-          delayLongPress={250}
+          delayLongPress={REORDER_ACTIVATION.longPressMs}
           testID={`item-row-body-${item.id}`}
           style={({ pressed, hovered }) => [
             styles.bodyPressable,

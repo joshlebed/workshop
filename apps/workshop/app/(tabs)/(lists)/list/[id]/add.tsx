@@ -28,8 +28,15 @@ import {
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Image, StyleSheet, TextInput, View } from "react-native";
+import { useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Image,
+  StyleSheet,
+  TextInput,
+  type TextInputInstance,
+  View,
+} from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { createItem } from "../../../../../src/api/items";
 import { fetchLinkPreview } from "../../../../../src/api/linkPreview";
@@ -499,6 +506,12 @@ function FreeFormFlow({
   // Legacy leaderboard lists have no tag surface anywhere else — keep the
   // game add form to just name + URL.
   const showTags = !isGame;
+  const noteInputRef = useRef<TextInputInstance>(null);
+  // Return in the title adds the item; Return in the URL moves on to the
+  // note (or adds, when there is no note field). 0.6.
+  const submitIfReady = () => {
+    if (canSubmit && !loading) onSubmit();
+  };
   return (
     <KeyboardAwareScrollView
       contentContainerStyle={styles.body}
@@ -519,6 +532,10 @@ function FreeFormFlow({
             placeholderTextColor={tokens.text.muted}
             autoFocus
             maxLength={500}
+            returnKeyType="done"
+            enterKeyHint="done"
+            submitBehavior="blurAndSubmit"
+            onSubmitEditing={submitIfReady}
             style={styles.input}
           />
         </View>
@@ -535,7 +552,16 @@ function FreeFormFlow({
             placeholderTextColor={tokens.text.muted}
             autoCapitalize="none"
             autoCorrect={false}
+            keyboardType="url"
+            inputMode="url"
             maxLength={2048}
+            returnKeyType={showNote ? "next" : "done"}
+            enterKeyHint={showNote ? "next" : "done"}
+            submitBehavior={showNote ? "submit" : "blurAndSubmit"}
+            onSubmitEditing={() => {
+              if (showNote) noteInputRef.current?.focus();
+              else submitIfReady();
+            }}
             style={styles.input}
           />
           <LinkPreviewSection
@@ -552,6 +578,7 @@ function FreeFormFlow({
               Note (optional)
             </Text>
             <TextInput
+              ref={noteInputRef}
               testID="add-item-note"
               value={note}
               onChangeText={onChangeNote}

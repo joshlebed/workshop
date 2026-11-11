@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
@@ -69,13 +69,19 @@ export default function Activity() {
   // and client-side (lastViewedAt in storage so the home bell badge clears the
   // moment we navigate back). Failures on the server-side call are intentionally
   // swallowed — a missed read marker is not user-facing.
+  // The home bell is the sum of the server's per-list `unreadCount`, so the
+  // cached list summaries are refetched once the read lands; otherwise the
+  // badge stayed lit after visiting Activity until the next poll (0.17).
+  const queryClient = useQueryClient();
   useFocusEffect(
     useCallback(() => {
       if (!token) return;
       const stamp = new Date().toISOString();
       setActivityLastViewedAt(stamp).catch(() => {});
-      markActivityRead(undefined, token).catch(() => {});
-    }, [token]),
+      markActivityRead(undefined, token)
+        .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }))
+        .catch(() => {});
+    }, [token, queryClient]),
   );
 
   const events: ActivityEvent[] = feedQuery.data?.pages.flatMap((p) => p.events) ?? [];
@@ -156,7 +162,9 @@ export default function Activity() {
   }, [filteredEvents, filter]);
 
   const isInitialLoading = feedQuery.isPending;
-  const isError = feedQuery.isError;
+  // Only an empty cache gets the error state; a failed background refetch
+  // keeps the feed already on screen (0.9).
+  const isError = feedQuery.isError && !feedQuery.data;
 
   return (
     <Screen style={styles.root}>

@@ -11,6 +11,7 @@
 
 import type { Item } from "@workshop/shared";
 import { Sheet, Text, tokens } from "@workshop/ui";
+import { useRef } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
 export interface ItemRowMenuActions {
@@ -41,16 +42,26 @@ interface ItemRowMenuProps {
 export function ItemRowMenu({ item, actions, onClose }: ItemRowMenuProps) {
   const visible = item !== null && actions !== null;
 
+  // The chosen action runs from the Sheet's `onClosed`, after its Modal has
+  // finished dismissing. A one-tick `setTimeout` fired the delete confirm
+  // while the Modal was still on screen, which iOS can drop (0.13).
+  const pendingRef = useRef<(() => void) | null>(null);
   const run = (fn?: () => void) => () => {
+    pendingRef.current = fn ?? null;
     onClose();
-    if (!fn) return;
-    // Defer one tick so the sheet's exit animation runs before any
-    // follow-up alert / sheet (e.g. delete confirmation).
-    setTimeout(fn, 0);
   };
 
   return (
-    <Sheet visible={visible} onRequestClose={onClose} testID="item-row-menu-sheet">
+    <Sheet
+      visible={visible}
+      onRequestClose={onClose}
+      onClosed={() => {
+        const fn = pendingRef.current;
+        pendingRef.current = null;
+        fn?.();
+      }}
+      testID="item-row-menu-sheet"
+    >
       {item && actions ? (
         <>
           <View style={styles.titleRow}>
@@ -151,6 +162,6 @@ const styles = StyleSheet.create({
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
   },
-  itemDanger: { color: tokens.accent.default, fontWeight: tokens.font.weight.bold },
+  itemDanger: { color: tokens.status.danger, fontWeight: tokens.font.weight.bold },
   itemMuted: { color: tokens.text.muted },
 });

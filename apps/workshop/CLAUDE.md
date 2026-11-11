@@ -29,41 +29,40 @@ create-list, profile). The bottom tab bar is hidden (`tabBarStyle: { display: "n
 groups are kept (rather than flattened) so no URL, deep link, or `withAnchor` replace changes.
 Group segments never appear in URLs but DO appear in `useSegments()`; AuthGate in
 `app/_layout.tsx` filters `(`-prefixed segments before matching. Auth/onboarding/invite/share/
-friends routes live OUTSIDE `(tabs)` in the root stack — add new tab-content routes to the
+hand-off routes live OUTSIDE `(tabs)` in the root stack — add new tab-content routes to the
 `(lists)` stack layout. Use the static `tokens` (not `useTheme()`) for navigator backgrounds,
 matching the root layout, or light-preferring browsers get a light scene behind dark screen
 content. Metro does NOT invalidate its cache when an `EXPO_PUBLIC_*` value changes — restart
 with `expo start --clear` after changing one (`scripts/e2e.sh` always clears for this reason).
 
-## Friends surface (G2b, issue #286)
+## Friends were removed on 2026-11-11 — only the `/friends/accept/:token` hand-off remains
 
-Friends are a core/shared product surface (always on — no flag). Workshop's screen
-implementations live in `src/friends/`, and both apps share the validated HTTP boundary at
-`@workshop/api-client/friends`. They read token/user/routes from `src/lib/clientRuntime.tsx`
-(provided by `ClientRuntimeBridge` in `app/_layout.tsx`).
+Decision in the usability pass (`docs/ux-pass-plan.md` 0.18): multiplayer in Workshop is per
+list, through its share link. There is no `/friends`, no `/friends/:id`, no Friends button or
+request badge in `ProfileMenu`, and no friend-invite stash in AuthGate. Invite links minted
+earlier still point at this domain (and the AASA claims `/friends/accept/*`), so
+`app/friends/accept/[token].tsx` forwards to HighScore's accept screen with `openHighScore`
+and renders `GamesMovedScreen` (its `copy` prop sets the friends wording) behind it, exactly
+like `/g/:token`. It mounts signed-out (AuthGate's `onFriendAccept`). Friends live in
+HighScore; the backend routes and `@workshop/api-client/friends` are HighScore's, so don't
+delete them from Workshop-side cleanups.
 
-The friend graph lives at `app/friends/index.tsx` (requests + list + mutuals + invite),
-`app/friends/[userId].tsx` (per-user profile), and `app/friends/accept/[token].tsx` (preview
-inviter + Accept) — all at the **root** stack, NOT inside `(tabs)`, since the backend mints
-invite URLs as `/friends/accept/:token` (`friendInviteUrl` in `routes/v1/friends.ts`).
-Reached from the profile/settings sheet (`ProfileMenu`, which also badges its avatar trigger
-with the pending inbound-request count from `queryKeys.friends.requests`). The accept landing
-reuses the list-invite deep-link round-trip (`inviteStash.ts`): it stashes
-`PENDING_FRIEND_INVITE_TOKEN_KEY` so a brand-new user can sign in mid-flow and land back on
-the accept screen — AuthGate (`_layout.tsx`) allows `/friends/accept/*` to mount signed-out
-(`onFriendAccept`) and consults that stash in its post-sign-in bounce. Accept lands on
-`/friends`. The friends page has three sections: pending **inbound requests** (accept/decline
-inline), friends, and **mutuals** ("people you may know" — friends of friends ranked by mutual
-count, one-tap request). The client filters inbound requesters out of the mutuals list (they're
-already in Requests) and marks outbound-pending mutuals as "Requested" by cross-referencing
-`queryKeys.friends.requests` — the mutuals endpoint itself doesn't know about pending
-requests. Every person card opens `/friends/:userId`, which renders the relationship-specific
-action (add / cancel / accept-decline / remove). The profile endpoint still takes a `period`
-(HighScore uses its per-game score lines); Workshop passes `localDateKey()` and ignores the
-`games` field. Decline and unfriend `goBack("/friends")` after success — removing the
-relationship can 404 the profile on refetch (no relationship + no mutuals). API wrappers
-(zod-validated — the public preview endpoint is the least-trusted boundary) live in
-`packages/api-client/src/friends.ts`; keys under `queryKeys.friends.*`.
+## AuthGate: `needs-display-name` must stop at onboarding
+
+A user with no display name stays on `/onboarding/display-name`; the post-sign-in bounce (stash
+lookup, then home) only runs once the status is `signed-in`. Letting `needs-display-name` fall
+through to that bounce while on onboarding consumed the return-path stash and looped the user
+between home and onboarding. The return path (`PENDING_RETURN_PATH_KEY`, set by
+`ListPublicLanding`) is single-use, cleared whenever it is read, and only `/l/…` or `/list/…`
+are honoured (`src/lib/returnPath.ts`). `/l/:slug` mounts signed-out so the landing can stash it.
+
+## Item detail drafts never take a refetch over the user's typing
+
+`item/[itemId].tsx` autosaves on a 700ms debounce and every save refetches the item. Drafts are
+seeded once per item id; after that `reconcileDraftField` (`src/lib/itemDraft.ts`) only lets a
+server value into a field that is not focused and holds no unsaved edit. Trim happens on blur,
+and the pending save is flushed on back and on unmount. Don't reintroduce an effect that copies
+`itemQuery.data` into the inputs.
 
 ## Profile avatar circles
 
@@ -134,10 +133,10 @@ scaffolding once the share-extension payload bug is nailed.
 
 ## `react-native-reorderable-list` is patched: drag-start races could freeze scrolling
 
-Native list reorder (`ItemList.tsx`) activates via a 250ms `Pressable`
+Native list reorder (`ItemList.tsx`) activates via a 500ms (`REORDER_ACTIVATION.longPressMs`) `Pressable`
 `onLongPress` calling `useReorderableDrag()`'s `drag()` — a JS-thread event that hops to the
 UI thread via `runOnUI(startDrag)`. The finger-lift is processed directly on the UI thread by
-the library's pan gesture, so a lift near the 250ms mark (or under JS-thread load) could land
+the library's pan gesture, so a lift near the long-press mark (or under JS-thread load) could land
 **after** the pan finalized: the library entered `DRAGGED`, disabled scroll on both the
 FlatList and the outer `ScrollViewContainer` via `setNativeProps({scrollEnabled: false})`,
 and its gesture-state reaction (the only re-enable path) never fired again — the whole screen

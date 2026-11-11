@@ -5,7 +5,7 @@ import { getItem, removeItem } from "@workshop/api-client/storage";
 import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
 import {
   DarkTheme,
-  DefaultTheme as LightNavigationTheme,
+  type Href,
   ThemeProvider as NavigationThemeProvider,
   Stack,
   useRouter,
@@ -14,17 +14,17 @@ import {
 import { useShareIntent } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import * as Updates from "expo-updates";
-import { type ReactNode, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, useColorScheme, View } from "react-native";
+import { useEffect, useMemo, useRef } from "react";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
-import { type ClientRoutes, ClientRuntimeProvider } from "../src/lib/clientRuntime";
-import { PENDING_FRIEND_INVITE_TOKEN_KEY, PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
+import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
+import { safeReturnPath } from "../src/lib/returnPath";
 import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
 
 // Web: remember the very first page load's referrer / landing path / utm_* for
@@ -39,28 +39,6 @@ function useApplyOtaUpdatesOnArrival() {
   useEffect(() => {
     if (isUpdatePending) Updates.reloadAsync().catch(() => {});
   }, [isUpdatePending]);
-}
-
-const WORKSHOP_CLIENT_ROUTES: ClientRoutes = {
-  root: "/",
-  signIn: "/sign-in",
-  friends: "/friends",
-  friendProfile: (userId, via) =>
-    `/friends/${encodeURIComponent(userId)}${via ? `?via=${encodeURIComponent(via)}` : ""}`,
-};
-
-function ClientRuntimeBridge({ children }: { children: ReactNode }) {
-  const { token, user, status } = useAuth();
-  const value = useMemo(
-    () => ({
-      token,
-      user,
-      status,
-      routes: WORKSHOP_CLIENT_ROUTES,
-    }),
-    [status, token, user],
-  );
-  return <ClientRuntimeProvider value={value}>{children}</ClientRuntimeProvider>;
 }
 
 // iOS Share Extension hand-off. When the user taps Share → "Workshop" in
@@ -161,9 +139,8 @@ function AuthGate() {
     const onOnboarding = first === "onboarding";
     const onAcceptInvite = onOnboarding && segments[1] === "accept-invite";
     const onInvite = first === "invite";
-    // Friend invite deep-link (`/friends/accept/:token`, G2b). Like the list
-    // invite, it must mount while signed-out so it can stash its token before
-    // forwarding to /sign-in.
+    // Friend invite link (`/friends/accept/:token`). Friends live in HighScore
+    // now; the route is a pure hand-off that needs no session.
     const onFriendAccept = first === "friends" && segments[1] === "accept";
     // Play link (`/g/:token`). Games live in HighScore now; the route is a
     // pure hand-off that needs no session, so it mounts signed-out.
@@ -178,6 +155,11 @@ function AuthGate() {
     // bounced to /sign-in. Subroutes like `/list/:id/settings` remain
     // member-only and fall through to the normal gate.
     const onListLanding = first === "list" && segments.length === 2;
+    // `/l/:slug` is the short share URL and the main way into a list. It must
+    // mount signed-out too so the landing can stash its return path; without
+    // this a new visitor was bounced to /sign-in before the landing rendered
+    // and ended up on an empty home after sign-up (0.3).
+    const onShareLanding = first === "l" && segments.length === 2;
 
     if (status === "signed-out") {
       // Let `/invite/:token`, `/onboarding/accept-invite`, and the public
@@ -188,6 +170,7 @@ function AuthGate() {
         !onInvite &&
         !onAcceptInvite &&
         !onListLanding &&
+        !onShareLanding &&
         !onFriendAccept &&
         !onGameShare
       ) {
@@ -195,8 +178,12 @@ function AuthGate() {
       }
       return;
     }
-    if (status === "needs-display-name" && !onOnboarding) {
-      router.replace("/onboarding/display-name");
+    if (status === "needs-display-name") {
+      // Stay on onboarding until the name is saved. This used to fall through
+      // to the signed-in bounce below while on `/onboarding/display-name`,
+      // which consumed the return-path stash and sent a brand-new user home,
+      // then back to onboarding, in a loop (0.3).
+      if (!onOnboarding) router.replace("/onboarding/display-name");
       return;
     }
     // status === "signed-in". Signed-in users on `/list/...`,
@@ -217,20 +204,16 @@ function AuthGate() {
         router.replace(`/onboarding/accept-invite?token=${encodeURIComponent(stashed)}`);
         return;
       }
-      // Same round-trip for a friend invite (G2b) — land back on the accept
-      // screen, which previews the inviter and waits for an explicit Accept.
-      const stashedFriend = await getItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => null);
-      if (stashedFriend) {
-        router.replace(`/friends/accept/${encodeURIComponent(stashedFriend)}`);
-        return;
-      }
-      const returnPath = await getItem(PENDING_RETURN_PATH_KEY).catch(() => null);
-      if (returnPath?.startsWith("/list/")) {
-        await removeItem(PENDING_RETURN_PATH_KEY).catch(() => {});
-        // expo-router's typed routes don't narrow a runtime string to the
-        // template-literal `/list/${string}` form. We've already verified
-        // the prefix, so the cast is safe.
-        router.replace(returnPath as `/list/${string}`);
+      // The stash is single-use: clear it whatever it held, so a stale path
+      // can't hijack a later sign-in.
+      const rawReturnPath = await getItem(PENDING_RETURN_PATH_KEY).catch(() => null);
+      if (rawReturnPath !== null) await removeItem(PENDING_RETURN_PATH_KEY).catch(() => {});
+      const returnPath = safeReturnPath(rawReturnPath);
+      if (returnPath) {
+        // `safeReturnPath` only passes `/l/…` and `/list/…`. `withAnchor` keeps
+        // home beneath a `/list/…` target so its back button pops instead of
+        // replacing forward (see apps/workshop/CLAUDE.md).
+        router.replace(returnPath as Href, { withAnchor: true });
         return;
       }
       router.replace("/");
@@ -301,7 +284,6 @@ function AuthGate() {
         <Stack.Screen name="onboarding/display-name" />
         <Stack.Screen name="onboarding/accept-invite" />
         <Stack.Screen name="invite/[token]" />
-        <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="friends/accept/[token]" />
         <Stack.Screen name="g/[token]" />
         <Stack.Screen name="share/index" />
@@ -315,22 +297,22 @@ export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
   const persistOptions = useMemo(() => getPersistOptions(), []);
-  const colorScheme = useColorScheme();
-  const isLight = colorScheme === "light";
+  // Light mode is off for now (UX pass decision, 2026-11-11): every screen
+  // paints the dark tokens, so the navigation theme and the status bar are
+  // pinned dark too. Following the system put dark glyphs over a dark app on
+  // light-mode phones (0.15).
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
         <SafeAreaProvider>
-          <ThemeProvider>
-            <NavigationThemeProvider value={isLight ? LightNavigationTheme : DarkTheme}>
-              <StatusBar style={isLight ? "dark" : "light"} />
+          <ThemeProvider forceScheme="dark">
+            <NavigationThemeProvider value={DarkTheme}>
+              <StatusBar style="light" />
               <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
                 <ToastProvider>
                   <OfflineRetryWatcher />
                   <AuthProvider>
-                    <ClientRuntimeBridge>
-                      <AuthGate />
-                    </ClientRuntimeBridge>
+                    <AuthGate />
                   </AuthProvider>
                 </ToastProvider>
               </PersistQueryClientProvider>

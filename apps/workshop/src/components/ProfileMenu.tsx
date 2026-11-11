@@ -1,8 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
-import { fetchFriendRequests } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { ItemKind, ListSummary, ModuleName } from "@workshop/shared";
 import {
   Avatar,
@@ -16,7 +14,7 @@ import {
 } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   Linking,
   Platform,
@@ -66,19 +64,17 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
   const { showToast } = useToast();
   const [profileOpen, setProfileOpen] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
-  const [openArchivedAfterProfileClose, setOpenArchivedAfterProfileClose] = useState(false);
   const [unarchivingId, setUnarchivingId] = useState<string | null>(null);
-  const livePoll = useLivePollingInterval();
-
-  // Pending inbound friend requests — badges the avatar trigger and the
-  // Friends button so a request isn't invisible until the friends page opens.
-  const requestsQuery = useQuery({
-    queryKey: queryKeys.friends.requests,
-    queryFn: () => fetchFriendRequests(token),
-    enabled: !!token,
-    refetchInterval: livePoll,
-  });
-  const inboundRequestCount = requestsQuery.data?.inbound.length ?? 0;
+  // What to do once the profile sheet has finished closing: open another
+  // sheet, navigate, or ask to confirm sign-out. Running these from the
+  // Sheet's `onClosed` (never right after `setProfileOpen(false)`) avoids
+  // stacking a Modal or an Alert on one that is still dismissing, which iOS
+  // can drop (0.13).
+  const afterProfileCloseRef = useRef<(() => void) | null>(null);
+  const closeProfileThen = (action: () => void) => {
+    afterProfileCloseRef.current = action;
+    setProfileOpen(false);
+  };
 
   const unarchiveMutation = useMutation({
     mutationFn: (id: string) => {
@@ -96,8 +92,7 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
     },
   });
 
-  const onSignOut = async () => {
-    setProfileOpen(false);
+  const confirmSignOut = async () => {
     const ok = await confirm({
       title: "Sign out?",
       message: "You'll need to sign in again to access your lists.",
@@ -106,17 +101,17 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
     });
     if (ok) signOut();
   };
+  const onSignOut = () => closeProfileThen(() => void confirmSignOut());
 
   const onAuthSessionChanged = useCallback(() => {
+    afterProfileCloseRef.current = null;
     setProfileOpen(false);
     setArchivedOpen(false);
-    setOpenArchivedAfterProfileClose(false);
     queryClient.clear();
   }, [queryClient]);
 
   return (
     <>
-      {/* Badge sits on a wrapper — the trigger itself clips (overflow hidden). */}
       <View style={styles.profileButtonWrap}>
         <Pressable
           accessibilityRole="button"
@@ -135,22 +130,15 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
             style={styles.profileAvatar}
           />
         </Pressable>
-        {inboundRequestCount > 0 ? (
-          <View style={styles.requestBadge} pointerEvents="none" testID="friend-request-badge">
-            <Text style={styles.requestBadgeText} tone="onAccent">
-              {inboundRequestCount > 9 ? "9+" : String(inboundRequestCount)}
-            </Text>
-          </View>
-        ) : null}
       </View>
 
       <Sheet
         visible={profileOpen}
         onRequestClose={() => setProfileOpen(false)}
         onClosed={() => {
-          if (!openArchivedAfterProfileClose) return;
-          setOpenArchivedAfterProfileClose(false);
-          setArchivedOpen(true);
+          const action = afterProfileCloseRef.current;
+          afterProfileCloseRef.current = null;
+          action?.();
         }}
         testID="profile-sheet"
       >
@@ -186,33 +174,14 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
           <Button
             label="Edit profile"
             variant="secondary"
-            onPress={() => {
-              setProfileOpen(false);
-              router.push("/profile");
-            }}
+            onPress={() => closeProfileThen(() => router.push("/profile"))}
             testID="open-edit-profile"
-          />
-          <Button
-            label={
-              inboundRequestCount > 0
-                ? `Friends (${inboundRequestCount} ${inboundRequestCount === 1 ? "request" : "requests"})`
-                : "Friends"
-            }
-            variant="secondary"
-            onPress={() => {
-              setProfileOpen(false);
-              router.push("/friends");
-            }}
-            testID="open-friends"
           />
           {archivedLists.length > 0 ? (
             <Button
               label={`Archived lists (${archivedLists.length})`}
               variant="secondary"
-              onPress={() => {
-                setOpenArchivedAfterProfileClose(true);
-                setProfileOpen(false);
-              }}
+              onPress={() => closeProfileThen(() => setArchivedOpen(true))}
               testID="open-archived"
             />
           ) : null}
@@ -236,10 +205,7 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
               label="Admin: analytics"
               variant="secondary"
               testID="open-admin-analytics"
-              onPress={() => {
-                setProfileOpen(false);
-                router.push("/admin/analytics");
-              }}
+              onPress={() => closeProfileThen(() => router.push("/admin/analytics"))}
             />
           ) : null}
           <AdminImpersonationRow onSessionChanged={onAuthSessionChanged} />
@@ -621,25 +587,6 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
 
 const styles = StyleSheet.create({
   profileButtonWrap: { width: 40, height: 40 },
-  requestBadge: {
-    position: "absolute",
-    top: -3,
-    right: -3,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    backgroundColor: tokens.accent.default,
-    borderWidth: 2,
-    borderColor: tokens.bg.canvas,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  requestBadgeText: {
-    fontSize: 9,
-    lineHeight: 11,
-    fontWeight: tokens.font.weight.bold,
-  },
   profileButton: {
     width: 40,
     height: 40,
@@ -707,7 +654,8 @@ const accountActionStyles = StyleSheet.create({
     paddingHorizontal: tokens.space.md,
     paddingVertical: 10,
     color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
+    // 16px floor: iOS Safari zooms into smaller focused inputs.
+    fontSize: tokens.font.size.md,
     backgroundColor: tokens.bg.surface,
   },
   select: {

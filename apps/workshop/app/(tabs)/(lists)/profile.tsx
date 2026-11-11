@@ -119,7 +119,7 @@ export default function EditProfile() {
             onSubmitEditing={onSave}
           />
           <Text variant="caption" tone="muted" style={styles.hint}>
-            Shown to people you share lists and leaderboards with.
+            Shown to people on your shared lists.
           </Text>
         </View>
 

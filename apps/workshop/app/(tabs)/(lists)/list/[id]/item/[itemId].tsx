@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import type { Item, ListDetailResponse } from "@workshop/shared";
+import type { Item } from "@workshop/shared";
 import {
   Button,
   confirm,
@@ -30,9 +30,16 @@ import {
   updateItem,
   updateItemTags,
 } from "../../../../../../src/api/items";
-import { fetchListTags } from "../../../../../../src/api/lists";
+import { fetchListDetail, fetchListTags } from "../../../../../../src/api/lists";
 import { useAuth } from "../../../../../../src/hooks/useAuth";
 import { goBack } from "../../../../../../src/lib/goBack";
+import {
+  type DraftField,
+  type DraftValues,
+  draftFromServer,
+  isDraftDirty,
+  reconcileDraftField,
+} from "../../../../../../src/lib/itemDraft";
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 
@@ -69,28 +76,62 @@ export default function ItemDetail() {
     enabled: !!token && !!itemId,
   });
 
-  // The list detail is almost always warm in the cache (the user just came
-  // from the list screen). Read it without re-fetching so the parent-list
-  // chip can paint synchronously.
-  const cachedList = listId
-    ? queryClient.getQueryData<ListDetailResponse>(queryKeys.lists.detail(listId))
-    : null;
-  const parentList = cachedList?.list ?? null;
-  const listMembers = cachedList?.members ?? [];
+  // The parent list is usually warm in the cache (the user just came from the
+  // list screen), so this paints synchronously. Subscribing (rather than a
+  // one-off cache read) means an item opened cold — a deep link, a reload —
+  // still gets the list chip, members and the todo "Mark done" action once
+  // the list loads (0.11).
+  const listQuery = useQuery({
+    queryKey: queryKeys.lists.detail(listId ?? ""),
+    queryFn: () => fetchListDetail(listId ?? "", token),
+    enabled: !!token && !!listId,
+  });
+  const parentList = listQuery.data?.list ?? null;
+  const listMembers = listQuery.data?.members ?? [];
 
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [url, setUrl] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  // Action to run once the ⋯ sheet has finished closing (0.13): an Alert or a
+  // navigation fired while the sheet's Modal is still dismissing can be lost
+  // on iOS.
+  const pendingMenuActionRef = useRef<(() => void) | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
+  // Drafts are seeded once per item id; afterwards a refetch only reaches a
+  // field that is neither focused nor holding an unsaved edit (0.2). The old
+  // effect copied every refetch into the inputs, so an autosave landing
+  // mid-typing reset the field and dropped what was typed after it fired.
+  const seededItemIdRef = useRef<string | null>(null);
+  const serverDraftRef = useRef<DraftValues | null>(null);
+  const focusedFieldRef = useRef<DraftField | null>(null);
+  const serverItem = itemQuery.data?.item;
   useEffect(() => {
-    if (itemQuery.data?.item) {
-      setTitle(itemQuery.data.item.title);
-      setNote(itemQuery.data.item.note ?? "");
-      setUrl(itemQuery.data.item.url ?? "");
+    if (!serverItem) return;
+    const next = draftFromServer(serverItem);
+    const prev = serverDraftRef.current;
+    serverDraftRef.current = next;
+    if (seededItemIdRef.current !== serverItem.id || !prev) {
+      seededItemIdRef.current = serverItem.id;
+      setTitle(next.title);
+      setNote(next.note);
+      setUrl(next.url);
+      return;
     }
-  }, [itemQuery.data?.item]);
+    const reconcile = (field: DraftField) => (draft: string) =>
+      reconcileDraftField({
+        field,
+        draft,
+        prevServer: prev[field],
+        nextServer: next[field],
+        focused: focusedFieldRef.current === field,
+        normalizeUrl: normalizeExternalUrl,
+      });
+    setTitle(reconcile("title"));
+    setNote(reconcile("note"));
+    setUrl(reconcile("url"));
+  }, [serverItem]);
 
   function invalidateItem() {
     if (!itemId || !listId) return Promise.resolve();
@@ -183,39 +224,50 @@ export default function ItemDetail() {
     },
     onError: (e) =>
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't archive",
+        message: e instanceof ApiError ? e.message : "Couldn't delete",
         tone: "danger",
       }),
   });
 
   // Debounced autosave. We compare against the server snapshot (not against
   // the previous draft) so an inflight save that finishes while the user
-  // keeps typing doesn't re-snapshot stale state.
+  // keeps typing doesn't re-snapshot stale state. The latest drafts and the
+  // server snapshot live in refs so the unmount flush below sees them.
   const item = itemQuery.data?.item;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveMutationRef = useRef(saveMutation);
   saveMutationRef.current = saveMutation;
+  const draftRef = useRef<DraftValues>({ title, note, url });
+  draftRef.current = { title, note, url };
+  const lastSubmittedRef = useRef<string | null>(null);
 
   const flushSave = useCallback(() => {
-    if (!item) return;
-    const nextTitle = title.trim();
-    const nextNote = note.trim();
-    const nextUrl = url.trim();
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const server = serverDraftRef.current;
+    if (!server) return;
+    const draft = draftRef.current;
+    const nextTitle = draft.title.trim();
     if (nextTitle.length === 0 || nextTitle.length > 500) return;
-    const dirty =
-      nextTitle !== item.title || nextNote !== (item.note ?? "") || nextUrl !== (item.url ?? "");
-    if (!dirty) return;
-    saveMutationRef.current.mutate({ title, note, url });
-  }, [item, title, note, url]);
+    if (!isDraftDirty(draft, server, normalizeExternalUrl)) return;
+    // The back button flushes and the unmount that follows flushes again;
+    // don't send the same payload twice.
+    const key = JSON.stringify(draft);
+    if (key === lastSubmittedRef.current) return;
+    lastSubmittedRef.current = key;
+    saveMutationRef.current.mutate(draft, {
+      onError: () => {
+        lastSubmittedRef.current = null;
+      },
+    });
+  }, []);
 
   useEffect(() => {
     if (!item) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    const nextTitle = title.trim();
-    const dirty =
-      nextTitle !== item.title ||
-      note.trim() !== (item.note ?? "") ||
-      url.trim() !== (item.url ?? "");
+    const dirty = isDraftDirty({ title, note, url }, draftFromServer(item), normalizeExternalUrl);
     if (!dirty) {
       // Fade the "Saved" indicator out a moment after the last save resolves.
       if (saveStatus === "saved") {
@@ -224,6 +276,7 @@ export default function ItemDetail() {
       }
       return;
     }
+    const nextTitle = title.trim();
     if (nextTitle.length === 0 || nextTitle.length > 500) return;
     debounceRef.current = setTimeout(() => {
       flushSave();
@@ -232,6 +285,26 @@ export default function ItemDetail() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [item, title, note, url, flushSave, saveStatus]);
+
+  // Leaving the screen (back button, swipe back, browser back) must not drop
+  // the last keystrokes still waiting on the debounce.
+  useEffect(() => () => flushSave(), [flushSave]);
+
+  const onFieldFocus = (field: DraftField) => () => {
+    focusedFieldRef.current = field;
+  };
+  // Trim on blur, not while typing, then save right away.
+  const onFieldBlur = (field: DraftField) => () => {
+    if (focusedFieldRef.current === field) focusedFieldRef.current = null;
+    if (field === "title") setTitle((v) => v.trim());
+    if (field === "note") setNote((v) => v.trim());
+    if (field === "url") setUrl((v) => v.trim());
+    flushSave();
+  };
+  const onBack = () => {
+    flushSave();
+    goBack(`/list/${listId}`);
+  };
 
   if (!itemId || !listId) {
     return (
@@ -249,7 +322,8 @@ export default function ItemDetail() {
     );
   }
 
-  if (itemQuery.isError || !itemQuery.data) {
+  // Cached item stays on screen if a background refetch fails (0.9).
+  if (!itemQuery.data) {
     return (
       <Screen style={styles.center}>
         <EmptyState
@@ -270,8 +344,12 @@ export default function ItemDetail() {
     ? listMembers.find((m) => m.userId === loadedItem.completedBy)
     : null;
 
-  const onDelete = async () => {
+  const runAfterMenuCloses = (action: () => void) => {
+    pendingMenuActionRef.current = action;
     setMenuOpen(false);
+  };
+
+  const onDelete = async () => {
     const ok = await confirm({
       title: `Delete "${loadedItem.title}"?`,
       message: "This removes it from the list.",
@@ -291,7 +369,7 @@ export default function ItemDetail() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={parentList ? `Back to ${parentList.name}` : "Back"}
-          onPress={() => goBack(`/list/${listId}`)}
+          onPress={onBack}
           style={({ pressed, hovered }) => [
             styles.parentChip,
             (pressed || hovered) && styles.parentChipPressed,
@@ -343,7 +421,8 @@ export default function ItemDetail() {
           placeholder="Title"
           placeholderTextColor={tokens.text.muted}
           maxLength={500}
-          onBlur={flushSave}
+          onFocus={onFieldFocus("title")}
+          onBlur={onFieldBlur("title")}
           returnKeyType="next"
           style={[styles.titleInput, loadedItem.completed && styles.titleInputCompleted]}
           multiline
@@ -351,13 +430,20 @@ export default function ItemDetail() {
         />
 
         {view.hasUrlField ? (
-          <UrlField value={url} onChange={setUrl} onBlur={flushSave} currentUrl={loadedItem.url} />
+          <UrlField
+            value={url}
+            onChange={setUrl}
+            onFocus={onFieldFocus("url")}
+            onBlur={onFieldBlur("url")}
+            currentUrl={loadedItem.url}
+          />
         ) : null}
 
         <NoteField
           value={note}
           onChange={setNote}
-          onBlur={flushSave}
+          onFocus={onFieldFocus("note")}
+          onBlur={onFieldBlur("note")}
           placeholder={notePlaceholderFor(loadedItem, todoEnabled)}
         />
 
@@ -394,20 +480,31 @@ export default function ItemDetail() {
         />
       </KeyboardAwareScrollView>
 
-      <Sheet visible={menuOpen} onRequestClose={() => setMenuOpen(false)} testID="item-menu">
+      <Sheet
+        visible={menuOpen}
+        onRequestClose={() => setMenuOpen(false)}
+        onClosed={() => {
+          const action = pendingMenuActionRef.current;
+          pendingMenuActionRef.current = null;
+          action?.();
+        }}
+        testID="item-menu"
+      >
         <View style={styles.menu}>
           {loadedItem.url ? (
             <MenuRow
               testID="item-menu-open"
               label="Open link"
               detail={hostFromUrl(loadedItem.url)}
-              onPress={() => {
-                setMenuOpen(false);
-                onOpenUrl();
-              }}
+              onPress={() => runAfterMenuCloses(onOpenUrl)}
             />
           ) : null}
-          <MenuRow testID="item-menu-delete" label="Delete item" destructive onPress={onDelete} />
+          <MenuRow
+            testID="item-menu-delete"
+            label="Delete item"
+            destructive
+            onPress={() => runAfterMenuCloses(() => void onDelete())}
+          />
         </View>
       </Sheet>
     </Screen>
@@ -515,24 +612,28 @@ function KindHero({ item, view, accent, onOpenUrl }: KindHeroProps) {
 interface UrlFieldProps {
   value: string;
   onChange: (v: string) => void;
+  onFocus: () => void;
   onBlur: () => void;
   currentUrl: string | null;
 }
 
-function UrlField({ value, onChange, onBlur, currentUrl }: UrlFieldProps) {
+function UrlField({ value, onChange, onFocus, onBlur, currentUrl }: UrlFieldProps) {
   const trimmed = value.trim();
-  const showOpen = trimmed.length > 0 && trimmed === (currentUrl ?? "");
+  const showOpen = trimmed.length > 0 && normalizeExternalUrl(trimmed) === (currentUrl ?? "");
   return (
     <View style={styles.urlRow}>
       <TextInput
         testID="item-url-input"
         value={value}
         onChangeText={onChange}
+        onFocus={onFocus}
         onBlur={onBlur}
         placeholder="Add a link"
         placeholderTextColor={tokens.text.muted}
         autoCapitalize="none"
         autoCorrect={false}
+        keyboardType="url"
+        inputMode="url"
         maxLength={2048}
         style={styles.urlInput}
       />
@@ -555,16 +656,18 @@ function UrlField({ value, onChange, onBlur, currentUrl }: UrlFieldProps) {
 interface NoteFieldProps {
   value: string;
   onChange: (v: string) => void;
+  onFocus: () => void;
   onBlur: () => void;
   placeholder: string;
 }
 
-function NoteField({ value, onChange, onBlur, placeholder }: NoteFieldProps) {
+function NoteField({ value, onChange, onFocus, onBlur, placeholder }: NoteFieldProps) {
   return (
     <TextInput
       testID="item-note-input"
       value={value}
       onChangeText={onChange}
+      onFocus={onFocus}
       onBlur={onBlur}
       placeholder={placeholder}
       placeholderTextColor={tokens.text.muted}
@@ -931,7 +1034,8 @@ const styles = StyleSheet.create({
   urlInput: {
     flex: 1,
     color: tokens.text.secondary,
-    fontSize: tokens.font.size.sm,
+    // 16px floor: smaller focused inputs make iOS Safari zoom the page (0.10).
+    fontSize: tokens.font.size.md,
     paddingVertical: 0,
     paddingHorizontal: 0,
     margin: 0,

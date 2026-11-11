@@ -20,6 +20,12 @@ interface SavedViewsBarProps {
   onCreate: (name: string) => void;
   /** Remove a view (the parent confirms + mutates). */
   onDelete: (view: SavedView) => void;
+  /**
+   * Whether the viewer may delete this view. The server only lets the view's
+   * creator or the list owner delete it, so nobody else is offered the action
+   * (it used to end in a 403).
+   */
+  canDelete: (view: SavedView) => boolean;
   /** True when the selection is non-empty and not already saved. */
   canSave: boolean;
   /** A create/delete is in flight — disable affordances to avoid races. */
@@ -53,6 +59,7 @@ export function SavedViewsBar({
   onApply,
   onCreate,
   onDelete,
+  canDelete,
   canSave,
   busy = false,
 }: SavedViewsBarProps) {
@@ -111,9 +118,13 @@ export function SavedViewsBar({
               selected={active}
               disabled={busy}
               onPress={() => onApply(view)}
-              onLongPress={() => onDelete(view)}
+              onLongPress={canDelete(view) ? () => onDelete(view) : undefined}
               delayLongPress={450}
-              accessibilityHint="Applies this saved filter. Long press to delete it."
+              accessibilityHint={
+                canDelete(view)
+                  ? "Applies this saved filter. Long press to delete it."
+                  : "Applies this saved filter."
+              }
               testID={`saved-view-${viewSlug(view.name)}`}
             />
           );
@@ -125,7 +136,7 @@ export function SavedViewsBar({
             onPress={() => setSaveOpen(true)}
             testID="saved-view-save"
           />
-        ) : activeView ? (
+        ) : activeView && canDelete(activeView) ? (
           <Chip
             label="✕ Delete view"
             disabled={busy}
