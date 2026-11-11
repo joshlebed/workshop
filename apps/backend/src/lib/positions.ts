@@ -23,6 +23,8 @@ interface MoveArgs {
   itemId: string;
   beforeItemId?: string | null;
   afterItemId?: string | null;
+  /** With no neighbours: `true` → append to the ordered section; else demote. */
+  ordered?: boolean;
   db: DbClient;
 }
 
@@ -36,13 +38,22 @@ interface MoveResult {
  * new position (null when demoting to unordered) plus whether the list's
  * ordered section was rebalanced as a side effect.
  *
- * - both null            → demote (position = NULL)
+ * - both null            → demote (position = NULL) — unless `ordered` is
+ *                          true, which appends to the end of the ordered
+ *                          section instead (how the first item of an empty
+ *                          Ranked section gets a position)
  * - only beforeItemId    → place just after `before`
  * - only afterItemId     → place just before `after`
  * - both                 → place between them, rebalancing on collision
  */
 export async function moveItemPosition(args: MoveArgs): Promise<MoveResult> {
-  const { listId, itemId, beforeItemId, afterItemId, db } = args;
+  const { listId, itemId, beforeItemId, afterItemId, ordered = false, db } = args;
+
+  if (!beforeItemId && !afterItemId && ordered) {
+    const position = await appendPosition(listId, db);
+    await db.update(items).set({ position, updatedAt: new Date() }).where(eq(items.id, itemId));
+    return { position, rebalanced: false };
+  }
 
   if (!beforeItemId && !afterItemId) {
     await db

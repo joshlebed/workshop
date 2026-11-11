@@ -504,6 +504,14 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
   writes through on every change. Any new item-create surface (bulk paste, share flow) should
   pass `tags` on create rather than firing a second request, and must invalidate
   `queryKeys.tags.byList(listId)` so a brand-new tag reaches the filter bar.
+- **`POST /v1/items/:id/move` with both neighbour ids null is a demote — send `ordered: true`
+  to rank into an empty Ranked section.** `beforeItemId`/`afterItemId` are the only wire
+  signal, so when the Ranked section is empty every promote path (web drag into the drop
+  zone, ⋯ → Move to ordered, native kebab) has no neighbour to name and used to send
+  `{null, null}`, which `moveItemPosition` read as "unrank" — a 200 no-op, so a `ranking`
+  list that never had a ranked row could never get one ("I can't reorder items"). Promotes
+  now pass `ordered: true` (`MoveItemRequest`), which appends to the ordered block. Any new
+  promote surface must set it too; old clients that omit it keep the demote semantics.
 - **Per-(list, viewer) presentation state lives on `list_members`.** `pinned_at`,
   `archived_at`, `muted_at` columns (NULL = not set). `last_read_at` for unread-count
   derivation lives in the older `user_activity_reads` table — don't duplicate it.

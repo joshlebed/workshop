@@ -174,18 +174,31 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const moveMutation = useMutation<
     Item,
     Error,
-    { item: Item; beforeItemId: string | null; afterItemId: string | null },
+    // `ordered: true` on every promote: with an empty Ranked section both
+    // neighbour ids are null, which the server would otherwise read as a
+    // demote (no-op) — the first item could never be ranked.
+    { item: Item; beforeItemId: string | null; afterItemId: string | null; ordered?: boolean },
     { previous?: ListItemsResponse }
   >({
-    mutationFn: async ({ item, beforeItemId, afterItemId }) => {
-      const res = await moveItem(item.id, { beforeItemId, afterItemId }, token);
+    mutationFn: async ({ item, beforeItemId, afterItemId, ordered }) => {
+      const res = await moveItem(
+        item.id,
+        { beforeItemId, afterItemId, ...(ordered ? { ordered: true } : {}) },
+        token,
+      );
       return res.item;
     },
-    onMutate: async ({ item, beforeItemId, afterItemId }) => {
+    onMutate: async ({ item, beforeItemId, afterItemId, ordered }) => {
       await queryClient.cancelQueries({ queryKey: itemsKey });
       const previous = queryClient.getQueryData<ListItemsResponse>(itemsKey);
       if (previous) {
-        const next = applyOptimisticMove(previous, item.id, beforeItemId, afterItemId);
+        const next = applyOptimisticMove(
+          previous,
+          item.id,
+          beforeItemId,
+          afterItemId,
+          ordered ?? false,
+        );
         queryClient.setQueryData<ListItemsResponse>(itemsKey, next);
       }
       return previous ? { previous } : {};
@@ -429,6 +442,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
       item,
       beforeItemId: beforeItem?.id ?? null,
       afterItemId: afterItem?.id ?? null,
+      ordered: true,
     });
   };
 
@@ -474,12 +488,14 @@ export function ListDetail({ list, members, sources, token }: Props) {
                 item,
                 beforeItemId: filtered.ordered[filtered.ordered.length - 1]?.id ?? null,
                 afterItemId: null,
+                ordered: true,
               }),
             onPromoteToTop: () =>
               moveMutation.mutate({
                 item,
                 beforeItemId: null,
                 afterItemId: filtered.ordered[0]?.id ?? null,
+                ordered: true,
               }),
           }
         : {}),

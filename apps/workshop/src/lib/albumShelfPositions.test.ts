@@ -1,6 +1,6 @@
 import type { Item } from "@workshop/shared";
 import { describe, expect, it } from "vitest";
-import { neighborsForOrderedReorder } from "./albumShelfPositions";
+import { applyOptimisticMove, neighborsForOrderedReorder } from "./albumShelfPositions";
 
 function row(id: string): Item {
   return { id } as unknown as Item;
@@ -51,5 +51,35 @@ describe("neighborsForOrderedReorder", () => {
     expect(neighborsForOrderedReorder(list, -1, 0)).toBeNull();
     expect(neighborsForOrderedReorder(list, 0, 4)).toBeNull();
     expect(neighborsForOrderedReorder([], 0, 0)).toBeNull();
+  });
+});
+
+describe("applyOptimisticMove with no neighbours", () => {
+  const ranked = (id: string, position: number): Item => ({ id, position }) as unknown as Item;
+  const base = (ordered: Item[], unordered: Item[]) => ({
+    ordered,
+    unordered,
+    completed: [],
+    suggested: [],
+  });
+
+  it("demotes by default", () => {
+    const next = applyOptimisticMove(base([ranked("A", 1024)], [B]), "A", null, null);
+    expect(next.ordered).toEqual([]);
+    expect(next.unordered.map((i) => i.id)).toEqual(["B", "A"]);
+    expect(next.unordered[1]?.position).toBeNull();
+  });
+
+  it("`ordered: true` ranks the first item of an empty section", () => {
+    const next = applyOptimisticMove(base([], [A, B]), "A", null, null, true);
+    expect(next.ordered.map((i) => i.id)).toEqual(["A"]);
+    expect(next.ordered[0]?.position).toBe(1024);
+    expect(next.unordered.map((i) => i.id)).toEqual(["B"]);
+  });
+
+  it("`ordered: true` appends after the last ranked row", () => {
+    const next = applyOptimisticMove(base([ranked("A", 3000)], [B]), "B", null, null, true);
+    expect(next.ordered.map((i) => i.id)).toEqual(["A", "B"]);
+    expect(next.ordered[1]?.position).toBe(4024);
   });
 });
