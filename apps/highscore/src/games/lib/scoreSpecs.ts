@@ -7,6 +7,7 @@
 import type { Item } from "@workshop/shared";
 import { gameDefinitionForKey } from "@workshop/shared/gameRegistry";
 import type { GameScorePreview } from "@workshop/shared/games";
+import { formatScoreValue } from "@workshop/shared/games";
 import {
   evaluateScoreSpec,
   parseFirstNumber,
@@ -76,7 +77,7 @@ export function scorePreviewCaption(
 ): string | null {
   if (server) {
     if (server.parseStatus === "score" && server.scoreValue !== null) {
-      return `Recording score: ${server.scoreValue}`;
+      return `Recording score: ${formatScoreValue(server.scoreValue, server.scoreUnit)}`;
     }
     // A loss ranks last; a share the game's code could not read has no rank.
     return server.parseStatus === "no_result"

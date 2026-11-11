@@ -3,7 +3,8 @@
 // hook (`useScoreCheck`) gathers the inputs, this decides what is shown, and
 // the paste sheet, the game board and the share card all render the result.
 
-import type { ScoreInputRejection } from "@workshop/shared/games";
+import type { GameScoreUnit, ScoreInputRejection } from "@workshop/shared/games";
+import { formatScoreValue } from "@workshop/shared/games";
 import type { ScoreFeatureRole } from "@workshop/shared/scoreCandidates";
 import type { PreviewAnswer } from "../api/teach";
 import { formatGameDateLabel } from "./gameDate";
@@ -19,7 +20,7 @@ export type ScoreCheckView =
   | { kind: "no_result_text"; copy: string }
   /** The text positively matches another game; the user chooses where it goes. */
   | { kind: "wrong_game"; copy: string; otherGameId: string; otherTitle: string }
-  | { kind: "score"; copy: string; value: number }
+  | { kind: "score"; copy: string; value: number; unit: GameScoreUnit | null }
   | { kind: "no_result"; copy: string }
   | { kind: "unread"; copy: string };
 
@@ -36,9 +37,14 @@ export const SCORE_COPY = {
   adjusted: "adjusted",
 } as const;
 
-/** "Score: 944", or "Score: 7 (counted 🏆)" for a computed value. */
-export function scoreReadCopy(value: number, derivation: string | null): string {
-  return derivation ? `Score: ${value} (${derivation})` : `Score: ${value}`;
+/** "Score: 944", "Score: 7 (counted 🏆)" for a computed value, "Score: 23h 00m" for a time. */
+export function scoreReadCopy(
+  value: number,
+  derivation: string | null,
+  unit: GameScoreUnit | null = null,
+): string {
+  const shown = formatScoreValue(value, unit);
+  return derivation ? `Score: ${shown} (${derivation})` : `Score: ${shown}`;
 }
 
 export function wrongGameCopy(otherTitle: string): string {
@@ -135,8 +141,13 @@ export function resolveScoreCheck(input: {
   if (preview.parseStatus === "score" && preview.scoreValue !== null) {
     return {
       kind: "score",
-      copy: scoreReadCopy(preview.scoreValue, preview.teach?.derivation ?? null),
+      copy: scoreReadCopy(
+        preview.scoreValue,
+        preview.teach?.derivation ?? null,
+        preview.scoreUnit ?? null,
+      ),
       value: preview.scoreValue,
+      unit: preview.scoreUnit ?? null,
     };
   }
   if (preview.parseStatus === "no_result") return { kind: "no_result", copy: SCORE_COPY.noResult };
@@ -169,19 +180,20 @@ export function scoreLineLabel(
     scoreValue: number | null;
     adjusted?: boolean | undefined;
   },
-  game: { hasFormatter?: boolean | undefined },
+  game: { hasFormatter?: boolean | undefined; scoreUnit?: GameScoreUnit | null | undefined },
   everyRow: boolean,
 ): string | null {
+  const shown = (value: number) => `Score: ${formatScoreValue(value, game.scoreUnit)}`;
   if (entry.scoreSource === "picked") {
     if (entry.parseStatus === "no_result") return "Didn't finish";
     if (entry.scoreValue === null) return null;
     if (game.hasFormatter === true && !entry.adjusted) return null;
-    return `Score: ${entry.scoreValue}`;
+    return shown(entry.scoreValue);
   }
   if (!everyRow || game.hasFormatter !== false) return null;
   if (entry.parseStatus === "no_result") return "No score";
   if (entry.parseStatus !== "score" || entry.scoreValue === null) return null;
-  return `Score: ${entry.scoreValue}`;
+  return shown(entry.scoreValue);
 }
 
 /**

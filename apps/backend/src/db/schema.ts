@@ -544,6 +544,11 @@ export const games = pgTable("games", {
   /** 'desc' = bigger is better, 'asc' = lower is better. */
   scoreDirection: text("score_direction").notNull().default("desc"),
   /**
+   * 'seconds' when the score is a time (set by an accepted teach whose pick
+   * was a duration; registry games carry theirs in code). NULL = a number.
+   */
+  scoreUnit: text("score_unit"),
+  /**
    * User-taught parser spec (ScoreSpec jsonb) for non-registry games — see
    * `@workshop/shared/scoreParsing`. NULL when unset; registry games keep
    * their specs in code and ignore this column.

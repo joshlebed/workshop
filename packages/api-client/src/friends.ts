@@ -151,6 +151,7 @@ const profileGameSchema = z.object({
     iconUrl: z.string().nullable(),
     gameKey: z.string().nullable(),
     scoreDirection: z.enum(["asc", "desc"]),
+    scoreUnit: z.enum(["seconds"]).nullable().optional(),
     // Validated into a ScoreSpec (or null) so the parsed type matches `Game`.
     scoreSpec: z.unknown().transform((v) => safeParseScoreSpec(v)),
     summarySpec: z.unknown().transform((v) => safeParseSummarySpec(v)),
