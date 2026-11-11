@@ -2,7 +2,7 @@
   "expo": {
     "name": "HighScore",
     "slug": "highscore",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -46,7 +46,7 @@
       "favicon": "./public/favicon.png"
     },
     "plugins": [
-      "expo-router",
+      ["expo-router", { "asyncRoutes": { "web": false } }],
       "expo-secure-store",
       "expo-web-browser",
       "expo-apple-authentication",

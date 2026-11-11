@@ -110,10 +110,10 @@ desaturated so the button behind the sheet doesn't tint it. The last step opens 
 sheet (`Share.share` with `SHARE_PRACTICE_TEXT`) and asks for confirmation when it closes. Don't
 make the user tap HighScore in that sheet to "test" it: sharing to the app's own extension from
 inside the app reuses the same `dataUrl` deep link, which `useShareIntent` only re-reads when the
-URL changes or the app re-activates, and the extension's sheet can stay
-up until swiped away — clear on a device, so "You're set" shows through and Done / X look dead
-(expo-share-intent #231: the extension completes before iOS has finished presenting it). The
-card says "Swipe down to close the share
+URL changes or the app re-activates, and on binaries up to 1.2.0 the extension's sheet can stay
+up until swiped away — clear on a device, so "You're set" shows through and Done / X look dead.
+1.3.0+ fixes that in the extension (`patches/expo-share-intent.patch`, see
+`apps/workshop/CLAUDE.md`); for older binaries the card says "Swipe down to close the share
 sheet" while `Share.share` is still pending 1.5s after the practice share came back, and the
 completion flag is saved as soon as the share comes back rather than on Done. JS cannot dismiss
 that sheet: hosting it on an RN `Modal` or a `transparentModal` route and popping the host was
@@ -180,9 +180,12 @@ ship by OTA instead of another App Review cycle: `expo-notifications` (push enti
 its iOS share extension would collide with `expo-share-intent`), `expo-device`,
 `expo-application`, `expo-store-review`, `expo-blur`, `expo-linear-gradient`,
 `react-native-svg`, and `react-native-mmkv` (+ its required peer `react-native-nitro-modules`).
-Expo packages are pinned to the exact floor of SDK 55's `bundledNativeModules.json` (a `~` range
-pulled newer patches that wanted a second `expo-constants`); mmkv/nitro aren't in that map and are
-pinned exactly. Rules:
+Expo packages are pinned exactly to a version inside the current SDK's `bundledNativeModules.json`
+range (a `~` range once pulled newer patches that wanted a second `expo-constants` — check
+`find node_modules -path '*/node_modules/expo-*/node_modules/expo-*'` is empty after a bump);
+mmkv/nitro aren't in that map and are pinned exactly. Since 1.3.0 (SDK 58) every supported
+runtime already carries all of these, so the "drop older runtimes" rule below only bites again
+once a pre-1.3.0 runtime is re-added (it won't be). Rules:
 
 - **Intentionally unused.** Each sits in knip's `ignoreDependencies` (`knip.jsonc`); remove it
   there in the PR that first imports it (the two with config plugins are already "used").

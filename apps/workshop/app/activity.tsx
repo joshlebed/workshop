@@ -285,7 +285,7 @@ export default function Activity() {
                 <View style={styles.footerLoader}>
                   <ActivityIndicator color={tokens.accent.default} />
                 </View>
-              ) : null
+              ) : undefined
             }
           />
         </PullToRefresh>

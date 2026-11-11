@@ -16,7 +16,8 @@
 // clear, so "You're set" shows through while every tap lands on the sheet and
 // Done / X look dead. JS can't dismiss it — popping a modal host under it was
 // tried and the sheet survives — so the card says to swipe it away, and the
-// completion is saved without waiting for Done.
+// completion is saved without waiting for Done. The extension-side fix is in
+// patches/expo-share-intent.patch; this covers binaries built before it.
 //
 // Finishing writes the `games.share-sheet-announcement` flag with
 // `{ completedAt }` — server-side, so no other device re-blasts the
@@ -78,7 +79,11 @@ function Illustration({
   source: ImageSourcePropType;
   highlight: IllustrationHighlight | null;
 }) {
-  const { width, height } = Image.resolveAssetSource(source);
+  // RN 0.88 types resolveAssetSource as possibly undefined; fall back to a
+  // phone-ish ratio rather than crash the walkthrough.
+  const resolved = Image.resolveAssetSource(source);
+  const width = resolved?.width ?? 9;
+  const height = resolved?.height ?? 16;
   return (
     <View style={[styles.shot, { aspectRatio: width / height }]}>
       <Image source={source} style={styles.shotImage} resizeMode="cover" />

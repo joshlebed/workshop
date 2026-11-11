@@ -35,7 +35,7 @@ import type { Item } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
 import { PullToRefresh, Text, tokens } from "@workshop/ui";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View, type ViewInstance } from "react-native";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
 import { ItemRow, OrderedHint, SectionHeader } from "./ItemRow";
 import type { ItemListProps } from "./listProps";
@@ -313,7 +313,7 @@ function SortableOrderedRow({
 
   return (
     <View
-      ref={setNodeRef as unknown as React.Ref<View>}
+      ref={setNodeRef as unknown as React.Ref<ViewInstance>}
       style={webStyle}
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
       {...(wrapperAttributes as unknown as Record<string, unknown>)}
@@ -409,7 +409,7 @@ function DraggableUnorderedRow({
 
   return (
     <View
-      ref={setNodeRef as unknown as React.Ref<View>}
+      ref={setNodeRef as unknown as React.Ref<ViewInstance>}
       style={webStyle}
       {...((listeners ?? {}) as unknown as Record<string, unknown>)}
       {...(wrapperAttributes as unknown as Record<string, unknown>)}
@@ -438,7 +438,7 @@ function OrderedDropEndZone({ highlighted }: { highlighted: boolean }) {
     // intra-ordered reorders, without showing the "drop zone" affordance.
     return (
       <View
-        ref={setNodeRef as unknown as React.Ref<View>}
+        ref={setNodeRef as unknown as React.Ref<ViewInstance>}
         style={styles.dropZoneSpacer}
         testID="list-detail-ordered-drop-end"
       />
@@ -446,7 +446,7 @@ function OrderedDropEndZone({ highlighted }: { highlighted: boolean }) {
   }
   return (
     <View
-      ref={setNodeRef as unknown as React.Ref<View>}
+      ref={setNodeRef as unknown as React.Ref<ViewInstance>}
       style={[styles.dropZone, isOver && styles.dropZoneActive]}
       testID="list-detail-ordered-drop-end"
     >

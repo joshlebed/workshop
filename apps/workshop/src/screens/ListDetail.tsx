@@ -38,6 +38,7 @@ import {
   Pressable,
   StyleSheet,
   TextInput,
+  type TextInputInstance,
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -79,7 +80,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const { showToast } = useToast();
   const { user } = useAuth();
   const selfId = user?.id ?? null;
-  const filterInputRef = useRef<TextInput>(null);
+  const filterInputRef = useRef<TextInputInstance>(null);
   const [filter, setFilter] = useState("");
   // Tag chips selected in the filter bar. Multi-select reads as OR; empty
   // set = "All" (no tag filtering). Stored as an array for stable identity
