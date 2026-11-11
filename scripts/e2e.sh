@@ -27,13 +27,6 @@ fi
 export DEV_AUTH_ENABLED=1
 export EXPO_PUBLIC_DEV_AUTH=1
 export EXPO_PUBLIC_API_URL="$BACKEND_URL"
-# Games tab (G0) is on for e2e — don't rely on the __DEV__ fallback.
-export EXPO_PUBLIC_ENABLE_GAMES="${EXPO_PUBLIC_ENABLE_GAMES:-1}"
-# The Workshop games specs exercise the frozen legacy Games UI, which the
-# HighScore cutover (WORKSHOP_GAMES_SUNSET_AT / _REMOVED_AT) replaces with a
-# hand-off and then removes. Pin the "active" phase so they keep passing until
-# PR-10 deletes them.
-export EXPO_PUBLIC_LEGACY_GAMES_PHASE="${EXPO_PUBLIC_LEGACY_GAMES_PHASE:-active}"
 # Stub OAuth audiences so the sign-in screen treats Apple + Google as
 # available. Tests stub the SDK callbacks directly — the values are never
 # sent to the real providers.
@@ -67,8 +60,7 @@ done
 
 echo "→ starting web (:${WEB_PORT}) with EXPO_PUBLIC_DEV_AUTH=1"
 # --clear: Metro's cache does not invalidate on EXPO_PUBLIC_* env changes, so
-# a bundle built with different flag values (e.g. EXPO_PUBLIC_ENABLE_GAMES)
-# would otherwise be served stale here.
+# a bundle built with different EXPO_PUBLIC_* values would otherwise be served stale here.
 pnpm --filter workshop-app exec expo start --web --clear >/tmp/workshop-e2e-web.log 2>&1 &
 WEB_PID=$!
 

@@ -6,6 +6,7 @@ import { logger } from "./lib/logger.js";
 import { err } from "./lib/response.js";
 import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
 import { requestLog } from "./middleware/request-log.js";
+import { discordInteractionRoutes } from "./routes/discordInteractions.js";
 import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
 import { adminRoutes } from "./routes/v1/admin.js";
@@ -136,6 +137,8 @@ export function buildApp() {
 
   app.get("/", (c) => c.json({ service: "workshop-api" }));
   app.route("/health", healthRoutes);
+  // Discord-signed bot callbacks (#workshop-admin → Niteshift). No auth/CORS: server-to-server.
+  app.route("/discord", discordInteractionRoutes);
 
   app.use(
     "/v1/auth/*",

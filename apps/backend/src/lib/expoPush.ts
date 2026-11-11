@@ -1,5 +1,6 @@
-// Expo push delivery, shared by the play-reminder job (`jobs/playReminders.ts`)
-// and the operator push panel (`POST /v1/admin/push/send`). One place that
+// Expo push delivery, shared by the play-reminder job (`jobs/playReminders.ts`),
+// the operator push panel (`POST /v1/admin/push/send`) and the inbound
+// friend-request push (`lib/friendRequestPush.ts`). One place that
 // chunks messages to Expo's 100-per-request limit, validates the ticket
 // response with zod, and prunes `DeviceNotRegistered` tokens from
 // `push_tokens`. The endpoint comes from `EXPO_PUSH_URL` (config), so a

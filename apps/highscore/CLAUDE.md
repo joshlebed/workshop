@@ -5,9 +5,8 @@ client behavior should be implemented locally so they cannot change Workshop use
 presentation code back into a shared package.
 
 Shared boundaries are contracts and primitives only: `@workshop/api-client`, `@workshop/shared`
-(`games`, `gameRegistry`, `scoreParsing`, `summarySpec`), and `@workshop/ui`. Workshop's current
-Games UI is a frozen snapshot at `apps/workshop/src/legacyGames/`; never update it in lockstep with
-HighScore. Only an explicitly requested critical-fix backport may touch both copies.
+(`games`, `gameRegistry`, `scoreParsing`, `summarySpec`), and `@workshop/ui`. Workshop has had no
+Games UI since 2026-11-06 (it only forwards old `/g/:token` links here).
 
 ## Theme (`src/theme/`) — the only source of visual tokens
 
@@ -55,6 +54,19 @@ the per-tab web choice across sign-in (`useInAppBrowserPrompt`) to avoid reopeni
 the app after “Continue here”. Desktop browser checks cannot prove the final
 Messenger-to-installed-iOS-app transition; that requires an iPhone check.
 
+Both link kinds converge after the friendship forms. `/friends/accept/:token`
+(`FriendAccept.tsx`) previews the inviter and accepts the invite; `/g/:token`
+(`GameShareLanding.tsx`) resolves the sharer and, for a non-friend, shows the same shape of
+accept card whose "Add" sends `POST /v1/friends/requests` with `via: <play token>` — the backend
+forms the edge at once (see apps/backend/CLAUDE.md). Both then render the shared
+`friendAccept/PostAcceptPicker.tsx`, two steps: **People you both know** (the new friend's
+friends from `GET /v1/friends/mutuals`, filtered by `mutualsVia`; Add = directed request,
+skipped when empty) then **games** ranked across the new friend plus everyone just requested
+(`GET /v1/games/discovery?users=…`; the single-friend `?friend=` form when nobody was
+requested, which is the only form that reports `friendGameCount`), one-tap add / Add all, then
+hand off to home. A play-link recipient never lands on a pending request anymore; the profile route keeps
+its `?via=` vouch for the avatar tap and also passes `via` on its Add button.
+
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so
 `_layout.tsx` sends the iOS share intent straight to `/share/pick-game` and `app/share/index.tsx`
 renders the same `PickGame` screen. Every share affordance Workshop puts on its chooser has to live
@@ -70,11 +82,19 @@ send `"paste"`); the redirect also reports the intent snapshot to the log-only
 redirect — it's the only thing distinguishing a share-sheet post from a manual paste, and the
 backend derives the durable `user_flags` adoption marker from it (see root CLAUDE.md).
 
-Discoverability: the Games home shows a one-time share-sheet announcement card
-(`ShareAnnouncementCard` + `useShareAnnouncement`, rules in `src/lib/shareOnboarding.ts` — hidden
-while flags load, hidden once dismissed/completed/already-adopted) that leads into the
-`/share-setup` walkthrough (`src/screens/ShareSetupWalkthrough.tsx`; persistent entry is the
-"Share sheet" row in You → Account). **Both entry points are runtime-gated to iOS
+Discoverability: share-sheet setup is an onboarding step timed to the first game. The first
+time a signed-in account lands on the Games home with **at least one game** and no share-setup
+history, `ShareAnnouncementCard` pushes the `/share-setup` walkthrough itself (`useShareAnnouncement().autoOpen`, inside a `useFocusEffect` so
+it never fights a deep-link or share-intent redirect — an invite or play link finishes first and
+the walkthrough opens when that flow hands off to home with a game added; an empty home runs its
+own friends → games onboarding and shows neither the walkthrough nor the card) and stamps
+`onboardedAt` on the
+`games.share-sheet-announcement` flag so it happens once per account. Skipping it (X) leaves the
+announcement card on the home as the reminder; only the card's X (`dismissedAt`) or finishing the
+walkthrough (`completedAt`) retires the card. Rules in `src/lib/shareOnboarding.ts` (hidden while
+flags load, hidden once already-adopted via `games.share-extension-score`); the walkthrough is
+`src/screens/ShareSetupWalkthrough.tsx` and the persistent entry is the "Share sheet" row in
+You → Account. **Both entry points are runtime-gated to iOS
 1.2.0+** (`runtimeHasShareSetup`, `SHARE_SETUP_SUPPORTED`): the code is JS-only and reaches every
 supported runtime, but the rollout plan is 1.2.0 users first while 1.0.1/1.1.0 get the App Store
 nudge. Lower `SHARE_SETUP_MIN_RUNTIME` to widen it; the route itself renders on any binary.
@@ -90,7 +110,14 @@ desaturated so the button behind the sheet doesn't tint it. The last step opens 
 sheet (`Share.share` with `SHARE_PRACTICE_TEXT`) and asks for confirmation when it closes. Don't
 make the user tap HighScore in that sheet to "test" it: sharing to the app's own extension from
 inside the app reuses the same `dataUrl` deep link, which `useShareIntent` only re-reads when the
-URL changes or the app re-activates, and the extension's blank view can stay up until swiped away.
+URL changes or the app re-activates, and the extension's sheet can stay
+up until swiped away — clear on a device, so "You're set" shows through and Done / X look dead
+(expo-share-intent #231: the extension completes before iOS has finished presenting it). The
+card says "Swipe down to close the share
+sheet" while `Share.share` is still pending 1.5s after the practice share came back, and the
+completion flag is saved as soon as the share comes back rather than on Done. JS cannot dismiss
+that sheet: hosting it on an RN `Modal` or a `transparentModal` route and popping the host was
+tried and the sheet survives; `excludedActivityTypes` doesn't hide our own extension either.
 If they do tap it, `Share.share` reports our extension (→ "You're set", pending payload cleared) and
 `_layout.tsx` routes the practice text to `/share-setup?tested=1`, never the score picker.
 Dismiss/complete state is the server-side
@@ -121,7 +148,7 @@ over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) on
 - **Guideline 1.2 (UGC):** `/terms` EULA, Report (profile page + long-press a friend's score on
   the per-game board → `ReportSheet`), Block (profile page; unblock in Edit profile → Blocked
   users). Emoji reactions were removed from the HighScore client; the backend reaction
-  endpoints stay for old binaries and Workshop's frozen legacy Games. Backend + operator side:
+  endpoints stay for old binaries. Backend + operator side:
   `docs/moderation-runbook.md`.
 
 ## Account deletion

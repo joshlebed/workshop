@@ -5,6 +5,11 @@ import {
   persistSessionCredentials,
   readSessionCredentials,
 } from "@workshop/api-client/sessionCredentials";
+import {
+  clearSignupLanding,
+  collectSignupAcquisition,
+  type PendingLinkKeys,
+} from "@workshop/api-client/signupAcquisition";
 import { getItem } from "@workshop/api-client/storage";
 import type { AuthImpersonation, AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
 import {
@@ -16,6 +21,13 @@ import {
   useRef,
   useState,
 } from "react";
+import { PENDING_FRIEND_INVITE_TOKEN_KEY, PENDING_INVITE_TOKEN_KEY } from "../lib/inviteStash";
+
+// Pending-link stashes read at sign-in for signup attribution.
+const PENDING_LINK_KEYS: PendingLinkKeys = {
+  friendInvite: PENDING_FRIEND_INVITE_TOKEN_KEY,
+  listInvite: PENDING_INVITE_TOKEN_KEY,
+};
 
 const AUTO_DEV_OPT_OUT_KEY = "workshop.disable-auto-dev";
 
@@ -211,9 +223,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiRequest<AuthResponse>({
         method: "POST",
         path: "/v1/auth/apple",
-        body: req,
+        body: { ...req, acquisition: await collectSignupAcquisition(PENDING_LINK_KEYS) },
       });
       await applyAuth(res);
+      await clearSignupLanding();
     },
     [applyAuth],
   );
@@ -223,9 +236,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiRequest<AuthResponse>({
         method: "POST",
         path: "/v1/auth/google",
-        body: req,
+        body: { ...req, acquisition: await collectSignupAcquisition(PENDING_LINK_KEYS) },
       });
       await applyAuth(res);
+      await clearSignupLanding();
     },
     [applyAuth],
   );

@@ -4,7 +4,7 @@
 // what a 15s Lambda needs. Every caller treats a failure as "carry on without
 // the model", so this never throws.
 
-import type { z } from "zod";
+import { z } from "zod";
 import { getConfig } from "../config.js";
 import { logger } from "../logger.js";
 
@@ -74,6 +74,14 @@ function usageOf(body: unknown): OpenAiUsage {
  * never throws — when OpenAI is unconfigured, slow, erroring, or answers with
  * something that does not validate.
  */
+const errorBodySchema = z.object({ error: z.object({ code: z.string().nullish() }) });
+
+/** OpenAI's `error.code` from a non-2xx body, or null when it isn't that shape. */
+async function errorCodeOf(res: Response): Promise<string | null> {
+  const parsed = errorBodySchema.safeParse(await res.json().catch(() => null));
+  return parsed.success ? (parsed.data.error.code ?? null) : null;
+}
+
 export async function openAiJson<T>(request: OpenAiJsonRequest<T>): Promise<OpenAiResult<T>> {
   const { model } = request;
   const startedAt = Date.now();
@@ -109,7 +117,15 @@ export async function openAiJson<T>(request: OpenAiJsonRequest<T>): Promise<Open
       signal: AbortSignal.timeout(request.timeoutMs),
     });
     if (!res.ok) {
-      logger.warn("openai non-2xx", { status: res.status, model, schema: request.schemaName });
+      // `code` is what separates "out of credits" (`insufficient_quota`) from a
+      // plain rate limit — both are 429. The vendor-credit alarm filters on it
+      // (infra/vendor_alarms.tf).
+      logger.warn("openai non-2xx", {
+        status: res.status,
+        code: await errorCodeOf(res),
+        model,
+        schema: request.schemaName,
+      });
       return fail("http");
     }
     const body: unknown = await res.json();

@@ -210,3 +210,22 @@ resource "aws_ssm_parameter" "discord_notify_webhook_url" {
     ignore_changes = [value]
   }
 }
+
+# Discord bot for #workshop-admin (slash command / @mention → Niteshift task).
+# One JSON blob; shape in apps/backend/src/lib/discordBot.ts. Written by
+# `node scripts/discord.mjs setup`, never by Terraform (no var, no default):
+# the parameter was created by hand, and this adopts it.
+resource "aws_ssm_parameter" "discord_bot_config" {
+  name  = "/${local.prefix}/discord/bot_config"
+  type  = "SecureString"
+  value = "{}"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+import {
+  to = aws_ssm_parameter.discord_bot_config
+  id = "/workshop-prod/discord/bot_config"
+}

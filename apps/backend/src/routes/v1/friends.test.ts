@@ -8,6 +8,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { findOrCreateGameShareLink } from "../../lib/gameShareLinks.js";
 import { signSession } from "../../lib/session.js";
 
 let testDb: ReturnType<typeof drizzle>;
@@ -15,6 +16,17 @@ let testDb: ReturnType<typeof drizzle>;
 vi.mock("../../db/client.js", () => ({
   getDb: () => testDb,
 }));
+
+// Never reach Expo from tests: the friend-request push goes through this mock.
+const { sendExpoPushMessages } = vi.hoisted(() => ({
+  sendExpoPushMessages: vi.fn(async (messages: { to: string }[]) => ({
+    sent: messages.length,
+    failed: 0,
+    prunedTokens: [] as string[],
+    outcomes: messages.map((m) => ({ to: m.to, status: "ok" as const })),
+  })),
+}));
+vi.mock("../../lib/expoPush.js", () => ({ sendExpoPushMessages }));
 
 // Imported after the mock so both routers' `getDb` resolves to PGlite.
 import { __internal, friendRoutes } from "./friends.js";
@@ -405,6 +417,43 @@ describe("GET /v1/games/discovery", () => {
     expect(res.status).toBe(404);
   });
 
+  it("?users= ranks games across friends and friends-of-friends, and 404s a stranger", async () => {
+    // `mutualUser` is friends with `friend` only — a friend-of-friend to `me`.
+    const mutualUser = "00000000-0000-4000-8000-000000000016";
+    await rows(
+      `INSERT INTO users (id, email, display_name) VALUES ($1, 'mutual@example.com', 'Mutual')`,
+      [mutualUser],
+    );
+    const [low, high] = friend < mutualUser ? [friend, mutualUser] : [mutualUser, friend];
+    await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2)`, [low, high]);
+    const mutualGameId = await addGame("https://worldle.teuteuf.fr/", mutualUser);
+    // The mutual also plays the friend-only game, so it ranks first (2 players).
+    await addGame("https://www.nytimes.com/games/wordle/index.html", mutualUser);
+
+    const res = await gameRoutes.request(`/discovery?users=${friend},${mutualUser}`, {
+      headers: authHeaders(me),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      games: { game: { id: string }; friends: { userId: string }[] }[];
+      friendGameCount?: number;
+    };
+    expect(body.games.map((g) => g.game.id)).toEqual([friendOnlyGameId, mutualGameId]);
+    expect(body.games[0]?.friends.map((f) => f.userId).sort()).toEqual([friend, mutualUser].sort());
+    expect(body.friendGameCount).toBeUndefined();
+
+    // A stranger with no mutual friends is not a valid member of the set.
+    const probe = await gameRoutes.request(`/discovery?users=${friend},${stranger}`, {
+      headers: authHeaders(me),
+    });
+    expect(probe.status).toBe(404);
+    const bad = await gameRoutes.request("/discovery?users=nope", { headers: authHeaders(me) });
+    expect(bad.status).toBe(400);
+
+    await rows(`DELETE FROM friendships WHERE user_low = $1 AND user_high = $2`, [low, high]);
+    await rows(`DELETE FROM user_games WHERE user_id = $1`, [mutualUser]);
+  });
+
   it("a user with no friends gets an empty list", async () => {
     const res = await discovery(stranger);
     expect(res.status).toBe(200);
@@ -536,6 +585,52 @@ describe("directed friend requests — send / list / accept / deny / cancel", ()
     const res = await sendRequest(friend, me);
     expect(res.status).toBe(201);
     expect(await directedRowCount()).toBe(1);
+  });
+
+  it("a request carrying the target's play link forms the friendship at once", async () => {
+    // `stranger` holds `me`'s play link (as a score-share recipient would).
+    const playToken = await findOrCreateGameShareLink(me, PERIOD);
+    const res = await friendRoutes.request("/requests", {
+      method: "POST",
+      headers: authHeaders(stranger),
+      body: JSON.stringify({ userId: me, via: playToken }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as { status: string; friend: { userId: string } | null };
+    expect(body.status).toBe("accepted");
+    expect(body.friend?.userId).toBe(me);
+    const edges = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM friendships WHERE user_low = $1 AND user_high = $2`,
+      [me < stranger ? me : stranger, me < stranger ? stranger : me],
+    );
+    expect(edges[0]?.n).toBe(1);
+    // No pending row is left behind for either side.
+    const pending = await rows<{ n: number }>(
+      `SELECT count(*)::int AS n FROM friend_requests WHERE invitee_id IS NOT NULL
+         AND ((inviter_id = $1 AND invitee_id = $2) OR (inviter_id = $2 AND invitee_id = $1))`,
+      [me, stranger],
+    );
+    expect(pending[0]?.n).toBe(0);
+    // Clean up so the later block-and-unfriend tests see the graph they expect.
+    await rows(`DELETE FROM friendships WHERE user_low = $1 AND user_high = $2`, [
+      me < stranger ? me : stranger,
+      me < stranger ? stranger : me,
+    ]);
+  });
+
+  it("a play link for someone else does not vouch — the request stays pending", async () => {
+    const othersToken = await findOrCreateGameShareLink(friend, PERIOD);
+    const res = await friendRoutes.request("/requests", {
+      method: "POST",
+      headers: authHeaders(stranger),
+      body: JSON.stringify({ userId: me, via: othersToken }),
+    });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { status: string }).status).toBe("pending");
+    await rows(`DELETE FROM friend_requests WHERE inviter_id = $1 AND invitee_id = $2`, [
+      stranger,
+      me,
+    ]);
   });
 
   it("rejects self-requests and unknown targets", async () => {
@@ -790,5 +885,77 @@ describe("GET /v1/friends/users/:userId — profile", () => {
       headers: authHeaders(me),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("POST /v1/friends/requests — recipient push", () => {
+  const sender = "00000000-0000-4000-8000-000000000031";
+  const recipient = "00000000-0000-4000-8000-000000000032";
+  const anonymous = "00000000-0000-4000-8000-000000000033";
+
+  beforeAll(async () => {
+    await rows(
+      `INSERT INTO users (id, email, display_name) VALUES
+         ($1, 'sender@example.com', 'Sendy'),
+         ($2, 'recipient@example.com', 'Recip'),
+         ($3, 'anon@example.com', NULL)`,
+      [sender, recipient, anonymous],
+    );
+    await rows(
+      `INSERT INTO push_tokens (user_id, expo_push_token, platform, timezone) VALUES
+         ($1, 'ExponentPushToken[recip-a]', 'ios', 'UTC'),
+         ($1, 'ExponentPushToken[recip-b]', 'ios', 'UTC')`,
+      [recipient],
+    );
+  });
+
+  it("pushes every device of the recipient on a fresh request, once", async () => {
+    sendExpoPushMessages.mockClear();
+    const res = await sendRequest(sender, recipient);
+    expect(res.status).toBe(201);
+    expect(sendExpoPushMessages).toHaveBeenCalledTimes(1);
+    const messages = sendExpoPushMessages.mock.calls[0]?.[0];
+    expect(messages).toEqual(
+      ["ExponentPushToken[recip-a]", "ExponentPushToken[recip-b]"].map((to) => ({
+        to,
+        title: "New friend request",
+        body: "Sendy wants to be friends on HighScore",
+        data: { kind: "friend_request", userId: sender },
+        sound: "default",
+      })),
+    );
+
+    // A duplicate send no-ops on the unique index and must not re-push.
+    const again = await sendRequest(sender, recipient);
+    expect(again.status).toBe(201);
+    expect(sendExpoPushMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to 'Someone' for a sender with no display name", async () => {
+    sendExpoPushMessages.mockClear();
+    const res = await sendRequest(anonymous, recipient);
+    expect(res.status).toBe(201);
+    expect(sendExpoPushMessages.mock.calls[0]?.[0][0]).toMatchObject({
+      body: "Someone wants to be friends on HighScore",
+    });
+  });
+
+  it("skips the push when the recipient has no registered device", async () => {
+    sendExpoPushMessages.mockClear();
+    const res = await sendRequest(anonymous, sender);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ status: "pending", friend: null });
+    expect(sendExpoPushMessages).not.toHaveBeenCalled();
+  });
+
+  it("still answers 201 when the push helper throws", async () => {
+    // Clear both directions so this send inserts a fresh pending row.
+    await rows(`DELETE FROM friend_requests WHERE inviter_id IN ($1, $2)`, [sender, recipient]);
+    sendExpoPushMessages.mockClear();
+    sendExpoPushMessages.mockRejectedValueOnce(new Error("expo down"));
+    const res = await sendRequest(sender, recipient);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ status: "pending", friend: null });
+    expect(sendExpoPushMessages).toHaveBeenCalledTimes(1);
   });
 });

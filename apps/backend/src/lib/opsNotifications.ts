@@ -19,9 +19,9 @@
 // never break the user action that triggered it — the friend request, score,
 // or archive has already committed by the time we ping.
 
-import { eq } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { gameScores, lists, users } from "../db/schema.js";
+import { friendships, gameScores, lists, users } from "../db/schema.js";
 import { userLabel } from "./admin.js";
 import { getConfig } from "./config.js";
 import { notifyDiscord } from "./discord.js";
@@ -40,13 +40,29 @@ export function buildFriendRequestSentNotification(sender: string, target: strin
   };
 }
 
+/** How a friendship edge was formed, from the acceptor's side. */
+export type FriendshipVia = "request" | "invite_link" | "mutual_request" | "play_link";
+
 /**
- * Tier 1: a friendship edge was formed. `via` explains how it happened so the
- * channel reads cleanly: "accepted request", "accepted invite link", or
- * "mutual request" (both sides requested → auto-accept).
+ * Tier 1: a friendship edge was formed. Directional on purpose — the operator
+ * asked "who is accepting whose request?" of the old `A ↔ B (accepted request)`
+ * shape. `acceptor` is the user whose action formed the edge; `other` is the
+ * one who sent the request / owns the invite link.
  */
-export function buildFriendshipFormedNotification(a: string, b: string, via: string): Notification {
-  return { content: `🤝 new friendship — ${a} ↔ ${b} (${via})`, kind: "friend_added" };
+export function buildFriendshipFormedNotification(
+  acceptor: string,
+  other: string,
+  via: FriendshipVia,
+): Notification {
+  const what =
+    via === "request"
+      ? `${acceptor} accepted ${other}'s friend request`
+      : via === "invite_link"
+        ? `${acceptor} accepted ${other}'s invite link`
+        : via === "play_link"
+          ? `${acceptor} added ${other} from ${other}'s play link`
+          : `${acceptor} sent ${other} a friend request while ${other}'s request was pending, so it auto-accepted`;
+  return { content: `🤝 new friendship — ${what}`, kind: "friend_added" };
 }
 
 /** Tier 1: someone joined a shared list. `via` = "share link" or "invite link". */
@@ -320,9 +336,17 @@ export async function notifyFriendRequestSent(senderId: string, targetId: string
   );
 }
 
-export async function notifyFriendshipFormed(aId: string, bId: string, via: string): Promise<void> {
+export async function notifyFriendshipFormed(
+  acceptorId: string,
+  otherId: string,
+  via: FriendshipVia,
+): Promise<void> {
   await safeNotify(async () =>
-    buildFriendshipFormedNotification(await loadUserLabel(aId), await loadUserLabel(bId), via),
+    buildFriendshipFormedNotification(
+      await loadUserLabel(acceptorId),
+      await loadUserLabel(otherId),
+      via,
+    ),
   );
 }
 
@@ -448,4 +472,84 @@ export async function notifyUserBlocked(blockerId: string, blockedId: string): P
       blockedId,
     ),
   );
+}
+
+// --- Signup follow-up: first friend of a referral-less signup ---------------
+//
+// Kept at the end of the file (not beside the 🤝 friendship builder) so it
+// composes with that ping rather than rewriting it: when a friendship forms,
+// each side that signed up within FIRST_FRIEND_WINDOW_MS with no recorded
+// inviter, and for whom this is the only friendship, gets one extra line.
+// That first friend is the best remaining lead on "who brought them in".
+
+const FIRST_FRIEND_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** "under a minute" / "12m" / "3h" / "3h 5m". */
+export function formatSinceSignup(ms: number): string {
+  const minutes = Math.floor(Math.max(0, ms) / 60_000);
+  if (minutes < 1) return "under a minute";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
+
+/** Follow-up to 🤝: the new user's first friend, when signup recorded no inviter. */
+export function buildFirstFriendAfterSignupNotification(
+  newUser: string,
+  friend: string,
+  sinceSignup: string,
+): Notification {
+  return {
+    content: `🧭 first friend since signing up ${sinceSignup} ago — ${newUser} ↔ ${friend} (no inviter recorded at signup)`,
+    kind: "signup_first_friend",
+  };
+}
+
+/**
+ * Call right after a NEW friendship edge between `aId` and `bId` (i.e. when
+ * `addFriendship` returned true). Two indexed reads at most, and only with a
+ * webhook configured. Never throws.
+ */
+export async function notifyFirstFriendAfterSignup(
+  aId: string,
+  bId: string,
+  now: Date = new Date(),
+): Promise<void> {
+  if (!opsNotificationsEnabled()) return;
+  try {
+    const db = getDb();
+    const recent = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(
+        and(
+          inArray(users.id, [aId, bId]),
+          isNull(users.referredByUserId),
+          gt(users.createdAt, new Date(now.getTime() - FIRST_FRIEND_WINDOW_MS)),
+        ),
+      );
+    for (const newUser of recent) {
+      const [count] = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(friendships)
+        .where(or(eq(friendships.userLow, newUser.id), eq(friendships.userHigh, newUser.id)));
+      if (Number(count?.n ?? 0) !== 1) continue;
+      const friendId = newUser.id === aId ? bId : aId;
+      const { content, kind } = buildFirstFriendAfterSignupNotification(
+        userLabel(newUser),
+        await loadUserLabel(friendId, db),
+        formatSinceSignup(now.getTime() - new Date(newUser.createdAt).getTime()),
+      );
+      logger.info("first friend after signup", { userId: newUser.id, friendId });
+      await notifyDiscord(content, { kind });
+    }
+  } catch (error) {
+    logger.warn("ops notification failed", { error, kind: "signup_first_friend" });
+  }
 }

@@ -129,10 +129,36 @@ export interface AppleAuthRequest {
    * their account (App Store Review Guideline 5.1.1(v)).
    */
   authorizationCode?: string;
+  /** How the signing-in visitor found the app — see `SignupAcquisition`. */
+  acquisition?: SignupAcquisition;
 }
 
 export interface GoogleAuthRequest {
   idToken: string;
+  /** How the signing-in visitor found the app — see `SignupAcquisition`. */
+  acquisition?: SignupAcquisition;
+}
+
+/**
+ * What a client knows, at sign-in, about how this visitor found the app. Sent
+ * on every Apple/Google sign-in (always an object, possibly empty — an absent
+ * field means a client that predates attribution); the backend only records it
+ * when the sign-in created a brand-new account. Every field is optional and
+ * best-effort: a malformed value is dropped server-side, never a failed sign-in.
+ */
+export interface SignupAcquisition {
+  /** Pending `/friends/accept/:token` invite the visitor opened before signing in. */
+  friendInviteToken?: string;
+  /** Pending `/g/:token` play link the visitor opened before signing in. */
+  gameShareToken?: string;
+  /** Pending legacy list invite (`/invite/:token`, Workshop only). */
+  listInviteToken?: string;
+  /** Web only: `document.referrer` of the first page load, when cross-site. */
+  referrer?: string;
+  /** Web only: pathname of the first page load (no query string). */
+  landingPath?: string;
+  /** Web only: `utm_*` params of the first page load. */
+  utm?: { source?: string; medium?: string; campaign?: string };
 }
 
 export interface AuthResponse {
@@ -298,6 +324,14 @@ export interface AdminGraphNode {
   platforms: string[];
   /** Has posted at least one score through the iOS share sheet. */
   usedShareExtension: boolean;
+  /**
+   * `users.signup_source` — how the account found the app (`SignupSource`),
+   * recorded at signup. Null = signed up before attribution existed, or on a
+   * client that sent nothing. Optional: absent from servers predating it.
+   */
+  signupSource?: string | null;
+  /** Whose link brought them in (`users.referred_by_user_id`), when recorded. */
+  referredByUserId?: string | null;
 }
 
 /** One `friendships` row — `source < target` canonically, with when it formed. */

@@ -24,7 +24,7 @@ export { HorizontalBars } from "./HorizontalBars";
 export { haptics } from "./haptics";
 export type { IconButtonProps } from "./IconButton";
 export { IconButton } from "./IconButton";
-export { HomeHeader, homeLayout, InlineTabSwitch, Screen, screenColumnMaxWidth } from "./Layout";
+export { HomeHeader, homeLayout, Screen, screenColumnMaxWidth } from "./Layout";
 export type { ModalProps } from "./Modal";
 export { Modal } from "./Modal";
 export type { NewItemsPillProps } from "./NewItemsPill";

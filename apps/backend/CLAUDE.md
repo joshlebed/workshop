@@ -155,7 +155,7 @@ registry), which strips URLs/headers so a URL-only share shows "Played", never t
 Games recaps append a **play link** (`/g/:token`, see `game_share_links` below), not a
 friend-invite or list link. The paste sheet previews the parse client-side
 (`apps/highscore/src/games/lib/scoreSpecs.ts` mirrors the backend chain) — keep the two chains in
-sync. Workshop's `src/legacyGames` versions are frozen snapshots, not the live mirror.
+sync. (Workshop's old copies were deleted with its Games UI on 2026-11-06.)
 
 ## Game code sandbox (`lib/gameCode/`) — stored JS runs in QuickJS, in a worker thread
 
@@ -607,7 +607,11 @@ it attaches the target's game list for every viewer who gets a 200 (games are pu
 the period scores on those rows only for friends/self (`score: null` otherwise).
 `GET /v1/games/discovery` (friends' games, ranked by how many friends play each) is
 registered **before** the `/:id` routes so the literal path isn't shadowed; its `?friend=`
-filter 404s for non-friends so the endpoint can't be used to probe a stranger's games. The
+filter 404s for non-friends so the endpoint can't be used to probe a stranger's games.
+`?users=a,b,c` (≤20 ids) ranks across an explicit set of people — friends **and**
+friends-of-friends (`friendsOfFriends` in `lib/friends.ts`, blocked users dropped), the same
+visibility a profile grants — so the post-accept onboarding can rank the new friend's games
+together with the mutuals just requested; any other id 404s, a malformed list 400s. The
 default feed omits games I already added; `?includeOwned=1` keeps them in the list (tagged
 `inMyGames`, rendered non-addable client-side, sorted after every addable game) so the +
 add-game sheet shows the full "what my friends play" picture instead of an empty section
@@ -625,8 +629,11 @@ resolving). `GET /v1/game-share/:token` is **optional-auth** (`optionalAuth` in
 `middleware/auth.ts`): a crawler / signed-out request gets just `{ user }` for the OG card; a
 signed-in request also gets `{ viewer: { isSelf, isFriend } }`, which the in-app `/g/:token`
 resolver uses to route (already-connected → Games home, else → the sharer's profile via the
-`?via=` vouch above). Unlike `friend_requests` share links this is **not** an accept surface —
-opening a play link never forms an edge. Helpers: `lib/gameShareLinks.ts`
+`?via=` vouch above). Opening a play link never forms an edge by itself, but the same token
+vouches a friend request: `POST /v1/friends/requests { userId, via }` with a play link the
+target minted forms the friendship immediately (`accepted`, Discord `play_link`) instead of
+leaving a `pending` row — holding someone's play link is the same social proof as holding
+their invite link. A `via` for anyone else is ignored and the request stays `pending`. Helpers: `lib/gameShareLinks.ts`
 (`findOrCreateGameShareLink` / `resolveGameShareLink`); same games flag gate; OG card +
 `/g/:token` Pages function live in `functions/`. Tests: `gameShare.test.ts` (PGlite).
 
@@ -735,7 +742,9 @@ logs failures independently, successful batches advance `last_reminded_at`, and 
 `DeviceNotRegistered` tickets are pruned after the loop. The spring-forward hour that does not exist
 is intentionally skipped in v1. Delivery (chunking, ticket parsing, pruning) lives in
 `lib/expoPush.ts` (`sendExpoPushMessages`), shared with the operator push route
-(`POST /v1/admin/push/send`, `lib/adminPush.ts`); its endpoint is `EXPO_PUSH_URL` (config,
+(`POST /v1/admin/push/send`, `lib/adminPush.ts`) and the recipient push on a fresh directed
+friend request (`lib/friendRequestPush.ts`: best-effort, 3s fetch cap, never fails the route,
+`data: { kind: "friend_request", userId }`); its endpoint is `EXPO_PUSH_URL` (config,
 default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
 
 ## Lists and items are soft-deleted via `archived_at`
@@ -886,6 +895,27 @@ when no webhook is set. Tiers + kinds:
   `source_webhook` (verified inbound webhook — scaffolding surface, no traffic yet).
   When you add a new gated-by-newness ping, return a created/newly-X boolean from the writer
   (see `addFriendship` / `addToMyGames`) rather than re-querying — and add a builder + test here.
+
+**A 👋 signup ping says how they found the app** (`lib/signupAttribution.ts`). Apple/Google
+sign-in bodies carry an optional `acquisition` (`SignupAcquisition` in `@workshop/shared`;
+built client-side by `@workshop/api-client/signupAcquisition`): the friend-invite / play-link /
+list-invite token the app stashed before bouncing a signed-out visitor through sign-in, plus on
+web the first page load's cross-site referrer, pathname and `utm_*` (first touch, stashed at
+module load in each app's root `_layout.tsx`). For a **brand-new** user only, the token resolves
+to its owner and lands on `users.signup_source` / `referred_by_user_id` / `signup_context`
+(write-once; `SIGNUP_SOURCES`); the ping reads `— invited by Philip (friend invite link)`,
+`— via Philip's play link`, `— from news.ycombinator.com · utm_source=hn`, or says plainly
+`no referral recorded (App Store / direct)`. An absent `acquisition` (pre-attribution OTA) leaves
+the columns NULL and the ping says `app version predates attribution`; a rotated token keeps its
+source with a NULL referrer (`…no longer resolves — inviter unknown`). The zod schema drops bad
+fields one by one and the whole step is try/caught — attribution can never fail a sign-in. iOS has
+no deferred deep linking: someone who taps an invite, installs from the App Store, then opens the
+app arrives with no token, so their signup honestly reads `none`. For those, the **first
+friendship within 24h of a signup with no recorded inviter** sends a 🧭 `signup_first_friend`
+follow-up after the 🤝 ping (`notifyFirstFriendAfterSignup`, called at every `addFriendship`
+site in `routes/v1/friends.ts` — add it to any new one). The HighScore admin users tab shows the
+recorded source in the user panel (`signupSourceLabel`), separate from the inferred invite tree.
+`new signup` log lines carry `signupSource` / `referredByUserId` / `signupContext`.
 
 **Every ping ends with the requesting client — `· HighScore · iOS 1.4.0`.** `notifyDiscord`
 appends `describeRequestClient()` (`src/lib/requestContext.ts`), which reads

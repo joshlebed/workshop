@@ -11,6 +11,13 @@
 // extension, or `_layout.tsx` routes the practice payload to
 // `/share-setup?tested=1` — either way the "it works" state.
 //
+// That share can leave the extension's sheet up (expo-share-intent #231: it
+// completes before iOS has finished presenting it). On a device the sheet is
+// clear, so "You're set" shows through while every tap lands on the sheet and
+// Done / X look dead. JS can't dismiss it — popping a modal host under it was
+// tried and the sheet survives — so the card says to swipe it away, and the
+// completion is saved without waiting for Done.
+//
 // Finishing writes the `games.share-sheet-announcement` flag with
 // `{ completedAt }` — server-side, so no other device re-blasts the
 // announcement. Closing early writes nothing: the card stays until the user
@@ -23,7 +30,7 @@ import { goBack } from "@workshop/ui/navigation";
 import Constants from "expo-constants";
 import { useLocalSearchParams } from "expo-router";
 import { getShareExtensionKey, ShareIntentModule } from "expo-share-intent";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Image,
   type ImageSourcePropType,
@@ -50,6 +57,12 @@ const ILLUSTRATIONS: Record<ShareIllustration, ImageSourcePropType> = {
   "more-list": require("../../assets/share-setup/more-list.png"),
   "edit-favorites": require("../../assets/share-setup/edit-favorites.png"),
 };
+
+/**
+ * How long the live sheet may outlast the practice share coming back before
+ * the card calls it stuck. A sheet that closes normally is gone well inside it.
+ */
+const STUCK_SHEET_GRACE_MS = 1500;
 
 /** The share extension's bundle id is the app's, plus a suffix. */
 function isOwnShareExtension(activityType: string | null | undefined): boolean {
@@ -104,6 +117,17 @@ export default function ShareSetupWalkthrough() {
   const [stepIndex, setStepIndex] = useState(0);
   // The live sheet was opened and closed: ask whether HighScore made it in.
   const [sheetClosed, setSheetClosed] = useState(false);
+  // `Share.share` hasn't settled: the sheet (or what iOS left of it) is up.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetStuck, setSheetStuck] = useState(false);
+  useEffect(() => {
+    if (!tested || !sheetOpen) {
+      setSheetStuck(false);
+      return;
+    }
+    const timer = setTimeout(() => setSheetStuck(true), STUCK_SHEET_GRACE_MS);
+    return () => clearTimeout(timer);
+  }, [tested, sheetOpen]);
 
   const steps = SHARE_WALKTHROUGH_STEPS;
   const step = steps[Math.min(stepIndex, steps.length - 1)];
@@ -121,7 +145,21 @@ export default function ShareSetupWalkthrough() {
     },
   });
 
+  // The practice share proves the setup, so save it now: a user stuck behind
+  // the sheet who quits the app shouldn't get the announcement card again.
+  const savedRef = useRef(false);
+  useEffect(() => {
+    if (!tested || savedRef.current) return;
+    savedRef.current = true;
+    putUserFlag(token, USER_FLAG_KEYS.shareSheetAnnouncement, completedFlagValue(new Date()))
+      .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.users.flags }))
+      .catch(() => {
+        // Done writes it again.
+      });
+  }, [tested, token, queryClient]);
+
   const openShareSheet = async () => {
+    setSheetOpen(true);
     try {
       const result = await Share.share({ message: SHARE_PRACTICE_TEXT });
       // iOS names the activity the user picked; ours is the share extension.
@@ -136,7 +174,9 @@ export default function ShareSetupWalkthrough() {
         setSheetClosed(true);
       }
     } catch {
-      // The user can still tap "I've added it".
+      // The user can still tap "Already done".
+    } finally {
+      setSheetOpen(false);
     }
   };
 
@@ -175,9 +215,15 @@ export default function ShareSetupWalkthrough() {
             <Text variant="title" style={styles.stepTitle}>
               You're set
             </Text>
-            <Text tone="secondary" style={styles.stepBody}>
-              Finish a game, tap Share, tap HighScore.
-            </Text>
+            {sheetStuck ? (
+              <Text style={styles.stepBody} testID="share-setup-stuck-hint">
+                Swipe down to close the share sheet.
+              </Text>
+            ) : (
+              <Text tone="secondary" style={styles.stepBody}>
+                Finish a game, tap Share, tap HighScore.
+              </Text>
+            )}
             <Button
               label="Done"
               size="lg"

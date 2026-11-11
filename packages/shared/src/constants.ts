@@ -34,6 +34,19 @@ export type AdminAnalyticsRange = (typeof ADMIN_ANALYTICS_RANGES)[number];
 export const GAME_SCORE_ENTRY_SOURCES = ["share_extension", "paste"] as const;
 export type GameScoreEntrySource = (typeof GAME_SCORE_ENTRY_SOURCES)[number];
 
+// `users.signup_source` — how a new account found the app, recorded once at
+// signup (apps/backend/src/lib/signupAttribution.ts). `none` = the client sent
+// attribution and it was empty (App Store / direct / typed URL). NULL in the
+// column (not a member here) = pre-attribution account or client.
+export const SIGNUP_SOURCES = [
+  "friend_invite",
+  "play_link",
+  "list_invite",
+  "web_referral",
+  "none",
+] as const;
+export type SignupSource = (typeof SIGNUP_SOURCES)[number];
+
 // Canonical `user_flags` keys — shared so backend writers and client readers
 // can't drift. `shareExtensionScore` is written server-side on the first score
 // that arrives with entrySource "share_extension" (value `{ firstAt }`): the only
@@ -63,18 +76,13 @@ export const CLIENT_RELEASE_PLATFORMS = ["ios", "android", "web"] as const;
 export type ClientReleasePlatform = (typeof CLIENT_RELEASE_PLATFORMS)[number];
 export const CLIENT_RELEASE_VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
-// Workshop → HighScore games cutover, in three dated phases (midnight Pacific):
-//   active → until WORKSHOP_GAMES_SUNSET_AT: Workshop's frozen Games UI works,
-//            under a countdown banner.
-//   moved  → from the sunset: every Workshop games surface is a hand-off to
-//            HighScore, and the backend answers Workshop clients' games calls
-//            with 410.
-//   gone   → from WORKSHOP_GAMES_REMOVED_AT (two weeks later): the Games tab
-//            and switch disappear; only link / share hand-offs remain.
-// One set of constants drives the client phases, the backend gate, and the
-// banner copy so they can't disagree.
+// Workshop → HighScore games cutover. From WORKSHOP_GAMES_SUNSET_AT (midnight
+// Pacific) the backend answers Workshop clients' games calls with 410
+// (`middleware/workshop-games-sunset.ts`) — the backstop for installs that
+// never took the OTA. The Workshop client itself dropped every games surface
+// on 2026-11-06; only the `/g/:token` → HighScore link hand-off remains, which
+// uses the HighScore URLs below.
 export const WORKSHOP_GAMES_SUNSET_AT = "2026-10-31T07:00:00Z";
-export const WORKSHOP_GAMES_REMOVED_AT = "2026-11-14T07:00:00Z";
 export const HIGHSCORE_WEB_URL = "https://highscore.live";
 export const HIGHSCORE_APP_STORE_URL =
   "https://apps.apple.com/us/app/highscore-daily-games/id6805206753";

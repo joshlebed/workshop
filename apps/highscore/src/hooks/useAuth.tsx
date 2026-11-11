@@ -11,6 +11,11 @@ import {
   persistSessionCredentials,
   readSessionCredentials,
 } from "@workshop/api-client/sessionCredentials";
+import {
+  clearSignupLanding,
+  collectSignupAcquisition,
+  type PendingLinkKeys,
+} from "@workshop/api-client/signupAcquisition";
 import { getItem } from "@workshop/api-client/storage";
 import type {
   AuthImpersonation,
@@ -29,8 +34,18 @@ import {
   useState,
 } from "react";
 import { requestAccountDeletion } from "../api/users";
+import {
+  PENDING_FRIEND_INVITE_TOKEN_KEY,
+  PENDING_GAME_SHARE_TOKEN_KEY,
+} from "../games/lib/inviteStash";
 import { runAccountDeletion } from "../lib/accountDeletion";
 import { unregisterPushToken } from "../lib/pushRegistration";
+
+// Pending-link stashes read at sign-in for signup attribution.
+const PENDING_LINK_KEYS: PendingLinkKeys = {
+  friendInvite: PENDING_FRIEND_INVITE_TOKEN_KEY,
+  gameShare: PENDING_GAME_SHARE_TOKEN_KEY,
+};
 
 const AUTO_DEV_OPT_OUT_KEY = "highscore.disable-auto-dev";
 const DEV_USER = { email: "joshlebed@gmail.com", displayName: "Josh" } as const;
@@ -232,9 +247,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiRequest<AuthResponse>({
         method: "POST",
         path: "/v1/auth/apple",
-        body: req,
+        body: { ...req, acquisition: await collectSignupAcquisition(PENDING_LINK_KEYS) },
       });
       await applyAuth(res);
+      await clearSignupLanding();
     },
     [applyAuth],
   );
@@ -244,9 +260,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await apiRequest<AuthResponse>({
         method: "POST",
         path: "/v1/auth/google",
-        body: req,
+        body: { ...req, acquisition: await collectSignupAcquisition(PENDING_LINK_KEYS) },
       });
       await applyAuth(res);
+      await clearSignupLanding();
     },
     [applyAuth],
   );

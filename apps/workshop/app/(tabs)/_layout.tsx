@@ -1,99 +1,24 @@
 import { tokens } from "@workshop/ui";
-import { Tabs, usePathname, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { Text as RNText } from "react-native";
-import { isLegacyGamesActive } from "../../src/lib/featureFlags";
-import {
-  getPreferredHomeTab,
-  homeTabForPathname,
-  setPreferredHomeTab,
-} from "../../src/lib/navigationPreferences";
-import { useLegacyGamesPhase } from "../../src/lib/useLegacyGamesPhase";
+import { Tabs } from "expo-router";
 
-// Top-level Lists / Games switch (spec §4). The Lists tab is the existing
-// app — the whole pre-Games stack nests under the `(lists)` group, so every
-// route keeps its URL (group segments never appear in paths) and deep links /
-// share-intent redirects are unchanged.
-//
-// Flag off: the Games screen is unlinked and the tab bar is hidden, so the
-// shell renders exactly like the pre-tabs app. Flag on: both web and native
-// hide the bottom tab bar and render the inline Lists / Games switch at the
-// top of their screen headers, next to the existing action icons. After the
-// HighScore sunset ("moved") the Games tab stays registered (it renders the
-// hand-off screen) but the remembered-home-tab redirect to /games stops —
-// launching into a "your games moved" wall every time would be hostile. Two
-// weeks later ("gone") the tab is unlinked, same as flag off.
+// The tab shell now holds a single tab: Lists. The Games tab was removed on
+// 2026-11-06 (games live in HighScore). The `(tabs)` / `(lists)` route groups
+// stay so no URL, deep link, or `withAnchor` replace changes — group segments
+// never appear in paths. The bottom tab bar stays hidden on every platform.
 // Uses the static `tokens` (not `useTheme()`) for backgrounds, matching the
 // root layout's Stack `contentStyle` — mixing the theme-resolved tokens here
 // paints a light scene behind dark screen content in light-preferring
 // browsers.
 export default function TabsLayout() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const phase = useLegacyGamesPhase();
-  const [preferenceReady, setPreferenceReady] = useState(!isLegacyGamesActive());
-
-  useEffect(() => {
-    if (!isLegacyGamesActive() || preferenceReady) return;
-    let cancelled = false;
-
-    getPreferredHomeTab()
-      .then((tab) => {
-        if (cancelled) return;
-        if (pathname === "/" && tab === "games") {
-          router.replace("/games");
-          return;
-        }
-        setPreferenceReady(true);
-      })
-      .catch(() => {
-        if (!cancelled) setPreferenceReady(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname, preferenceReady, router]);
-
-  useEffect(() => {
-    if (!isLegacyGamesActive() || !preferenceReady) return;
-    const tab = homeTabForPathname(pathname);
-    if (!tab) return;
-    setPreferredHomeTab(tab).catch(() => {});
-  }, [pathname, preferenceReady]);
-
-  const tabs = (
+  return (
     <Tabs
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: tokens.bg.canvas },
-        tabBarActiveTintColor: tokens.accent.default,
-        tabBarInactiveTintColor: tokens.text.muted,
-        // Bottom tab bar is hidden on every platform; the Lists / Games switch
-        // lives in the top screen headers (InlineTabSwitch) instead.
         tabBarStyle: { display: "none" },
       }}
     >
-      <Tabs.Screen
-        name="games"
-        options={
-          phase !== "gone"
-            ? {
-                title: "Games",
-                tabBarIcon: ({ color }) => <RNText style={{ color, fontSize: 17 }}>◆</RNText>,
-              }
-            : { href: null }
-        }
-      />
-      <Tabs.Screen
-        name="(lists)"
-        options={{
-          title: "Lists",
-          tabBarIcon: ({ color }) => <RNText style={{ color, fontSize: 17 }}>◧</RNText>,
-        }}
-      />
+      <Tabs.Screen name="(lists)" options={{ title: "Lists" }} />
     </Tabs>
   );
-
-  return tabs;
 }

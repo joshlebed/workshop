@@ -22,7 +22,7 @@
 
 import type { ItemKind } from "@workshop/shared/itemKinds";
 import type { ModuleName } from "@workshop/shared/modules";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "../src/db/client.js";
 import {
   activityEvents,
@@ -598,6 +598,47 @@ async function seedFriendGraph(previewId: string, friendId: string) {
       edge(friendId, quinn.id),
     ])
     .onConflictDoNothing();
+
+  // Signup attribution (users.signup_source / referred_by_user_id) so the admin
+  // users tab shows each recorded kind: Alex came in on Josh's friend invite,
+  // Sam on Alex's play link, Riley found the web app via a referral, Casey
+  // signed up from the App Store, Quinn predates attribution (left NULL).
+  const attributions: [string, Partial<typeof users.$inferInsert>][] = [
+    [
+      friendId,
+      {
+        signupSource: "friend_invite",
+        referredByUserId: previewId,
+        signupContext: { linkResolved: true },
+      },
+    ],
+    [
+      sam.id,
+      {
+        signupSource: "play_link",
+        referredByUserId: friendId,
+        signupContext: { linkResolved: true },
+      },
+    ],
+    [
+      riley.id,
+      {
+        signupSource: "web_referral",
+        signupContext: {
+          referrer: "https://news.ycombinator.com/item",
+          landingPath: "/",
+          utm: { source: "hn" },
+        },
+      },
+    ],
+    [casey.id, { signupSource: "none", signupContext: {} }],
+  ];
+  for (const [id, values] of attributions) {
+    await db
+      .update(users)
+      .set(values)
+      .where(and(eq(users.id, id), isNull(users.signupSource)));
+  }
 
   // Pending directed request: Quinn → Josh (token stays NULL — directed rows
   // never carry a share-link token).

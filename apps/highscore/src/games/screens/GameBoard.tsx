@@ -45,7 +45,7 @@ import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { askScoreDirection } from "../lib/askScoreDirection";
-import { formatGameDateLabel, localDateKey, resolveRailDate } from "../lib/gameDate";
+import { formatGameDateLabel, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
 import { writePostedScore } from "../lib/postedScore";
 import { scoreLineLabel } from "../lib/scoreCheck";
@@ -76,13 +76,12 @@ export default function GameBoard() {
   const { showToast } = useToast();
   const notifyPosted = usePostedScoreNotice();
 
-  const today = localDateKey();
+  const { today, viewDate: date, setViewDate } = useViewDay();
   // The selected day lives in the shared view-day state (state/viewDay.tsx),
   // so it sticks in both directions: arrive on the day home was showing, and
   // leave home on the day you paged to here. `?date=` (home card taps and
   // deep links) overrides the shared value once on mount; anything the rail
   // can't show → today.
-  const { viewDate: date, setViewDate } = useViewDay();
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only param sync
   useEffect(() => {
     if (params.date != null) {

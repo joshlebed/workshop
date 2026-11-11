@@ -10,7 +10,7 @@ import {
 } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
+import type { FriendProfileResponse } from "@workshop/shared/friends";
 import {
   Avatar,
   Button,
@@ -23,24 +23,18 @@ import {
   tokens,
   useToast,
 } from "@workshop/ui";
-import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
-import { addGame } from "../legacyGames/api/games";
-import { localDateKey } from "../legacyGames/lib/gameDate";
-import { summarizeGameScoreBody } from "../legacyGames/lib/scoresSummary";
+import { useLocalSearchParams } from "expo-router";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useClientRuntime } from "../lib/clientRuntime";
 import { goBack } from "../lib/goBack";
-import { useLegacyGamesPhase } from "../lib/useLegacyGamesPhase";
-import { GamesMovedCard } from "../screens/gamesMoved/GamesMovedCard";
+import { localDateKey } from "../lib/localDateKey";
 
 /**
  * Friend profile page — `/friends/:userId`. Shows the relationship state with
- * the matching action (add / cancel / accept-decline / remove), mutual
- * friends, and — for friends (or yourself) — their game list with today's
- * score per game and a one-tap add for games you don't have. Non-friends see
- * a locked message instead of games. The backend 404s profiles of users with
- * no relationship and no mutual friends, so this page can't probe strangers.
+ * the matching action (add / cancel / accept-decline / remove) and mutual
+ * friends. (Games — and the per-friend game list — moved to HighScore.) The
+ * backend 404s profiles of users with no relationship and no mutual friends,
+ * so this page can't probe strangers.
  */
 
 function relationshipLine(profile: FriendProfileResponse): string {
@@ -73,15 +67,14 @@ export default function FriendProfileScreen() {
   // Play-link vouch token (`/g/:token` → here for a not-yet-friend sharer). Lets
   // the backend show this profile past the anti-probe 404 so we can add them.
   const via = typeof params.via === "string" ? params.via : undefined;
-  const { token, user, routes } = useClientRuntime();
-  const router = useRouter();
+  const { token, routes } = useClientRuntime();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const livePoll = useLivePollingInterval();
 
+  // The profile endpoint still takes the viewer's day (it also serves
+  // HighScore's per-game score lines); Workshop ignores those fields.
   const todayKey = localDateKey();
-  const [addingGameIds, setAddingGameIds] = useState<string[]>([]);
-  const legacyGamesPhase = useLegacyGamesPhase();
 
   const profileQuery = useQuery({
     queryKey: queryKeys.friends.profile(userId, todayKey),
@@ -91,11 +84,8 @@ export default function FriendProfileScreen() {
   });
   const profile = profileQuery.data;
 
-  const invalidateFriendsAndGames = () =>
-    Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.friends.all }),
-      queryClient.invalidateQueries({ queryKey: ["games"] }),
-    ]);
+  const invalidateFriends = () =>
+    queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
 
   const sendMutation = useMutation({
     mutationFn: () => sendFriendRequest(userId, token),
@@ -107,7 +97,7 @@ export default function FriendProfileScreen() {
           tone: "success",
         });
       }
-      await invalidateFriendsAndGames();
+      await invalidateFriends();
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't send that request."), tone: "danger" });
@@ -132,7 +122,7 @@ export default function FriendProfileScreen() {
         message: `You're now friends with ${data.friend.displayName?.trim() || "them"}!`,
         tone: "success",
       });
-      await invalidateFriendsAndGames();
+      await invalidateFriends();
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't accept that request."), tone: "danger" });
@@ -157,7 +147,7 @@ export default function FriendProfileScreen() {
     onSuccess: async () => {
       haptics.medium();
       // Same as decline: removing the edge may 404 this profile on refetch.
-      await invalidateFriendsAndGames();
+      await invalidateFriends();
       goBack(routes.friends);
     },
     onError: (e) => {
@@ -165,32 +155,11 @@ export default function FriendProfileScreen() {
     },
   });
 
-  const addGameMutation = useMutation({
-    mutationFn: (game: FriendProfileGame) => {
-      setAddingGameIds((ids) => [...ids, game.game.id]);
-      return addGame(game.game.url, token);
-    },
-    onSuccess: async () => {
-      haptics.medium();
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.games.mine(todayKey) }),
-        queryClient.invalidateQueries({ queryKey: ["games", "discovery"] }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.friends.profile(userId, todayKey) }),
-      ]);
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't add that game."), tone: "danger" });
-    },
-    onSettled: (_data, _err, game) => {
-      setAddingGameIds((ids) => ids.filter((id) => id !== game.game.id));
-    },
-  });
-
   const onUnfriend = async () => {
     const name = profile?.user.displayName?.trim() || "this friend";
     const ok = await confirm({
       title: `Remove ${name}?`,
-      message: "You'll stop seeing each other's scores. Past scores stay put.",
+      message: "You can add each other again anytime.",
       confirmLabel: "Remove",
       destructive: true,
     });
@@ -199,8 +168,6 @@ export default function FriendProfileScreen() {
 
   const name = profile?.user.displayName?.trim() || "Someone";
   const mutuals = profile ? mutualsLine(profile) : null;
-  const isSelf = profile?.relationship === "self" || (!!user?.id && user.id === userId);
-  const scoresVisible = isSelf || profile?.relationship === "friends";
 
   return (
     <Screen testID="friend-profile-screen">
@@ -319,130 +286,12 @@ export default function FriendProfileScreen() {
                 testID="friend-profile-remove"
               />
             ) : null}
-
-            {/* Games. Public to every viewer (score line friends/self only; `null`
-                games = stale pre-public cache). Post-sunset these live in HighScore — point there; once
-                the tab is gone, say nothing. */}
-            {legacyGamesPhase === "gone" ? null : legacyGamesPhase === "moved" ? (
-              <GamesMovedCard name={name} isSelf={isSelf} />
-            ) : profile.games === null ? (
-              <View style={styles.lockedCard} testID="friend-profile-locked">
-                <Text style={styles.lockedGlyph}>🎮</Text>
-                <Text variant="label" style={styles.lockedTitle}>
-                  Games are for friends
-                </Text>
-                <Text variant="caption" tone="muted" style={styles.lockedText}>
-                  Add {name} as a friend to see what games they play.
-                </Text>
-              </View>
-            ) : profile.games.length === 0 ? (
-              <View style={styles.list}>
-                <Text variant="caption" tone="muted" style={styles.listLabel}>
-                  Games
-                </Text>
-                <Text variant="caption" tone="muted">
-                  {isSelf ? "You haven't" : `${name} hasn't`} added any games yet.
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.list} testID="friend-profile-games">
-                <Text variant="caption" tone="muted" style={styles.listLabel}>
-                  {profile.games.length === 1 ? "1 game" : `${profile.games.length} games`}
-                </Text>
-                {profile.games.map((pg) => {
-                  const adding = addingGameIds.includes(pg.game.id);
-                  const scoreBody = pg.score
-                    ? summarizeGameScoreBody(pg.game, {
-                        scoreValue: pg.score.scoreValue,
-                        scoreRaw: pg.score.scoreRaw,
-                      })
-                    : null;
-                  const scoreLine = !scoresVisible
-                    ? null
-                    : scoreBody
-                      ? `Today: ${scoreBody.split("\n")[0]}`
-                      : pg.score
-                        ? "Played today"
-                        : "Not played today";
-                  return (
-                    <Pressable
-                      key={pg.game.id}
-                      onPress={
-                        pg.viewerHasGame
-                          ? () => router.push(routes.game(pg.game.id) as Href)
-                          : undefined
-                      }
-                      accessibilityLabel={pg.game.title}
-                      disabled={!pg.viewerHasGame}
-                      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                        styles.gameRow,
-                        pg.viewerHasGame && (pressed || hovered) && styles.gameRowHover,
-                      ]}
-                      testID={`friend-profile-game-${pg.game.id}`}
-                    >
-                      <View style={styles.gameCover}>
-                        {pg.game.iconUrl ? (
-                          <Image
-                            source={{ uri: pg.game.iconUrl }}
-                            style={styles.gameCoverImage}
-                            accessibilityIgnoresInvertColors
-                          />
-                        ) : (
-                          <Text style={styles.gameCoverGlyph}>🎮</Text>
-                        )}
-                      </View>
-                      <View style={styles.gameText}>
-                        <Text variant="label" numberOfLines={1} style={styles.gameTitle}>
-                          {pg.game.title}
-                        </Text>
-                        {scoreLine ? (
-                          <Text variant="caption" tone="muted" numberOfLines={1}>
-                            {scoreLine}
-                          </Text>
-                        ) : null}
-                      </View>
-                      {pg.viewerHasGame ? (
-                        <Text style={styles.chevron}>›</Text>
-                      ) : isSelf ? null : (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={`Add ${pg.game.title}`}
-                          onPress={() => addGameMutation.mutate(pg)}
-                          disabled={adding}
-                          testID={`friend-profile-game-add-${pg.game.id}`}
-                          hitSlop={6}
-                          style={({
-                            pressed,
-                            hovered,
-                          }: {
-                            pressed: boolean;
-                            hovered?: boolean;
-                          }) => [
-                            styles.addBtn,
-                            (pressed || hovered) && styles.addBtnHover,
-                            adding && styles.addBtnBusy,
-                          ]}
-                        >
-                          {adding ? (
-                            <ActivityIndicator size="small" color={tokens.accent.default} />
-                          ) : (
-                            <Text style={styles.addLabel}>Add</Text>
-                          )}
-                        </Pressable>
-                      )}
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
           </>
         )}
       </ScrollView>
     </Screen>
   );
 }
-
-const COVER = 40;
 
 const styles = StyleSheet.create({
   headerNav: {
@@ -485,68 +334,4 @@ const styles = StyleSheet.create({
   identityText: { flex: 1, minWidth: 0, gap: 4 },
   actionRow: { flexDirection: "row", gap: tokens.space.md },
   actionFlex: { flex: 1 },
-  lockedCard: {
-    alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.xxl,
-    paddingHorizontal: tokens.space.lg,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-  },
-  lockedGlyph: { fontSize: 28, lineHeight: 34 },
-  lockedTitle: { color: tokens.text.primary },
-  lockedText: { textAlign: "center" },
-  list: { gap: tokens.space.sm },
-  listLabel: { letterSpacing: 0.4, textTransform: "uppercase" },
-  gameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    borderRadius: tokens.radius.lg,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-  },
-  gameRowHover: { backgroundColor: tokens.bg.elevated },
-  gameCover: {
-    width: COVER,
-    height: COVER,
-    borderRadius: tokens.radius.md,
-    backgroundColor: `${tokens.accent.default}1F`,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  gameCoverImage: { width: COVER, height: COVER, borderRadius: tokens.radius.md },
-  gameCoverGlyph: { fontSize: 20 },
-  gameText: { flex: 1, minWidth: 0, gap: 2 },
-  gameTitle: { fontSize: tokens.font.size.md, color: tokens.text.primary },
-  chevron: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl * 1.2,
-    paddingHorizontal: tokens.space.sm,
-  },
-  addBtn: {
-    minWidth: 64,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-    borderWidth: 1,
-    borderColor: `${tokens.accent.default}55`,
-  },
-  addBtnHover: { backgroundColor: `${tokens.accent.default}33` },
-  addBtnBusy: { opacity: 0.8 },
-  addLabel: {
-    color: tokens.accent.default,
-    fontSize: tokens.font.size.sm,
-    fontWeight: tokens.font.weight.semibold,
-  },
 });

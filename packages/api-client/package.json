@@ -14,6 +14,7 @@
     "./oauth/google": "./src/oauth/google/index.ts",
     "./queryKeys": "./src/queryKeys.ts",
     "./sessionCredentials": "./src/sessionCredentials/index.ts",
+    "./signupAcquisition": "./src/signupAcquisition.ts",
     "./storage": "./src/storage/index.ts",
     "./useLivePollingInterval": "./src/useLivePollingInterval.ts"
   },

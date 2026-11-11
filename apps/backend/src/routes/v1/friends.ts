@@ -37,11 +37,16 @@ import {
 import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
+import { sendFriendRequestPush } from "../../lib/friendRequestPush.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
 import { scoreCodeFields } from "../../lib/gameCodeService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { resolveGameShareLink } from "../../lib/gameShareLinks.js";
-import { notifyFriendRequestSent, notifyFriendshipFormed } from "../../lib/opsNotifications.js";
+import {
+  notifyFirstFriendAfterSignup,
+  notifyFriendRequestSent,
+  notifyFriendshipFormed,
+} from "../../lib/opsNotifications.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -65,7 +70,15 @@ function normalizeStatus(value: string): FriendRequestStatus {
   return value === "accepted" || value === "declined" ? value : "pending";
 }
 
-const sendRequestSchema = z.object({ userId: z.string().uuid() });
+const sendRequestSchema = z.object({
+  userId: z.string().uuid(),
+  /**
+   * A play-link token (`/g/:token`) the target minted. Holding one is the
+   * same social proof as holding their invite link, so a vouched request
+   * forms the friendship at once instead of waiting for the target to approve.
+   */
+  via: z.string().optional(),
+});
 const workshopClientHeaderSchema = z.enum(WORKSHOP_CLIENTS).default("workshop");
 
 const FRIEND_INVITE_BASE_URLS = {
@@ -397,7 +410,8 @@ friendRoutes.post(
     // accept satisfied it.
     const formed = await addFriendship(request.inviterId, userId);
     await deleteDirectedPending(request.inviterId, userId);
-    if (formed) await notifyFriendshipFormed(userId, request.inviterId, "accepted invite link");
+    if (formed) await notifyFriendshipFormed(userId, request.inviterId, "invite_link");
+    if (formed) await notifyFirstFriendAfterSignup(userId, request.inviterId);
 
     const pair = canonicalPair(request.inviterId, userId);
     const [edge] = await db
@@ -513,6 +527,29 @@ friendRoutes.post(
       return ok(c, response);
     }
 
+    // A play link the target minted vouches the sender in: they were handed
+    // it by the target (the same trust an invite link carries), so form the
+    // edge now rather than parking a pending request the target has to find.
+    const via = parsed.data.via;
+    const vouched =
+      via !== undefined &&
+      isValidShareSlug(via) &&
+      (await resolveGameShareLink(via))?.userId === targetId;
+    if (vouched) {
+      const formed = await addFriendship(userId, targetId);
+      await deleteDirectedPending(userId, targetId);
+      await deleteDirectedPending(targetId, userId);
+      const edge = await friendshipEdge(userId, targetId);
+      if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
+      if (formed) await notifyFriendshipFormed(userId, targetId, "play_link");
+      if (formed) await notifyFirstFriendAfterSignup(userId, targetId);
+      const response: SendFriendRequestResponse = {
+        status: "accepted",
+        friend: friendShape(edge.createdAt),
+      };
+      return ok(c, response, 201);
+    }
+
     const [inbound] = await db
       .select({ id: friendRequests.id })
       .from(friendRequests)
@@ -529,7 +566,8 @@ friendRoutes.post(
       await deleteDirectedPending(userId, targetId);
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
-      if (formed) await notifyFriendshipFormed(userId, targetId, "mutual request");
+      if (formed) await notifyFriendshipFormed(userId, targetId, "mutual_request");
+      if (formed) await notifyFirstFriendAfterSignup(userId, targetId);
       const response: SendFriendRequestResponse = {
         status: "accepted",
         friend: friendShape(edge.createdAt),
@@ -543,8 +581,14 @@ friendRoutes.post(
       .onConflictDoNothing()
       .returning({ id: friendRequests.id });
     // Only ping when a fresh pending row was actually created — a duplicate
-    // send no-ops on the partial unique index and shouldn't re-notify.
-    if (insertedRequest.length > 0) await notifyFriendRequestSent(userId, targetId);
+    // send no-ops on the partial unique index and shouldn't re-notify. The
+    // recipient's push runs beside the Discord ping; both swallow failures.
+    if (insertedRequest.length > 0) {
+      await Promise.all([
+        notifyFriendRequestSent(userId, targetId),
+        sendFriendRequestPush(userId, targetId),
+      ]);
+    }
     const response: SendFriendRequestResponse = { status: "pending", friend: null };
     return ok(c, response, 201);
   },
@@ -586,7 +630,8 @@ friendRoutes.post(
 
     const formed = await addFriendship(senderId, userId);
     await deleteDirectedPending(userId, senderId);
-    if (formed) await notifyFriendshipFormed(userId, senderId, "accepted request");
+    if (formed) await notifyFriendshipFormed(userId, senderId, "request");
+    if (formed) await notifyFirstFriendAfterSignup(userId, senderId);
 
     const [edge, [sender]] = await Promise.all([
       friendshipEdge(userId, senderId),

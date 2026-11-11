@@ -29,10 +29,10 @@ import {
   useToast,
 } from "../../theme";
 import { addGame } from "../api/games";
-import { localDateKey } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { useGamesRuntime } from "../runtime";
+import { useToday } from "../state/viewDay";
 
 /**
  * Friend profile page — `/friends/:userId`. Shows the relationship state with
@@ -79,7 +79,7 @@ export default function FriendProfileScreen() {
   const { showToast } = useToast();
   const livePoll = useLivePollingInterval();
 
-  const todayKey = localDateKey();
+  const todayKey = useToday();
   const [addingGameIds, setAddingGameIds] = useState<string[]>([]);
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
@@ -98,7 +98,8 @@ export default function FriendProfileScreen() {
     ]);
 
   const sendMutation = useMutation({
-    mutationFn: () => sendFriendRequest(userId, token),
+    // From a play link (`via`), the backend forms the friendship at once.
+    mutationFn: () => sendFriendRequest(userId, token, via ? { via } : {}),
     onSuccess: async (data) => {
       haptics.medium();
       if (data.status === "accepted") {
