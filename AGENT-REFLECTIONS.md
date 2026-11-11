@@ -29,6 +29,12 @@ trail.
 
 ### Dev / sandbox environment
 
+- **Movie / TV search 500s in the sandbox.** `GET /v1/search/media` returns 500 because
+  `apps/backend/.env` has no `TMDB_API_KEY` (setup doesn't write one), so the add-item flow on
+  any movie or TV list shows "Search failed. Try again." and can't be exercised in the preview.
+  **Fix:** have `.niteshift/setup` read `/workshop-prod/tmdb_api_key` (and the Books key) from
+  SSM into the dotenv, the same way it reads the DB URL.
+
 - **Expo RN DevTools auto-install crashes as root in the sandbox.** Every `expo start
 --web` start logs `[FATAL:electron/shell/app/electron_main_delegate.cc:290] Running as
 root without --no-sandbox is not supported`. The dev server still serves fine — DevTools
