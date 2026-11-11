@@ -481,12 +481,14 @@ describe("POST /v1/games/:id/scores/preview", () => {
     expect(((await res.json()) as PreviewGameScoreResponse).preview).toEqual({
       parseStatus: "score",
       scoreValue: 5,
+      scoreUnit: null,
       scoreSummary: WORLDLE_SUMMARY,
     });
     const loss = (await (await preview(tradle, TRADLE_LOSS)).json()) as PreviewGameScoreResponse;
     expect(loss.preview).toEqual({
       parseStatus: "no_result",
       scoreValue: null,
+      scoreUnit: null,
       scoreSummary: "🟩 3·4 X/6",
     });
     const wrongGame = (await (await preview(tradle, WORLDLE)).json()) as PreviewGameScoreResponse;

@@ -4,7 +4,7 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { HIGHSCORE_WEB_URL } from "@workshop/shared/constants";
 import type { Game, GameStandingsEntry } from "@workshop/shared/games";
-import { STREAK_MIN_DAYS } from "@workshop/shared/games";
+import { formatScoreValue, STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { confirm, formatRelative, haptics, openExternalUrl } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
@@ -580,7 +580,7 @@ export default function GameBoard() {
 
 interface EntryRowProps {
   entry: GameStandingsEntry;
-  game: Pick<Game, "title" | "url" | "summarySpec" | "hasFormatter">;
+  game: Pick<Game, "title" | "url" | "summarySpec" | "hasFormatter" | "scoreUnit">;
   /** Teach v2 is on for the viewer: every read row states its score. */
   teachAvailable: boolean;
   isMe: boolean;
@@ -727,7 +727,7 @@ function EntryRow({
         ) : null}
         {scoreValue !== null ? (
           <View style={styles.scoreBox} testID={`game-board-value-${entry.userId}`}>
-            <Text style={styles.scoreBoxText}>{scoreValue.toLocaleString()}</Text>
+            <Text style={styles.scoreBoxText}>{formatScoreValue(scoreValue, game.scoreUnit)}</Text>
           </View>
         ) : null}
       </Pressable>

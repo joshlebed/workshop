@@ -11,6 +11,29 @@ import type { SummarySpec } from "./summarySpec.js";
 
 export type GameScoreDirection = "asc" | "desc";
 
+/**
+ * What a game's numeric score measures, when it is not a plain number. Set
+ * by an accepted teach whose pick was a time (`0:42`, `23h 00m` — stored in
+ * seconds) or by the registry; clients show such a score as a time.
+ */
+export const GAME_SCORE_UNITS = ["seconds"] as const;
+export type GameScoreUnit = (typeof GAME_SCORE_UNITS)[number];
+
+/**
+ * A score the way a row shows it: `944` for a number; for seconds `0:42`
+ * under an hour and `23h 00m` (`1h 05m 30s` when the seconds matter) past it.
+ */
+export function formatScoreValue(value: number, unit: GameScoreUnit | null | undefined): string {
+  if (unit !== "seconds" || !Number.isFinite(value) || value < 0) return value.toLocaleString();
+  const total = Math.round(value);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const two = (n: number) => String(n).padStart(2, "0");
+  if (h === 0) return `${m}:${two(s)}`;
+  return s === 0 ? `${h}h ${two(m)}m` : `${h}h ${two(m)}m ${two(s)}s`;
+}
+
 /** A row in the global game catalog, deduped by `normalizedUrl`. */
 export interface Game {
   id: string;
@@ -23,6 +46,11 @@ export interface Game {
   /** Key into the shared game registry; null for unknown games. */
   gameKey: string | null;
   scoreDirection: GameScoreDirection;
+  /**
+   * Set when the score is a time in seconds (an accepted teach from a time
+   * pick, or the registry); null for a plain number. Absent from older servers.
+   */
+  scoreUnit?: GameScoreUnit | null;
   /**
    * User-taught parser spec (games the registry doesn't know). Null when
    * unset — and always null for registry games, whose specs live in code.
@@ -385,6 +413,8 @@ export interface PreviewGameScoreRequest {
 export interface GameScorePreview {
   parseStatus: ScoreParseStatus;
   scoreValue: number | null;
+  /** The game's `scoreUnit`, so the caption can show a time as a time. */
+  scoreUnit?: GameScoreUnit | null;
   scoreSummary: string | null;
   /** Present only when teach v2 is on for the caller. */
   teach?: ScorePreviewTeach;

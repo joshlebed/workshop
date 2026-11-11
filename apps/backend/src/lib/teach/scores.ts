@@ -32,7 +32,7 @@ import type { FormatResult, ParseResult } from "../gameCode/types.js";
 import { resolvePostedScore, scoreCodeFields, scoreShareWithinBudget } from "../gameCodeService.js";
 import { matchByUrlOrLabel, RECOGNITION_SURFACE_THRESHOLD } from "../gameRecognition.js";
 import { recognitionModeFor, recognizeGameForUser } from "../gameRecognitionService.js";
-import { todayPeriodKey, toGameShape } from "../gameShapes.js";
+import { gameScoreUnit, todayPeriodKey, toGameShape } from "../gameShapes.js";
 import { requestOriginColumns } from "../requestContext.js";
 import type { DbClient } from "../sql.js";
 import { logTeachEvent, type TeachLogContext } from "./log.js";
@@ -294,6 +294,7 @@ export async function previewScore(input: {
   const preview: GameScorePreview = {
     parseStatus: scored.parseStatus,
     scoreValue: value,
+    scoreUnit: gameScoreUnit(game),
     scoreSummary: scored.scoreSummary,
     teach,
   };

@@ -17,6 +17,7 @@ import {
   parseChangeAgrees,
   scoreWithGameCode,
 } from "./gameCode/scoring.js";
+import { gameScoreUnit } from "./gameShapes.js";
 import { isGamesBetaUser } from "./gamesBeta.js";
 import { logger } from "./logger.js";
 
@@ -38,6 +39,7 @@ export function codeParsingModeFor(userId: string): "off" | "shadow" | "on" {
 export const GAME_CODE_BUDGET_MS = 1500;
 
 type GameCodeColumns = Pick<DbGame, "parseCode" | "formatCode">;
+type PreviewGameColumns = GameCodeColumns & Pick<DbGame, "scoreUnit" | "gameKey">;
 
 interface BudgetedScore extends CodeScore {
   /** True when the budget ran out and the result is the fail-soft stand-in. */
@@ -231,13 +233,14 @@ export async function resolvePostedScore(input: {
 
 /** What posting `scoreRaw` to `game` would store — the paste sheet's dry run. */
 export async function previewScore(
-  game: GameCodeColumns,
+  game: PreviewGameColumns,
   scoreRaw: string,
 ): Promise<GameScorePreview> {
   const scored = await scoreShareWithinBudget(game, scoreRaw);
   return {
     parseStatus: scored.parseStatus,
     scoreValue: scored.scoreValue,
+    scoreUnit: gameScoreUnit(game),
     scoreSummary: scored.scoreSummary,
   };
 }

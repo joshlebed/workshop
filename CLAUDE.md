@@ -222,6 +222,16 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
   PR proposing extras + reporting parser/formatter health; the operator edits categories and
   merges. `docs/catalog-ops-runbook.md`.
 
+- **Time scores are stored in seconds and shown through `formatScoreValue`.** The candidate
+  picker (`scoreCandidates.ts`) reads `0:42`, `23h 00m`, `4m 12s`, `2 hours`, `5 min`, `42s`
+  as one `duration` feature (a bare `5m` stays a number); an accepted teach from a time pick
+  sets `games.score_unit = 'seconds'` (NYT Mini carries `scoreUnit` in the registry), and
+  `Game.scoreUnit` / `GameScorePreview.scoreUnit` reach the client. Any surface that prints
+  `scoreValue` must go through `formatScoreValue(value, unit)` from `@workshop/shared/games`
+  (`0:42` under an hour, `23h 00m` past it) — a raw `toLocaleString()` shows `82,800`. A
+  time game's score is the player's own time (City2City's `23h 00m`), never a computed
+  difference; the picker offers no derived values.
+
 - **Share-panel adoption is observed, never detected.** iOS has no API to ask "is this app
   enabled in the share sheet", so adoption is inferred from usage: HighScore's score upsert
   (`PUT /v1/games/:id/scores`) takes an optional `entrySource` (`share_extension` | `paste`,
