@@ -106,20 +106,19 @@ nudge. Lower `SHARE_SETUP_MIN_RUNTIME` to widen it; the route itself renders on 
 `lim ios screenshot` is 1x (402×874) and default-quality recordings are 1.5x. Crops are the 1x
 regions ×3 (share-row `1146:1050:30:1524`, the other two `1206:720:0:210`); each sheet's outer
 corners are filled with the canvas colour, and share-row's glass band above the app row is
-desaturated so the button behind the sheet doesn't tint it. The last step opens a live share
-sheet (`Share.share` with `SHARE_PRACTICE_TEXT`) and asks for confirmation when it closes. Don't
-make the user tap HighScore in that sheet to "test" it: sharing to the app's own extension from
-inside the app reuses the same `dataUrl` deep link, which `useShareIntent` only re-reads when the
-URL changes or the app re-activates, and the extension's sheet can stay
-up until swiped away — clear on a device, so "You're set" shows through and Done / X look dead
-(expo-share-intent #231: the extension completes before iOS has finished presenting it). The
-card says "Swipe down to close the share
-sheet" while `Share.share` is still pending 1.5s after the practice share came back, and the
-completion flag is saved as soon as the share comes back rather than on Done. JS cannot dismiss
-that sheet: hosting it on an RN `Modal` or a `transparentModal` route and popping the host was
-tried and the sheet survives; `excludedActivityTypes` doesn't hide our own extension either.
-If they do tap it, `Share.share` reports our extension (→ "You're set", pending payload cleared) and
-`_layout.tsx` routes the practice text to `/share-setup?tested=1`, never the score picker.
+desaturated so the button behind the sheet doesn't tint it. The last step opens a practice page
+in Safari (`SHARE_PRACTICE_URL` → `public/share-test.html`, whose Share button shares
+`SHARE_PRACTICE_TEXT` — the page and the constant must carry the same string). Tapping HighScore
+in that sheet hands the text to `_layout.tsx`, which routes it to `/share-setup?tested=1`
+("You're set", completion saved right then), never the score picker; coming back without it
+shows "Is HighScore at the front of the row?". **Never put the practice share back inside the
+app** (`Share.share`): a share to our own extension from inside HighScore can leave the
+extension's sheet up over the screen (expo-share-intent #231) — clear on a device, so "You're
+set" showed through while Done / X were dead — and JS cannot dismiss it (an RN `Modal` host, a
+`transparentModal` route host and `excludedActivityTypes` were all tried). The simulator does
+not deliver a share from Safari to the app (the app opens, the payload never arrives), so the
+"You're set" arrival is only checkable there with `lim ios open-url 'highscore://share-setup?tested=1'`;
+the real hand-off needs a device.
 Dismiss/complete state is the server-side
 `games.share-sheet-announcement` user flag — never a local storage key, so reinstalls and second
 devices don't re-blast. **Merging the announcement PR is the blast** — OTA ships ~60s after merge.

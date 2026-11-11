@@ -186,7 +186,7 @@ export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
   },
   {
     title: "Your turn",
-    body: "Try it here. Close the sheet when HighScore is at the front of the row.",
+    body: "Practice in Safari: tap Share there, add HighScore, then tap it.",
     illustration: null,
     highlight: null,
     tryIt: true,
@@ -194,14 +194,24 @@ export const SHARE_WALKTHROUGH_STEPS: ShareWalkthroughStep[] = [
 ];
 
 /**
- * What the walkthrough's "Open share sheet" button shares. The walkthrough
- * doesn't ask the user to tap HighScore in that sheet (sharing to the app's
- * own extension from inside the app can leave the extension's blank view up
- * until it's swiped away), but if they do, the extension hands this exact
- * text back and the share-intent redirect shows the "it works" screen instead
- * of offering to post it as a score.
+ * What the practice page's Share button shares (`public/share-test.html`
+ * carries the same string — keep them identical). When the user taps HighScore
+ * in that sheet the extension hands this exact text back and the share-intent
+ * redirect shows the "it works" screen instead of offering to post it as a
+ * score.
  */
 export const SHARE_PRACTICE_TEXT = "HighScore share test";
+
+/**
+ * The practice page the last step opens in Safari. Not an in-app share sheet:
+ * a share to our own extension from inside the app can leave the extension's
+ * sheet up over the walkthrough, where it swallows every tap and JS cannot
+ * dismiss it (expo-share-intent #231). In Safari the hand-off brings HighScore
+ * to the front with nothing over it. The env override is for simulator builds
+ * (`http://localhost:8081/share-test.html`).
+ */
+export const SHARE_PRACTICE_URL =
+  process.env.EXPO_PUBLIC_SHARE_PRACTICE_URL ?? "https://highscore.live/share-test.html";
 
 /** Whether a share-intent payload is the walkthrough's practice share. */
 export function isSharePractice(text: string | null | undefined): boolean {
