@@ -26,7 +26,6 @@ export function baseRowProps(
   return {
     item,
     section,
-    ...(section === "ordered" ? { rank: p.rankById.get(item.id) } : {}),
     isNew: p.newItemIds.has(item.id),
     addedByName,
     ...(override ? { provenanceOverride: override } : {}),

@@ -641,9 +641,9 @@ describe("stripModuleGatedItemFields", () => {
     expect(r.position).toBe(1024);
   });
 
-  it("strips position when ranking is off", () => {
+  it("keeps position without the retired ranking module", () => {
     const r = stripModuleGatedItemFields(base, ["todo"]);
-    expect(r.position).toBeUndefined();
+    expect(r.position).toBe(1024);
     expect(r.completed).toBe(true);
   });
 
@@ -656,7 +656,7 @@ describe("stripModuleGatedItemFields", () => {
   it("strips everything when no modules are enabled", () => {
     const r = stripModuleGatedItemFields(base, []);
     expect(r.completed).toBeUndefined();
-    expect(r.position).toBeUndefined();
+    expect(r.position).toBe(1024);
   });
 });
 

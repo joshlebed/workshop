@@ -71,7 +71,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "simple",
     defaults: {
       itemKind: null,
-      modules: ["ranking"],
+      modules: [],
       emoji: "📝",
       color: "slate",
     },
@@ -84,7 +84,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "simple",
     defaults: {
       itemKind: "plain",
-      modules: ["todo", "ranking"],
+      modules: ["todo"],
       emoji: "✅",
       color: "forest",
     },
@@ -93,11 +93,11 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     id: "movie_watchlist",
     displayName: "Movie watchlist",
     defaultName: "Movies to watch",
-    description: "Films to catch. Check them off, drag to rank.",
+    description: "Films to catch, in your order. Check them off as you go.",
     group: "watch_read",
     defaults: {
       itemKind: "movie",
-      modules: ["todo", "ranking"],
+      modules: ["todo"],
       emoji: "🎬",
       color: "sunset",
     },
@@ -110,7 +110,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "watch_read",
     defaults: {
       itemKind: "tv",
-      modules: ["todo", "ranking"],
+      modules: ["todo"],
       emoji: "📺",
       color: "ocean",
     },
@@ -123,7 +123,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "watch_read",
     defaults: {
       itemKind: "book",
-      modules: ["todo", "ranking"],
+      modules: ["todo"],
       emoji: "📚",
       color: "forest",
     },
@@ -135,7 +135,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "plans",
     defaults: {
       itemKind: "link",
-      modules: ["todo", "ranking"],
+      modules: ["todo"],
       emoji: "💜",
       color: "rose",
     },
@@ -147,7 +147,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "plans",
     defaults: {
       itemKind: "link",
-      modules: ["todo", "ranking"],
+      modules: ["todo"],
       emoji: "✈️",
       color: "sand",
     },
@@ -159,7 +159,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "import",
     defaults: {
       itemKind: "spotify_album",
-      modules: ["ranking"],
+      modules: [],
       emoji: "💿",
       color: "grape",
     },
@@ -175,7 +175,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "import",
     defaults: {
       itemKind: "movie",
-      modules: ["todo", "ranking"],
+      modules: ["todo"],
       emoji: "🎞️",
       color: "ocean",
     },
@@ -192,7 +192,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "import",
     defaults: {
       itemKind: "movie",
-      modules: ["ranking", "letterboxd"],
+      modules: ["letterboxd"],
       emoji: "🍿",
       color: "grape",
     },

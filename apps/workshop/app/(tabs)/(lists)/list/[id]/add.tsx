@@ -9,7 +9,7 @@ import type {
   ItemKind,
   LinkPreview,
   LinkPreviewResponse,
-  ListItemsResponse,
+  ListRowsResponse,
   MediaResult,
   MediaSearchResponse,
   MediaSearchType,
@@ -124,7 +124,7 @@ export default function AddItem() {
     enabled: !!token && !!id,
   });
   const existing = itemsQuery.data
-    ? [...itemsQuery.data.ordered, ...itemsQuery.data.unordered, ...itemsQuery.data.completed]
+    ? [...itemsQuery.data.open, ...itemsQuery.data.inbox, ...itemsQuery.data.completed]
     : [];
 
   const list = listQuery.data?.list;
@@ -152,11 +152,9 @@ export default function AddItem() {
         showToast({ key: "share-saved", message: `Added to ${list?.name ?? "the list"}` });
       }
       setAdded((prev) => [{ id: item.id, title: item.title }, ...prev]);
-      // New items land at the top of the open block; show it there now.
-      queryClient.setQueryData<ListItemsResponse>(itemsKey, (d) =>
-        d && !d.unordered.some((i) => i.id === item.id)
-          ? { ...d, unordered: [item, ...d.unordered] }
-          : d,
+      // New items land at the top of the list; show it there now.
+      queryClient.setQueryData<ListRowsResponse>(itemsKey, (d) =>
+        d && !d.open.some((i) => i.id === item.id) ? { ...d, open: [item, ...d.open] } : d,
       );
       queryClient.invalidateQueries({ queryKey: itemsKey });
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
@@ -179,8 +177,8 @@ export default function AddItem() {
       haptics.light();
       forgetItemAdded(id, a.id);
       setAdded((prev) => prev.filter((x) => x.id !== a.id));
-      queryClient.setQueryData<ListItemsResponse>(itemsKey, (d) =>
-        d ? { ...d, unordered: d.unordered.filter((i) => i.id !== a.id) } : d,
+      queryClient.setQueryData<ListRowsResponse>(itemsKey, (d) =>
+        d ? { ...d, open: d.open.filter((i) => i.id !== a.id) } : d,
       );
     },
     onError: (e, a) => {

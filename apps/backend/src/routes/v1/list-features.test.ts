@@ -138,14 +138,14 @@ describe("create: sources are derived, and only offered ones attach", () => {
       modules: ["ranking"],
       sources: [SPOTIFY],
     });
-    expect(shelf.body.list?.modules).toEqual(["ranking", "sources"]);
+    expect(shelf.body.list?.modules).toEqual(["sources"]);
     // An old client still sends `sources`; same result.
     const old = await createList({
       itemKind: "movie",
       modules: ["todo", "ranking", "sources"],
       sources: [LETTERBOXD],
     });
-    expect(old.body.list?.modules).toEqual(["todo", "ranking", "sources"]);
+    expect(old.body.list?.modules).toEqual(["todo", "sources"]);
   });
 
   it("400s a source the kind does not sync from", async () => {
@@ -168,7 +168,7 @@ describe("create: sources are derived, and only offered ones attach", () => {
       modules: ["ranking"],
       sources: [{ kind: "letterboxd_match", config: {} }],
     });
-    expect(body.list?.modules).toEqual(["ranking", "sources", "letterboxd"]);
+    expect(body.list?.modules).toEqual(["sources", "letterboxd"]);
   });
 
   it("still rejects the retired leaderboard", async () => {
@@ -214,7 +214,7 @@ describe("PATCH: toggles per kind, derived sources, old-client tolerance", () =>
     // Old "Syncing" switch turned off: the source is still attached, so it stays on.
     const off = await patchList(shelfId, { modules: ["ranking"] });
     expect(off.res.status).toBe(200);
-    expect(off.body.list?.modules).toEqual(["ranking", "sources"]);
+    expect(off.body.list?.modules).toEqual(["sources"]);
     expect(await sourceKinds(shelfId)).toEqual(["spotify_playlist"]);
   });
 
@@ -225,7 +225,7 @@ describe("PATCH: toggles per kind, derived sources, old-client tolerance", () =>
     await rows("UPDATE lists SET modules = '{todo,letterboxd}' WHERE id = $1", [id]);
     const res = await patchList(id, { modules: ["todo", "ranking", "letterboxd"] });
     expect(res.res.status).toBe(200);
-    expect(await modulesOf(id)).toEqual(["todo", "ranking", "letterboxd"]);
+    expect(await modulesOf(id)).toEqual(["todo", "letterboxd"]);
     // Turning it off is always allowed.
     expect((await patchList(id, { modules: ["todo"] })).res.status).toBe(200);
     expect(await modulesOf(id)).toEqual(["todo"]);
@@ -300,7 +300,7 @@ describe("sources: attach first turns sources on, remove last turns it off", () 
   it("on an album shelf", async () => {
     const { body } = await createList({ itemKind: "spotify_album", modules: ["ranking"] });
     const id = body.list?.id ?? "";
-    expect(await modulesOf(id)).toEqual(["ranking"]);
+    expect(await modulesOf(id)).toEqual([]);
 
     const attach = await listRoutes.request(`/${id}/sources`, {
       method: "POST",
@@ -309,7 +309,7 @@ describe("sources: attach first turns sources on, remove last turns it off", () 
     });
     expect(attach.status).toBe(201);
     const { source } = (await attach.json()) as { source: { id: string } };
-    expect(await modulesOf(id)).toEqual(["ranking", "sources"]);
+    expect(await modulesOf(id)).toEqual(["sources"]);
 
     const second = await listRoutes.request(`/${id}/sources`, {
       method: "POST",
@@ -319,13 +319,13 @@ describe("sources: attach first turns sources on, remove last turns it off", () 
     const { source: other } = (await second.json()) as { source: { id: string } };
 
     await listRoutes.request(`/${id}/sources/${source.id}`, { method: "DELETE", headers: auth });
-    expect(await modulesOf(id)).toEqual(["ranking", "sources"]);
+    expect(await modulesOf(id)).toEqual(["sources"]);
     const removeLast = await listRoutes.request(`/${id}/sources/${other.id}`, {
       method: "DELETE",
       headers: auth,
     });
     expect(removeLast.status).toBe(200);
-    expect(await modulesOf(id)).toEqual(["ranking"]);
+    expect(await modulesOf(id)).toEqual([]);
   });
 
   it("no longer needs a sources switch first, and 400s an unoffered kind", async () => {
@@ -379,16 +379,51 @@ describe("sources: attach first turns sources on, remove last turns it off", () 
       body: JSON.stringify({}),
     });
     const copy = (await dup.json()) as { list: List };
-    expect(copy.list.modules).toEqual(["ranking"]);
+    expect(copy.list.modules).toEqual([]);
     const withSources = await listRoutes.request(`/${body.list?.id}/duplicate`, {
       method: "POST",
       headers: json,
       body: JSON.stringify({ copySources: true }),
     });
-    expect(((await withSources.json()) as { list: List }).list.modules).toEqual([
-      "ranking",
-      "sources",
+    expect(((await withSources.json()) as { list: List }).list.modules).toEqual(["sources"]);
+  });
+});
+
+describe("the retired ranking module (previous bundles still send it)", () => {
+  it("create drops it and stores the rest", async () => {
+    const { res, body } = await createList({ itemKind: "plain", modules: ["todo", "ranking"] });
+    expect(res.status).toBe(201);
+    expect(body.list?.modules).toEqual(["todo"]);
+  });
+
+  it("PATCH turning it on is ignored, and dropping a stored one needs no warning", async () => {
+    const { body } = await createList({ itemKind: "plain", modules: ["todo"] });
+    const id = body.list?.id ?? "";
+    expect((await patchList(id, { modules: ["todo", "ranking"] })).body.list?.modules).toEqual([
+      "todo",
     ]);
+    // A row the one-order migration has not converted yet.
+    await rows("UPDATE lists SET modules = '{todo,ranking}' WHERE id = $1", [id]);
+    await rows(
+      `INSERT INTO items (list_id, title, added_by, position) VALUES ($1, 'A', $2, 1024)`,
+      [id, owner],
+    );
+    const res = await patchList(id, { modules: ["todo"] });
+    expect(res.res.status).toBe(200);
+    expect(await modulesOf(id)).toEqual(["todo"]);
+  });
+
+  it("config-preview accepts it and warns about nothing", async () => {
+    const { body } = await createList({ itemKind: "plain", modules: ["todo"] });
+    const id = body.list?.id ?? "";
+    const res = await listRoutes.request(`/${id}/config-preview`, {
+      method: "POST",
+      headers: json,
+      body: JSON.stringify({ modules: ["todo", "ranking"] }),
+    });
+    expect(res.status).toBe(200);
+    const preview = (await res.json()) as { warnings: unknown[] };
+    expect(preview.warnings).toEqual([]);
   });
 });
 

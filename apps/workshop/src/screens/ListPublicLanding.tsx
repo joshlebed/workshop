@@ -19,6 +19,7 @@ import {
 import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { withListRows } from "../api/items";
 import { fetchListItemsBySlug } from "../api/share";
 import { useAuth } from "../hooks/useAuth";
 import { goBack } from "../lib/goBack";
@@ -65,9 +66,8 @@ export function ListPublicLanding({ preview, viewer, returnPath, onJoin, onBefor
     queryFn: () => fetchListItemsBySlug(preview.shareSlug, token),
     enabled: readOnly,
   });
-  const items: Item[] = itemsQuery.data
-    ? [...itemsQuery.data.ordered, ...itemsQuery.data.unordered, ...itemsQuery.data.completed]
-    : [];
+  const rows = itemsQuery.data ? withListRows(itemsQuery.data) : null;
+  const items: Item[] = rows ? [...rows.open, ...rows.inbox, ...rows.completed] : [];
 
   const signIn = async () => {
     await setItem(PENDING_RETURN_PATH_KEY, returnPath ?? `/list/${preview.id}`).catch(() => {});

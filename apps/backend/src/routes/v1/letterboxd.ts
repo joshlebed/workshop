@@ -28,6 +28,7 @@ import { getConfig } from "../../lib/config.js";
 import { recordEvent } from "../../lib/events.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule } from "../../lib/moduleGate.js";
+import { topPosition } from "../../lib/positions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import {
@@ -306,9 +307,12 @@ itemAcceptRoutes.post(
       // item into the main list. (A film synced from the overlap is never
       // pending, so this is a no-op for it.)
       if (row.suggestionState === "pending" && userId !== row.addedBy) {
+        // A person brought it and another said yes: it is placed, at the top
+        // of the list like any new row (never in the sync inbox).
+        const position = await topPosition(row.listId, tx, itemId);
         await tx
           .update(items)
-          .set({ suggestionState: null, updatedAt: new Date() })
+          .set({ suggestionState: null, position, updatedAt: new Date() })
           .where(and(eq(items.id, itemId), eq(items.suggestionState, "pending")));
         await recordEvent({
           db: tx,

@@ -1,20 +1,19 @@
 // Row ⋯ menu for list-detail rows (both platforms). Vocabulary follows the
-// glossary (ux-pass-plan §6): Ranked / "Rank at top" / "Rank at bottom" /
-// "Remove from ranking", the list's own completion word, and Delete in
-// `status.danger`. "Move up" / "Move down" are the keyboard and screen-reader
-// path for reordering (2.8). Edit is hidden for album-shelf items (their
-// fields are server-derived from Spotify).
+// glossary (ux-pass-plan §6): "Move up" / "Move down" / "Move to top" (the
+// keyboard and screen-reader path for reordering), "Add to list" for a row in
+// the sync inbox, the list's own completion word, and Delete in
+// `status.danger`.
 
 import type { Item } from "@workshop/shared";
 import { ActionSheet } from "@workshop/ui";
 import { useState } from "react";
 
 export interface ItemRowMenuActions {
+  /** A sync-inbox row: place it at the top of the list. */
+  onAddToList?: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
-  onRankTop?: () => void;
-  onRankBottom?: () => void;
-  onUnrank?: () => void;
+  onMoveToTop?: () => void;
   /** Complete / reopen, with the label in the list's own word. */
   completion?: { label: string; onPress: () => void };
   onDelete: () => void;
@@ -46,6 +45,12 @@ export function ItemRowMenu({ item, actions, onClose }: ItemRowMenuProps) {
       items={
         a
           ? [
+              a.onAddToList && {
+                label: "Add to list",
+                icon: "plus" as const,
+                onPress: a.onAddToList,
+                testID: "item-row-menu-add-to-list",
+              },
               a.completion && {
                 label: a.completion.label,
                 icon: "check" as const,
@@ -58,20 +63,10 @@ export function ItemRowMenu({ item, actions, onClose }: ItemRowMenuProps) {
                 onPress: a.onMoveDown,
                 testID: "item-row-menu-down",
               },
-              a.onRankTop && {
-                label: "Rank at top",
-                onPress: a.onRankTop,
-                testID: "item-row-menu-rank-top",
-              },
-              a.onRankBottom && {
-                label: "Rank at bottom",
-                onPress: a.onRankBottom,
-                testID: "item-row-menu-rank-bottom",
-              },
-              a.onUnrank && {
-                label: "Remove from ranking",
-                onPress: a.onUnrank,
-                testID: "item-row-menu-unrank",
+              a.onMoveToTop && {
+                label: "Move to top",
+                onPress: a.onMoveToTop,
+                testID: "item-row-menu-top",
               },
               {
                 label: "Delete",

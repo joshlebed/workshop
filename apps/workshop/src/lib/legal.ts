@@ -30,7 +30,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     heading: "What Workshop stores",
     bullets: [
       "Your account: email address, display name, user ID, and a profile picture if you add one.",
-      "Your lists and what's on them: names, items, notes, links, tags, ranks, cover photos, and who added or completed what.",
+      "Your lists and what's on them: names, items, notes, links, tags, the order you put them in, cover photos, and who added or completed what.",
       "Sharing: who is on each list, share links you create, and the activity on shared lists, so members can see what changed.",
       "Connections you choose to make: a Letterboxd username, and the public Letterboxd or Spotify lists you point a list at.",
       "How you arrived: if you signed up from a share link, which link it was, and on the web the page that sent you there.",

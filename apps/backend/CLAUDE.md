@@ -492,26 +492,22 @@ corrected and `src/db/migrate.ts` carries a one-time fixup that rewrites the rec
 (delete it once prod has run it). If you ever hand-edit `drizzle/meta/_journal.json`, keep
 `when` strictly increasing and never in the future.
 
-## `leaderboard` implies `ordered` bucketing in `items.ts` (even without `ranking`)
+## One order per list (`lib/positions.ts`, migration 0058)
 
-> Note: the Lists-side reorderable game card (`GameLeaderboardCard`) was removed with the
-> Games migration, so no live client surface drives this anymore — only the hidden legacy
-> "Geo games" row still carries the `leaderboard` module. The `items.ts` bucketing below is
-> kept so that row stays coherent; don't build new behavior on it.
+Every list is one hand-ordered sequence on `items.position` (sparse ints, ascending = top);
+the root CLAUDE.md order bullet has the rules and the legacy move shapes. Backend specifics:
 
-A leaderboard's games bucket as an ordered list. Three spots in `routes/v1/items.ts` enforce
-this so it doesn't depend on the `ranking` module being present:
-
-- **`fetchItemsForList`** buckets a leaderboard's games into `ordered` (not `unordered`),
-  in the SQL's position-ASC order. A null-position game (added before this rule) sorts last
-  and earns a position the first time it's dragged.
-- **`createItem`** assigns a `position` when the list has `leaderboard` (was previously
-  gated on `ranking && leaderboard`), so a new game is immediately reorderable.
-- **`POST /:id/move`** accepts `leaderboard` OR `ranking` (was `ranking`-only). Lists with
-  neither still get the existing `ranking.disabled` 409.
-
-If you add a leaderboard surface that buckets/gates on `ranking`, add `leaderboard` too, or
-leaderboard-only lists (no `ranking` module — e.g. "Geo games") silently lose reorder.
+- **Every write that puts a row on a list gives it a position**, or it is unplaced: `createItem`
+  (top, or the bulk paste's `topPositions`), Letterboxd accept (top), duplicate (source order,
+  inbox after). Sync inserts stay `position NULL` on purpose: that is the inbox. A new insert
+  path must pick one of the two deliberately.
+- **`fetchItemsForList` reads newest first and sorts the list by position in JS** (a stable
+  sort), so completed rows tie-break newest first exactly as before 0058. It returns
+  `open` / `inbox` plus the legacy `ordered: []` / `unordered` previous bundles read.
+- **Removing a list's last source folds its inbox in below the list** (`appendUnplaced`, called
+  from `reconcileListModules`).
+- **The two hidden legacy `leaderboard` lists** keep their old reading (newest first: their
+  positions were never sent) and are never touched by 0058. Nothing renders them.
 
 ## Letterboxd-match lists (`letterboxd` module) — three-layer model
 

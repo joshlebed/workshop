@@ -73,10 +73,9 @@ describe("stripModuleGatedItemFields", () => {
     expect(out).toMatchObject({ position: 1024 });
   });
 
-  it("drops position when ranking is off", () => {
+  it("keeps position on every list (one order per list)", () => {
     const out = stripModuleGatedItemFields(fullItem, ["todo"]);
-    expect(out).not.toHaveProperty("position");
-    expect(out).toMatchObject({ completed: false });
+    expect(out).toMatchObject({ completed: false, position: 1024 });
   });
 
   it("doesn't mutate the input", () => {
@@ -87,6 +86,6 @@ describe("stripModuleGatedItemFields", () => {
 
   it("strips everything gated when no modules are on", () => {
     const out = stripModuleGatedItemFields(fullItem, []);
-    expect(out).toEqual({ id: "1", title: "x" });
+    expect(out).toEqual({ id: "1", title: "x", position: 1024 });
   });
 });

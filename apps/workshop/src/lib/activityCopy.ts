@@ -1,7 +1,7 @@
 // Activity copy (UX pass 3.1 + 3.6): one verb table for the activity feed and
 // the home row's second line, written in the glossary's words (docs/ux-pass-plan.md
-// §6): items and lists are "deleted", hand order is "ranked", completion uses
-// the list's own word, features and sources are named plainly. Pure, so it is
+// §6): items and lists are "deleted", a change of place is "moved", completion
+// uses the list's own word, features and sources are named plainly. Pure, so it is
 // unit-tested directly (activityCopy.test.ts).
 
 import type { ActivityEvent, ItemKind } from "@workshop/shared";
@@ -10,7 +10,8 @@ import { listKind } from "@workshop/shared/listKinds";
 /** Plain names for list features (the `modules` column), as list settings shows them. */
 export const FEATURE_LABELS: Record<string, string> = {
   todo: "to-do",
-  ranking: "the ranked section",
+  // Retired (one order per list); old events still name it.
+  ranking: "numbering",
   sources: "syncing",
   letterboxd: "Letterboxd match",
   leaderboard: "scores",
@@ -100,10 +101,12 @@ export function describeActivity(event: ActivityEvent, options: DescribeOptions 
       return completion.done ? `marked ${t("an item")} done` : `${completion.verb} ${t("an item")}`;
     case "item_uncompleted":
       return `marked ${t("an item")} not ${completion.past}`;
+    // One verb for every change of place. `item_promoted` is a row placed in
+    // the list from a sync inbox; older events of both types were the retired
+    // Ranked section's promote / demote.
     case "item_promoted":
-      return `ranked ${t("an item")}`;
     case "item_demoted":
-      return `removed ${t("an item")} from ranking`;
+      return `moved ${t("an item")}`;
     case "item_suggested":
       return `suggested ${t("a film")}`;
     case "suggestion_accepted":
@@ -150,8 +153,7 @@ export type ActivityMark =
   | "minus"
   | "check"
   | "undo"
-  | "rank"
-  | "unrank"
+  | "move"
   | "in"
   | "out"
   | "sync"
@@ -182,9 +184,8 @@ export function activityMark(type: ActivityEvent["type"]): ActivityMark {
     case "item_uncompleted":
       return "undo";
     case "item_promoted":
-      return "rank";
     case "item_demoted":
-      return "unrank";
+      return "move";
     case "member_joined":
     case "owner_transferred":
       return "in";

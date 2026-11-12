@@ -9,8 +9,8 @@ import { err } from "./response.js";
 // Feature names as list settings shows them (`@workshop/shared/listKinds`).
 const MESSAGES: Record<ModuleName, string> = {
   todo: "This list doesn't check things off. Turn it on in list settings to complete items.",
-  ranking:
-    "This list doesn't have a ranked section. Turn on “Ranked section” in list settings to rank items.",
+  // Retired: nothing gates on it any more (every list has one order).
+  ranking: "Lists no longer have a separate ordered section.",
   leaderboard: "Game leaderboards now live in HighScore.",
   sources:
     "This list doesn't sync from anywhere. Connect one in list settings under “Synced from”.",
@@ -51,7 +51,6 @@ export function stripModuleGatedItemFields<
     completed?: boolean;
     completedAt?: string | null;
     completedBy?: string | null;
-    position?: number | null;
   },
 >(item: T, modules: readonly string[]): T {
   const next = { ...item };
@@ -59,9 +58,6 @@ export function stripModuleGatedItemFields<
     delete next.completed;
     delete next.completedAt;
     delete next.completedBy;
-  }
-  if (!hasModule(modules, "ranking")) {
-    delete next.position;
   }
   return next;
 }
