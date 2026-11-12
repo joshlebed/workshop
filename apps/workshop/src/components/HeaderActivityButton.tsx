@@ -1,4 +1,4 @@
-import { Text, tokens } from "@workshop/ui";
+import { Badge, tokens } from "@workshop/ui";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 
 export interface HeaderActivityButtonProps {
@@ -51,31 +51,44 @@ export function HeaderActivityButton({
       // @ts-expect-error: react-native-web threads native title through to <button title>
       title={Platform.OS === "web" ? "Activity  (⌘/)" : undefined}
       testID={testID}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      style={styles.target}
     >
-      <ActivityGlyph unread={hasUnread} error={error} />
-      {hasUnread && !error ? (
-        <View style={styles.unreadBadge} testID="activity-unread-badge">
-          <Text style={styles.unreadBadgeText} tone="onAccent">
-            {unreadCount > 9 ? "9+" : String(unreadCount)}
-          </Text>
+      {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+        <View style={[styles.button, hovered && styles.hovered, pressed && styles.pressed]}>
+          <ActivityGlyph unread={hasUnread} error={error} />
+          {hasUnread && !error ? (
+            <Badge
+              label={unreadCount > 9 ? "9+" : String(unreadCount)}
+              tone="accent"
+              ringColor={tokens.bg.canvas}
+              style={styles.badge}
+              testID="activity-unread-badge"
+            />
+          ) : null}
+          {error ? (
+            <Badge
+              label="!"
+              tone="danger"
+              ringColor={tokens.bg.canvas}
+              style={styles.badge}
+              accessibilityLabel="Activity load failed"
+            />
+          ) : null}
         </View>
-      ) : null}
-      {error ? (
-        <View
-          style={[styles.unreadBadge, { backgroundColor: tokens.status.danger }]}
-          accessibilityLabel="Activity load failed"
-        >
-          <Text style={styles.unreadBadgeText} tone="onAccent">
-            !
-          </Text>
-        </View>
-      ) : null}
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  // 44pt press target around the 40pt disc (web ignores hitSlop).
+  target: {
+    width: tokens.hit,
+    height: tokens.hit,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.pill,
+  },
   button: {
     width: 40,
     height: 40,
@@ -86,6 +99,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: tokens.bg.surface,
   },
+  hovered: { borderColor: tokens.border.default },
   pressed: { backgroundColor: tokens.bg.elevated },
   activityGlyph: {
     gap: 3,
@@ -98,24 +112,5 @@ const styles = StyleSheet.create({
     height: 1.5,
     borderRadius: 1,
   },
-  unreadBadge: {
-    position: "absolute",
-    top: -3,
-    right: -3,
-    minWidth: 16,
-    height: 16,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    backgroundColor: tokens.accent.default,
-    borderWidth: 2,
-    borderColor: tokens.bg.canvas,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  unreadBadgeText: {
-    fontSize: 10,
-    fontWeight: tokens.font.weight.bold,
-    lineHeight: 12,
-    letterSpacing: 0.1,
-  },
+  badge: { position: "absolute", top: -4, right: -4 },
 });

@@ -65,7 +65,7 @@ export function GamesMovedScreen({ target, onCancel, copy = GAMES_COPY }: GamesM
             accessibilityRole="link"
             onPress={secondary.onPress}
             testID="games-moved-secondary"
-            hitSlop={8}
+            style={styles.linkTarget}
           >
             <Text variant="caption" tone="muted" style={styles.link}>
               {secondary.label}
@@ -99,4 +99,10 @@ const styles = StyleSheet.create({
   copy: { textAlign: "center" },
   primary: { alignSelf: "stretch", marginTop: tokens.space.sm },
   link: { textAlign: "center", textDecorationLine: "underline" },
+  // Web ignores hitSlop: the box itself is the 44pt target.
+  linkTarget: {
+    minHeight: tokens.hit,
+    justifyContent: "center",
+    paddingHorizontal: tokens.space.sm,
+  },
 });

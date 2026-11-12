@@ -6,24 +6,20 @@ import {
   Avatar,
   Button,
   confirm,
+  EmojiBadge,
+  Icon,
   type ListColorKey,
+  ListRow,
   Sheet,
   Text,
+  TextField,
   tokens,
   useToast,
 } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import {
-  Linking,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from "react-native";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { unarchiveList } from "../api/lists";
 import { fetchImpersonationTargets } from "../api/users";
 import { useAuth } from "../hooks/useAuth";
@@ -118,17 +114,20 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
           accessibilityLabel="Profile and settings"
           onPress={() => setProfileOpen(true)}
           testID="open-profile"
-          style={({ pressed, hovered }: PressableState) => [
-            styles.profileButton,
-            (pressed || hovered) && styles.profileButtonPressed,
-          ]}
+          style={styles.profileTarget}
         >
-          <Avatar
-            name={user?.displayName ?? user?.email ?? null}
-            imageUrl={user?.avatarUrl}
-            size="md"
-            style={styles.profileAvatar}
-          />
+          {({ pressed, hovered }: PressableState) => (
+            <View
+              style={[styles.profileButton, (pressed || hovered) && styles.profileButtonPressed]}
+            >
+              <Avatar
+                name={user?.displayName ?? user?.email ?? null}
+                imageUrl={user?.avatarUrl}
+                size="md"
+                style={styles.profileAvatar}
+              />
+            </View>
+          )}
         </Pressable>
       </View>
 
@@ -240,35 +239,31 @@ export function ProfileMenu({ archivedLists }: { archivedLists: ListSummary[] })
                 const accent = tokens.list[l.color as ListColorKey] ?? tokens.accent.default;
                 const busy = unarchiveMutation.isPending && unarchivingId === l.id;
                 return (
-                  <View key={l.id} style={styles.archivedRow}>
-                    <View
-                      style={[
-                        styles.archivedAvatar,
-                        { backgroundColor: `${accent}26`, borderColor: `${accent}3D` },
-                      ]}
-                    >
-                      <Text style={styles.avatarEmoji}>{l.emoji}</Text>
-                    </View>
-                    <View style={styles.archivedText}>
+                  <ListRow
+                    key={l.id}
+                    style={styles.archivedRow}
+                    leading={<EmojiBadge emoji={l.emoji} color={accent} />}
+                    title={
                       <Text variant="label" numberOfLines={1} style={styles.archivedTitle}>
                         {l.name}
                       </Text>
-                      <Text variant="caption" tone="muted" numberOfLines={1}>
-                        {summaryLabel(l)} ·{" "}
-                        {l.itemCount === 0
-                          ? "empty"
-                          : `${l.itemCount} ${l.itemCount === 1 ? "item" : "items"}`}
-                      </Text>
-                    </View>
-                    <Button
-                      label="Unarchive"
-                      size="md"
-                      variant="secondary"
-                      loading={busy}
-                      disabled={unarchiveMutation.isPending && !busy}
-                      onPress={() => unarchiveMutation.mutate(l.id)}
-                    />
-                  </View>
+                    }
+                    subtitle={`${summaryLabel(l)} · ${
+                      l.itemCount === 0
+                        ? "empty"
+                        : `${l.itemCount} ${l.itemCount === 1 ? "item" : "items"}`
+                    }`}
+                    trailing={
+                      <Button
+                        label="Unarchive"
+                        size="md"
+                        variant="secondary"
+                        loading={busy}
+                        disabled={unarchiveMutation.isPending && !busy}
+                        onPress={() => unarchiveMutation.mutate(l.id)}
+                      />
+                    }
+                  />
                 );
               })}
             </View>
@@ -347,17 +342,15 @@ function LetterboxdAccountRow() {
   }
   return (
     <View style={accountActionStyles.form}>
-      <TextInput
+      <TextField
         testID="letterboxd-account-input"
         value={username}
         onChangeText={setUsername}
         placeholder={connected ? `@${connected}` : "Letterboxd username"}
-        placeholderTextColor={tokens.text.muted}
         autoCapitalize="none"
         autoCorrect={false}
         autoFocus
         accessibilityLabel="Letterboxd username"
-        style={accountActionStyles.input}
         onSubmitEditing={onSave}
       />
       <View style={accountActionStyles.actions}>
@@ -502,9 +495,12 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
                   ? "No users with email"
                   : "Select a user")}
         </Text>
-        <Text variant="label" tone="muted" style={accountActionStyles.selectChevron}>
-          {dropdownOpen ? "⌃" : "⌄"}
-        </Text>
+        <Icon
+          name="chevron-down"
+          size={16}
+          tone="muted"
+          style={dropdownOpen ? accountActionStyles.selectChevronOpen : null}
+        />
       </Pressable>
       {dropdownOpen && !selectDisabled ? (
         <ScrollView
@@ -586,7 +582,15 @@ function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: () => v
 }
 
 const styles = StyleSheet.create({
-  profileButtonWrap: { width: 40, height: 40 },
+  profileButtonWrap: { width: tokens.hit, height: tokens.hit },
+  // 44pt press target around the 40pt avatar disc (web ignores hitSlop).
+  profileTarget: {
+    width: tokens.hit,
+    height: tokens.hit,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.pill,
+  },
   profileButton: {
     width: 40,
     height: 40,
@@ -606,7 +610,7 @@ const styles = StyleSheet.create({
     gap: tokens.space.md,
     marginBottom: tokens.space.lg,
   },
-  profileSheetIdentity: { flex: 1, minWidth: 0, gap: 2 },
+  profileSheetIdentity: { flex: 1, minWidth: 0, gap: tokens.space.xxs },
   profileSheetActions: { gap: tokens.space.sm },
   profileSheetDivider: {
     height: StyleSheet.hairlineWidth,
@@ -625,41 +629,16 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.lg,
     textAlign: "center",
   },
-  archivedList: { gap: tokens.space.sm },
-  archivedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.sm,
-  },
-  archivedAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  archivedText: { flex: 1, minWidth: 0 },
+  archivedList: { gap: tokens.space.xs },
+  // Flush with the sheet's text column (ListRow insets itself by default).
+  archivedRow: { marginHorizontal: 0, paddingHorizontal: 0 },
   archivedTitle: { color: tokens.text.primary },
-  avatarEmoji: { fontSize: 20, lineHeight: 24 },
 });
 
 const accountActionStyles = StyleSheet.create({
   form: { gap: tokens.space.sm },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 10,
-    color: tokens.text.primary,
-    // 16px floor: iOS Safari zooms into smaller focused inputs.
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.surface,
-  },
   select: {
-    minHeight: 44,
+    minHeight: tokens.hit,
     borderWidth: 1,
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
@@ -674,11 +653,7 @@ const accountActionStyles = StyleSheet.create({
   selectDisabled: { borderColor: tokens.border.subtle },
   selectText: { flex: 1, minWidth: 0, color: tokens.text.primary },
   selectPlaceholder: { color: tokens.text.muted },
-  selectChevron: {
-    width: 18,
-    textAlign: "center",
-    color: tokens.text.muted,
-  },
+  selectChevronOpen: { transform: [{ rotate: "180deg" }] },
   optionList: {
     maxHeight: 220,
     borderWidth: 1,
@@ -687,9 +662,11 @@ const accountActionStyles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
   },
   option: {
+    minHeight: tokens.hit,
+    justifyContent: "center",
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.sm,
-    gap: 2,
+    gap: tokens.space.xxs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.border.subtle,
   },

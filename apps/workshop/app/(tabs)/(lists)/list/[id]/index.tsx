@@ -1,12 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import { Button, EmptyState, tokens } from "@workshop/ui";
+import { Button, EmptyState, Screen, ScreenHeader, Skeleton, tokens } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { fetchListDetail, fetchListPreview, markListRead } from "../../../../../src/api/lists";
 import { useAuth } from "../../../../../src/hooks/useAuth";
+import { goBack } from "../../../../../src/lib/goBack";
 import { ListDetail } from "../../../../../src/screens/ListDetail";
 import { ListPublicLanding } from "../../../../../src/screens/ListPublicLanding";
 import { useJoinList } from "../../../../../src/screens/useJoinList";
@@ -106,11 +107,7 @@ export default function ListDetailRoute() {
   }
 
   if (stillLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={tokens.accent.default} />
-      </View>
-    );
+    return <ListDetailSkeleton />;
   }
 
   if (previewQuery.data) {
@@ -143,7 +140,51 @@ export default function ListDetailRoute() {
   );
 }
 
+/**
+ * First-load placeholder in the shape of `ListDetail`: the header (with a
+ * working back button), the badge + title block, the search pill, then rows.
+ */
+function ListDetailSkeleton() {
+  return (
+    <View style={styles.skeletonRoot} testID="list-detail-loading">
+      <Screen>
+        <ScreenHeader
+          leading="back"
+          onLeadingPress={() => goBack("/")}
+          leadingTestID="list-detail-back"
+        />
+        <View style={styles.skeletonTitle}>
+          <Skeleton.Block width={44} height={44} radius={tokens.radius.md} />
+          <View style={styles.skeletonTitleText}>
+            <Skeleton.Block width="70%" height={24} />
+            <Skeleton.Block width="40%" height={12} />
+          </View>
+        </View>
+        <View style={styles.skeletonToolbar}>
+          <Skeleton.Block height={44} radius={tokens.radius.pill} />
+        </View>
+        <Skeleton.Rows count={7} badge={44} />
+      </Screen>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  skeletonRoot: { flex: 1, backgroundColor: tokens.bg.canvas },
+  skeletonTitle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.lg,
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.sm,
+  },
+  skeletonTitleText: { flex: 1, gap: tokens.space.sm },
+  skeletonToolbar: {
+    paddingHorizontal: tokens.space.xl,
+    paddingTop: tokens.space.md,
+    paddingBottom: tokens.space.md,
+  },
   center: {
     flex: 1,
     alignItems: "center",

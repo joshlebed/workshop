@@ -1,7 +1,15 @@
 import { LIST_TEMPLATES } from "@workshop/shared/templates";
-import { IconButton, type ListColorKey, Screen, Text, tokens } from "@workshop/ui";
+import {
+  EmojiBadge,
+  type ListColorKey,
+  ListRow,
+  Screen,
+  ScreenHeader,
+  Text,
+  tokens,
+} from "@workshop/ui";
 import { useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { goBack } from "../../../../src/lib/goBack";
 
 export default function CreateListType() {
@@ -9,20 +17,19 @@ export default function CreateListType() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <IconButton
-          accessibilityLabel="Cancel"
-          onPress={() => goBack("/")}
-          testID="create-list-cancel"
-        >
-          <Text style={styles.backGlyph}>✕</Text>
-        </IconButton>
-        <View style={styles.stepDots} accessibilityLabel="Step 1 of 2">
-          <View style={[styles.stepDot, styles.stepDotActive]} />
-          <View style={styles.stepDot} />
-        </View>
-        <View style={styles.headerSpacer} />
-      </View>
+      <ScreenHeader
+        leading="close"
+        onLeadingPress={() => goBack("/")}
+        leadingLabel="Cancel"
+        leadingTestID="create-list-cancel"
+        center={
+          <View style={styles.stepDots} accessibilityLabel="Step 1 of 2">
+            <View style={[styles.stepDot, styles.stepDotActive]} />
+            <View style={styles.stepDot} />
+          </View>
+        }
+        trailing={<View style={styles.headerSpacer} />}
+      />
 
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.intro}>
@@ -34,54 +41,31 @@ export default function CreateListType() {
           </Text>
         </View>
         <View style={styles.options}>
-          {LIST_TEMPLATES.map((tpl) => {
-            const accent = tokens.list[tpl.defaults.color as ListColorKey];
-            return (
-              <Pressable
-                key={tpl.id}
-                testID={`create-list-template-${tpl.id}`}
-                accessibilityRole="button"
-                accessibilityLabel={tpl.displayName}
-                onPress={() =>
-                  router.push({
-                    pathname: "/create-list/customize",
-                    params: { template: tpl.id },
-                  })
-                }
-                style={({
-                  pressed,
-                  hovered,
-                  focused,
-                }: {
-                  pressed?: boolean;
-                  hovered?: boolean;
-                  focused?: boolean;
-                }) => [
-                  styles.option,
-                  hovered && styles.optionHovered,
-                  focused && styles.optionFocused,
-                  pressed && styles.optionPressed,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.optionBadge,
-                    { backgroundColor: `${accent}26`, borderColor: `${accent}3D` },
-                  ]}
-                >
-                  <Text style={styles.optionEmoji}>{tpl.defaults.emoji}</Text>
-                </View>
-                <View style={styles.optionText}>
-                  <Text variant="label" style={styles.optionLabel}>
-                    {tpl.displayName}
-                  </Text>
-                  <Text variant="caption" tone="muted" numberOfLines={2}>
-                    {tpl.description}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })}
+          {LIST_TEMPLATES.map((tpl) => (
+            <ListRow
+              key={tpl.id}
+              testID={`create-list-template-${tpl.id}`}
+              accessibilityLabel={tpl.displayName}
+              onPress={() =>
+                router.push({
+                  pathname: "/create-list/customize",
+                  params: { template: tpl.id },
+                })
+              }
+              leading={
+                <EmojiBadge
+                  emoji={tpl.defaults.emoji}
+                  color={tokens.list[tpl.defaults.color as ListColorKey]}
+                />
+              }
+              title={tpl.displayName}
+              subtitle={
+                <Text variant="caption" tone="muted" numberOfLines={2}>
+                  {tpl.description}
+                </Text>
+              }
+            />
+          ))}
         </View>
       </ScrollView>
     </Screen>
@@ -90,15 +74,13 @@ export default function CreateListType() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
-  header: {
+  stepDots: {
+    flex: 1,
     flexDirection: "row",
+    justifyContent: "center",
+    gap: tokens.space.xsm,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.md,
   },
-  stepDots: { flexDirection: "row", gap: 6, alignItems: "center" },
   stepDot: {
     width: 18,
     height: 3,
@@ -106,8 +88,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.border.subtle,
   },
   stepDotActive: { backgroundColor: tokens.accent.default },
-  backGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
-  headerSpacer: { width: 40 },
+  // Balances the leading close button so the step dots sit centred.
+  headerSpacer: { width: tokens.hit },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.md,
@@ -116,31 +98,6 @@ const styles = StyleSheet.create({
   },
   intro: { gap: tokens.space.xs, paddingHorizontal: tokens.space.sm },
   lead: { letterSpacing: -0.4 },
-  options: { gap: tokens.space.xs },
-  option: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.lg,
-  },
-  optionHovered: { backgroundColor: tokens.bg.surface },
-  optionFocused: {
-    backgroundColor: tokens.bg.surface,
-    outlineWidth: 0,
-    boxShadow: `0 0 0 1.5px ${tokens.accent.default}`,
-  },
-  optionPressed: { backgroundColor: tokens.bg.elevated },
-  optionBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  optionEmoji: { fontSize: 26, lineHeight: 30 },
-  optionText: { flex: 1, gap: 3, minWidth: 0 },
-  optionLabel: { fontSize: tokens.font.size.md },
+  // Rows bring their own inset; pull them out so badges align with the intro.
+  options: { gap: tokens.space.xs, marginHorizontal: -tokens.space.sm },
 });

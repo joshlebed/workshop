@@ -54,8 +54,8 @@ export function EmptyState({
       return;
     }
     progress.value = withTiming(1, {
-      duration: 360,
-      easing: Easing.out(Easing.cubic),
+      duration: tokens.motion.slow,
+      easing: Easing.bezier(...tokens.motion.easeOut),
     });
   }, [motion, reduceMotion, progress]);
 

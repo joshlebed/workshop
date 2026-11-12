@@ -492,8 +492,21 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   that stays mounted for ~220ms while its exit animation runs. Flipping the second sheet open
   during that window briefly stacks two `Modal`s — on iOS the new one registers as visible
   but never actually presents, leaving the screen non-interactable until you navigate away.
-  Chain through Sheet's `onClosed` prop instead. See `apps/workshop/app/list/[id]/game/[itemId].tsx`
-  for the pattern.
+  Chain through Sheet's `onClosed` prop instead (`createDeferredAction` in
+  `packages/ui/src/deferredAction.ts`, which `ActionSheet` uses; `ProfileMenu` does the same
+  with a ref).
+- **`confirm()` from `@workshop/ui` is the in-app dialog on web only where `ConfirmDialogHost`
+  is mounted.** Workshop mounts it in `app/_layout.tsx`; HighScore doesn't, so its web
+  `confirm()` stays `window.confirm`, and native is the system alert in both. Don't mount the
+  host in HighScore without deciding that on purpose. Workshop's root layout also calls
+  `installWebFocusRing()`, a global stylesheet (`:focus { outline: none }` plus an accent ring
+  on `:focus-visible`); a hand-rolled web control that suppresses its outline inline loses the
+  ring, so build on the primitives.
+- **`Sheet` caps at 85% of the screen and scrolls its children itself.** Its content sits in a
+  `ScrollView` (`flexGrow: 0`), so don't give a child a `flex: 1` (it collapses to nothing) or
+  wrap the whole body in another vertical `ScrollView`. There is no drag handle because there is
+  no pan-to-dismiss. For a list of actions use `ActionSheet`, which already runs the chosen
+  action from `onClosed`.
 - **Sheet keyboard handling is centralized in `packages/ui/src/Sheet.tsx`.** Keep the backdrop close
   target as a sibling behind the sheet content, not a parent wrapping it; iOS can otherwise
   treat taps inside a keyboard-moved form as backdrop taps and dismiss the modal. Don't wrap a
@@ -560,18 +573,20 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
   the file is gitignored and absent) will not catch it. Take the destination as a prop, or cast
   through `Href` with a comment.
 
-- **`accessibilityState` doesn't reach the DOM on web — a disabled `Button` renders no
-  `aria-disabled`.** react-native-web 0.21 drops the `accessibilityState` prop that
-  `Button`/`IconButton`/`Chip` pass, so a disabled control is styled and inert (its `onPress`
-  is `undefined`) but reads as enabled to assistive tech and to `agent-browser snapshot`.
-  Don't assert on `aria-disabled` in a browser check — assert on the click being a no-op — and
-  pair any disabled destructive control with visible explanatory text (see the impersonation
-  note in HighScore's Danger zone). Fixing this properly means migrating the four components to
-  RNW's `aria-*` props, which touches every screen in both apps; it hasn't been done.
+- **On web, state goes to the DOM through `aria-*` props, not `accessibilityState`.**
+  react-native-web 0.21 drops `accessibilityState`, so a control that only sets it reads as
+  enabled/unchecked to assistive tech and to `agent-browser snapshot`. The `@workshop/ui`
+  primitives (`Button`, `IconButton`, `Chip`, `ListRow`, `Switch`, `RadioRow`, `ActionSheet`)
+  pass `aria-disabled` / `aria-busy` / `aria-checked` / `aria-selected` beside it; props React
+  Native's types don't declare (`aria-pressed`, `aria-level`, `aria-describedby`) go through
+  `webAria({...})` from `packages/ui/src/interaction.ts`, which returns `{}` on native. Build
+  new controls on the primitives instead of hand-rolling a `Pressable`. HighScore's own
+  `src/theme` controls still use `accessibilityState` only.
 
 - **iOS Safari zooms the page when a focused `<input>`/`<textarea>` has font-size < 16px, and
   never zooms back out.** Any `TextInput` rendered on web must use `tokens.font.size.md` (16) or
-  larger; `sm`/`xs` (13/12) trigger it. `viewport maximum-scale=1` is the only other fix and it
+  larger; `sm`/`xs` (13/12) trigger it. In Workshop use `TextField` from `@workshop/ui`, which
+  floors `inputStyle.fontSize` at 16. `viewport maximum-scale=1` is the only other fix and it
   blocks pinch-zoom on Android, so fix the font size instead (see `PASTE_INPUT_FONT_SIZE` in
   HighScore's `GameScorePasteSheet.tsx`).
 

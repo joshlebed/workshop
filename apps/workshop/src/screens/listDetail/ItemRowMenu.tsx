@@ -10,9 +10,7 @@
 // from Spotify and immutable; only position is mutable).
 
 import type { Item } from "@workshop/shared";
-import { Sheet, Text, tokens } from "@workshop/ui";
-import { useRef } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActionSheet } from "@workshop/ui";
 
 export interface ItemRowMenuActions {
   section: "ordered" | "unordered" | "completed";
@@ -39,129 +37,62 @@ interface ItemRowMenuProps {
   onClose: () => void;
 }
 
+// The chosen action runs from the sheet's `onClosed` (ActionSheet handles
+// it), after its Modal has finished dismissing — a confirm presented while
+// the Modal was still on screen could be dropped by iOS (0.13).
 export function ItemRowMenu({ item, actions, onClose }: ItemRowMenuProps) {
   const visible = item !== null && actions !== null;
-
-  // The chosen action runs from the Sheet's `onClosed`, after its Modal has
-  // finished dismissing. A one-tick `setTimeout` fired the delete confirm
-  // while the Modal was still on screen, which iOS can drop (0.13).
-  const pendingRef = useRef<(() => void) | null>(null);
-  const run = (fn?: () => void) => () => {
-    pendingRef.current = fn ?? null;
-    onClose();
-  };
-
+  const a = actions;
   return (
-    <Sheet
+    <ActionSheet
       visible={visible}
-      onRequestClose={onClose}
-      onClosed={() => {
-        const fn = pendingRef.current;
-        pendingRef.current = null;
-        fn?.();
-      }}
+      onClose={onClose}
+      title={item?.title}
       testID="item-row-menu-sheet"
-    >
-      {item && actions ? (
-        <>
-          <View style={styles.titleRow}>
-            <Text variant="heading" numberOfLines={1} style={styles.title}>
-              {item.title}
-            </Text>
-          </View>
-          {actions.section === "ordered" && actions.onDemote ? (
-            <MenuItem
-              label={actions.isAlbumShelf ? "Move to detected" : "Move to unordered"}
-              onPress={run(actions.onDemote)}
-              testID="item-row-menu-demote"
-            />
-          ) : null}
-          {actions.section === "unordered" && actions.onPromoteToTop ? (
-            <MenuItem
-              label="Move to ordered (top)"
-              onPress={run(actions.onPromoteToTop)}
-              testID="item-row-menu-promote-top"
-            />
-          ) : null}
-          {actions.section === "unordered" && actions.onPromote ? (
-            <MenuItem
-              label="Move to ordered (bottom)"
-              onPress={run(actions.onPromote)}
-              testID="item-row-menu-promote"
-            />
-          ) : null}
-          {actions.section !== "completed" && actions.onComplete ? (
-            <MenuItem
-              label="Mark complete"
-              onPress={run(actions.onComplete)}
-              testID="item-row-menu-complete"
-            />
-          ) : null}
-          {actions.section === "completed" && actions.onUncomplete ? (
-            <MenuItem
-              label="Mark incomplete"
-              onPress={run(actions.onUncomplete)}
-              testID="item-row-menu-uncomplete"
-            />
-          ) : null}
-          {actions.onEdit ? (
-            <MenuItem label="Edit" onPress={run(actions.onEdit)} testID="item-row-menu-edit" />
-          ) : null}
-          <MenuItem
-            label="Delete"
-            tone="danger"
-            onPress={run(actions.onDelete)}
-            testID="item-row-menu-delete"
-          />
-          <MenuItem label="Cancel" tone="muted" onPress={onClose} testID="item-row-menu-cancel" />
-        </>
-      ) : null}
-    </Sheet>
+      cancelTestID="item-row-menu-cancel"
+      items={
+        a
+          ? [
+              a.section === "ordered" &&
+                a.onDemote && {
+                  label: a.isAlbumShelf ? "Move to detected" : "Move to unordered",
+                  onPress: a.onDemote,
+                  testID: "item-row-menu-demote",
+                },
+              a.section === "unordered" &&
+                a.onPromoteToTop && {
+                  label: "Move to ordered (top)",
+                  onPress: a.onPromoteToTop,
+                  testID: "item-row-menu-promote-top",
+                },
+              a.section === "unordered" &&
+                a.onPromote && {
+                  label: "Move to ordered (bottom)",
+                  onPress: a.onPromote,
+                  testID: "item-row-menu-promote",
+                },
+              a.section !== "completed" &&
+                a.onComplete && {
+                  label: "Mark complete",
+                  onPress: a.onComplete,
+                  testID: "item-row-menu-complete",
+                },
+              a.section === "completed" &&
+                a.onUncomplete && {
+                  label: "Mark incomplete",
+                  onPress: a.onUncomplete,
+                  testID: "item-row-menu-uncomplete",
+                },
+              a.onEdit && { label: "Edit", onPress: a.onEdit, testID: "item-row-menu-edit" },
+              {
+                label: "Delete",
+                tone: "danger" as const,
+                onPress: a.onDelete,
+                testID: "item-row-menu-delete",
+              },
+            ]
+          : []
+      }
+    />
   );
 }
-
-interface MenuItemProps {
-  label: string;
-  onPress: () => void;
-  tone?: "default" | "danger" | "muted";
-  testID?: string;
-}
-
-function MenuItem({ label, onPress, tone = "default", testID }: MenuItemProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      testID={testID}
-      style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
-    >
-      <Text
-        style={[
-          styles.itemLabel,
-          tone === "danger" && styles.itemDanger,
-          tone === "muted" && styles.itemMuted,
-        ]}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-const styles = StyleSheet.create({
-  titleRow: { paddingBottom: tokens.space.sm },
-  title: { color: tokens.text.primary },
-  item: {
-    paddingVertical: tokens.space.md,
-    paddingHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.md,
-  },
-  itemPressed: { backgroundColor: tokens.bg.elevated },
-  itemLabel: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-  },
-  itemDanger: { color: tokens.status.danger, fontWeight: tokens.font.weight.bold },
-  itemMuted: { color: tokens.text.muted },
-});

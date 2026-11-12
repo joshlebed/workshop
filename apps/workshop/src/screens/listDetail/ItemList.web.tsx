@@ -33,7 +33,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
-import { PullToRefresh, REORDER_ACTIVATION, Text, tokens } from "@workshop/ui";
+import { alpha, PullToRefresh, REORDER_ACTIVATION, Text, tokens } from "@workshop/ui";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View, type ViewInstance } from "react-native";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
@@ -491,6 +491,6 @@ const styles = StyleSheet.create({
   },
   dropZoneActive: {
     borderColor: tokens.accent.default,
-    backgroundColor: `${tokens.accent.default}1A`,
+    backgroundColor: alpha(tokens.accent.default, 0.1),
   },
 });

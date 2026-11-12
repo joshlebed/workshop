@@ -1,17 +1,21 @@
+import type { Ref } from "react";
 import {
   ActivityIndicator,
   Pressable,
   type PressableProps,
   StyleSheet,
   Text,
+  type ViewInstance,
   type ViewStyle,
 } from "react-native";
+import { interaction, type PressState } from "./interaction";
 import { tokens } from "./theme";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "md" | "lg";
 
-export interface ButtonProps extends Omit<PressableProps, "children" | "style"> {
+export interface ButtonProps extends Omit<PressableProps, "children" | "style" | "ref"> {
+  ref?: Ref<ViewInstance>;
   label: string;
   onPress?: () => void;
   variant?: Variant;
@@ -24,6 +28,7 @@ export interface ButtonProps extends Omit<PressableProps, "children" | "style"> 
 }
 
 export function Button({
+  ref,
   label,
   onPress,
   variant = "primary",
@@ -39,14 +44,21 @@ export function Button({
   return (
     <Pressable
       {...rest}
+      ref={ref}
       testID={testID}
       onPress={isDisabled ? undefined : onPress}
       accessibilityRole="button"
       accessibilityState={{ disabled: isDisabled, busy: loading }}
-      style={({ pressed }) => [
+      // react-native-web drops `accessibilityState`; aria-* reaches the DOM.
+      aria-disabled={isDisabled}
+      aria-busy={loading}
+      // The label stays announced while a spinner replaces it.
+      accessibilityLabel={rest.accessibilityLabel ?? label}
+      style={({ pressed, hovered }: PressState) => [
         styles.base,
         size === "lg" ? styles.sizeLg : styles.sizeMd,
         variantStyle[variant],
+        hovered && !pressed && !isDisabled ? hoverStyle[variant] : null,
         pressed && !isDisabled ? pressedStyle[variant] : null,
         // Disabled state: instead of opacity-on-everything (which muddies the
         // accent fill and dims the label below readable contrast), neutralise
@@ -83,7 +95,13 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     borderWidth: 1,
   },
-  sizeMd: { paddingVertical: 10, paddingHorizontal: tokens.space.lg, minHeight: 44 },
+  // 44pt on every platform: web ignores hitSlop, so the box itself is the target.
+  sizeMd: {
+    paddingVertical: 10,
+    paddingHorizontal: tokens.space.lg,
+    minHeight: tokens.hit,
+    minWidth: tokens.hit,
+  },
   sizeLg: { paddingVertical: 14, paddingHorizontal: tokens.space.xl, minHeight: 52 },
   label: { fontSize: tokens.font.size.md, fontWeight: tokens.font.weight.semibold },
 });
@@ -95,6 +113,15 @@ const variantStyle: Record<Variant, ViewStyle> = {
   danger: { backgroundColor: tokens.status.danger, borderColor: tokens.status.danger },
 };
 
+const hoverStyle: Record<Variant, ViewStyle> = {
+  primary: { backgroundColor: tokens.accent.hover, borderColor: tokens.accent.hover },
+  secondary: { backgroundColor: tokens.border.subtle },
+  ghost: { backgroundColor: interaction.hover },
+  danger: { opacity: 0.92 },
+};
+
+// Pressed is a background step (secondary steps down, ghost picks up the
+// accent tint), never an opacity fade on the label.
 const pressedStyle: Record<Variant, ViewStyle> = {
   primary: { backgroundColor: tokens.accent.hover, borderColor: tokens.accent.hover },
   secondary: { backgroundColor: tokens.bg.surface },

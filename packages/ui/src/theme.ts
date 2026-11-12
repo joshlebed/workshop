@@ -54,10 +54,24 @@ const SHARED = {
     sand: "#D4B896",
     slate: "#94A3B8",
   },
-  space: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 },
+  // `xxs` (2) and `xsm` (6) exist for optical nudges (badge offsets, icon
+  // gaps); layout rhythm stays on 4 · 8 · 12 · 16 · 24 · 32.
+  space: { xxs: 2, xs: 4, xsm: 6, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 },
   radius: { sm: 6, md: 10, lg: 14, pill: 999 },
+  // Durations in ms. One exponential ease-out curve (`easeOut`, cubic-bezier
+  // control points) for everything that enters or changes state; exits use
+  // `fast`. No bounce. Feed the curve to Reanimated with
+  // `Easing.bezier(...tokens.motion.easeOut)`.
+  motion: {
+    fast: 150,
+    base: 220,
+    slow: 320,
+    easeOut: [0.16, 1, 0.3, 1] as const,
+  },
+  // The 44pt minimum touch target, on every platform (web ignores hitSlop).
+  hit: 44,
   font: {
-    size: { xs: 12, sm: 13, md: 16, lg: 18, xl: 22, xxl: 28 },
+    size: { xs: 12, sm: 13, md: 16, lg: 18, xl: 22, xxl: 28, xxxl: 34 },
     weight: {
       regular: "400" as const,
       medium: "500" as const,
@@ -78,3 +92,40 @@ export { darkTokens as tokens };
 
 export type Tokens = typeof darkTokens;
 export type ListColorKey = keyof typeof SHARED.list;
+
+const HEX6 = /^#([0-9a-f]{6})$/i;
+const HEX3 = /^#([0-9a-f]{3})$/i;
+const HEX8 = /^#([0-9a-f]{6})([0-9a-f]{2})$/i;
+
+/**
+ * `color` at `level` opacity (0–1), as an 8-digit hex. Replaces the old
+ * `${accent}1F` string concatenation: the level reads as a number, and a
+ * color that already carries alpha is multiplied instead of corrupted.
+ * Non-hex inputs (named colors, rgba()) are returned unchanged.
+ */
+export function alpha(color: string, level: number): string {
+  const clamped = Math.min(1, Math.max(0, Number.isFinite(level) ? level : 1));
+  let rgb: string;
+  let base = 1;
+  const m8 = HEX8.exec(color);
+  const m6 = HEX6.exec(color);
+  const m3 = HEX3.exec(color);
+  if (m8?.[1] && m8[2]) {
+    rgb = m8[1];
+    base = Number.parseInt(m8[2], 16) / 255;
+  } else if (m6?.[1]) {
+    rgb = m6[1];
+  } else if (m3?.[1]) {
+    rgb = m3[1]
+      .split("")
+      .map((c) => c + c)
+      .join("");
+  } else {
+    return color;
+  }
+  const a = Math.round(clamped * base * 255)
+    .toString(16)
+    .padStart(2, "0")
+    .toUpperCase();
+  return `#${rgb.toUpperCase()}${a}`;
+}

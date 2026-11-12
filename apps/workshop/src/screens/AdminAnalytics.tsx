@@ -18,14 +18,15 @@ import {
   Card,
   Chip,
   HorizontalBars,
-  IconButton,
   Screen,
+  ScreenHeader,
+  Skeleton,
   Text,
   tokens,
 } from "@workshop/ui";
 import { goBack } from "@workshop/ui/navigation";
 import { useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { fetchAdminAnalytics } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
 
@@ -57,23 +58,14 @@ export default function AdminAnalytics() {
 
   return (
     <Screen style={styles.root} testID="admin-analytics">
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
-            Admin
-          </Text>
-          <Text variant="heading" numberOfLines={1}>
-            Workshop analytics
-          </Text>
-        </View>
-        <IconButton
-          accessibilityLabel="Close analytics"
-          onPress={() => goBack("/")}
-          testID="admin-analytics-close"
-        >
-          <Text style={styles.closeGlyph}>✕</Text>
-        </IconButton>
-      </View>
+      <ScreenHeader
+        leading="back"
+        onLeadingPress={() => goBack("/")}
+        leadingTestID="admin-analytics-close"
+        eyebrow="Admin"
+        title="Workshop analytics"
+        style={styles.header}
+      />
 
       {!isAdmin ? (
         <View style={styles.body}>
@@ -111,8 +103,16 @@ export default function AdminAnalytics() {
           ) : null}
 
           {query.isLoading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator color={tokens.accent.default} />
+            <View style={styles.loading} testID="admin-analytics-loading">
+              <View style={styles.statGrid}>
+                {[0, 1, 2, 3, 4, 5].map((i) => (
+                  <View key={i} style={styles.statTile}>
+                    <Skeleton.Block height={74} radius={tokens.radius.lg} />
+                  </View>
+                ))}
+              </View>
+              <Skeleton.Block height={200} radius={tokens.radius.lg} />
+              <Skeleton.Block height={200} radius={tokens.radius.lg} />
             </View>
           ) : null}
 
@@ -182,27 +182,16 @@ export default function AdminAnalytics() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-    gap: tokens.space.md,
-  },
-  headerText: { flex: 1, minWidth: 0, gap: 2 },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
+  header: { paddingTop: tokens.space.lg, paddingBottom: tokens.space.md },
   body: {
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.md,
   },
   rangeRow: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
-  loading: { paddingVertical: tokens.space.xl, alignItems: "center" },
+  loading: { gap: tokens.space.md },
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
-  statTile: { flexGrow: 1, flexBasis: "30%", gap: 2 },
+  statTile: { flexGrow: 1, flexBasis: "30%", gap: tokens.space.xxs },
   statValue: {
     fontSize: tokens.font.size.xxl,
     lineHeight: 34,

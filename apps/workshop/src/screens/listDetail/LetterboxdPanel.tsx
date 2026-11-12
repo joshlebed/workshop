@@ -17,17 +17,21 @@ import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Item, List, ListMemberSummary } from "@workshop/shared";
 import {
+  alpha,
   Button,
   Card,
   confirm,
   haptics,
+  Icon,
   openExternalUrl,
+  SectionHeader,
   Text,
+  TextField,
   tokens,
   useToast,
 } from "@workshop/ui";
 import { useState } from "react";
-import { Image, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { acceptItem, fetchLetterboxdStatus, suggestFilm } from "../../api/letterboxd";
 import { useAuth } from "../../hooks/useAuth";
 
@@ -136,12 +140,12 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
             automatically.
           </Text>
           <View style={styles.connectRow}>
-            <TextInput
+            <TextField
               testID="letterboxd-username-input"
               value={username}
               onChangeText={setUsername}
               placeholder="Letterboxd username"
-              placeholderTextColor={tokens.text.muted}
+              accessibilityLabel="Letterboxd username"
               autoCapitalize="none"
               autoCorrect={false}
               style={styles.input}
@@ -163,9 +167,7 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
 
       {suggested.length > 0 ? (
         <View style={styles.suggestions} testID="letterboxd-suggestions">
-          <Text variant="label" tone="secondary" style={styles.sectionLabel}>
-            Suggestions
-          </Text>
+          <SectionHeader title="Suggestions" />
           {suggested.map((item) => {
             const lb = item.letterboxd;
             const acceptances = lb?.acceptances ?? [];
@@ -182,7 +184,7 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
                     accessibilityIgnoresInvertColors
                   />
                 ) : (
-                  <View style={[styles.poster, { backgroundColor: `${accent}1F` }]}>
+                  <View style={[styles.poster, { backgroundColor: alpha(accent, 0.12) }]}>
                     <Text style={styles.posterGlyph}>🎬</Text>
                   </View>
                 )}
@@ -202,9 +204,12 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
                   </Text>
                 </Pressable>
                 {accepted ? (
-                  <Text variant="caption" tone="muted" style={styles.acceptedTag}>
-                    ✓ in
-                  </Text>
+                  <View style={styles.acceptedTag}>
+                    <Icon name="check" size={12} tone="muted" />
+                    <Text variant="caption" tone="muted">
+                      in
+                    </Text>
+                  </View>
                 ) : (
                   <Button
                     testID={`suggestion-accept-${item.id}`}
@@ -223,12 +228,12 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
 
       {suggestOpen ? (
         <View style={styles.suggestForm}>
-          <TextInput
+          <TextField
             testID="letterboxd-suggest-input"
             value={suggestUrl}
             onChangeText={setSuggestUrl}
             placeholder="https://letterboxd.com/film/…"
-            placeholderTextColor={tokens.text.muted}
+            accessibilityLabel="Letterboxd film URL"
             autoCapitalize="none"
             autoCorrect={false}
             autoFocus
@@ -265,8 +270,9 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
             testID="letterboxd-suggest-open"
             style={({ pressed }) => [styles.suggestLink, pressed && styles.suggestLinkPressed]}
           >
+            <Icon name="plus" size={12} color={accent} />
             <Text variant="caption" style={{ color: accent }}>
-              + Suggest a film from Letterboxd
+              Suggest a film from Letterboxd
             </Text>
           </Pressable>
           {connectedCount !== null ? (
@@ -297,20 +303,8 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     alignItems: "center",
   },
-  input: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 10,
-    color: tokens.text.primary,
-    // 16px floor: iOS Safari zooms into smaller focused inputs.
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.surface,
-  },
+  input: { flex: 1 },
   suggestions: { gap: tokens.space.sm },
-  sectionLabel: { letterSpacing: 0.4, textTransform: "uppercase", fontSize: 11 },
   suggestionRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -323,10 +317,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  posterGlyph: { fontSize: 16 },
-  suggestionBody: { flex: 1, minWidth: 0, gap: 2 },
+  posterGlyph: { fontSize: tokens.font.size.md },
+  suggestionBody: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: tokens.hit,
+    justifyContent: "center",
+    gap: tokens.space.xxs,
+  },
   suggestionTitle: { fontSize: tokens.font.size.sm },
-  acceptedTag: { paddingHorizontal: tokens.space.sm },
+  acceptedTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+    paddingHorizontal: tokens.space.sm,
+  },
   suggestForm: {
     flexDirection: "row",
     gap: tokens.space.sm,
@@ -338,6 +343,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: tokens.space.sm,
   },
-  suggestLink: { paddingVertical: tokens.space.xs },
+  suggestLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xsm,
+    minHeight: tokens.hit,
+  },
   suggestLinkPressed: { opacity: 0.7 },
 });

@@ -2,7 +2,15 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { configureApiClient } from "@workshop/api-client/api";
 import { stashSignupLanding } from "@workshop/api-client/signupAcquisition";
 import { getItem, removeItem } from "@workshop/api-client/storage";
-import { Button, Text, ThemeProvider, ToastProvider, tokens } from "@workshop/ui";
+import {
+  Button,
+  ConfirmDialogHost,
+  installWebFocusRing,
+  Text,
+  ThemeProvider,
+  ToastProvider,
+  tokens,
+} from "@workshop/ui";
 import {
   DarkTheme,
   type Href,
@@ -293,6 +301,9 @@ function AuthGate() {
   );
 }
 
+// Web: the app's one keyboard focus ring (`:focus-visible` only). No-op on native.
+installWebFocusRing();
+
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
   const queryClient = useMemo(() => createQueryClient(), []);
@@ -314,6 +325,8 @@ export default function RootLayout() {
                   <AuthProvider>
                     <AuthGate />
                   </AuthProvider>
+                  {/* Backs `confirm()` on web with the in-app dialog. */}
+                  <ConfirmDialogHost />
                 </ToastProvider>
               </PersistQueryClientProvider>
             </NavigationThemeProvider>

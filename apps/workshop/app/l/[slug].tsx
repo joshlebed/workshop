@@ -2,10 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { ApiError, errorMessage } from "@workshop/api-client/api";
 import { Button, EmptyState, tokens } from "@workshop/ui";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { fetchListItemsBySlug, fetchListPreviewBySlug } from "../../src/api/share";
 import { useAuth } from "../../src/hooks/useAuth";
-import { ListPublicLanding } from "../../src/screens/ListPublicLanding";
+import { ListPublicLanding, ListPublicLandingSkeleton } from "../../src/screens/ListPublicLanding";
 import { useJoinList } from "../../src/screens/useJoinList";
 
 /**
@@ -70,11 +70,7 @@ export default function ListShortLink() {
   }
 
   if (previewQuery.isPending) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={tokens.accent.default} />
-      </View>
-    );
+    return <ListPublicLandingSkeleton />;
   }
 
   if (previewQuery.isError) {

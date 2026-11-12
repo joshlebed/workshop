@@ -8,9 +8,16 @@ import {
   useState,
 } from "react";
 import { Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
-import { CloseIcon } from "./CloseIcon";
-import { CopyIcon } from "./CopyIcon";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { copyToClipboard } from "./clipboard";
+import { Icon } from "./Icon";
+import { interaction, type PressState } from "./interaction";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -22,6 +29,8 @@ interface Toast {
   tone: ToastTone;
   actionLabel?: string;
   onAction?: () => void;
+  /** Set when dismissed; the row plays its exit before it is removed. */
+  leaving?: boolean;
 }
 
 interface ShowToastInput {
@@ -43,6 +52,11 @@ interface ToastContextValue {
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
+
+/** Non-throwing access for shared primitives (`Fab`) that work without a provider. */
+export function useOptionalToast(): ToastContextValue | null {
+  return useContext(ToastContext);
+}
 
 // Separate from ToastContext so `useToast()` callers don't re-render on every
 // toast. Read by `ToastOverlay` to re-host the toasts inside an RN `Modal`.
@@ -80,8 +94,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     return () => setOverlayCount((n) => n - 1);
   }, []);
 
+  // Dismiss marks the toast as leaving so it can play its exit, then drops
+  // it once the exit (`motion.fast`) has run.
   const dismiss = useCallback((id: number) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, tokens.motion.fast);
   }, []);
 
   const showToast = useCallback(
@@ -159,8 +178,31 @@ function ToastViewport({
 function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const tone = toneStyle[toast.tone];
   const showCopy = toast.tone === "danger";
+  const reduceMotion = useReducedMotion();
+  const progress = useSharedValue(0);
+  const leaving = !!toast.leaving;
+  useEffect(() => {
+    progress.value = leaving
+      ? withTiming(0, { duration: tokens.motion.fast, easing: Easing.in(Easing.cubic) })
+      : withTiming(1, {
+          duration: tokens.motion.base,
+          easing: Easing.bezier(...tokens.motion.easeOut),
+        });
+  }, [leaving, progress]);
+  const motionStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+    transform: reduceMotion ? [] : [{ translateY: (1 - progress.value) * 12 }],
+  }));
+  const isAlert = toast.tone === "danger";
   return (
-    <View style={[styles.row, tone]} testID={`toast-${toast.tone}`}>
+    <Animated.View
+      style={[styles.row, tone, motionStyle]}
+      testID={`toast-${toast.tone}`}
+      // A live region: polite status for confirmations, assertive alert for
+      // failures, so screen readers announce toasts without moving focus.
+      role={isAlert ? "alert" : "status"}
+      aria-live={isAlert ? "assertive" : "polite"}
+    >
       <Text style={styles.message} selectable>
         {toast.message}
       </Text>
@@ -185,30 +227,30 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
           onPress={() => {
             copyToClipboard(toast.message).catch(() => {});
           }}
-          style={({ pressed, hovered }) => [
+          style={({ pressed, hovered }: PressState) => [
             styles.iconBtn,
-            (pressed || hovered) && styles.iconBtnHover,
+            hovered && styles.iconBtnHover,
+            pressed && styles.iconBtnPressed,
           ]}
-          hitSlop={8}
           testID="toast-copy"
         >
-          <CopyIcon size={14} color={tokens.text.secondary} />
+          <Icon name="copy" size={16} tone="secondary" />
         </Pressable>
       ) : null}
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
         onPress={onDismiss}
-        style={({ pressed, hovered }) => [
+        style={({ pressed, hovered }: PressState) => [
           styles.iconBtn,
-          (pressed || hovered) && styles.iconBtnHover,
+          hovered && styles.iconBtnHover,
+          pressed && styles.iconBtnPressed,
         ]}
-        hitSlop={8}
         testID="toast-dismiss"
       >
-        <CloseIcon size={14} color={tokens.text.secondary} />
+        <Icon name="close" size={14} tone="secondary" />
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -247,9 +289,9 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     borderWidth: 1,
     paddingLeft: tokens.space.lg,
-    paddingRight: tokens.space.sm,
-    paddingVertical: tokens.space.sm,
-    minHeight: 44,
+    paddingRight: tokens.space.xs,
+    paddingVertical: tokens.space.xs,
+    minHeight: 52,
     maxWidth: 480,
     width: "100%",
   },
@@ -257,16 +299,18 @@ const styles = StyleSheet.create({
   action: {
     backgroundColor: tokens.accent.default,
     paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.xs,
+    minHeight: tokens.hit,
+    justifyContent: "center",
     borderRadius: tokens.radius.sm,
   },
   actionLabel: { fontSize: tokens.font.size.sm, fontWeight: tokens.font.weight.semibold },
   iconBtn: {
-    width: 28,
-    height: 28,
+    width: tokens.hit,
+    height: tokens.hit,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: tokens.radius.sm,
   },
-  iconBtnHover: { backgroundColor: tokens.bg.surface },
+  iconBtnHover: { backgroundColor: interaction.hover },
+  iconBtnPressed: { backgroundColor: interaction.pressed },
 });

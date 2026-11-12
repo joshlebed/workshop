@@ -9,7 +9,16 @@
 // cover from `metadata.posterUrl` or `metadata.coverUrl` / `image`.
 
 import type { Item, ItemKind } from "@workshop/shared";
-import { formatRelative, REORDER_ACTIVATION, Text, tokens } from "@workshop/ui";
+import {
+  alpha,
+  Badge,
+  formatRelative,
+  Icon,
+  IconButton,
+  REORDER_ACTIVATION,
+  Text,
+  tokens,
+} from "@workshop/ui";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -99,7 +108,7 @@ export function ItemRow({
   // doubling up with opacity made completed rows feel washed out.
   const completedProgress = useSharedValue(isCompleted ? 1 : 0);
   useEffect(() => {
-    completedProgress.value = withTiming(isCompleted ? 1 : 0, { duration: 220 });
+    completedProgress.value = withTiming(isCompleted ? 1 : 0, { duration: tokens.motion.base });
   }, [isCompleted, completedProgress]);
   const coverStyle = useAnimatedStyle(() => ({ opacity: 1 - completedProgress.value * 0.5 }));
 
@@ -134,17 +143,19 @@ export function ItemRow({
           accessibilityLabel={`Mark ${item.title} as not done`}
           onPress={onTapCompleted}
           testID={`item-row-uncomplete-${item.id}`}
-          hitSlop={8}
-          style={({ pressed, hovered }) => [
-            styles.completedMark,
-            (pressed || hovered) && styles.completedMarkHover,
-          ]}
+          // A 44pt target around the 28pt mark; negative margins keep the
+          // slot 28 wide so covers align with ranked rows.
+          style={styles.completedTarget}
         >
-          <Text style={styles.completedGlyph}>✓</Text>
+          {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+            <View style={[styles.completedMark, (pressed || hovered) && styles.completedMarkHover]}>
+              <Icon name="check" size={14} tone="secondary" />
+            </View>
+          )}
         </Pressable>
       ) : (
         <View style={styles.completedMark}>
-          <Text style={styles.completedGlyph}>✓</Text>
+          <Icon name="check" size={14} tone="secondary" />
         </View>
       )
     ) : dragHandle ? (
@@ -167,7 +178,7 @@ export function ItemRow({
       style={[
         styles.cover,
         styles.coverPlaceholder,
-        { backgroundColor: `${accent}1F` },
+        { backgroundColor: alpha(accent, 0.12) },
         coverStyle,
       ]}
     >
@@ -204,13 +215,7 @@ export function ItemRow({
           >
             {item.title}
           </Text>
-          {isNew ? (
-            <View style={styles.newPill} testID={`item-row-new-${item.id}`}>
-              <Text variant="caption" tone="onAccent" style={styles.newPillText}>
-                NEW
-              </Text>
-            </View>
-          ) : null}
+          {isNew ? <Badge label="NEW" tone="accent" testID={`item-row-new-${item.id}`} /> : null}
         </View>
         {view.subline ? (
           <Text
@@ -260,19 +265,14 @@ export function ItemRow({
       ) : (
         <View style={styles.bodyPressable}>{bodyContent}</View>
       )}
-      <Pressable
-        accessibilityRole="button"
+      <IconButton
+        icon="more"
+        iconTone="secondary"
         accessibilityLabel={`Open menu for ${item.title}`}
         onPress={onMenu}
         testID={`item-row-menu-${item.id}`}
-        style={({ pressed, hovered }) => [
-          styles.menuBtn,
-          (pressed || hovered) && styles.menuBtnHover,
-        ]}
-        hitSlop={10}
-      >
-        <Text style={styles.menuGlyph}>⋯</Text>
-      </Pressable>
+        style={styles.menuBtn}
+      />
     </View>
   );
 }
@@ -296,7 +296,7 @@ function PositionChip({ isDragging, accent, rank, dragHandle }: PositionChipProp
       {rank !== null ? (
         <Text style={[styles.positionRank, { color: accent }]}>{rank}</Text>
       ) : (
-        <Text style={styles.positionDragGlyph}>≡</Text>
+        <Icon name="drag" size={16} tone="muted" />
       )}
     </View>
   );
@@ -447,10 +447,20 @@ export function SectionHeader({ kind, count, listItemKind, collapsible }: Sectio
 
   const body = (
     <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderLabel}>{label}</Text>
-      <Text style={styles.sectionHeaderCount}>{count}</Text>
+      <Text
+        variant="eyebrow"
+        tone="secondary"
+        accessibilityRole={collapsible ? undefined : "header"}
+      >
+        {label}
+      </Text>
+      <Text variant="eyebrow" style={styles.sectionHeaderCount}>
+        {count}
+      </Text>
       {collapsible ? (
-        <Text style={styles.sectionHeaderToggle}>{collapsible.collapsed ? "Show" : "Hide"}</Text>
+        <Text variant="eyebrow" style={styles.sectionHeaderToggle}>
+          {collapsible.collapsed ? "Show" : "Hide"}
+        </Text>
       ) : null}
     </View>
   );
@@ -531,10 +541,12 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     letterSpacing: -0.5,
   },
-  positionDragGlyph: {
-    color: tokens.text.muted,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.regular,
+  completedTarget: {
+    width: tokens.hit,
+    height: tokens.hit,
+    marginHorizontal: (28 - tokens.hit) / 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
   completedMark: {
     // Width matches `positionSlot` so the cover edge aligns across sections.
@@ -551,12 +563,6 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.strong,
     backgroundColor: tokens.bg.surface,
   },
-  completedGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.sm,
-    lineHeight: tokens.font.size.sm + 2,
-    fontWeight: tokens.font.weight.semibold,
-  },
   cover: {
     width: 52,
     height: 52,
@@ -567,7 +573,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
   },
   coverPressed: { opacity: 0.7 },
-  coverCompleted: { opacity: 0.5 },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
   // Emoji glyph (🔗 / 📀 / 🎬 …) shown when a row has no thumbnail. `Text`
   // defaults to the `body` variant (lineHeight 22); at fontSize 24 the glyph
@@ -577,7 +582,7 @@ const styles = StyleSheet.create({
   // used by `titleEmoji` and the list header emoji). RN-Web never clipped, so
   // this is an iOS-only fix that's a no-op on web.
   coverPlaceholderGlyph: { fontSize: 24, lineHeight: 28 },
-  rowBody: { flex: 1, gap: 2 },
+  rowBody: { flex: 1, gap: tokens.space.xxs },
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   rowTitle: {
     flexShrink: 1,
@@ -589,26 +594,8 @@ const styles = StyleSheet.create({
   rowTitleCompleted: { textDecorationLine: "line-through", color: tokens.text.muted },
   subline: { marginTop: 1 },
   provenance: { marginTop: 1 },
-  newPill: {
-    backgroundColor: tokens.accent.default,
-    paddingHorizontal: tokens.space.sm,
-    paddingVertical: 2,
-    borderRadius: tokens.radius.sm,
-  },
-  newPillText: { fontSize: 10, fontWeight: tokens.font.weight.bold, letterSpacing: 0.5 },
-  menuBtn: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.sm,
-  },
-  menuBtnHover: { backgroundColor: tokens.bg.surface },
-  menuGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.lg,
-    lineHeight: tokens.font.size.lg,
-  },
+  // 44pt target; the negative margin keeps the old 32pt visual footprint.
+  menuBtn: { marginHorizontal: -tokens.space.xsm, borderRadius: tokens.radius.sm },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -616,29 +603,15 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.xs,
   },
-  // Eyebrow style per DESIGN.md: uppercase, tracked, secondary tone. Reads
-  // as a divider rather than a heading — matches "calm by default."
-  sectionHeaderLabel: {
-    color: tokens.text.secondary,
-    fontSize: 11,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.8,
-    textTransform: "uppercase",
-  },
+  // Eyebrow labels (DESIGN.md): uppercase, tracked. Read as a divider
+  // rather than a heading — "calm by default."
   sectionHeaderCount: {
-    color: tokens.text.muted,
-    fontSize: 11,
     fontWeight: tokens.font.weight.medium,
     fontVariant: ["tabular-nums"],
-    letterSpacing: 0.4,
   },
   sectionHeaderToggle: {
     marginLeft: "auto",
-    color: tokens.text.muted,
-    fontSize: 11,
     fontWeight: tokens.font.weight.medium,
-    letterSpacing: 0.4,
-    textTransform: "uppercase",
   },
   sectionHeaderPressable: {
     borderRadius: tokens.radius.sm,

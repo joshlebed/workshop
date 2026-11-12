@@ -1,7 +1,16 @@
 import { errorMessage } from "@workshop/api-client/api";
-import { Avatar, Button, IconButton, Screen, Text, tokens, useToast } from "@workshop/ui";
+import {
+  Avatar,
+  Button,
+  Screen,
+  ScreenHeader,
+  Text,
+  TextField,
+  tokens,
+  useToast,
+} from "@workshop/ui";
 import { useState } from "react";
-import { StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { goBack } from "../../../src/lib/goBack";
@@ -50,23 +59,14 @@ export default function EditProfile() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <View style={styles.headerText}>
-          <Text variant="caption" tone="muted" style={styles.headerEyebrow}>
-            Account
-          </Text>
-          <Text variant="heading" numberOfLines={1}>
-            Edit profile
-          </Text>
-        </View>
-        <IconButton
-          accessibilityLabel="Close profile editor"
-          onPress={() => goBack("/")}
-          testID="profile-edit-close"
-        >
-          <Text style={styles.closeGlyph}>✕</Text>
-        </IconButton>
-      </View>
+      <ScreenHeader
+        leading="close"
+        onLeadingPress={() => goBack("/")}
+        leadingLabel="Close profile editor"
+        leadingTestID="profile-edit-close"
+        eyebrow="Account"
+        title="Edit profile"
+      />
 
       <KeyboardAwareScrollView
         contentContainerStyle={styles.body}
@@ -102,26 +102,19 @@ export default function EditProfile() {
           </View>
         </View>
 
-        <View style={styles.field}>
-          <Text variant="caption" tone="muted">
-            Display name
-          </Text>
-          <TextInput
-            testID="profile-display-name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Ada Lovelace"
-            placeholderTextColor={tokens.text.muted}
-            autoComplete="name"
-            maxLength={40}
-            style={styles.input}
-            returnKeyType="done"
-            onSubmitEditing={onSave}
-          />
-          <Text variant="caption" tone="muted" style={styles.hint}>
-            Shown to people on your shared lists.
-          </Text>
-        </View>
+        <TextField
+          label="Display name"
+          hint="Shown to people on your shared lists."
+          testID="profile-display-name"
+          value={name}
+          onChangeText={setName}
+          placeholder="Ada Lovelace"
+          autoComplete="name"
+          maxLength={40}
+          inputStyle={styles.input}
+          returnKeyType="done"
+          onSubmitEditing={onSave}
+        />
 
         {user?.email ? (
           <View style={styles.field}>
@@ -150,19 +143,8 @@ export default function EditProfile() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-    gap: tokens.space.md,
-  },
-  headerText: { flex: 1, minWidth: 0, gap: 2 },
-  headerEyebrow: { letterSpacing: 0.4, textTransform: "uppercase" },
-  closeGlyph: { fontSize: 18, color: tokens.text.secondary },
   body: {
+    paddingTop: tokens.space.md,
     paddingHorizontal: tokens.space.lg,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.xl,
@@ -175,16 +157,6 @@ const styles = StyleSheet.create({
   avatarPreview: { width: 72, height: 72, borderRadius: 36 },
   avatarButtons: { flex: 1, gap: tokens.space.sm },
   field: { gap: tokens.space.sm },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 14,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.lg,
-    backgroundColor: tokens.bg.surface,
-  },
-  hint: { marginTop: tokens.space.xs },
+  input: { fontSize: tokens.font.size.lg, paddingVertical: tokens.space.md },
   saveButton: { marginTop: tokens.space.sm },
 });

@@ -3,24 +3,32 @@ import { ApiError } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Item } from "@workshop/shared";
 import {
+  ActionSheet,
+  alpha,
   Button,
   confirm,
+  EmojiBadge,
   EmptyState,
   formatRelative,
   haptics,
+  Icon,
   IconButton,
+  interaction,
   normalizeExternalUrl,
   openExternalUrl,
   Screen,
-  Sheet,
+  ScreenHeader,
+  SectionHeader,
+  Skeleton,
   TagEditor,
   Text,
+  TextField,
   tokens,
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import {
   archiveItem,
@@ -92,11 +100,10 @@ export default function ItemDetail() {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [url, setUrl] = useState("");
+  // The ⋯ ActionSheet runs the chosen action from its `onClosed` (0.13): an
+  // Alert or a navigation fired while the sheet's Modal is still dismissing
+  // can be lost on iOS.
   const [menuOpen, setMenuOpen] = useState(false);
-  // Action to run once the ⋯ sheet has finished closing (0.13): an Alert or a
-  // navigation fired while the sheet's Modal is still dismissing can be lost
-  // on iOS.
-  const pendingMenuActionRef = useRef<(() => void) | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   // Drafts are seeded once per item id; afterwards a refetch only reaches a
@@ -316,8 +323,9 @@ export default function ItemDetail() {
 
   if (itemQuery.isPending) {
     return (
-      <Screen style={styles.center}>
-        <ActivityIndicator color={tokens.accent.default} />
+      <Screen style={styles.root}>
+        <ItemHeader parentList={parentList} onBack={onBack} />
+        <ItemDetailSkeleton />
       </Screen>
     );
   }
@@ -344,11 +352,6 @@ export default function ItemDetail() {
     ? listMembers.find((m) => m.userId === loadedItem.completedBy)
     : null;
 
-  const runAfterMenuCloses = (action: () => void) => {
-    pendingMenuActionRef.current = action;
-    setMenuOpen(false);
-  };
-
   const onDelete = async () => {
     const ok = await confirm({
       title: `Delete "${loadedItem.title}"?`,
@@ -365,41 +368,22 @@ export default function ItemDetail() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={parentList ? `Back to ${parentList.name}` : "Back"}
-          onPress={onBack}
-          style={({ pressed, hovered }) => [
-            styles.parentChip,
-            (pressed || hovered) && styles.parentChipPressed,
-          ]}
-          testID="item-back-to-list"
-        >
-          <Text style={styles.parentGlyph}>‹</Text>
-          {parentList ? (
-            <>
-              <View style={[styles.parentEmoji, { backgroundColor: `${listAccent}26` }]}>
-                <Text style={styles.parentEmojiGlyph}>{parentList.emoji}</Text>
-              </View>
-              <Text variant="label" tone="secondary" numberOfLines={1} style={styles.parentName}>
-                {parentList.name}
-              </Text>
-            </>
-          ) : (
-            <Text variant="label" tone="secondary" style={styles.parentName}>
-              Back
-            </Text>
-          )}
-        </Pressable>
-
-        <View style={styles.headerRight}>
-          <SaveIndicator status={saveStatus} />
-          <IconButton accessibilityLabel="More actions" onPress={() => setMenuOpen(true)}>
-            <Text style={styles.kebabGlyph}>⋯</Text>
-          </IconButton>
-        </View>
-      </View>
+      <ItemHeader
+        parentList={parentList}
+        onBack={onBack}
+        trailing={
+          <>
+            <SaveIndicator status={saveStatus} />
+            <IconButton
+              icon="more"
+              iconTone="secondary"
+              accessibilityLabel="More actions"
+              onPress={() => setMenuOpen(true)}
+              testID="item-more"
+            />
+          </>
+        }
+      />
 
       <KeyboardAwareScrollView
         contentContainerStyle={styles.body}
@@ -414,17 +398,21 @@ export default function ItemDetail() {
           onOpenUrl={loadedItem.url ? onOpenUrl : undefined}
         />
 
-        <TextInput
+        <TextField
+          variant="bare"
           testID="item-title-input"
+          accessibilityLabel="Title"
           value={title}
           onChangeText={setTitle}
           placeholder="Title"
-          placeholderTextColor={tokens.text.muted}
           maxLength={500}
           onFocus={onFieldFocus("title")}
           onBlur={onFieldBlur("title")}
           returnKeyType="next"
-          style={[styles.titleInput, loadedItem.completed && styles.titleInputCompleted]}
+          inputStyle={{
+            ...styles.titleInput,
+            ...(loadedItem.completed ? styles.titleInputCompleted : null),
+          }}
           multiline
           scrollEnabled={false}
         />
@@ -448,9 +436,7 @@ export default function ItemDetail() {
         />
 
         <View style={styles.tagSection}>
-          <Text variant="caption" tone="muted" style={styles.eyebrow}>
-            Tags
-          </Text>
+          <SectionHeader title="Tags" />
           <TagEditor
             tags={loadedItem.tags ?? []}
             listTags={(listTagsQuery.data?.tags ?? []).map((t) => t.tag)}
@@ -480,38 +466,93 @@ export default function ItemDetail() {
         />
       </KeyboardAwareScrollView>
 
-      <Sheet
+      <ActionSheet
         visible={menuOpen}
-        onRequestClose={() => setMenuOpen(false)}
-        onClosed={() => {
-          const action = pendingMenuActionRef.current;
-          pendingMenuActionRef.current = null;
-          action?.();
-        }}
+        onClose={() => setMenuOpen(false)}
         testID="item-menu"
-      >
-        <View style={styles.menu}>
-          {loadedItem.url ? (
-            <MenuRow
-              testID="item-menu-open"
-              label="Open link"
-              detail={hostFromUrl(loadedItem.url)}
-              onPress={() => runAfterMenuCloses(onOpenUrl)}
-            />
-          ) : null}
-          <MenuRow
-            testID="item-menu-delete"
-            label="Delete item"
-            destructive
-            onPress={() => runAfterMenuCloses(() => void onDelete())}
-          />
-        </View>
-      </Sheet>
+        cancelTestID="item-menu-cancel"
+        items={[
+          !!loadedItem.url && {
+            label: "Open link",
+            icon: "external",
+            detail: hostFromUrl(loadedItem.url),
+            onPress: onOpenUrl,
+            testID: "item-menu-open",
+          },
+          {
+            label: "Delete item",
+            icon: "trash",
+            tone: "danger",
+            onPress: () => void onDelete(),
+            testID: "item-menu-delete",
+          },
+        ]}
+      />
     </Screen>
   );
 }
 
 /* ------------------------------- subviews -------------------------------- */
+
+interface ParentListHeaderInfo {
+  name: string;
+  emoji: string;
+  color: string | null;
+}
+
+/**
+ * Back to the parent list: the list's emoji badge + name sit beside the back
+ * control, so you always know which list you're inside.
+ */
+function ItemHeader({
+  parentList,
+  onBack,
+  trailing,
+}: {
+  parentList: ParentListHeaderInfo | null;
+  onBack: () => void;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <ScreenHeader
+      leading="back"
+      onLeadingPress={onBack}
+      leadingLabel={parentList ? `Back to ${parentList.name}` : "Back"}
+      leadingTestID="item-back-to-list"
+      titleAccessory={
+        parentList ? (
+          <EmojiBadge
+            emoji={parentList.emoji}
+            color={listColorHex(parentList.color)}
+            size={24}
+            shape="rounded"
+          />
+        ) : null
+      }
+      title={parentList?.name}
+      trailing={trailing}
+    />
+  );
+}
+
+/** First-load placeholder shaped like the hero, title, link and note. */
+function ItemDetailSkeleton() {
+  return (
+    <View style={styles.body} accessibilityLabel="Loading" aria-busy>
+      <View style={styles.heroMedia}>
+        <Skeleton.Block width={110} height={110} radius={tokens.radius.md} />
+        <View style={styles.heroMeta}>
+          <Skeleton.Block width="45%" height={12} />
+          <Skeleton.Block width="90%" height={12} />
+          <Skeleton.Block width="70%" height={12} />
+        </View>
+      </View>
+      <Skeleton.Block width="75%" height={30} />
+      <Skeleton.Block width="55%" height={16} />
+      <Skeleton.Block width="40%" height={16} />
+    </View>
+  );
+}
 
 interface KindView {
   imageUrl?: string;
@@ -544,14 +585,8 @@ function KindHero({ item, view, accent, onOpenUrl }: KindHeroProps) {
   if (isPlain) {
     return (
       <View style={styles.heroPlain}>
-        <View style={[styles.heroPlainBadge, { backgroundColor: `${accent}26` }]}>
-          <Text style={styles.heroPlainGlyph}>{view.placeholderGlyph}</Text>
-        </View>
-        {view.eyebrow ? (
-          <Text variant="caption" tone="muted" style={styles.eyebrow}>
-            {view.eyebrow}
-          </Text>
-        ) : null}
+        <EmojiBadge emoji={view.placeholderGlyph} color={accent} size={44} shape="rounded" />
+        {view.eyebrow ? <Text variant="eyebrow">{view.eyebrow}</Text> : null}
       </View>
     );
   }
@@ -567,7 +602,7 @@ function KindHero({ item, view, accent, onOpenUrl }: KindHeroProps) {
       style={[
         isMedia ? styles.heroPoster : styles.heroLinkImage,
         styles.heroPlaceholder,
-        { backgroundColor: `${accent}26` },
+        { backgroundColor: alpha(accent, 0.15) },
       ]}
     >
       <Text style={styles.heroPlaceholderGlyph}>{view.placeholderGlyph}</Text>
@@ -578,11 +613,7 @@ function KindHero({ item, view, accent, onOpenUrl }: KindHeroProps) {
     <View style={styles.heroMedia}>
       {cover}
       <View style={styles.heroMeta}>
-        {view.eyebrow ? (
-          <Text variant="caption" tone="muted" style={styles.eyebrow}>
-            {view.eyebrow}
-          </Text>
-        ) : null}
+        {view.eyebrow ? <Text variant="eyebrow">{view.eyebrow}</Text> : null}
         {view.subline ? (
           <Text variant="caption" tone="secondary" numberOfLines={4} style={styles.heroSubline}>
             {view.subline}
@@ -593,15 +624,17 @@ function KindHero({ item, view, accent, onOpenUrl }: KindHeroProps) {
             accessibilityRole="link"
             accessibilityLabel="Open link"
             onPress={onOpenUrl}
-            style={({ pressed, hovered }) => [
+            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
               styles.openLink,
-              (pressed || hovered) && styles.openLinkPressed,
+              hovered && styles.openLinkHovered,
+              pressed && styles.openLinkPressed,
             ]}
             testID="item-open-link"
           >
             <Text variant="caption" style={[styles.openLinkText, { color: accent }]}>
-              {isLink ? "Open page ↗" : "Open ↗"}
+              {isLink ? "Open page" : "Open"}
             </Text>
+            <Icon name="external" size={14} color={accent} />
           </Pressable>
         ) : null}
       </View>
@@ -622,33 +655,35 @@ function UrlField({ value, onChange, onFocus, onBlur, currentUrl }: UrlFieldProp
   const showOpen = trimmed.length > 0 && normalizeExternalUrl(trimmed) === (currentUrl ?? "");
   return (
     <View style={styles.urlRow}>
-      <TextInput
+      <TextField
+        variant="bare"
         testID="item-url-input"
+        accessibilityLabel="Link"
         value={value}
         onChangeText={onChange}
         onFocus={onFocus}
         onBlur={onBlur}
         placeholder="Add a link"
-        placeholderTextColor={tokens.text.muted}
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="url"
         inputMode="url"
         maxLength={2048}
-        style={styles.urlInput}
+        style={styles.urlField}
+        inputStyle={styles.urlInput}
+        trailing={
+          showOpen ? (
+            <IconButton
+              icon="external"
+              iconSize={16}
+              iconTone="secondary"
+              accessibilityLabel="Open link"
+              onPress={() => openExternalUrl(currentUrl)}
+              testID="item-url-open"
+            />
+          ) : null
+        }
       />
-      {showOpen ? (
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel="Open link"
-          onPress={() => openExternalUrl(currentUrl)}
-          hitSlop={8}
-          style={({ pressed }) => [pressed && styles.openInlinePressed]}
-          testID="item-url-open"
-        >
-          <Text style={styles.urlOpenGlyph}>↗</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -663,19 +698,22 @@ interface NoteFieldProps {
 
 function NoteField({ value, onChange, onFocus, onBlur, placeholder }: NoteFieldProps) {
   return (
-    <TextInput
-      testID="item-note-input"
-      value={value}
-      onChangeText={onChange}
-      onFocus={onFocus}
-      onBlur={onBlur}
-      placeholder={placeholder}
-      placeholderTextColor={tokens.text.muted}
-      multiline
-      maxLength={1000}
-      style={styles.noteInput}
-      scrollEnabled={false}
-    />
+    <View style={styles.noteRow}>
+      <TextField
+        variant="bare"
+        testID="item-note-input"
+        accessibilityLabel="Note"
+        value={value}
+        onChangeText={onChange}
+        onFocus={onFocus}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        multiline
+        maxLength={1000}
+        inputStyle={styles.noteInput}
+        scrollEnabled={false}
+      />
+    </View>
   );
 }
 
@@ -715,36 +753,6 @@ function Provenance({ item, addedByName, completedByName }: ProvenanceProps) {
         </Text>
       ))}
     </View>
-  );
-}
-
-interface MenuRowProps {
-  label: string;
-  detail?: string;
-  destructive?: boolean;
-  onPress: () => void;
-  testID?: string;
-}
-
-function MenuRow({ label, detail, destructive, onPress, testID }: MenuRowProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      testID={testID}
-      style={({ pressed, hovered }) => [
-        styles.menuRow,
-        (pressed || hovered) && styles.menuRowHover,
-      ]}
-    >
-      <Text style={[styles.menuLabel, destructive && styles.menuLabelDestructive]}>{label}</Text>
-      {detail ? (
-        <Text variant="caption" tone="muted" numberOfLines={1} style={styles.menuDetail}>
-          {detail}
-        </Text>
-      ) : null}
-    </Pressable>
   );
 }
 
@@ -894,51 +902,6 @@ function listColorHex(color: string | null | undefined): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: tokens.space.sm,
-    paddingHorizontal: tokens.space.md,
-    paddingTop: tokens.space.xxl,
-    paddingBottom: tokens.space.sm,
-  },
-  parentChip: {
-    flexShrink: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.pill,
-    maxWidth: "70%",
-  },
-  parentChipPressed: { backgroundColor: tokens.bg.surface },
-  parentGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl,
-    marginRight: -2,
-  },
-  parentEmoji: {
-    width: 26,
-    height: 26,
-    borderRadius: tokens.radius.sm,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  parentEmojiGlyph: { fontSize: 14 },
-  parentName: { flexShrink: 1 },
-  headerRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-  },
-  kebabGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.xl,
-    lineHeight: tokens.font.size.xl,
-  },
   saveIndicator: {
     fontVariant: ["tabular-nums"],
     letterSpacing: 0.2,
@@ -972,20 +935,21 @@ const styles = StyleSheet.create({
   // Pin lineHeight (≈1.2×) so the 40px hero emoji isn't clipped to the shared
   // Text body line box (22) — iOS clips glyphs taller than their line box.
   heroPlaceholderGlyph: { fontSize: 40, lineHeight: 48 },
-  heroMeta: { flex: 1, gap: tokens.space.xs, paddingTop: 2 },
-  eyebrow: {
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-    fontSize: 11,
-  },
+  heroMeta: { flex: 1, gap: tokens.space.xs, paddingTop: tokens.space.xxs },
   heroSubline: { lineHeight: 19 },
+  // 44pt target; the negative inset keeps the label aligned with the text above.
   openLink: {
     alignSelf: "flex-start",
-    marginTop: tokens.space.xs,
-    paddingVertical: 4,
-    paddingHorizontal: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+    minHeight: tokens.hit,
+    paddingHorizontal: tokens.space.sm,
+    marginLeft: -tokens.space.sm,
+    borderRadius: tokens.radius.md,
   },
-  openLinkPressed: { opacity: 0.7 },
+  openLinkHovered: { backgroundColor: interaction.hover },
+  openLinkPressed: { backgroundColor: interaction.pressed },
   openLinkText: {
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: 0.2,
@@ -997,14 +961,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.md,
   },
-  heroPlainBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  heroPlainGlyph: { fontSize: 22, lineHeight: 26 },
 
   // Title — typographic, no chrome
   titleInput: {
@@ -1013,7 +969,7 @@ const styles = StyleSheet.create({
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: -0.4,
     lineHeight: 36,
-    paddingVertical: 0,
+    paddingVertical: tokens.space.xs,
     paddingHorizontal: 0,
     margin: 0,
   },
@@ -1024,43 +980,20 @@ const styles = StyleSheet.create({
 
   // URL — single quiet line with optional trailing ↗
   urlRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tokens.border.subtle,
-    paddingTop: tokens.space.md,
+    paddingTop: tokens.space.xs,
   },
-  urlInput: {
-    flex: 1,
-    color: tokens.text.secondary,
-    // 16px floor: smaller focused inputs make iOS Safari zoom the page (0.10).
-    fontSize: tokens.font.size.md,
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    margin: 0,
-  },
-  urlOpenGlyph: {
-    color: tokens.text.secondary,
-    fontSize: tokens.font.size.md,
-    paddingHorizontal: tokens.space.xs,
-  },
-  openInlinePressed: { opacity: 0.6 },
+  urlField: { flex: 1 },
+  urlInput: { color: tokens.text.secondary },
 
   // Note — quiet, auto-grow
-  noteInput: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    lineHeight: 22,
-    paddingTop: tokens.space.md,
-    paddingHorizontal: 0,
-    paddingBottom: 0,
-    margin: 0,
+  noteRow: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tokens.border.subtle,
-    minHeight: 44,
-    textAlignVertical: "top",
+    paddingTop: tokens.space.xs,
   },
+  noteInput: { paddingTop: tokens.space.sm, paddingBottom: tokens.space.xs },
 
   // Tags — chip picker over the list's existing tags
   tagSection: {
@@ -1081,29 +1014,9 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.lg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tokens.border.subtle,
-    gap: 2,
+    gap: tokens.space.xxs,
   },
   provenanceLine: { lineHeight: 18 },
-
-  // Menu sheet
-  menu: { paddingVertical: tokens.space.xs, gap: 2 },
-  menuRow: {
-    paddingHorizontal: tokens.space.sm,
-    paddingVertical: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: tokens.space.md,
-  },
-  menuRowHover: { backgroundColor: tokens.bg.surface },
-  menuLabel: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.medium,
-  },
-  menuLabelDestructive: { color: tokens.status.danger },
-  menuDetail: { flexShrink: 1, maxWidth: "60%", textAlign: "right" },
 
   center: {
     flex: 1,

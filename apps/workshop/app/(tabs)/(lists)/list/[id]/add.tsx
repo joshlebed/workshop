@@ -18,25 +18,20 @@ import {
   Button,
   Card,
   haptics,
-  IconButton,
   normalizeExternalUrl,
   Screen,
+  ScreenHeader,
   SearchResultRow,
+  Skeleton,
   TagEditor,
   Text,
+  TextField,
   tokens,
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  StyleSheet,
-  TextInput,
-  type TextInputInstance,
-  View,
-} from "react-native";
+import { ActivityIndicator, Image, StyleSheet, type TextInputInstance, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { createItem } from "../../../../../src/api/items";
 import { fetchLinkPreview } from "../../../../../src/api/linkPreview";
@@ -177,8 +172,21 @@ export default function AddItem() {
   if (listQuery.isPending) {
     return (
       <Screen style={styles.root}>
-        <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
+        <ScreenHeader
+          leading="close"
+          leadingLabel="Cancel"
+          onLeadingPress={() => goBack(`/list/${id}`)}
+          title="Add item"
+        />
+        <View style={styles.body} accessibilityLabel="Loading" aria-busy>
+          <Card style={styles.card} elevated>
+            {[0, 1, 2].map((i) => (
+              <View key={i} style={styles.field}>
+                <Skeleton.Block width={64} height={12} />
+                <Skeleton.Block height={tokens.hit} radius={tokens.radius.md} />
+              </View>
+            ))}
+          </Card>
         </View>
       </Screen>
     );
@@ -230,23 +238,24 @@ export default function AddItem() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <IconButton accessibilityLabel="Cancel" onPress={() => goBack(id ? `/list/${id}` : "/")}>
-          <Text style={styles.headerGlyph}>✕</Text>
-        </IconButton>
-        <Text variant="heading">Add item</Text>
-        {itemKind && !isSearchKind && !isSpotifyShelf && id ? (
-          <Button
-            label="Paste many"
-            variant="ghost"
-            size="md"
-            testID="add-item-bulk-link"
-            onPress={() => router.push(`/list/${id}/add-bulk`)}
-          />
-        ) : (
-          <View style={styles.headerSpacer} />
-        )}
-      </View>
+      <ScreenHeader
+        leading="close"
+        leadingLabel="Cancel"
+        leadingTestID="add-item-cancel"
+        onLeadingPress={() => goBack(id ? `/list/${id}` : "/")}
+        title="Add item"
+        trailing={
+          itemKind && !isSearchKind && !isSpotifyShelf && id ? (
+            <Button
+              label="Paste many"
+              variant="ghost"
+              size="md"
+              testID="add-item-bulk-link"
+              onPress={() => router.push(`/list/${id}/add-bulk`)}
+            />
+          ) : null
+        }
+      />
 
       {isSearchKind ? (
         <SearchFlow
@@ -383,20 +392,19 @@ function SearchFlow({
       keyboardDismissMode="interactive"
       bottomOffset={tokens.space.lg}
     >
-      <Card style={styles.searchCard} elevated>
-        <TextInput
-          testID="add-item-search"
-          value={query}
-          onChangeText={onChangeQuery}
-          placeholder={placeholder}
-          placeholderTextColor={tokens.text.muted}
-          autoFocus
-          autoCapitalize="none"
-          autoCorrect={false}
-          maxLength={200}
-          style={styles.input}
-        />
-      </Card>
+      <TextField
+        variant="search"
+        testID="add-item-search"
+        accessibilityLabel={placeholder}
+        value={query}
+        onChangeText={onChangeQuery}
+        onClear={() => onChangeQuery("")}
+        placeholder={placeholder}
+        autoFocus
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={200}
+      />
 
       {showPrompt ? (
         <Text tone="secondary" style={styles.helper} testID="add-item-search-prompt">
@@ -520,36 +528,27 @@ function FreeFormFlow({
       bottomOffset={tokens.space.lg}
     >
       <Card style={styles.card} elevated>
-        <View style={styles.field}>
-          <Text variant="label" tone="secondary">
-            Title
-          </Text>
-          <TextInput
-            testID="add-item-title"
-            value={title}
-            onChangeText={onChangeTitle}
-            placeholder={titlePlaceholder}
-            placeholderTextColor={tokens.text.muted}
-            autoFocus
-            maxLength={500}
-            returnKeyType="done"
-            enterKeyHint="done"
-            submitBehavior="blurAndSubmit"
-            onSubmitEditing={submitIfReady}
-            style={styles.input}
-          />
-        </View>
+        <TextField
+          label="Title"
+          testID="add-item-title"
+          value={title}
+          onChangeText={onChangeTitle}
+          placeholder={titlePlaceholder}
+          autoFocus
+          maxLength={500}
+          returnKeyType="done"
+          enterKeyHint="done"
+          submitBehavior="blurAndSubmit"
+          onSubmitEditing={submitIfReady}
+        />
 
         <View style={styles.field}>
-          <Text variant="label" tone="secondary">
-            {urlLabel}
-          </Text>
-          <TextInput
+          <TextField
+            label={urlLabel}
             testID="add-item-url"
             value={url}
             onChangeText={onChangeUrl}
             placeholder={urlPlaceholder}
-            placeholderTextColor={tokens.text.muted}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
@@ -562,7 +561,6 @@ function FreeFormFlow({
               if (showNote) noteInputRef.current?.focus();
               else submitIfReady();
             }}
-            style={styles.input}
           />
           <LinkPreviewSection
             preview={preview}
@@ -573,22 +571,16 @@ function FreeFormFlow({
         </View>
 
         {showNote ? (
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Note (optional)
-            </Text>
-            <TextInput
-              ref={noteInputRef}
-              testID="add-item-note"
-              value={note}
-              onChangeText={onChangeNote}
-              placeholder={notePlaceholder}
-              placeholderTextColor={tokens.text.muted}
-              multiline
-              maxLength={1000}
-              style={[styles.input, styles.inputMultiline]}
-            />
-          </View>
+          <TextField
+            ref={noteInputRef}
+            label="Note (optional)"
+            testID="add-item-note"
+            value={note}
+            onChangeText={onChangeNote}
+            placeholder={notePlaceholder}
+            multiline
+            maxLength={1000}
+          />
         ) : null}
 
         {showTags ? (
@@ -684,35 +676,14 @@ function LinkPreviewSection({ preview, loading, failed, active }: LinkPreviewSec
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.xxl,
-    paddingBottom: tokens.space.md,
-  },
-  headerGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.lg },
-  headerSpacer: { width: 40 },
   body: {
+    paddingTop: tokens.space.md,
     paddingHorizontal: tokens.space.xl,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.md,
   },
-  searchCard: { paddingVertical: tokens.space.sm },
   card: { gap: tokens.space.lg },
   field: { gap: tokens.space.sm },
-  input: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: 12,
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    backgroundColor: tokens.bg.canvas,
-  },
-  inputMultiline: { minHeight: 80, textAlignVertical: "top" },
   helper: { textAlign: "center", paddingVertical: tokens.space.lg },
   center: { alignItems: "center", justifyContent: "center", paddingVertical: tokens.space.xl },
   previewCard: {
@@ -731,7 +702,7 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.elevated,
   },
   previewImagePlaceholder: { alignItems: "center", justifyContent: "center" },
-  previewBody: { flex: 1, gap: 2, justifyContent: "center" },
+  previewBody: { flex: 1, gap: tokens.space.xxs, justifyContent: "center" },
   previewLoading: {
     flexDirection: "row",
     alignItems: "center",

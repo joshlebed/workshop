@@ -4,28 +4,26 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { ActivityEvent, ItemKind, ListSummary, ModuleName } from "@workshop/shared";
 import {
+  ActionSheet,
+  alpha,
   Button,
+  EmojiBadge,
   EmptyState,
+  Fab,
   HomeHeader,
   homeLayout,
+  Icon,
   type ListColorKey,
+  ListRow,
   PullToRefresh,
   Screen,
-  Sheet,
+  Skeleton,
   Text,
   tokens,
 } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Platform,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
+import { FlatList, Platform, StyleSheet, View } from "react-native";
 import { fetchActivity } from "../../../src/api/activity";
 import {
   archiveList,
@@ -86,17 +84,17 @@ function relativeShort(iso: string, now = Date.now()): string {
   return `${Math.floor(d / 30)}mo`;
 }
 
-// Visual "shared" cue for the home row. Returns a list of accent-alpha
-// hex suffixes — one dot per other member, capped at three. Each dot is
-// progressively more transparent so the eye picks up "more people"
-// without having to literally count past three. The accessibility label
-// always carries the real count.
-function sharedDotAlphas(memberCount: number): string[] {
+// Visual "shared" cue for the home row. Returns accent opacities — one dot
+// per other member, capped at three. Each dot is progressively more
+// transparent so the eye picks up "more people" without having to
+// literally count past three. The accessibility label always carries the
+// real count.
+function sharedDotAlphas(memberCount: number): number[] {
   const others = Math.max(0, memberCount - 1);
   if (others <= 0) return [];
-  if (others === 1) return ["AA", "55"];
-  if (others === 2) return ["BB", "77", "44"];
-  return ["CC", "88", "44"];
+  if (others === 1) return [0.67, 0.33];
+  if (others === 2) return [0.73, 0.47, 0.27];
+  return [0.8, 0.53, 0.27];
 }
 
 export default function Home() {
@@ -172,7 +170,14 @@ export default function Home() {
 
   const archivedLists = useMemo(() => allLists.filter((l) => !!l.archivedAt), [allLists]);
 
+  // `rowMenuFor` outlives `rowMenuOpen` so the sheet keeps its header and
+  // actions while it animates out.
   const [rowMenuFor, setRowMenuFor] = useState<ListSummary | null>(null);
+  const [rowMenuOpen, setRowMenuOpen] = useState(false);
+  const openRowMenu = useCallback((list: ListSummary) => {
+    setRowMenuFor(list);
+    setRowMenuOpen(true);
+  }, []);
 
   // Per-list view-state toggles. Each is optimistic on the query cache so the
   // row's pin/archive/mute affordance flips before the network round-trip.
@@ -263,8 +268,8 @@ export default function Home() {
 
       <View style={styles.body}>
         {listsQuery.isPending ? (
-          <View style={styles.center}>
-            <ActivityIndicator color={tokens.accent.default} />
+          <View style={styles.listContent}>
+            <Skeleton.Rows count={7} testID="home-skeleton" />
           </View>
         ) : listsQuery.isError && !listsQuery.data ? (
           <View style={styles.center}>
@@ -296,14 +301,14 @@ export default function Home() {
               renderItem={({ item }) => {
                 const unreadMeta = latestUnreadByList.get(item.id);
                 return (
-                  <ListRow
+                  <HomeListRow
                     list={item}
                     latestEvent={latestByList.get(item.id) ?? null}
                     latestUnreadEvent={unreadMeta?.latest ?? null}
                     unreadActorCount={unreadMeta?.actorIds.size ?? 0}
                     selfId={user?.id ?? null}
                     onPress={() => router.push(`/list/${item.id}`)}
-                    onContextMenu={() => setRowMenuFor(item)}
+                    onContextMenu={() => openRowMenu(item)}
                   />
                 );
               }}
@@ -312,46 +317,26 @@ export default function Home() {
         )}
       </View>
 
-      <Pressable
-        accessibilityRole="button"
+      <Fab
         accessibilityLabel="Create new list"
         accessibilityHint={Platform.OS === "web" ? "Keyboard shortcut: command N" : undefined}
+        tooltip="New list  (⌘N)"
         onPress={onCreateList}
-        // @ts-expect-error: react-native-web threads native title through to <button title>
-        title={Platform.OS === "web" ? "New list  (⌘N)" : undefined}
-        style={({ pressed, hovered }: PressableState) => [
-          styles.fab,
-          hovered && styles.fabHovered,
-          pressed && styles.fabPressed,
-        ]}
         testID="fab-create-list"
-      >
-        <Text style={styles.fabGlyph} tone="onAccent">
-          +
-        </Text>
-      </Pressable>
+      />
 
-      <Sheet
-        visible={rowMenuFor !== null}
-        onRequestClose={() => setRowMenuFor(null)}
+      <ActionSheet
+        visible={rowMenuOpen}
+        onClose={() => setRowMenuOpen(false)}
         testID="row-menu-sheet"
-      >
-        {rowMenuFor ? (
-          <View>
+        header={
+          rowMenuFor ? (
             <View style={styles.rowMenuHeader}>
-              <View
-                style={[
-                  styles.rowMenuAvatar,
-                  {
-                    backgroundColor: `${
-                      tokens.list[rowMenuFor.color as ListColorKey] ?? tokens.accent.default
-                    }26`,
-                  },
-                ]}
-              >
-                <Text style={styles.avatarEmoji}>{rowMenuFor.emoji}</Text>
-              </View>
-              <View style={{ flex: 1, minWidth: 0 }}>
+              <EmojiBadge
+                emoji={rowMenuFor.emoji}
+                color={tokens.list[rowMenuFor.color as ListColorKey] ?? tokens.accent.default}
+              />
+              <View style={styles.rowMenuIdentity}>
                 <Text variant="heading" numberOfLines={1}>
                   {rowMenuFor.name}
                 </Text>
@@ -363,81 +348,55 @@ export default function Home() {
                 </Text>
               </View>
             </View>
-            <View style={styles.rowMenuActions}>
-              <RowMenuAction
-                label="Open list"
-                onPress={() => {
-                  const id = rowMenuFor.id;
-                  setRowMenuFor(null);
-                  router.push(`/list/${id}`);
-                }}
-              />
-              <RowMenuAction
-                label={rowMenuFor.pinnedAt ? "Unpin from top" : "Pin to top"}
-                onPress={() => {
-                  viewStateMutation.mutate({
-                    id: rowMenuFor.id,
-                    field: "pinnedAt",
-                    value: rowMenuFor.pinnedAt ? null : new Date().toISOString(),
-                  });
-                  setRowMenuFor(null);
-                }}
-              />
-              <RowMenuAction
-                label={rowMenuFor.mutedAt ? "Unmute" : "Mute notifications"}
-                onPress={() => {
-                  viewStateMutation.mutate({
-                    id: rowMenuFor.id,
-                    field: "mutedAt",
-                    value: rowMenuFor.mutedAt ? null : new Date().toISOString(),
-                  });
-                  setRowMenuFor(null);
-                }}
-              />
-              <RowMenuAction
-                label={rowMenuFor.archivedAt ? "Unarchive" : "Archive"}
-                onPress={() => {
-                  viewStateMutation.mutate({
-                    id: rowMenuFor.id,
-                    field: "archivedAt",
-                    value: rowMenuFor.archivedAt ? null : new Date().toISOString(),
-                  });
-                  setRowMenuFor(null);
-                }}
-              />
-              <RowMenuAction
-                label="List settings"
-                onPress={() => {
-                  const id = rowMenuFor.id;
-                  setRowMenuFor(null);
-                  router.push(`/list/${id}/settings`);
-                }}
-              />
-            </View>
-          </View>
-        ) : null}
-      </Sheet>
+          ) : null
+        }
+        items={
+          rowMenuFor
+            ? [
+                {
+                  label: "Open list",
+                  onPress: () => router.push(`/list/${rowMenuFor.id}`),
+                },
+                {
+                  label: rowMenuFor.pinnedAt ? "Unpin from top" : "Pin to top",
+                  onPress: () =>
+                    viewStateMutation.mutate({
+                      id: rowMenuFor.id,
+                      field: "pinnedAt",
+                      value: rowMenuFor.pinnedAt ? null : new Date().toISOString(),
+                    }),
+                },
+                {
+                  label: rowMenuFor.mutedAt ? "Unmute" : "Mute notifications",
+                  onPress: () =>
+                    viewStateMutation.mutate({
+                      id: rowMenuFor.id,
+                      field: "mutedAt",
+                      value: rowMenuFor.mutedAt ? null : new Date().toISOString(),
+                    }),
+                },
+                {
+                  label: rowMenuFor.archivedAt ? "Unarchive" : "Archive",
+                  onPress: () =>
+                    viewStateMutation.mutate({
+                      id: rowMenuFor.id,
+                      field: "archivedAt",
+                      value: rowMenuFor.archivedAt ? null : new Date().toISOString(),
+                    }),
+                },
+                {
+                  label: "List settings",
+                  onPress: () => router.push(`/list/${rowMenuFor.id}/settings`),
+                },
+              ]
+            : []
+        }
+      />
     </Screen>
   );
 }
 
-function RowMenuAction({ label, onPress }: { label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.rowMenuAction,
-        pressed && { backgroundColor: tokens.bg.elevated },
-      ]}
-    >
-      <Text variant="label" style={styles.rowMenuActionLabel}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
+const ROW_BADGE = 44;
 
 const styles = StyleSheet.create({
   root: {
@@ -456,32 +415,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
   },
-  emptyGlyph: { fontSize: 28, lineHeight: 32, color: tokens.accent.default },
+  emptyGlyph: { fontSize: tokens.font.size.xxl, lineHeight: 32, color: tokens.accent.default },
   listContent: {
     paddingTop: homeLayout.contentTopGap,
     paddingBottom: homeLayout.bottomInset,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
-    paddingVertical: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    marginHorizontal: tokens.space.xs,
-  },
-  rowHovered: { backgroundColor: tokens.bg.surface },
-  rowFocused: {
-    backgroundColor: tokens.bg.surface,
-    outlineWidth: 0,
-    boxShadow: `0 0 0 1.5px ${tokens.accent.default}`,
-  },
-  rowPressed: { backgroundColor: tokens.bg.elevated },
-  rowBody: { flex: 1, gap: 3, minWidth: 0 },
   rowTitleRow: {
     flexDirection: "row",
-    alignItems: "baseline",
-    gap: 6,
+    alignItems: "center",
+    gap: tokens.space.xsm,
     minWidth: 0,
   },
   rowTitle: { fontSize: tokens.font.size.md, letterSpacing: -0.2, flexShrink: 1 },
@@ -496,12 +438,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   rowSharedDotOverlap: {
-    marginLeft: -2,
-  },
-  rowPinGlyph: {
-    color: tokens.accent.default,
-    fontSize: 11,
-    lineHeight: 14,
+    marginLeft: -tokens.space.xxs,
   },
   rowMutedGlyph: {
     fontSize: 10,
@@ -511,24 +448,13 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     fontWeight: tokens.font.weight.semibold,
   },
-  rowSubtitle: { fontSize: 12, lineHeight: 16 },
   rowSubtitleEmphasis: { color: tokens.text.secondary },
   rowSeparator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.border.subtle,
-    marginLeft: tokens.space.lg + tokens.space.xs + 48 + tokens.space.md,
+    marginLeft: tokens.space.xs + tokens.space.md + ROW_BADGE + tokens.space.md,
     marginRight: tokens.space.xs,
   },
-  avatarWrap: { position: "relative" },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  avatarEmoji: { fontSize: 24, lineHeight: 28 },
   unreadPip: {
     position: "absolute",
     top: -1,
@@ -538,55 +464,19 @@ const styles = StyleSheet.create({
     borderRadius: 5.5,
     borderWidth: 2,
   },
-  fab: {
-    position: "absolute",
-    right: homeLayout.horizontalInset,
-    bottom: homeLayout.horizontalInset,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: tokens.accent.default,
-    alignItems: "center",
-    justifyContent: "center",
-    // Calm neutral elevation, not an amber glow (see DESIGN.md "calm by default").
-    boxShadow: "0px 10px 24px rgba(0, 0, 0, 0.45), 0px 2px 6px rgba(0, 0, 0, 0.30)",
-    elevation: 5,
-  },
-  fabHovered: {
-    backgroundColor: tokens.accent.hover,
-    transform: [{ scale: 1.04 }],
-  },
-  fabPressed: { backgroundColor: tokens.accent.hover, transform: [{ scale: 0.96 }] },
-  fabGlyph: { fontSize: 28, fontWeight: tokens.font.weight.semibold, lineHeight: 32 },
   rowMenuHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
+    paddingHorizontal: tokens.space.sm,
     paddingBottom: tokens.space.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.border.subtle,
-    marginBottom: tokens.space.sm,
   },
-  rowMenuAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rowMenuActions: { gap: 2 },
-  rowMenuAction: {
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: tokens.space.md,
-    borderRadius: tokens.radius.md,
-  },
-  rowMenuActionLabel: {
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.medium,
-  },
+  rowMenuIdentity: { flex: 1, minWidth: 0 },
 });
 
-function ListRow({
+function HomeListRow({
   list,
   latestEvent,
   latestUnreadEvent,
@@ -661,56 +551,32 @@ function ListRow({
       : {};
 
   return (
-    <Pressable
-      accessibilityRole="button"
+    <ListRow
       accessibilityLabel={`Open list ${list.name}`}
       accessibilityHint="Long press for more options"
       onPress={onPress}
       onLongPress={onContextMenu}
       delayLongPress={350}
       testID={`list-card-${list.id}`}
-      {...webContextMenuProps}
-      style={({ pressed, hovered, focused }: PressableState) => [
-        styles.row,
-        hovered && styles.rowHovered,
-        focused && styles.rowFocused,
-        pressed && styles.rowPressed,
-      ]}
-    >
-      <View style={styles.avatarWrap}>
-        {list.coverPhotoUrl ? (
-          <Image
-            source={{ uri: list.coverPhotoUrl }}
-            style={[styles.avatar, { borderColor: `${accent}33` }]}
-            accessibilityIgnoresInvertColors
-          />
-        ) : (
-          <View
-            style={[
-              styles.avatar,
-              {
-                backgroundColor: `${accent}26`,
-                borderColor: `${accent}3D`,
-              },
-            ]}
-          >
-            <Text style={styles.avatarEmoji}>{list.emoji}</Text>
-          </View>
-        )}
-        {isUnread ? (
-          <View
-            style={[styles.unreadPip, { backgroundColor: accent, borderColor: tokens.bg.canvas }]}
-            accessibilityLabel={`${unreadCount} unread`}
-            pointerEvents="none"
-          />
-        ) : null}
-      </View>
-      <View style={styles.rowBody}>
+      pressableProps={webContextMenuProps}
+      leading={
+        <>
+          <EmojiBadge emoji={list.emoji} color={accent} imageUrl={list.coverPhotoUrl} />
+          {isUnread ? (
+            <View
+              style={[styles.unreadPip, { backgroundColor: accent, borderColor: tokens.bg.canvas }]}
+              accessibilityLabel={`${unreadCount} unread`}
+              pointerEvents="none"
+            />
+          ) : null}
+        </>
+      }
+      title={
         <View style={styles.rowTitleRow}>
           {list.pinnedAt ? (
-            <Text style={styles.rowPinGlyph} accessibilityLabel="Pinned">
-              ✦
-            </Text>
+            <View accessibilityLabel="Pinned" accessible>
+              <Icon name="pin" size={12} tone="accent" />
+            </View>
           ) : null}
           <Text variant="label" numberOfLines={1} style={styles.rowTitle}>
             {list.name}
@@ -726,38 +592,34 @@ function ListRow({
               accessibilityLabel={`Shared with ${otherMembers} ${otherMembers === 1 ? "other" : "others"}`}
               importantForAccessibility="yes"
             >
-              {sharedDotAlphas(list.memberCount).map((alpha, i) => (
+              {sharedDotAlphas(list.memberCount).map((level, i) => (
                 <View
                   // biome-ignore lint/suspicious/noArrayIndexKey: alphas array is stable per memberCount value
                   key={i}
                   style={[
                     styles.rowSharedDot,
                     i > 0 ? styles.rowSharedDotOverlap : null,
-                    { backgroundColor: `${accent}${alpha}` },
+                    { backgroundColor: alpha(accent, level) },
                   ]}
                 />
               ))}
             </View>
           ) : null}
         </View>
+      }
+      subtitle={
         <Text
+          variant="caption"
           tone={subtitleEmphasis ? "secondary" : "muted"}
           numberOfLines={1}
           style={[
-            styles.rowSubtitle,
             subtitleEmphasis ? styles.rowSubtitleEmphasis : null,
             isUnread ? { color: accent } : null,
           ]}
         >
           {subtitle}
         </Text>
-      </View>
-    </Pressable>
+      }
+    />
   );
 }
-
-type PressableState = {
-  pressed?: boolean;
-  hovered?: boolean;
-  focused?: boolean;
-};

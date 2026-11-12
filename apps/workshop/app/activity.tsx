@@ -4,17 +4,24 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { ActivityEvent, ActivityFeedResponse } from "@workshop/shared";
 import {
+  alpha,
   Button,
+  Chip,
   EmptyState,
+  Icon,
+  type IconName,
   type ListColorKey,
+  ListRow,
   PullToRefresh,
   Screen,
+  ScreenHeader,
+  Skeleton,
   Text,
   tokens,
 } from "@workshop/ui";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from "react-native";
 import { fetchActivity, markActivityRead } from "../src/api/activity";
 import { fetchLists } from "../src/api/lists";
 import { useAuth } from "../src/hooks/useAuth";
@@ -168,21 +175,12 @@ export default function Activity() {
 
   return (
     <Screen style={styles.root}>
-      <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back"
-          onPress={() => goBack(backFallback)}
-          testID="activity-back"
-          hitSlop={10}
-          style={({ pressed }) => [styles.navButton, pressed && styles.navButtonPressed]}
-        >
-          <Text style={styles.navGlyph}>‹</Text>
-        </Pressable>
-        <Text variant="title" style={styles.title}>
-          Activity
-        </Text>
-      </View>
+      <ScreenHeader
+        leading="back"
+        onLeadingPress={() => goBack(backFallback)}
+        leadingTestID="activity-back"
+        title="Activity"
+      />
 
       {events.length > 0 && (filterChips.actors.length > 1 || filterChips.lists.length > 0) ? (
         <ScrollView
@@ -230,8 +228,8 @@ export default function Activity() {
       ) : null}
 
       {isInitialLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
+        <View style={styles.skeleton}>
+          <Skeleton.Rows count={8} testID="activity-skeleton" />
         </View>
       ) : isError ? (
         <View style={styles.center}>
@@ -314,25 +312,13 @@ function FilterChip({
   testID?: string;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Filter: ${label}`}
+    <Chip
+      label={label}
+      selected={active}
       onPress={onPress}
+      accessibilityLabel={`Filter: ${label}`}
       testID={testID}
-      style={({ pressed, hovered }) => [
-        styles.filterChip,
-        active && styles.filterChipActive,
-        (pressed || hovered) && !active && styles.filterChipHover,
-      ]}
-    >
-      <Text
-        tone={active ? "onAccent" : "secondary"}
-        style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </Pressable>
+    />
   );
 }
 
@@ -368,43 +354,61 @@ function ActivityRow({ event, list, showList, onOpenList }: ActivityRowProps) {
       : tokens.accent.default;
 
   return (
-    <Pressable
-      accessibilityRole="button"
+    <ListRow
       accessibilityLabel={
         list ? `${first} ${description} in ${list.name}` : `${first} ${description}`
       }
       onPress={onOpenList}
       testID={`activity-row-${event.id}`}
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-    >
-      <View style={[styles.avatar, { backgroundColor: `${accent}1F` }]}>
-        <Text style={[styles.avatarGlyph, { color: accent }]}>{verb}</Text>
-      </View>
-      <View style={styles.rowBody}>
+      leading={
+        <View style={[styles.avatar, { backgroundColor: alpha(accent, 0.12) }]}>
+          {verb.icon ? (
+            <Icon name={verb.icon} size={16} color={accent} />
+          ) : (
+            <Text style={[styles.avatarGlyph, { color: accent }]}>{verb.text}</Text>
+          )}
+        </View>
+      }
+      title={
         <Text variant="body" numberOfLines={2} style={styles.line}>
           <Text style={styles.actorName}>{first}</Text>
           <Text> {description}</Text>
         </Text>
-        {list && showList ? (
+      }
+      subtitle={
+        list && showList ? (
           <View style={styles.listChipRow}>
             <Text style={styles.listChipEmoji}>{list.emoji}</Text>
             <Text variant="caption" tone="muted" numberOfLines={1} style={styles.listChipName}>
               {list.name}
             </Text>
           </View>
-        ) : null}
-      </View>
-      <Text variant="caption" tone="muted" style={styles.when}>
-        {when}
-      </Text>
-    </Pressable>
+        ) : undefined
+      }
+      trailing={
+        <Text variant="caption" tone="muted" style={styles.when}>
+          {when}
+        </Text>
+      }
+    />
   );
 }
 
 // Single-glyph signal for each event family. Keeps the avatar position from
 // being just a colored disc — the glyph adds a verb-specific visual that
-// lets you scan a feed by action shape, not just by actor name.
-function verbGlyphFor(type: ActivityEvent["type"]): string {
+// lets you scan a feed by action shape, not just by actor name. Glyphs the
+// `Icon` set covers are drawn with it; the rest stay typographic marks.
+type VerbGlyph = { icon: IconName; text?: undefined } | { icon?: undefined; text: string };
+
+function verbGlyphFor(type: ActivityEvent["type"]): VerbGlyph {
+  const mark = verbMarkFor(type);
+  const icon = VERB_ICON[mark];
+  return icon ? { icon } : { text: mark };
+}
+
+const VERB_ICON: Record<string, IconName> = { "+": "plus", "✓": "check", "↻": "refresh" };
+
+function verbMarkFor(type: ActivityEvent["type"]): string {
   switch (type) {
     case "item_added":
     case "list_created":
@@ -552,26 +556,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.xxl,
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.xs,
-    paddingHorizontal: tokens.space.sm,
-    paddingRight: tokens.space.lg,
-    paddingBottom: tokens.space.md,
-  },
-  navButton: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.md,
-  },
-  navButtonPressed: { backgroundColor: tokens.bg.elevated },
-  navGlyph: { color: tokens.text.primary, fontSize: tokens.font.size.xl },
-  title: { fontSize: tokens.font.size.xl, letterSpacing: -0.3 },
   filterScroll: { flexGrow: 0 },
   filterStrip: {
     flexDirection: "row",
@@ -581,25 +566,6 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.md,
   },
-  filterChip: {
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 6,
-    borderRadius: tokens.radius.pill,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    backgroundColor: tokens.bg.surface,
-  },
-  filterChipHover: { backgroundColor: tokens.bg.elevated },
-  filterChipActive: {
-    backgroundColor: tokens.accent.default,
-    borderColor: tokens.accent.default,
-  },
-  filterChipLabel: {
-    fontSize: 12,
-    fontWeight: tokens.font.weight.medium,
-    letterSpacing: 0.1,
-  },
-  filterChipLabelActive: { fontWeight: tokens.font.weight.semibold },
   body: {
     paddingBottom: tokens.space.xxl * 2,
   },
@@ -609,8 +575,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: tokens.space.xl,
   },
+  skeleton: { paddingTop: tokens.space.sm },
   dayHeading: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: tokens.space.lg,
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.sm,
   },
@@ -620,18 +587,10 @@ const styles = StyleSheet.create({
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: -0.2,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: tokens.space.md,
-    paddingHorizontal: tokens.space.xl,
-    paddingVertical: tokens.space.md,
-  },
-  rowPressed: { backgroundColor: tokens.bg.surface },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -640,15 +599,11 @@ const styles = StyleSheet.create({
     fontWeight: tokens.font.weight.semibold,
     lineHeight: tokens.font.size.md + 2,
   },
-  rowBody: { flex: 1, gap: 2, minWidth: 0 },
   line: { color: tokens.text.primary, fontSize: tokens.font.size.sm, lineHeight: 20 },
   actorName: { fontWeight: tokens.font.weight.semibold, color: tokens.text.primary },
-  listChipRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  listChipEmoji: { fontSize: 12, lineHeight: 16 },
+  listChipRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  listChipEmoji: { fontSize: tokens.font.size.xs, lineHeight: 16 },
   listChipName: { letterSpacing: 0.1 },
-  when: {
-    fontVariant: ["tabular-nums"],
-    paddingTop: 1,
-  },
+  when: { fontVariant: ["tabular-nums"] },
   footerLoader: { paddingVertical: tokens.space.lg, alignItems: "center" },
 });
