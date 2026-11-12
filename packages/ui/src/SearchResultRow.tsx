@@ -1,5 +1,12 @@
-import { Image, type ImageStyle, Pressable, StyleSheet, View, type ViewStyle } from "react-native";
-import { Button } from "./Button";
+import {
+  ActivityIndicator,
+  Image,
+  type ImageStyle,
+  Pressable,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from "react-native";
 import type { PressState } from "./interaction";
 import { Text } from "./Text";
 import { tokens } from "./theme";
@@ -18,6 +25,8 @@ export interface SearchResultRowProps {
   /** Disables the Add button while a mutation is pending. */
   loading?: boolean;
   disabled?: boolean;
+  /** Already on the list: the Add button reads "On list" and does nothing. */
+  onList?: boolean;
   testID?: string;
 }
 
@@ -29,16 +38,18 @@ export function SearchResultRow({
   imageUrl,
   onAdd,
   loading = false,
-  disabled = false,
+  disabled: disabledProp = false,
+  onList = false,
   testID,
 }: SearchResultRowProps) {
+  const disabled = disabledProp || onList;
   const fullTitle = year ? `${title} (${year})` : title;
   const rowTestId = testID ?? `search-result-${id}`;
   return (
     <Pressable
       testID={rowTestId}
       accessibilityRole="button"
-      accessibilityLabel={`Add ${fullTitle}`}
+      accessibilityLabel={onList ? `${fullTitle}, on list` : `Add ${fullTitle}`}
       onPress={disabled || loading ? undefined : onAdd}
       accessibilityState={{ disabled: disabled || loading }}
       aria-disabled={disabled || loading}
@@ -67,16 +78,19 @@ export function SearchResultRow({
           </Text>
         ) : null}
       </View>
-      <Button
-        testID={`${rowTestId}-add`}
-        label="Add"
-        size="md"
-        variant="secondary"
-        loading={loading}
-        disabled={disabled || loading}
-        onPress={onAdd}
-        style={styles.addButton}
-      />
+      {/* The whole row is the button; a nested <button> is invalid HTML. */}
+      <View
+        style={[styles.addPill, onList && styles.addPillQuiet]}
+        testID={`${rowTestId}-${onList ? "on-list" : "add"}`}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={tokens.text.secondary} />
+        ) : (
+          <Text variant="label" tone={onList ? "muted" : "primary"}>
+            {onList ? "On list" : "Add"}
+          </Text>
+        )}
+      </View>
     </Pressable>
   );
 }
@@ -112,5 +126,15 @@ const styles = StyleSheet.create({
   },
   placeholderGlyph: { fontSize: tokens.font.size.lg },
   body: { flex: 1, gap: tokens.space.xxs },
-  addButton: { minWidth: 72 },
+  addPill: {
+    minWidth: 72,
+    minHeight: 36,
+    paddingHorizontal: tokens.space.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderColor: tokens.border.default,
+  },
+  addPillQuiet: { borderColor: "transparent" },
 });

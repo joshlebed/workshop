@@ -1,33 +1,22 @@
-// Bottom-sheet row menu for unified list-detail rows. Replaces
-// `Alert.alert(title, undefined, actions)` since RN-Web silently no-ops on
-// 3+ buttons. Used on both platforms.
-//
-// Action set varies by row state:
-//   - ordered      → Move to unordered, Mark complete, Edit, Delete
-//   - unordered    → Move to ordered (top/bottom), Mark complete, Edit, Delete
-//   - completed    → Mark incomplete, Delete
-// Edit is hidden for album_shelf items (their fields are server-derived
-// from Spotify and immutable; only position is mutable).
+// Row ⋯ menu for list-detail rows (both platforms). Vocabulary follows the
+// glossary (ux-pass-plan §6): Ranked / "Rank at top" / "Rank at bottom" /
+// "Remove from ranking", the list's own completion word, and Delete in
+// `status.danger`. "Move up" / "Move down" are the keyboard and screen-reader
+// path for reordering (2.8). Edit is hidden for album-shelf items (their
+// fields are server-derived from Spotify).
 
 import type { Item } from "@workshop/shared";
 import { ActionSheet } from "@workshop/ui";
 
 export interface ItemRowMenuActions {
-  section: "ordered" | "unordered" | "completed";
-  isAlbumShelf: boolean;
-  /** Promote to bottom of ordered. Only meaningful when section !== ordered. */
-  onPromote?: () => void;
-  /** Promote to top of ordered. Only meaningful when section !== ordered. */
-  onPromoteToTop?: () => void;
-  /** Move to unordered. Only meaningful when section === ordered. */
-  onDemote?: () => void;
-  /** Mark as complete. Only meaningful when section !== completed. */
-  onComplete?: () => void;
-  /** Mark as incomplete (returns to unordered). Only when section === completed. */
-  onUncomplete?: () => void;
-  /** Open the item detail screen for editing. Hidden for album_shelf. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onRankTop?: () => void;
+  onRankBottom?: () => void;
+  onUnrank?: () => void;
+  /** Complete / reopen, with the label in the list's own word. */
+  completion?: { label: string; onPress: () => void };
   onEdit?: () => void;
-  /** Archive (soft-delete) the row, with a confirmation prompt. */
   onDelete: () => void;
 }
 
@@ -37,15 +26,12 @@ interface ItemRowMenuProps {
   onClose: () => void;
 }
 
-// The chosen action runs from the sheet's `onClosed` (ActionSheet handles
-// it), after its Modal has finished dismissing — a confirm presented while
-// the Modal was still on screen could be dropped by iOS (0.13).
-export function ItemRowMenu({ item, actions, onClose }: ItemRowMenuProps) {
-  const visible = item !== null && actions !== null;
-  const a = actions;
+// The chosen action runs from the sheet's `onClosed` (ActionSheet handles it),
+// after its Modal has finished dismissing (0.13).
+export function ItemRowMenu({ item, actions: a, onClose }: ItemRowMenuProps) {
   return (
     <ActionSheet
-      visible={visible}
+      visible={item !== null && a !== null}
       onClose={onClose}
       title={item?.title}
       testID="item-row-menu-sheet"
@@ -53,39 +39,37 @@ export function ItemRowMenu({ item, actions, onClose }: ItemRowMenuProps) {
       items={
         a
           ? [
-              a.section === "ordered" &&
-                a.onDemote && {
-                  label: a.isAlbumShelf ? "Move to detected" : "Move to unordered",
-                  onPress: a.onDemote,
-                  testID: "item-row-menu-demote",
-                },
-              a.section === "unordered" &&
-                a.onPromoteToTop && {
-                  label: "Move to ordered (top)",
-                  onPress: a.onPromoteToTop,
-                  testID: "item-row-menu-promote-top",
-                },
-              a.section === "unordered" &&
-                a.onPromote && {
-                  label: "Move to ordered (bottom)",
-                  onPress: a.onPromote,
-                  testID: "item-row-menu-promote",
-                },
-              a.section !== "completed" &&
-                a.onComplete && {
-                  label: "Mark complete",
-                  onPress: a.onComplete,
-                  testID: "item-row-menu-complete",
-                },
-              a.section === "completed" &&
-                a.onUncomplete && {
-                  label: "Mark incomplete",
-                  onPress: a.onUncomplete,
-                  testID: "item-row-menu-uncomplete",
-                },
+              a.completion && {
+                label: a.completion.label,
+                icon: "check" as const,
+                onPress: a.completion.onPress,
+                testID: "item-row-menu-complete",
+              },
+              a.onMoveUp && { label: "Move up", onPress: a.onMoveUp, testID: "item-row-menu-up" },
+              a.onMoveDown && {
+                label: "Move down",
+                onPress: a.onMoveDown,
+                testID: "item-row-menu-down",
+              },
+              a.onRankTop && {
+                label: "Rank at top",
+                onPress: a.onRankTop,
+                testID: "item-row-menu-rank-top",
+              },
+              a.onRankBottom && {
+                label: "Rank at bottom",
+                onPress: a.onRankBottom,
+                testID: "item-row-menu-rank-bottom",
+              },
+              a.onUnrank && {
+                label: "Remove from ranking",
+                onPress: a.onUnrank,
+                testID: "item-row-menu-unrank",
+              },
               a.onEdit && { label: "Edit", onPress: a.onEdit, testID: "item-row-menu-edit" },
               {
                 label: "Delete",
+                icon: "trash" as const,
                 tone: "danger" as const,
                 onPress: a.onDelete,
                 testID: "item-row-menu-delete",

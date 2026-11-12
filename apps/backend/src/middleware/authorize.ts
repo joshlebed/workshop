@@ -95,3 +95,38 @@ export const requireItemMember: MiddlewareHandler = async (c, next) => {
   c.set("itemListId", row.listId);
   await next();
 };
+
+/**
+ * `requireItemMember` for the one route that addresses a deleted item:
+ * restore (`POST /v1/items/:id/unarchive`). The item itself may be archived;
+ * its parent list must still be live and the caller a member of it. Same 404
+ * for every miss so existence never leaks.
+ */
+export const requireItemMemberIncludingArchived: MiddlewareHandler = async (c, next) => {
+  const itemId = c.req.param("id");
+  const parsedId = uuidSchema.safeParse(itemId);
+  if (!parsedId.success) {
+    return err(c, "NOT_FOUND", "item not found");
+  }
+
+  const userId = c.get("userId");
+  const db = getDb();
+  const [row] = await db
+    .select({ listId: items.listId, role: listMembers.role })
+    .from(items)
+    .innerJoin(
+      listMembers,
+      and(eq(listMembers.listId, items.listId), eq(listMembers.userId, userId)),
+    )
+    .innerJoin(lists, and(eq(lists.id, items.listId), isNull(lists.archivedAt)))
+    .where(eq(items.id, parsedId.data))
+    .limit(1);
+
+  if (!row) {
+    return err(c, "NOT_FOUND", "item not found");
+  }
+
+  c.set("listMemberRole", row.role as MemberRole);
+  c.set("itemListId", row.listId);
+  await next();
+};

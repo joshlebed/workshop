@@ -2,15 +2,12 @@
 // and web (`ItemList.web.tsx`, @dnd-kit/sortable) implementations of the
 // list-detail row container.
 
-import type { Item, ItemKind, ModuleName } from "@workshop/shared";
+import type { Item, ItemKind } from "@workshop/shared";
+import type { CompletionCopy, DropResult } from "./listOps";
 import type { Section } from "./types";
 
-export interface ReorderEvent {
-  fromIndex: number;
-  toIndex: number;
-}
-
 export interface ItemListProps {
+  /** Visible rows per section (already filtered). */
   ordered: Item[];
   unordered: Item[];
   completed: Item[];
@@ -19,42 +16,36 @@ export interface ItemListProps {
    * Rows read their numeral from here so a filter never renumbers them.
    */
   rankById: Map<string, number>;
-  /** The parent list's `itemKind` — drives kind-aware row rendering. */
   listItemKind: ItemKind | null;
-  /** Modules enabled on the list — drives section visibility + affordances. */
-  modules: ModuleName[];
-  /** True iff `listItemKind === "spotify_album"`. */
   isAlbumShelf: boolean;
-  showOrderedHint: boolean;
+  /** The Ranked block exists on this list (ranking feature on). */
+  rankingOn: boolean;
+  /** Completion is on: open rows get a checkbox, Done rows a filled one. */
+  todoOn: boolean;
+  copy: CompletionCopy;
+  /** Artwork tiles on rows (media and link lists). */
+  showCover: boolean;
+  /** Album shelf: the detected block keeps its recency order. */
+  openReorderable: boolean;
   newItemIds: Set<string>;
+  /** Scroll this row into view once it renders (after a quick add). */
+  scrollToItemId: string | null;
   memberNameById: Map<string, string>;
   showProvenance: boolean;
   selfId: string | null;
-  /**
-   * Letterboxd-match lists: per-item overlap badge ("On 3 watchlists · …")
-   * that replaces the "Added by …" provenance line. Keyed by itemId; rows
-   * absent from the map keep the default provenance.
-   */
+  /** Letterboxd-match lists: per-item overlap badge replacing "Added by …". */
   letterboxdBadgeByItem?: Map<string, string>;
   accent: string;
-  onReorderOrdered: (event: ReorderEvent) => void;
-  onPromoteToOrdered: (event: { item: Item; toIndex: number }) => void;
-  /**
-   * Neighbor-relative move used by the native combined list, which drags across
-   * the Ranked ↔ unranked boundary in one reorderable list. `beforeItemId` /
-   * `afterItemId` follow `POST /v1/items/:id/move`: both set → ranked between
-   * those rows, both `null` → unranked (demote). Web reorders within sections
-   * via the two handlers above and never calls this.
-   */
-  onMoveItemRelative: (event: {
-    item: Item;
-    beforeItemId: string | null;
-    afterItemId: string | null;
-  }) => void;
+  /** Done section collapsed (the parent remembers it per list). */
+  doneCollapsed: boolean;
+  /** Whether the Done header offers Show / Hide at all. */
+  doneCollapsible: boolean;
+  onToggleDone: () => void;
+  /** A drag finished somewhere new: the parent sends the move. */
+  onDrop: (drop: DropResult) => void;
   onRowMenu: (item: Item, section: Section) => void;
   onRowPressBody: (item: Item, section: Section) => void;
-  onUncompleteItem: (item: Item) => void;
-  resolveRowPressCover?: (item: Item, section: Section) => (() => void) | null;
+  onToggleComplete: (item: Item, nextCompleted: boolean) => void;
   refreshing: boolean;
   onRefresh: () => void;
 }

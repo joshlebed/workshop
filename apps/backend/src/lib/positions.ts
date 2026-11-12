@@ -202,3 +202,190 @@ export async function appendPosition(listId: string, db: DbClient): Promise<numb
     .where(and(eq(items.listId, listId), isNull(items.archivedAt), sql`position IS NOT NULL`));
   return Number(row?.max ?? 0) + POSITION_SPACING;
 }
+
+// --- Unranked block order (`items.order_key`, UX pass 2.7) ---------------
+//
+// The Ranked block is ordered by `position`; everything else that is open
+// (every item on a list without the ranking feature) is ordered by
+// `order_key`. NULL keys sort first, newest first, so a list nobody has
+// dragged keeps its recency order and new items land at the top without the
+// create path knowing about keys. The first hand placement on a list
+// "materializes" its NULL rows (gives them keys above the current minimum in
+// their displayed order), after which the usual sparse-integer midpoint
+// arithmetic applies. Keys are list-wide (ranked, done and archived rows keep
+// theirs), so a row returning to the block — uncompleted, removed from
+// ranking, restored — lands where it was.
+
+/**
+ * The display order of a list's unranked block. Shared by
+ * `fetchItemsForList` and the materialize/renumber statements here so a
+ * hand placement never reshuffles rows it didn't touch. The recency
+ * expression is the one the album shelf has always used (`detectedAt` for
+ * synced albums, else `created_at`).
+ */
+export const UNRANKED_ORDER_SQL = sql.raw(
+  "order_key ASC NULLS FIRST, COALESCE(content->>'detectedAt', created_at::text) DESC, id ASC",
+);
+
+interface UnrankedMoveArgs {
+  listId: string;
+  itemId: string;
+  /** The open row displayed directly above the drop, if any. */
+  beforeItemId?: string | null;
+  /** The open row displayed directly below the drop, if any. */
+  afterItemId?: string | null;
+  db: DbClient;
+}
+
+interface UnrankedMoveResult {
+  orderKey: number;
+  rebalanced: boolean;
+}
+
+/**
+ * Place `itemId` in the unranked block between two neighbours (either may be
+ * null: only `before` → just below it, only `after` → just above it, neither
+ * → top of the block). Does not touch `position`; the route clears it first
+ * when the move takes a row out of the Ranked block.
+ */
+export async function moveItemUnranked(args: UnrankedMoveArgs): Promise<UnrankedMoveResult> {
+  const { listId, itemId, beforeItemId, afterItemId, db } = args;
+  await materializeOrderKeys(listId, db);
+
+  const attempt = async (): Promise<number | null> => {
+    const beforeKey = beforeItemId ? await lookupOrderKey(db, beforeItemId) : null;
+    const afterKey = afterItemId ? await lookupOrderKey(db, afterItemId) : null;
+    let lower: number | null;
+    let upper: number | null;
+    if (beforeKey !== null && afterKey !== null) {
+      lower = Math.min(beforeKey, afterKey);
+      upper = Math.max(beforeKey, afterKey);
+    } else if (beforeKey !== null) {
+      lower = beforeKey;
+      upper = await neighborOrderKey(db, listId, itemId, "above", beforeKey);
+    } else if (afterKey !== null) {
+      lower = await neighborOrderKey(db, listId, itemId, "below", afterKey);
+      upper = afterKey;
+    } else {
+      // Top of the block: above the smallest key on the list.
+      lower = null;
+      upper = await minOrderKey(db, listId, itemId);
+    }
+    return computeBetween(lower, upper);
+  };
+
+  let key = await attempt();
+  let rebalanced = false;
+  if (key === null) {
+    await renumberOrderKeys(listId, db);
+    rebalanced = true;
+    key = await attempt();
+  }
+  if (key === null) key = (await minOrderKey(db, listId, itemId)) ?? POSITION_SPACING;
+  await db.update(items).set({ orderKey: key, updatedAt: new Date() }).where(eq(items.id, itemId));
+
+  if (!rebalanced && shouldRebalanceForOverflow(await minOrderKey(db, listId, null))) {
+    await renumberOrderKeys(listId, db);
+    rebalanced = true;
+    key = (await lookupOrderKey(db, itemId)) ?? key;
+  }
+  return { orderKey: key, rebalanced };
+}
+
+/**
+ * Give every NULL-keyed row on the list a key above the current minimum,
+ * preserving their displayed (newest-first) order. A no-op once the list has
+ * no NULL keys; new items reintroduce a few at the top.
+ */
+async function materializeOrderKeys(listId: string, db: DbClient): Promise<void> {
+  await db.execute(sql`
+    WITH floor AS (
+      SELECT COALESCE(MIN(order_key), 0) AS m
+      FROM items
+      WHERE list_id = ${listId} AND archived_at IS NULL AND order_key IS NOT NULL
+    ),
+    pending AS (
+      SELECT id,
+             ROW_NUMBER() OVER (ORDER BY ${UNRANKED_ORDER_SQL}) AS rn,
+             COUNT(*) OVER () AS n
+      FROM items
+      WHERE list_id = ${listId} AND archived_at IS NULL AND order_key IS NULL
+    )
+    UPDATE items
+    SET order_key = (floor.m - (pending.n - pending.rn + 1) * ${POSITION_SPACING})::int
+    FROM pending, floor
+    WHERE items.id = pending.id
+  `);
+}
+
+/** Re-space every keyed row on the list to n*1024 in its current order. */
+async function renumberOrderKeys(listId: string, db: DbClient): Promise<void> {
+  await db.execute(sql`
+    WITH renumbered AS (
+      SELECT id,
+             (ROW_NUMBER() OVER (ORDER BY ${UNRANKED_ORDER_SQL}) * ${POSITION_SPACING})::int AS k
+      FROM items
+      WHERE list_id = ${listId} AND archived_at IS NULL
+    )
+    UPDATE items
+    SET order_key = renumbered.k
+    FROM renumbered
+    WHERE items.id = renumbered.id
+  `);
+}
+
+async function lookupOrderKey(db: DbClient, id: string): Promise<number | null> {
+  const [row] = await db
+    .select({ orderKey: items.orderKey })
+    .from(items)
+    .where(eq(items.id, id))
+    .limit(1);
+  return row?.orderKey ?? null;
+}
+
+async function minOrderKey(
+  db: DbClient,
+  listId: string,
+  excludeId: string | null,
+): Promise<number | null> {
+  const [row] = await db
+    .select({ min: sql<number | null>`MIN(order_key)::int` })
+    .from(items)
+    .where(
+      and(
+        eq(items.listId, listId),
+        isNull(items.archivedAt),
+        sql`order_key IS NOT NULL`,
+        excludeId ? sql`id <> ${excludeId}` : sql`TRUE`,
+      ),
+    );
+  const min = row?.min;
+  return min === null || min === undefined ? null : Number(min);
+}
+
+async function neighborOrderKey(
+  db: DbClient,
+  listId: string,
+  excludeId: string,
+  direction: "above" | "below",
+  anchor: number,
+): Promise<number | null> {
+  // "above" in key space = the next larger key (the row displayed below).
+  const cmp = direction === "above" ? sql`order_key > ${anchor}` : sql`order_key < ${anchor}`;
+  const order = direction === "above" ? sql`order_key ASC` : sql`order_key DESC`;
+  const rows = await db
+    .select({ orderKey: items.orderKey })
+    .from(items)
+    .where(
+      and(
+        eq(items.listId, listId),
+        isNull(items.archivedAt),
+        sql`order_key IS NOT NULL`,
+        sql`id <> ${excludeId}`,
+        cmp,
+      ),
+    )
+    .orderBy(order)
+    .limit(1);
+  return rows[0]?.orderKey ?? null;
+}

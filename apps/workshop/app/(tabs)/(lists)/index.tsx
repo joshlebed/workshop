@@ -60,6 +60,7 @@ const EVENT_VERB: Partial<Record<ActivityEvent["type"], string>> = {
   item_updated: "edited",
   item_tagged: "tagged",
   item_archived: "archived an item",
+  item_restored: "restored an item",
   list_archived: "archived the list",
   item_completed: "checked off",
   item_uncompleted: "uncrossed",

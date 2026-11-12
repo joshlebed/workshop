@@ -156,6 +156,27 @@ game screen are pixel-identical. Decisions and deviations:
 | 2.13 | List loading renders the header at once from the home cache with skeleton rows; error screens keep a back button.                                                                                        | M    | —                              |
 | 2.14 | Hide phone-irrelevant chrome: the `/` and `press n` keyboard hints show only with a hardware keyboard; the search field hides on an empty list.                                                          | S    | —                              |
 
+**Phase 2 status (2026-11-12): done, all 14 rows**, in the `joshlebed/ux-pass-phase-2` PR
+(stacked on Phase 1). Verified in the running web app at 390×844 (mouse and real touch
+events) and 1440×900; the iOS bundle builds, but native drag, haptics and the empty-Ranked
+cell were not run on a device. Decisions and deviations:
+
+- **2.7 data model**: a second sparse key, `items.order_key` (migration `0055`, nullable,
+  no backfill), orders every open row outside the Ranked block on every list. NULL sorts
+  first, newest first, so untouched lists keep recency order and new items land on top; the
+  first hand placement materializes the NULLs. `POST /v1/items/:id/move` gained `section`
+  (`ranked` | `unranked`); every request shape older clients send keeps its meaning.
+- **2.1 placement**: checkbox leading, rank as a quiet inline figure before the title (title
+  block 61% of a 390px row with a cover; numeral-leading with a trailing checkbox measured
+  51% and moved the checkbox between sections). Plain lists drop the artwork tile.
+- **Swipe to complete on native: skipped.** One tap on the checkbox already completes, and a
+  horizontal swipe inside the reorderable list's long-press/pan could not be verified without
+  a device.
+- **Album shelf** keeps its recency-ordered detected block: its rows rank and unrank by drag
+  but don't reorder among themselves, and a demote uses the legacy move shape.
+- Out-of-scope extras: delete from item detail is act-then-undo too, and the search result
+  row no longer nests a button inside a button.
+
 ### Phase 3 — Navigation and information architecture
 
 | #   | Change                                                                                                                                                                                                                             | Size |

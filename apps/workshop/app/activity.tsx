@@ -411,6 +411,7 @@ const VERB_ICON: Record<string, IconName> = { "+": "plus", "✓": "check", "↻"
 function verbMarkFor(type: ActivityEvent["type"]): string {
   switch (type) {
     case "item_added":
+    case "item_restored":
     case "list_created":
     case "list_duplicated":
     case "invite_created":
@@ -464,6 +465,8 @@ function describeEvent(event: ActivityEvent): string {
       return `edited${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_archived":
       return `archived${payloadString(payload, "title", (t) => ` "${t}"`)}`;
+    case "item_restored":
+      return `restored${payloadString(payload, "title", (t) => ` "${t}"`)}`;
     case "item_tagged": {
       const tags = Array.isArray(payload.tags)
         ? payload.tags.filter((t): t is string => typeof t === "string")

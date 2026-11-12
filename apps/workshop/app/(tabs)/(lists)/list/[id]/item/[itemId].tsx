@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "@workshop/api-client/api";
+import { ApiError, errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import type { Item } from "@workshop/shared";
+import type { Item, ListItemsResponse } from "@workshop/shared";
 import {
   ActionSheet,
   alpha,
   Button,
-  confirm,
   EmojiBadge,
   EmptyState,
   formatRelative,
@@ -34,6 +33,7 @@ import {
   archiveItem,
   completeItem,
   fetchItem,
+  unarchiveItem,
   uncompleteItem,
   updateItem,
   updateItemTags,
@@ -48,6 +48,8 @@ import {
   isDraftDirty,
   reconcileDraftField,
 } from "../../../../../../src/lib/itemDraft";
+import { itemPlaceholderGlyph } from "../../../../../../src/screens/listDetail/itemGlyph";
+import { applyRemove, completionCopy } from "../../../../../../src/screens/listDetail/listOps";
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 
@@ -217,23 +219,47 @@ export default function ItemDetail() {
       }),
   });
 
+  // Delete is act-then-undo like on the list (2.3): leave at once, the list
+  // drops the row, and the toast offers Undo.
+  const refreshList = () => {
+    if (!listId) return;
+    queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(listId) });
+    queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+  };
   const archiveMutation = useMutation({
-    mutationFn: () => archiveItem(itemId ?? "", token),
-    onSuccess: async () => {
+    mutationFn: (title: string) => archiveItem(itemId ?? "", token).then(() => title),
+    onMutate: () => {
       haptics.medium();
       if (listId) {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(listId) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
-        ]);
+        queryClient.setQueryData<ListItemsResponse>(queryKeys.items.byList(listId), (d) =>
+          d ? applyRemove(d, itemId ?? "") : d,
+        );
       }
       goBack(`/list/${listId}`);
     },
-    onError: (e) =>
+    onSuccess: (title) => {
+      refreshList();
+      showToast({
+        key: "delete",
+        message: `Deleted “${title}”`,
+        actionLabel: "Undo",
+        durationMs: 6000,
+        onAction: () => {
+          unarchiveItem(itemId ?? "", token)
+            .then(refreshList)
+            .catch((e) =>
+              showToast({ message: errorMessage(e, "Couldn't restore that."), tone: "danger" }),
+            );
+        },
+      });
+    },
+    onError: (e) => {
+      refreshList();
       showToast({
         message: e instanceof ApiError ? e.message : "Couldn't delete",
         tone: "danger",
-      }),
+      });
+    },
   });
 
   // Debounced autosave. We compare against the server snapshot (not against
@@ -303,7 +329,11 @@ export default function ItemDetail() {
   // Trim on blur, not while typing, then save right away.
   const onFieldBlur = (field: DraftField) => () => {
     if (focusedFieldRef.current === field) focusedFieldRef.current = null;
-    if (field === "title") setTitle((v) => v.trim());
+    // An emptied title can't be saved; put the saved one back rather than
+    // leaving a blank that silently never saves (2.12).
+    if (field === "title") {
+      setTitle((v) => v.trim() || (serverDraftRef.current?.title ?? v.trim()));
+    }
     if (field === "note") setNote((v) => v.trim());
     if (field === "url") setUrl((v) => v.trim());
     flushSave();
@@ -333,12 +363,17 @@ export default function ItemDetail() {
   // Cached item stays on screen if a background refetch fails (0.9).
   if (!itemQuery.data) {
     return (
-      <Screen style={styles.center}>
-        <EmptyState
-          title="Couldn't load this"
-          description={itemQuery.error instanceof Error ? itemQuery.error.message : undefined}
-          action={<Button label="Retry" variant="secondary" onPress={() => itemQuery.refetch()} />}
-        />
+      <Screen style={styles.root}>
+        <ItemHeader parentList={parentList} onBack={onBack} />
+        <View style={styles.center}>
+          <EmptyState
+            title="Couldn't load this"
+            description={itemQuery.error instanceof Error ? itemQuery.error.message : undefined}
+            action={
+              <Button label="Retry" variant="secondary" onPress={() => itemQuery.refetch()} />
+            }
+          />
+        </View>
       </Screen>
     );
   }
@@ -352,15 +387,8 @@ export default function ItemDetail() {
     ? listMembers.find((m) => m.userId === loadedItem.completedBy)
     : null;
 
-  const onDelete = async () => {
-    const ok = await confirm({
-      title: `Delete "${loadedItem.title}"?`,
-      message: "This removes it from the list.",
-      confirmLabel: "Delete",
-      destructive: true,
-    });
-    if (ok) archiveMutation.mutate();
-  };
+  const onDelete = () => archiveMutation.mutate(loadedItem.title);
+  const copy = completionCopy(parentList?.itemKind ?? loadedItem.kind);
 
   const onOpenUrl = () => {
     if (loadedItem.url) openExternalUrl(loadedItem.url);
@@ -449,7 +477,7 @@ export default function ItemDetail() {
           <View style={styles.primaryActionRow}>
             <Button
               testID="item-detail-complete"
-              label={completionLabel(loadedItem)}
+              label={loadedItem.completed ? copy.unmark : copy.mark}
               variant={loadedItem.completed ? "secondary" : "primary"}
               size="lg"
               loading={completeMutation.isPending}
@@ -480,10 +508,10 @@ export default function ItemDetail() {
             testID: "item-menu-open",
           },
           {
-            label: "Delete item",
+            label: "Delete",
             icon: "trash",
             tone: "danger",
-            onPress: () => void onDelete(),
+            onPress: onDelete,
             testID: "item-menu-delete",
           },
         ]}
@@ -815,37 +843,14 @@ function describeItem(item: Item): KindView {
       };
     }
     default: {
-      // plain + any future kind: a neutral glyph, no eyebrow.
+      // plain + any future kind: the same glyph as the list row, no eyebrow.
       return {
-        placeholderGlyph: "✦",
+        placeholderGlyph: itemPlaceholderGlyph(item.kind),
         subline: "",
         eyebrow: "",
         hasUrlField: true,
       };
     }
-  }
-}
-
-function completionLabel(item: Item): string {
-  if (item.completed) {
-    switch (item.kind) {
-      case "movie":
-      case "tv":
-        return "Mark as not watched";
-      case "book":
-        return "Mark as not read";
-      default:
-        return "Mark as not done";
-    }
-  }
-  switch (item.kind) {
-    case "movie":
-    case "tv":
-      return "Mark watched";
-    case "book":
-      return "Mark read";
-    default:
-      return "Mark done";
   }
 }
 

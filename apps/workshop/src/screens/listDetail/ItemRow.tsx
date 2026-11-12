@@ -1,89 +1,67 @@
-// Pure presentation for unified list-detail rows + section headers + ordered-hint.
-// No drag plumbing here — both list implementations (native +
-// react-native-reorderable-list, web + @dnd-kit/sortable) compose the row
-// inside their own gesture-aware wrappers.
+// Pure presentation for list-detail rows + section headers. No drag plumbing
+// here: both list implementations (native + react-native-reorderable-list,
+// web + @dnd-kit/sortable) compose the row inside their own gesture-aware
+// wrappers and hand it the pieces below.
 //
-// One row component covers every list type: album-shelf renders the
-// Spotify-shaped metadata (cover/artist/year + NEW pill + detected
-// timestamp), other types fall back to title + note + an optional poster /
-// cover from `metadata.posterUrl` or `metadata.coverUrl` / `image`.
+// Anatomy (plan §2 "One row"): [check] [cover] title / one quiet line [⋯].
+// The whole row except the checkbox and the ⋯ opens the item.
 
 import type { Item, ItemKind } from "@workshop/shared";
 import {
   alpha,
-  Badge,
   formatRelative,
+  haptics,
   Icon,
   IconButton,
+  interaction,
   REORDER_ACTIVATION,
   Text,
   tokens,
+  webAria,
 } from "@workshop/ui";
-import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import { type ReactNode, useState } from "react";
+import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { itemPlaceholderGlyph } from "./itemGlyph";
 
 interface ItemRowProps {
   item: Item;
   /** Section bucket — drives leading affordance + chrome. */
   section: "ordered" | "unordered" | "completed";
-  /**
-   * 1-indexed position inside the ordered section. Only used when section ===
-   * "ordered" — the rank number replaces the previous drag-glyph placeholder
-   * so the ordered position is visible at a glance instead of being implied.
-   */
+  /** 1-indexed rank in the whole Ranked block (ranked rows only). */
   rank?: number;
-  /**
-   * Album-shelf only: highlights the row briefly after a refresh that
-   * surfaced it as a new detection.
-   */
+  /** Brief highlight after the row was added or surfaced by a sync. */
   isNew: boolean;
-  /** Library reports `true` while the row is being dragged. */
+  /** True while the row is lifted by a drag. */
   isDragging: boolean;
   addedByName: string | null;
-  /**
-   * Pre-built provenance line that wins over the default "Added by …" /
-   * "completed …" logic. Leaderboard lists use this to swap attribution for
-   * "X of Y played".
-   */
+  /** Wins over the default provenance line (Letterboxd overlap badge). */
   provenanceOverride?: string;
-  /** List accent hex used to tint cover placeholder + position chip glyph. */
+  /** List accent hex: tints the cover placeholder and the rank numeral. */
   accent: string;
   /**
-   * Tap-to-uncomplete: when the row is in the completed section, the
-   * checkmark turns into a Pressable that fires this. Saves a row-menu
-   * trip for the common "oops, I checked the wrong one" recovery — and
-   * for the active "checking off as we go" flow, it makes the completed
-   * row itself reversible with one tap. Omit on rows that can't be
-   * toggled (album_shelf items don't support completion at all).
+   * The completion checkbox (lists with the to-do feature). Open rows get an
+   * empty circle that completes in one tap; Done rows a filled one that
+   * reopens. Omitted when the list has no completion.
    */
-  onTapCompleted?: () => void;
+  checkbox?: {
+    checked: boolean;
+    onToggle: () => void;
+    /** "Mark watched" / "Mark not watched": the hint for assistive tech. */
+    hint: string;
+  };
+  /** "Watched" / "Read" / "Done": the Done row's provenance verb. */
+  doneWord?: string;
+  /** Show the row's artwork tile (media and link lists; plain lists skip it). */
+  showCover: boolean;
   onMenu: () => void;
-  /** Short-tap on the body (excluding handle/menu) — type-specific destination. */
   onPressBody?: () => void;
-  /**
-   * If provided, the cover image becomes its own Pressable target —
-   * separate from the body tap. Used for game rows where tapping the
-   * thumbnail opens the game URL while tapping the rest of the row opens
-   * the leaderboard.
-   */
-  onPressCover?: () => void;
-  /**
-   * Long-press on the body initiates reorder. The platform-specific
-   * `ItemList` wrapper supplies this — native binds it to
-   * `useReorderableDrag()`, web is driven by `@dnd-kit`'s `TouchSensor`
-   * delay-activation. Omitted on rows that aren't reorderable in a given
-   * section.
-   */
+  /** Long-press on the body starts a reorder (native). */
   onLongPressBody?: () => void;
   /**
-   * Drag-affordance slot — wraps the position chip on ordered rows so the
-   * gesture library can render the visual affordance + (on web) host the
-   * drag-listener spread. The activation gesture itself now lives on the
-   * row body, not the chip, so this slot is purely visual on native.
+   * Web drag affordance: drawn in the left gutter while the row is hovered or
+   * focused, never permanently on every row.
    */
-  dragHandle?: (children: ReactNode) => ReactNode;
+  dragHandle?: ReactNode;
 }
 
 export function ItemRow({
@@ -95,31 +73,25 @@ export function ItemRow({
   addedByName,
   provenanceOverride,
   accent,
-  onTapCompleted,
+  checkbox,
+  doneWord = "Done",
+  showCover,
   onMenu,
   onPressBody,
-  onPressCover,
   onLongPressBody,
   dragHandle,
 }: ItemRowProps) {
   const isCompleted = section === "completed";
-  // Crossfade the cover when a row's completed state changes — gives the
-  // checkbox flip a visible echo. The title relies on strikethrough alone;
-  // doubling up with opacity made completed rows feel washed out.
-  const completedProgress = useSharedValue(isCompleted ? 1 : 0);
-  useEffect(() => {
-    completedProgress.value = withTiming(isCompleted ? 1 : 0, { duration: tokens.motion.base });
-  }, [isCompleted, completedProgress]);
-  const coverStyle = useAnimatedStyle(() => ({ opacity: 1 - completedProgress.value * 0.5 }));
-
   const view = describeItem(item);
-  const provenance = provenanceOverride ?? describeProvenance(item, section, addedByName);
+  const meta = [
+    (item.tags ?? []).join(" · "),
+    provenanceOverride ?? describeProvenance(item, section, addedByName, doneWord),
+  ]
+    .filter(Boolean)
+    .join("  ·  ");
 
-  // A broken or hotlink-blocked image (common for scraped place/link covers
-  // on web) used to fall through to a bare elevated square, which reads as a
-  // loading bug. Track load failure and fall back to the tinted placeholder
-  // glyph instead. Reset during render (not an effect) when the row recycles
-  // onto a different image URL — the React-blessed "reset state on prop change".
+  // A broken or hotlink-blocked image falls back to the tinted placeholder.
+  // Reset during render when the row recycles onto a different image URL.
   const [imageFailed, setImageFailed] = useState(false);
   const [trackedUrl, setTrackedUrl] = useState(view.imageUrl);
   if (view.imageUrl !== trackedUrl) {
@@ -127,85 +99,49 @@ export function ItemRow({
     setImageFailed(false);
   }
   const showImage = !!view.imageUrl && !imageFailed;
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
 
-  const leading =
-    section === "ordered" ? (
-      <PositionChip
-        dragHandle={dragHandle}
-        isDragging={isDragging}
-        accent={accent}
-        rank={typeof rank === "number" ? rank : null}
-      />
-    ) : section === "completed" ? (
-      onTapCompleted ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Mark ${item.title} as not done`}
-          onPress={onTapCompleted}
-          testID={`item-row-uncomplete-${item.id}`}
-          // A 44pt target around the 28pt mark; negative margins keep the
-          // slot 28 wide so covers align with ranked rows.
-          style={styles.completedTarget}
-        >
-          {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
-            <View style={[styles.completedMark, (pressed || hovered) && styles.completedMarkHover]}>
-              <Icon name="check" size={14} tone="secondary" />
-            </View>
-          )}
-        </Pressable>
-      ) : (
-        <View style={styles.completedMark}>
-          <Icon name="check" size={14} tone="secondary" />
-        </View>
-      )
-    ) : dragHandle ? (
-      // Unordered rows on web get a drag handle so they can be dragged into
-      // the ranked section. Native unordered rows omit `dragHandle` (cross-
-      // section drag isn't supported there). No rank yet — render the drag
-      // glyph instead of a number.
-      <PositionChip dragHandle={dragHandle} isDragging={isDragging} accent={accent} rank={null} />
-    ) : null;
+  const rankNumeral = typeof rank === "number" && section === "ordered" ? rank : null;
+  // With a checkbox in the leading slot the rank moves inline, a quiet
+  // tabular figure before the title; without one it keeps the leading slot.
+  const leading = checkbox ? (
+    <Checkbox
+      checked={checkbox.checked}
+      onToggle={checkbox.onToggle}
+      label={item.title}
+      hint={checkbox.hint}
+      testID={`item-row-check-${item.id}`}
+    />
+  ) : rankNumeral !== null ? (
+    <View style={styles.rankSlot}>
+      <Text style={[styles.rankLeading, { color: accent }]}>{rankNumeral}</Text>
+    </View>
+  ) : null;
 
-  const coverInner = showImage ? (
-    <Animated.Image
+  const cover = !showCover ? null : showImage ? (
+    <Image
       source={{ uri: view.imageUrl }}
-      style={[styles.cover, coverStyle]}
+      style={[styles.cover, isCompleted && styles.coverDone]}
       onError={() => setImageFailed(true)}
       accessibilityIgnoresInvertColors
     />
   ) : (
-    <Animated.View
+    <View
       style={[
         styles.cover,
         styles.coverPlaceholder,
         { backgroundColor: alpha(accent, 0.12) },
-        coverStyle,
+        isCompleted && styles.coverDone,
       ]}
     >
-      <Text style={styles.coverPlaceholderGlyph}>{view.placeholderGlyph}</Text>
-    </Animated.View>
-  );
-
-  // For game rows the thumbnail launches the game URL — give it its own
-  // Pressable so it's not part of the body's leaderboard-tap target.
-  const cover = onPressCover ? (
-    <Pressable
-      accessibilityRole="link"
-      accessibilityLabel={`Play ${item.title}`}
-      onPress={onPressCover}
-      hitSlop={6}
-      testID={`item-row-cover-${item.id}`}
-      style={({ pressed }) => [styles.coverPressable, pressed && styles.coverPressed]}
-    >
-      {coverInner}
-    </Pressable>
-  ) : (
-    coverInner
+      <Text style={styles.coverPlaceholderGlyph}>{itemPlaceholderGlyph(item.kind)}</Text>
+    </View>
   );
 
   const bodyContent = (
     <>
-      {onPressCover ? null : cover}
+      {cover}
       <View style={styles.rowBody}>
         <View style={styles.rowTitleLine}>
           <Text
@@ -213,9 +149,11 @@ export function ItemRow({
             style={[styles.rowTitle, isCompleted && styles.rowTitleCompleted]}
             testID={`item-title-${item.id}`}
           >
+            {checkbox && rankNumeral !== null ? (
+              <Text style={[styles.rankInline, { color: accent }]}>{`${rankNumeral}  `}</Text>
+            ) : null}
             {item.title}
           </Text>
-          {isNew ? <Badge label="NEW" tone="accent" testID={`item-row-new-${item.id}`} /> : null}
         </View>
         {view.subline ? (
           <Text
@@ -227,9 +165,9 @@ export function ItemRow({
             {view.subline}
           </Text>
         ) : null}
-        {provenance ? (
-          <Text variant="caption" tone="muted" numberOfLines={1} style={styles.provenance}>
-            {provenance}
+        {meta ? (
+          <Text variant="caption" tone="muted" numberOfLines={1} style={styles.meta}>
+            {meta}
           </Text>
         ) : null}
       </View>
@@ -240,35 +178,43 @@ export function ItemRow({
     <View
       style={[styles.row, isNew && styles.rowNew, isDragging && styles.rowDragging]}
       testID={`item-row-${item.id}`}
+      {...(isNew ? { dataSet: { new: "true" } } : {})}
     >
-      {leading}
-      {onPressCover ? cover : null}
-      {onPressBody || onLongPressBody ? (
-        <Pressable
-          accessibilityRole={view.bodyRole}
-          accessibilityLabel={view.bodyLabel}
-          onPress={onPressBody}
-          // Shared hold threshold (500ms, the iOS long-press minimum): 250ms
-          // turned hesitant taps into drags that swallowed the open. The
-          // kebab Pressable inside this row owns its own touch via the
-          // responder system, so long-press here doesn't compete with it.
-          onLongPress={onLongPressBody}
-          delayLongPress={REORDER_ACTIVATION.longPressMs}
-          testID={`item-row-body-${item.id}`}
-          style={({ pressed, hovered }) => [
-            styles.bodyPressable,
-            (pressed || hovered) && styles.bodyPressed,
-          ]}
+      {dragHandle ? (
+        <View
+          style={[styles.handle, (hovered || focused || isDragging) && styles.handleVisible]}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
         >
-          {bodyContent}
-        </Pressable>
-      ) : (
-        <View style={styles.bodyPressable}>{bodyContent}</View>
-      )}
+          {dragHandle}
+        </View>
+      ) : null}
+      {leading}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={view.bodyLabel(item.title)}
+        onPress={onPressBody}
+        // Shared hold threshold (500ms, the iOS long-press minimum).
+        onLongPress={onLongPressBody}
+        delayLongPress={REORDER_ACTIVATION.longPressMs}
+        onHoverIn={() => setHovered(true)}
+        onHoverOut={() => setHovered(false)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        testID={`item-row-body-${item.id}`}
+        style={({ pressed, hovered: h }: { pressed: boolean; hovered?: boolean }) => [
+          styles.bodyPressable,
+          h && styles.bodyHovered,
+          pressed && styles.bodyPressed,
+        ]}
+      >
+        {bodyContent}
+      </Pressable>
       <IconButton
         icon="more"
         iconTone="secondary"
-        accessibilityLabel={`Open menu for ${item.title}`}
+        accessibilityLabel={`Actions for ${item.title}`}
         onPress={onMenu}
         testID={`item-row-menu-${item.id}`}
         style={styles.menuBtn}
@@ -277,52 +223,74 @@ export function ItemRow({
   );
 }
 
-interface PositionChipProps {
-  isDragging: boolean;
-  accent: string;
-  rank: number | null;
-  dragHandle?: (children: ReactNode) => ReactNode;
-}
-
-// Ordered rows display their rank as a bare accent-colored numeral; the
-// glyph IS the information, so a filled chip background only competes with
-// the adjacent cover thumbnail. Web unordered rows that can be dragged into
-// the ordered section show a muted `≡` instead — present but quieter than
-// the ranked numerals so the visual hierarchy reads "ranks first, drag
-// affordance second."
-function PositionChip({ isDragging, accent, rank, dragHandle }: PositionChipProps) {
-  const chip = (
-    <View style={[styles.positionSlot, isDragging && styles.positionSlotDragging]}>
-      {rank !== null ? (
-        <Text style={[styles.positionRank, { color: accent }]}>{rank}</Text>
-      ) : (
-        <Icon name="drag" size={16} tone="muted" />
+function Checkbox({
+  checked,
+  onToggle,
+  label,
+  hint,
+  testID,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+  hint: string;
+  testID: string;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      aria-checked={checked}
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      {...webAria({ title: hint })}
+      onPress={() => {
+        haptics.selection();
+        onToggle();
+      }}
+      testID={testID}
+      style={styles.checkTarget}
+    >
+      {({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => (
+        <View
+          style={[
+            styles.checkCircle,
+            checked && styles.checkCircleOn,
+            !checked && (hovered || pressed) && styles.checkCircleHover,
+          ]}
+        >
+          {checked || hovered ? (
+            <Icon name="check" size={12} tone={checked ? "primary" : "muted"} />
+          ) : null}
+        </View>
       )}
-    </View>
+    </Pressable>
   );
-  return dragHandle ? dragHandle(chip) : chip;
 }
 
 interface ItemView {
   imageUrl?: string;
-  placeholderGlyph: string;
   subline: string;
-  bodyRole: "link" | "button";
-  bodyLabel: string;
+  bodyLabel: (title: string) => string;
 }
 
+const openLabel = (title: string) => `Open ${title}`;
+
+/**
+ * The one quiet line under the title. What people wrote wins over what was
+ * fetched (2.9): a note replaces a movie's overview or a link's site name.
+ */
 function describeItem(item: Item): ItemView {
   const c = item.content as Record<string, unknown>;
+  const note = item.note?.trim() || null;
   switch (item.kind) {
     case "spotify_album": {
       const subline =
         typeof c.year === "number" ? `${c.artist ?? ""} · ${c.year}` : ((c.artist as string) ?? "");
       return {
         ...(typeof c.coverUrl === "string" ? { imageUrl: c.coverUrl } : {}),
-        placeholderGlyph: "📀",
-        subline,
-        bodyRole: "link",
-        bodyLabel: `Open ${item.title} on Spotify`,
+        subline: note ?? subline,
+        bodyLabel: (t) => `Open ${t} on Spotify`,
       };
     }
     case "movie":
@@ -330,33 +298,23 @@ function describeItem(item: Item): ItemView {
       const poster = typeof c.posterUrl === "string" ? c.posterUrl : undefined;
       const year = typeof c.year === "number" ? String(c.year) : null;
       const overview = typeof c.overview === "string" ? c.overview : null;
-      const subline = [year, overview].filter(Boolean).join(" · ");
       return {
         ...(poster ? { imageUrl: poster } : {}),
-        placeholderGlyph: item.kind === "tv" ? "📺" : "🎬",
-        subline,
-        bodyRole: "button",
-        bodyLabel: `Open ${item.title}`,
+        subline: [year, note ?? overview].filter(Boolean).join(" · "),
+        bodyLabel: openLabel,
       };
     }
     case "book": {
       const cover = typeof c.coverUrl === "string" ? c.coverUrl : undefined;
       const authors = Array.isArray(c.authors) ? (c.authors as string[]).join(", ") : "";
       const year = typeof c.year === "number" ? String(c.year) : null;
-      const subline = [authors, year].filter(Boolean).join(" · ");
       return {
         ...(cover ? { imageUrl: cover } : {}),
-        placeholderGlyph: "📚",
-        subline,
-        bodyRole: "button",
-        bodyLabel: `Open ${item.title}`,
+        subline: note ?? [authors, year].filter(Boolean).join(" · "),
+        bodyLabel: openLabel,
       };
     }
     case "link": {
-      // `link` covers date ideas, trips, games, and any generic URL-bearing
-      // item. Prefer `imageProxy` (wsrv.nl-wrapped) for rendering so we get
-      // resize + format negotiation and survive the upstream hotlink-blocking
-      // case. Fall back to `image`, then the legacy `thumbnailUrl` shape.
       const image =
         typeof c.imageProxy === "string"
           ? c.imageProxy
@@ -366,25 +324,14 @@ function describeItem(item: Item): ItemView {
               ? c.thumbnailUrl
               : undefined;
       const siteName = typeof c.siteName === "string" ? c.siteName : "";
-      const note = item.note ?? "";
-      const subline = [siteName, note].filter(Boolean).join(" · ");
       return {
         ...(image ? { imageUrl: image } : {}),
-        placeholderGlyph: "🔗",
-        subline,
-        bodyRole: "button",
-        bodyLabel: `Open ${item.title}`,
+        subline: note ?? siteName,
+        bodyLabel: openLabel,
       };
     }
-    default: {
-      const note = item.note ?? "";
-      return {
-        placeholderGlyph: "📝",
-        subline: note,
-        bodyRole: "button",
-        bodyLabel: `Open ${item.title}`,
-      };
-    }
+    default:
+      return { subline: note ?? "", bodyLabel: openLabel };
   }
 }
 
@@ -392,18 +339,17 @@ function describeProvenance(
   item: Item,
   section: "ordered" | "unordered" | "completed",
   addedByName: string | null,
+  doneWord: string,
 ): string | null {
   if (section === "completed" && item.completedAt) {
-    return `completed ${formatRelative(item.completedAt)}`;
+    return `${doneWord} ${formatRelative(item.completedAt)}`;
   }
   if (item.kind === "spotify_album" && section === "unordered") {
     const c = item.content as { detectedAt?: string };
     const detectedAt = typeof c.detectedAt === "string" ? c.detectedAt : null;
-    return detectedAt ? `detected ${formatRelative(detectedAt)}` : "detected";
+    return detectedAt ? `Detected ${formatRelative(detectedAt)}` : "Detected";
   }
-  // Only surface attribution when another collaborator added the row; a list
-  // owned and added-to by one person doesn't need the repetition. Use the
-  // bare first name (no "@" handle prefix) — calmer.
+  // Attribution only when someone else added the row, first name only.
   if (!addedByName) return null;
   const first = addedByName.trim().split(/\s+/)[0] ?? addedByName;
   return `Added by ${first} · ${formatRelative(item.createdAt)}`;
@@ -412,9 +358,9 @@ function describeProvenance(
 interface SectionHeaderProps {
   kind: "ordered" | "unordered" | "completed";
   count: number;
-  /** Drives the kind-specific copy on the unordered + completed labels. */
   listItemKind: ItemKind | null;
-  /** When provided, the header becomes a Pressable that toggles section collapse. */
+  /** The list's completion word, for the Done header. */
+  doneWord: string;
   collapsible?: { collapsed: boolean; onToggle: () => void };
 }
 
@@ -427,23 +373,19 @@ const UNORDERED_LABEL_BY_KIND: Record<ItemKind, string> = {
   plain: "Up next",
 };
 
-const COMPLETED_LABEL_BY_KIND: Record<ItemKind, string> = {
-  movie: "Watched",
-  tv: "Watched",
-  book: "Read",
-  link: "Tried",
-  spotify_album: "Done",
-  plain: "Done",
-};
-
-export function SectionHeader({ kind, count, listItemKind, collapsible }: SectionHeaderProps) {
-  const itemKind = listItemKind ?? "plain";
+export function SectionHeader({
+  kind,
+  count,
+  listItemKind,
+  doneWord,
+  collapsible,
+}: SectionHeaderProps) {
   const label =
     kind === "ordered"
       ? "Ranked"
       : kind === "completed"
-        ? COMPLETED_LABEL_BY_KIND[itemKind]
-        : UNORDERED_LABEL_BY_KIND[itemKind];
+        ? doneWord
+        : UNORDERED_LABEL_BY_KIND[listItemKind ?? "plain"];
 
   const body = (
     <View style={styles.sectionHeader}>
@@ -458,9 +400,15 @@ export function SectionHeader({ kind, count, listItemKind, collapsible }: Sectio
         {count}
       </Text>
       {collapsible ? (
-        <Text variant="eyebrow" style={styles.sectionHeaderToggle}>
-          {collapsible.collapsed ? "Show" : "Hide"}
-        </Text>
+        <View style={styles.sectionHeaderToggle}>
+          <Text variant="eyebrow">{collapsible.collapsed ? "Show" : "Hide"}</Text>
+          <Icon
+            name="chevron-down"
+            size={12}
+            tone="muted"
+            style={collapsible.collapsed ? undefined : styles.chevronUp}
+          />
+        </View>
       ) : null}
     </View>
   );
@@ -472,12 +420,14 @@ export function SectionHeader({ kind, count, listItemKind, collapsible }: Sectio
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${collapsible.collapsed ? "Show" : "Hide"} ${label.toLowerCase()} section`}
+      accessibilityLabel={`${collapsible.collapsed ? "Show" : "Hide"} ${label.toLowerCase()}, ${count}`}
+      aria-expanded={!collapsible.collapsed}
       onPress={collapsible.onToggle}
       testID={`list-detail-section-${kind}`}
-      style={({ hovered, pressed }) => [
+      style={({ hovered, pressed }: { pressed: boolean; hovered?: boolean }) => [
         styles.sectionHeaderPressable,
-        (hovered || pressed) && styles.sectionHeaderPressableHover,
+        hovered && { backgroundColor: interaction.hover },
+        pressed && { backgroundColor: interaction.pressed },
       ]}
     >
       {body}
@@ -485,144 +435,189 @@ export function SectionHeader({ kind, count, listItemKind, collapsible }: Sectio
   );
 }
 
-export function OrderedHint({ isAlbumShelf }: { isAlbumShelf: boolean }) {
-  const text = isAlbumShelf
-    ? "Drag a detected album up here (or tap ⋯ → Move to ranked) to start ordering."
-    : "Drag a row up here (or tap ⋯ → Move to ranked) to start ordering.";
+/**
+ * The empty Ranked section as a drop target. Web shows it only while a row is
+ * being dragged; native keeps a constant-height cell (its reorder library
+ * measures cells once) whenever Ranked is empty.
+ */
+export function RankedDropZone({ active }: { active: boolean }) {
+  // Web floats this over the top of the list for the length of a drag, so it
+  // stays one compact line; native's cell carries the section label too.
+  if (Platform.OS === "web") {
+    return (
+      <View
+        testID="list-detail-ranked-drop"
+        style={[styles.dropZone, styles.dropZoneCompact, active && styles.dropZoneActive]}
+      >
+        <Text variant="caption" tone={active ? "secondary" : "muted"}>
+          Drop here to rank
+        </Text>
+      </View>
+    );
+  }
   return (
-    <View style={styles.orderedHint} testID="list-detail-ordered-hint">
-      <Text variant="caption" tone="secondary">
-        {text}
-      </Text>
+    <View testID="list-detail-ranked-drop">
+      <View style={styles.sectionHeader}>
+        <Text variant="eyebrow" tone="secondary">
+          Ranked
+        </Text>
+      </View>
+      <View style={[styles.dropZone, active && styles.dropZoneActive]}>
+        <Text variant="caption" tone={active ? "secondary" : "muted"}>
+          Hold a row and drag it here to rank it
+        </Text>
+      </View>
     </View>
   );
 }
+
+const CHECK = 22;
 
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.md,
-    paddingVertical: tokens.space.md,
+    gap: tokens.space.sm,
+    minHeight: 56,
+    paddingVertical: tokens.space.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: tokens.border.subtle,
+    backgroundColor: tokens.bg.canvas,
   },
-  rowNew: { backgroundColor: tokens.accent.muted },
+  // Just added or just synced: a faint warm wash that clears after a moment.
+  rowNew: { backgroundColor: alpha(tokens.accent.default, 0.07) },
+  // Lifted: a neutral drop shadow and a slight scale (DESIGN.md: no colored
+  // glow), on the surface step so it reads above its neighbours.
   rowDragging: {
     backgroundColor: tokens.bg.surface,
-    boxShadow: "0px 6px 12px rgba(0, 0, 0, 0.35)",
+    boxShadow: "0px 8px 20px rgba(0, 0, 0, 0.45)",
     elevation: 8,
-    // Lift the row off the divider while dragging
     borderBottomColor: "transparent",
+    borderRadius: tokens.radius.md,
+    transform: [{ scale: 1.02 }],
   },
+  handle: {
+    position: "absolute",
+    left: -tokens.space.xl,
+    top: 0,
+    bottom: 0,
+    width: tokens.space.xl,
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0,
+  },
+  handleVisible: { opacity: 1 },
   bodyPressable: {
     flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.md,
+    minHeight: tokens.hit,
     paddingVertical: tokens.space.xs,
     paddingHorizontal: tokens.space.xs,
     marginHorizontal: -tokens.space.xs,
     borderRadius: tokens.radius.md,
   },
-  bodyPressed: { backgroundColor: tokens.bg.surface },
-  positionSlot: {
-    // Narrower than before (28 vs 36): the rank glyph IS the affordance, so
-    // there's no chip background to host. Width is consistent across ordered
-    // + unordered rows so cover thumbnails align across sections.
-    width: 28,
+  bodyHovered: { backgroundColor: interaction.hover },
+  bodyPressed: { backgroundColor: interaction.pressed },
+  // A 44pt target around the 22pt circle; the negative margins keep the
+  // visual slot 32 wide so titles line up with the list's left edge.
+  checkTarget: {
+    width: tokens.hit,
+    height: tokens.hit,
+    marginLeft: -(tokens.hit - CHECK) / 2,
+    marginRight: -tokens.space.xs,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.pill,
+  },
+  checkCircle: {
+    width: CHECK,
+    height: CHECK,
+    borderRadius: CHECK / 2,
+    borderWidth: 1.5,
+    borderColor: tokens.border.strong,
     alignItems: "center",
     justifyContent: "center",
   },
-  positionSlotDragging: { opacity: 0.6 },
-  positionRank: {
+  checkCircleHover: { borderColor: tokens.text.secondary },
+  checkCircleOn: { backgroundColor: tokens.border.strong, borderColor: tokens.border.strong },
+  rankSlot: { width: 28, alignItems: "center", justifyContent: "center" },
+  rankLeading: {
     fontSize: tokens.font.size.lg,
+    lineHeight: 24,
     fontWeight: tokens.font.weight.semibold,
     fontVariant: ["tabular-nums"],
     letterSpacing: -0.5,
   },
-  completedTarget: {
-    width: tokens.hit,
-    height: tokens.hit,
-    marginHorizontal: (28 - tokens.hit) / 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  completedMark: {
-    // Width matches `positionSlot` so the cover edge aligns across sections.
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.pill,
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    backgroundColor: "transparent",
-  },
-  completedMarkHover: {
-    borderColor: tokens.border.strong,
-    backgroundColor: tokens.bg.surface,
+  rankInline: {
+    fontWeight: tokens.font.weight.semibold,
+    fontVariant: ["tabular-nums"],
   },
   cover: {
-    width: 52,
-    height: 52,
-    borderRadius: tokens.radius.md,
+    width: 44,
+    height: 44,
+    borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.elevated,
   },
-  coverPressable: {
-    borderRadius: tokens.radius.md,
-  },
-  coverPressed: { opacity: 0.7 },
+  coverDone: { opacity: 0.5 },
   coverPlaceholder: { alignItems: "center", justifyContent: "center" },
-  // Emoji glyph (🔗 / 📀 / 🎬 …) shown when a row has no thumbnail. `Text`
-  // defaults to the `body` variant (lineHeight 22); at fontSize 24 the glyph
-  // overflows that 22px line box and iOS clips it — the emoji renders cut off
-  // and shifted low. Pin an explicit lineHeight so the line box contains the
-  // glyph and it centers in the 52px cover (matches the 24/28 emoji convention
-  // used by `titleEmoji` and the list header emoji). RN-Web never clipped, so
-  // this is an iOS-only fix that's a no-op on web.
-  coverPlaceholderGlyph: { fontSize: 24, lineHeight: 28 },
-  rowBody: { flex: 1, gap: tokens.space.xxs },
+  // Pin lineHeight so iOS doesn't clip the emoji to the body line box.
+  // Dimmed: a column of identical placeholder glyphs should recede behind
+  // real artwork, not compete with it.
+  coverPlaceholderGlyph: { fontSize: 20, lineHeight: 24, opacity: 0.55 },
+  rowBody: { flex: 1, minWidth: 0, gap: tokens.space.xxs },
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   rowTitle: {
     flexShrink: 1,
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
+    lineHeight: 22,
     fontWeight: tokens.font.weight.medium,
     letterSpacing: -0.1,
   },
   rowTitleCompleted: { textDecorationLine: "line-through", color: tokens.text.muted },
   subline: { marginTop: 1 },
-  provenance: { marginTop: 1 },
+  meta: { marginTop: 1 },
   // 44pt target; the negative margin keeps the old 32pt visual footprint.
   menuBtn: { marginHorizontal: -tokens.space.xsm, borderRadius: tokens.radius.sm },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
-    paddingTop: tokens.space.xl,
+    minHeight: tokens.hit,
+    paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.xs,
   },
-  // Eyebrow labels (DESIGN.md): uppercase, tracked. Read as a divider
-  // rather than a heading — "calm by default."
   sectionHeaderCount: {
     fontWeight: tokens.font.weight.medium,
     fontVariant: ["tabular-nums"],
   },
   sectionHeaderToggle: {
     marginLeft: "auto",
-    fontWeight: tokens.font.weight.medium,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
   },
+  chevronUp: { transform: [{ rotate: "180deg" }] },
   sectionHeaderPressable: {
     borderRadius: tokens.radius.sm,
     marginHorizontal: -tokens.space.xs,
     paddingHorizontal: tokens.space.xs,
   },
-  sectionHeaderPressableHover: {
-    backgroundColor: tokens.bg.surface,
+  dropZone: {
+    minHeight: 56,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.md,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: tokens.border.default,
   },
-  orderedHint: {
-    paddingTop: tokens.space.md,
-    paddingBottom: tokens.space.sm,
+  dropZoneCompact: { minHeight: tokens.hit, marginTop: tokens.space.sm },
+  dropZoneActive: {
+    borderColor: tokens.accent.default,
+    backgroundColor: alpha(tokens.accent.default, 0.08),
   },
 });

@@ -151,21 +151,27 @@ version bump and it OTAs to existing builds. If you bump the library, re-verify 
 fixed this (drag start must validate gesture liveness on the UI thread) before dropping the
 patch.
 
-## Native list-detail drag crosses the Ranked ↔ unranked boundary via ONE combined list
+## List-detail drag: one combined list per platform, one shared resolver
 
-`react-native-reorderable-list` can only reorder within a single list's `data`, so promote/
-demote-by-drag on native (`ItemList.tsx`) renders `[...ordered, ...unordered]` in ONE
-`NestedReorderableList` (enabled when ranking is on and the ranked block is non-empty;
-empty-ranked falls back to the hint + kebab "Move to ordered"). `resolveCombinedReorder`
-(`combinedReorder.ts`, unit-tested) maps the library's `{from,to}` to the neighbor-relative
-`POST /v1/items/:id/move` (`beforeItemId`/`afterItemId` set → ranked between those rows; both
-`null` → unranked). For a move that stays within the ranked block it returns the exact same
-neighbors as `neighborsForOrderedReorder`, so existing ranked reorder is unchanged. Section
-headers stay OUT of the reorderable **data** — a header _row_ inside the list desyncs the
-library's per-cell layout (it can render below its rows). "Ranked" is plain markup above the
-list; "Ideas" is decoration on the first unranked **cell** (a real row, not a data row). Web
-(`ItemList.web.tsx`, dnd-kit) keeps its own separate-sections + drop-zone implementation and
-never calls `onMoveItemRelative`.
+Every open row reorders by drag on every list (UX pass 2.7); done rows never drag. Both
+platforms render Ranked and open rows in ONE reorderable list and hand the library's
+`{from, to}` to `resolveDrop` (`src/screens/listDetail/listOps.ts`, unit-tested), which
+returns `{ section, beforeItemId, afterItemId }` for `POST /v1/items/:id/move` (see the root
+CLAUDE.md move bullet). Neighbours are the _visible_ rows, so a drop under a filter lands
+between the two rows the user saw.
+
+- **Web** (`ItemList.web.tsx`, dnd-kit): `[...ranked, divider, ...open]`; the divider is a
+  disabled sortable that renders the open block's header. With no visible ranked row the
+  divider is omitted and an empty-Ranked "Drop here to rank" target **floats over the top of
+  the list** while an open row is dragged (a target that pushed content down made Chrome's
+  scroll anchoring shift the page under the pointer). The lifted row renders in a
+  `DragOverlay`; the row in the list stays as a faint placeholder. The drag handle shows in
+  the left gutter on hover/focus only.
+- **Native** (`ItemList.tsx`, react-native-reorderable-list): `[...ranked, ...open]` with an
+  implicit boundary, or `[slot, ...open]` when Ranked is empty, where `slot` is a
+  constant-height "Ranked" drop cell (the one non-row cell in the data; section headers
+  otherwise stay out of the data because a header row once desynced the library's per-cell
+  layout). Native drag, haptics and the slot cell were not exercised on a device in phase 2.
 
 ## `expo-share-intent` is patched: capture `attributedContentText`
 

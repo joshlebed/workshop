@@ -81,7 +81,7 @@ export function TextField({
   return (
     <View style={[styles.root, style]}>
       {label ? (
-        <Text variant="label" tone="secondary" nativeID={labelId} style={styles.label}>
+        <Text variant="label" tone="secondary" nativeID={labelId}>
           {label}
         </Text>
       ) : null}
@@ -155,7 +155,6 @@ export function TextField({
 
 const styles = StyleSheet.create({
   root: { gap: tokens.space.xsm },
-  label: { marginLeft: tokens.space.xxs },
   field: {
     flexDirection: "row",
     alignItems: "center",

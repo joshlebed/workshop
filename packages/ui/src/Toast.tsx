@@ -29,6 +29,7 @@ interface Toast {
   tone: ToastTone;
   actionLabel?: string;
   onAction?: () => void;
+  key?: string;
   /** Set when dismissed; the row plays its exit before it is removed. */
   leaving?: boolean;
 }
@@ -39,6 +40,11 @@ interface ShowToastInput {
   durationMs?: number;
   actionLabel?: string;
   onAction?: () => void;
+  /**
+   * Toasts that share a key replace each other instead of stacking: ticking
+   * off five rows in a row leaves one "Marked done · Undo", for the latest.
+   */
+  key?: string;
 }
 
 interface ToastContextValue {
@@ -104,10 +110,13 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const showToast = useCallback(
-    ({ message, tone = "default", durationMs, actionLabel, onAction }: ShowToastInput) => {
+    ({ message, tone = "default", durationMs, actionLabel, onAction, key }: ShowToastInput) => {
       idRef.current += 1;
       const id = idRef.current;
-      setToasts((prev) => [...prev, { id, message, tone, actionLabel, onAction }]);
+      setToasts((prev) => [
+        ...(key ? prev.filter((t) => t.key !== key) : prev),
+        { id, message, tone, actionLabel, onAction, key },
+      ]);
       const effectiveDuration =
         durationMs ?? (tone === "danger" ? DANGER_DURATION_MS : DEFAULT_DURATION_MS);
       if (effectiveDuration > 0) {
@@ -213,11 +222,14 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
             toast.onAction?.();
             onDismiss();
           }}
-          style={styles.action}
+          style={({ pressed, hovered }: PressState) => [
+            styles.action,
+            hovered && styles.iconBtnHover,
+            pressed && styles.iconBtnPressed,
+          ]}
+          testID="toast-action"
         >
-          <Text style={styles.actionLabel} tone="onAccent">
-            {toast.actionLabel}
-          </Text>
+          <Text style={styles.actionLabel}>{toast.actionLabel}</Text>
         </Pressable>
       ) : null}
       {showCopy ? (
@@ -296,14 +308,19 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   message: { flex: 1, color: tokens.text.primary, fontSize: tokens.font.size.sm },
+  // A text action in the accent, not a filled button: an Undo follows every
+  // tick, so it has to stay quiet until it is wanted.
   action: {
-    backgroundColor: tokens.accent.default,
     paddingHorizontal: tokens.space.md,
     minHeight: tokens.hit,
     justifyContent: "center",
     borderRadius: tokens.radius.sm,
   },
-  actionLabel: { fontSize: tokens.font.size.sm, fontWeight: tokens.font.weight.semibold },
+  actionLabel: {
+    fontSize: tokens.font.size.sm,
+    fontWeight: tokens.font.weight.semibold,
+    color: tokens.accent.default,
+  },
   iconBtn: {
     width: tokens.hit,
     height: tokens.hit,
