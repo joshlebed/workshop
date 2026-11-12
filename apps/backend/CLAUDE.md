@@ -750,7 +750,8 @@ default Expo's). Never send to Expo with production tokens from a sandbox — po
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's
-`archived_at`; FKs stay configured for a future unarchive surface. **Every read path must
+`archived_at`; `POST /v1/items/:id/unarchive` restores an item (its own middleware,
+`requireItemMemberIncludingArchived`, still 404s a deleted parent list). **Every read path must
 filter `archived_at IS NULL`** — `requireListMember` / `requireItemMember` 404 archived
 rows, `GET /v1/lists` filters lists, item reads filter both item and parent list, the
 activity feed joins through both, and the public invite preview/accept check the same.

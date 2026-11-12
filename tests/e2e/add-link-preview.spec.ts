@@ -51,6 +51,7 @@ test("create date-idea list → paste URL → see preview → save", async ({ pa
 
   // Free-form fields are visible (date_idea → free-form, not search).
   const titleInput = page.getByTestId("add-item-title");
+  await page.getByTestId("add-item-details-toggle").click();
   const urlInput = page.getByTestId("add-item-url");
   await expect(titleInput).toBeVisible();
   await expect(urlInput).toBeVisible();
@@ -65,6 +66,7 @@ test("create date-idea list → paste URL → see preview → save", async ({ pa
 
   // Submit the item.
   await page.getByTestId("add-item-submit").click();
+  await page.getByTestId("add-item-cancel").click();
 
   // Back on list detail; the new item is on the list.
   const itemRow = page.locator('[data-testid^="item-row-"]').first();

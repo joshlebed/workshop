@@ -28,12 +28,15 @@ test("tag an item while adding it → chip bar counts it → suggested on the ne
   await expect(page.getByTestId("list-detail-empty-add")).toBeVisible();
   await page.getByTestId("list-detail-empty-add").click();
   await page.getByTestId("add-item-title").fill("Burger crawl downtown");
+  // Tags live behind "Details" in quick add (2.4).
+  await page.getByTestId("add-item-details-toggle").click();
   await expect(page.getByTestId("add-item-tag-input")).toBeVisible();
   await page.getByTestId("add-item-tag-input").fill("Burgers");
   await page.getByTestId("add-item-tag-input").press("Enter");
   // Normalized to lowercase client-side; the chip renders selected.
   await expect(page.getByTestId("add-item-tag-burgers")).toBeVisible();
   await page.getByTestId("add-item-submit").click();
+  await page.getByTestId("add-item-cancel").click();
 
   // The tag landed with the item — the filter bar counts it without any
   // trip through the item detail screen.
@@ -43,10 +46,12 @@ test("tag an item while adding it → chip bar counts it → suggested on the ne
   // Second add: the list's tag is now one tap away as a suggestion.
   await page.getByTestId("fab-add-item").click();
   await page.getByTestId("add-item-title").fill("Smash burger night");
+  await page.getByTestId("add-item-details-toggle").click();
   await expect(page.getByTestId("add-item-tag-suggest-burgers")).toBeVisible();
   await page.getByTestId("add-item-tag-suggest-burgers").click();
   await expect(page.getByTestId("add-item-tag-burgers")).toBeVisible();
   await page.getByTestId("add-item-submit").click();
+  await page.getByTestId("add-item-cancel").click();
 
   await expect(page.getByTestId("tag-filter-burgers")).toContainText("burgers (2)");
 

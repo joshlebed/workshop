@@ -1,14 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "@workshop/api-client/api";
+import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type {
   BookResult,
   BookSearchResponse,
   CreateItemRequest,
+  Item,
   ItemContent,
   ItemKind,
   LinkPreview,
   LinkPreviewResponse,
+  ListItemsResponse,
   MediaResult,
   MediaSearchResponse,
   MediaSearchType,
@@ -16,8 +18,10 @@ import type {
 import { linkPreviewToItemContent } from "@workshop/shared/linkContent";
 import {
   Button,
-  Card,
   haptics,
+  Icon,
+  IconButton,
+  interaction,
   normalizeExternalUrl,
   Screen,
   ScreenHeader,
@@ -28,136 +32,156 @@ import {
   TextField,
   tokens,
   useToast,
+  withTagDraft,
 } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { ActivityIndicator, Image, StyleSheet, type TextInputInstance, View } from "react-native";
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  StyleSheet,
+  type TextInputInstance,
+  View,
+} from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { createItem } from "../../../../../src/api/items";
+import { archiveItem, createItem, fetchItems } from "../../../../../src/api/items";
 import { fetchLinkPreview } from "../../../../../src/api/linkPreview";
 import { fetchListDetail, fetchListTags } from "../../../../../src/api/lists";
 import { searchBooks, searchMedia } from "../../../../../src/api/search";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { useDebouncedQuery } from "../../../../../src/hooks/useDebouncedQuery";
+import { onListResultIds, titleKey } from "../../../../../src/lib/duplicates";
 import { goBack } from "../../../../../src/lib/goBack";
+import { forgetItemAdded, noteItemAdded } from "../../../../../src/lib/recentlyAdded";
 
 const SEARCH_KINDS: readonly ItemKind[] = ["movie", "tv", "book"];
+/** How long Return waits for a pasted link's preview before adding anyway. */
+const PREVIEW_WAIT_MS = 2500;
 
-function isLeaderboardList(modules: readonly string[]): boolean {
-  return modules.includes("leaderboard");
+interface Added {
+  id: string;
+  title: string;
 }
 
+/**
+ * Quick add (2.4–2.6). The surface stays open: each add clears the field,
+ * keeps focus and shows the item in an "Added" list beneath, where it can be
+ * undone. Closing returns to the list, which scrolls to and highlights what
+ * was added (`recentlyAdded`).
+ *
+ * - Plain and link lists: one line. A title, or a pasted link whose preview
+ *   supplies the title. Link, note and tags live behind "Details". Return
+ *   adds and keeps going.
+ * - Movie / TV / book lists: search first. Results already on the list say
+ *   "On list"; no match (or a failed search) offers `Add “query” anyway`.
+ */
 export default function AddItem() {
   const params = useLocalSearchParams<{ id: string; prefillUrl?: string; prefillText?: string }>();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const prefillUrlParam = Array.isArray(params.prefillUrl)
-    ? params.prefillUrl[0]
-    : params.prefillUrl;
-  const prefillTextParam = Array.isArray(params.prefillText)
-    ? params.prefillText[0]
-    : params.prefillText;
-  const prefillText = prefillTextParam?.trim() ?? "";
+  const id = (Array.isArray(params.id) ? params.id[0] : params.id) ?? "";
+  const prefillUrl =
+    (Array.isArray(params.prefillUrl) ? params.prefillUrl[0] : params.prefillUrl) ?? "";
+  const prefillText = (
+    (Array.isArray(params.prefillText) ? params.prefillText[0] : params.prefillText) ?? ""
+  ).trim();
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
   const { showToast } = useToast();
+  const itemsKey = queryKeys.items.byList(id);
 
-  // Fetch the parent list so the screen knows whether to render the search
-  // flow (movie/tv/book) or the free-form flow (date_idea/trip). The list
-  // detail screen already populates this query; the cached read is instant.
   const listQuery = useQuery({
-    queryKey: queryKeys.lists.detail(id ?? ""),
-    queryFn: () => fetchListDetail(id ?? "", token),
+    queryKey: queryKeys.lists.detail(id),
+    queryFn: () => fetchListDetail(id, token),
     enabled: !!token && !!id,
   });
-  // The list's in-use tags drive the suggested chips, so tagging on add is a
-  // one-tap pick from the list's existing vocabulary (spec §2.1).
   const listTagsQuery = useQuery({
-    queryKey: queryKeys.tags.byList(id ?? ""),
-    queryFn: () => fetchListTags(id ?? "", token),
+    queryKey: queryKeys.tags.byList(id),
+    queryFn: () => fetchListTags(id, token),
     enabled: !!token && !!id,
   });
+  // The list's rows, for "On list" and duplicate hints. Usually warm.
+  const itemsQuery = useQuery({
+    queryKey: itemsKey,
+    queryFn: () => fetchItems(id, token),
+    enabled: !!token && !!id,
+  });
+  const existing = itemsQuery.data
+    ? [...itemsQuery.data.ordered, ...itemsQuery.data.unordered, ...itemsQuery.data.completed]
+    : [];
 
   const list = listQuery.data?.list;
   const itemKind = list?.itemKind ?? null;
   const isSearchKind = !!itemKind && (SEARCH_KINDS as readonly string[]).includes(itemKind);
-  const isGameList = !!list && isLeaderboardList(list.modules);
-  const isSpotifyShelf = itemKind === "spotify_album";
 
-  // Free-form fields (date_idea / trip). When the screen is reached via the
-  // share flow (`?prefillUrl=…`), seed the URL field so the user just picks
-  // a title + saves; the link-preview debounce auto-fires off the seeded URL.
-  // The seed only applies to free-form lists — search-flow lists ignore it.
-  const [title, setTitle] = useState(() => titleFromSharedText(prefillText));
-  const [url, setUrl] = useState(prefillUrlParam ?? "");
-  const [note, setNote] = useState(() => noteFromSharedText(prefillText));
-  // Tags are picked before the item exists, so they ride along on the create
-  // request rather than through `PUT /v1/items/:id/tags`.
-  const [tags, setTags] = useState<string[]>([]);
-  const trimmedTitle = title.trim();
-  const canSubmitFreeForm = trimmedTitle.length >= 1 && trimmedTitle.length <= 500;
+  const [added, setAdded] = useState<Added[]>([]);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
 
-  // Link preview (date_idea / trip): debounce the URL and resolve to a stable
-  // http(s) URL before firing. TanStack Query auto-cancels in-flight requests
-  // via `signal` when the key changes.
-  const debouncedUrl = useDebouncedQuery(url, 300);
-  const normalizedUrl = normalizeHttpUrl(debouncedUrl);
-  const previewEnabled = !!token && !!itemKind && !isSearchKind && normalizedUrl !== null;
-  const previewQuery = useQuery<LinkPreviewResponse, Error>({
-    queryKey: ["link-preview", normalizedUrl ?? ""],
-    queryFn: ({ signal }) => fetchLinkPreview(normalizedUrl as string, token, signal),
-    enabled: previewEnabled,
-    staleTime: 5 * 60_000,
-    retry: false,
-  });
-
-  // Search field (movie / tv / book).
-  const [query, setQuery] = useState("");
-  const debouncedQuery = useDebouncedQuery(query, 300);
-  const trimmedDebounced = debouncedQuery.trim();
-  const searchEnabled = !!token && !!itemKind && isSearchKind && trimmedDebounced.length >= 2;
-
-  const searchQuery = useQuery<MediaSearchResponse | BookSearchResponse, Error>({
-    queryKey: ["search", itemKind ?? "", trimmedDebounced],
-    queryFn: ({ signal }) => {
-      if (itemKind === "book") return searchBooks(trimmedDebounced, token, signal);
-      return searchMedia(itemKind as MediaSearchType, trimmedDebounced, token, signal);
-    },
-    enabled: searchEnabled,
-    staleTime: 30_000,
-  });
-
-  const [pendingId, setPendingId] = useState<string | null>(null);
-
-  const addMutation = useMutation<unknown, Error, { resultId: string; body: CreateItemRequest }>({
-    mutationFn: ({ body }) => {
-      if (!id) throw new Error("missing list id");
-      return createItem(id, body, token);
-    },
-    onMutate: ({ resultId }) => {
-      setPendingId(resultId);
-    },
-    onSuccess: async () => {
-      haptics.medium();
-      if (id) {
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
-          queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
-          // A brand-new tag has to show up in the list's filter bar + the
-          // next add form's suggestions.
-          queryClient.invalidateQueries({ queryKey: queryKeys.tags.byList(id) }),
-        ]);
-      }
-      goBack(id ? `/list/${id}` : "/");
+  const addMutation = useMutation<Item, Error, { key: string; body: CreateItemRequest }>({
+    mutationFn: async ({ body }) => (await createItem(id, body, token)).item,
+    onMutate: ({ key }) => setPendingKey(key),
+    onSuccess: (item, { body }) => {
+      haptics.success();
+      noteItemAdded(id, item.id);
+      setAdded((prev) => [{ id: item.id, title: item.title }, ...prev]);
+      // New items land at the top of the open block; show it there now.
+      queryClient.setQueryData<ListItemsResponse>(itemsKey, (d) =>
+        d && !d.unordered.some((i) => i.id === item.id)
+          ? { ...d, unordered: [item, ...d.unordered] }
+          : d,
+      );
+      queryClient.invalidateQueries({ queryKey: itemsKey });
+      queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+      if (body.tags?.length) queryClient.invalidateQueries({ queryKey: queryKeys.tags.byList(id) });
     },
     onError: (e) => {
-      setPendingId(null);
-      showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't add item",
-        tone: "danger",
-      });
+      showToast({ message: errorMessage(e, "Couldn't add that."), tone: "danger" });
+    },
+    onSettled: () => setPendingKey(null),
+  });
+
+  const undoMutation = useMutation<unknown, Error, Added>({
+    mutationFn: (a) => archiveItem(a.id, token),
+    onMutate: (a) => {
+      forgetItemAdded(id, a.id);
+      setAdded((prev) => prev.filter((x) => x.id !== a.id));
+      queryClient.setQueryData<ListItemsResponse>(itemsKey, (d) =>
+        d ? { ...d, unordered: d.unordered.filter((i) => i.id !== a.id) } : d,
+      );
+    },
+    onError: (e, a) => {
+      noteItemAdded(id, a.id);
+      setAdded((prev) => [a, ...prev]);
+      showToast({ message: errorMessage(e, "Couldn't undo that."), tone: "danger" });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: itemsKey });
+      queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
     },
   });
+
+  const close = () => goBack(`/list/${id}`);
+  const header = (
+    <ScreenHeader
+      leading="close"
+      leadingLabel="Done adding"
+      leadingTestID="add-item-cancel"
+      onLeadingPress={close}
+      eyebrow={list?.name}
+      title={isSearchKind ? searchTitle(itemKind) : "Add items"}
+      trailing={
+        list && itemKind !== "spotify_album" ? (
+          <Button
+            label="Paste many"
+            variant="ghost"
+            size="md"
+            testID="add-item-bulk-link"
+            onPress={() => router.push(`/list/${id}/add-bulk`)}
+          />
+        ) : null
+      }
+    />
+  );
 
   if (!id) {
     return (
@@ -167,131 +191,519 @@ export default function AddItem() {
     );
   }
 
-  // The list query is loading — show a placeholder rather than picking a UI
-  // before we know the list's type.
   if (listQuery.isPending) {
     return (
       <Screen style={styles.root}>
-        <ScreenHeader
-          leading="close"
-          leadingLabel="Cancel"
-          onLeadingPress={() => goBack(`/list/${id}`)}
-          title="Add item"
-        />
+        {header}
         <View style={styles.body} accessibilityLabel="Loading" aria-busy>
-          <Card style={styles.card} elevated>
-            {[0, 1, 2].map((i) => (
-              <View key={i} style={styles.field}>
-                <Skeleton.Block width={64} height={12} />
-                <Skeleton.Block height={tokens.hit} radius={tokens.radius.md} />
-              </View>
-            ))}
-          </Card>
+          <Skeleton.Block height={tokens.hit} radius={tokens.radius.md} />
         </View>
       </Screen>
     );
   }
 
-  const onAddMedia = (r: MediaResult) => {
-    const body: CreateItemRequest = {
-      kind: (itemKind ?? "movie") as ItemKind,
-      title: r.title,
-      content: buildMediaContent(r),
-    };
-    addMutation.mutate({ resultId: r.id, body });
-  };
-
-  const onAddBook = (r: BookResult) => {
-    const body: CreateItemRequest = {
-      kind: "book",
-      title: r.title,
-      content: buildBookContent(r),
-    };
-    addMutation.mutate({ resultId: r.id, body });
-  };
-
-  const submitFreeForm = () => {
-    const trimmedUrl = url.trim();
-    const trimmedNote = note.trim();
-    const preview =
-      previewQuery.data?.preview && normalizedUrl !== null && trimmedUrl === debouncedUrl.trim()
-        ? previewQuery.data.preview
-        : null;
-    const persistedUrl =
-      trimmedUrl.length === 0
-        ? undefined
-        : (normalizedUrl ?? normalizeExternalUrl(trimmedUrl) ?? trimmedUrl);
-    const resolvedKind: ItemKind = itemKind ?? (persistedUrl ? "link" : "plain");
-    // Plain items can carry a URL, but their content must stay empty.
-    const content =
-      resolvedKind === "link" && preview ? buildLinkContent(preview, isGameList) : undefined;
-    const body: CreateItemRequest = {
-      kind: resolvedKind,
-      title: trimmedTitle,
-      ...(persistedUrl ? { url: persistedUrl } : {}),
-      ...(trimmedNote.length > 0 ? { note: trimmedNote } : {}),
-      ...(content ? { content } : {}),
-      ...(tags.length > 0 ? { tags } : {}),
-    };
-    addMutation.mutate({ resultId: "free-form", body });
-  };
+  const addedList = <AddedList items={added} onUndo={(a) => undoMutation.mutate(a)} />;
 
   return (
     <Screen style={styles.root}>
-      <ScreenHeader
-        leading="close"
-        leadingLabel="Cancel"
-        leadingTestID="add-item-cancel"
-        onLeadingPress={() => goBack(id ? `/list/${id}` : "/")}
-        title="Add item"
-        trailing={
-          itemKind && !isSearchKind && !isSpotifyShelf && id ? (
-            <Button
-              label="Paste many"
-              variant="ghost"
-              size="md"
-              testID="add-item-bulk-link"
-              onPress={() => router.push(`/list/${id}/add-bulk`)}
-            />
-          ) : null
-        }
-      />
-
+      {header}
       {isSearchKind ? (
         <SearchFlow
           itemKind={itemKind as "movie" | "tv" | "book"}
-          query={query}
-          onChangeQuery={setQuery}
-          searchQuery={searchQuery}
-          trimmedDebounced={trimmedDebounced}
-          pendingId={pendingId}
-          onAddMedia={onAddMedia}
-          onAddBook={onAddBook}
+          token={token}
+          existing={existing}
+          pendingKey={pendingKey}
+          onAdd={(key, body) => addMutation.mutate({ key, body })}
+          footer={addedList}
         />
       ) : (
-        <FreeFormFlow
-          isGame={isGameList}
-          title={title}
-          onChangeTitle={setTitle}
-          url={url}
-          onChangeUrl={setUrl}
-          note={note}
-          onChangeNote={setNote}
-          tags={tags}
-          onChangeTags={setTags}
+        <QuickAdd
+          itemKind={itemKind}
+          token={token}
+          existing={existing}
           listTags={(listTagsQuery.data?.tags ?? []).map((t) => t.tag)}
-          canSubmit={canSubmitFreeForm}
-          loading={addMutation.isPending}
-          onSubmit={submitFreeForm}
-          preview={previewQuery.data?.preview ?? null}
-          previewLoading={previewQuery.isFetching}
-          previewFailed={!!previewQuery.error}
-          previewActive={previewEnabled}
+          initialText={prefillUrl || titleFromSharedText(prefillText)}
+          initialNote={prefillUrl ? "" : noteFromSharedText(prefillText)}
+          onAdd={(body) => addMutation.mutateAsync({ key: "quick", body })}
+          footer={addedList}
         />
       )}
     </Screen>
   );
 }
+
+function searchTitle(kind: ItemKind | null): string {
+  if (kind === "book") return "Add books";
+  if (kind === "tv") return "Add shows";
+  return "Add movies";
+}
+
+/* ------------------------------ quick add -------------------------------- */
+
+interface QuickAddProps {
+  itemKind: ItemKind | null;
+  token: string | null;
+  existing: readonly Item[];
+  listTags: string[];
+  initialText: string;
+  initialNote: string;
+  onAdd: (body: CreateItemRequest) => Promise<Item>;
+  footer: React.ReactNode;
+}
+
+function QuickAdd({
+  itemKind,
+  token,
+  existing,
+  listTags,
+  initialText,
+  initialNote,
+  onAdd,
+  footer,
+}: QuickAddProps) {
+  const queryClient = useQueryClient();
+  const inputRef = useRef<TextInputInstance>(null);
+  const [text, setText] = useState(initialText);
+  const [detailsOpen, setDetailsOpen] = useState(initialNote.length > 0);
+  const [detailTitle, setDetailTitle] = useState("");
+  const [detailUrl, setDetailUrl] = useState("");
+  const [note, setNote] = useState(initialNote);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagDraft, setTagDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // A link pasted into the one line is the item's link; its preview names it.
+  const pastedUrl = singleUrl(text);
+  const urlSource = pastedUrl ?? normalizeHttpUrl(detailUrl);
+  const debouncedUrl = useDebouncedQuery(urlSource ?? "", 300);
+  const previewKey = ["link-preview", debouncedUrl] as const;
+  const previewQuery = useQuery<LinkPreviewResponse, Error>({
+    queryKey: previewKey,
+    queryFn: ({ signal }) => fetchLinkPreview(debouncedUrl, token, signal),
+    enabled: !!token && debouncedUrl.length > 0,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const preview =
+    urlSource && debouncedUrl === urlSource ? (previewQuery.data?.preview ?? null) : null;
+
+  const typedTitle = pastedUrl ? detailTitle.trim() : text.trim();
+  const duplicate =
+    !pastedUrl &&
+    typedTitle.length > 0 &&
+    existing.some((i) => titleKey(i.title) === titleKey(typedTitle));
+  const canSubmit = (pastedUrl !== null || typedTitle.length > 0) && !submitting;
+
+  const submit = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      let resolved: LinkPreview | null = preview;
+      if (urlSource && !resolved) {
+        // Return right after pasting: give the preview a moment to name it.
+        resolved = await Promise.race([
+          queryClient
+            .fetchQuery({
+              queryKey: ["link-preview", urlSource],
+              queryFn: ({ signal }) => fetchLinkPreview(urlSource, token, signal),
+              staleTime: 5 * 60_000,
+            })
+            .then((r) => r.preview)
+            .catch(() => null),
+          new Promise<null>((r) => setTimeout(() => r(null), PREVIEW_WAIT_MS)),
+        ]);
+      }
+      const title = clampTitle(
+        typedTitle || resolved?.title || hostOf(urlSource ?? "") || (urlSource ?? ""),
+      );
+      const kind: ItemKind = itemKind ?? (urlSource ? "link" : "plain");
+      const trimmedNote = note.trim();
+      const allTags = withTagDraft(tags, tagDraft);
+      // Plain items can carry a URL, but their content must stay empty.
+      const content: ItemContent | undefined =
+        kind === "link" && resolved ? linkPreviewToItemContent(resolved) : undefined;
+      await onAdd({
+        kind,
+        title,
+        ...(urlSource ? { url: urlSource } : {}),
+        ...(trimmedNote ? { note: trimmedNote } : {}),
+        ...(content ? { content } : {}),
+        ...(allTags.length > 0 ? { tags: allTags } : {}),
+      });
+      setText("");
+      setDetailTitle("");
+      setDetailUrl("");
+      setNote("");
+      setTags([]);
+      setTagDraft("");
+    } catch {
+      // The mutation reported it; keep what was typed so nothing is lost.
+    } finally {
+      setSubmitting(false);
+      inputRef.current?.focus();
+    }
+  };
+
+  const placeholder =
+    itemKind === "link" ? "Add an idea or paste a link" : "Add an item or paste a link";
+
+  return (
+    <KeyboardAwareScrollView
+      contentContainerStyle={styles.body}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      bottomOffset={tokens.space.lg}
+    >
+      <TextField
+        ref={inputRef}
+        testID="add-item-title"
+        accessibilityLabel="New item"
+        value={text}
+        onChangeText={setText}
+        placeholder={placeholder}
+        autoFocus
+        maxLength={2048}
+        returnKeyType="done"
+        enterKeyHint="enter"
+        // Keep the keyboard up: Return adds and the next item follows.
+        submitBehavior="submit"
+        onSubmitEditing={() => void submit()}
+        hint={duplicate ? "Already on the list" : undefined}
+        trailing={
+          <IconButton
+            icon="plus"
+            iconTone={canSubmit ? "accent" : "muted"}
+            accessibilityLabel="Add"
+            onPress={() => void submit()}
+            disabled={!canSubmit}
+            busy={submitting}
+            testID="add-item-submit"
+          />
+        }
+      />
+
+      {urlSource ? (
+        <LinkPreviewSection
+          preview={preview}
+          loading={previewQuery.isFetching}
+          failed={!!previewQuery.error}
+        />
+      ) : null}
+
+      <Pressable
+        accessibilityRole="button"
+        aria-expanded={detailsOpen}
+        onPress={() => setDetailsOpen((o) => !o)}
+        testID="add-item-details-toggle"
+        style={({ hovered, pressed }: { pressed: boolean; hovered?: boolean }) => [
+          styles.disclosure,
+          hovered && { backgroundColor: interaction.hover },
+          pressed && { backgroundColor: interaction.pressed },
+        ]}
+      >
+        <Text variant="label" tone="secondary">
+          {detailsOpen ? "Hide details" : "Details"}
+        </Text>
+        <Icon
+          name="chevron-down"
+          size={14}
+          tone="muted"
+          style={detailsOpen ? styles.chevronUp : undefined}
+        />
+      </Pressable>
+
+      {detailsOpen ? (
+        <View style={styles.details}>
+          {pastedUrl ? (
+            <TextField
+              label="Title"
+              testID="add-item-detail-title"
+              value={detailTitle}
+              onChangeText={setDetailTitle}
+              placeholder={preview?.title ?? "From the link"}
+              maxLength={500}
+            />
+          ) : (
+            <TextField
+              label="Link"
+              testID="add-item-url"
+              value={detailUrl}
+              onChangeText={setDetailUrl}
+              placeholder="https://"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              inputMode="url"
+              maxLength={2048}
+            />
+          )}
+          <TextField
+            label="Note"
+            testID="add-item-note"
+            value={note}
+            onChangeText={setNote}
+            placeholder="Anything to remember?"
+            multiline
+            maxLength={1000}
+          />
+          <View style={styles.tagsField}>
+            <Text variant="label" tone="secondary">
+              Tags
+            </Text>
+            <TagEditor
+              tags={tags}
+              listTags={listTags}
+              onChange={setTags}
+              draft={tagDraft}
+              onDraftChange={setTagDraft}
+              testIDPrefix="add-item-tag"
+            />
+          </View>
+        </View>
+      ) : null}
+
+      {footer}
+    </KeyboardAwareScrollView>
+  );
+}
+
+/* ------------------------------ search add ------------------------------- */
+
+interface SearchFlowProps {
+  itemKind: "movie" | "tv" | "book";
+  token: string | null;
+  existing: readonly Item[];
+  pendingKey: string | null;
+  onAdd: (key: string, body: CreateItemRequest) => void;
+  footer: React.ReactNode;
+}
+
+function SearchFlow({ itemKind, token, existing, pendingKey, onAdd, footer }: SearchFlowProps) {
+  const inputRef = useRef<TextInputInstance>(null);
+  const [query, setQuery] = useState("");
+  const debounced = useDebouncedQuery(query, 300).trim();
+  const searchQuery = useQuery<MediaSearchResponse | BookSearchResponse, Error>({
+    queryKey: ["search", itemKind, debounced],
+    queryFn: ({ signal }) =>
+      itemKind === "book"
+        ? searchBooks(debounced, token, signal)
+        : searchMedia(itemKind as MediaSearchType, debounced, token, signal),
+    enabled: !!token && debounced.length >= 2,
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  const placeholder =
+    itemKind === "book" ? "Search books" : itemKind === "tv" ? "Search TV shows" : "Search movies";
+  const typed = query.trim();
+  const settled = debounced === typed && typed.length >= 2;
+  const data = settled ? searchQuery.data : undefined;
+  const results = data?.results ?? [];
+  const showLoading = typed.length >= 2 && (!settled || (searchQuery.isFetching && !data));
+  const failed = settled && !!searchQuery.error;
+  const noMatches = settled && !!data && results.length === 0;
+
+  const add = (key: string, body: CreateItemRequest) => {
+    onAdd(key, body);
+    setQuery("");
+    inputRef.current?.focus();
+  };
+
+  const onListIds = onListResultIds(results, existing);
+  const onList = (r: { id: string }) => onListIds.has(r.id);
+
+  return (
+    <KeyboardAwareScrollView
+      contentContainerStyle={styles.body}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      bottomOffset={tokens.space.lg}
+    >
+      <TextField
+        ref={inputRef}
+        variant="search"
+        testID="add-item-search"
+        accessibilityLabel={placeholder}
+        value={query}
+        onChangeText={setQuery}
+        onClear={() => setQuery("")}
+        placeholder={placeholder}
+        autoFocus
+        autoCapitalize="none"
+        autoCorrect={false}
+        maxLength={200}
+      />
+
+      {typed.length < 2 ? (
+        <Text tone="muted" style={styles.helper} testID="add-item-search-prompt">
+          Type at least 2 characters to search.
+        </Text>
+      ) : null}
+
+      {showLoading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={tokens.accent.default} />
+        </View>
+      ) : null}
+
+      {failed ? (
+        <Text tone="secondary" style={styles.helper} testID="add-item-search-error">
+          Search isn't working right now.
+        </Text>
+      ) : null}
+      {noMatches ? (
+        <Text tone="secondary" style={styles.helper} testID="add-item-search-empty">
+          No matches.
+        </Text>
+      ) : null}
+
+      {data && itemKind === "book"
+        ? (data as BookSearchResponse).results.map((r) => (
+            <SearchResultRow
+              key={r.id}
+              id={r.id}
+              title={r.title}
+              year={r.year}
+              imageUrl={r.coverUrl}
+              subtitle={r.authors.length > 0 ? r.authors.join(", ") : null}
+              loading={pendingKey === r.id}
+              onList={onList(r)}
+              onAdd={() =>
+                add(r.id, { kind: "book", title: r.title, content: buildBookContent(r) })
+              }
+            />
+          ))
+        : null}
+      {data && itemKind !== "book"
+        ? (data as MediaSearchResponse).results.map((r) => (
+            <SearchResultRow
+              key={r.id}
+              id={r.id}
+              title={r.title}
+              year={r.year}
+              imageUrl={r.posterUrl}
+              subtitle={r.overview}
+              loading={pendingKey === r.id}
+              onList={onList(r)}
+              onAdd={() =>
+                add(r.id, { kind: itemKind, title: r.title, content: buildMediaContent(r) })
+              }
+            />
+          ))
+        : null}
+
+      {failed || noMatches ? (
+        <Button
+          label={`Add “${clampTitle(typed)}” anyway`}
+          variant="secondary"
+          testID="add-item-search-anyway"
+          loading={pendingKey === "anyway"}
+          onPress={() => add("anyway", { kind: itemKind, title: clampTitle(typed) })}
+        />
+      ) : null}
+
+      {footer}
+    </KeyboardAwareScrollView>
+  );
+}
+
+/* ------------------------------- pieces ---------------------------------- */
+
+/** The adds of this visit, newest first; each can be taken back. */
+function AddedList({ items, onUndo }: { items: Added[]; onUndo: (a: Added) => void }) {
+  if (items.length === 0) return null;
+  return (
+    <View style={styles.added} testID="add-item-added" accessibilityLiveRegion="polite">
+      <Text variant="eyebrow">Added</Text>
+      {items.slice(0, 8).map((a) => (
+        <View key={a.id} style={styles.addedRow} testID={`add-item-added-${a.id}`}>
+          <Icon name="check" size={14} tone="secondary" />
+          <Text numberOfLines={1} style={styles.addedTitle}>
+            {a.title}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Undo adding ${a.title}`}
+            onPress={() => onUndo(a)}
+            testID={`add-item-undo-${a.id}`}
+            style={({ hovered, pressed }: { pressed: boolean; hovered?: boolean }) => [
+              styles.undo,
+              hovered && { backgroundColor: interaction.hover },
+              pressed && { backgroundColor: interaction.pressed },
+            ]}
+          >
+            <Text variant="label" tone="muted">
+              Undo
+            </Text>
+          </Pressable>
+        </View>
+      ))}
+      {items.length > 8 ? (
+        <Text variant="caption" tone="muted">
+          and {items.length - 8} more
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function LinkPreviewSection({
+  preview,
+  loading,
+  failed,
+}: {
+  preview: LinkPreview | null;
+  loading: boolean;
+  failed: boolean;
+}) {
+  if (loading && !preview) {
+    return (
+      <View style={styles.previewLoading} testID="link-preview-loading">
+        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <Text tone="secondary" variant="caption">
+          Fetching preview…
+        </Text>
+      </View>
+    );
+  }
+  if (failed && !preview) {
+    return (
+      <Text tone="muted" variant="caption" testID="link-preview-error">
+        No preview for this link. It will be added with its address.
+      </Text>
+    );
+  }
+  if (!preview) return null;
+  const heading = preview.title ?? preview.siteName ?? preview.finalUrl;
+  const image = preview.imageProxy ?? preview.image;
+  return (
+    <View testID="link-preview-card" style={styles.previewCard}>
+      {image ? (
+        <Image
+          source={{ uri: image }}
+          style={styles.previewImage}
+          accessibilityIgnoresInvertColors
+        />
+      ) : (
+        <View style={[styles.previewImage, styles.previewImagePlaceholder]}>
+          <Text style={styles.previewGlyph}>🔗</Text>
+        </View>
+      )}
+      <View style={styles.previewBody}>
+        {preview.siteName ? (
+          <Text tone="secondary" variant="caption" numberOfLines={1}>
+            {preview.siteName}
+          </Text>
+        ) : null}
+        <Text numberOfLines={2} testID="link-preview-title">
+          {heading}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+/* ------------------------------- helpers --------------------------------- */
 
 function buildMediaContent(r: MediaResult): ItemContent {
   const c: Record<string, unknown> = { source: "tmdb", sourceId: r.id };
@@ -312,18 +724,17 @@ function buildBookContent(r: BookResult): ItemContent {
   return c;
 }
 
-function buildLinkContent(p: LinkPreview, isGame: boolean): ItemContent {
-  const c = linkPreviewToItemContent(p);
-  if (isGame) {
-    // Game tiles render via `thumbnailUrl`; prefer the proxied variant so the
-    // tile is reachable even if the upstream CDN goes dark. Fall back to the
-    // upstream image, then to the (Google-s2-backed) favicon.
-    delete c.image;
-    delete c.imageProxy;
-    delete c.title;
-    delete c.description;
+/** Titles are one line of at most 500 characters (the server's rule). */
+function clampTitle(s: string): string {
+  return s.replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return "";
   }
-  return c;
 }
 
 function titleFromSharedText(text: string): string {
@@ -341,9 +752,7 @@ function noteFromSharedText(text: string): string {
   return singleLine ? "" : text.slice(0, 1000);
 }
 
-// Returns a normalised http(s) URL (trimmed, single-pass through `URL`) or
-// null when the input doesn't parse or isn't http(s). Used to gate the
-// link-preview fetch so we never hit `/v1/link-preview?url=` with garbage.
+/** A normalised http(s) URL, or null when the input isn't one. */
 function normalizeHttpUrl(input: string): string | null {
   const trimmed = input.trim();
   if (trimmed.length === 0) return null;
@@ -356,322 +765,11 @@ function normalizeHttpUrl(input: string): string | null {
   }
 }
 
-interface SearchFlowProps {
-  itemKind: "movie" | "tv" | "book";
-  query: string;
-  onChangeQuery: (v: string) => void;
-  searchQuery: ReturnType<typeof useQuery<MediaSearchResponse | BookSearchResponse, Error>>;
-  trimmedDebounced: string;
-  pendingId: string | null;
-  onAddMedia: (r: MediaResult) => void;
-  onAddBook: (r: BookResult) => void;
-}
-
-function SearchFlow({
-  itemKind,
-  query,
-  onChangeQuery,
-  searchQuery,
-  trimmedDebounced,
-  pendingId,
-  onAddMedia,
-  onAddBook,
-}: SearchFlowProps) {
-  const placeholder =
-    itemKind === "book" ? "Search books" : itemKind === "tv" ? "Search TV shows" : "Search movies";
-
-  const data = searchQuery.data;
-  const showPrompt = trimmedDebounced.length < 2;
-  const showLoading = !showPrompt && searchQuery.isFetching && !data;
-  const showError = !showPrompt && !!searchQuery.error;
-
-  return (
-    <KeyboardAwareScrollView
-      contentContainerStyle={styles.body}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      bottomOffset={tokens.space.lg}
-    >
-      <TextField
-        variant="search"
-        testID="add-item-search"
-        accessibilityLabel={placeholder}
-        value={query}
-        onChangeText={onChangeQuery}
-        onClear={() => onChangeQuery("")}
-        placeholder={placeholder}
-        autoFocus
-        autoCapitalize="none"
-        autoCorrect={false}
-        maxLength={200}
-      />
-
-      {showPrompt ? (
-        <Text tone="secondary" style={styles.helper} testID="add-item-search-prompt">
-          Type at least 2 characters to search.
-        </Text>
-      ) : null}
-
-      {showLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
-        </View>
-      ) : null}
-
-      {showError ? (
-        <Text tone="danger" style={styles.helper} testID="add-item-search-error">
-          Search failed. Try again.
-        </Text>
-      ) : null}
-
-      {data && itemKind === "book" && "results" in data
-        ? (data as BookSearchResponse).results.map((r) => (
-            <SearchResultRow
-              key={r.id}
-              id={r.id}
-              title={r.title}
-              year={r.year}
-              imageUrl={r.coverUrl}
-              subtitle={r.authors.length > 0 ? r.authors.join(", ") : null}
-              loading={pendingId === r.id}
-              disabled={pendingId !== null && pendingId !== r.id}
-              onAdd={() => onAddBook(r)}
-            />
-          ))
-        : null}
-
-      {data && itemKind !== "book" && "results" in data
-        ? (data as MediaSearchResponse).results.map((r) => (
-            <SearchResultRow
-              key={r.id}
-              id={r.id}
-              title={r.title}
-              year={r.year}
-              imageUrl={r.posterUrl}
-              subtitle={r.overview}
-              loading={pendingId === r.id}
-              disabled={pendingId !== null && pendingId !== r.id}
-              onAdd={() => onAddMedia(r)}
-            />
-          ))
-        : null}
-
-      {data && !showPrompt && !showLoading && data.results.length === 0 ? (
-        <Text tone="secondary" style={styles.helper} testID="add-item-search-empty">
-          No matches.
-        </Text>
-      ) : null}
-    </KeyboardAwareScrollView>
-  );
-}
-
-interface FreeFormFlowProps {
-  isGame: boolean;
-  title: string;
-  onChangeTitle: (v: string) => void;
-  url: string;
-  onChangeUrl: (v: string) => void;
-  note: string;
-  onChangeNote: (v: string) => void;
-  tags: string[];
-  onChangeTags: (next: string[]) => void;
-  /** Every in-use tag on the list — drives the suggested chips. */
-  listTags: string[];
-  canSubmit: boolean;
-  loading: boolean;
-  onSubmit: () => void;
-  preview: LinkPreview | null;
-  previewLoading: boolean;
-  previewFailed: boolean;
-  /** True when a parseable http(s) URL is in flight (debounced). */
-  previewActive: boolean;
-}
-
-function FreeFormFlow({
-  isGame,
-  title,
-  onChangeTitle,
-  url,
-  onChangeUrl,
-  note,
-  onChangeNote,
-  tags,
-  onChangeTags,
-  listTags,
-  canSubmit,
-  loading,
-  onSubmit,
-  preview,
-  previewLoading,
-  previewFailed,
-  previewActive,
-}: FreeFormFlowProps) {
-  const titlePlaceholder = isGame ? "Game name (e.g. Globle)" : "What is it?";
-  const urlLabel = isGame ? "URL" : "URL (optional)";
-  const urlPlaceholder = isGame ? "https://globle-game.com" : "https://";
-  const notePlaceholder = isGame ? "Anything to remember?" : "Anything to remember?";
-  const showNote = !isGame;
-  // Legacy leaderboard lists have no tag surface anywhere else — keep the
-  // game add form to just name + URL.
-  const showTags = !isGame;
-  const noteInputRef = useRef<TextInputInstance>(null);
-  // Return in the title adds the item; Return in the URL moves on to the
-  // note (or adds, when there is no note field). 0.6.
-  const submitIfReady = () => {
-    if (canSubmit && !loading) onSubmit();
-  };
-  return (
-    <KeyboardAwareScrollView
-      contentContainerStyle={styles.body}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      bottomOffset={tokens.space.lg}
-    >
-      <Card style={styles.card} elevated>
-        <TextField
-          label="Title"
-          testID="add-item-title"
-          value={title}
-          onChangeText={onChangeTitle}
-          placeholder={titlePlaceholder}
-          autoFocus
-          maxLength={500}
-          returnKeyType="done"
-          enterKeyHint="done"
-          submitBehavior="blurAndSubmit"
-          onSubmitEditing={submitIfReady}
-        />
-
-        <View style={styles.field}>
-          <TextField
-            label={urlLabel}
-            testID="add-item-url"
-            value={url}
-            onChangeText={onChangeUrl}
-            placeholder={urlPlaceholder}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="url"
-            inputMode="url"
-            maxLength={2048}
-            returnKeyType={showNote ? "next" : "done"}
-            enterKeyHint={showNote ? "next" : "done"}
-            submitBehavior={showNote ? "submit" : "blurAndSubmit"}
-            onSubmitEditing={() => {
-              if (showNote) noteInputRef.current?.focus();
-              else submitIfReady();
-            }}
-          />
-          <LinkPreviewSection
-            preview={preview}
-            loading={previewLoading}
-            failed={previewFailed}
-            active={previewActive}
-          />
-        </View>
-
-        {showNote ? (
-          <TextField
-            ref={noteInputRef}
-            label="Note (optional)"
-            testID="add-item-note"
-            value={note}
-            onChangeText={onChangeNote}
-            placeholder={notePlaceholder}
-            multiline
-            maxLength={1000}
-          />
-        ) : null}
-
-        {showTags ? (
-          <View style={styles.field}>
-            <Text variant="label" tone="secondary">
-              Tags (optional)
-            </Text>
-            <TagEditor
-              tags={tags}
-              listTags={listTags}
-              onChange={onChangeTags}
-              testIDPrefix="add-item-tag"
-            />
-          </View>
-        ) : null}
-
-        <Button
-          testID="add-item-submit"
-          label={isGame ? "Add game" : "Add"}
-          size="lg"
-          disabled={!canSubmit || loading}
-          loading={loading}
-          onPress={onSubmit}
-        />
-      </Card>
-    </KeyboardAwareScrollView>
-  );
-}
-
-interface LinkPreviewSectionProps {
-  preview: LinkPreview | null;
-  loading: boolean;
-  failed: boolean;
-  active: boolean;
-}
-
-function LinkPreviewSection({ preview, loading, failed, active }: LinkPreviewSectionProps) {
-  if (!active) return null;
-  if (loading && !preview) {
-    return (
-      <View style={styles.previewLoading} testID="link-preview-loading">
-        <ActivityIndicator color={tokens.accent.default} size="small" />
-        <Text tone="secondary" variant="caption">
-          Fetching preview…
-        </Text>
-      </View>
-    );
-  }
-  if (failed) {
-    return (
-      <Text
-        tone="secondary"
-        variant="caption"
-        testID="link-preview-error"
-        style={styles.previewHelper}
-      >
-        Couldn't fetch preview.
-      </Text>
-    );
-  }
-  if (!preview) return null;
-  const heading = preview.title ?? preview.siteName ?? preview.finalUrl;
-  // Prefer the proxied URL — smaller, format-negotiated, and survives the
-  // upstream hotlink-blocking-our-bot case. Fall back to upstream if for
-  // some reason the proxy URL wasn't synthesized (e.g. data: image).
-  const renderedImage = preview.imageProxy ?? preview.image;
-  return (
-    <View testID="link-preview-card" style={styles.previewCard}>
-      {renderedImage ? (
-        <Image
-          source={{ uri: renderedImage }}
-          style={styles.previewImage}
-          accessibilityIgnoresInvertColors
-        />
-      ) : (
-        <View style={[styles.previewImage, styles.previewImagePlaceholder]}>
-          <Text tone="muted">🔗</Text>
-        </View>
-      )}
-      <View style={styles.previewBody}>
-        {preview.siteName ? (
-          <Text tone="secondary" variant="caption" numberOfLines={1}>
-            {preview.siteName}
-          </Text>
-        ) : null}
-        <Text variant="body" numberOfLines={2} testID="link-preview-title">
-          {heading}
-        </Text>
-      </View>
-    </View>
-  );
+/** The line is exactly one link (no other words), normalised; else null. */
+function singleUrl(text: string): string | null {
+  const t = text.trim();
+  if (!t || /\s/.test(t)) return null;
+  return normalizeHttpUrl(t) ?? (/^www\.\S+\.\S+/i.test(t) ? normalizeExternalUrl(t) : null);
 }
 
 const styles = StyleSheet.create({
@@ -682,32 +780,59 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.md,
   },
-  card: { gap: tokens.space.lg },
-  field: { gap: tokens.space.sm },
-  helper: { textAlign: "center", paddingVertical: tokens.space.lg },
+  helper: { textAlign: "center", paddingVertical: tokens.space.md },
   center: { alignItems: "center", justifyContent: "center", paddingVertical: tokens.space.xl },
+  disclosure: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+    minHeight: tokens.hit,
+    paddingHorizontal: tokens.space.sm,
+    marginLeft: -tokens.space.sm,
+    borderRadius: tokens.radius.md,
+  },
+  chevronUp: { transform: [{ rotate: "180deg" }] },
+  details: { gap: tokens.space.lg },
+  tagsField: { gap: tokens.space.xsm },
+  added: {
+    gap: tokens.space.xxs,
+    paddingTop: tokens.space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.border.subtle,
+  },
+  addedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.sm,
+    minHeight: tokens.hit,
+  },
+  addedTitle: { flex: 1, color: tokens.text.secondary },
+  undo: {
+    minHeight: tokens.hit,
+    minWidth: tokens.hit,
+    paddingHorizontal: tokens.space.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: tokens.radius.sm,
+    marginRight: -tokens.space.md,
+  },
   previewCard: {
     flexDirection: "row",
     gap: tokens.space.md,
     padding: tokens.space.md,
     borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.canvas,
     borderWidth: 1,
     borderColor: tokens.border.subtle,
   },
   previewImage: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
     borderRadius: tokens.radius.sm,
     backgroundColor: tokens.bg.elevated,
   },
   previewImagePlaceholder: { alignItems: "center", justifyContent: "center" },
+  previewGlyph: { fontSize: 20, lineHeight: 24 },
   previewBody: { flex: 1, gap: tokens.space.xxs, justifyContent: "center" },
-  previewLoading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.sm,
-    paddingVertical: tokens.space.sm,
-  },
-  previewHelper: { paddingVertical: tokens.space.sm },
+  previewLoading: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
 });

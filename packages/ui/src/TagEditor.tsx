@@ -12,6 +12,19 @@ export function normalizeTag(raw: string): string {
 /** Matches the backend's `tagListSchema` cap so the UI can't build a 400. */
 export const MAX_TAGS_PER_ITEM = 20;
 
+/**
+ * `tags` plus a typed-but-uncommitted draft, the way the editor itself would
+ * commit it. The add form calls this on submit so a tag typed without
+ * pressing Return is not silently lost.
+ */
+export function withTagDraft(tags: readonly string[], draft: string): string[] {
+  const tag = normalizeTag(draft);
+  if (!tag || tag.length > 40 || tags.includes(tag) || tags.length >= MAX_TAGS_PER_ITEM) {
+    return [...tags];
+  }
+  return [...tags, tag];
+}
+
 export interface TagEditorProps {
   /** The item's current tags (server-canonical: lowercase, sorted). */
   tags: string[];
@@ -26,6 +39,9 @@ export interface TagEditorProps {
    */
   testIDPrefix?: string;
   style?: ViewStyle;
+  /** Controlled draft text (optional): lets a form commit it on submit. */
+  draft?: string;
+  onDraftChange?: (draft: string) => void;
 }
 
 /**
@@ -44,8 +60,15 @@ export function TagEditor({
   onChange,
   testIDPrefix = "item-tag",
   style,
+  draft: controlledDraft,
+  onDraftChange,
 }: TagEditorProps) {
-  const [draft, setDraft] = useState("");
+  const [ownDraft, setOwnDraft] = useState("");
+  const draft = controlledDraft ?? ownDraft;
+  const setDraft = (next: string) => {
+    if (controlledDraft === undefined) setOwnDraft(next);
+    onDraftChange?.(next);
+  };
   const suggestions = listTags.filter((t) => !tags.includes(t));
   const full = tags.length >= MAX_TAGS_PER_ITEM;
 

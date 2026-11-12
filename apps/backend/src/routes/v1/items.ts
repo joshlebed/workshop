@@ -27,14 +27,23 @@ import { ensureLeaderboardItemGame } from "../../lib/gameCatalog.js";
 import { logger } from "../../lib/logger.js";
 import { requireModule, stripModuleGatedItemFields } from "../../lib/moduleGate.js";
 import { requireCapability } from "../../lib/permissions.js";
-import { appendPosition, moveItemPosition } from "../../lib/positions.js";
+import { isUniqueViolation } from "../../lib/pgErrors.js";
+import {
+  appendPosition,
+  moveItemPosition,
+  moveItemUnranked,
+  UNRANKED_ORDER_SQL,
+} from "../../lib/positions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { requestOriginColumns } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
 import { type DbClient, executeRows } from "../../lib/sql.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
 import { requireAuth } from "../../middleware/auth.js";
-import { requireItemMember } from "../../middleware/authorize.js";
+import {
+  requireItemMember,
+  requireItemMemberIncludingArchived,
+} from "../../middleware/authorize.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 import { resolveLinkPreview } from "./link-preview.js";
 
@@ -104,6 +113,12 @@ const moveItemSchema = z.object({
   // section (the only way to rank the first item of an empty block);
   // absent/false → demote. See `MoveItemRequest` in @workshop/shared.
   ordered: z.boolean().optional(),
+  // UX pass 2.7: names the block the row lands in, which makes the neighbour
+  // ids unambiguous. Absent = the legacy semantics above, untouched for old
+  // clients. `ranked`: neighbours are ranked rows, neither → append. `unranked`:
+  // neighbours are open unranked rows (before = displayed above), neither →
+  // top of the block; a ranked row moved here leaves the ranking.
+  section: z.enum(["ranked", "unranked"]).optional(),
 });
 
 // Tags are manual lowercase labels (spec §2.1): trim, lowercase, collapse
@@ -330,7 +345,8 @@ export async function fetchItemShape(itemId: string, db: DbClient = getDb()): Pr
  *                when `ranking` is off (items collapse into `unordered`) —
  *                EXCEPT on `leaderboard` lists, whose games are always an
  *                ordered, reorderable list (the status-card view drags them).
- * - `unordered`: position IS NULL (or ranking off), sorted by created_at DESC.
+ * - `unordered`: position IS NULL (or ranking off), in hand-placed order
+ *                (`order_key`, NULLs first), then newest first (2.7).
  * - `completed`: completed=true, sorted by completed_at DESC. Suppressed
  *                when `todo` is off (items keep their ordered/unordered slot).
  */
@@ -355,11 +371,7 @@ export async function fetchItemsForList(
         (SELECT array_agg(t.tag ORDER BY t.tag) FROM item_tags t WHERE t.item_id = i.id) AS tags
       FROM items i
       WHERE i.list_id = ${listId} AND i.archived_at IS NULL
-      ORDER BY
-        (i.position IS NULL),
-        i.position ASC NULLS LAST,
-        COALESCE(i.content->>'detectedAt', i.created_at::text) DESC,
-        i.completed_at DESC NULLS LAST
+      ORDER BY ${UNRANKED_ORDER_SQL}
     `,
   );
 
@@ -398,6 +410,12 @@ export async function fetchItemsForList(
       unordered.push(item);
     }
   }
+  // The SQL returns the unranked order; the Ranked block re-sorts by
+  // position (stable, so ties keep the unranked order; a leaderboard's
+  // null-position games sort last).
+  ordered.sort(
+    (a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER),
+  );
   completed.sort((a, b) => {
     const ta = a.completedAt ? Date.parse(a.completedAt) : 0;
     const tb = b.completedAt ? Date.parse(b.completedAt) : 0;
@@ -843,7 +861,7 @@ itemRoutes.post(
   },
 );
 
-// --- Move (ranking + leaderboard modules) ---
+// --- Move (Ranked block: ranking + leaderboard modules; unranked: any list) ---
 
 itemRoutes.post(
   "/:id/move",
@@ -859,34 +877,54 @@ itemRoutes.post(
     const userId = c.get("userId");
     const listId = c.get("itemListId");
     const db = getDb();
-    // Reorder is allowed on `ranking` lists and on `leaderboard` lists — a
-    // leaderboard's games are an ordered, reorderable list even without the
-    // `ranking` module (the status-card view drags them). Lists with neither
-    // still get the existing `ranking.disabled` 409.
+
+    const parsed = await parseJsonBody(c, moveItemSchema);
+    if (!parsed.ok) return parsed.response;
+    const { section } = parsed.data;
+    const beforeItemId = parsed.data.beforeItemId ?? null;
+    const afterItemId = parsed.data.afterItemId ?? null;
+
     const mods = await getParentModules(db, listId);
-    if (!hasModule(mods, "ranking") && !hasModule(mods, "leaderboard")) {
+    const rankable = hasModule(mods, "ranking") || hasModule(mods, "leaderboard");
+    // Any list's open rows can be hand-ordered (2.7). The Ranked block — and
+    // every legacy request shape, which only ever addressed it — still needs
+    // `ranking` (or a leaderboard, whose games are always an ordered list);
+    // lists with neither keep the existing `ranking.disabled` 409.
+    if (section !== "unranked" && !rankable) {
       const gate = requireModule(c, mods, "ranking");
       if (gate) return gate;
     }
 
-    const parsed = await parseJsonBody(c, moveItemSchema);
-    if (!parsed.ok) return parsed.response;
-
     const wasOrdered = (
       await db.select({ position: items.position }).from(items).where(eq(items.id, itemId)).limit(1)
     )[0]?.position;
+    // A stale `position` on a list with ranking off isn't a ranked row.
+    const wasOrderedFlag =
+      typeof wasOrdered === "number" && (section !== "unranked" || hasModule(mods, "ranking"));
 
-    const result = await moveItemPosition({
-      listId,
-      itemId,
-      beforeItemId: parsed.data.beforeItemId ?? null,
-      afterItemId: parsed.data.afterItemId ?? null,
-      ordered: parsed.data.ordered ?? false,
-      db,
-    });
+    let isOrderedFlag: boolean;
+    if (section === "unranked") {
+      await db.transaction(async (tx) => {
+        if (typeof wasOrdered === "number" && hasModule(mods, "ranking")) {
+          await tx.update(items).set({ position: null }).where(eq(items.id, itemId));
+        }
+        await moveItemUnranked({ listId, itemId, beforeItemId, afterItemId, db: tx });
+      });
+      isOrderedFlag = false;
+    } else {
+      const result = await moveItemPosition({
+        listId,
+        itemId,
+        beforeItemId,
+        afterItemId,
+        // `section: "ranked"` with no neighbours means the same as the legacy
+        // `ordered: true`: append to the block (or start it).
+        ordered: section === "ranked" || (parsed.data.ordered ?? false),
+        db,
+      });
+      isOrderedFlag = result.position !== null;
+    }
 
-    const wasOrderedFlag = typeof wasOrdered === "number";
-    const isOrderedFlag = result.position !== null;
     let eventType: "item_promoted" | "item_demoted" | null = null;
     if (!wasOrderedFlag && isOrderedFlag) eventType = "item_promoted";
     else if (wasOrderedFlag && !isOrderedFlag) eventType = "item_demoted";
@@ -903,6 +941,64 @@ itemRoutes.post(
         type: eventType,
         itemId,
         payload: { title: row?.title ?? "" },
+      });
+    }
+
+    const item = await fetchItemShape(itemId);
+    if (!item) return err(c, "NOT_FOUND", "item not found");
+    return ok(c, { item });
+  },
+);
+
+// --- Restore (undo delete) ---
+
+/**
+ * `POST /v1/items/:id/unarchive` — the Undo behind "Deleted · Undo" (2.3).
+ * Any member of the (live) parent list can restore an item; clearing
+ * `archived_at` is all it takes because every read filters on it. The row
+ * keeps its `position` / `order_key`, so it returns to where it was.
+ * Idempotent: restoring a live item returns it unchanged. The per-kind dedup
+ * indexes (album shelf `spotifyAlbumId`, movie `tmdbId`) cover archived rows
+ * too, so a restore can't normally collide; if one ever does it is a 409.
+ */
+itemRoutes.post(
+  "/:id/unarchive",
+  requireItemMemberIncludingArchived,
+  rateLimit({
+    family: "v1.items.unarchive",
+    limit: 120,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const itemId = c.req.param("id");
+    const userId = c.get("userId");
+    const listId = c.get("itemListId");
+    const db = getDb();
+    let restored: { id: string; title: string } | undefined;
+    try {
+      [restored] = await db
+        .update(items)
+        .set({ archivedAt: null, updatedAt: new Date(), ...requestOriginColumns() })
+        .where(and(eq(items.id, itemId), sql`${items.archivedAt} IS NOT NULL`))
+        .returning({ id: items.id, title: items.title });
+    } catch (e) {
+      if (
+        isUniqueViolation(e, "items_list_spotify_album_content_idx") ||
+        isUniqueViolation(e, "items_list_movie_tmdb_id_idx")
+      ) {
+        return err(c, "CONFLICT", "already on the list");
+      }
+      throw e;
+    }
+
+    if (restored) {
+      await recordEvent({
+        listId,
+        actorId: userId,
+        type: "item_restored",
+        itemId,
+        payload: { title: restored.title },
       });
     }
 

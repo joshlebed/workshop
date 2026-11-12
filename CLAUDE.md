@@ -531,14 +531,19 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   writes through on every change. Any new item-create surface (bulk paste, share flow) should
   pass `tags` on create rather than firing a second request, and must invalidate
   `queryKeys.tags.byList(listId)` so a brand-new tag reaches the filter bar.
-- **`POST /v1/items/:id/move` with both neighbour ids null is a demote — send `ordered: true`
-  to rank into an empty Ranked section.** `beforeItemId`/`afterItemId` are the only wire
-  signal, so when the Ranked section is empty every promote path (web drag into the drop
-  zone, ⋯ → Move to ordered, native kebab) has no neighbour to name and used to send
-  `{null, null}`, which `moveItemPosition` read as "unrank" — a 200 no-op, so a `ranking`
-  list that never had a ranked row could never get one ("I can't reorder items"). Promotes
-  now pass `ordered: true` (`MoveItemRequest`), which appends to the ordered block. Any new
-  promote surface must set it too; old clients that omit it keep the demote semantics.
+- **Item order is two keys: `position` (the Ranked block) and `order_key` (every open row
+  outside it, on every list).** `POST /v1/items/:id/move` takes `section: "ranked" |
+"unranked"` plus the neighbour ids of the rows displayed above (`beforeItemId`) and below
+  (`afterItemId`) the drop; `unranked` works on any list (no `ranking` needed) and takes a
+  ranked row out of the ranking. `order_key` NULL sorts first, newest first, so a list nobody
+  has dragged keeps its recency order and new items land on top without the create path
+  knowing; the first hand placement materializes the NULLs (`moveItemUnranked` in
+  `lib/positions.ts`). **Legacy shapes are kept for old binaries**: no `section`, both
+  neighbours null = demote unless `ordered: true` (append to Ranked), neighbours set = within
+  Ranked, and lists without `ranking` still 409 them. This client always sends `section`,
+  except the album shelf's demote, which uses the legacy shape so its detected block stays in
+  recency order (`docs/album-shelf.md`). Client drop logic is `resolveDrop` in
+  `apps/workshop/src/screens/listDetail/listOps.ts` (both platforms).
 - **Per-(list, viewer) presentation state lives on `list_members`.** `pinned_at`,
   `archived_at`, `muted_at` columns (NULL = not set). `last_read_at` for unread-count
   derivation lives in the older `user_activity_reads` table — don't duplicate it.
@@ -547,8 +552,9 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   (no inverse semantic). Don't confuse this per-viewer `archived_at` with the global soft-delete
   `archived_at` on `lists` / `items` below.
 - **Lists and items are soft-deleted via `archived_at`.** `DELETE /v1/lists/:id` (owner-only)
-  and `DELETE /v1/items/:id` set the row's `archived_at`; FKs stay configured for a future
-  unarchive surface. Every read path filters `archived_at IS NULL` —
+  and `DELETE /v1/items/:id` set the row's `archived_at`; `POST /v1/items/:id/unarchive`
+  (any member of the live parent list, event `item_restored`) is the delete Undo, and the row
+  keeps its `position` / `order_key` so it returns to where it was. Every read path filters `archived_at IS NULL` —
   `requireListMember`/`requireItemMember` 404 archived rows, `GET /v1/lists` filters lists,
   items reads filter both item and parent list, the activity feed joins through both, and the
   public invite preview/accept checks the same. **When you add a new query touching `lists` or
@@ -1130,6 +1136,9 @@ re-applies the manifest after you edit it; `ns services validate` checks it.
 | `workshop`  | 8082 | yes       | Workshop.dev Expo web against the same backend.                               |
 | `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).                     |
 | `postgres`  | —    | no        | Docker PG17, host networking, prod copy. Started by setup/resume.             |
+
+If a backend change seems ignored in the sandbox (the API answers with old behaviour),
+`ns services restart backend`: its `tsx watch` did not pick up edits once in UX pass phase 2.
 
 Gotchas: services get **platform env + manifest `environment` + `PORT` only**, never the
 repository variables setup sees — that's why `backend` goes through

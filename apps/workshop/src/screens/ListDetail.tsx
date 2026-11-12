@@ -10,6 +10,7 @@ import type {
   ListItemsResponse,
   ListMemberSummary,
   ListSource,
+  MoveItemRequest,
   SavedView,
 } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
@@ -25,7 +26,6 @@ import {
   haptics,
   IconButton,
   type ListColorKey,
-  normalizeExternalUrl,
   openExternalUrl,
   Screen,
   ScreenHeader,
@@ -36,21 +36,49 @@ import {
   tokens,
   useToast,
 } from "@workshop/ui";
-import { useRouter } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useIsFocused, useRouter } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, type TextInputInstance, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { archiveItem, completeItem, fetchItems, moveItem, uncompleteItem } from "../api/items";
+import {
+  archiveItem,
+  completeItem,
+  fetchItems,
+  moveItem,
+  unarchiveItem,
+  uncompleteItem,
+} from "../api/items";
 import { syncSource } from "../api/sources";
 import { createSavedView, deleteSavedView, fetchSavedViews } from "../api/views";
 import { useAuth } from "../hooks/useAuth";
-import { applyOptimisticMove, neighborsForOrderedReorder } from "../lib/albumShelfPositions";
+import { useFinePointer } from "../lib/finePointer";
 import { goBack } from "../lib/goBack";
+import { takeItemsAdded } from "../lib/recentlyAdded";
 import { sourceErrorMessage } from "../lib/sourceErrors";
+import {
+  COMPLETED_COLLAPSE_THRESHOLD,
+  rememberDoneCollapsed,
+  rememberedDoneCollapsed,
+} from "./listDetail/completedSection";
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import { LetterboxdPanel } from "./listDetail/LetterboxdPanel";
-import type { ReorderEvent } from "./listDetail/listProps";
+import {
+  applyComplete,
+  applyMove,
+  applyRemove,
+  applyRestore,
+  applyUncomplete,
+  completionCopy,
+  type DropResult,
+  findItem,
+  itemCountLabel,
+  itemMatches,
+  type MoveIntent,
+  type SectionName,
+  stepNeighbours,
+  tagChipCounts,
+} from "./listDetail/listOps";
 import { rankAnchorsOf, rankByIdOf } from "./listDetail/ranks";
 import { SavedViewsBar } from "./listDetail/SavedViewsBar";
 import type { Section } from "./listDetail/types";
@@ -62,31 +90,36 @@ interface Props {
   token: string | null;
 }
 
+type Placement = { item: Item; section: SectionName; index: number };
+
 /**
  * Unified list-detail screen. The shape of the screen falls out of `list.modules`:
  *
- * - `ranking` on → Ordered + Unordered sections, drag-to-reorder.
- * - `todo` on    → Done section appears below.
- * - `sources` on → header refresh button and source provenance badges.
+ * - `todo` on    → a checkbox on every open row, a Done section below.
+ * - `ranking` on → a Ranked block above the open rows.
+ * - `sources` on → header refresh button and source provenance.
  *
- * `list.itemKind === "spotify_album"` keeps the legacy album-shelf
- * affordance — body-press opens Spotify, no Edit menu action (fields are
- * server-derived from the source sync).
+ * Every write here is optimistic (2.2): the cache changes in `onMutate`, a
+ * failure puts it back and says so, and reversible ones offer Undo (2.3).
+ * `list.itemKind === "spotify_album"` keeps the album-shelf affordances —
+ * body-press opens Spotify, no Edit, and the detected block stays in
+ * recency order.
  */
 export function ListDetail({ list, members, sources, token }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { user } = useAuth();
+  const isFocused = useIsFocused();
+  const finePointer = useFinePointer();
   const selfId = user?.id ?? null;
   const filterInputRef = useRef<TextInputInstance>(null);
   const [filter, setFilter] = useState("");
-  // Tag chips selected in the filter bar. Multi-select reads as OR; empty
-  // set = "All" (no tag filtering). Stored as an array for stable identity
-  // in deps; converted to a Set where membership checks happen.
+  // Selected tag chips (AND). Stored as an array for stable identity in deps.
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const itemsKey = queryKeys.items.byList(list.id);
+  const writeKey = useMemo(() => ["list-items-write", list.id], [list.id]);
   const livePoll = useLivePollingInterval();
 
   const itemKind = list.itemKind;
@@ -95,6 +128,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const rankingOn = hasModule(list.modules, "ranking");
   const todoOn = hasModule(list.modules, "todo");
   const letterboxdOn = hasModule(list.modules, "letterboxd");
+  const copy = completionCopy(itemKind);
 
   const itemsQuery = useQuery({
     queryKey: itemsKey,
@@ -102,12 +136,9 @@ export function ListDetail({ list, members, sources, token }: Props) {
     enabled: !!token,
     refetchInterval: livePoll,
   });
-  // A failed background refetch keeps the cached rows on screen; only a load
-  // with nothing to show swaps the list for the error state (0.9).
+  // A failed background refetch keeps the cached rows on screen (0.9).
   const itemsLoadFailed = itemsQuery.isError && !itemsQuery.data;
 
-  // Saved views (spec §2.3): named, shared tag-filter presets. Cheap query,
-  // its own key — applying a view just sets `selectedTags`.
   const viewsQuery = useQuery({
     queryKey: queryKeys.views.byList(list.id),
     queryFn: () => fetchSavedViews(list.id, token),
@@ -115,9 +146,29 @@ export function ListDetail({ list, members, sources, token }: Props) {
   });
   const savedViews = viewsQuery.data?.views ?? [];
 
-  const [newItemIds, setNewItemIds] = useState<Set<string>>(() => new Set());
-  const beforeRefreshIdsRef = useRef<Set<string> | null>(null);
+  // --- New-row highlight + scroll (2.6) ------------------------------------
 
+  const [newItemIds, setNewItemIds] = useState<Set<string>>(() => new Set());
+  const [scrollToItemId, setScrollToItemId] = useState<string | null>(null);
+  // The quick-add screen stays open across adds and records what it added;
+  // pick that up whenever this screen is back on top.
+  useEffect(() => {
+    if (!isFocused) return;
+    const added = takeItemsAdded(list.id);
+    if (added.length === 0) return;
+    setNewItemIds(new Set(added));
+    setScrollToItemId(added[0] ?? null);
+  }, [isFocused, list.id]);
+  useEffect(() => {
+    if (newItemIds.size === 0) return;
+    const t = setTimeout(() => {
+      setNewItemIds(new Set());
+      setScrollToItemId(null);
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [newItemIds]);
+
+  const beforeRefreshIdsRef = useRef<Set<string> | null>(null);
   const primarySource = sources[0] ?? null;
 
   const refreshMutation = useMutation({
@@ -129,9 +180,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
       const cur = queryClient.getQueryData<ListItemsResponse>(itemsKey);
       const prevIds = new Set<string>();
       if (cur) {
-        for (const it of cur.ordered) prevIds.add(it.id);
-        for (const it of cur.unordered) prevIds.add(it.id);
-        for (const it of cur.completed) prevIds.add(it.id);
+        for (const it of [...cur.ordered, ...cur.unordered, ...cur.completed]) prevIds.add(it.id);
       }
       beforeRefreshIdsRef.current = prevIds;
     },
@@ -153,9 +202,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
       if (fresh.size > 0) setNewItemIds(fresh);
       showToast({
         message:
-          added === 0
-            ? "No new items detected."
-            : `Detected ${added} new item${added === 1 ? "" : "s"}.`,
+          added === 0 ? "No new items found" : `Found ${added} new item${added === 1 ? "" : "s"}`,
         tone: added === 0 ? "default" : "success",
       });
     },
@@ -167,87 +214,144 @@ export function ListDetail({ list, members, sources, token }: Props) {
     },
   });
 
-  useEffect(() => {
-    if (newItemIds.size === 0) return;
-    const t = setTimeout(() => setNewItemIds(new Set()), 3000);
-    return () => clearTimeout(t);
-  }, [newItemIds]);
+  // --- Optimistic writes (2.2, 2.3) ----------------------------------------
+
+  const setItems = useCallback(
+    (fn: (d: ListItemsResponse) => ListItemsResponse) => {
+      queryClient.setQueryData<ListItemsResponse>(itemsKey, (d) => (d ? fn(d) : d));
+    },
+    [queryClient, itemsKey],
+  );
+  // Refetch the server's truth once the last in-flight write settles; doing it
+  // after every write would briefly show the list without the others.
+  const settleWrites = useCallback(() => {
+    if (queryClient.isMutating({ mutationKey: writeKey }) <= 1) {
+      queryClient.invalidateQueries({ queryKey: itemsKey });
+      queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+    }
+  }, [queryClient, itemsKey, writeKey]);
 
   const moveMutation = useMutation<
     Item,
     Error,
-    // `ordered: true` on every promote: with an empty Ranked section both
-    // neighbour ids are null, which the server would otherwise read as a
-    // demote (no-op) — the first item could never be ranked.
-    { item: Item; beforeItemId: string | null; afterItemId: string | null; ordered?: boolean },
+    { item: Item; intent: MoveIntent },
     { previous?: ListItemsResponse }
   >({
-    mutationFn: async ({ item, beforeItemId, afterItemId, ordered }) => {
-      const res = await moveItem(
-        item.id,
-        { beforeItemId, afterItemId, ...(ordered ? { ordered: true } : {}) },
-        token,
-      );
-      return res.item;
+    mutationKey: writeKey,
+    mutationFn: async ({ item, intent }) => {
+      // The album shelf's detected block stays in recency order, so a demote
+      // there uses the legacy shape (clear the rank, keep the shelf's order).
+      const body: MoveItemRequest =
+        isSpotifyShelf && intent.section === "unranked"
+          ? { beforeItemId: null, afterItemId: null }
+          : intent;
+      return (await moveItem(item.id, body, token)).item;
     },
-    onMutate: async ({ item, beforeItemId, afterItemId, ordered }) => {
+    onMutate: async ({ item, intent }) => {
       await queryClient.cancelQueries({ queryKey: itemsKey });
       const previous = queryClient.getQueryData<ListItemsResponse>(itemsKey);
-      if (previous) {
-        const next = applyOptimisticMove(
-          previous,
-          item.id,
-          beforeItemId,
-          afterItemId,
-          ordered ?? false,
-        );
-        queryClient.setQueryData<ListItemsResponse>(itemsKey, next);
-      }
+      setItems((d) => applyMove(d, item.id, intent));
       return previous ? { previous } : {};
     },
     onError: (e, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(itemsKey, ctx.previous);
-      showToast({
-        message: errorMessage(e, "Couldn't move that item."),
-        tone: "danger",
-      });
+      if (ctx?.previous && queryClient.isMutating({ mutationKey: writeKey }) <= 1) {
+        queryClient.setQueryData(itemsKey, ctx.previous);
+      }
+      showToast({ message: errorMessage(e, "Couldn't move that item."), tone: "danger" });
     },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: itemsKey });
-    },
+    onSettled: settleWrites,
   });
 
-  const completeMutation = useMutation<Item, Error, { item: Item; nextCompleted: boolean }>({
-    mutationFn: async ({ item, nextCompleted }) => {
-      const res = nextCompleted
-        ? await completeItem(item.id, token)
-        : await uncompleteItem(item.id, token);
-      return res.item;
+  const completeMutation = useMutation<Item, Error, { item: Item; next: boolean; undo?: boolean }>({
+    mutationKey: writeKey,
+    mutationFn: async ({ item, next }) =>
+      (next ? await completeItem(item.id, token) : await uncompleteItem(item.id, token)).item,
+    onMutate: async ({ item, next }) => {
+      await queryClient.cancelQueries({ queryKey: itemsKey });
+      setItems((d) =>
+        next ? applyComplete(d, item.id, selfId) : applyUncomplete(d, item.id, rankingOn),
+      );
     },
-    onSuccess: () => {
-      haptics.medium();
-      queryClient.invalidateQueries({ queryKey: itemsKey });
-      queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+    onError: (e, { item, next }) => {
+      setItems((d) =>
+        next ? applyUncomplete(d, item.id, rankingOn) : applyComplete(d, item.id, selfId),
+      );
+      showToast({ message: errorMessage(e, "Couldn't update that item."), tone: "danger" });
     },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't update item."), tone: "danger" });
-    },
+    onSettled: settleWrites,
   });
 
-  const archiveMutation = useMutation<{ ok: true }, Error, { itemId: string }>({
-    mutationFn: ({ itemId }) => archiveItem(itemId, token),
-    onSuccess: () => {
-      haptics.medium();
-      queryClient.invalidateQueries({ queryKey: itemsKey });
-      queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-    },
-    onError: (e) => {
+  const toggleComplete = useCallback(
+    (item: Item, next: boolean) => {
+      haptics.light();
+      completeMutation.mutate({ item, next });
       showToast({
-        message: errorMessage(e, "Couldn't archive that item."),
-        tone: "danger",
+        key: "complete",
+        message: next ? copy.marked : copy.unmarked,
+        actionLabel: "Undo",
+        durationMs: 5000,
+        onAction: () => completeMutation.mutate({ item, next: !next, undo: true }),
       });
     },
+    [completeMutation, showToast, copy],
+  );
+
+  // A delete's request, so an Undo pressed before it lands waits for it
+  // instead of racing it (restore first, delete second would win).
+  const pendingDeletes = useRef(new Map<string, Promise<unknown>>());
+
+  const restoreMutation = useMutation<Item, Error, Placement>({
+    mutationKey: writeKey,
+    mutationFn: async (placement) => {
+      await pendingDeletes.current.get(placement.item.id)?.catch(() => {});
+      return (await unarchiveItem(placement.item.id, token)).item;
+    },
+    onMutate: async (placement) => {
+      await queryClient.cancelQueries({ queryKey: itemsKey });
+      setItems((d) => applyRestore(d, placement));
+    },
+    onError: (e, placement) => {
+      setItems((d) => applyRemove(d, placement.item.id));
+      showToast({ message: errorMessage(e, "Couldn't restore that item."), tone: "danger" });
+    },
+    onSettled: settleWrites,
   });
+
+  const deleteMutation = useMutation<{ ok: true }, Error, Placement>({
+    mutationKey: writeKey,
+    mutationFn: (placement) => {
+      const p = archiveItem(placement.item.id, token);
+      pendingDeletes.current.set(placement.item.id, p);
+      return p.finally(() => pendingDeletes.current.delete(placement.item.id));
+    },
+    onMutate: async (placement) => {
+      await queryClient.cancelQueries({ queryKey: itemsKey });
+      setItems((d) => applyRemove(d, placement.item.id));
+    },
+    onError: (e, placement) => {
+      setItems((d) => applyRestore(d, placement));
+      showToast({ message: errorMessage(e, "Couldn't delete that item."), tone: "danger" });
+    },
+    onSettled: settleWrites,
+  });
+
+  const deleteItem = useCallback(
+    (item: Item) => {
+      const data = queryClient.getQueryData<ListItemsResponse>(itemsKey);
+      const placement = data ? findItem(data, item.id) : null;
+      if (!placement) return;
+      haptics.medium();
+      deleteMutation.mutate(placement);
+      showToast({
+        key: "delete",
+        message: `Deleted “${item.title}”`,
+        actionLabel: "Undo",
+        durationMs: 6000,
+        onAction: () => restoreMutation.mutate(placement),
+      });
+    },
+    [queryClient, itemsKey, deleteMutation, restoreMutation, showToast],
+  );
 
   const createViewMutation = useMutation<SavedView, Error, { name: string; tags: string[] }>({
     mutationFn: async ({ name, tags }) => {
@@ -275,21 +379,25 @@ export function ListDetail({ list, members, sources, token }: Props) {
     },
   });
 
+  // --- Derived rows --------------------------------------------------------
+
   const data = itemsQuery.data;
   const orderedRaw = data?.ordered ?? [];
   const unorderedRaw = data?.unordered ?? [];
   const completedRaw = data?.completed ?? [];
   const suggestedRaw = useMemo(() => data?.suggested ?? [], [data?.suggested]);
+  const allRows = useMemo(
+    () => [...orderedRaw, ...unorderedRaw, ...completedRaw],
+    [orderedRaw, unorderedRaw, completedRaw],
+  );
 
-  // Letterboxd-match overlap badge per item — replaces the "Added by …"
-  // provenance line so the social signal ("on whose watchlist?") lives on the
-  // row. Suggestions render in the panel above the list instead.
+  // Letterboxd-match overlap badge per item, replacing "Added by …".
   const letterboxdBadgeByItem = useMemo(() => {
     if (!letterboxdOn) return undefined;
     const map = new Map<string, string>();
     const nameOf = (userId: string) =>
       userId === selfId ? "you" : (memberNameByIdRef(members, userId) ?? "someone");
-    for (const it of [...orderedRaw, ...unorderedRaw, ...completedRaw]) {
+    for (const it of allRows) {
       const lb = it.letterboxd;
       if (!lb) continue;
       const n = lb.watchlistOf.length;
@@ -304,70 +412,44 @@ export function ListDetail({ list, members, sources, token }: Props) {
       }
     }
     return map;
-  }, [letterboxdOn, orderedRaw, unorderedRaw, completedRaw, members, selfId]);
+  }, [letterboxdOn, allRows, members, selfId]);
 
-  // In-use tags + counts for the chip bar, derived from the loaded items so
-  // the bar is always in sync with the rows (no second fetch, no cache
-  // drift). Sorted by count desc, then alphabetically.
-  const tagCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const it of [...orderedRaw, ...unorderedRaw, ...completedRaw]) {
-      for (const tag of it.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  const itemFilter = useMemo(() => ({ text: filter, tags: selectedTags }), [filter, selectedTags]);
+  const filterActive = filter.trim().length > 0;
+  const tagFilterActive = selectedTags.length > 0;
+  const anyFilterActive = filterActive || tagFilterActive;
+
+  const filtered = useMemo(() => {
+    if (!anyFilterActive) {
+      return { ordered: orderedRaw, unordered: unorderedRaw, completed: completedRaw };
     }
-    return [...counts.entries()]
-      .map(([tag, count]) => ({ tag, count }))
-      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-  }, [orderedRaw, unorderedRaw, completedRaw]);
+    const keep = (it: Item) => itemMatches(it, itemFilter);
+    return {
+      ordered: orderedRaw.filter(keep),
+      unordered: unorderedRaw.filter(keep),
+      completed: completedRaw.filter(keep),
+    };
+  }, [orderedRaw, unorderedRaw, completedRaw, itemFilter, anyFilterActive]);
 
-  // Drop selected tags that no longer exist on any item (last tagged item
-  // archived / untagged) so a stale selection can't filter to zero forever.
+  // Chip counts follow the current result (text search included), in a
+  // stable order so a tap never reshuffles the bar (2.11).
+  const tagChips = useMemo(
+    () =>
+      tagChipCounts(allRows, [...filtered.ordered, ...filtered.unordered, ...filtered.completed]),
+    [allRows, filtered],
+  );
+
+  // Drop selected tags that no longer exist on any item.
   useEffect(() => {
     if (selectedTags.length === 0 || itemsQuery.isPending) return;
-    const live = new Set(tagCounts.map((t) => t.tag));
+    const live = new Set(tagChips.map((t) => t.tag));
     if (selectedTags.some((t) => !live.has(t))) {
       setSelectedTags((prev) => prev.filter((t) => live.has(t)));
     }
-  }, [tagCounts, selectedTags, itemsQuery.isPending]);
+  }, [tagChips, selectedTags, itemsQuery.isPending]);
 
   const selectedTagSet = useMemo(() => new Set(selectedTags), [selectedTags]);
-
   const rankById = useMemo(() => rankByIdOf(orderedRaw), [orderedRaw]);
-  const filtered = useMemo(() => {
-    const needle = filter.trim().toLowerCase();
-    if (!needle && selectedTagSet.size === 0) {
-      return { ordered: orderedRaw, unordered: unorderedRaw, completed: completedRaw };
-    }
-    const matchesText = (it: Item) => {
-      if (!needle) return true;
-      const c = it.content as { artist?: string; authors?: string[]; siteName?: string };
-      const haystack = [
-        it.title,
-        it.note ?? "",
-        c.artist ?? "",
-        c.siteName ?? "",
-        Array.isArray(c.authors) ? c.authors.join(" ") : "",
-      ]
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(needle);
-    };
-    // Tag chips are AND within the bar: an item passes only when it carries
-    // EVERY selected tag. Text search ANDs on top.
-    const matchesTags = (it: Item) => {
-      if (selectedTagSet.size === 0) return true;
-      const itemTags = it.tags ?? [];
-      for (const tag of selectedTagSet) {
-        if (!itemTags.includes(tag)) return false;
-      }
-      return true;
-    };
-    const matches = (it: Item) => matchesTags(it) && matchesText(it);
-    return {
-      ordered: orderedRaw.filter(matches),
-      unordered: unorderedRaw.filter(matches),
-      completed: completedRaw.filter(matches),
-    };
-  }, [orderedRaw, unorderedRaw, completedRaw, filter, selectedTagSet]);
 
   const memberNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -387,23 +469,28 @@ export function ListDetail({ list, members, sources, token }: Props) {
     : null;
   const refreshing = refreshMutation.isPending;
 
-  const showOrderedHint =
-    rankingOn &&
-    filtered.ordered.length === 0 &&
-    (filtered.unordered.length > 0 || filtered.completed.length > 0) &&
-    filter.trim().length === 0 &&
-    selectedTags.length === 0;
-
   const totalRows = filtered.ordered.length + filtered.unordered.length + filtered.completed.length;
-  const filterActive = filter.trim().length > 0;
-  const tagFilterActive = selectedTags.length > 0;
-  const anyFilterActive = filterActive || tagFilterActive;
-  const totalRowsUnfiltered = orderedRaw.length + unorderedRaw.length + completedRaw.length;
+  const totalRowsUnfiltered = allRows.length;
+  const openCount = orderedRaw.length + unorderedRaw.length;
 
-  // Saved-view application + persistence (spec §2.3). Applying a view sets the
-  // tag filter to its tag set (toggling off when it's already active) and
-  // leaves the text search untouched. "Save view" is offered only when the
-  // current tag selection isn't already stored.
+  // --- Done section (2.10) -------------------------------------------------
+
+  const [doneCollapsedPref, setDoneCollapsedPref] = useState<boolean | undefined>(() =>
+    rememberedDoneCollapsed(list.id),
+  );
+  const doneCollapsedDefault = completedRaw.length > COMPLETED_COLLAPSE_THRESHOLD;
+  // A filter shows every match, Done included; otherwise Done is collapsible
+  // whenever there is something open above it.
+  const doneCollapsible = !anyFilterActive && openCount > 0;
+  const doneCollapsed = doneCollapsible && (doneCollapsedPref ?? doneCollapsedDefault);
+  const toggleDone = () => {
+    const next = !doneCollapsed;
+    setDoneCollapsedPref(next);
+    rememberDoneCollapsed(list.id, next);
+  };
+
+  // --- Saved views ---------------------------------------------------------
+
   const currentSelectionSaved = savedViews.some((v) => tagSetsEqual(v.config.tags, selectedTags));
   const canSaveView = tagFilterActive && !currentSelectionSaved;
   const viewMutating = createViewMutation.isPending || deleteViewMutation.isPending;
@@ -423,46 +510,62 @@ export function ListDetail({ list, members, sources, token }: Props) {
     if (ok) deleteViewMutation.mutate({ viewId: view.id });
   };
 
-  const onReorderOrdered = (event: ReorderEvent) => {
-    const ordered = filtered.ordered;
-    const item = ordered[event.fromIndex];
-    if (!item) return;
-    const neighbors = neighborsForOrderedReorder(ordered, event.fromIndex, event.toIndex);
-    if (!neighbors) return;
-    moveMutation.mutate({
-      item,
-      beforeItemId: neighbors.before?.id ?? null,
-      afterItemId: neighbors.after?.id ?? null,
+  const savedViewsProps = {
+    views: savedViews,
+    selectedTags,
+    onApply: onApplyView,
+    onCreate: (name: string) => createViewMutation.mutate({ name, tags: selectedTags }),
+    onDelete: onDeleteView,
+    canDelete: (view: SavedView) =>
+      !!selfId && (view.createdBy === selfId || list.ownerId === selfId),
+    canSave: canSaveView,
+    busy: viewMutating,
+  };
+
+  // --- Moves ---------------------------------------------------------------
+
+  const itemById = useMemo(() => new Map(allRows.map((it) => [it.id, it])), [allRows]);
+
+  const onDrop = useCallback(
+    (drop: DropResult) => {
+      const item = itemById.get(drop.itemId);
+      if (!item) return;
+      haptics.selection();
+      moveMutation.mutate({ item, intent: drop });
+    },
+    [itemById, moveMutation],
+  );
+
+  /** Where a row sits now, as a move that would put it back (for Undo). */
+  const placementIntent = (item: Item): MoveIntent | null => {
+    const inRanked = orderedRaw.findIndex((i) => i.id === item.id);
+    const rows = inRanked >= 0 ? orderedRaw : unorderedRaw;
+    const i = rows.findIndex((r) => r.id === item.id);
+    if (i < 0) return null;
+    return {
+      section: inRanked >= 0 ? "ranked" : "unranked",
+      beforeItemId: rows[i - 1]?.id ?? null,
+      afterItemId: rows[i + 1]?.id ?? null,
+    };
+  };
+
+  const moveWithUndo = (item: Item, intent: MoveIntent, message: string) => {
+    const back = placementIntent(item);
+    moveMutation.mutate({ item, intent });
+    showToast({
+      key: "move",
+      message,
+      ...(back
+        ? {
+            actionLabel: "Undo",
+            durationMs: 5000,
+            onAction: () => moveMutation.mutate({ item, intent: back }),
+          }
+        : {}),
     });
   };
 
-  const onPromoteToOrdered = ({ item, toIndex }: { item: Item; toIndex: number }) => {
-    const ordered = filtered.ordered;
-    const clamped = Math.max(0, Math.min(toIndex, ordered.length));
-    const beforeItem = clamped > 0 ? ordered[clamped - 1] : null;
-    const afterItem = clamped < ordered.length ? ordered[clamped] : null;
-    moveMutation.mutate({
-      item,
-      beforeItemId: beforeItem?.id ?? null,
-      afterItemId: afterItem?.id ?? null,
-      ordered: true,
-    });
-  };
-
-  // Native combined list (drag across the Ranked ↔ unranked boundary) hands us
-  // the resolved neighbors directly; the same `moveMutation` handles promote,
-  // demote, and reorder.
-  const onMoveItemRelative = ({
-    item,
-    beforeItemId,
-    afterItemId,
-  }: {
-    item: Item;
-    beforeItemId: string | null;
-    afterItemId: string | null;
-  }) => {
-    moveMutation.mutate({ item, beforeItemId, afterItemId });
-  };
+  // --- Row menu ------------------------------------------------------------
 
   const [menuItem, setMenuItem] = useState<Item | null>(null);
   const [menuActions, setMenuActions] = useState<ItemRowMenuActions | null>(null);
@@ -472,59 +575,70 @@ export function ListDetail({ list, members, sources, token }: Props) {
   };
 
   const onRowMenu = (item: Item, section: Section) => {
-    const confirmDelete = async () => {
-      const ok = await confirm({
-        title: `Delete “${item.title}”?`,
-        confirmLabel: "Delete",
-        destructive: true,
-      });
-      if (ok) archiveMutation.mutate({ itemId: item.id });
-    };
+    const open = section !== "completed";
+    // Move up / down step past the row the user can see above or below.
+    const visible = section === "ordered" ? filtered.ordered : filtered.unordered;
+    const stepUp = open ? stepNeighbours(visible, item.id, "up") : null;
+    const stepDown = open ? stepNeighbours(visible, item.id, "down") : null;
+    const canStep = section === "ordered" || !isSpotifyShelf;
+    const block = section === "ordered" ? "ranked" : "unranked";
+    // Rank anchors come from the whole Ranked block, never the filtered view (0.8).
+    const anchors = rankAnchorsOf(orderedRaw.filter((i) => i.id !== item.id));
     setMenuItem(item);
     setMenuActions({
-      section,
-      isAlbumShelf: isSpotifyShelf,
-      // Anchors come from the whole Ranked block: with a filter on, the last
-      // *visible* ranked row isn't the bottom of the ranking (0.8).
-      ...(section !== "ordered" && rankingOn
+      ...(todoOn && item.kind !== "spotify_album"
         ? {
-            onPromote: () =>
-              moveMutation.mutate({
-                item,
-                beforeItemId: rankAnchorsOf(orderedRaw).lastId,
-                afterItemId: null,
-                ordered: true,
-              }),
-            onPromoteToTop: () =>
-              moveMutation.mutate({
-                item,
-                beforeItemId: null,
-                afterItemId: rankAnchorsOf(orderedRaw).firstId,
-                ordered: true,
-              }),
+            completion: {
+              label: open ? copy.mark : copy.unmark,
+              onPress: () => toggleComplete(item, open),
+            },
           }
         : {}),
-      ...(section === "ordered" && rankingOn
+      ...(canStep && stepUp
+        ? { onMoveUp: () => moveMutation.mutate({ item, intent: { section: block, ...stepUp } }) }
+        : {}),
+      ...(canStep && stepDown
         ? {
-            onDemote: () => moveMutation.mutate({ item, beforeItemId: null, afterItemId: null }),
+            onMoveDown: () =>
+              moveMutation.mutate({ item, intent: { section: block, ...stepDown } }),
           }
         : {}),
-      ...(section !== "completed" && todoOn
+      ...(open && rankingOn
         ? {
-            onComplete: () => completeMutation.mutate({ item, nextCompleted: true }),
+            ...(section !== "ordered" || orderedRaw[0]?.id !== item.id
+              ? {
+                  onRankTop: () =>
+                    moveWithUndo(
+                      item,
+                      { section: "ranked", beforeItemId: null, afterItemId: anchors.firstId },
+                      "Ranked at top",
+                    ),
+                }
+              : {}),
+            ...(section !== "ordered" || orderedRaw.at(-1)?.id !== item.id
+              ? {
+                  onRankBottom: () =>
+                    moveWithUndo(
+                      item,
+                      { section: "ranked", beforeItemId: anchors.lastId, afterItemId: null },
+                      "Ranked at bottom",
+                    ),
+                }
+              : {}),
+            ...(section === "ordered"
+              ? {
+                  onUnrank: () =>
+                    moveWithUndo(
+                      item,
+                      { section: "unranked", beforeItemId: null, afterItemId: null },
+                      "Removed from ranking",
+                    ),
+                }
+              : {}),
           }
         : {}),
-      ...(section === "completed" && todoOn
-        ? {
-            onUncomplete: () => completeMutation.mutate({ item, nextCompleted: false }),
-          }
-        : {}),
-      ...(!isSpotifyShelf
-        ? {
-            onEdit: () => router.push(`/list/${list.id}/item/${item.id}`),
-          }
-        : {}),
-      onDelete: confirmDelete,
+      ...(!isSpotifyShelf ? { onEdit: () => router.push(`/list/${list.id}/item/${item.id}`) } : {}),
+      onDelete: () => deleteItem(item),
     });
   };
 
@@ -537,37 +651,32 @@ export function ListDetail({ list, members, sources, token }: Props) {
     router.push(`/list/${list.id}/item/${item.id}`);
   };
 
-  const resolveRowPressCover = (item: Item): (() => void) | null => {
-    if (isSpotifyShelf) {
-      const c = item.content as { spotifyAlbumUrl?: string };
-      const url = normalizeExternalUrl(c.spotifyAlbumUrl);
-      return url ? () => openExternalUrl(url) : null;
-    }
-    const url = normalizeExternalUrl(item.url);
-    return url ? () => openExternalUrl(url) : null;
-  };
-
   const headerSubline = useMemo(() => {
     const memberPart = `${members.length} ${members.length === 1 ? "member" : "members"}`;
     if (hasSources) {
-      if (refreshing) return "Refreshing source…";
-      if (!lastRefreshedAt) return `${memberPart} · tap ↻ to pull from source`;
+      if (refreshing) return "Refreshing…";
+      if (!lastRefreshedAt) return memberPart;
       const rel = formatRelative(lastRefreshedAt);
-      const actor = lastRefreshedByName ? ` by @${lastRefreshedByName}` : "";
+      const actor = lastRefreshedByName ? ` by ${lastRefreshedByName}` : "";
       return `${memberPart} · synced ${rel}${actor}`;
     }
-    const total = orderedRaw.length + unorderedRaw.length + completedRaw.length;
-    if (total === 0) return memberPart;
-    return `${memberPart} · ${total} ${total === 1 ? "item" : "items"}`;
+    if (totalRowsUnfiltered === 0) return memberPart;
+    // The count is what's left to do, not the archive (2.10).
+    if (todoOn) {
+      if (openCount === 0) return `${memberPart} · All ${copy.done.toLowerCase()}`;
+      return `${memberPart} · ${copy.openCount(openCount)}`;
+    }
+    return `${memberPart} · ${itemCountLabel(openCount)}`;
   }, [
     hasSources,
     refreshing,
     members.length,
     lastRefreshedAt,
     lastRefreshedByName,
-    orderedRaw.length,
-    unorderedRaw.length,
-    completedRaw.length,
+    totalRowsUnfiltered,
+    todoOn,
+    openCount,
+    copy,
   ]);
 
   const isEmptyAfterFetch = !itemsQuery.isPending && !itemsLoadFailed && totalRowsUnfiltered === 0;
@@ -577,9 +686,15 @@ export function ListDetail({ list, members, sources, token }: Props) {
     anyFilterActive &&
     totalRows === 0 &&
     totalRowsUnfiltered > 0;
+  const showSearch = !itemsQuery.isPending && !itemsLoadFailed && totalRowsUnfiltered > 0;
+  // Shortcut hints only where there is a keyboard to press them (2.14).
+  const showKeyHints = Platform.OS === "web" && finePointer;
+  const canAdd = !isSpotifyShelf;
 
+  // Keyboard shortcuts, only while this screen is the one on top: an item
+  // detail pushed over it must keep "n" and "/" to itself.
   useEffect(() => {
-    if (Platform.OS !== "web") return;
+    if (Platform.OS !== "web" || !isFocused) return;
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
@@ -590,18 +705,19 @@ export function ListDetail({ list, members, sources, token }: Props) {
         filterInputRef.current?.blur?.();
         return;
       }
-      if (inInput) return;
-      if (e.key === "/" || (e.metaKey && e.key === "k") || (e.ctrlKey && e.key === "k")) {
+      if (inInput || e.altKey) return;
+      if (e.key === "/" || ((e.metaKey || e.ctrlKey) && e.key === "k")) {
+        if (!filterInputRef.current) return;
         e.preventDefault();
-        filterInputRef.current?.focus?.();
-      } else if (e.key === "n" && !e.metaKey && !e.ctrlKey && !isSpotifyShelf) {
+        filterInputRef.current.focus?.();
+      } else if (e.key === "n" && !e.metaKey && !e.ctrlKey && canAdd) {
         e.preventDefault();
         router.push(`/list/${list.id}/add`);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [router, list.id, isSpotifyShelf]);
+  }, [router, list.id, canAdd, isFocused]);
 
   return (
     <KeyboardAvoidingView
@@ -609,10 +725,11 @@ export function ListDetail({ list, members, sources, token }: Props) {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <Screen style={styles.column}>
-        <ScreenHeader
-          leading="back"
-          onLeadingPress={() => goBack("/")}
-          leadingTestID="list-detail-back"
+        <ListHeader
+          list={list}
+          members={members}
+          accent={accent}
+          subline={headerSubline}
           trailing={
             <>
               {hasSources ? (
@@ -634,88 +751,58 @@ export function ListDetail({ list, members, sources, token }: Props) {
           }
         />
 
-        <View style={styles.titleBlock}>
-          <EmojiBadge
-            emoji={list.emoji}
-            color={accent}
-            imageUrl={list.coverPhotoUrl}
-            size={44}
-            shape="rounded"
-          />
-          <View style={styles.titleText}>
-            <Text variant="title" numberOfLines={2} style={styles.titleName}>
-              {list.name}
-            </Text>
-            <View style={styles.sublineRow}>
-              {members.length > 0 ? <MemberStack members={members} accent={accent} /> : null}
-              <Text
-                variant="caption"
-                tone="muted"
-                style={styles.subline}
-                testID="list-detail-subline"
-              >
-                {headerSubline}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.toolbar}>
-          <TextField
-            ref={filterInputRef}
-            variant="search"
-            testID="list-detail-filter"
-            value={filter}
-            onChangeText={setFilter}
-            onClear={() => setFilter("")}
-            placeholder={isSpotifyShelf ? "Search this shelf" : "Search this list"}
-            accessibilityLabel="Search items in this list"
-            onSubmitEditing={() => filterInputRef.current?.blur()}
-            // react-native-web's TextInput stops keydown propagation, so the
-            // window-level Escape handler never sees keys typed in here.
-            onKeyPress={(e) => {
-              if (e.nativeEvent.key !== "Escape") return;
-              setFilter("");
-              filterInputRef.current?.blur();
-            }}
-            trailing={
-              <>
-                {filterActive && totalRows > 0 && totalRows < totalRowsUnfiltered ? (
-                  <Text style={styles.filterCount} tone="muted" testID="list-detail-filter-count">
-                    {totalRows}/{totalRowsUnfiltered}
-                  </Text>
-                ) : null}
-                {filter.length === 0 && Platform.OS === "web" ? (
-                  <Text style={styles.filterKbd} tone="muted" accessibilityElementsHidden>
-                    /
-                  </Text>
-                ) : null}
-              </>
-            }
-          />
-        </View>
-
-        {!itemsQuery.isPending && !itemsLoadFailed && (savedViews.length > 0 || canSaveView) ? (
-          <View style={styles.savedViewsWrap}>
-            <SavedViewsBar
-              views={savedViews}
-              selectedTags={selectedTags}
-              onApply={onApplyView}
-              onCreate={(name) => createViewMutation.mutate({ name, tags: selectedTags })}
-              onDelete={onDeleteView}
-              canDelete={(view) =>
-                !!selfId && (view.createdBy === selfId || list.ownerId === selfId)
+        {showSearch ? (
+          <View style={styles.toolbar}>
+            <TextField
+              ref={filterInputRef}
+              variant="search"
+              testID="list-detail-filter"
+              value={filter}
+              onChangeText={setFilter}
+              onClear={() => setFilter("")}
+              placeholder={isSpotifyShelf ? "Search this shelf" : "Search this list"}
+              accessibilityLabel="Search items in this list"
+              onSubmitEditing={() => filterInputRef.current?.blur()}
+              // react-native-web's TextInput stops keydown propagation, so the
+              // window-level Escape handler never sees keys typed in here.
+              onKeyPress={(e) => {
+                if (e.nativeEvent.key !== "Escape") return;
+                setFilter("");
+                filterInputRef.current?.blur();
+              }}
+              trailing={
+                <>
+                  {filterActive && totalRows > 0 && totalRows < totalRowsUnfiltered ? (
+                    <Text style={styles.filterCount} tone="muted" testID="list-detail-filter-count">
+                      {totalRows}/{totalRowsUnfiltered}
+                    </Text>
+                  ) : null}
+                  {filter.length === 0 && showKeyHints ? (
+                    <Text
+                      style={styles.filterKbd}
+                      tone="muted"
+                      accessibilityElementsHidden
+                      testID="list-detail-filter-kbd"
+                    >
+                      /
+                    </Text>
+                  ) : null}
+                </>
               }
-              canSave={canSaveView}
-              busy={viewMutating}
             />
           </View>
         ) : null}
 
-        {tagCounts.length > 0 && !itemsQuery.isPending && !itemsLoadFailed ? (
+        {showSearch && savedViews.length > 0 ? (
+          <View style={styles.savedViewsWrap}>
+            <SavedViewsBar part="views" {...savedViewsProps} />
+          </View>
+        ) : null}
+
+        {tagChips.length > 0 && showSearch ? (
           <View style={styles.tagBarWrap}>
             <TagFilterBar
-              tags={tagCounts}
+              tags={tagChips}
               selected={selectedTagSet}
               onToggle={(tag) =>
                 setSelectedTags((prev) =>
@@ -723,6 +810,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
                 )
               }
               onClearAll={() => setSelectedTags([])}
+              trailing={<SavedViewsBar part="save" {...savedViewsProps} />}
             />
           </View>
         ) : null}
@@ -811,12 +899,12 @@ export function ListDetail({ list, members, sources, token }: Props) {
               <EmptyState
                 motion
                 illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
-                title={lastRefreshedAt ? "No items detected" : "Pulling from source…"}
+                title={lastRefreshedAt ? "No items found" : "Pulling from the playlist…"}
                 description={
                   lastRefreshedAt
                     ? lastRefreshedByName
-                      ? `Last refreshed by ${lastRefreshedByName}. Check the source URL in settings.`
-                      : "Check the source URL in settings."
+                      ? `Last refreshed by ${lastRefreshedByName}. Check the playlist link in settings.`
+                      : "Check the playlist link in settings."
                     : "This usually takes a few seconds."
                 }
                 action={
@@ -857,8 +945,12 @@ export function ListDetail({ list, members, sources, token }: Props) {
                         {". "}Anything you add shows up for them too.
                       </Text>
                     ) : null}
-                    {Platform.OS === "web" ? (
-                      <View style={styles.emptyKbdRow} accessibilityElementsHidden>
+                    {showKeyHints ? (
+                      <View
+                        style={styles.emptyKbdRow}
+                        accessibilityElementsHidden
+                        testID="list-detail-empty-kbd"
+                      >
                         <Text variant="caption" tone="muted">
                           press
                         </Text>
@@ -895,20 +987,24 @@ export function ListDetail({ list, members, sources, token }: Props) {
               letterboxdBadgeByItem={letterboxdBadgeByItem}
               listItemKind={itemKind}
               isAlbumShelf={isSpotifyShelf}
-              modules={list.modules}
-              showOrderedHint={showOrderedHint}
+              rankingOn={rankingOn}
+              todoOn={todoOn}
+              copy={copy}
+              showCover={itemKind !== "plain" && itemKind !== null}
+              openReorderable={!isSpotifyShelf}
               newItemIds={newItemIds}
+              scrollToItemId={scrollToItemId}
               memberNameById={memberNameById}
               showProvenance={members.length > 1}
               selfId={selfId}
               accent={accent}
-              onReorderOrdered={onReorderOrdered}
-              onPromoteToOrdered={onPromoteToOrdered}
-              onMoveItemRelative={onMoveItemRelative}
+              doneCollapsed={doneCollapsed}
+              doneCollapsible={doneCollapsible}
+              onToggleDone={toggleDone}
+              onDrop={onDrop}
               onRowMenu={onRowMenu}
               onRowPressBody={onRowPressBody}
-              onUncompleteItem={(item) => completeMutation.mutate({ item, nextCompleted: false })}
-              resolveRowPressCover={resolveRowPressCover}
+              onToggleComplete={toggleComplete}
               refreshing={manualRefreshing}
               onRefresh={async () => {
                 setManualRefreshing(true);
@@ -922,7 +1018,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
           </View>
         )}
 
-        {!isSpotifyShelf && !(isEmptyAfterFetch && !hasSources) ? (
+        {canAdd && !(isEmptyAfterFetch && !hasSources) ? (
           <Fab
             accessibilityLabel="Add item"
             onPress={() => router.push(`/list/${list.id}/add`)}
@@ -933,6 +1029,65 @@ export function ListDetail({ list, members, sources, token }: Props) {
         <ItemRowMenu item={menuItem} actions={menuActions} onClose={closeMenu} />
       </Screen>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * The list's header block (back, settings, badge, name, members + count).
+ * Exported so the route can paint it from the home cache before the list's
+ * own detail request lands (2.13).
+ */
+export function ListHeader({
+  list,
+  members,
+  accent,
+  subline,
+  trailing,
+}: {
+  list: Pick<List, "name" | "emoji" | "coverPhotoUrl">;
+  members: ListMemberSummary[];
+  accent: string;
+  subline: string | null;
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <>
+      <ScreenHeader
+        leading="back"
+        onLeadingPress={() => goBack("/")}
+        leadingTestID="list-detail-back"
+        trailing={trailing}
+      />
+      <View style={styles.titleBlock}>
+        <EmojiBadge
+          emoji={list.emoji}
+          color={accent}
+          imageUrl={list.coverPhotoUrl}
+          size={44}
+          shape="rounded"
+        />
+        <View style={styles.titleText}>
+          <Text variant="title" numberOfLines={2} style={styles.titleName}>
+            {list.name}
+          </Text>
+          <View style={styles.sublineRow}>
+            {members.length > 0 ? <MemberStack members={members} accent={accent} /> : null}
+            {subline ? (
+              <Text
+                variant="caption"
+                tone="muted"
+                style={styles.subline}
+                testID="list-detail-subline"
+              >
+                {subline}
+              </Text>
+            ) : (
+              <Skeleton.Block width={120} height={12} />
+            )}
+          </View>
+        </View>
+      </View>
+    </>
   );
 }
 

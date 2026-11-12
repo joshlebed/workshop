@@ -35,6 +35,8 @@ test("create list → add item → rank → complete", async ({ page }) => {
   const itemTitle = `Picnic at the park ${Date.now()}`;
   await page.getByTestId("add-item-title").fill(itemTitle);
   await page.getByTestId("add-item-submit").click();
+  // Quick add stays open for the next item (2.4); close it to see the list.
+  await page.getByTestId("add-item-cancel").click();
 
   // The new item lands in the unordered section.
   const itemRow = page.locator('[data-testid^="item-row-"]').first();
@@ -43,7 +45,7 @@ test("create list → add item → rank → complete", async ({ page }) => {
 
   // Open kebab → promote to ordered (top). Item moves to the ORDERED section.
   await itemRow.locator('[data-testid^="item-row-menu-"]').click();
-  await page.getByTestId("item-row-menu-promote-top").click();
+  await page.getByTestId("item-row-menu-rank-top").click();
   await expect(page.getByTestId("list-detail-section-ordered")).toBeVisible();
 
   // Open kebab → mark complete. Item moves to the COMPLETED section.

@@ -100,11 +100,10 @@ export function uncompleteItem(itemId: string, token: string | null): Promise<It
 }
 
 /**
- * Move an item to a new position via the sparse-integer allocator. The
- * server computes the new `position` from `beforeItemId` / `afterItemId`
- * and rebalances the list's ordered section on collision. Both ids null →
- * demote to unordered, unless `ordered: true` (append to the ordered section;
- * required to rank the first item when the Ranked section is empty).
+ * Move an item. This client always names the landing block with `section`
+ * (`ranked` | `unranked`); neighbours are the rows displayed directly above
+ * (`beforeItemId`) and below (`afterItemId`) the drop. See `MoveItemRequest`
+ * for the legacy shapes older clients still send.
  */
 export function moveItem(
   itemId: string,
@@ -115,6 +114,15 @@ export function moveItem(
     method: "POST",
     path: `/v1/items/${itemId}/move`,
     body,
+    token,
+  });
+}
+
+/** Undo a delete: clears the item's `archived_at` (any member of the list). */
+export function unarchiveItem(itemId: string, token: string | null): Promise<ItemResponse> {
+  return apiRequest<ItemResponse>({
+    method: "POST",
+    path: `/v1/items/${itemId}/unarchive`,
     token,
   });
 }

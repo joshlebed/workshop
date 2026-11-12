@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import {
@@ -15,70 +15,111 @@ import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
-import { createItemsBulk } from "../../../../../src/api/items";
+import { createItemsBulk, fetchItems } from "../../../../../src/api/items";
 import { useAuth } from "../../../../../src/hooks/useAuth";
+import { splitAgainstList } from "../../../../../src/lib/duplicates";
 import { goBack } from "../../../../../src/lib/goBack";
 import { parsePasteLines } from "../../../../../src/lib/parsePasteLines";
+import { noteItemAdded } from "../../../../../src/lib/recentlyAdded";
 
 // Server-side BULK_LIMIT in lists.ts. Mirrored here so the client can chunk
 // silently rather than 400 the request. If you bump one, bump both.
 const BULK_LIMIT = 50;
 
 /**
- * Bulk-paste flow: a single textarea, one item per line. Strips blanks +
- * leading bullet/number prefixes ("1.", "- ", "* "), de-duplicates within
- * the paste, and POSTs in chunks of 50. Designed for the activation moment
- * where a couple has 15 movies in their head and types them one at a time
- * today — one paste replaces fifteen taps.
- *
- * No external enrichment in this revision; items land as raw titles with
- * the unordered section. TMDB / Google Books / OG-meta resolution is a
- * follow-up that needs server-side rate-limited fan-out.
+ * Bulk-paste flow: one item per line. Strips blanks and leading bullet/number
+ * markers, de-duplicates within the paste and against the list
+ * (case-insensitive, "3 already on the list, skipped"), and POSTs in chunks
+ * of 50. Lines go in bottom-up so the list shows them in the pasted order
+ * (new items land on top). If a chunk fails, the lines that did go in are
+ * removed from the box so a retry never adds them twice.
  */
 export default function AddBulk() {
   const params = useLocalSearchParams<{ id: string }>();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const id = (Array.isArray(params.id) ? params.id[0] : params.id) ?? "";
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [paste, setPaste] = useState("");
 
+  const itemsQuery = useQuery({
+    queryKey: queryKeys.items.byList(id),
+    queryFn: () => fetchItems(id, token),
+    enabled: !!token && !!id,
+  });
+  const existing = useMemo(
+    () =>
+      itemsQuery.data
+        ? [...itemsQuery.data.ordered, ...itemsQuery.data.unordered, ...itemsQuery.data.completed]
+        : [],
+    [itemsQuery.data],
+  );
+
   const parsed = useMemo(() => parsePasteLines(paste), [paste]);
-  const canSubmit = parsed.length > 0;
-  const tooMany = parsed.length > BULK_LIMIT;
+  const { fresh, skipped } = useMemo(() => splitAgainstList(parsed, existing), [parsed, existing]);
+  const canSubmit = fresh.length > 0;
+  const overLimit = fresh.length > BULK_LIMIT;
 
   const mutation = useMutation<{ created: number }, Error, void>({
     mutationFn: async () => {
-      if (!id) throw new Error("Missing list id");
-      // Server caps at 50; chunk if the paste is larger.
+      // Bottom-up, so the first pasted line ends up on top of the list.
+      const queue = fresh.slice().reverse();
+      const done = new Set<string>();
       let total = 0;
-      for (let i = 0; i < parsed.length; i += BULK_LIMIT) {
-        const slice = parsed.slice(i, i + BULK_LIMIT);
-        const res = await createItemsBulk(id, { items: slice.map((title) => ({ title })) }, token);
-        total += res.created;
+      try {
+        for (let i = 0; i < queue.length; i += BULK_LIMIT) {
+          const slice = queue.slice(i, i + BULK_LIMIT);
+          const res = await createItemsBulk(
+            id,
+            { items: slice.map((title) => ({ title })) },
+            token,
+          );
+          total += res.created;
+          for (const item of res.items) {
+            done.add(item.title);
+            noteItemAdded(id, item.id);
+          }
+        }
+      } catch (e) {
+        if (done.size > 0) {
+          // Keep only what still needs adding.
+          setPaste(parsed.filter((line) => !done.has(line)).join("\n"));
+          queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) });
+          queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+        }
+        throw Object.assign(e instanceof Error ? e : new Error(String(e)), { added: done.size });
       }
       return { created: total };
     },
     onSuccess: ({ created }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id ?? "") });
+      queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) });
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
       showToast({
-        message: created === 1 ? "Added 1 item." : `Added ${created} items.`,
+        message: `Added ${created} ${created === 1 ? "item" : "items"}`,
         tone: "success",
       });
-      goBack(id ? `/list/${id}` : "/");
+      goBack(`/list/${id}`);
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't add those."), tone: "danger" });
+      const added = (e as { added?: number }).added ?? 0;
+      showToast({
+        message:
+          added > 0
+            ? `Added ${added}, then something went wrong. The rest are still here.`
+            : errorMessage(e, "Couldn't add those."),
+        tone: "danger",
+      });
     },
   });
 
+  const skippedNote = skipped.length > 0 ? `${skipped.length} already on the list, skipped` : null;
   const countLabel =
-    parsed.length === 0
-      ? "Paste one per line."
-      : parsed.length === 1
-        ? "1 item to add"
-        : `${parsed.length} items to add`;
+    fresh.length === 0
+      ? skipped.length > 0
+        ? "Everything here is already on the list."
+        : "Paste one per line."
+      : `${fresh.length} ${fresh.length === 1 ? "item" : "items"} to add`;
+  const statusLine = [countLabel, skippedNote].filter(Boolean).join(" · ");
 
   return (
     <Screen style={styles.root}>
@@ -86,7 +127,7 @@ export default function AddBulk() {
         leading="close"
         leadingLabel="Cancel"
         leadingTestID="add-bulk-cancel"
-        onLeadingPress={() => goBack(id ? `/list/${id}` : "/")}
+        onLeadingPress={() => goBack(`/list/${id}`)}
         title="Paste many"
       />
 
@@ -116,27 +157,30 @@ export default function AddBulk() {
         />
 
         <View style={styles.countRow}>
-          <Text tone={tooMany ? "danger" : "muted"} style={styles.count} testID="add-bulk-count">
-            {tooMany
-              ? `${parsed.length} items. We add the first ${BULK_LIMIT} now and the rest in batches.`
-              : countLabel}
+          <Text tone="muted" style={styles.count} testID="add-bulk-count">
+            {statusLine}
           </Text>
         </View>
+        {overLimit ? (
+          <Text tone="muted" style={styles.count} testID="add-bulk-batches">
+            Added in batches of {BULK_LIMIT}.
+          </Text>
+        ) : null}
 
-        {parsed.length > 0 ? (
+        {fresh.length > 0 ? (
           <View style={styles.previewBlock}>
             <SectionHeader title="Preview" />
             <View style={styles.previewList}>
-              {parsed.slice(0, 8).map((title) => (
+              {fresh.slice(0, 8).map((title) => (
                 <View key={title} style={styles.previewRow}>
                   <Text tone="primary" numberOfLines={1} style={styles.previewTitle}>
                     {title}
                   </Text>
                 </View>
               ))}
-              {parsed.length > 8 ? (
+              {fresh.length > 8 ? (
                 <Text tone="muted" style={styles.previewMore}>
-                  + {parsed.length - 8} more
+                  + {fresh.length - 8} more
                 </Text>
               ) : null}
             </View>
@@ -148,9 +192,7 @@ export default function AddBulk() {
         <View style={styles.footer}>
           <Button
             testID="add-bulk-submit"
-            label={
-              parsed.length === 0 ? "Add" : parsed.length === 1 ? "Add 1" : `Add ${parsed.length}`
-            }
+            label={fresh.length === 0 ? "Add" : `Add ${fresh.length}`}
             size="lg"
             disabled={!canSubmit || mutation.isPending}
             loading={mutation.isPending}
@@ -185,7 +227,7 @@ const styles = StyleSheet.create({
     maxHeight: 360,
     paddingVertical: tokens.space.md,
   },
-  countRow: { flexDirection: "row", justifyContent: "flex-end" },
+  countRow: { flexDirection: "row" },
   count: { fontSize: tokens.font.size.xs, letterSpacing: 0.2 },
   previewBlock: { gap: tokens.space.sm },
   previewList: {

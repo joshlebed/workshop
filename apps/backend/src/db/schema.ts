@@ -321,6 +321,14 @@ export const items = pgTable(
      * from `items.metadata->>'position'` in 0014.
      */
     position: integer("position"),
+    /**
+     * Hand-placed order inside the unranked block (UX pass 2.7). Sparse
+     * integers like `position`, ascending = top. `NULL` = never placed by
+     * hand: those rows sort first, newest first, so a list nobody has dragged
+     * keeps its recency order and a new item lands at the top. Independent of
+     * `position` (the Ranked block); see `moveItemUnranked` in lib/positions.ts.
+     */
+    orderKey: integer("order_key"),
     addedBy: uuid("added_by")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -370,6 +378,7 @@ export const items = pgTable(
       t.createdAt,
     ),
     listPositionIdx: index("items_list_position_idx").on(t.listId, t.position),
+    listOrderKeyIdx: index("items_list_order_key_idx").on(t.listId, t.orderKey),
     // Per-kind dedup partial unique indexes. Each item kind that wants
     // sync-time uniqueness declares its dedup field in
     // `@workshop/shared/itemKinds`'s `ITEM_KIND_DEDUP_FIELD`; the matching

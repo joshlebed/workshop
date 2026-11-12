@@ -3,6 +3,7 @@
 // "All" chip clears the selection. Counts come from the caller (derived
 // from the loaded items), so the bar never fetches.
 
+import type { ReactNode } from "react";
 import { ScrollView, StyleSheet } from "react-native";
 import { Chip } from "./Chip";
 import { tokens } from "./theme";
@@ -15,10 +16,22 @@ export interface TagFilterBarProps {
   onToggle: (tag: string) => void;
   /** "All" chip pressed — clear every selected tag. */
   onClearAll: () => void;
+  /**
+   * Rendered after the last chip (the "Save view" chip). Kept inside the bar
+   * so it appearing never pushes the bar down a row.
+   */
+  trailing?: ReactNode;
   testID?: string;
 }
 
-export function TagFilterBar({ tags, selected, onToggle, onClearAll, testID }: TagFilterBarProps) {
+export function TagFilterBar({
+  tags,
+  selected,
+  onToggle,
+  onClearAll,
+  trailing,
+  testID,
+}: TagFilterBarProps) {
   if (tags.length === 0) return null;
   const allSelected = selected.size === 0;
   return (
@@ -44,6 +57,7 @@ export function TagFilterBar({ tags, selected, onToggle, onClearAll, testID }: T
           testID={`tag-filter-${tag}`}
         />
       ))}
+      {trailing}
     </ScrollView>
   );
 }

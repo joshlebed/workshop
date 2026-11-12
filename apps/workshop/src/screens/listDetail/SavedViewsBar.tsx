@@ -30,6 +30,12 @@ interface SavedViewsBarProps {
   canSave: boolean;
   /** A create/delete is in flight — disable affordances to avoid races. */
   busy?: boolean;
+  /**
+   * `views`: the strip of saved views (and Delete view for the active one).
+   * `save`: only the "Save view" chip + its sheet, rendered at the end of the
+   * tag bar so it appearing never pushes the tag bar down a row (2.11).
+   */
+  part: "views" | "save";
 }
 
 /** Two tag selections are the same view when they hold the same set. */
@@ -62,6 +68,7 @@ export function SavedViewsBar({
   canDelete,
   canSave,
   busy = false,
+  part,
 }: SavedViewsBarProps) {
   const [saveOpen, setSaveOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -71,7 +78,8 @@ export function SavedViewsBar({
     if (saveOpen) setDraft(suggestName(selectedTags));
   }, [saveOpen, selectedTags]);
 
-  if (views.length === 0 && !canSave) return null;
+  if (part === "views" && views.length === 0) return null;
+  if (part === "save" && !canSave) return null;
 
   const trimmedDraft = draft.trim();
   const submit = () => {
@@ -100,54 +108,60 @@ export function SavedViewsBar({
         } as Record<string, unknown>)
       : {};
 
+  const saveChip = (
+    <Chip
+      label="Save view"
+      icon="plus"
+      disabled={busy}
+      onPress={() => setSaveOpen(true)}
+      testID="saved-view-save"
+    />
+  );
+
   return (
     <>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.row}
-        testID="saved-views-bar"
-        accessibilityLabel="Saved views"
-      >
-        {views.map((view) => {
-          const active = sameTagSet(view.config.tags, selectedTags) && selectedTags.length > 0;
-          return (
+      {part === "save" ? (
+        saveChip
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.row}
+          testID="saved-views-bar"
+          accessibilityLabel="Saved views"
+        >
+          {views.map((view) => {
+            const active = sameTagSet(view.config.tags, selectedTags) && selectedTags.length > 0;
+            return (
+              <Chip
+                key={view.id}
+                label={view.name}
+                selected={active}
+                disabled={busy}
+                onPress={() => onApply(view)}
+                onLongPress={canDelete(view) ? () => onDelete(view) : undefined}
+                delayLongPress={450}
+                accessibilityHint={
+                  canDelete(view)
+                    ? "Applies this saved filter. Long press to delete it."
+                    : "Applies this saved filter."
+                }
+                testID={`saved-view-${viewSlug(view.name)}`}
+              />
+            );
+          })}
+          {activeView && canDelete(activeView) ? (
             <Chip
-              key={view.id}
-              label={view.name}
-              selected={active}
+              label="Delete view"
+              icon="close"
+              tone="danger"
               disabled={busy}
-              onPress={() => onApply(view)}
-              onLongPress={canDelete(view) ? () => onDelete(view) : undefined}
-              delayLongPress={450}
-              accessibilityHint={
-                canDelete(view)
-                  ? "Applies this saved filter. Long press to delete it."
-                  : "Applies this saved filter."
-              }
-              testID={`saved-view-${viewSlug(view.name)}`}
+              onPress={() => onDelete(activeView)}
+              testID="saved-view-delete"
             />
-          );
-        })}
-        {canSave ? (
-          <Chip
-            label="Save view"
-            icon="plus"
-            disabled={busy}
-            onPress={() => setSaveOpen(true)}
-            testID="saved-view-save"
-          />
-        ) : activeView && canDelete(activeView) ? (
-          <Chip
-            label="Delete view"
-            icon="close"
-            tone="danger"
-            disabled={busy}
-            onPress={() => onDelete(activeView)}
-            testID="saved-view-delete"
-          />
-        ) : null}
-      </ScrollView>
+          ) : null}
+        </ScrollView>
+      )}
 
       <Sheet visible={saveOpen} onRequestClose={() => setSaveOpen(false)} testID="saved-view-sheet">
         <View style={styles.sheetHeader}>

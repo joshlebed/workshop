@@ -56,6 +56,7 @@ export type ActivityEventType =
   | "item_added"
   | "item_updated"
   | "item_archived"
+  | "item_restored"
   | "item_tagged"
   | "item_completed"
   | "item_uncompleted"
@@ -724,7 +725,18 @@ export interface MoveItemRequest {
   beforeItemId?: string | null;
   afterItemId?: string | null;
   ordered?: boolean;
+  /**
+   * The block the row lands in (UX pass 2.7). Absent = the legacy semantics
+   * above, kept for old clients. `ranked`: neighbours are ranked rows; neither
+   * → append to the block (start it when empty). `unranked`: neighbours are
+   * open unranked rows (`before` is the row displayed above); neither → top of
+   * the block; a ranked row moved here leaves the ranking. `unranked` works on
+   * every list, with or without the ranking feature.
+   */
+  section?: MoveSection;
 }
+
+export type MoveSection = "ranked" | "unranked";
 
 /**
  * `PUT /v1/items/:id/tags` — replaces the item's tag set wholesale. The

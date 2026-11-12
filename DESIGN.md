@@ -84,7 +84,7 @@ extend it rather than copying it into a screen.
 | `SectionHeader`                   | Labels above groups                | uppercase tracked `eyebrow` text + optional trailing                                                                                                                |
 | `Badge`                           | Counts, one-word statuses          | `label`, `tone="accent" \| "neutral" \| "danger"`, `ringColor`                                                                                                      |
 | `Chip`                            | Tags and filters                   | 32pt pill in a 44pt target, `aria-pressed`                                                                                                                          |
-| `Toast` (`useToast`)              | Feedback after an action           | enter/exit on the motion tokens, `role="status"` (alert for danger)                                                                                                 |
+| `Toast` (`useToast`)              | Feedback after an action           | enter/exit on the motion tokens, `role="status"` (alert for danger); Undo is a quiet accent text action; `key` replaces an earlier toast of the same kind           |
 
 Rules the primitives encode:
 
@@ -100,6 +100,10 @@ Rules the primitives encode:
   (`interaction.focus`), offset 2px, keyboard only (`:focus-visible`, installed by
   `installWebFocusRing()` in Workshop's root layout). Inputs show it as their border instead.
 - **Danger** is always `status.danger`, never the accent, in menus, buttons and dialogs.
+- **List rows** (Workshop list detail): a 22pt circle checkbox leads every open row when the
+  list has completion on; a ranked row's numeral sits inline before its title, so the checkbox
+  column never moves. Placeholder glyphs are dimmed so real artwork leads. Lifted rows scale
+  1.02 on the surface step with a neutral shadow.
 - **Card.** Used sparingly; never nested. Default to no container.
 - **FAB.** Elevation is a **neutral** drop shadow (`rgba(0,0,0,…)`), never a colored halo: the
   accent fill carries the warmth, a glow would read as the "AI app" aesthetic the brand avoids.
