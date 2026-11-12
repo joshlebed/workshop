@@ -1,5 +1,6 @@
-// Nudges: after posting a score, a player pokes a friend who has also played
-// that game that day, and the friend gets a push. `sendGameNudge` owns every
+// Nudges (shown to players as a "ping"): after posting a score, a player
+// calls back a friend who played that game earlier that day to come and see
+// the board, and the friend gets a push. `sendGameNudge` owns every
 // rule (friends only, both played, the friend is reachable, once per friend
 // per game per day, `NUDGE_DAILY_LIMIT` a day unless the sender is an admin);
 // `loadNudgeState` is the same rules read-only, for the board. Delivery goes
@@ -43,8 +44,8 @@ function buildNudgePushMessages(
   const name = sender.displayName?.trim() || "A friend";
   return tokens.map((to) => ({
     to,
-    title: `${name} nudged you`,
-    body: `${name} just played ${game.title}. See how you stack up.`,
+    title: `${name} played ${game.title}`,
+    body: "Scores are in. See where you stand now.",
     data: {
       kind: "nudge",
       userId: sender.id,
@@ -74,7 +75,8 @@ async function nudgesSentOn(senderId: string, periodKey: string): Promise<number
 
 /**
  * The sender's allowance plus, among `candidateIds` (the friends on one
- * board), who was already nudged and who has a device to receive one.
+ * board), who was already nudged. Whether a friend can receive one is not
+ * exposed up front: the send answers `unreachable` when asked.
  */
 export async function loadNudgeState(
   senderId: string,
@@ -82,13 +84,12 @@ export async function loadNudgeState(
   periodKey: string,
   candidateIds: string[],
 ): Promise<GameNudgeState> {
-  const db = getDb();
-  const [isAdmin, sent, nudged, reachable] = await Promise.all([
+  const [isAdmin, sent, nudged] = await Promise.all([
     senderIsAdmin(senderId),
     nudgesSentOn(senderId, periodKey),
     candidateIds.length === 0
       ? []
-      : db
+      : getDb()
           .select({ userId: gameNudges.recipientId })
           .from(gameNudges)
           .where(
@@ -99,18 +100,11 @@ export async function loadNudgeState(
               inArray(gameNudges.recipientId, candidateIds),
             ),
           ),
-    candidateIds.length === 0
-      ? []
-      : db
-          .selectDistinct({ userId: pushTokens.userId })
-          .from(pushTokens)
-          .where(inArray(pushTokens.userId, candidateIds)),
   ]);
   return {
     limit: isAdmin ? null : NUDGE_DAILY_LIMIT,
     remaining: isAdmin ? null : Math.max(0, NUDGE_DAILY_LIMIT - sent),
     nudgedUserIds: nudged.map((row) => row.userId),
-    reachableUserIds: reachable.map((row) => row.userId),
   };
 }
 

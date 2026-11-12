@@ -5,9 +5,10 @@
 import type { GameNudgeState } from "@workshop/shared/games";
 
 /**
- * - `hidden`: no nudge control (no state, or the friend has no device).
- * - `available`: tap to nudge.
- * - `sent`: already nudged on this game today.
+ * - `hidden`: no control (the viewer hasn't played, or it's a past day).
+ * - `available`: tap to send. Shown for every friend on the board; a friend
+ *   with notifications off is only discovered on the tap (`unreachable`).
+ * - `sent`: already sent on this game today.
  * - `spent`: today's allowance is used up.
  */
 export type NudgeRowStatus = "hidden" | "available" | "sent" | "spent";
@@ -18,18 +19,28 @@ export function nudgeRowStatus(
 ): NudgeRowStatus {
   if (!state) return "hidden";
   if (state.nudgedUserIds.includes(userId)) return "sent";
-  if (!state.reachableUserIds.includes(userId)) return "hidden";
   if (state.remaining !== null && state.remaining <= 0) return "spent";
   return "available";
 }
 
-/** The footer line under the board; null when there is nobody to nudge. */
-export function nudgeAllowanceLabel(state: GameNudgeState | null | undefined): string | null {
-  if (!state) return null;
-  if (state.reachableUserIds.length === 0 && state.nudgedUserIds.length === 0) return null;
-  if (state.remaining === null) return "Unlimited nudges";
-  if (state.remaining <= 0) return "No nudges left today";
-  return `${state.remaining} of ${state.limit ?? state.remaining} nudges left today`;
+/**
+ * The footer line under the board — the one place that says what the bare
+ * bolt on each row does. Null when there is no friend to send one to.
+ */
+export function nudgeAllowanceLabel(
+  state: GameNudgeState | null | undefined,
+  friendCount: number,
+): string | null {
+  if (!state || friendCount === 0) return null;
+  if (state.remaining === null) return "Ping a friend to come see the board";
+  if (state.remaining <= 0) return "No pings left today";
+  return `Ping a friend to come see the board · ${state.remaining} left today`;
+}
+
+/** The toast for a refused send; `unreachable` names the friend. */
+export function nudgeRefusalMessage(reason: unknown, name: string, fallback: string): string {
+  if (reason === "unreachable") return `${name} hasn't enabled HighScore notifications`;
+  return fallback;
 }
 
 /** The state after a successful nudge to `userId`, for the cached board. */

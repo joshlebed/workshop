@@ -90,12 +90,7 @@ async function board(asUser: string, game = gameId, periodKey = PERIOD) {
   });
   expect(res.status).toBe(200);
   return (await res.json()) as {
-    nudges?: {
-      limit: number | null;
-      remaining: number | null;
-      nudgedUserIds: string[];
-      reachableUserIds: string[];
-    };
+    nudges?: { limit: number | null; remaining: number | null; nudgedUserIds: string[] };
   };
 }
 
@@ -160,15 +155,13 @@ describe("nudges", () => {
     expect(await reason(res)).toBe("not_played");
   });
 
-  it("reports the allowance and who is reachable once the sender has played", async () => {
+  it("reports the allowance once the sender has played", async () => {
     await postScore(gameId, me);
     await postScore(otherGameId, me);
     const state = (await board(me)).nudges;
     expect(state?.limit).toBe(NUDGE_DAILY_LIMIT);
     expect(state?.remaining).toBe(NUDGE_DAILY_LIMIT);
     expect(state?.nudgedUserIds).toEqual([]);
-    // Friends with a device; `noPush` played but has none; the stranger is not on the board.
-    expect([...(state?.reachableUserIds ?? [])].sort()).toEqual([blocked, ...friends].sort());
   });
 
   it("omits the block on a past day", async () => {
@@ -208,15 +201,15 @@ describe("nudges", () => {
     expect(body.nudges.remaining).toBe(NUDGE_DAILY_LIMIT - 1);
     expect(body.nudges.nudgedUserIds).toEqual([target]);
     expect(sendExpoPushMessages).toHaveBeenCalledTimes(1);
+    const [{ title: gameTitle } = { title: "" }] = await rows<{ title: string }>(
+      `SELECT title FROM games WHERE id = $1`,
+      [gameId],
+    );
     expect(sendExpoPushMessages.mock.calls[0]?.[0]).toEqual([
       {
         to: `ExponentPushToken[${target.slice(-4)}]`,
-        title: "Mia nudged you",
-        body: "Mia just played daily-one. See how you stack up.".replace(
-          "daily-one",
-          ((await rows<{ title: string }>(`SELECT title FROM games WHERE id = $1`, [gameId]))[0]
-            ?.title as string) ?? "",
-        ),
+        title: `Mia played ${gameTitle}`,
+        body: "Scores are in. See where you stand now.",
         data: {
           kind: "nudge",
           userId: me,

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
+import { ApiError, errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { HIGHSCORE_WEB_URL } from "@workshop/shared/constants";
@@ -51,6 +51,7 @@ import { goBack } from "../lib/navigation";
 import {
   type NudgeRowStatus,
   nudgeAllowanceLabel,
+  nudgeRefusalMessage,
   nudgeRowStatus,
   withNudgeSent,
 } from "../lib/nudges";
@@ -266,12 +267,18 @@ export default function GameBoard() {
       );
       showToast(
         data.delivered
-          ? { message: `Nudged ${name}`, tone: "success" }
-          : { message: `Nudge sent, but it may not reach ${name}`, tone: "default" },
+          ? { message: `Pinged ${name}`, tone: "success" }
+          : { message: `Ping sent, but it may not reach ${name}`, tone: "default" },
       );
     },
-    onError: (e, { periodKey }) => {
-      showToast({ message: errorMessage(e, "Couldn't send that nudge"), tone: "danger" });
+    onError: (e, { name, periodKey }) => {
+      const reason =
+        e instanceof ApiError ? (e.details as { reason?: unknown } | undefined)?.reason : null;
+      // Notifications off is information, not a failure: say whose, quietly.
+      showToast({
+        message: nudgeRefusalMessage(reason, name, errorMessage(e, "Couldn't send that ping")),
+        tone: reason === "unreachable" ? "default" : "danger",
+      });
       // A refusal means the board's nudge state is stale (limit hit elsewhere…).
       void queryClient.invalidateQueries({
         queryKey: queryKeys.games.leaderboard(gameId ?? "", periodKey),
@@ -329,7 +336,10 @@ export default function GameBoard() {
   const isToday = date === today;
   const entries = boardQuery.data?.entries ?? [];
   const nudgeState = boardQuery.data?.nudges ?? null;
-  const nudgeLabel = nudgeAllowanceLabel(nudgeState);
+  const nudgeLabel = nudgeAllowanceLabel(
+    nudgeState,
+    entries.filter((e) => e.userId !== user?.id).length,
+  );
   const myEntry = entries.find((e) => e.userId === user?.id);
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
   // The composer posts a first result OR edits an existing one — on any day
@@ -579,7 +589,7 @@ export default function GameBoard() {
                     onNudge={() =>
                       nudgeMutation.mutate({
                         userId: entry.userId,
-                        name: entry.displayName?.trim() || "your friend",
+                        name: entry.displayName?.trim() || "Your friend",
                         periodKey: date,
                       })
                     }
@@ -791,43 +801,31 @@ function EntryRow({
             <PixelIcon name="pencil" size={16} color={tokens.text.secondary} />
           </Pressable>
         ) : null}
-        {nudge !== "hidden" ? (
+        {/* Nudge: a quiet bolt beside the score, sized like the edit pencil. It
+            lights up once sent; with no nudges left it is simply not offered
+            (the footer says so). */}
+        {nudge === "available" || nudge === "sent" ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={
-              nudge === "sent"
-                ? `Nudged ${name}`
-                : nudge === "spent"
-                  ? `No nudges left today for ${name}`
-                  : `Nudge ${name}`
-            }
-            aria-disabled={nudge !== "available" || nudgePending}
+            accessibilityLabel={nudge === "sent" ? `Pinged ${name}` : `Ping ${name}`}
+            aria-disabled={nudge === "sent" || nudgePending}
             onPress={onNudge}
-            disabled={nudge !== "available" || nudgePending}
+            disabled={nudge === "sent" || nudgePending}
             testID={`game-board-nudge-${entry.userId}`}
             hitSlop={8}
             style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-              styles.nudgeBtn,
-              nudge === "available" ? styles.nudgeBtnAvailable : styles.nudgeBtnQuiet,
-              nudge === "available" && (pressed || hovered) && styles.nudgeBtnHover,
+              styles.editBtn,
+              nudge === "available" && (pressed || hovered) && styles.editBtnHover,
             ]}
           >
             {nudgePending ? (
-              <ActivityIndicator size="small" color={tokens.neon.yellow} />
+              <ActivityIndicator size="small" color={tokens.text.secondary} />
             ) : (
-              <>
-                <PixelIcon
-                  name={nudge === "sent" ? "check" : "zap"}
-                  size={16}
-                  color={nudge === "available" ? tokens.neon.yellow : tokens.text.muted}
-                />
-                <Text
-                  variant="overline"
-                  style={nudge === "available" ? styles.nudgeLabel : styles.nudgeLabelQuiet}
-                >
-                  {nudge === "sent" ? "Nudged" : "Nudge"}
-                </Text>
-              </>
+              <PixelIcon
+                name="zap"
+                size={16}
+                color={nudge === "sent" ? tokens.neon.yellow : tokens.text.secondary}
+              />
             )}
           </Pressable>
         ) : null}
@@ -1114,24 +1112,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   editBtnHover: { backgroundColor: tokens.bg.elevated },
-  // Nudge: a small bezel pill left of the score box on a friend's row.
-  nudgeBtn: {
-    flexShrink: 0,
-    minWidth: 76,
-    height: 28,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 4,
-    paddingHorizontal: tokens.space.sm,
-    borderRadius: tokens.radius.sm,
-    borderWidth: tokens.bezel,
-  },
-  nudgeBtnAvailable: { borderColor: tokens.neon.yellow },
-  nudgeBtnQuiet: { borderColor: "transparent" },
-  nudgeBtnHover: { backgroundColor: tokens.bg.elevated },
-  nudgeLabel: { color: tokens.neon.yellow },
-  nudgeLabelQuiet: { color: tokens.text.muted },
   nudgeAllowance: {
     flexDirection: "row",
     alignItems: "center",

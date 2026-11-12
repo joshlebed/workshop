@@ -256,8 +256,6 @@ export interface GameNudgeState {
   remaining: number | null;
   /** Friends on this board the viewer has already nudged today. */
   nudgedUserIds: string[];
-  /** Friends on this board who have a device that can receive a nudge. */
-  reachableUserIds: string[];
 }
 
 /** `POST /v1/games/:id/nudges` */
