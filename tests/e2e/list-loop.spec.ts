@@ -75,4 +75,25 @@ test("add five by keyboard, complete + undo, delete + undo, move up", async ({ p
   await expect
     .poll(() => itemTitles(page))
     .toEqual(["Item Five", "Item Four", "Item Three", "Item One", "Item Two"]);
+
+  // A new item lands on top and the hand-placed order below it holds.
+  await page.getByTestId("fab-add-item").click();
+  await page.getByTestId("add-item-title").fill("Item Six");
+  await page.getByTestId("add-item-title").press("Enter");
+  await expect(page.getByTestId("add-item-added")).toContainText("Item Six");
+  await page.getByTestId("add-item-cancel").click();
+  await expect
+    .poll(() => itemTitles(page))
+    .toEqual(["Item Six", "Item Five", "Item Four", "Item Three", "Item One", "Item Two"]);
+
+  // Move to top, then Undo puts it back where it was.
+  await itemRow(page, "Item Two").locator('[data-testid^="item-row-menu-"]').first().click();
+  await page.getByTestId("item-row-menu-top").click();
+  await expect.poll(async () => (await itemTitles(page))[0]).toBe("Item Two");
+  await toast(page, "Moved to top").getByTestId("toast-action").click();
+  await page.waitForTimeout(1500);
+  await page.reload();
+  await expect
+    .poll(() => itemTitles(page))
+    .toEqual(["Item Six", "Item Five", "Item Four", "Item Three", "Item One", "Item Two"]);
 });

@@ -44,12 +44,12 @@ test("a link saves into a list in one tap and lands there", async ({ page }) => 
   await page.waitForURL(new RegExp(`/list/${list.id}$`));
   await expect(toast(page, list.name)).toBeVisible();
 
-  const items = await api<{ unordered: { url: string | null; kind: string }[] }>(
+  const items = await api<{ open: { url: string | null; kind: string }[] }>(
     user,
     "GET",
     `/v1/lists/${list.id}/items`,
   );
-  expect(items.unordered[0]).toMatchObject({ url: "https://example.com/taqueria", kind: "link" });
+  expect(items.open[0]).toMatchObject({ url: "https://example.com/taqueria", kind: "link" });
 
   // The next share puts that list first, marked.
   await page.goto(`/share?url=${encodeURIComponent("https://example.org/picnic")}`);
