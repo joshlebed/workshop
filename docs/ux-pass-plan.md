@@ -235,6 +235,44 @@ what last> · <age>` ("12 to watch · Renata added Past Lives · 2d"), or `· up
 | 4.5 | **Account basics**: privacy and terms links on sign-in, delete account on Settings (the backend route exists), system Apple button on iOS. App Review risk today.                                                                                                 | M    |
 | 4.6 | Invite and join error states: retry for network failures, no developer strings ("Invite link missing token"), stale stashes cleared; legacy invite tokens show the preview instead of auto-joining.                                                               | S    |
 
+**Phase 4 status (2026-11-12): done, all 6 rows**, in the `joshlebed/ux-pass-phase-4` PR
+(stacked on Phase 3). Verified in the running web app at 390×844 and 1440×900 with brand-new
+scratch users; no control under 44×44, no input under 16px, no console errors. Measured: **first
+list from a cold install, 3 taps + 1 text entry** (provider, name + Return, starter) and 4 taps +
+2 entries to the first item; **new user joins from a link, 4 taps + 1 text entry** (Sign in to
+join, provider, name, Join), landing in the list with home beneath it. Decisions and deviations:
+
+- **One-tap create everywhere.** Templates gained a `group`, a `defaultName` ("Movies to watch")
+  and sentence-case names; tapping one makes the list and opens its add surface over the list
+  (`openNewList`). Owners rename in place by tapping the list name in its header. "Customize
+  first" is a switch at the bottom of the picker (session memory), not a per-row control. The
+  step dots moved off the picker (its step count depends on the choice) onto Customize and the
+  import step, which read `step`/`steps` params.
+- **Share picker saves in one tap** on lists that take a free line or a link (blank, plain,
+  link); search-backed lists (movies, shows, books) and album shelves open the add surface
+  prefilled (a shared title becomes the search). The last list a share went into floats to the
+  top with a "Last used" badge (`workshop.share.last-list`). A signed-out share is stashed for
+  24h (`workshop.pending-share`) and resumed on the picker after sign-in and the display-name
+  step; its telemetry is held until there is a session.
+- **Display name prefill** comes from what the client saw (Apple's full name, the Google ID
+  token's `name` claim). The server already saves a provider name when it gets one, so the step
+  only shows when there was none; no backend change.
+- **Legacy `/invite/:token`** is now a real landing (same preview card as `/l/:slug`, explicit
+  Join); `/onboarding/accept-invite` redirects to it. The invite stash clears on join, on a
+  definite 404, or once a signed-in viewer has the preview; a network failure keeps it.
+- **Privacy and Terms** are new Workshop pages (`/privacy`, `/terms`), public in any auth state,
+  modelled on HighScore's copy. The operator should review the text.
+- **Found and fixed:** `GET /v1/lists` dropped every list whose `item_kind` is NULL (Blank
+  lists): `NOT (… OR item_kind = 'game')` is NULL for them. "Start from scratch" lists vanished
+  from home. A PGlite test pins it.
+- **Checked on the iOS simulator** (new `workshop` target in `.niteshift/mobile.yaml`): the
+  system Apple button renders and opens Apple's sheet. That run found two fixes: the sign-in
+  screen crashed on iOS when no Google iOS client id was set (Google now renders only when
+  configured), and closing Apple's sheet said "Couldn't reach Workshop" (only a fetch
+  `TypeError` is a network error now).
+- Still owed a device check: the native share extension hand-off into the signed-out stash and
+  `KeyboardAvoidingView` on the display-name step.
+
 ### Phase 5 — Polish and accessibility
 
 | #   | Change                                                                                                                                                                             | Size |

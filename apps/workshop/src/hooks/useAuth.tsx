@@ -11,7 +11,13 @@ import {
   type PendingLinkKeys,
 } from "@workshop/api-client/signupAcquisition";
 import { getItem } from "@workshop/api-client/storage";
-import type { AuthImpersonation, AuthResponse, UpdateMeRequest, User } from "@workshop/shared";
+import type {
+  AuthImpersonation,
+  AuthResponse,
+  DeleteAccountResponse,
+  UpdateMeRequest,
+  User,
+} from "@workshop/shared";
 import {
   createContext,
   useCallback,
@@ -21,6 +27,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { requestAccountDeletion } from "../api/users";
+import { rememberDeletion, runAccountDeletion } from "../lib/accountDeletion";
+import { cleanSuggestedName, nameFromIdToken } from "../lib/displayNameSuggestion";
 import { PENDING_INVITE_TOKEN_KEY } from "../lib/inviteStash";
 
 // Pending-link stashes read at sign-in for signup attribution. (Friend invites
@@ -50,6 +59,11 @@ export interface AuthContextValue {
   user: User | null;
   token: string | null;
   impersonation: AuthImpersonation | null;
+  /**
+   * The name the provider handed the client at the last sign-in (Apple's
+   * full name, Google's `name` claim), for the display-name step (4.1).
+   */
+  suggestedDisplayName: string | null;
   signInWithApple: (req: {
     identityToken: string;
     nonce?: string;
@@ -62,6 +76,8 @@ export interface AuthContextValue {
   impersonateUser: (target: string) => Promise<User>;
   stopImpersonating: () => Promise<User>;
   signOut: () => Promise<void>;
+  /** `DELETE /v1/users/me`, then signed out. Rejects (session intact) on failure. */
+  deleteAccount: () => Promise<DeleteAccountResponse>;
   setDisplayName: (name: string) => Promise<void>;
   /** Patch the signed-in user's profile (display name and/or avatar). */
   updateProfile: (patch: UpdateMeRequest) => Promise<void>;
@@ -100,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
   const stateRef = useRef(state);
   stateRef.current = state;
+  const [suggestedDisplayName, setSuggestedDisplayName] = useState<string | null>(null);
 
   const applyAuth = useCallback(async (res: AuthResponse) => {
     await persistSessionCredentials(res);
@@ -220,6 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithApple = useCallback<AuthContextValue["signInWithApple"]>(
     async (req) => {
+      setSuggestedDisplayName(cleanSuggestedName(req.fullName));
       const res = await apiRequest<AuthResponse>({
         method: "POST",
         path: "/v1/auth/apple",
@@ -233,6 +251,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = useCallback<AuthContextValue["signInWithGoogle"]>(
     async (req) => {
+      setSuggestedDisplayName(cleanSuggestedName(nameFromIdToken(req.idToken)));
       const res = await apiRequest<AuthResponse>({
         method: "POST",
         path: "/v1/auth/google",
@@ -295,8 +314,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // signed-out marker so an uncleared HttpOnly cookie cannot sign back in.
     }
     await clearSessionCredentials();
+    setSuggestedDisplayName(null);
     setState({ status: "signed-out", user: null, token: null, impersonation: null });
   }, [state.token]);
+
+  const deleteAccount = useCallback<AuthContextValue["deleteAccount"]>(async () => {
+    const response = await runAccountDeletion({
+      token: state.token,
+      impersonation: state.impersonation,
+      requestDelete: requestAccountDeletion,
+      clearSession: clearSessionCredentials,
+    });
+    rememberDeletion(response);
+    setSuggestedDisplayName(null);
+    setState({ status: "signed-out", user: null, token: null, impersonation: null });
+    return response;
+  }, [state.token, state.impersonation]);
 
   const updateProfile = useCallback<AuthContextValue["updateProfile"]>(
     async (patch) => {
@@ -366,12 +399,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user: state.user,
       token: state.token,
       impersonation: state.impersonation,
+      suggestedDisplayName,
       signInWithApple,
       signInWithGoogle,
       signInDev,
       impersonateUser,
       stopImpersonating,
       signOut,
+      deleteAccount,
       setDisplayName,
       updateProfile,
       connectLetterboxd,
@@ -380,12 +415,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       state,
+      suggestedDisplayName,
       signInWithApple,
       signInWithGoogle,
       signInDev,
       impersonateUser,
       stopImpersonating,
       signOut,
+      deleteAccount,
       setDisplayName,
       updateProfile,
       connectLetterboxd,

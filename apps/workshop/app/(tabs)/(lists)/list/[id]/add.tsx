@@ -54,6 +54,11 @@ import { useDebouncedQuery } from "../../../../../src/hooks/useDebouncedQuery";
 import { onListResultIds, titleKey } from "../../../../../src/lib/duplicates";
 import { goBack } from "../../../../../src/lib/goBack";
 import { forgetItemAdded, noteItemAdded } from "../../../../../src/lib/recentlyAdded";
+import {
+  noteFromSharedText,
+  rememberShareList,
+  titleFromSharedText,
+} from "../../../../../src/lib/sharePayload";
 
 const SEARCH_KINDS: readonly ItemKind[] = ["movie", "tv", "book"];
 /** How long Return waits for a pasted link's preview before adding anyway. */
@@ -77,13 +82,21 @@ interface Added {
  *   "On list"; no match (or a failed search) offers `Add “query” anyway`.
  */
 export default function AddItem() {
-  const params = useLocalSearchParams<{ id: string; prefillUrl?: string; prefillText?: string }>();
+  const params = useLocalSearchParams<{
+    id: string;
+    prefillUrl?: string;
+    prefillText?: string;
+    from?: string;
+  }>();
   const id = (Array.isArray(params.id) ? params.id[0] : params.id) ?? "";
   const prefillUrl =
     (Array.isArray(params.prefillUrl) ? params.prefillUrl[0] : params.prefillUrl) ?? "";
   const prefillText = (
     (Array.isArray(params.prefillText) ? params.prefillText[0] : params.prefillText) ?? ""
   ).trim();
+  // Opened from the share picker or a new list made for a share (4.4): the
+  // first add saves the share, so it lands on the list with "Added to …".
+  const fromShare = (Array.isArray(params.from) ? params.from[0] : params.from) === "share";
   const { token } = useAuth();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -123,6 +136,10 @@ export default function AddItem() {
     onSuccess: (item, { body }) => {
       haptics.success();
       noteItemAdded(id, item.id);
+      if (fromShare) {
+        void rememberShareList(id);
+        showToast({ key: "share-saved", message: `Added to ${list?.name ?? "the list"}` });
+      }
       setAdded((prev) => [{ id: item.id, title: item.title }, ...prev]);
       // New items land at the top of the open block; show it there now.
       queryClient.setQueryData<ListItemsResponse>(itemsKey, (d) =>
@@ -133,6 +150,7 @@ export default function AddItem() {
       queryClient.invalidateQueries({ queryKey: itemsKey });
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
       if (body.tags?.length) queryClient.invalidateQueries({ queryKey: queryKeys.tags.byList(id) });
+      if (fromShare) goBack(`/list/${id}`);
     },
     onError: (e) => {
       showToast({ message: errorMessage(e, "Couldn't add that."), tone: "danger" });
@@ -186,7 +204,11 @@ export default function AddItem() {
   if (!id) {
     return (
       <Screen style={styles.root}>
-        <Text>Missing list id.</Text>
+        <ScreenHeader leading="close" leadingLabel="Close" onLeadingPress={() => goBack("/")} />
+        <View style={styles.body}>
+          <Text tone="secondary">This link doesn't point at a list. Pick one from your lists.</Text>
+          <Button label="Go to your lists" variant="secondary" onPress={() => goBack("/")} />
+        </View>
       </Screen>
     );
   }
@@ -210,6 +232,7 @@ export default function AddItem() {
       {isSearchKind ? (
         <SearchFlow
           itemKind={itemKind as "movie" | "tv" | "book"}
+          initialQuery={prefillText ? titleFromSharedText(prefillText) : ""}
           token={token}
           existing={existing}
           pendingKey={pendingKey}
@@ -223,7 +246,7 @@ export default function AddItem() {
           existing={existing}
           listTags={(listTagsQuery.data?.tags ?? []).map((t) => t.tag)}
           initialText={prefillUrl || titleFromSharedText(prefillText)}
-          initialNote={prefillUrl ? "" : noteFromSharedText(prefillText)}
+          initialNote={noteFromSharedText(prefillText, !!prefillUrl)}
           onAdd={(body) => addMutation.mutateAsync({ key: "quick", body })}
           footer={addedList}
         />
@@ -471,6 +494,8 @@ function QuickAdd({
 
 interface SearchFlowProps {
   itemKind: "movie" | "tv" | "book";
+  /** A shared title to search for straight away (4.4). */
+  initialQuery: string;
   token: string | null;
   existing: readonly Item[];
   pendingKey: string | null;
@@ -478,9 +503,17 @@ interface SearchFlowProps {
   footer: React.ReactNode;
 }
 
-function SearchFlow({ itemKind, token, existing, pendingKey, onAdd, footer }: SearchFlowProps) {
+function SearchFlow({
+  itemKind,
+  initialQuery,
+  token,
+  existing,
+  pendingKey,
+  onAdd,
+  footer,
+}: SearchFlowProps) {
   const inputRef = useRef<TextInputInstance>(null);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery);
   const debounced = useDebouncedQuery(query, 300).trim();
   const searchQuery = useQuery<MediaSearchResponse | BookSearchResponse, Error>({
     queryKey: ["search", itemKind, debounced],
@@ -735,21 +768,6 @@ function hostOf(url: string): string {
   } catch {
     return "";
   }
-}
-
-function titleFromSharedText(text: string): string {
-  if (!text) return "";
-  const firstLine = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-  return (firstLine ?? text).slice(0, 500);
-}
-
-function noteFromSharedText(text: string): string {
-  if (!text) return "";
-  const singleLine = !/[\r\n]/.test(text) && text.length <= 500;
-  return singleLine ? "" : text.slice(0, 1000);
 }
 
 /** A normalised http(s) URL, or null when the input isn't one. */

@@ -1,81 +1,77 @@
-import { expect, test } from "@playwright/test";
-import { disableAutoDevSignIn, signInAsDev } from "./helpers";
+import { expect, type Page, test } from "@playwright/test";
+import { disableAutoDevSignIn } from "./helpers";
 
-// Happy-path for chunk 4a-1: dev-sign-in → create date-idea list →
-// simulate a share-extension hand-off by visiting `/share?url=…` →
-// pick the list → land on add-item with the URL pre-filled and the
-// link preview already rendered.
-//
-// `/v1/link-preview` is mocked so the spec doesn't depend on a live
-// fetcher (covered separately by the backend route's vitest cases).
-//
-// Phase 4a-2 will land the native iOS share extension that deep-links
-// `workshop://share?url=…` — same code path as `/share?url=…` on web,
-// so this happy-path covers the JS surface end-to-end.
+// UX pass 4.4: the share extension's picker. `_layout.tsx` turns the native
+// payload into `/share?url=&text=`, which these tests drive directly.
 
-const PREVIEW_FIXTURE = {
-  preview: {
-    url: "https://example.com/picnic",
-    finalUrl: "https://example.com/picnic",
-    title: "Picnic in the park",
-    description: "An afternoon picnic spot under the oak.",
-    image: "https://example.com/picnic.jpg",
-    siteName: "Example",
-    fetchedAt: new Date().toISOString(),
-  },
-};
+const API = "http://localhost:8787";
 
-test("share entry → pick list → URL pre-filled in add screen", async ({ page }) => {
-  await disableAutoDevSignIn(page);
-
-  await page.route("**/v1/link-preview**", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(PREVIEW_FIXTURE),
-    });
+async function newUser(page: Page, request: import("@playwright/test").APIRequestContext) {
+  const stamp = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+  const resp = await request.post(`${API}/v1/auth/dev`, {
+    data: { email: `ux-scratch-e2e-share-${stamp}@workshop.local`, displayName: "Sharer" },
   });
+  const { token } = (await resp.json()) as { token: string };
+  await disableAutoDevSignIn(page);
+  await page.addInitScript(
+    (t: string) => window.localStorage.setItem("workshop.session.v1", t),
+    token,
+  );
+  return { auth: { Authorization: `Bearer ${token}` }, stamp };
+}
 
-  await page.goto("/");
+test("a link saves into a list in one tap and lands there", async ({ page, request }) => {
+  const { auth, stamp } = await newUser(page, request);
+  const created = await request.post(`${API}/v1/lists`, {
+    headers: auth,
+    data: {
+      name: `zz-ux-scratch-e2e Dates ${stamp}`,
+      emoji: "💜",
+      color: "rose",
+      itemKind: "link",
+      modules: ["todo"],
+    },
+  });
+  const listId = ((await created.json()) as { list: { id: string } }).list.id;
 
-  await signInAsDev(page, { displayName: "E2E Sharer" });
+  await page.goto(
+    `/share?url=${encodeURIComponent("https://example.com/taqueria")}&text=${encodeURIComponent("Tacos on Friday?")}`,
+  );
+  await expect(page.getByTestId("share-pick-url")).toContainText("Saving from example.com");
+  await page.getByTestId(`share-pick-row-${listId}`).click();
 
-  // Seed a date-idea list to share into.
-  await page.getByTestId("fab-create-list").click();
-  await page.getByTestId("create-list-type-date_idea").click();
+  await page.waitForURL(new RegExp(`/list/${listId}$`));
+  await expect(page.getByText(/^Added to zz-ux-scratch-e2e Dates/)).toBeVisible();
 
-  const listName = `E2E share ${Date.now()}`;
-  await page.getByTestId("create-list-name").fill(listName);
-  await page.getByTestId("create-list-submit").click();
+  const items = await request.get(`${API}/v1/lists/${listId}/items`, { headers: auth });
+  const body = (await items.json()) as { unordered: { url: string | null; kind: string }[] };
+  expect(body.unordered[0]).toMatchObject({ url: "https://example.com/taqueria", kind: "link" });
 
-  // Skip the share step in the create-list flow.
-  await expect(page.getByTestId("create-list-share-done")).toBeVisible();
-  await page.getByTestId("create-list-share-done").click();
+  // The next share puts that list first, marked.
+  await page.goto(`/share?url=${encodeURIComponent("https://example.org/picnic")}`);
+  await expect(page.getByTestId("share-pick-last-used")).toBeVisible();
 
-  // Back on list detail — confirm the new list landed before navigating away.
-  await expect(page.getByTestId("empty-add-item")).toBeVisible();
+  await request.delete(`${API}/v1/lists/${listId}`, { headers: auth });
+});
 
-  // Simulate the share-extension hand-off. `/share?url=…` is the canonical
-  // entry point; expo-router's file-based routing matches both
-  // `https://workshop.dev/share?url=…` (web) and `workshop://share?url=…`
-  // (the native extension's deep-link target).
-  const sharedUrl = "https://example.com/picnic";
-  await page.goto(`/share?url=${encodeURIComponent(sharedUrl)}`);
+test("New list carries the shared link to the new list's add surface", async ({
+  page,
+  request,
+}) => {
+  await newUser(page, request);
+  await page.goto(`/share?url=${encodeURIComponent("https://example.org/picnic")}`);
+  await page.getByTestId("share-pick-create-new").click();
+  await page.waitForURL(/\/create-list\/type\?url=/);
+  await page.getByTestId("create-list-template-trip_plan").click();
+  await page.waitForURL(/\/list\/[^/]+\/add\?prefillUrl=/);
+  await expect(page.getByTestId("add-item-title")).toHaveValue("https://example.org/picnic");
+});
 
-  // The share-pick screen renders the list of lists with the shared URL on top.
-  await expect(page.getByTestId("share-pick-list")).toBeVisible();
-  await expect(page.getByTestId("share-pick-url")).toContainText(sharedUrl);
-
-  // Pick the list we just created. The card is keyed off the list id; finding
-  // it by the visible name is the simplest way to reach the row.
-  const row = page.getByRole("button", { name: `Add to ${listName}` });
-  await expect(row).toBeVisible();
-  await row.click();
-
-  // Land on the add-item screen with the URL pre-filled — the preview card
-  // is fetched from the mocked endpoint after the 300ms debounce.
-  const urlInput = page.getByTestId("add-item-url");
-  await expect(urlInput).toHaveValue(sharedUrl);
-  await expect(page.getByTestId("link-preview-card")).toBeVisible();
-  await expect(page.getByTestId("link-preview-title")).toContainText("Picnic in the park");
+test("a share that arrives signed out waits for sign-in", async ({ page }) => {
+  await disableAutoDevSignIn(page);
+  await page.goto(`/share?url=${encodeURIComponent("https://example.net/bakery")}`);
+  await page.waitForURL(/\/sign-in$/);
+  await expect(page.getByTestId("sign-in-share-context")).toContainText("example.net");
+  const stash = await page.evaluate(() => window.localStorage.getItem("workshop.pending-share"));
+  expect(stash).toContain("https://example.net/bakery");
 });

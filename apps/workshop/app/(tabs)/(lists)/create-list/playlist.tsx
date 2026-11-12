@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ListColor, SourcePreview } from "@workshop/shared";
 import type { SourceKind } from "@workshop/shared/sourceKinds";
-import { LIST_TEMPLATES, type ListTemplate } from "@workshop/shared/templates";
+import { LIST_TEMPLATES, type ListTemplate, templateListName } from "@workshop/shared/templates";
 import {
   Button,
   Card,
@@ -49,28 +49,26 @@ interface SourceCopy {
 
 const SOURCE_COPY: Record<SourceKind, SourceCopy> = {
   spotify_playlist: {
-    lead: "Point us at a playlist",
-    defaultPrompt:
-      "Paste a public Spotify playlist URL. Your shelf will pull every album it references.",
-    fieldLabel: "Playlist URL",
+    lead: "Paste a Spotify playlist link",
+    defaultPrompt: "Every album on the playlist becomes a row on your shelf.",
+    fieldLabel: "Playlist link",
     placeholder: "https://open.spotify.com/playlist/…",
-    hint: "No Spotify sign-in needed. Private playlists won't work.",
-    submitLabel: "Create shelf",
-    checkingLabel: "Checking playlist…",
-    errorFallback: "Couldn't read that playlist. Try again?",
-    createErrorFallback: "Couldn't create the album shelf",
+    hint: "The playlist has to be public. No Spotify sign-in needed.",
+    submitLabel: "Make shelf",
+    checkingLabel: "Looking at the playlist…",
+    errorFallback: "Couldn't read that playlist. Check the link and try again.",
+    createErrorFallback: "Couldn't make the album shelf. Try again in a moment.",
   },
   letterboxd_list: {
-    lead: "Point us at a list",
-    defaultPrompt:
-      "Paste a public Letterboxd list URL. Workshop will mirror it as a watchlist, enriched via TMDB.",
-    fieldLabel: "Letterboxd URL",
-    placeholder: "https://letterboxd.com/<user>/list/<slug>/",
-    hint: "No Letterboxd sign-in needed. Private lists won't work.",
-    submitLabel: "Create watchlist",
-    checkingLabel: "Checking list…",
-    errorFallback: "Couldn't read that list. Try again?",
-    createErrorFallback: "Couldn't create the watchlist",
+    lead: "Paste a Letterboxd list link",
+    defaultPrompt: "Every film on the list becomes a row here.",
+    fieldLabel: "List link",
+    placeholder: "https://letterboxd.com/name/list/…",
+    hint: "The list has to be public. No Letterboxd sign-in needed.",
+    submitLabel: "Make watchlist",
+    checkingLabel: "Looking at the list…",
+    errorFallback: "Couldn't read that list. Check the link and try again.",
+    createErrorFallback: "Couldn't make the watchlist. Try again in a moment.",
   },
   // letterboxd_match never routes through this screen (it's attached as an
   // autoSource with no URL prompt); the entry keeps the record exhaustive
@@ -108,6 +106,8 @@ export default function CreateListPlaylist() {
     emoji?: string;
     color?: string;
     description?: string;
+    step?: string;
+    steps?: string;
   }>();
   const { token } = useAuth();
   const queryClient = useQueryClient();
@@ -120,8 +120,12 @@ export default function CreateListPlaylist() {
   const sourceKind: SourceKind = template.requiresSource?.kind ?? "spotify_playlist";
   const copy = SOURCE_COPY[sourceKind];
 
-  const name = pickString(params.name);
-  const emoji = pickString(params.emoji);
+  // Straight from the picker (4.3) there is no name yet: the playlist's own
+  // name is used once the preview arrives, else the template's.
+  const givenName = pickString(params.name);
+  const emoji = pickString(params.emoji) || template.defaults.emoji;
+  const step = Number(pickString(params.step)) || 2;
+  const steps = Math.max(step, Number(pickString(params.steps)) || 2);
   const color = (pickString(params.color) || template.defaults.color) as ListColor;
   const description = pickString(params.description);
 
@@ -158,6 +162,7 @@ export default function CreateListPlaylist() {
   const previewing = previewQuery.isFetching && !previewQuery.isSuccess;
 
   const canSubmit = !!preview && trimmedUrl === debouncedUrl;
+  const name = (givenName || previewName(preview) || templateListName(template)).slice(0, 80);
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -198,10 +203,10 @@ export default function CreateListPlaylist() {
         onLeadingPress={() => goBack("/create-list/type")}
         leadingTestID="source-playlist-back"
         center={
-          <View style={styles.stepDots} accessibilityLabel="Step 3 of 3">
-            <View style={[styles.stepDot, styles.stepDotActive]} />
-            <View style={[styles.stepDot, styles.stepDotActive]} />
-            <View style={[styles.stepDot, styles.stepDotActive]} />
+          <View style={styles.stepDots} accessibilityLabel={`Step ${step} of ${steps}`}>
+            {Array.from({ length: steps }, (_, i) => `step-${i}`).map((key, i) => (
+              <View key={key} style={[styles.stepDot, i < step ? styles.stepDotActive : null]} />
+            ))}
           </View>
         }
         trailing={<View style={styles.headerSpacer} />}
@@ -273,11 +278,21 @@ export default function CreateListPlaylist() {
             disabled={!canSubmit || mutation.isPending}
             loading={mutation.isPending}
             onPress={() => mutation.mutate()}
+            accessibilityHint={`Makes "${name}"`}
           />
         </View>
       </KeyboardStickyView>
     </Screen>
   );
+}
+
+function previewName(preview: SourcePreview | null): string | null {
+  if (!preview) return null;
+  if (preview.kind === "spotify_playlist") return preview.name || null;
+  if (preview.kind === "letterboxd_list") {
+    return preview.slug === "watchlist" ? `${preview.username}'s watchlist` : preview.slug;
+  }
+  return null;
 }
 
 function SourcePreviewBody({ preview }: { preview: SourcePreview }) {

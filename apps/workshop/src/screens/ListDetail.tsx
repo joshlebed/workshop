@@ -7,6 +7,7 @@ import type {
   Item,
   ItemKind,
   List,
+  ListDetailResponse,
   ListItemsResponse,
   ListMemberSummary,
   ListSource,
@@ -48,6 +49,7 @@ import {
   unarchiveItem,
   uncompleteItem,
 } from "../api/items";
+import { updateList } from "../api/lists";
 import { syncSource } from "../api/sources";
 import { createSavedView, deleteSavedView, fetchSavedViews } from "../api/views";
 import { ShareListSheet } from "../components/ShareListSheet";
@@ -64,6 +66,7 @@ import {
 import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import { LetterboxdPanel } from "./listDetail/LetterboxdPanel";
+import { ListNameEditor } from "./listDetail/ListNameEditor";
 import {
   applyComplete,
   applyMove,
@@ -121,6 +124,27 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const [manualRefreshing, setManualRefreshing] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const itemsKey = queryKeys.items.byList(list.id);
+
+  // Rename in place (4.3): optimistic on the detail cache, then refetch.
+  const renameList = useCallback(
+    async (name: string) => {
+      const key = queryKeys.lists.detail(list.id);
+      const previous = queryClient.getQueryData<ListDetailResponse>(key);
+      if (previous)
+        queryClient.setQueryData(key, { ...previous, list: { ...previous.list, name } });
+      try {
+        await updateList(list.id, { name }, token);
+      } catch (e) {
+        if (previous) queryClient.setQueryData(key, previous);
+        showToast({ message: errorMessage(e, "Couldn't rename the list."), tone: "danger" });
+        throw e;
+      } finally {
+        void queryClient.invalidateQueries({ queryKey: key });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+      }
+    },
+    [list.id, queryClient, token, showToast],
+  );
   const writeKey = useMemo(() => ["list-items-write", list.id], [list.id]);
   const livePoll = useLivePollingInterval();
 
@@ -732,6 +756,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
           members={members}
           accent={accent}
           subline={headerSubline}
+          onRename={list.ownerId === user?.id ? renameList : undefined}
           trailing={
             <>
               {hasSources ? (
@@ -1052,12 +1077,15 @@ export function ListHeader({
   accent,
   subline,
   trailing,
+  onRename,
 }: {
   list: Pick<List, "name" | "emoji" | "coverPhotoUrl">;
   members: ListMemberSummary[];
   accent: string;
   subline: string | null;
   trailing?: React.ReactNode;
+  /** Owners rename the list in place (4.3). */
+  onRename?: (name: string) => Promise<void>;
 }) {
   return (
     <>
@@ -1076,9 +1104,7 @@ export function ListHeader({
           shape="rounded"
         />
         <View style={styles.titleText}>
-          <Text variant="title" numberOfLines={2} style={styles.titleName}>
-            {list.name}
-          </Text>
+          <ListNameEditor name={list.name} onRename={onRename} style={styles.titleName} />
           <View style={styles.sublineRow}>
             {members.length > 0 ? <MemberStack members={members} accent={accent} /> : null}
             {subline ? (

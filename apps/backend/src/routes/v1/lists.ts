@@ -553,9 +553,12 @@ listRoutes.get("/", async (c) => {
       FROM lists l
       JOIN list_members me ON me.list_id = l.id AND me.user_id = ${userId}
       WHERE l.archived_at IS NULL
+        -- COALESCE both sides: a Blank list has item_kind NULL, and
+        -- NOT (false OR NULL) is NULL, which silently dropped every Blank
+        -- list from home (found in UX pass 4.2).
         AND NOT (
           'leaderboard' = ANY(COALESCE(l.modules, '{}'::text[]))
-          OR l.item_kind = 'game'
+          OR COALESCE(l.item_kind, '') = 'game'
         )
       ORDER BY l.updated_at DESC
     `,

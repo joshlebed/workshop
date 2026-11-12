@@ -22,8 +22,8 @@ import { LetterboxdRow } from "../../../../src/screens/settings/LetterboxdRow";
 
 /**
  * Settings (UX pass 3.5): a pushed screen of grouped rows that replaced the
- * profile sheet. You, Lists, Connections, About, Sign out, and an Admin group
- * at the very bottom for admins (and for an impersonated session, so "Stop
+ * profile sheet. You, Lists, Connections, About (feedback, privacy, terms,
+ * version), Sign out, Delete account (4.5), and an Admin group at the very bottom for admins (and for an impersonated session, so "Stop
  * impersonating" stays reachable).
  */
 export default function Settings() {
@@ -109,9 +109,20 @@ export default function Settings() {
           <LetterboxdRow />
         </Group>
 
-        {/* Phase 4 (4.5) adds Privacy, Terms and Delete account to this group. */}
         <Group title="About">
           <ListRow title="Send feedback" chevron onPress={onFeedback} testID="settings-feedback" />
+          <ListRow
+            title="Privacy"
+            chevron
+            onPress={() => router.push("/privacy")}
+            testID="settings-privacy"
+          />
+          <ListRow
+            title="Terms"
+            chevron
+            onPress={() => router.push("/terms")}
+            testID="settings-terms"
+          />
           <ListRow
             title="Version"
             trailing={
@@ -125,6 +136,18 @@ export default function Settings() {
         <View style={styles.group}>
           <ListRow title="Sign out" onPress={() => void onSignOut()} testID="sign-out" />
         </View>
+
+        {/* The destructive action alone, under a plain heading (DESIGN.md). */}
+        <Group title="Delete account">
+          <ListRow
+            title={<Text style={styles.danger}>Delete account</Text>}
+            subtitle="Also deletes your HighScore account"
+            chevron
+            onPress={() => router.push("/settings/delete-account")}
+            accessibilityLabel="Delete account"
+            testID="settings-delete-account"
+          />
+        </Group>
 
         {showAdmin ? (
           <Group title="Admin">
@@ -159,4 +182,9 @@ const styles = StyleSheet.create({
   group: { paddingTop: tokens.space.lg },
   groupHeader: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.xs },
   avatar: { width: 48, height: 48, borderRadius: 24 },
+  danger: {
+    color: tokens.status.danger,
+    fontSize: tokens.font.size.md,
+    fontWeight: tokens.font.weight.medium,
+  },
 });

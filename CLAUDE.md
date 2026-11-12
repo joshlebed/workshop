@@ -144,7 +144,8 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
 - **Share extension payloads can include both URL and text.** Preserve both when handling
   `useShareIntent()` in `_layout.tsx`; shares often need `shareIntent.text` even when
   `shareIntent.webUrl` is also present. In Workshop, `/share` redirects straight to
-  `/share/pick-list` (normal item adds). In HighScore, `/share/pick-game` posts scores
+  `/share/pick-list` (one-tap save into link/plain lists, prefilled add surface otherwise; a
+  signed-out share is stashed and resumed after sign-in). In HighScore, `/share/pick-game` posts scores
   (find-or-creating the catalog game when needed).
 - **Link-preview item content must pass the item-kind schema before write.** Social previews can
   return huge titles/descriptions (Instagram produced an 833-char title), so use
@@ -169,13 +170,18 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   param names are unchanged — adding an audience is `aws ssm put-parameter --overwrite`
   plus a Lambda env refresh, not a code change. Apple's `sub` is stable per developer
   team, so the same Apple ID lands on the same `user_identities` row from either app.
+- **`GET /v1/lists` predicates must survive NULL `item_kind`.** Blank lists have
+  `item_kind` NULL; `NOT (… OR item_kind = 'game')` evaluates to NULL for them and silently drops
+  the row (every Blank list vanished from home until UX pass 4.2). COALESCE nullable columns in
+  any `NOT (...)` filter.
 
 - **Account deletion is `DELETE /v1/users/me`, and it deletes the _shared_ account.**
   Self-only (the subject is the bearer token's `userId`; there is no target parameter) and
   403 `IMPERSONATION_ACTIVE` while an admin is impersonating. Because Workshop and HighScore
   share one `users` row, deleting from HighScore deletes the Workshop side too — the client
   confirmation says so out loud (`ACCOUNT_DELETION_CONSEQUENCES` in
-  `apps/highscore/src/lib/accountDeletion.ts`). `lib/accountDeletion.ts` handles the four
+  `apps/highscore/src/lib/accountDeletion.ts`, and Workshop's own copy in
+  `apps/workshop/src/lib/accountDeletion.ts`, Settings → Delete account). `lib/accountDeletion.ts` handles the four
   `ON DELETE restrict` edges (`lists.owner_id`, `items.added_by`, `list_invites.invited_by`,
   `activity_events.actor_id`) plus `auth_sessions.impersonated_user_id` and the user's
   `rate_limits` buckets, all in one transaction; everything else cascades. **If you add a new

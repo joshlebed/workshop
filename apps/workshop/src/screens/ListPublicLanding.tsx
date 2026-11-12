@@ -1,5 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
 import { setItem } from "@workshop/api-client/storage";
-import type { Item, ListItemsResponse, ListPreview } from "@workshop/shared";
+import type { Item, ListPreview } from "@workshop/shared";
 import {
   Button,
   Card,
@@ -13,71 +14,63 @@ import {
   Text,
   tokens,
 } from "@workshop/ui";
-import { useRouter } from "expo-router";
+import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
+import { fetchListItemsBySlug } from "../api/share";
+import { useAuth } from "../hooks/useAuth";
 import { goBack } from "../lib/goBack";
-
-/**
- * The most-recent path a signed-out user clicked through to (either
- * `/list/:id` or `/l/:slug`), stashed before the AuthGate bounces them to
- * `/sign-in`. After sign-in, `app/_layout.tsx` consumes this and replaces
- * the user back onto that path so the landing → sign-in → landing-as-authed
- * loop closes without forcing them to re-click the share link.
- */
-export const PENDING_RETURN_PATH_KEY = "workshop.pending-return-path";
+import { PENDING_RETURN_PATH_KEY } from "../lib/returnPath";
 
 interface Props {
   preview: ListPreview;
   viewer: { authenticated: boolean; isMember: boolean };
   /**
-   * Present when we landed here via `/l/:slug` — used to build the
-   * return-to-here path during the sign-in round trip. When omitted (legacy
-   * `/list/:id` callers), we fall back to the canonical UUID URL.
+   * Where sign-in should bring the visitor back to: `/l/:slug`,
+   * `/list/:id` or `/invite/:token`. Defaults to the canonical list URL.
    */
-  shareSlug?: string;
-  /** Items split for view-mode rendering. Null when not yet loaded or unavailable. */
-  items?: ListItemsResponse | null;
-  /** Join action — `null` when the link is not in `join` visibility. */
+  returnPath?: string;
+  /** Join action; `null` when the viewer can't join from here. */
   onJoin?: (() => Promise<void>) | null;
-  joinPending?: boolean;
+  /** Runs before sign-in (the legacy invite also stashes its token). */
+  onBeforeSignIn?: () => Promise<void>;
 }
 
 /**
- * Public landing page rendered when a non-member (or signed-out visitor)
- * lands on `/l/:slug` or `/list/:id`. CTA depends on the list's share
- * visibility:
+ * The public landing for a share link (`/l/:slug`, `/list/:id`, and the
+ * legacy `/invite/:token`). One preview, one explicit action (4.6):
  *
- *  - **join** (default): "Sign in to join" / "Join this list" — the legacy
- *    invite-token flow rebranded around the slug. Clicking through adds the
- *    user as a member and routes them to the list.
- *  - **view**: read-only landing. Items render inline (titles + completion
- *    state); no join button. The owner explicitly opted into a publicly
- *    readable list.
- *  - **off**: this screen never renders — the parent route already 404'd.
- *
- * Already-a-member is also never reached (the parent redirects), but a
- * stale-data race could flash it briefly; we render the "Open list"
- * affordance so the user can step forward without reloading.
+ *  - **join**: signed out, "Sign in to join"; signed in, "Join list".
+ *  - **view**: the items, read-only, with no sign-in wall in front of them.
+ *    A signed-out visitor gets a quiet way to start their own lists.
+ *  - **off**: never rendered (the route 404s), except in a stale race,
+ *    where a signed-in visitor is told to ask for a new link.
  */
-export function ListPublicLanding({
-  preview,
-  viewer,
-  shareSlug,
-  items,
-  onJoin,
-  joinPending,
-}: Props) {
+export function ListPublicLanding({ preview, viewer, returnPath, onJoin, onBeforeSignIn }: Props) {
   const router = useRouter();
+  const { token } = useAuth();
   const accent =
     (preview.color as ListColorKey) in tokens.list
       ? tokens.list[preview.color as ListColorKey]
       : tokens.accent.default;
   const [joining, setJoining] = useState(false);
+  const visibility = preview.shareVisibility;
+  const readOnly = visibility === "view" && !viewer.isMember;
 
-  const returnPath = shareSlug ? `/l/${shareSlug}` : `/list/${preview.id}`;
-  const stashReturnPath = async () => {
-    await setItem(PENDING_RETURN_PATH_KEY, returnPath).catch(() => {});
+  // Read-only lists show their items to anyone with the link.
+  const itemsQuery = useQuery({
+    queryKey: ["lists", "by-slug-items", preview.shareSlug],
+    queryFn: () => fetchListItemsBySlug(preview.shareSlug, token),
+    enabled: readOnly,
+  });
+  const items: Item[] = itemsQuery.data
+    ? [...itemsQuery.data.ordered, ...itemsQuery.data.unordered, ...itemsQuery.data.completed]
+    : [];
+
+  const signIn = async () => {
+    await setItem(PENDING_RETURN_PATH_KEY, returnPath ?? `/list/${preview.id}`).catch(() => {});
+    await onBeforeSignIn?.();
+    router.push("/sign-in");
   };
 
   const handleJoin = async () => {
@@ -90,8 +83,14 @@ export function ListPublicLanding({
     }
   };
 
-  const visibility = preview.shareVisibility;
-  const allItems: Item[] = items ? [...items.ordered, ...items.unordered, ...items.completed] : [];
+  const owner = preview.ownerName ?? null;
+  const byline = [
+    owner ? `by ${owner}` : null,
+    `${preview.memberCount} ${preview.memberCount === 1 ? "member" : "members"}`,
+    `${preview.itemCount} ${preview.itemCount === 1 ? "item" : "items"}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <Screen style={styles.screen}>
@@ -100,124 +99,123 @@ export function ListPublicLanding({
         onLeadingPress={() => goBack("/")}
         leadingTestID="list-landing-back"
       />
+      <ScrollView contentContainerStyle={styles.body}>
+        <View style={styles.hero}>
+          <EmojiBadge emoji={preview.emoji} color={accent} size={72} shape="rounded" />
+          <Text variant="title" style={styles.title} testID="list-landing-name">
+            {preview.name}
+          </Text>
+          <Text tone="muted" style={styles.byline} testID="list-landing-byline">
+            {byline}
+          </Text>
+          {preview.description ? (
+            <Text tone="secondary" style={styles.description}>
+              {preview.description}
+            </Text>
+          ) : null}
+        </View>
 
-      <View style={styles.hero}>
-        <EmojiBadge emoji={preview.emoji} color={accent} size={72} shape="rounded" />
-        <Text variant="title" style={styles.title} testID="list-landing-name">
-          {preview.name}
-        </Text>
-        <Text tone="muted" style={styles.byline}>
-          {preview.ownerName ? `by ${preview.ownerName}` : "Private list"}
-          {" · "}
-          {preview.memberCount} {preview.memberCount === 1 ? "member" : "members"}
-          {" · "}
-          {preview.itemCount} {preview.itemCount === 1 ? "item" : "items"}
-        </Text>
-      </View>
-
-      <Card style={styles.cta} elevated>
-        {!viewer.authenticated ? (
-          <>
-            <Text variant="title" style={styles.ctaHeading}>
-              {visibility === "view" ? "Sign in to see more" : "Sign in to join"}
-            </Text>
-            <Text tone="secondary" style={styles.ctaBody}>
-              {visibility === "view"
-                ? `${preview.ownerName ?? "The owner"} shared this list as read-only. Sign in to see the items.`
-                : "Workshop is a private space for lists you build with friends. Create an account to join this one."}
-            </Text>
-            <Button
-              label="Create account or sign in"
-              variant="primary"
-              size="lg"
-              onPress={async () => {
-                await stashReturnPath();
-                router.push("/sign-in");
-              }}
-              testID="list-landing-sign-in"
-            />
-          </>
-        ) : viewer.isMember ? (
-          <>
-            <Text variant="title" style={styles.ctaHeading}>
-              You're a member
-            </Text>
-            <Text tone="secondary" style={styles.ctaBody}>
-              Open the list to see what's inside.
-            </Text>
+        {viewer.isMember ? (
+          <Card style={styles.cta} elevated>
+            <Text variant="heading">You're on this list</Text>
             <Button
               label="Open list"
-              variant="primary"
               size="lg"
-              onPress={() => router.replace(`/list/${preview.id}`, { withAnchor: true })}
+              onPress={() => router.replace(`/list/${preview.id}` as Href, { withAnchor: true })}
               testID="list-landing-open"
             />
-          </>
-        ) : visibility === "join" && onJoin ? (
-          <>
-            <Text variant="title" style={styles.ctaHeading}>
-              Join this list
-            </Text>
+          </Card>
+        ) : visibility === "join" ? (
+          <Card style={styles.cta} elevated>
+            <Text variant="heading">Join this list</Text>
             <Text tone="secondary" style={styles.ctaBody}>
-              Anyone with the link can join.{" "}
-              {preview.ownerName ? `Joining adds you alongside ${preview.ownerName}.` : ""}
+              {owner
+                ? `${owner} shared it with you. Joining lets you add to it, and it shows up on your home.`
+                : "Joining lets you add to it, and it shows up on your home."}
             </Text>
-            <Button
-              label="Join list"
-              variant="primary"
-              size="lg"
-              loading={joining || joinPending}
-              disabled={joining || joinPending}
-              onPress={handleJoin}
-              testID="list-landing-join"
-            />
-          </>
+            {viewer.authenticated ? (
+              <Button
+                label="Join list"
+                size="lg"
+                loading={joining}
+                disabled={joining || !onJoin}
+                onPress={handleJoin}
+                testID="list-landing-join"
+              />
+            ) : (
+              <Button
+                label="Sign in to join"
+                size="lg"
+                onPress={() => void signIn()}
+                testID="list-landing-sign-in"
+              />
+            )}
+          </Card>
         ) : visibility === "view" ? (
-          <>
-            <Text variant="title" style={styles.ctaHeading}>
-              Read-only list
-            </Text>
-            <Text tone="secondary" style={styles.ctaBody}>
-              {preview.ownerName ?? "The owner"} shared this list as read-only. Items are listed
-              below. Ask the owner if you'd like to add or change anything.
-            </Text>
-          </>
+          <Text tone="muted" style={styles.readOnly} testID="list-landing-read-only">
+            {owner ? `${owner} shared this list to read.` : "This list is shared to read."} Only its
+            members can change it.
+          </Text>
         ) : (
-          <>
-            <Text variant="title" style={styles.ctaHeading}>
-              Ask to join
-            </Text>
+          <Card style={styles.cta} elevated>
+            <Text variant="heading">This link doesn't let you join</Text>
             <Text tone="secondary" style={styles.ctaBody}>
-              You're signed in, but joining is currently disabled for this list. Ask{" "}
-              {preview.ownerName ?? "the owner"} to share a fresh link with joining enabled.
+              Ask {owner ?? "the owner"} for a new link.
             </Text>
-          </>
+          </Card>
         )}
-      </Card>
 
-      {visibility === "view" && allItems.length > 0 ? (
-        <ScrollView contentContainerStyle={styles.itemsBody} testID="list-landing-items">
-          <SectionHeader title="Items" style={styles.itemsLabel} />
-          {allItems.map((item) => (
-            <View key={item.id} style={styles.itemRow}>
-              {item.completed ? (
-                <Icon name="check" size={18} tone="muted" />
-              ) : (
-                <View style={styles.itemMark}>
-                  <View style={styles.itemDot} />
+        {readOnly ? (
+          <View style={styles.items} testID="list-landing-items">
+            <SectionHeader title="Items" style={styles.itemsLabel} />
+            {itemsQuery.isPending ? (
+              <Skeleton.Rows count={4} />
+            ) : itemsQuery.isError ? (
+              <View style={styles.itemsError}>
+                <Text tone="secondary">Couldn't load the items.</Text>
+                <Button
+                  label="Retry"
+                  variant="secondary"
+                  size="md"
+                  onPress={() => void itemsQuery.refetch()}
+                />
+              </View>
+            ) : items.length === 0 ? (
+              <Text tone="muted">Nothing on it yet.</Text>
+            ) : (
+              items.map((item) => (
+                <View key={item.id} style={styles.itemRow}>
+                  {item.completed ? (
+                    <Icon name="check" size={18} tone="muted" />
+                  ) : (
+                    <View style={styles.itemMark}>
+                      <View style={styles.itemDot} />
+                    </View>
+                  )}
+                  <Text
+                    variant="body"
+                    style={item.completed ? styles.itemTitleDone : styles.itemTitle}
+                    numberOfLines={2}
+                  >
+                    {item.title}
+                  </Text>
                 </View>
-              )}
-              <Text
-                variant="body"
-                style={item.completed ? styles.itemTitleDone : styles.itemTitle}
-                numberOfLines={2}
-              >
-                {item.title}
-              </Text>
-            </View>
-          ))}
-        </ScrollView>
-      ) : null}
+              ))
+            )}
+          </View>
+        ) : null}
+
+        {readOnly && !viewer.authenticated ? (
+          <View style={styles.ownLists}>
+            <Button
+              label="Start your own lists"
+              variant="secondary"
+              onPress={() => void signIn()}
+              testID="list-landing-sign-in"
+            />
+          </View>
+        ) : null}
+      </ScrollView>
     </Screen>
   );
 }
@@ -231,54 +229,49 @@ export function ListPublicLandingSkeleton() {
         onLeadingPress={() => goBack("/")}
         leadingTestID="list-landing-back"
       />
-      <View style={styles.hero} testID="list-landing-loading">
+      <View style={[styles.body, styles.hero]} testID="list-landing-loading">
         <Skeleton.Block width={72} height={72} radius={tokens.radius.md} />
         <Skeleton.Block width="60%" height={28} />
         <Skeleton.Block width="45%" height={14} />
       </View>
       <View style={styles.ctaSkeleton}>
-        <Skeleton.Block height={180} radius={tokens.radius.lg} />
+        <Skeleton.Block height={160} radius={tokens.radius.lg} />
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: tokens.bg.canvas },
+  body: { paddingTop: tokens.space.lg, paddingBottom: tokens.space.xxl * 2 },
   ctaSkeleton: { marginHorizontal: tokens.space.xl, marginTop: tokens.space.xl },
-  screen: {
-    flex: 1,
-    backgroundColor: tokens.bg.canvas,
-    // ScreenHeader adds its own space.sm on top.
-    paddingTop: tokens.space.lg,
-    gap: tokens.space.xl,
-  },
   hero: {
     alignItems: "center",
     paddingHorizontal: tokens.space.xl,
     gap: tokens.space.md,
   },
   title: { textAlign: "center", letterSpacing: -0.5 },
-  byline: {
-    textAlign: "center",
-    letterSpacing: 0.2,
-  },
-  // `Screen`'s style lands on its outer wrapper, so `gap` above never
-  // reached these children; space the card from the hero explicitly.
+  byline: { textAlign: "center", letterSpacing: 0.2 },
+  description: { textAlign: "center", lineHeight: 22 },
   cta: {
     marginTop: tokens.space.xl,
     marginHorizontal: tokens.space.xl,
     gap: tokens.space.md,
     padding: tokens.space.xl,
   },
-  ctaHeading: { fontSize: tokens.font.size.xl, lineHeight: 28 },
-  ctaBody: { lineHeight: 20 },
-  itemsBody: {
+  ctaBody: { lineHeight: 22 },
+  readOnly: {
+    marginTop: tokens.space.lg,
+    marginHorizontal: tokens.space.xl,
+    textAlign: "center",
+  },
+  items: {
     paddingHorizontal: tokens.space.xl,
     paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
     gap: tokens.space.sm,
   },
   itemsLabel: { marginBottom: tokens.space.xs },
+  itemsError: { gap: tokens.space.sm, alignItems: "flex-start" },
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -288,12 +281,8 @@ const styles = StyleSheet.create({
     borderBottomColor: tokens.border.subtle,
   },
   itemMark: { width: 18, alignItems: "center" },
-  itemDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: tokens.border.default,
-  },
+  itemDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: tokens.border.default },
   itemTitle: { flex: 1, color: tokens.text.primary },
   itemTitleDone: { flex: 1, color: tokens.text.muted, textDecorationLine: "line-through" },
+  ownLists: { paddingHorizontal: tokens.space.xl, paddingTop: tokens.space.xl },
 });

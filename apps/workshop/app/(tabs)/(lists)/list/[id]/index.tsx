@@ -1,23 +1,17 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, errorMessage } from "@workshop/api-client/api";
+import { ApiError } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ListSummary } from "@workshop/shared";
-import {
-  Button,
-  EmptyState,
-  type ListColorKey,
-  Screen,
-  ScreenHeader,
-  Skeleton,
-  tokens,
-} from "@workshop/ui";
+import { type ListColorKey, Screen, ScreenHeader, Skeleton, tokens } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import { fetchItems } from "../../../../../src/api/items";
 import { fetchListDetail, fetchListPreview, markListRead } from "../../../../../src/api/lists";
 import { useAuth } from "../../../../../src/hooks/useAuth";
+import { linkLoadError } from "../../../../../src/lib/errorCopy";
 import { goBack } from "../../../../../src/lib/goBack";
+import { LinkErrorScreen } from "../../../../../src/screens/LinkErrorScreen";
 import { ListDetail, ListHeader } from "../../../../../src/screens/ListDetail";
 import { ListPublicLanding } from "../../../../../src/screens/ListPublicLanding";
 import { useJoinList } from "../../../../../src/screens/useJoinList";
@@ -107,9 +101,10 @@ export default function ListDetailRoute() {
 
   if (!id) {
     return (
-      <View style={styles.center}>
-        <EmptyState title="Missing list id" />
-      </View>
+      <LinkErrorScreen
+        title="This link is incomplete"
+        message="It's missing the part that names the list. Pick one from your lists."
+      />
     );
   }
 
@@ -140,37 +135,28 @@ export default function ListDetailRoute() {
       <ListPublicLanding
         preview={previewQuery.data.preview}
         viewer={previewQuery.data.viewer}
+        returnPath={`/list/${id}`}
         onJoin={onJoin}
       />
     );
   }
 
+  const copy = linkLoadError(previewQuery.error ?? listQuery.error);
   return (
-    <View style={styles.skeletonRoot}>
-      <Screen>
-        <ScreenHeader
-          leading="back"
-          onLeadingPress={() => goBack("/")}
-          leadingTestID="list-detail-back"
-        />
-      </Screen>
-      <View style={styles.center}>
-        <EmptyState
-          title="Couldn't load list"
-          description={errorMessage(previewQuery.error ?? listQuery.error)}
-          action={
-            <Button
-              label="Retry"
-              variant="secondary"
-              onPress={() => {
-                previewQuery.refetch();
-                if (token) listQuery.refetch();
-              }}
-            />
-          }
-        />
-      </View>
-    </View>
+    <LinkErrorScreen
+      title={copy.title}
+      message={copy.message}
+      onRetry={
+        copy.notFound
+          ? undefined
+          : () => {
+              void previewQuery.refetch();
+              if (token) void listQuery.refetch();
+            }
+      }
+      retrying={previewQuery.isFetching}
+      testID="list-error"
+    />
   );
 }
 

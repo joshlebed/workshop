@@ -11,3 +11,13 @@ targets:
         --env EXPO_PUBLIC_API_URL=http://localhost:8787
         --env EXPO_PUBLIC_DEV_AUTH=1
     serviceDependencies: [backend]
+  - name: workshop
+    displayName: Workshop.dev
+    bundleId: dev.josh.workshop
+    platform: ios
+    buildCommands:
+      - >-
+        lim xcode build . --expo-app-dir apps/workshop --configuration Release
+        --env EXPO_PUBLIC_API_URL=http://localhost:8787
+        --env EXPO_PUBLIC_DEV_AUTH=1
+    serviceDependencies: [backend]

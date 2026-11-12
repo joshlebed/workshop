@@ -1,10 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError, apiErrorCode, errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { AcceptInviteResponse, ListPreview } from "@workshop/shared";
 import { useToast } from "@workshop/ui";
 import { useCallback } from "react";
 import { joinListBySlug } from "../api/share";
+import { joinErrorMessage } from "../lib/errorCopy";
 
 /**
  * Join action for `ListPublicLanding`, shared by `/l/:slug` and `/list/:id`
@@ -46,16 +46,4 @@ export function useJoinList({
   }, [slug, token, queryClient, onJoined, showToast]);
 
   return canJoin ? join : null;
-}
-
-/** Plain-language reason for a failed join; the server's codes aren't copy. */
-function joinErrorMessage(error: unknown): string {
-  if (apiErrorCode(error) === "list_view_only") {
-    return "This list is read-only now. Ask the owner to turn on joining.";
-  }
-  if (error instanceof ApiError && error.status === 404) {
-    return "This link doesn't work anymore. Ask for a fresh one.";
-  }
-  if (error instanceof ApiError) return errorMessage(error, "Couldn't join this list.");
-  return "Couldn't join this list. Check your connection and try again.";
 }

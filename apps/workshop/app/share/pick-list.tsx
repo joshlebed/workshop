@@ -1,11 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import type { ItemKind, ListSummary } from "@workshop/shared";
+import type { ItemKind, LinkPreview, ListSummary } from "@workshop/shared";
 import {
+  Badge,
   Button,
   EmojiBadge,
   EmptyState,
+  haptics,
   Icon,
   type ListColorKey,
   ListRow,
@@ -15,14 +16,36 @@ import {
   Skeleton,
   Text,
   tokens,
+  useToast,
 } from "@workshop/ui";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useMemo } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from "react-native";
 import { fetchActivity } from "../../src/api/activity";
+import { createItem } from "../../src/api/items";
+import { fetchLinkPreview } from "../../src/api/linkPreview";
 import { fetchLists } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
+import { addSurfaceHref } from "../../src/lib/createFromTemplate";
+import { shareSaveErrorMessage } from "../../src/lib/errorCopy";
 import { homeListOrder } from "../../src/lib/homeListOrder";
+import { noteItemAdded } from "../../src/lib/recentlyAdded";
+import {
+  canQuickSave,
+  normalizeSharePayload,
+  readLastShareListId,
+  rememberShareList,
+  type SharePayload,
+  shareAddParams,
+  shareCaption,
+  sharedItemRequest,
+  sharePayloadParams,
+  sharePickOrder,
+  stashPendingShare,
+} from "../../src/lib/sharePayload";
+
+/** How long a save waits for a link's preview before saving without it. */
+const PREVIEW_WAIT_MS = 2500;
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -33,81 +56,145 @@ const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   plain: "List",
 };
 
-function summaryLabel(list: ListSummary): string {
-  if (list.itemKind && KIND_LABEL[list.itemKind]) return KIND_LABEL[list.itemKind]!;
-  return "List";
-}
-
-// Lists that pair naturally with a shared URL — anything that accepts the
-// `link` content shape (date ideas, trips, daily games).
-function isUrlFriendly(list: ListSummary): boolean {
-  return list.itemKind === "link" || list.itemKind === null;
-}
-
-function shortHost(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    return u.host.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
-}
-
+/**
+ * The share extension's list picker (UX pass 4.4). Lists in home order with
+ * the last one a share went into on top, marked. On a list that takes a free
+ * line or a link, one tap saves the share and lands on the list with the new
+ * row highlighted and "Added to …"; search-backed lists open their add
+ * surface prefilled. "New list" carries the share through creation. A failed
+ * save keeps everything here and offers Retry.
+ */
 export default function PickList() {
   const params = useLocalSearchParams<{ url?: string; text?: string }>();
-  const sharedUrl = firstParam(params.url);
-  const sharedText =
-    firstParam(params.text) ?? (sharedUrl && !isLikelyUrl(sharedUrl) ? sharedUrl : null);
-  const normalizedSharedUrl = sharedUrl && isLikelyUrl(sharedUrl) ? sharedUrl : null;
+  const payload = useMemo(
+    () => normalizeSharePayload({ url: firstParam(params.url), text: firstParam(params.text) }),
+    [params.url, params.text],
+  );
   const router = useRouter();
-  const { token } = useAuth();
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
+  const { token, status } = useAuth();
+
+  // Signed out (a link straight here): keep the share through sign-in.
+  useEffect(() => {
+    if (status !== "signed-out") return;
+    (async () => {
+      if (payload) await stashPendingShare(payload);
+      router.replace("/sign-in");
+    })();
+  }, [status, payload, router]);
 
   const listsQuery = useQuery({
     queryKey: queryKeys.lists.all,
     queryFn: () => fetchLists(token),
     enabled: !!token,
   });
-
-  // Same lists in the same order as home (0.17): hidden lists are left out,
-  // pinned first, then latest activity. The activity feed is usually warm
-  // from home; without it the order falls back to `updatedAt`.
+  // Same order as home (0.17): hidden lists left out, pinned first, then
+  // latest activity. The feed is usually warm from home.
   const activityQuery = useQuery({
     queryKey: queryKeys.activity.feed,
     queryFn: () => fetchActivity({ limit: 50 }, token),
     enabled: !!token,
     staleTime: 30_000,
   });
+  const [lastListId, setLastListId] = useState<string | null>(null);
+  useEffect(() => {
+    void readLastShareListId().then(setLastListId);
+  }, []);
   const lists = useMemo(() => {
     const latest = new Map<string, string>();
     for (const e of activityQuery.data?.events ?? []) {
       if (!latest.has(e.listId)) latest.set(e.listId, e.createdAt);
     }
-    return homeListOrder(listsQuery.data?.lists ?? [], (id) => latest.get(id));
-  }, [listsQuery.data, activityQuery.data]);
+    const ordered = homeListOrder(listsQuery.data?.lists ?? [], (id) => latest.get(id));
+    return sharePickOrder(ordered, lastListId);
+  }, [listsQuery.data, activityQuery.data, lastListId]);
+  const lastUsedId = lists[0]?.id === lastListId ? lastListId : null;
 
-  const onPick = (list: ListSummary) => {
-    const search = new URLSearchParams();
-    if (normalizedSharedUrl) search.set("prefillUrl", normalizedSharedUrl);
-    if (!normalizedSharedUrl && sharedText) search.set("prefillText", sharedText);
-    const qs = search.toString();
-    const target = qs ? (`/list/${list.id}/add?${qs}` as const) : (`/list/${list.id}/add` as const);
-    router.replace(target, { withAnchor: true });
-  };
+  const [savingId, setSavingId] = useState<string | null>(null);
 
-  const onCreateNew = () => {
-    router.replace("/create-list/type", { withAnchor: true });
-  };
-
-  const onCancel = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/");
+  const quickSave = async (list: ListSummary, share: SharePayload) => {
+    setSavingId(list.id);
+    try {
+      let preview: LinkPreview | null = null;
+      if (share.url) {
+        const url = share.url;
+        preview = await Promise.race([
+          queryClient
+            .fetchQuery({
+              queryKey: ["link-preview", url],
+              queryFn: ({ signal }) => fetchLinkPreview(url, token, signal),
+              staleTime: 5 * 60_000,
+            })
+            .then((r) => r.preview)
+            .catch(() => null),
+          new Promise<null>((r) => setTimeout(() => r(null), PREVIEW_WAIT_MS)),
+        ]);
+      }
+      const { item } = await createItem(
+        list.id,
+        sharedItemRequest(share, list.itemKind, preview),
+        token,
+      );
+      haptics.success();
+      noteItemAdded(list.id, item.id);
+      void rememberShareList(list.id);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(list.id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+      showToast({ key: "share-saved", message: `Added to ${list.name}` });
+      // Root stack → `(lists)`: `withAnchor` keeps home beneath the list.
+      router.replace(`/list/${list.id}` as Href, { withAnchor: true });
+    } catch (e) {
+      setSavingId(null);
+      showToast({
+        key: "share-saved",
+        message: shareSaveErrorMessage(list.name, e),
+        tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => void quickSave(list, share),
+      });
     }
   };
 
-  const host = shortHost(normalizedSharedUrl);
+  const onPick = (list: ListSummary) => {
+    if (savingId) return;
+    if (payload && canQuickSave(list.itemKind)) {
+      void quickSave(list, payload);
+      return;
+    }
+    // Search-backed lists (and no payload at all): the add surface, prefilled.
+    if (payload) void rememberShareList(list.id);
+    const href = addSurfaceHref(list.id, payload ? shareAddParams(payload) : {});
+    router.replace(href as Href, { withAnchor: true });
+  };
+
+  const onCreateNew = () => {
+    const qs = payload ? new URLSearchParams(sharePayloadParams(payload)).toString() : "";
+    router.replace((qs ? `/create-list/type?${qs}` : "/create-list/type") as Href, {
+      withAnchor: true,
+    });
+  };
+
+  const onCancel = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/");
+  };
+
+  const newListRow = (
+    <ListRow
+      title="New list"
+      subtitle={payload ? "Make a list and add this to it" : undefined}
+      leading={
+        <View style={styles.createGlyphBadge}>
+          <Icon name="plus" size={18} tone="secondary" />
+        </View>
+      }
+      onPress={onCreateNew}
+      disabled={!!savingId}
+      testID="share-pick-create-new"
+      style={styles.createRow}
+    />
+  );
 
   return (
     <Screen style={styles.root}>
@@ -118,11 +205,11 @@ export default function PickList() {
         onLeadingPress={onCancel}
         title="Add to a list"
       />
-      {normalizedSharedUrl || sharedText ? (
+      {payload ? (
         <View style={styles.urlPill} testID="share-pick-url">
-          <View style={styles.urlGlobe} />
+          <View style={styles.urlDot} />
           <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.urlText}>
-            {normalizedSharedUrl ? `Saving from ${host ?? normalizedSharedUrl}` : "Shared text"}
+            {shareCaption(payload)}
           </Text>
         </View>
       ) : null}
@@ -131,27 +218,29 @@ export default function PickList() {
         {listsQuery.isPending ? (
           <Skeleton.Rows count={6} testID="share-pick-loading" />
         ) : listsQuery.isError && !listsQuery.data ? (
-          <View style={styles.center}>
-            <EmptyState
-              title="Couldn't load your lists"
-              description={errorMessage(listsQuery.error)}
-              action={
-                <Button label="Retry" variant="secondary" onPress={() => listsQuery.refetch()} />
-              }
-            />
-          </View>
+          <PullToRefresh
+            refreshing={listsQuery.isRefetching}
+            onRefresh={() => listsQuery.refetch()}
+          >
+            <ScrollView contentContainerStyle={styles.center}>
+              <EmptyState
+                title="Couldn't load your lists"
+                description="Check your connection and try again. What you shared is still here."
+                action={
+                  <Button label="Retry" variant="secondary" onPress={() => listsQuery.refetch()} />
+                }
+              />
+            </ScrollView>
+          </PullToRefresh>
         ) : lists.length === 0 ? (
-          <View style={styles.center}>
-            <EmptyState
-              title="No lists yet"
-              description={
-                normalizedSharedUrl || sharedText
-                  ? "Create your first list to save this."
-                  : "Create your first list to start collecting."
-              }
-              action={<Button label="Create a list" onPress={onCreateNew} />}
-            />
-          </View>
+          <ScrollView contentContainerStyle={styles.listContent}>
+            <Text tone="secondary" style={styles.emptyLead}>
+              {payload
+                ? "You don't have a list yet. Make one for this."
+                : "You don't have a list yet."}
+            </Text>
+            {newListRow}
+          </ScrollView>
         ) : (
           <PullToRefresh
             refreshing={listsQuery.isRefetching}
@@ -166,28 +255,13 @@ export default function PickList() {
               renderItem={({ item }) => (
                 <PickRow
                   list={item}
-                  hasSharedUrl={!!normalizedSharedUrl}
+                  lastUsed={item.id === lastUsedId}
+                  saving={savingId === item.id}
+                  disabled={!!savingId && savingId !== item.id}
                   onPress={() => onPick(item)}
                 />
               )}
-              ListFooterComponent={
-                <ListRow
-                  title={
-                    <Text tone="secondary" style={styles.createLabel}>
-                      Create new list
-                    </Text>
-                  }
-                  leading={
-                    <View style={styles.createGlyphBadge}>
-                      <Icon name="plus" size={18} tone="secondary" />
-                    </View>
-                  }
-                  accessibilityLabel="Create new list"
-                  onPress={onCreateNew}
-                  testID="share-pick-create-new"
-                  style={styles.createRow}
-                />
-              }
+              ListFooterComponent={newListRow}
             />
           </PullToRefresh>
         )}
@@ -198,49 +272,44 @@ export default function PickList() {
 
 function firstParam(value: string | string[] | undefined): string | null {
   const raw = Array.isArray(value) ? value[0] : value;
-  const trimmed = raw?.trim();
-  return trimmed ? trimmed : null;
-}
-
-function isLikelyUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
+  return raw?.trim() || null;
 }
 
 function PickRow({
   list,
-  hasSharedUrl,
+  lastUsed,
+  saving,
+  disabled,
   onPress,
 }: {
   list: ListSummary;
-  hasSharedUrl: boolean;
+  lastUsed: boolean;
+  saving: boolean;
+  disabled: boolean;
   onPress: () => void;
 }) {
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
-  const itemsLabel =
+  const kind = (list.itemKind && KIND_LABEL[list.itemKind]) || "List";
+  const count =
     list.itemCount === 0 ? "Empty" : `${list.itemCount} ${list.itemCount === 1 ? "item" : "items"}`;
   const subtitle =
-    list.memberCount > 1
-      ? `${summaryLabel(list)} · ${list.memberCount} members`
-      : `${summaryLabel(list)} · ${itemsLabel}`;
-  // When the user is mid-share with a URL attached, lists that don't take
-  // free-form items (movie/tv/book go through search) are dimmed so the eye
-  // skips them. The row is still tappable — the add screen will handle it.
-  const dim = hasSharedUrl && !isUrlFriendly(list);
-
+    list.memberCount > 1 ? `${kind} · ${list.memberCount} members` : `${kind} · ${count}`;
   return (
     <ListRow
       title={list.name}
       subtitle={subtitle}
       leading={<EmojiBadge emoji={list.emoji} color={accent} />}
-      accessibilityLabel={`Add to ${list.name}`}
+      trailing={
+        saving ? (
+          <ActivityIndicator color={tokens.text.muted} />
+        ) : lastUsed ? (
+          <Badge label="Last used" tone="neutral" testID="share-pick-last-used" />
+        ) : null
+      }
+      accessibilityLabel={`Add to ${list.name}${lastUsed ? ", last used" : ""}`}
       onPress={onPress}
+      disabled={disabled}
       testID={`share-pick-row-${list.id}`}
-      style={dim ? styles.rowDim : undefined}
     />
   );
 }
@@ -249,7 +318,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
-    paddingTop: tokens.space.lg,
     paddingBottom: tokens.space.lg,
     gap: tokens.space.md,
   },
@@ -267,17 +335,12 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.subtle,
     maxWidth: "100%",
   },
-  urlGlobe: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: tokens.accent.default,
-  },
+  urlDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: tokens.accent.default },
   urlText: { letterSpacing: 0.1, flexShrink: 1 },
   body: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  center: { flexGrow: 1, alignItems: "center", justifyContent: "center" },
   listContent: { paddingTop: tokens.space.xs, paddingBottom: tokens.space.xxl },
-  rowDim: { opacity: 0.55 },
+  emptyLead: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.sm },
   rowSeparator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.border.subtle,
@@ -294,5 +357,4 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.default,
     borderStyle: "dashed",
   },
-  createLabel: { fontWeight: tokens.font.weight.medium },
 });
