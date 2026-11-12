@@ -56,7 +56,7 @@ export default function AcceptInvite() {
         const res = await acceptInvite(inviteToken, authToken);
         await removeItem(PENDING_INVITE_TOKEN_KEY).catch(() => {});
         await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-        router.replace(`/list/${res.list.id}`);
+        router.replace(`/list/${res.list.id}`, { withAnchor: true });
       } catch (e) {
         // Drop the stash on a hard failure so re-opening the app doesn't loop
         // back to the broken invite.

@@ -23,6 +23,7 @@ export type IconName =
   | "share"
   | "settings"
   | "bell"
+  | "hide"
   | "pin"
   | "trash"
   | "copy";
@@ -343,6 +344,27 @@ const GLYPHS: Record<IconName, Glyph> = {
       </>
     );
   },
+  // An eye with a slash through it: "Hide" (a per-viewer hide, not delete).
+  hide: (size, s, c) => (
+    <>
+      <View
+        style={{
+          width: size * 0.84,
+          height: size * 0.5,
+          borderRadius: size * 0.42,
+          borderWidth: s,
+          borderColor: c,
+        }}
+      />
+      <View
+        style={[
+          abs,
+          { width: size * 0.2, height: size * 0.2, borderRadius: size * 0.1, backgroundColor: c },
+        ]}
+      />
+      {bar(size * 0.96, s, c, { transform: [{ rotate: "-40deg" }] })}
+    </>
+  ),
   bell: (size, s, c) => {
     const w = size * 0.56;
     return (

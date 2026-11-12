@@ -53,6 +53,20 @@ export function savedFormOf(
  *    value) follows the server, so another member's edit shows up;
  *  - anything else is a local edit not saved yet, and is kept.
  */
+/**
+ * The same rule for any trimmed text field (list settings name and
+ * description, UX pass 3.4): a refetch never replaces a focused field or one
+ * holding an unsaved edit.
+ */
+export function reconcileTextDraft(args: {
+  draft: string;
+  prevServer: string;
+  nextServer: string;
+  focused: boolean;
+}): string {
+  return reconcileDraftField({ ...args, field: "title", normalizeUrl: () => null });
+}
+
 export function reconcileDraftField(args: {
   field: DraftField;
   draft: string;

@@ -65,26 +65,26 @@ Every Workshop screen is built from the primitives in `packages/ui` (`@workshop/
 for these before writing a `Pressable` or a `TextInput` by hand; if one is missing a case,
 extend it rather than copying it into a screen.
 
-| Primitive                         | Use it for                         | API in one line                                                                                                                                                     |
-| --------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ScreenHeader`                    | Every screen header                | `leading="back" \| "close" \| "none"`, `onLeadingPress`, `title`, `eyebrow`, `titleAccessory`, `trailing`, `center`                                                 |
-| `Icon`                            | Every control glyph                | `name` (back, chevron, chevron-down, close, more, check, plus, refresh, drag, external, search, share, settings, bell, pin, trash, copy), `size`, `tone` or `color` |
-| `IconButton`                      | Icon-only actions                  | 44×44; `icon`, `iconTone`, `accessibilityLabel`, `busy`, `toggled` (`aria-pressed`)                                                                                 |
-| `Button`                          | Text actions                       | `variant="primary" \| "secondary" \| "ghost" \| "danger"`, `size`, `loading`, `leftIcon`                                                                            |
-| `ListRow`                         | Every row that opens something     | `[leading] title / subtitle [trailing]`, `chevron`, `onPress`, `onLongPress`, `selected`, `pressableProps`                                                          |
-| `EmojiBadge`                      | A list's identity mark             | `emoji`, `color` (list hue, 20% fill), `size={24 \| 44 \| 72}`, `imageUrl`, `shape`                                                                                 |
-| `TextField`                       | Every text input                   | `label` (wired), `hint`, `error`, `multiline`, `variant="search"` + `onClear`, `trailing`; font never below 16                                                      |
-| `ActionSheet`                     | Menus of actions                   | `items=[{label, icon?, tone?: "default" \| "danger", onPress}]`, `title` or `header`; runs the choice after the sheet closes                                        |
-| `confirm()` + `ConfirmDialogHost` | Irreversible actions               | `confirm({title, message, confirmLabel, destructive})` → `Promise<boolean>`; in-app dialog on web, system alert on native                                           |
-| `Sheet`                           | Anything else that slides up       | ≤85% of the screen, scrolls inside, no drag handle (no pan to dismiss)                                                                                              |
-| `Skeleton`                        | First load only                    | `Skeleton.Rows count`, `Skeleton.Row` (ListRow metrics), `Skeleton.Block`; still under reduced motion                                                               |
-| `Fab`                             | The one primary action of a screen | bottom-right 56pt accent disc; lifts toasts above itself                                                                                                            |
-| `Switch`                          | On/off settings                    | labelled row, `role="switch"`, `aria-checked`                                                                                                                       |
-| `RadioRow`                        | Single choice                      | `role="radio"` row; wrap a set in `role="radiogroup"`                                                                                                               |
-| `SectionHeader`                   | Labels above groups                | uppercase tracked `eyebrow` text + optional trailing                                                                                                                |
-| `Badge`                           | Counts, one-word statuses          | `label`, `tone="accent" \| "neutral" \| "danger"`, `ringColor`                                                                                                      |
-| `Chip`                            | Tags and filters                   | 32pt pill in a 44pt target, `aria-pressed`                                                                                                                          |
-| `Toast` (`useToast`)              | Feedback after an action           | enter/exit on the motion tokens, `role="status"` (alert for danger); Undo is a quiet accent text action; `key` replaces an earlier toast of the same kind           |
+| Primitive                         | Use it for                         | API in one line                                                                                                                                                           |
+| --------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ScreenHeader`                    | Every screen header                | `leading="back" \| "close" \| "none"`, `onLeadingPress`, `title`, `eyebrow`, `titleAccessory`, `trailing`, `center`                                                       |
+| `Icon`                            | Every control glyph                | `name` (back, chevron, chevron-down, close, more, check, plus, refresh, drag, external, search, share, settings, bell, pin, hide, trash, copy), `size`, `tone` or `color` |
+| `IconButton`                      | Icon-only actions                  | 44×44; `icon`, `iconTone`, `accessibilityLabel`, `busy`, `toggled` (`aria-pressed`)                                                                                       |
+| `Button`                          | Text actions                       | `variant="primary" \| "secondary" \| "ghost" \| "danger"`, `size`, `loading`, `leftIcon`                                                                                  |
+| `ListRow`                         | Every row that opens something     | `[leading] title / subtitle [trailing]`, `chevron`, `onPress`, `onLongPress`, `selected`, `pressableProps`                                                                |
+| `EmojiBadge`                      | A list's identity mark             | `emoji`, `color` (list hue, 20% fill), `size={24 \| 44 \| 72}`, `imageUrl`, `shape`                                                                                       |
+| `TextField`                       | Every text input                   | `label` (wired), `hint`, `error`, `multiline`, `variant="search"` + `onClear`, `trailing`; font never below 16                                                            |
+| `ActionSheet`                     | Menus of actions                   | `items=[{label, icon?, tone?: "default" \| "danger", onPress}]`, `title` or `header`; runs the choice after the sheet closes                                              |
+| `confirm()` + `ConfirmDialogHost` | Irreversible actions               | `confirm({title, message, confirmLabel, destructive})` → `Promise<boolean>`; in-app dialog on web, system alert on native                                                 |
+| `Sheet`                           | Anything else that slides up       | ≤85% of the screen, scrolls inside, no drag handle (no pan to dismiss)                                                                                                    |
+| `Skeleton`                        | First load only                    | `Skeleton.Rows count`, `Skeleton.Row` (ListRow metrics), `Skeleton.Block`; still under reduced motion                                                                     |
+| `Fab`                             | The one primary action of a screen | bottom-right 56pt accent disc; lifts toasts above itself                                                                                                                  |
+| `Switch`                          | On/off settings                    | labelled row, `role="switch"`, `aria-checked`                                                                                                                             |
+| `RadioRow`                        | Single choice                      | `role="radio"` row; wrap a set in `role="radiogroup"`                                                                                                                     |
+| `SectionHeader`                   | Labels above groups                | uppercase tracked `eyebrow` text + optional trailing                                                                                                                      |
+| `Badge`                           | Counts, one-word statuses          | `label`, `tone="accent" \| "neutral" \| "danger"`, `ringColor`                                                                                                            |
+| `Chip`                            | Tags and filters                   | 32pt pill in a 44pt target, `aria-pressed`                                                                                                                                |
+| `Toast` (`useToast`)              | Feedback after an action           | enter/exit on the motion tokens, `role="status"` (alert for danger); Undo is a quiet accent text action; `key` replaces an earlier toast of the same kind                 |
 
 Rules the primitives encode:
 
@@ -105,6 +105,13 @@ Rules the primitives encode:
   column never moves. Placeholder glyphs are dimmed so real artwork leads. Lifted rows scale
   1.02 on the surface step with a neutral shadow.
 - **Card.** Used sparingly; never nested. Default to no container.
+- **Settings screens** (Workshop `/settings`, list settings) are `SectionHeader` groups of
+  `ListRow`s, not button stacks. Edits autosave with a quiet "Saving… / Saved" in the header
+  trailing slot; the destructive action sits alone at the bottom under a plain heading
+  ("Delete list"), never "Danger zone".
+- **Home row** (Workshop): badge, name, one second line (count · last activity · age), a small
+  member avatar stack and an unread count `Badge` as trailing. The pin `Icon` marks pinned rows
+  under a "Pinned" `SectionHeader`.
 - **FAB.** Elevation is a **neutral** drop shadow (`rgba(0,0,0,…)`), never a colored halo: the
   accent fill carries the warmth, a glow would read as the "AI app" aesthetic the brand avoids.
 

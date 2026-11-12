@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
-import type { ActivityEvent, ActivityFeedResponse } from "@workshop/shared";
+import type { ActivityEvent, ActivityFeedResponse, ItemKind } from "@workshop/shared";
 import {
   alpha,
   Button,
@@ -20,26 +20,40 @@ import {
   tokens,
 } from "@workshop/ui";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, View } from "react-native";
 import { fetchActivity, markActivityRead } from "../src/api/activity";
+import { fetchItem } from "../src/api/items";
 import { fetchLists } from "../src/api/lists";
 import { useAuth } from "../src/hooks/useAuth";
+import {
+  type ActivityMark,
+  activityMark,
+  describeActivity,
+  firstName,
+  newEventIds,
+  shortAge,
+  splitAtReadMarker,
+} from "../src/lib/activityCopy";
 import { goBack } from "../src/lib/goBack";
-import { setActivityLastViewedAt } from "../src/lib/lastViewed";
 
 const PAGE_SIZE = 50;
 
-type ListLookup = Map<string, { name: string; emoji: string; color: string }>;
+type ListMeta = { name: string; emoji: string; color: string; itemKind: ItemKind | null };
+type ListLookup = Map<string, ListMeta>;
 
 type FeedItem =
-  | { kind: "heading"; id: string; label: string }
-  | { kind: "event"; id: string; event: ActivityEvent; showList: boolean };
+  | { kind: "new"; id: string }
+  | { kind: "heading"; id: string; label: string; afterNew: boolean }
+  | { kind: "event"; id: string; event: ActivityEvent; showList: boolean; fresh: boolean };
+
+type Filter = { kind: "actor"; id: string } | { kind: "list"; id: string } | null;
 
 export default function Activity() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const selfId = user?.id ?? null;
   const router = useRouter();
-  const backFallback = "/";
+  const queryClient = useQueryClient();
   const livePoll = useLivePollingInterval();
 
   const feedQuery = useInfiniteQuery<ActivityFeedResponse>({
@@ -55,9 +69,6 @@ export default function Activity() {
     refetchInterval: livePoll,
   });
 
-  // Re-use the cached list summaries so each event row can show which list it
-  // happened on (with the list's emoji + accent for instant recognition).
-  // Falls back to the listId if a list isn't cached yet (rare; first load).
   const listsQuery = useQuery({
     queryKey: queryKeys.lists.all,
     queryFn: () => fetchLists(token),
@@ -67,71 +78,79 @@ export default function Activity() {
   const listLookup: ListLookup = useMemo(() => {
     const map: ListLookup = new Map();
     for (const l of listsQuery.data?.lists ?? []) {
-      map.set(l.id, { name: l.name, emoji: l.emoji, color: l.color });
+      map.set(l.id, { name: l.name, emoji: l.emoji, color: l.color, itemKind: l.itemKind });
     }
     return map;
   }, [listsQuery.data]);
 
-  // On focus, mark every membership read both server-side (POST /read, idempotent)
-  // and client-side (lastViewedAt in storage so the home bell badge clears the
-  // moment we navigate back). Failures on the server-side call are intentionally
-  // swallowed — a missed read marker is not user-facing.
-  // The home bell is the sum of the server's per-list `unreadCount`, so the
-  // cached list summaries are refetched once the read lands; otherwise the
-  // badge stayed lit after visiting Activity until the next poll (0.17).
-  const queryClient = useQueryClient();
+  const events: ActivityEvent[] = useMemo(
+    () => feedQuery.data?.pages.flatMap((p) => p.events) ?? [],
+    [feedQuery.data],
+  );
+
+  // The "New" divider (3.6). Snapshot which events were unread when the screen
+  // opened: per list, the server's `unreadCount` names how many of its latest
+  // events by other people are past the read marker. Taken once, so neither a
+  // poll nor marking read moves the divider while the screen is up. Events by
+  // other people that arrive later count as new too.
+  const [snapshot, setSnapshot] = useState<{ ids: Set<string>; topAt: string | null } | null>(null);
+  useEffect(() => {
+    if (snapshot || !feedQuery.data || !listsQuery.data) return;
+    const unread = new Map<string, number>();
+    for (const l of listsQuery.data.lists) if (!l.mutedAt) unread.set(l.id, l.unreadCount);
+    setSnapshot({
+      ids: newEventIds(events, unread, selfId),
+      topAt: events[0]?.createdAt ?? null,
+    });
+  }, [snapshot, feedQuery.data, listsQuery.data, events, selfId]);
+  const isNew = useCallback(
+    (e: ActivityEvent) =>
+      !!snapshot &&
+      (snapshot.ids.has(e.id) ||
+        (e.actorId !== selfId && !!snapshot.topAt && e.createdAt > snapshot.topAt)),
+    [snapshot, selfId],
+  );
+
+  // Mark read when leaving, not on arrival, so one visit doesn't wipe which
+  // lists changed before the person has seen them. Refetch the lists so the
+  // home bell clears.
   useFocusEffect(
     useCallback(() => {
       if (!token) return;
-      const stamp = new Date().toISOString();
-      setActivityLastViewedAt(stamp).catch(() => {});
-      markActivityRead(undefined, token)
-        .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }))
-        .catch(() => {});
+      return () => {
+        markActivityRead(undefined, token)
+          .then(() => queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }))
+          .catch(() => {});
+      };
     }, [token, queryClient]),
   );
 
-  const events: ActivityEvent[] = feedQuery.data?.pages.flatMap((p) => p.events) ?? [];
+  const [filter, setFilter] = useState<Filter>(null);
 
-  // Filter strip: either an actor or a list, never both at once. A single-
-  // dimension filter keeps the chip vocabulary simple ("Alex" or "Movie
-  // Night", never "Alex's Movie Night activity"); the implementation drops
-  // the corresponding tiny edge case ("show me Alex's activity but only on
-  // Movie Night") in favour of a vocabulary the user can keep in their head
-  // without a "filters cleared" affordance.
-  const [filter, setFilter] = useState<
-    { kind: "actor"; id: string } | { kind: "list"; id: string } | null
-  >(null);
-
-  // Unique actors / lists in the visible feed, used to render filter chips.
-  // Order = first appearance in the feed (newest-first), so the people /
-  // lists you're most likely to want to filter by sit at the front of the
-  // scroll. Cap at 6 each so the chip row stays a single horizontal scroll
-  // even with many collaborators.
+  // People and lists in the loaded feed, in order of first appearance, capped
+  // so the chip strip stays one short scroll.
   const FILTER_CHIP_CAP = 6;
   const filterChips = useMemo(() => {
-    const actors: Array<{ id: string; name: string }> = [];
-    const lists: Array<{ id: string; name: string; emoji: string; color: string }> = [];
-    const seenActors = new Set<string>();
+    const people: Array<{ id: string; name: string }> = [];
+    const lists: Array<{ id: string; name: string; emoji: string }> = [];
+    const seenPeople = new Set<string>();
     const seenLists = new Set<string>();
     for (const e of events) {
-      if (!seenActors.has(e.actorId)) {
-        seenActors.add(e.actorId);
-        const name = e.actorDisplayName?.trim().split(/\s+/)[0] ?? "someone";
-        actors.push({ id: e.actorId, name });
+      if (!seenPeople.has(e.actorId)) {
+        seenPeople.add(e.actorId);
+        people.push({
+          id: e.actorId,
+          name: e.actorId === selfId ? "You" : firstName(e.actorDisplayName),
+        });
       }
       if (!seenLists.has(e.listId)) {
         seenLists.add(e.listId);
         const meta = listLookup.get(e.listId);
-        if (meta) lists.push({ id: e.listId, ...meta });
+        if (meta) lists.push({ id: e.listId, name: meta.name, emoji: meta.emoji });
       }
-      if (actors.length >= FILTER_CHIP_CAP && lists.length >= FILTER_CHIP_CAP) break;
     }
-    return {
-      actors: actors.slice(0, FILTER_CHIP_CAP),
-      lists: lists.slice(0, FILTER_CHIP_CAP),
-    };
-  }, [events, listLookup]);
+    return { people: people.slice(0, FILTER_CHIP_CAP), lists: lists.slice(0, FILTER_CHIP_CAP) };
+  }, [events, listLookup, selfId]);
 
   const filteredEvents = useMemo(() => {
     if (!filter) return events;
@@ -139,50 +158,98 @@ export default function Activity() {
     return events.filter((e) => e.listId === filter.id);
   }, [events, filter]);
 
-  // Interleave day-bucket headings into the flat event list so a single
-  // FlatList renders both. Cheaper than two lists and keeps scroll behavior
-  // sane. The bucket label is computed once per event boundary.
-  //
-  // `showList` collapses the list chip on consecutive same-list rows: when
-  // someone bulk-adds 6 items to the same list, the chip becomes noise after
-  // the first. The chip resets on a day-bucket boundary or a list change.
+  // New events first under a "New" heading, then everything else by day.
+  // `showList` drops the list line on consecutive rows from the same list.
   const items: FeedItem[] = useMemo(() => {
+    const newIds = new Set(filteredEvents.filter(isNew).map((e) => e.id));
+    const { fresh, earlier } = splitAtReadMarker(filteredEvents, newIds);
+    const suppressList = filter?.kind === "list";
     const out: FeedItem[] = [];
-    let lastBucket: string | null = null;
     let lastListId: string | null = null;
-    // When the filter pins us to a single list, every row would render the
-    // same chip — collapse it to never-show in that mode.
-    const suppressListChip = filter?.kind === "list";
-    for (const e of filteredEvents) {
+    if (fresh.length > 0) {
+      out.push({ kind: "new", id: "new" });
+      for (const e of fresh) {
+        out.push({
+          kind: "event",
+          id: e.id,
+          event: e,
+          showList: !suppressList && e.listId !== lastListId,
+          fresh: true,
+        });
+        lastListId = e.listId;
+      }
+    }
+    let lastBucket: string | null = null;
+    for (const e of earlier) {
       const bucket = dayBucketLabel(e.createdAt);
       const newBucket = bucket !== lastBucket;
       if (newBucket) {
-        out.push({ kind: "heading", id: `h-${bucket}-${e.id}`, label: bucket });
+        out.push({
+          kind: "heading",
+          id: `h-${bucket}-${e.id}`,
+          label: bucket,
+          afterNew: lastBucket === null && fresh.length > 0,
+        });
         lastBucket = bucket;
         lastListId = null;
       }
-      const showList = !suppressListChip && (newBucket || e.listId !== lastListId);
-      out.push({ kind: "event", id: e.id, event: e, showList });
+      out.push({
+        kind: "event",
+        id: e.id,
+        event: e,
+        showList: !suppressList && (newBucket || e.listId !== lastListId),
+        fresh: false,
+      });
       lastListId = e.listId;
     }
     return out;
-  }, [filteredEvents, filter]);
+  }, [filteredEvents, filter, isNew]);
+
+  // Deep-link to the item when the event names one that still exists;
+  // otherwise (deleted since, or a list-level event) open the list.
+  const openEvent = useCallback(
+    async (event: ActivityEvent) => {
+      if (event.itemId) {
+        const itemId = event.itemId;
+        try {
+          const res = await queryClient.fetchQuery({
+            queryKey: queryKeys.items.detail(itemId),
+            queryFn: () => fetchItem(itemId, token),
+            staleTime: 30_000,
+          });
+          if (res.item) {
+            router.push(`/list/${event.listId}/item/${itemId}`);
+            return;
+          }
+        } catch {
+          // Gone (deleted or no access): fall back to the list.
+        }
+      }
+      router.push(`/list/${event.listId}`);
+    },
+    [queryClient, router, token],
+  );
+
+  const toggle = (next: NonNullable<Filter>) =>
+    setFilter(filter?.kind === next.kind && filter.id === next.id ? null : next);
 
   const isInitialLoading = feedQuery.isPending;
   // Only an empty cache gets the error state; a failed background refetch
   // keeps the feed already on screen (0.9).
   const isError = feedQuery.isError && !feedQuery.data;
+  const showChips =
+    events.length > 0 && (filterChips.people.length > 1 || filterChips.lists.length > 1);
 
   return (
     <Screen style={styles.root}>
       <ScreenHeader
         leading="back"
-        onLeadingPress={() => goBack(backFallback)}
+        onLeadingPress={() => goBack("/")}
         leadingTestID="activity-back"
         title="Activity"
       />
 
-      {events.length > 0 && (filterChips.actors.length > 1 || filterChips.lists.length > 0) ? (
+      {showChips ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -190,40 +257,48 @@ export default function Activity() {
           style={styles.filterScroll}
           testID="activity-filter-strip"
         >
-          <FilterChip
+          <Chip
             label="All"
-            active={filter === null}
+            selected={filter === null}
             onPress={() => setFilter(null)}
+            accessibilityLabel="Show all activity"
             testID="activity-filter-all"
           />
-          {filterChips.actors.map((a) => (
-            <FilterChip
-              key={`actor-${a.id}`}
-              label={a.name}
-              active={filter?.kind === "actor" && filter.id === a.id}
-              onPress={() =>
-                setFilter(
-                  filter?.kind === "actor" && filter.id === a.id
-                    ? null
-                    : { kind: "actor", id: a.id },
-                )
-              }
-              testID={`activity-filter-actor-${a.id}`}
-            />
-          ))}
-          {filterChips.lists.map((l) => (
-            <FilterChip
-              key={`list-${l.id}`}
-              label={`${l.emoji} ${l.name}`}
-              active={filter?.kind === "list" && filter.id === l.id}
-              onPress={() =>
-                setFilter(
-                  filter?.kind === "list" && filter.id === l.id ? null : { kind: "list", id: l.id },
-                )
-              }
-              testID={`activity-filter-list-${l.id}`}
-            />
-          ))}
+          {filterChips.people.length > 1 ? (
+            <View style={styles.chipGroup} role="group" aria-label="People">
+              <Text variant="eyebrow" style={styles.chipGroupLabel}>
+                People
+              </Text>
+              {filterChips.people.map((p) => (
+                <Chip
+                  key={`actor-${p.id}`}
+                  label={p.name}
+                  selected={filter?.kind === "actor" && filter.id === p.id}
+                  onPress={() => toggle({ kind: "actor", id: p.id })}
+                  accessibilityLabel={`Only ${p.name}`}
+                  testID={`activity-filter-actor-${p.id}`}
+                />
+              ))}
+            </View>
+          ) : null}
+          {filterChips.lists.length > 1 ? (
+            <View style={styles.chipGroup} role="group" aria-label="Lists">
+              <View style={styles.chipDivider} />
+              <Text variant="eyebrow" style={styles.chipGroupLabel}>
+                Lists
+              </Text>
+              {filterChips.lists.map((l) => (
+                <Chip
+                  key={`list-${l.id}`}
+                  label={`${l.emoji} ${l.name}`}
+                  selected={filter?.kind === "list" && filter.id === l.id}
+                  onPress={() => toggle({ kind: "list", id: l.id })}
+                  accessibilityLabel={`Only ${l.name}`}
+                  testID={`activity-filter-list-${l.id}`}
+                />
+              ))}
+            </View>
+          ) : null}
         </ScrollView>
       ) : null}
 
@@ -245,17 +320,14 @@ export default function Activity() {
         <View style={styles.center}>
           <EmptyState
             title="No activity yet"
-            description="When you and your collaborators add or rank items, the action shows up here."
+            description="When you or the people on your lists add, rank or finish something, it shows up here."
           />
         </View>
       ) : filteredEvents.length === 0 ? (
         <View style={styles.center}>
           <EmptyState
             title="Nothing matches this filter"
-            description="Pick a different chip, or clear the filter to see everything."
-            action={
-              <Button label="Clear filter" variant="secondary" onPress={() => setFilter(null)} />
-            }
+            action={<Button label="Show all" variant="secondary" onPress={() => setFilter(null)} />}
           />
         </View>
       ) : (
@@ -269,14 +341,25 @@ export default function Activity() {
             keyExtractor={(it) => it.id}
             contentContainerStyle={styles.body}
             renderItem={({ item }) =>
-              item.kind === "heading" ? (
-                <DayHeading label={item.label} />
+              item.kind === "new" ? (
+                <View style={styles.dayHeading} testID="activity-new-divider">
+                  <Text style={[styles.dayHeadingText, styles.newText]}>New</Text>
+                </View>
+              ) : item.kind === "heading" ? (
+                <View
+                  style={[styles.dayHeading, item.afterNew ? styles.afterNew : null]}
+                  testID={item.afterNew ? "activity-earlier" : `activity-day-${item.label}`}
+                >
+                  <Text style={styles.dayHeadingText}>{item.label}</Text>
+                </View>
               ) : (
                 <ActivityRow
                   event={item.event}
                   list={listLookup.get(item.event.listId) ?? null}
                   showList={item.showList}
-                  onOpenList={() => router.push(`/list/${item.event.listId}`)}
+                  fresh={item.fresh}
+                  selfId={selfId}
+                  onPress={() => void openEvent(item.event)}
                 />
               )
             }
@@ -300,54 +383,21 @@ export default function Activity() {
   );
 }
 
-function FilterChip({
-  label,
-  active,
-  onPress,
-  testID,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  testID?: string;
-}) {
-  return (
-    <Chip
-      label={label}
-      selected={active}
-      onPress={onPress}
-      accessibilityLabel={`Filter: ${label}`}
-      testID={testID}
-    />
-  );
-}
-
-function DayHeading({ label }: { label: string }) {
-  return (
-    <View style={styles.dayHeading} testID={`activity-day-${label}`}>
-      <Text style={styles.dayHeadingText}>{label}</Text>
-    </View>
-  );
-}
-
 interface ActivityRowProps {
   event: ActivityEvent;
-  list: { name: string; emoji: string; color: string } | null;
-  /**
-   * When false, the trailing list chip is suppressed because the previous
-   * event in this day-bucket was on the same list — keeps a burst of adds
-   * from rendering the same chip 5+ times in a row.
-   */
+  list: ListMeta | null;
+  /** False on consecutive rows from the same list (a burst of adds). */
   showList: boolean;
-  onOpenList: () => void;
+  fresh: boolean;
+  selfId: string | null;
+  onPress: () => void;
 }
 
-function ActivityRow({ event, list, showList, onOpenList }: ActivityRowProps) {
-  const actor = event.actorDisplayName?.trim() || "Someone";
-  const first = actor.split(/\s+/)[0] ?? actor;
-  const description = describeEvent(event);
-  const when = compactRelative(event.createdAt);
-  const verb = verbGlyphFor(event.type);
+function ActivityRow({ event, list, showList, fresh, selfId, onPress }: ActivityRowProps) {
+  const who = event.actorId === selfId ? "You" : firstName(event.actorDisplayName);
+  const description = describeActivity(event, { kind: list?.itemKind ?? null, quote: true });
+  const when = shortAge(event.createdAt);
+  const mark = MARKS[activityMark(event.type)];
   const accent =
     list && (list.color as ListColorKey) in tokens.list
       ? tokens.list[list.color as ListColorKey]
@@ -355,23 +405,21 @@ function ActivityRow({ event, list, showList, onOpenList }: ActivityRowProps) {
 
   return (
     <ListRow
-      accessibilityLabel={
-        list ? `${first} ${description} in ${list.name}` : `${first} ${description}`
-      }
-      onPress={onOpenList}
+      accessibilityLabel={`${fresh ? "New: " : ""}${who} ${description}${list ? ` in ${list.name}` : ""}, ${when}`}
+      onPress={onPress}
       testID={`activity-row-${event.id}`}
       leading={
         <View style={[styles.avatar, { backgroundColor: alpha(accent, 0.12) }]}>
-          {verb.icon ? (
-            <Icon name={verb.icon} size={16} color={accent} />
+          {mark.icon ? (
+            <Icon name={mark.icon} size={16} color={accent} />
           ) : (
-            <Text style={[styles.avatarGlyph, { color: accent }]}>{verb.text}</Text>
+            <Text style={[styles.avatarGlyph, { color: accent }]}>{mark.text}</Text>
           )}
         </View>
       }
       title={
         <Text variant="body" numberOfLines={2} style={styles.line}>
-          <Text style={styles.actorName}>{first}</Text>
+          <Text style={styles.actorName}>{who}</Text>
           <Text> {description}</Text>
         </Text>
       }
@@ -386,192 +434,63 @@ function ActivityRow({ event, list, showList, onOpenList }: ActivityRowProps) {
         ) : undefined
       }
       trailing={
-        <Text variant="caption" tone="muted" style={styles.when}>
-          {when}
-        </Text>
+        <View style={styles.trailing}>
+          {fresh ? <View style={styles.freshDot} accessibilityElementsHidden /> : null}
+          <Text variant="caption" tone="muted" style={styles.when}>
+            {when}
+          </Text>
+        </View>
       }
     />
   );
 }
 
-// Single-glyph signal for each event family. Keeps the avatar position from
-// being just a colored disc — the glyph adds a verb-specific visual that
-// lets you scan a feed by action shape, not just by actor name. Glyphs the
-// `Icon` set covers are drawn with it; the rest stay typographic marks.
-type VerbGlyph = { icon: IconName; text?: undefined } | { icon?: undefined; text: string };
+// Leading glyph per event family. Glyphs the `Icon` set covers are drawn with
+// it; the rest stay typographic marks.
+const MARKS: Record<ActivityMark, { icon?: IconName; text?: string }> = {
+  plus: { icon: "plus" },
+  check: { icon: "check" },
+  sync: { icon: "refresh" },
+  minus: { text: "−" },
+  undo: { text: "↺" },
+  rank: { text: "↑" },
+  unrank: { text: "↓" },
+  in: { text: "→" },
+  out: { text: "←" },
+  edit: { text: "·" },
+};
 
-function verbGlyphFor(type: ActivityEvent["type"]): VerbGlyph {
-  const mark = verbMarkFor(type);
-  const icon = VERB_ICON[mark];
-  return icon ? { icon } : { text: mark };
-}
-
-const VERB_ICON: Record<string, IconName> = { "+": "plus", "✓": "check", "↻": "refresh" };
-
-function verbMarkFor(type: ActivityEvent["type"]): string {
-  switch (type) {
-    case "item_added":
-    case "item_restored":
-    case "list_created":
-    case "list_duplicated":
-    case "invite_created":
-    case "source_added":
-    case "module_enabled":
-      return "+";
-    case "item_archived":
-    case "list_archived":
-    case "invite_revoked":
-    case "member_removed":
-    case "source_removed":
-    case "module_disabled":
-      return "−";
-    case "item_updated":
-    case "item_tagged":
-    case "source_updated":
-      return "·";
-    case "item_completed":
-      return "✓";
-    case "item_uncompleted":
-      return "↺";
-    case "item_promoted":
-      return "★";
-    case "item_demoted":
-      return "☆";
-    case "member_joined":
-      return "→";
-    case "member_left":
-      return "←";
-    case "source_synced":
-      return "↻";
-    default:
-      return "·";
-  }
-}
-
-function describeEvent(event: ActivityEvent): string {
-  const payload = event.payload;
-  switch (event.type) {
-    case "list_created":
-      return `created this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
-    case "member_joined":
-      return "joined";
-    case "member_left":
-      return "left";
-    case "member_removed":
-      return "removed a member";
-    case "item_added":
-      return `added${payloadString(payload, "title", (t) => ` "${t}"`)}`;
-    case "item_updated":
-      return `edited${payloadString(payload, "title", (t) => ` "${t}"`)}`;
-    case "item_archived":
-      return `archived${payloadString(payload, "title", (t) => ` "${t}"`)}`;
-    case "item_restored":
-      return `restored${payloadString(payload, "title", (t) => ` "${t}"`)}`;
-    case "item_tagged": {
-      const tags = Array.isArray(payload.tags)
-        ? payload.tags.filter((t): t is string => typeof t === "string")
-        : [];
-      const title = payloadString(payload, "title", (t) => ` "${t}"`);
-      if (tags.length === 0) return `cleared tags on${title || " an item"}`;
-      return `tagged${title || " an item"} ${tags.map((t) => `#${t}`).join(" ")}`;
-    }
-    case "list_archived":
-      return `archived this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
-    case "list_duplicated":
-      return `duplicated this list${payloadString(payload, "name", (n) => ` (${n})`)}`;
-    case "item_completed":
-      return `checked off${payloadString(payload, "title", (t) => ` "${t}"`)}`;
-    case "item_uncompleted":
-      return `uncrossed${payloadString(payload, "title", (t) => ` "${t}"`)}`;
-    case "item_promoted":
-      return `pinned${payloadString(payload, "title", (t) => ` "${t}"`)} to ranked`;
-    case "item_demoted":
-      return `unpinned${payloadString(payload, "title", (t) => ` "${t}"`)} from ranked`;
-    case "invite_created":
-      return "shared a link";
-    case "invite_revoked":
-      return "revoked a share link";
-    case "module_enabled":
-      return `turned on ${payloadString(payload, "module", (m) => m) || "a module"}`;
-    case "module_disabled":
-      return `turned off ${payloadString(payload, "module", (m) => m) || "a module"}`;
-    case "source_added":
-      return "attached a source";
-    case "source_removed":
-      return "detached a source";
-    case "source_updated":
-      return "updated a source";
-    case "source_synced": {
-      const added = typeof payload.addedCount === "number" ? payload.addedCount : 0;
-      if (added === 0) return "refreshed the source · no new items";
-      return `refreshed the source · ${added} new item${added === 1 ? "" : "s"}`;
-    }
-    default: {
-      const _exhaustive: never = event.type as never;
-      void _exhaustive;
-      return "did something";
-    }
-  }
-}
-
-function payloadString(
-  payload: Record<string, unknown>,
-  key: string,
-  fmt: (s: string) => string,
-): string {
-  const v = payload[key];
-  return typeof v === "string" && v.length > 0 ? fmt(v) : "";
-}
-
-// Compact: matches the home-row convention ("8m", "2h", "3d"). Verbose "ago"
-// adds nothing in a feed already sorted newest-first and grouped by day.
-function compactRelative(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "—";
-  const seconds = Math.max(1, Math.round((Date.now() - then) / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days}d`;
-  return new Date(iso).toLocaleDateString();
-}
-
-// Day bucket: Today / Yesterday / weekday name / ISO date. Tracked across the
-// feed so we emit one heading per day-bucket boundary.
+// Day bucket: Today / Yesterday / weekday name / date.
 function dayBucketLabel(iso: string, now = new Date()): string {
   const d = new Date(iso);
   const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-  const todayStart = startOfDay(now);
-  const dayStart = startOfDay(d);
-  const diffDays = Math.round((todayStart - dayStart) / (24 * 60 * 60 * 1000));
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / (24 * 60 * 60 * 1000));
   if (diffDays <= 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7) {
-    return d.toLocaleDateString(undefined, { weekday: "long" });
-  }
+  if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: "long" });
   return d.toLocaleDateString(undefined, { month: "long", day: "numeric" });
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: tokens.bg.canvas,
-  },
+  root: { flex: 1, backgroundColor: tokens.bg.canvas },
   filterScroll: { flexGrow: 0 },
   filterStrip: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.xs,
     paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.sm,
-    paddingBottom: tokens.space.md,
+    paddingTop: tokens.space.xs,
+    paddingBottom: tokens.space.sm,
   },
-  body: {
-    paddingBottom: tokens.space.xxl * 2,
+  chipGroup: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
+  chipGroupLabel: { marginLeft: tokens.space.sm, marginRight: tokens.space.xxs },
+  chipDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 20,
+    backgroundColor: tokens.border.default,
+    marginLeft: tokens.space.xs,
   },
+  body: { paddingBottom: tokens.space.xxl * 2 },
   center: {
     flex: 1,
     alignItems: "center",
@@ -584,12 +503,19 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xl,
     paddingBottom: tokens.space.sm,
   },
+  afterNew: {
+    marginTop: tokens.space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: tokens.border.default,
+  },
   dayHeadingText: {
     color: tokens.text.primary,
     fontSize: tokens.font.size.md,
+    lineHeight: 22,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: -0.2,
   },
+  newText: { color: tokens.accent.default },
   avatar: {
     width: 44,
     height: 44,
@@ -607,6 +533,13 @@ const styles = StyleSheet.create({
   listChipRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
   listChipEmoji: { fontSize: tokens.font.size.xs, lineHeight: 16 },
   listChipName: { letterSpacing: 0.1 },
+  trailing: { flexDirection: "row", alignItems: "center", gap: tokens.space.xsm },
+  freshDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: tokens.accent.default,
+  },
   when: { fontVariant: ["tabular-nums"] },
   footerLoader: { paddingVertical: tokens.space.lg, alignItems: "center" },
 });

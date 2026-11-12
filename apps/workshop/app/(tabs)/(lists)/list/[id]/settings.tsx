@@ -4,21 +4,27 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type {
   ConfigWarning,
+  List,
   ListColor,
+  ListDetailResponse,
+  ListListResponse,
   ListMemberSummary,
   ListSource,
   ModuleName,
-  ShareVisibility,
+  UpdateListRequest,
 } from "@workshop/shared";
-import { formatConfigWarning, MODULE_NAMES } from "@workshop/shared/modules";
+import { MODULE_REMOVAL_WARNINGS } from "@workshop/shared/modules";
 import {
+  ActionSheet,
   Avatar,
   Button,
   confirm,
   EmojiBadge,
   formatRelative,
+  Icon,
+  IconButton,
   type ListColorKey,
-  RadioRow,
+  ListRow,
   Screen,
   ScreenHeader,
   SectionHeader,
@@ -30,8 +36,8 @@ import {
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
-import { Image, Linking, Platform, Pressable, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import {
   archiveListEntirely,
@@ -41,17 +47,14 @@ import {
   updateList,
 } from "../../../../../src/api/lists";
 import { removeMember } from "../../../../../src/api/members";
-import {
-  resetListShareSlug,
-  SHARE_VISIBILITY_LABELS,
-  transferOwnership,
-  updateListShare,
-} from "../../../../../src/api/share";
+import { transferOwnership } from "../../../../../src/api/share";
 import { syncSource } from "../../../../../src/api/sources";
+import { ShareListSheet } from "../../../../../src/components/ShareListSheet";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { pickCoverPhoto } from "../../../../../src/lib/coverPhoto";
-import { goBack } from "../../../../../src/lib/goBack";
-import { buildListShareUrl, copyToClipboard } from "../../../../../src/lib/share";
+import { firstEmoji } from "../../../../../src/lib/emoji";
+import { goBack, openListOverHome } from "../../../../../src/lib/goBack";
+import { reconcileTextDraft } from "../../../../../src/lib/itemDraft";
 import { sourceErrorMessage } from "../../../../../src/lib/sourceErrors";
 
 const COLOR_KEYS: readonly ListColorKey[] = [
@@ -66,42 +69,71 @@ const COLOR_KEYS: readonly ListColorKey[] = [
 
 const EMOJI_CHOICES = ["🎬", "📺", "📚", "💜", "✈️", "🍿", "🎮", "🎵", "🍔", "🌅", "🏔️", "🎨"];
 
-const MODULE_LABELS: Record<ModuleName, { label: string; description: string }> = {
-  todo: {
-    label: "To-do",
-    description: "Mark items as done.",
-  },
-  ranking: {
-    label: "Ranking",
-    description: "Sort items by hand.",
-  },
-  leaderboard: {
-    label: "Leaderboard",
-    description: "Post scores for daily games.",
-  },
-  letterboxd: {
-    label: "Letterboxd",
-    description: "Match members' watchlists and suggest films.",
-  },
-  sources: {
-    label: "Sources",
-    description: "Sync from external feeds.",
-  },
-};
+const AUTOSAVE_DEBOUNCE_MS = 700;
 
-const EDITABLE_MODULE_NAMES = MODULE_NAMES.filter((mod) => mod !== "leaderboard");
+/** Features (was "Modules"), in plain words. Leaderboard is retired and never shown. */
+const FEATURES: ReadonlyArray<{ mod: ModuleName; label: string; description: string }> = [
+  { mod: "todo", label: "Check off items", description: "Tick things off once they're done." },
+  { mod: "ranking", label: "Ranking", description: "Keep a ranked section at the top." },
+  {
+    mod: "sources",
+    label: "Syncing",
+    description: "Pull in new items from a linked playlist or list.",
+  },
+  {
+    mod: "letterboxd",
+    label: "Letterboxd matching",
+    description: "Suggest films that are on members' watchlists.",
+  },
+];
+
+/** What turning a feature off costs, asked before it happens. */
+function featureWarningCopy(w: ConfigWarning): { title: string; message: string; confirm: string } {
+  const n = w.affectedCount ?? 0;
+  const items = (one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  switch (w.code) {
+    case MODULE_REMOVAL_WARNINGS.todo:
+      return {
+        title: `Hide ${items("finished item", "finished items")}?`,
+        message: "They come back if you turn this on again.",
+        confirm: "Turn off",
+      };
+    case MODULE_REMOVAL_WARNINGS.ranking:
+      return {
+        title: `Drop the ranking of ${items("item", "items")}?`,
+        message: "The order is kept, and comes back if you turn ranking on again.",
+        confirm: "Turn off",
+      };
+    case MODULE_REMOVAL_WARNINGS.sources:
+      return {
+        title: `Stop syncing ${items("source", "sources")}?`,
+        message: "Items already pulled in stay on the list.",
+        confirm: "Stop syncing",
+      };
+    case MODULE_REMOVAL_WARNINGS.letterboxd:
+      return {
+        title: `Keep ${items("suggestion", "suggestions")} as regular items?`,
+        message: "Matching stops. Turn it on again to bring suggestions back.",
+        confirm: "Turn off",
+      };
+    default:
+      return { title: "Change features?", message: w.message, confirm: "Change" };
+  }
+}
+
+type SaveStatus = "idle" | "saving" | "saved";
 
 export default function ListSettings() {
   const params = useLocalSearchParams<{ id: string }>();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
+  const id = (Array.isArray(params.id) ? params.id[0] : params.id) ?? "";
   const router = useRouter();
   const { token, user } = useAuth();
   const queryClient = useQueryClient();
   const { showToast } = useToast();
 
   const listQuery = useQuery({
-    queryKey: queryKeys.lists.detail(id ?? ""),
-    queryFn: () => fetchListDetail(id ?? "", token),
+    queryKey: queryKeys.lists.detail(id),
+    queryFn: () => fetchListDetail(id, token),
     enabled: !!token && !!id,
   });
 
@@ -109,194 +141,241 @@ export default function ListSettings() {
   const members = listQuery.data?.members ?? [];
   const sources: ListSource[] = listQuery.data?.sources ?? [];
   const isOwner = !!list && !!user && list.ownerId === user.id;
+  const [shareOpen, setShareOpen] = useState(false);
 
-  const [name, setName] = useState<string | null>(null);
-  const [emoji, setEmoji] = useState<string | null>(null);
-  const [color, setColor] = useState<ListColor | null>(null);
-  const [description, setDescription] = useState<string | null>(null);
-  const [coverPhotoUrl, setCoverPhotoUrl] = useState<string | null>(null);
-  const [coverPhotoLoaded, setCoverPhotoLoaded] = useState(false);
-  const [selectedModules, setSelectedModules] = useState<ModuleName[] | null>(null);
+  // --- Saving ---------------------------------------------------------------
+  // One "Saving… / Saved" for the screen, like item detail.
+  const [status, setStatus] = useState<SaveStatus>("idle");
+  const pendingRef = useRef(0);
+  useEffect(() => {
+    if (status !== "saved") return;
+    const t = setTimeout(() => setStatus("idle"), 1800);
+    return () => clearTimeout(t);
+  }, [status]);
 
-  if (list && name === null && emoji === null && color === null && description === null) {
-    setName(list.name);
-    setEmoji(list.emoji);
-    setColor(list.color);
-    setDescription(list.description ?? "");
-    setSelectedModules(list.modules);
-  }
-  if (list && !coverPhotoLoaded) {
-    setCoverPhotoUrl(list.coverPhotoUrl ?? null);
-    setCoverPhotoLoaded(true);
-  }
+  const patchCaches = useCallback(
+    (patch: Partial<List>) => {
+      queryClient.setQueryData<ListDetailResponse>(queryKeys.lists.detail(id), (d) =>
+        d ? { ...d, list: { ...d.list, ...patch } } : d,
+      );
+      queryClient.setQueryData<ListListResponse>(queryKeys.lists.all, (d) =>
+        d ? { lists: d.lists.map((l) => (l.id === id ? { ...l, ...patch } : l)) } : d,
+      );
+    },
+    [queryClient, id],
+  );
 
-  const detailsDirty = useMemo(() => {
-    if (!list || name === null || emoji === null || color === null || description === null) {
-      return false;
+  // Every edit is a PATCH of the fields it touches: optimistic on both list
+  // caches, rolled back with a toast if the server says no.
+  const saveMutation = useMutation<
+    unknown,
+    Error,
+    { patch: UpdateListRequest; label: string },
+    { detail?: ListDetailResponse; lists?: ListListResponse }
+  >({
+    mutationFn: ({ patch }) => updateList(id, patch, token),
+    onMutate: async ({ patch }) => {
+      pendingRef.current += 1;
+      setStatus("saving");
+      await queryClient.cancelQueries({ queryKey: queryKeys.lists.detail(id) });
+      const detail = queryClient.getQueryData<ListDetailResponse>(queryKeys.lists.detail(id));
+      const lists = queryClient.getQueryData<ListListResponse>(queryKeys.lists.all);
+      patchCaches(patch as Partial<List>);
+      return { detail, lists };
+    },
+    onError: (e, { label }, ctx) => {
+      if (ctx?.detail) queryClient.setQueryData(queryKeys.lists.detail(id), ctx.detail);
+      if (ctx?.lists) queryClient.setQueryData(queryKeys.lists.all, ctx.lists);
+      showToast({ message: errorMessage(e, `Couldn't save the ${label}.`), tone: "danger" });
+    },
+    onSettled: (_r, error) => {
+      pendingRef.current = Math.max(0, pendingRef.current - 1);
+      if (pendingRef.current === 0) setStatus(error ? "idle" : "saved");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+    },
+  });
+  const save = saveMutation.mutate;
+
+  // --- Text drafts (name, description) --------------------------------------
+  // Seeded once per list; afterwards a refetch only reaches a field that is not
+  // focused and holds no unsaved edit (the item-detail rule, 0.2).
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const seededRef = useRef<string | null>(null);
+  const serverRef = useRef<{ name: string; description: string } | null>(null);
+  const focusedRef = useRef<"name" | "description" | null>(null);
+  useEffect(() => {
+    if (!list) return;
+    const next = { name: list.name, description: list.description ?? "" };
+    const prev = serverRef.current;
+    serverRef.current = next;
+    if (seededRef.current !== list.id || !prev) {
+      seededRef.current = list.id;
+      setName(next.name);
+      setDescription(next.description);
+      return;
     }
-    const desc = description.trim();
-    const currentDesc = list.description ?? "";
-    const currentCover = list.coverPhotoUrl ?? null;
-    return (
-      name.trim() !== list.name ||
-      emoji !== list.emoji ||
-      color !== list.color ||
-      desc !== currentDesc ||
-      coverPhotoUrl !== currentCover
+    setName((draft) =>
+      reconcileTextDraft({
+        draft,
+        prevServer: prev.name,
+        nextServer: next.name,
+        focused: focusedRef.current === "name",
+      }),
     );
-  }, [list, name, emoji, color, description, coverPhotoUrl]);
+    setDescription((draft) =>
+      reconcileTextDraft({
+        draft,
+        prevServer: prev.description,
+        nextServer: next.description,
+        focused: focusedRef.current === "description",
+      }),
+    );
+  }, [list]);
 
-  const modulesDirty = useMemo(() => {
-    if (!list || !selectedModules) return false;
-    if (selectedModules.length !== list.modules.length) return true;
-    const a = [...selectedModules].sort().join(",");
-    const b = [...list.modules].sort().join(",");
-    return a !== b;
-  }, [list, selectedModules]);
+  const draftRef = useRef({ name, description });
+  draftRef.current = { name, description };
+  const lastSentRef = useRef<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const updateMutation = useMutation({
-    mutationFn: () => {
-      if (!id || name === null || emoji === null || color === null || description === null) {
-        throw new Error("invalid form state");
+  const flushText = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const server = serverRef.current;
+    if (!server) return;
+    const nextName = draftRef.current.name.trim();
+    const nextDesc = draftRef.current.description.trim();
+    const patch: UpdateListRequest = {};
+    if (nextName.length > 0 && nextName.length <= 100 && nextName !== server.name) {
+      patch.name = nextName;
+    }
+    if (nextDesc !== server.description.trim()) patch.description = nextDesc || null;
+    if (Object.keys(patch).length === 0) return;
+    const key = JSON.stringify(patch);
+    if (key === lastSentRef.current) return;
+    lastSentRef.current = key;
+    save(
+      { patch, label: patch.name !== undefined ? "name" : "description" },
+      {
+        onSettled: () => {
+          lastSentRef.current = null;
+        },
+      },
+    );
+  }, [save]);
+
+  useEffect(() => {
+    const server = serverRef.current;
+    if (!server || !isOwner) return;
+    const dirty =
+      (name.trim() !== server.name && name.trim().length > 0) ||
+      description.trim() !== server.description.trim();
+    if (!dirty) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(flushText, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [name, description, isOwner, flushText]);
+
+  // Leaving never drops the last keystrokes still waiting on the debounce.
+  useEffect(() => () => flushText(), [flushText]);
+
+  const onBack = useCallback(() => {
+    flushText();
+    goBack(`/list/${id}`);
+  }, [flushText, id]);
+
+  // --- Emoji ----------------------------------------------------------------
+  const [customEmoji, setCustomEmoji] = useState("");
+  const [emojiError, setEmojiError] = useState<string | null>(null);
+  const applyCustomEmoji = () => {
+    if (!customEmoji.trim()) {
+      setEmojiError(null);
+      return;
+    }
+    const picked = firstEmoji(customEmoji);
+    if (!picked) {
+      setEmojiError("That isn't an emoji. Type or paste one.");
+      return;
+    }
+    setEmojiError(null);
+    setCustomEmoji("");
+    if (list && picked !== list.emoji) save({ patch: { emoji: picked }, label: "emoji" });
+  };
+
+  // --- Features ---------------------------------------------------------------
+  // The switch flips at once; turning a feature off asks first when it hides
+  // something (the server's config preview names what), and reverts if declined
+  // or if the save fails.
+  const [pendingModules, setPendingModules] = useState<ModuleName[] | null>(null);
+  const modules = pendingModules ?? list?.modules ?? [];
+  const toggleFeature = async (mod: ModuleName) => {
+    if (!list || pendingModules) return;
+    const next = modules.includes(mod) ? modules.filter((m) => m !== mod) : [...modules, mod];
+    setPendingModules(next);
+    try {
+      const preview = await previewListConfig(id, { modules: next }, token);
+      let acknowledgedWarnings: string[] | undefined;
+      if (preview.warnings.length > 0) {
+        const first = preview.warnings[0];
+        const copy = first ? featureWarningCopy(first) : null;
+        const ok = copy
+          ? await confirm({
+              title: copy.title,
+              message: preview.warnings
+                .map((w) => featureWarningCopy(w).message)
+                .filter((m, i, all) => all.indexOf(m) === i)
+                .join(" "),
+              confirmLabel: copy.confirm,
+              destructive: true,
+            })
+          : true;
+        if (!ok) {
+          setPendingModules(null);
+          return;
+        }
+        acknowledgedWarnings = preview.warnings.map((w) => w.code);
       }
-      const desc = description.trim();
-      const currentCover = list?.coverPhotoUrl ?? null;
-      return updateList(
+      setStatus("saving");
+      await updateList(
         id,
-        {
-          name: name.trim(),
-          emoji,
-          color,
-          description: desc.length > 0 ? desc : null,
-          ...(coverPhotoUrl !== currentCover ? { coverPhotoUrl } : {}),
-        },
+        { modules: next, ...(acknowledgedWarnings ? { acknowledgedWarnings } : {}) },
         token,
       );
-    },
-    onSuccess: async () => {
-      if (!id) return;
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
-      ]);
-      showToast({ message: "Saved", tone: "success" });
-    },
-    onError: (e) => {
-      showToast({
-        message: errorMessage(e, "Couldn't save list"),
-        tone: "danger",
-        actionLabel: "Retry",
-        onAction: () => updateMutation.mutate(),
-      });
-    },
-  });
-
-  // --- Module changes ---
-  const [previewWarnings, setPreviewWarnings] = useState<ConfigWarning[] | null>(null);
-
-  const previewMutation = useMutation({
-    mutationFn: () => {
-      if (!id || !selectedModules) throw new Error("missing");
-      return previewListConfig(id, { modules: selectedModules }, token);
-    },
-    onSuccess: (res) => {
-      setPreviewWarnings(res.warnings);
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't preview changes"), tone: "danger" });
-    },
-  });
-
-  const modulesMutation = useMutation({
-    mutationFn: ({ acknowledgedWarnings }: { acknowledgedWarnings?: string[] }) => {
-      if (!id || !selectedModules) throw new Error("missing");
-      return updateList(
-        id,
-        {
-          modules: selectedModules,
-          ...(acknowledgedWarnings ? { acknowledgedWarnings } : {}),
-        },
-        token,
-      );
-    },
-    onSuccess: async () => {
-      if (!id) return;
-      setPreviewWarnings(null);
+      patchCaches({ modules: next });
+      setStatus("saved");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
         queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
       ]);
-      showToast({ message: "Modules updated", tone: "success" });
-    },
-    onError: (e, vars) => {
-      showToast({
-        message: errorMessage(e, "Couldn't update modules"),
-        tone: "danger",
-        actionLabel: "Retry",
-        onAction: () => modulesMutation.mutate(vars),
-      });
-    },
-  });
-
-  const toggleModule = (mod: ModuleName) => {
-    if (!selectedModules) return;
-    setSelectedModules(
-      selectedModules.includes(mod)
-        ? selectedModules.filter((m) => m !== mod)
-        : [...selectedModules, mod],
-    );
-    setPreviewWarnings(null);
+    } catch (e) {
+      setStatus("idle");
+      showToast({ message: errorMessage(e, "Couldn't change that feature."), tone: "danger" });
+    } finally {
+      setPendingModules(null);
+    }
   };
 
-  const onSaveModules = () => {
-    if (!selectedModules) return;
-    // First preview — if there are no warnings (or user already acknowledged),
-    // commit directly. Runs through `previewMutation` so the Save button
-    // spins while the preview is in flight and a failure shows a toast
-    // (the old direct call had neither and left an unhandled rejection).
-    previewMutation.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result.warnings.length === 0) modulesMutation.mutate({});
-      },
-    });
-  };
-
-  const onConfirmModules = () => {
-    if (!previewWarnings) return;
-    modulesMutation.mutate({
-      acknowledgedWarnings: previewWarnings.map((w) => w.code),
-    });
-  };
-
-  // --- Duplicate ---
+  // --- Other actions --------------------------------------------------------
   const duplicateMutation = useMutation({
-    mutationFn: () => {
-      if (!id) throw new Error("missing list id");
-      return duplicateList(id, {}, token);
-    },
+    mutationFn: () => duplicateList(id, {}, token),
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      router.replace(`/list/${res.list.id}`);
+      openListOverHome(res.list.id);
     },
     onError: (e) => {
-      showToast({
-        message: errorMessage(e, "Couldn't duplicate"),
-        tone: "danger",
-        actionLabel: "Retry",
-        onAction: () => duplicateMutation.mutate(),
-      });
+      showToast({ message: errorMessage(e, "Couldn't duplicate the list."), tone: "danger" });
     },
   });
 
-  // --- Source sync ---
   const syncMutation = useMutation({
-    mutationFn: (sourceId: string) => {
-      if (!id) throw new Error("missing list id");
-      return syncSource(id, sourceId, token);
-    },
+    mutationFn: (sourceId: string) => syncSource(id, sourceId, token),
     onSuccess: async (res) => {
-      if (!id) return;
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
         queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
@@ -304,14 +383,14 @@ export default function ListSettings() {
       showToast({
         message:
           res.addedCount === 0
-            ? "No new items detected."
-            : `Detected ${res.addedCount} new item${res.addedCount === 1 ? "" : "s"}.`,
+            ? "Nothing new"
+            : `${res.addedCount} new ${res.addedCount === 1 ? "item" : "items"}`,
         tone: res.addedCount === 0 ? "default" : "success",
       });
     },
     onError: (e, sourceId) => {
       showToast({
-        message: sourceErrorMessage(e, "Couldn't refresh."),
+        message: sourceErrorMessage(e, "Couldn't sync."),
         tone: "danger",
         actionLabel: "Retry",
         onAction: () => syncMutation.mutate(sourceId),
@@ -319,101 +398,48 @@ export default function ListSettings() {
     },
   });
 
-  const shareVisibilityMutation = useMutation({
-    mutationFn: (visibility: ShareVisibility) => {
-      if (!id) throw new Error("missing list id");
-      return updateListShare(id, { visibility }, token);
-    },
-    onSuccess: async () => {
-      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't update sharing"), tone: "danger" });
-    },
-  });
-
-  const resetSlugMutation = useMutation({
-    mutationFn: () => {
-      if (!id) throw new Error("missing list id");
-      return resetListShareSlug(id, token);
-    },
-    onSuccess: async (res) => {
-      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
-      const url = buildListShareUrl(res.shareSlug);
-      const copied = await copyToClipboard(url);
-      showToast({
-        message: copied ? "New link copied" : "New link generated",
-        tone: copied ? "success" : "default",
-      });
-    },
-    onError: (e) => {
-      showToast({
-        message: errorMessage(e, "Couldn't reset link"),
-        tone: "danger",
-        actionLabel: "Retry",
-        onAction: () => resetSlugMutation.mutate(),
-      });
-    },
-  });
-
   const transferMutation = useMutation({
-    mutationFn: (newOwnerId: string) => {
-      if (!id) throw new Error("missing list id");
-      return transferOwnership(id, newOwnerId, token);
-    },
+    mutationFn: (newOwnerId: string) => transferOwnership(id, newOwnerId, token),
     onSuccess: async () => {
-      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      showToast({ message: "Ownership transferred", tone: "success" });
+      showToast({ message: "Ownership handed over", tone: "success" });
     },
     onError: (e) => {
-      showToast({
-        message: errorMessage(e, "Couldn't transfer ownership"),
-        tone: "danger",
-      });
+      showToast({ message: errorMessage(e, "Couldn't hand over the list."), tone: "danger" });
     },
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: (userId: string) => {
-      if (!id) throw new Error("missing list id");
-      return removeMember(id, userId, token);
-    },
+    mutationFn: (userId: string) => removeMember(id, userId, token),
     onSuccess: async (_res, removedUserId) => {
       const isSelfLeave = !!user && removedUserId === user.id;
-      if (id) await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      if (isSelfLeave) router.replace("/");
-      else showToast({ message: "Member removed", tone: "default" });
-    },
-    onError: (e, userId) => {
-      showToast({
-        message: errorMessage(e, "Couldn't remove member"),
-        tone: "danger",
-        actionLabel: "Retry",
-        onAction: () => removeMemberMutation.mutate(userId),
-      });
-    },
-  });
-
-  const archiveListMutation = useMutation({
-    mutationFn: () => {
-      if (!id) throw new Error("missing list id");
-      return archiveListEntirely(id, token);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      router.replace("/");
+      if (isSelfLeave) {
+        router.dismissTo("/");
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) });
+      showToast({ message: "Member removed" });
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't delete list"), tone: "danger" });
+      showToast({ message: errorMessage(e, "Couldn't remove that member."), tone: "danger" });
     },
   });
 
-  // 0.1: irreversible actions confirm first, and the dialog names the list or
-  // the person so a mis-tap can't silently delete, leave, or hand off a list.
-  const listLabel = list ? `“${list.name}”` : "this list";
+  const deleteMutation = useMutation({
+    mutationFn: () => archiveListEntirely(id, token),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
+      router.dismissTo("/");
+    },
+    onError: (e) => {
+      showToast({ message: errorMessage(e, "Couldn't delete the list."), tone: "danger" });
+    },
+  });
 
+  // 0.1: irreversible actions confirm first and name the list or the person.
+  const listLabel = list ? `“${list.name}”` : "this list";
   const onDeleteList = async () => {
     const ok = await confirm({
       title: `Delete ${listLabel}?`,
@@ -421,9 +447,8 @@ export default function ListSettings() {
       confirmLabel: "Delete list",
       destructive: true,
     });
-    if (ok) archiveListMutation.mutate();
+    if (ok) deleteMutation.mutate();
   };
-
   const onLeaveList = async () => {
     if (!user) return;
     const ok = await confirm({
@@ -434,7 +459,6 @@ export default function ListSettings() {
     });
     if (ok) removeMemberMutation.mutate(user.id);
   };
-
   const onRemoveMember = async (member: ListMemberSummary) => {
     const who = member.displayName ?? "this member";
     const ok = await confirm({
@@ -445,7 +469,6 @@ export default function ListSettings() {
     });
     if (ok) removeMemberMutation.mutate(member.userId);
   };
-
   const onMakeOwner = async (member: ListMemberSummary) => {
     const who = member.displayName ?? "this member";
     const ok = await confirm({
@@ -457,62 +480,24 @@ export default function ListSettings() {
     if (ok) transferMutation.mutate(member.userId);
   };
 
-  const onResetLink = async () => {
-    const ok = await confirm({
-      title: `Reset the link for ${listLabel}?`,
-      message: "The current link stops working everywhere it has been shared. Members keep access.",
-      confirmLabel: "Reset link",
-      destructive: true,
-    });
-    if (ok) resetSlugMutation.mutate();
-  };
+  const [memberMenuFor, setMemberMenuFor] = useState<ListMemberSummary | null>(null);
+  const [memberMenuOpen, setMemberMenuOpen] = useState(false);
 
-  const discardDetails = () => {
-    if (!list) return;
-    setName(list.name);
-    setEmoji(list.emoji);
-    setColor(list.color);
-    setDescription(list.description ?? "");
-    setCoverPhotoUrl(list.coverPhotoUrl ?? null);
-  };
-
-  const discardModules = () => {
-    if (!list) return;
-    setSelectedModules(list.modules);
-    setPreviewWarnings(null);
-  };
-
-  // Esc closes settings on web. Cmd/Ctrl+Enter saves the first dirty
-  // section so power users can edit + save without reaching for the
-  // mouse. Native users get the back gesture / system dismiss instead.
-  // Skip Esc when an input is focused so the same key still clears
-  // intent inside textfields without bouncing them out of the screen.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mutation objects are stable; including them would tear down/recreate the listener on every render.
+  // Esc goes back on web (not while typing in a field).
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        const target = e.target as HTMLElement | null;
-        const tag = target?.tagName;
-        const inInput = tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable;
-        if (inInput) return;
-        e.preventDefault();
-        goBack(`/list/${id ?? ""}`);
-        return;
-      }
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        if (detailsDirty && !updateMutation.isPending) {
-          e.preventDefault();
-          updateMutation.mutate();
-        } else if (modulesDirty && !modulesMutation.isPending && !previewMutation.isPending) {
-          e.preventDefault();
-          onSaveModules();
-        }
-      }
+      if (e.key !== "Escape") return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      e.preventDefault();
+      onBack();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [id, detailsDirty, modulesDirty]);
+  }, [onBack]);
 
   if (!id) {
     return (
@@ -522,23 +507,40 @@ export default function ListSettings() {
     );
   }
 
-  const headerAccent: string = list
-    ? (list.color as ListColorKey) in tokens.list
-      ? tokens.list[list.color as ListColorKey]
-      : tokens.accent.default
+  const accent = list
+    ? (tokens.list[list.color as ListColorKey] ?? tokens.accent.default)
     : tokens.accent.default;
+  const emojiChoices =
+    list && !EMOJI_CHOICES.includes(list.emoji) ? [list.emoji, ...EMOJI_CHOICES] : EMOJI_CHOICES;
+  const shareSubtitle = !list
+    ? ""
+    : list.shareVisibility === "join"
+      ? "Anyone with the link can join"
+      : list.shareVisibility === "view"
+        ? "Anyone with the link can view"
+        : isOwner
+          ? "Off. Only members can open it."
+          : "Off. Only the owner can turn it on.";
 
   return (
     <Screen style={styles.root}>
       <ScreenHeader
-        leading="close"
-        onLeadingPress={() => goBack(`/list/${id}`)}
-        leadingLabel="Close settings"
-        leadingTestID="settings-close"
-        eyebrow="Settings"
-        title={list?.name ?? "List settings"}
+        leading="back"
+        onLeadingPress={onBack}
+        leadingTestID="settings-back"
+        eyebrow="List settings"
+        title={list?.name ?? ""}
         titleAccessory={
-          list ? <EmojiBadge emoji={emoji ?? list.emoji} color={headerAccent} size={44} /> : null
+          list ? (
+            <EmojiBadge emoji={list.emoji} color={accent} imageUrl={list.coverPhotoUrl} />
+          ) : null
+        }
+        trailing={
+          status === "idle" ? null : (
+            <Text variant="caption" tone="muted" style={styles.saved} testID="settings-save-status">
+              {status === "saving" ? "Saving…" : "Saved"}
+            </Text>
+          )
         }
       />
 
@@ -548,505 +550,412 @@ export default function ListSettings() {
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
       >
-        {/* First load: placeholders shaped like the details and members
-            sections, instead of member-only chrome ("Leave list") flashing
-            before the list resolves. */}
         {!list && listQuery.isPending ? (
           <View style={styles.section} testID="settings-skeleton">
             <Skeleton.Block width={72} height={12} />
+            <Skeleton.Rows count={3} badge={44} />
+            <Skeleton.Block width={72} height={12} style={styles.skeletonGap} />
             <Skeleton.Block height={44} radius={tokens.radius.md} />
-            <Skeleton.Block height={44} radius={tokens.radius.md} />
-            <Skeleton.Block width={120} height={12} style={styles.skeletonGap} />
-            <Skeleton.Rows count={2} badge={24} />
           </View>
-        ) : (
+        ) : list ? (
           <>
-            {/* --- Details --- */}
-            {isOwner ? (
-              <View style={styles.section}>
-                <SectionHeader title="Details" />
-                <TextField
-                  label="Name"
-                  testID="settings-name"
-                  value={name ?? ""}
-                  onChangeText={setName}
-                  maxLength={100}
-                />
-                <View style={styles.field}>
-                  <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-                    Cover photo
-                  </Text>
-                  <View style={styles.coverRow}>
-                    {coverPhotoUrl ? (
-                      <Image
-                        source={{ uri: coverPhotoUrl }}
-                        style={styles.coverPreview}
-                        accessibilityIgnoresInvertColors
-                      />
-                    ) : (
-                      <View style={[styles.coverPreview, styles.coverPreviewEmpty]}>
-                        <Text style={styles.coverPreviewEmoji}>{emoji ?? list?.emoji ?? "🖼"}</Text>
-                      </View>
-                    )}
-                    <View style={styles.coverButtons}>
-                      <Button
-                        testID="settings-cover-pick"
-                        label={coverPhotoUrl ? "Change photo" : "Upload photo"}
-                        variant="secondary"
-                        size="md"
-                        onPress={async () => {
-                          const picked = await pickCoverPhoto();
-                          if (picked) setCoverPhotoUrl(picked.dataUrl);
-                        }}
-                      />
-                      {coverPhotoUrl ? (
-                        <Button
-                          testID="settings-cover-remove"
-                          label="Remove"
-                          variant="secondary"
-                          size="md"
-                          onPress={() => setCoverPhotoUrl(null)}
-                        />
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-                <View style={styles.field}>
-                  <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-                    Emoji
-                  </Text>
-                  <View style={styles.emojiRow}>
-                    {EMOJI_CHOICES.map((choice) => (
-                      <Pressable
-                        key={choice}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Use emoji ${choice}`}
-                        accessibilityState={{ selected: choice === emoji }}
-                        aria-pressed={choice === emoji}
-                        onPress={() => setEmoji(choice)}
-                        style={({ pressed }) => [
-                          styles.emojiCell,
-                          choice === emoji && styles.emojiCellSelected,
-                          pressed && styles.emojiCellPressed,
-                        ]}
-                      >
-                        <Text style={styles.emojiGlyph}>{choice}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-                <View style={styles.field}>
-                  <Text variant="label" tone="secondary" style={styles.fieldLabel}>
-                    Color
-                  </Text>
-                  <View style={styles.colorRow}>
-                    {COLOR_KEYS.map((key) => (
-                      <Pressable
-                        key={key}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Use color ${key}`}
-                        accessibilityState={{ selected: key === color }}
-                        aria-pressed={key === color}
-                        onPress={() => setColor(key)}
-                        style={styles.colorTarget}
-                      >
-                        {({ pressed }) => (
-                          <View
-                            style={[
-                              styles.colorCell,
-                              { backgroundColor: tokens.list[key] },
-                              key === color && styles.colorCellSelected,
-                              pressed && styles.colorCellPressed,
-                            ]}
-                          />
-                        )}
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-                <TextField
-                  label="Description"
-                  testID="settings-description"
-                  value={description ?? ""}
-                  onChangeText={setDescription}
-                  multiline
-                  maxLength={280}
-                />
-                <View style={styles.actionRow}>
-                  <Button
-                    testID="settings-save"
-                    label="Save changes"
-                    size="md"
-                    disabled={!detailsDirty || updateMutation.isPending}
-                    loading={updateMutation.isPending}
-                    onPress={() => updateMutation.mutate()}
-                    style={styles.actionPrimary}
-                  />
-                  {detailsDirty ? (
-                    <Button
-                      testID="settings-discard"
-                      label="Discard"
-                      variant="ghost"
-                      size="md"
-                      disabled={updateMutation.isPending}
-                      onPress={discardDetails}
-                    />
-                  ) : null}
-                </View>
-              </View>
-            ) : null}
-
-            {/* --- Modules (owner-only) --- */}
-            {isOwner && selectedModules ? (
-              <View style={styles.section}>
-                <SectionHeader title="Modules" />
-                <View style={styles.moduleList}>
-                  {EDITABLE_MODULE_NAMES.map((mod) => {
-                    const labels = MODULE_LABELS[mod];
-                    return (
-                      <Switch
-                        key={mod}
-                        label={labels.label}
-                        description={labels.description}
-                        value={selectedModules.includes(mod)}
-                        onValueChange={() => toggleModule(mod)}
-                        testID={`settings-module-${mod}`}
-                      />
-                    );
-                  })}
-                </View>
-                {previewWarnings && previewWarnings.length > 0 ? (
-                  <View style={styles.warningBox}>
-                    {previewWarnings.map((w) => {
-                      const copy = formatConfigWarning(w);
-                      return (
-                        <View key={w.code} style={styles.warningEntry}>
-                          <Text variant="label" tone="danger">
-                            {copy.headline}
-                          </Text>
-                          <Text tone="secondary">{copy.detail}</Text>
-                        </View>
-                      );
-                    })}
-                    <Button
-                      testID="settings-modules-confirm"
-                      label="Apply anyway"
-                      variant="danger"
-                      size="md"
-                      loading={modulesMutation.isPending}
-                      onPress={onConfirmModules}
-                    />
-                  </View>
-                ) : null}
-                <View style={styles.actionRow}>
-                  <Button
-                    testID="settings-modules-save"
-                    label="Save"
-                    size="md"
-                    disabled={
-                      !modulesDirty || modulesMutation.isPending || previewMutation.isPending
-                    }
-                    loading={modulesMutation.isPending || previewMutation.isPending}
-                    onPress={onSaveModules}
-                    style={styles.actionPrimary}
-                  />
-                  {modulesDirty ? (
-                    <Button
-                      testID="settings-modules-discard"
-                      label="Discard"
-                      variant="ghost"
-                      size="md"
-                      disabled={modulesMutation.isPending || previewMutation.isPending}
-                      onPress={discardModules}
-                    />
-                  ) : null}
-                </View>
-              </View>
-            ) : null}
-
-            {/* --- Members --- */}
+            {/* --- Members, with sharing first --- */}
             <View style={styles.section}>
-              <SectionHeader title="Members" />
-              <View style={styles.memberList}>
-                {members.map((m) => (
-                  <MemberRow
+              <SectionHeader
+                title="Members"
+                trailing={
+                  <Text variant="caption" tone="muted">
+                    {members.length}
+                  </Text>
+                }
+                style={styles.sectionHeader}
+              />
+              <ListRow
+                leading={
+                  <View style={styles.shareMark}>
+                    <Icon name="share" size={18} tone="accent" />
+                  </View>
+                }
+                title="Share link"
+                subtitle={shareSubtitle}
+                chevron
+                onPress={() => setShareOpen(true)}
+                testID="settings-share"
+              />
+              {members.map((m) => {
+                const isSelf = !!user && m.userId === user.id;
+                const canManage = isOwner && !isSelf && m.role !== "owner";
+                return (
+                  <ListRow
                     key={m.userId}
-                    member={m}
-                    isCurrentUser={!!user && m.userId === user.id}
-                    isOwner={isOwner}
-                    disabled={removeMemberMutation.isPending || transferMutation.isPending}
-                    onRemove={() => void onRemoveMember(m)}
-                    onMakeOwner={() => void onMakeOwner(m)}
+                    testID={`settings-member-${m.userId}`}
+                    leading={
+                      <Avatar
+                        name={m.displayName}
+                        imageUrl={userAvatarImageUrl(m.userId)}
+                        size="lg"
+                        style={styles.memberAvatar}
+                      />
+                    }
+                    title={`${m.displayName ?? "No name"}${isSelf ? " (you)" : ""}`}
+                    subtitle={m.role === "owner" ? "Owner" : "Member"}
+                    trailing={
+                      canManage ? (
+                        <IconButton
+                          icon="more"
+                          iconTone="secondary"
+                          accessibilityLabel={`Manage ${m.displayName ?? "member"}`}
+                          disabled={removeMemberMutation.isPending || transferMutation.isPending}
+                          onPress={() => {
+                            setMemberMenuFor(m);
+                            setMemberMenuOpen(true);
+                          }}
+                          testID={`settings-member-menu-${m.userId}`}
+                        />
+                      ) : undefined
+                    }
                   />
-                ))}
-              </View>
+                );
+              })}
             </View>
 
-            {/* --- Sources --- */}
-            {sources.length > 0 ? (
+            {/* --- Details (owner) --- */}
+            {isOwner ? (
               <View style={styles.section}>
-                <SectionHeader title="Sources" />
-                {sources.map((src) => {
-                  // Each source kind stashes its primary URL on a kind-specific
-                  // config field. Extending this means one more case here.
-                  const sourceUrl: string | null =
-                    src.kind === "spotify_playlist" &&
-                    typeof src.config.spotifyPlaylistUrl === "string"
-                      ? src.config.spotifyPlaylistUrl
-                      : src.kind === "letterboxd_list" &&
-                          typeof src.config.letterboxdUrl === "string"
-                        ? src.config.letterboxdUrl
-                        : null;
-                  return (
-                    <View key={src.id} style={styles.field}>
-                      <Text variant="label">{src.kind.replace(/_/g, " ")}</Text>
-                      {sourceUrl ? (
-                        <Pressable
-                          accessibilityRole="link"
-                          onPress={() => {
-                            Linking.openURL(sourceUrl).catch(() => {});
-                          }}
-                          testID={`settings-source-${src.id}-open`}
-                          style={styles.sourceLink}
-                        >
-                          <Text style={styles.urlText} numberOfLines={1}>
-                            {sourceUrl}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      <Text variant="caption" tone="muted">
-                        {src.lastSyncedAt
-                          ? `Last synced ${formatRelative(src.lastSyncedAt)}`
-                          : "Not yet synced."}
-                      </Text>
-                      <Button
-                        testID={`settings-source-${src.id}-sync`}
-                        label="Refresh now"
-                        variant="secondary"
-                        size="md"
-                        loading={syncMutation.isPending}
-                        disabled={syncMutation.isPending}
-                        onPress={() => syncMutation.mutate(src.id)}
-                      />
+                <SectionHeader title="Details" style={styles.sectionHeader} />
+                <View style={styles.fields}>
+                  <TextField
+                    label="Name"
+                    testID="settings-name"
+                    value={name}
+                    onChangeText={setName}
+                    onFocus={() => {
+                      focusedRef.current = "name";
+                    }}
+                    onBlur={() => {
+                      if (focusedRef.current === "name") focusedRef.current = null;
+                      setName((v) => v.trim() || serverRef.current?.name || v);
+                      flushText();
+                    }}
+                    error={name.trim().length === 0 ? "A list needs a name." : undefined}
+                    maxLength={100}
+                    returnKeyType="done"
+                  />
+
+                  <View style={styles.field}>
+                    <Text variant="label" tone="secondary">
+                      Emoji
+                    </Text>
+                    <View style={styles.emojiRow} role="radiogroup" aria-label="Emoji">
+                      {emojiChoices.map((choice) => {
+                        const selected = choice === list.emoji;
+                        return (
+                          <Pressable
+                            key={choice}
+                            role="radio"
+                            aria-checked={selected}
+                            accessibilityLabel={`Emoji ${choice}`}
+                            onPress={() => {
+                              if (!selected) save({ patch: { emoji: choice }, label: "emoji" });
+                            }}
+                            style={({ pressed }) => [
+                              styles.emojiCell,
+                              selected && styles.emojiCellSelected,
+                              pressed && styles.cellPressed,
+                            ]}
+                            testID={`settings-emoji-${choice}`}
+                          >
+                            <Text style={styles.emojiGlyph}>{choice}</Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
-                  );
-                })}
+                    <TextField
+                      accessibilityLabel="Type or paste any emoji"
+                      placeholder="Or type or paste any emoji"
+                      value={customEmoji}
+                      onChangeText={(v) => {
+                        setCustomEmoji(v);
+                        if (emojiError) setEmojiError(null);
+                      }}
+                      onSubmitEditing={applyCustomEmoji}
+                      onBlur={applyCustomEmoji}
+                      error={emojiError ?? undefined}
+                      autoCorrect={false}
+                      returnKeyType="done"
+                      testID="settings-emoji-custom"
+                    />
+                  </View>
+
+                  <View style={styles.field}>
+                    <Text variant="label" tone="secondary">
+                      Color
+                    </Text>
+                    <View style={styles.colorRow} role="radiogroup" aria-label="Color">
+                      {COLOR_KEYS.map((key) => {
+                        const selected = key === list.color;
+                        return (
+                          <Pressable
+                            key={key}
+                            role="radio"
+                            aria-checked={selected}
+                            accessibilityLabel={`Color ${key}`}
+                            onPress={() => {
+                              if (!selected)
+                                save({ patch: { color: key as ListColor }, label: "color" });
+                            }}
+                            style={styles.colorTarget}
+                            testID={`settings-color-${key}`}
+                          >
+                            {({ pressed }) => (
+                              <View
+                                style={[
+                                  styles.colorCell,
+                                  { backgroundColor: tokens.list[key] },
+                                  selected && styles.colorCellSelected,
+                                  pressed && styles.cellPressed,
+                                ]}
+                              />
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  <View style={styles.field}>
+                    <Text variant="label" tone="secondary">
+                      Cover photo
+                    </Text>
+                    <View style={styles.coverRow}>
+                      {list.coverPhotoUrl ? (
+                        <Image
+                          source={{ uri: list.coverPhotoUrl }}
+                          style={styles.coverPreview}
+                          accessibilityIgnoresInvertColors
+                        />
+                      ) : (
+                        <View style={[styles.coverPreview, styles.coverPreviewEmpty]}>
+                          <Text style={styles.coverPreviewEmoji}>{list.emoji}</Text>
+                        </View>
+                      )}
+                      <View style={styles.coverButtons}>
+                        <Button
+                          testID="settings-cover-pick"
+                          label={list.coverPhotoUrl ? "Change photo" : "Add a photo"}
+                          variant="secondary"
+                          onPress={async () => {
+                            const picked = await pickCoverPhoto();
+                            if (picked)
+                              save({ patch: { coverPhotoUrl: picked.dataUrl }, label: "photo" });
+                          }}
+                        />
+                        {list.coverPhotoUrl ? (
+                          <Button
+                            testID="settings-cover-remove"
+                            label="Remove"
+                            variant="ghost"
+                            onPress={() => save({ patch: { coverPhotoUrl: null }, label: "photo" })}
+                          />
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+
+                  <TextField
+                    label="Description"
+                    testID="settings-description"
+                    value={description}
+                    onChangeText={setDescription}
+                    onFocus={() => {
+                      focusedRef.current = "description";
+                    }}
+                    onBlur={() => {
+                      if (focusedRef.current === "description") focusedRef.current = null;
+                      setDescription((v) => v.trim());
+                      flushText();
+                    }}
+                    multiline
+                    maxLength={280}
+                  />
+                </View>
+              </View>
+            ) : null}
+
+            {/* --- Features (owner) --- */}
+            {isOwner ? (
+              <View style={styles.section}>
+                <SectionHeader title="Features" style={styles.sectionHeader} />
+                <View style={styles.fields}>
+                  {FEATURES.map((f) => (
+                    <Switch
+                      key={f.mod}
+                      label={f.label}
+                      description={f.description}
+                      value={modules.includes(f.mod)}
+                      disabled={!!pendingModules}
+                      onValueChange={() => void toggleFeature(f.mod)}
+                      testID={`settings-module-${f.mod}`}
+                    />
+                  ))}
+                  {sources.map((src) => (
+                    <SourceRow
+                      key={src.id}
+                      source={src}
+                      busy={syncMutation.isPending && syncMutation.variables === src.id}
+                      onSync={() => syncMutation.mutate(src.id)}
+                    />
+                  ))}
+                </View>
               </View>
             ) : null}
 
             {/* --- Duplicate --- */}
             <View style={styles.section}>
-              <SectionHeader title="Duplicate" />
-              <Text tone="secondary">
-                Make a copy of this list. Items come along, but completion and sources start fresh.
-              </Text>
-              <Button
-                testID="settings-duplicate-list"
-                label="Duplicate list"
-                variant="secondary"
-                size="md"
-                loading={duplicateMutation.isPending}
-                disabled={duplicateMutation.isPending}
+              <ListRow
+                title="Duplicate list"
+                subtitle="Copies the items. Checked-off state and syncing start fresh."
                 onPress={() => duplicateMutation.mutate()}
+                disabled={duplicateMutation.isPending}
+                trailing={
+                  duplicateMutation.isPending ? (
+                    <Text variant="caption" tone="muted">
+                      Copying…
+                    </Text>
+                  ) : undefined
+                }
+                testID="settings-duplicate-list"
               />
             </View>
 
-            {/* --- Share link (owner-only) --- */}
-            {isOwner && list ? (
-              <View style={styles.section}>
-                <SectionHeader title="Share link" />
-                <View style={styles.field}>
-                  <View style={styles.urlBox}>
-                    <Text
-                      style={styles.urlText}
-                      numberOfLines={1}
-                      selectable
-                      testID="settings-share-url"
-                    >
-                      {buildListShareUrl(list.shareSlug)}
-                    </Text>
-                  </View>
-                  <View style={styles.actionRow}>
+            {/* --- The destructive action, last --- */}
+            <View style={styles.section}>
+              <SectionHeader
+                title={isOwner ? "Delete list" : "Leave list"}
+                style={styles.sectionHeader}
+              />
+              <View style={styles.fields}>
+                <Text tone="secondary">
+                  {isOwner
+                    ? "Removes the list for everyone on it. This can't be undone from the app."
+                    : "Items you added stay on the list."}
+                </Text>
+                <View style={styles.dangerRow}>
+                  {isOwner ? (
                     <Button
-                      testID="settings-copy-link"
-                      label="Copy link"
-                      variant="secondary"
-                      size="md"
-                      onPress={async () => {
-                        const ok = await copyToClipboard(buildListShareUrl(list.shareSlug));
-                        showToast({
-                          message: ok ? "Copied" : "Couldn't copy. Copy the link manually.",
-                          tone: ok ? "success" : "danger",
-                        });
-                      }}
+                      testID="settings-delete-list"
+                      label="Delete list"
+                      variant="danger"
+                      loading={deleteMutation.isPending}
+                      disabled={deleteMutation.isPending}
+                      onPress={() => void onDeleteList()}
                     />
+                  ) : (
                     <Button
-                      testID="settings-reset-link"
-                      label="Reset link"
-                      variant="ghost"
-                      size="md"
-                      loading={resetSlugMutation.isPending}
-                      disabled={resetSlugMutation.isPending}
-                      onPress={() => void onResetLink()}
+                      testID="settings-leave-list"
+                      label="Leave list"
+                      variant="danger"
+                      loading={removeMemberMutation.isPending}
+                      disabled={!user || removeMemberMutation.isPending}
+                      onPress={() => void onLeaveList()}
                     />
-                  </View>
-                  <Text variant="caption" tone="muted">
-                    Resetting kills the current link everywhere it's been pasted. Existing members
-                    keep access.
-                  </Text>
-                </View>
-                <View
-                  style={styles.visibilityList}
-                  role="radiogroup"
-                  aria-label="Who can use the share link"
-                >
-                  {(["join", "view", "off"] as const).map((opt) => {
-                    const labels = SHARE_VISIBILITY_LABELS[opt];
-                    return (
-                      <RadioRow
-                        key={opt}
-                        label={labels.title}
-                        description={labels.help}
-                        selected={list.shareVisibility === opt}
-                        onSelect={() => shareVisibilityMutation.mutate(opt)}
-                        testID={`settings-visibility-${opt}`}
-                      />
-                    );
-                  })}
+                  )}
                 </View>
               </View>
-            ) : null}
-
-            <View style={[styles.section, styles.sectionDanger]}>
-              <SectionHeader title="Danger zone" />
-              {isOwner ? (
-                <>
-                  <Text tone="secondary">
-                    Deleting archives the list and removes it from everyone&apos;s home. Items stay
-                    recoverable but no one can see them.
-                  </Text>
-                  <Button
-                    testID="settings-delete-list"
-                    label="Delete list"
-                    variant="danger"
-                    size="md"
-                    loading={archiveListMutation.isPending}
-                    disabled={archiveListMutation.isPending}
-                    onPress={() => void onDeleteList()}
-                  />
-                </>
-              ) : (
-                <>
-                  <Text tone="secondary">Items you added stay on the list.</Text>
-                  <Button
-                    testID="settings-leave-list"
-                    label="Leave list"
-                    variant="danger"
-                    size="md"
-                    loading={removeMemberMutation.isPending}
-                    disabled={!user || removeMemberMutation.isPending}
-                    onPress={() => void onLeaveList()}
-                  />
-                </>
-              )}
             </View>
           </>
+        ) : (
+          <View style={styles.section}>
+            <Text tone="secondary">
+              {listQuery.isError ? errorMessage(listQuery.error, "Couldn't load this list.") : ""}
+            </Text>
+          </View>
         )}
       </KeyboardAwareScrollView>
+
+      <ShareListSheet list={list ?? null} visible={shareOpen} onClose={() => setShareOpen(false)} />
+      <ActionSheet
+        visible={memberMenuOpen}
+        onClose={() => setMemberMenuOpen(false)}
+        title={memberMenuFor?.displayName ?? "Member"}
+        items={
+          memberMenuFor
+            ? [
+                {
+                  label: "Make owner",
+                  onPress: () => void onMakeOwner(memberMenuFor),
+                  testID: "settings-make-owner",
+                },
+                {
+                  label: "Remove from list",
+                  tone: "danger",
+                  onPress: () => void onRemoveMember(memberMenuFor),
+                  testID: "settings-remove-member",
+                },
+              ]
+            : []
+        }
+        testID="settings-member-menu"
+      />
     </Screen>
   );
 }
 
-interface MemberRowProps {
-  member: ListMemberSummary;
-  isCurrentUser: boolean;
-  isOwner: boolean;
-  disabled: boolean;
-  onRemove: () => void;
-  onMakeOwner: () => void;
-}
+const SOURCE_NAMES: Record<string, string> = {
+  spotify_playlist: "Spotify playlist",
+  letterboxd_list: "Letterboxd list",
+  letterboxd_match: "Letterboxd watchlists",
+};
 
-function MemberRow({
-  member,
-  isCurrentUser,
-  isOwner,
-  disabled,
-  onRemove,
-  onMakeOwner,
-}: MemberRowProps) {
-  const canRemove = isOwner && !isCurrentUser && member.role !== "owner";
-  const canPromote = isOwner && !isCurrentUser && member.role !== "owner";
+function SourceRow({
+  source,
+  busy,
+  onSync,
+}: {
+  source: ListSource;
+  busy: boolean;
+  onSync: () => void;
+}) {
   return (
-    <View style={styles.memberRow} testID={`settings-member-${member.userId}`}>
-      <Avatar
-        name={member.displayName}
-        imageUrl={userAvatarImageUrl(member.userId)}
-        size="md"
-        style={styles.memberAvatar}
-      />
-      <View style={styles.memberInfo}>
-        <Text variant="body" numberOfLines={1}>
-          {member.displayName ?? "(no name)"}
-          {isCurrentUser ? " · you" : ""}
-        </Text>
-        <Text variant="caption" tone="muted">
-          {member.role === "owner" ? "Owner" : "Member"}
-        </Text>
-      </View>
-      {canPromote ? (
+    <ListRow
+      title={SOURCE_NAMES[source.kind] ?? "Linked source"}
+      subtitle={
+        source.lastSyncedAt ? `Synced ${formatRelative(source.lastSyncedAt)}` : "Not synced yet"
+      }
+      style={styles.sourceRow}
+      trailing={
         <Button
-          testID={`settings-make-owner-${member.userId}`}
-          label="Make owner"
-          variant="ghost"
-          size="md"
-          disabled={disabled}
-          onPress={onMakeOwner}
-        />
-      ) : null}
-      {canRemove ? (
-        <Button
-          testID={`settings-remove-${member.userId}`}
-          label="Remove"
+          label="Sync now"
           variant="secondary"
-          size="md"
-          disabled={disabled}
-          onPress={onRemove}
+          loading={busy}
+          disabled={busy}
+          onPress={onSync}
+          testID={`settings-source-${source.id}-sync`}
         />
-      ) : null}
-    </View>
+      }
+      testID={`settings-source-${source.id}`}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: tokens.bg.canvas,
-  },
-  body: {
-    paddingHorizontal: tokens.space.xl,
-    paddingBottom: tokens.space.xxl,
-  },
-  section: {
-    gap: tokens.space.md,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.xl,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: tokens.border.subtle,
-  },
-  sectionDanger: {
-    marginTop: tokens.space.md,
-  },
+  root: { flex: 1, backgroundColor: tokens.bg.canvas },
+  body: { paddingBottom: tokens.space.xxl * 2 },
+  saved: { paddingHorizontal: tokens.space.sm },
+  section: { paddingTop: tokens.space.xl },
+  sectionHeader: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.xs },
+  fields: { gap: tokens.space.lg, paddingHorizontal: tokens.space.lg },
   field: { gap: tokens.space.sm },
-  fieldLabel: { marginLeft: tokens.space.xxs },
   skeletonGap: { marginTop: tokens.space.md },
-  sourceLink: { minHeight: tokens.hit, justifyContent: "center" },
-  actionRow: {
-    flexDirection: "row",
+  shareMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
-    gap: tokens.space.sm,
-    marginTop: tokens.space.xs,
+    justifyContent: "center",
+    backgroundColor: tokens.accent.muted,
   },
-  actionPrimary: { flexShrink: 0 },
+  memberAvatar: { width: 44, height: 44, borderRadius: 22 },
   emojiRow: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
   emojiCell: {
     width: 44,
@@ -1056,11 +965,11 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.subtle,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: tokens.bg.canvas,
   },
   emojiCellSelected: { borderColor: tokens.accent.default, backgroundColor: tokens.accent.muted },
-  emojiCellPressed: { opacity: 0.7 },
-  emojiGlyph: { fontSize: tokens.font.size.lg },
+  cellPressed: { opacity: 0.7 },
+  // lineHeight pinned so the glyph isn't clipped to the body line box on iOS.
+  emojiGlyph: { fontSize: tokens.font.size.lg, lineHeight: 24 },
   // Each swatch sits in a 44pt press target (web ignores hitSlop).
   colorRow: { flexDirection: "row", flexWrap: "wrap" },
   colorTarget: {
@@ -1071,12 +980,13 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.pill,
   },
   colorCell: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 2,
     borderColor: "transparent",
   },
+  colorCellSelected: { borderColor: tokens.text.primary },
   coverRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
   coverButtons: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap", flex: 1 },
   coverPreview: { width: 64, height: 64, borderRadius: tokens.radius.md },
@@ -1085,53 +995,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  // lineHeight pinned so the 28px list emoji isn't clipped to the shared Text
-  // body line box (22) on iOS.
   coverPreviewEmoji: { fontSize: 28, lineHeight: 32 },
-  colorCellSelected: { borderColor: tokens.text.primary },
-  colorCellPressed: { opacity: 0.8 },
-  memberList: { gap: tokens.space.sm },
-  memberRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: tokens.space.sm,
-    gap: tokens.space.md,
-  },
-  memberAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-  },
-  memberInfo: { flex: 1, gap: tokens.space.xxs },
-  visibilityList: { gap: tokens.space.xs, marginTop: tokens.space.sm },
-  urlBox: {
-    borderWidth: 1,
-    borderColor: tokens.border.default,
-    borderRadius: tokens.radius.md,
-    paddingHorizontal: tokens.space.md,
-    paddingVertical: 10,
-    backgroundColor: tokens.bg.surface,
-  },
-  urlText: { color: tokens.text.primary, fontSize: tokens.font.size.sm },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  moduleList: { gap: tokens.space.sm },
-  warningBox: {
-    gap: tokens.space.sm,
-    padding: tokens.space.md,
-    borderRadius: tokens.radius.md,
-    backgroundColor: tokens.bg.surface,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-  },
-  warningEntry: {
-    gap: tokens.space.xs,
-  },
+  sourceRow: { marginHorizontal: 0, paddingHorizontal: 0 },
+  dangerRow: { flexDirection: "row" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
 });

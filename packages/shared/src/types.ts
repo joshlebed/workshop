@@ -531,6 +531,21 @@ export interface ListSummary extends List {
   pinnedAt: string | null;
   archivedAt: string | null;
   mutedAt: string | null;
+  /**
+   * Live items not yet completed. Optional: added in UX pass 3.1, and the web
+   * client persists the lists cache, so an older cached response lacks it.
+   */
+  openItemCount?: number;
+  /**
+   * Up to three members other than the viewer, earliest joined first: the
+   * home row's avatar stack. Optional for the same reason as `openItemCount`.
+   */
+  memberPreview?: ListMemberPreview[];
+}
+
+export interface ListMemberPreview {
+  userId: string;
+  displayName: string | null;
 }
 
 export interface ListMemberSummary {

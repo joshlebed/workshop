@@ -27,15 +27,19 @@ export default function ListsLayout() {
         fullScreenGestureEnabled: true,
       }}
     >
+      {/* 3.8: destinations push (settings, profile, list settings, item);
+          flows that create something are modals (add, add-bulk). */}
       <Stack.Screen name="index" />
-      <Stack.Screen name="profile" options={{ presentation: "modal" }} />
+      <Stack.Screen name="settings/index" />
+      <Stack.Screen name="settings/hidden" />
+      <Stack.Screen name="profile" />
       <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="create-list/playlist" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="list/[id]/index" />
       <Stack.Screen name="list/[id]/add" options={{ presentation: "modal" }} />
       <Stack.Screen name="list/[id]/add-bulk" options={{ presentation: "modal" }} />
-      <Stack.Screen name="list/[id]/settings" options={{ presentation: "modal" }} />
+      <Stack.Screen name="list/[id]/settings" />
       <Stack.Screen name="list/[id]/item/[itemId]" />
     </Stack>
   );

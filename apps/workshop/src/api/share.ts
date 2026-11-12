@@ -90,16 +90,16 @@ export function transferOwnership(
 }
 
 export const SHARE_VISIBILITY_LABELS: Record<ShareVisibility, { title: string; help: string }> = {
-  off: {
-    title: "Off",
-    help: "The share link won't open the list for anyone outside this group.",
+  join: {
+    title: "Join with link",
+    help: "Anyone with the link can join and add items.",
   },
   view: {
     title: "View with link",
-    help: "Anyone with the link can read the list — they can't add items or change anything.",
+    help: "Anyone with the link can see the list but not change it.",
   },
-  join: {
-    title: "Join with link",
-    help: "Anyone with the link can join as a member and add items.",
+  off: {
+    title: "Off",
+    help: "Only members can open the list.",
   },
 };

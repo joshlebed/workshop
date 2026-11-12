@@ -190,6 +190,40 @@ cell were not run on a device. Decisions and deviations:
 | 3.7 | _Dropped._ Friends are removed from Workshop in 0.18; people reach a list through its share link only.                                                                                                                             | —    |
 | 3.8 | Modal vs push made uniform per the header rule; create, join and accept flows keep home beneath the list so back works _(suspected)_.                                                                                              | S    |
 
+**Phase 3 status (2026-11-12): done, rows 3.1–3.6 and 3.8** (3.7 dropped), in the
+`joshlebed/ux-pass-phase-3` PR (stacked on Phase 2). Verified in the running web app at 390×844
+and 1440×900 as an owner and as a member, keyboard-only through the home row menu, share sheet
+and Settings; no control under 44×44, no input under 16px, no console errors. Decisions and
+deviations:
+
+- **Home second line, one rule for every row**: `<count in the list's own noun> · <who did
+what last> · <age>` ("12 to watch · Renata added Past Lives · 2d"), or `· updated <age>`
+  when the feed has no recent event. Lists with to-do count open items in their completion
+  word ("3 to do", "All watched"); others use the plain noun ("4 albums"). The description no
+  longer competes for the line. Unread is a count `Badge`; shared lists show up to three member
+  avatars. Pinned lists sit under a "Pinned" header, the rest under "Recent".
+- **Backend, one field pair**: `GET /v1/lists` gained `openItemCount` and `memberPreview` (up to
+  three other members). The client reads both as optional (web persists the lists cache).
+- **Share sheet shape**: one `ShareListSheet` for every entry point. Owners see the three link
+  options as radio rows (save on tap, optimistic), then Share link, then a quiet Reset link
+  (confirm). Members get Share link while the link is on, otherwise one line saying only the
+  owner can turn it on. Share link uses the system share sheet on native and in browsers with
+  Web Share, and copies with "Link copied" otherwise. Measured: **2 taps** from a list (share
+  button, Share link), 3 from home (long-press or "more", Share…, Share link).
+- **Settings**: `/settings` replaced the profile sheet; Edit profile and list settings are pushes
+  that autosave (no Save, no Discard, nothing to lose on close). Admin tools sit in their own
+  group at the bottom; while impersonating, Stop impersonating is there for the impersonated
+  session too. Phase 4 adds Privacy, Terms and Delete account to About.
+- **Activity**: the "New" block is computed from each list's server `unreadCount` at open (no
+  new backend field) and the read marker moves when you leave. Events for deleted items are
+  already hidden by the feed, so the item deep link only falls back to the list in a race.
+- **Swipe actions on native: skipped.** Not verifiable without a device; long-press opens the
+  same menu.
+- Extras: a `hide` icon (eye with a slash); the duplicate-list and create-list flows land with
+  home beneath the new list; home drops the stray `?id=` the stack anchor inherited.
+- Not verifiable on web, owed a device check: the native share sheet, the back gesture after
+  create/join/accept, long-press on a home row, and the system alert path of the confirms.
+
 ### Phase 4 — First run and the edges
 
 | #   | Change                                                                                                                                                                                                                                                            | Size |

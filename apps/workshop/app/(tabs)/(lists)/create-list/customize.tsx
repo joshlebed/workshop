@@ -21,7 +21,7 @@ import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboa
 import { createList } from "../../../../src/api/lists";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { pickCoverPhoto } from "../../../../src/lib/coverPhoto";
-import { goBack } from "../../../../src/lib/goBack";
+import { goBack, openListOverHome } from "../../../../src/lib/goBack";
 
 const COLOR_KEYS: readonly ListColorKey[] = [
   "sunset",
@@ -103,8 +103,8 @@ export default function CreateListCustomize() {
       ),
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      router.dismissAll();
-      router.replace(`/list/${res.list.id}`);
+      // Home directly beneath the new list, so back goes home (3.8).
+      openListOverHome(res.list.id);
     },
     onError: (e) => {
       showToast({

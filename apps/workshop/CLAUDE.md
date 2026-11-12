@@ -25,7 +25,7 @@ binaries that never took the OTA. `EXPO_PUBLIC_ENABLE_GAMES` is no longer read; 
 ## App shell: a one-tab `Tabs` shell via route groups
 
 The root is an expo-router `Tabs` shell holding a single tab, `app/(tabs)/(lists)/` (home, lists,
-create-list, profile). The bottom tab bar is hidden (`tabBarStyle: { display: "none" }`). The
+create-list, settings, profile). The bottom tab bar is hidden (`tabBarStyle: { display: "none" }`). The
 groups are kept (rather than flattened) so no URL, deep link, or `withAnchor` replace changes.
 Group segments never appear in URLs but DO appear in `useSegments()`; AuthGate in
 `app/_layout.tsx` filters `(`-prefixed segments before matching. Auth/onboarding/invite/share/
@@ -39,7 +39,7 @@ with `expo start --clear` after changing one (`scripts/e2e.sh` always clears for
 
 Decision in the usability pass (`docs/ux-pass-plan.md` 0.18): multiplayer in Workshop is per
 list, through its share link. There is no `/friends`, no `/friends/:id`, no Friends button or
-request badge in `ProfileMenu`, and no friend-invite stash in AuthGate. Invite links minted
+request badge (the profile sheet is now the `/settings` screen), and no friend-invite stash in AuthGate. Invite links minted
 earlier still point at this domain (and the AASA claims `/friends/accept/*`), so
 `app/friends/accept/[token].tsx` forwards to HighScore's accept screen with `openHighScore`
 and renders `GamesMovedScreen` (its `copy` prop sets the friends wording) behind it, exactly
@@ -254,6 +254,32 @@ keep the `/share/*` forward moves as `router.replace` (a clean linear chain — 
 leaves a phantom `/share` screen beneath `(tabs)` that a home swipe-back can surface). Any new
 cross-navigator `replace` into `(lists)` needs `withAnchor` too (e.g. the invite-accept /
 public-landing → list paths share this shape).
+
+## Back buttons: `goBack(parent)` pops real history, else goes to the parent (3.8)
+
+`src/lib/goBack.ts` is Workshop's own (HighScore keeps `@workshop/ui/navigation`). It reads the
+focused stack (the root layout registers the container's `getRootState`) and decides with the
+pure, tested `resolveBack` (`src/lib/backResolver.ts`): pop when the screen beneath is the parent
+or any real history; when the only thing beneath is the injected home anchor and the parent is a
+list, `router.dismissTo(parent)` instead. A plain `back()` there used to drop a cold-opened
+`/list/:id/add` on `/?id=<listId>` (the anchor inherits the deep link's params; home also clears
+stray `id`/`itemId` params with `navigation.setParams`, which targets its own route where
+`router.setParams` would hit the focused one). Flows that make a list land with
+`openListOverHome(id)` (`dismissTo("/")` then push), so back from a new or duplicated list goes
+home, not through the create flow. Destinations (settings, profile, list settings, item) are
+pushes; only add / add-bulk / create are modals. Unknown routes render `app/+not-found.tsx`.
+
+## Home rows and the share sheet (3.1–3.3)
+
+Every home row's second line follows one rule, `src/screens/home/homeRow.ts` (unit-tested):
+`<count in the list's own noun> · <who did what last> · <age>`, falling back to
+`· updated <age>`. Verbs come from `describeActivity` (`src/lib/activityCopy.ts`), shared with the
+activity feed so both say "deleted", "ranked", "watched". Row actions open one `ActionSheet` from
+long-press, right-click, or the web-only trailing "more" button (`RowMoreButton.web.tsx`; the
+native file renders nothing). Swipe actions on native were not built (not verifiable without a
+device). `ShareListSheet` (`src/components/`) is the one share surface (list header, row menu,
+list settings); it calls `shareOrCopyLink(url, { webShare: true })`, the opt-in that uses Web Share
+in browsers that have it. HighScore calls the helper without the option and keeps copying.
 
 ## Web HTML shell lives in `public/index.html`
 
