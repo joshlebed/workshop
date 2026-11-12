@@ -34,16 +34,16 @@ Target after this pass: 32+.
 
 These are the product-level rules. Each phase below is an application of them.
 
-| Rule                                 | Meaning                                                                                                                                                                                                                     |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Act, then undo**                   | Reversible actions (complete, delete item, hide list, remove tag, unrank) happen at once and show a toast with Undo. Only irreversible ones (delete list, leave, remove member) ask first, and the dialog names the object. |
-| **Every tap answers within a frame** | Every mutation is optimistic with rollback and an error toast. Haptic fires on the tap, not on the response.                                                                                                                |
-| **One row**                          | `[check] [cover] title / one quiet line [trailing]`. The whole row opens detail. Same anatomy on home, list, picker, archive, activity.                                                                                     |
-| **One header**                       | `ScreenHeader` everywhere. Destinations are pushes with `‹`. Flows that create something are modals with `✕` on the left and the commit action on the right.                                                                |
-| **Edits autosave, creates commit**   | Editing an existing thing (item, list details, settings toggles) saves as you go with a "Saved" indicator. Only creating something has an explicit button.                                                                  |
-| **One word per thing**               | See the glossary in §6.                                                                                                                                                                                                     |
-| **Content before chrome**            | Cached content is never replaced by a spinner or an error. First load is a skeleton of the real layout.                                                                                                                     |
-| **Phone first, 44pt, 16px**          | Every target is at least 44pt including on web (where `hitSlop` does nothing). Every input is at least 16px (iOS Safari zoom).                                                                                              |
+| Rule                                 | Meaning                                                                                                                                                                                                                          |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Act, then undo**                   | Reversible actions (complete, delete item, hide list, remove tag, move to top) happen at once and show a toast with Undo. Only irreversible ones (delete list, leave, remove member) ask first, and the dialog names the object. |
+| **Every tap answers within a frame** | Every mutation is optimistic with rollback and an error toast. Haptic fires on the tap, not on the response.                                                                                                                     |
+| **One row**                          | `[check] [cover] title / one quiet line [trailing]`. The whole row opens detail. Same anatomy on home, list, picker, archive, activity.                                                                                          |
+| **One header**                       | `ScreenHeader` everywhere. Destinations are pushes with `‹`. Flows that create something are modals with `✕` on the left and the commit action on the right.                                                                     |
+| **Edits autosave, creates commit**   | Editing an existing thing (item, list details, settings toggles) saves as you go with a "Saved" indicator. Only creating something has an explicit button.                                                                       |
+| **One word per thing**               | See the glossary in §6.                                                                                                                                                                                                          |
+| **Content before chrome**            | Cached content is never replaced by a spinner or an error. First load is a skeleton of the real layout.                                                                                                                          |
+| **Phone first, 44pt, 16px**          | Every target is at least 44pt including on web (where `hitSlop` does nothing). Every input is at least 16px (iOS Safari zoom).                                                                                                   |
 
 ## 3. Plan
 
@@ -176,6 +176,12 @@ cell were not run on a device. Decisions and deviations:
   but don't reorder among themselves, and a demote uses the legacy move shape.
 - Out-of-scope extras: delete from item detail is act-then-undo too, and the search result
   row no longer nests a button inside a button.
+
+> **Superseded (2026-11-12, one ordered list).** The Ranked block, `order_key`, rank numerals
+> and the "Rank at top / bottom / Remove from ranking" menu are gone: a list is one
+> hand-ordered sequence on `position`, and a synced list keeps an inbox ("New from Spotify")
+> below it. See [list-types.md → Order](list-types.md#order). The 2.7, 2.1 and album-shelf
+> notes above describe the retired model.
 
 ### Phase 3 — Navigation and information architecture
 
@@ -355,16 +361,17 @@ above as each lands, so they cannot regress.
 
 ## 6. Glossary (one word per thing)
 
-| Concept                    | Use                                                                | Stop using                                         |
-| -------------------------- | ------------------------------------------------------------------ | -------------------------------------------------- |
-| Hand-ordered block         | **Ranked**; "Rank at top", "Rank at bottom", "Remove from ranking" | ordered, unordered, pinned (in activity)           |
-| Completion                 | The list's own word everywhere: **Watched / Read / Tried / Done**  | Mark complete, Mark incomplete, uncrossed          |
-| Removing an item or a list | **Delete**, always in `status.danger`                              | Remove this item, archive (in errors and activity) |
-| Per-viewer hide of a list  | **Hide** / Hidden lists                                            | Archive (collides with delete in activity)         |
-| Letting someone in         | **Share link**; the recipient **joins**                            | invite (reserved for friends)                      |
-| People on a list           | **Members**                                                        | collaborators                                      |
-| Optional list behaviours   | **Features**                                                       | modules                                            |
-| Silencing unread dots      | **Mute activity**                                                  | Mute notifications                                 |
+| Concept                    | Use                                                                                   | Stop using                                         |
+| -------------------------- | ------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| A list's order             | One hand-ordered list; **Move up / Move down / Move to top**; activity says **moved** | rank, ranked, ranking, ordered, unordered, pinned  |
+| Synced rows nobody placed  | **New from Spotify** / **New from Letterboxd**; **Add to list**                       | detected, ranked, unranked                         |
+| Completion                 | The list's own word everywhere: **Watched / Read / Tried / Done**                     | Mark complete, Mark incomplete, uncrossed          |
+| Removing an item or a list | **Delete**, always in `status.danger`                                                 | Remove this item, archive (in errors and activity) |
+| Per-viewer hide of a list  | **Hide** / Hidden lists                                                               | Archive (collides with delete in activity)         |
+| Letting someone in         | **Share link**; the recipient **joins**                                               | invite (reserved for friends)                      |
+| People on a list           | **Members**                                                                           | collaborators                                      |
+| Optional list behaviours   | **Features**                                                                          | modules                                            |
+| Silencing unread dots      | **Mute activity**                                                                     | Mute notifications                                 |
 
 ## 7. Decisions (2026-11-11)
 
@@ -419,7 +426,7 @@ emoji-in-a-tinted-disc mark repeats on every screen). **16/20.**
 | Share a list                   | 3 taps, clipboard only, owner only                   | 2 taps, native share sheet | 2 taps, system share sheet (copy where there is none)  |
 | New user joins from a link     | 4 taps, then the list is lost                        | 4 taps, lands in the list  | 4 taps + 1 text entry, lands in the list, home beneath |
 | First list from a cold install | 5 taps + 2 text entries                              | 4 taps + 1 text entry      | 3 taps + 1 text entry                                  |
-| Undo a mistake                 | not possible                                         | every reversible action    | 1 tap on the toast: complete, delete, move, rank, hide |
+| Undo a mistake                 | not possible                                         | every reversible action    | 1 tap on the toast: complete, delete, move, hide       |
 
 **Known gaps left** (in scope but not done, or product calls): ~~which features list settings
 offers per list type~~ (done after the pass: [list-types.md](list-types.md)); activity not batched; no Saving/Saved in item detail; Undo windows don't pause on
