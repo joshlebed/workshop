@@ -45,6 +45,10 @@ describe("describeActivity (glossary verbs)", () => {
     expect(describeActivity(done, { kind: "movie" })).toBe("watched Past Lives");
     expect(describeActivity(done, { kind: "book" })).toBe("read Past Lives");
     expect(describeActivity(done, { kind: "plain" })).toBe("marked Past Lives done");
+    expect(describeActivity(done, { kind: "spotify_album" })).toBe("listened to Past Lives");
+    expect(
+      describeActivity(ev({ type: "item_uncompleted", payload: t }), { kind: "spotify_album" }),
+    ).toBe("marked Past Lives not listened");
     expect(describeActivity(ev({ type: "item_uncompleted", payload: t }), { kind: "tv" })).toBe(
       "marked Past Lives not watched",
     );

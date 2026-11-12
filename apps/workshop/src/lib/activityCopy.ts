@@ -5,13 +5,14 @@
 // unit-tested directly (activityCopy.test.ts).
 
 import type { ActivityEvent, ItemKind } from "@workshop/shared";
+import { listKind } from "@workshop/shared/listKinds";
 
-/** Plain names for list features (the `modules` column). */
+/** Plain names for list features (the `modules` column), as list settings shows them. */
 export const FEATURE_LABELS: Record<string, string> = {
   todo: "to-do",
-  ranking: "ranking",
+  ranking: "the ranked section",
   sources: "syncing",
-  letterboxd: "Letterboxd matching",
+  letterboxd: "Letterboxd match",
   leaderboard: "scores",
 };
 
@@ -22,18 +23,17 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 /** Completion verbs in the list's own word: "watched", "read", "tried", "done". */
-function completionWords(kind: ItemKind | null | undefined): { past: string; done: boolean } {
-  switch (kind) {
-    case "movie":
-    case "tv":
-      return { past: "watched", done: false };
-    case "book":
-      return { past: "read", done: false };
-    case "link":
-      return { past: "tried", done: false };
-    default:
-      return { past: "done", done: true };
-  }
+function completionWords(kind: ItemKind | null | undefined): {
+  past: string;
+  verb: string;
+  done: boolean;
+} {
+  const profile = listKind(kind);
+  return {
+    past: profile.done.toLowerCase(),
+    verb: profile.completedVerb,
+    done: profile.done === "Done",
+  };
 }
 
 function str(payload: Record<string, unknown>, key: string): string | null {
@@ -97,7 +97,7 @@ export function describeActivity(event: ActivityEvent, options: DescribeOptions 
       return `tagged ${t("an item")} ${tags.map((x) => `#${x}`).join(" ")}`;
     }
     case "item_completed":
-      return completion.done ? `marked ${t("an item")} done` : `${completion.past} ${t("an item")}`;
+      return completion.done ? `marked ${t("an item")} done` : `${completion.verb} ${t("an item")}`;
     case "item_uncompleted":
       return `marked ${t("an item")} not ${completion.past}`;
     case "item_promoted":

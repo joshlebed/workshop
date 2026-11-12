@@ -8,7 +8,7 @@
 // without dragging the broader `@workshop/shared` graph through.
 
 import type { ItemKind } from "./itemKinds.js";
-import type { ModuleName } from "./modules.js";
+import type { ToggleFeature } from "./listKinds.js";
 import type { SourceKind } from "./sourceKinds.js";
 
 export type ListColor = "sunset" | "ocean" | "forest" | "grape" | "rose" | "sand" | "slate";
@@ -40,7 +40,8 @@ export interface ListTemplate {
   group: TemplateGroup;
   defaults: {
     itemKind: ItemKind | null;
-    modules: ModuleName[];
+    /** Toggles only: `sources` is derived from the attached source (see listKinds). */
+    modules: ToggleFeature[];
     emoji: string;
     color: ListColor;
   };
@@ -158,7 +159,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "import",
     defaults: {
       itemKind: "spotify_album",
-      modules: ["ranking", "sources"],
+      modules: ["ranking"],
       emoji: "💿",
       color: "grape",
     },
@@ -174,7 +175,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "import",
     defaults: {
       itemKind: "movie",
-      modules: ["todo", "ranking", "sources"],
+      modules: ["todo", "ranking"],
       emoji: "🎞️",
       color: "ocean",
     },
@@ -191,7 +192,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     group: "import",
     defaults: {
       itemKind: "movie",
-      modules: ["ranking", "sources", "letterboxd"],
+      modules: ["ranking", "letterboxd"],
       emoji: "🍿",
       color: "grape",
     },

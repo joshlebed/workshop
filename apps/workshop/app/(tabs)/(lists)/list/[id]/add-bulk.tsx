@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
+import { listKind } from "@workshop/shared/listKinds";
 import {
   Button,
   haptics,
@@ -18,6 +19,7 @@ import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { createItemsBulk, fetchItems } from "../../../../../src/api/items";
+import { fetchListDetail } from "../../../../../src/api/lists";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { splitAgainstList } from "../../../../../src/lib/duplicates";
 import { FAILURE_TOAST_KEY, failureMessage } from "../../../../../src/lib/errorCopy";
@@ -42,6 +44,14 @@ export default function AddBulk() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = (Array.isArray(params.id) ? params.id[0] : params.id) ?? "";
   const { token } = useAuth();
+  // Usually warm from the list screen. A kind without Paste many (the album
+  // shelf fills from its playlist) says so instead of offering the form.
+  const listQuery = useQuery({
+    queryKey: queryKeys.lists.detail(id),
+    queryFn: () => fetchListDetail(id, token),
+    enabled: !!token && !!id,
+  });
+  const kind = listQuery.data ? listKind(listQuery.data.list.itemKind) : null;
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const [paste, setPaste] = useState("");
@@ -134,6 +144,25 @@ export default function AddBulk() {
   useSubmitShortcut(() => {
     if (canSubmit && !mutation.isPending) mutation.mutate();
   }, isFocused);
+
+  if (kind && !kind.add.bulk) {
+    return (
+      <Screen style={styles.root}>
+        <ScreenHeader
+          leading="close"
+          leadingLabel="Close"
+          leadingTestID="add-bulk-cancel"
+          onLeadingPress={() => goBack(`/list/${id}`)}
+          title="Paste many"
+        />
+        <View style={[styles.body, screenColumnStyle]} testID="add-bulk-unavailable">
+          <Text tone="secondary">
+            {`${kind.empty.description} New ${kind.noun.many} arrive when it syncs.`}
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
 
   return (
     <Screen style={styles.root}>

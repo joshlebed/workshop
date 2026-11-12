@@ -6,16 +6,16 @@ import { hasModule, type ModuleName } from "@workshop/shared/modules";
 import type { Context } from "hono";
 import { err } from "./response.js";
 
+// Feature names as list settings shows them (`@workshop/shared/listKinds`).
 const MESSAGES: Record<ModuleName, string> = {
-  todo: "This list doesn't have completion enabled. Turn on “To-do” in list settings to complete items.",
+  todo: "This list doesn't check things off. Turn it on in list settings to complete items.",
   ranking:
-    "This list doesn't have manual ordering enabled. Turn on “Ranking” in list settings to reorder items.",
-  leaderboard:
-    "This list doesn't have a leaderboard. Turn on “Leaderboard” in list settings to submit scores.",
+    "This list doesn't have a ranked section. Turn on “Ranked section” in list settings to rank items.",
+  leaderboard: "Game leaderboards now live in HighScore.",
   sources:
-    "This list doesn't have external sources enabled. Turn on “Sources” in list settings to attach a source.",
+    "This list doesn't sync from anywhere. Connect one in list settings under “Synced from”.",
   letterboxd:
-    "This list doesn't have Letterboxd matching enabled. Turn on “Letterboxd” in list settings to sync watchlists and suggest films.",
+    "This list doesn't have Letterboxd match. Turn on “Letterboxd match” in list settings to sync watchlists and suggest films.",
 };
 
 /**

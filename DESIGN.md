@@ -241,6 +241,15 @@ request). Web is a no-op.
 `medium` is HighScore's; Workshop doesn't use it. Navigation, opening a sheet, copying and
 sharing get none.
 
+## List types
+
+Each kind of list (blank, to-do, links, movies, TV, books, album shelf) keeps the same screen,
+row and header; what differs (features offered, the completion word, the noun in counts, the
+add surface, the empty state) comes from one registry, `@workshop/shared/listKinds`. The full
+kind × feature × copy matrix is in [docs/list-types.md](docs/list-types.md). List settings shows
+a read-only "Holds" line, only the toggles the kind offers, and a "Synced from" section for
+kinds fed by a source; there is no Syncing switch.
+
 ## Anti-patterns to refuse
 
 - Side-stripe borders. Gradient text. Decorative glassmorphism. Hero-metric

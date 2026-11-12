@@ -550,6 +550,18 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   except the album shelf's demote, which uses the legacy shape so its detected block stays in
   recency order (`docs/album-shelf.md`). Client drop logic is `resolveDrop` in
   `apps/workshop/src/screens/listDetail/listOps.ts` (both platforms).
+- **What a list offers follows its kind: `@workshop/shared/listKinds`, not screen branches.**
+  One registry per `item_kind` (plus `blank` for NULL) says which toggles list settings offers
+  (`todo` and `ranking` everywhere, `letterboxd` on movies only), the list's words (noun, Done
+  word, "N to watch", feature labels), the add mode (`search` / `quick` / `sync_only`), Paste
+  many, the empty state and the glyph. `sources` is **derived**, never a toggle: on exactly when
+  a `list_sources` row exists, kept so by `apps/backend/src/lib/listFeatures.ts` in the same
+  transaction as the attach / remove, and a client-sent `sources` is ignored (old binaries still
+  send it). `letterboxd` owns a `letterboxd_match` source the same way. A newly requested toggle
+  the kind doesn't offer is `400 feature_not_offered`. Adding a kind or a per-kind difference
+  means a registry entry, not an `if (itemKind === …)`; matrix in `docs/list-types.md`. The
+  module is client-runtime-imported, so it value-imports no sibling (it repeats the module order;
+  its test pins it to `MODULE_NAMES`).
 - **Per-(list, viewer) presentation state lives on `list_members`.** `pinned_at`,
   `archived_at`, `muted_at` columns (NULL = not set). `last_read_at` for unread-count
   derivation lives in the older `user_activity_reads` table — don't duplicate it.

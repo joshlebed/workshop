@@ -1,4 +1,5 @@
 import type { ListColor } from "@workshop/shared";
+import { featureCopy, listKind, type ToggleFeature } from "@workshop/shared/listKinds";
 import {
   getTemplate,
   LIST_TEMPLATES,
@@ -12,6 +13,7 @@ import {
   layout,
   Screen,
   ScreenHeader,
+  Switch,
   screenColumnStyle,
   Text,
   TextField,
@@ -101,6 +103,12 @@ export default function CreateListCustomize() {
   const [color, setColor] = useState<ListColor>(template.defaults.color);
   const [description, setDescription] = useState("");
   const [coverPhotoUrl, setCoverPhotoUrl] = useState<string | null>(null);
+  // The template's features, adjustable before the list exists: only the
+  // toggles this kind of list offers (`@workshop/shared/listKinds`).
+  const offeredFeatures = listKind(template.defaults.itemKind).features;
+  const [features, setFeatures] = useState<ToggleFeature[]>(template.defaults.modules);
+  const toggleFeature = (f: ToggleFeature) =>
+    setFeatures((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
 
   const trimmedName = name.trim();
   const canSubmit = trimmedName.length >= 1 && trimmedName.length <= 80;
@@ -119,6 +127,7 @@ export default function CreateListCustomize() {
           emoji,
           color,
           ...(description.trim().length > 0 ? { description: description.trim() } : {}),
+          modules: features.join(","),
           step: "3",
           steps: "3",
         },
@@ -127,7 +136,7 @@ export default function CreateListCustomize() {
     }
     create({
       template,
-      overrides: { name: trimmedName, emoji, color, description, coverPhotoUrl },
+      overrides: { name: trimmedName, emoji, color, description, coverPhotoUrl, modules: features },
       addParams: carried,
     });
   };
@@ -255,6 +264,25 @@ export default function CreateListCustomize() {
             multiline
             maxLength={500}
           />
+        </View>
+
+        <View style={styles.field} testID="create-list-features">
+          <Text variant="label" tone="secondary">
+            Features
+          </Text>
+          {offeredFeatures.map((f) => {
+            const copy = featureCopy(template.defaults.itemKind, f);
+            return (
+              <Switch
+                key={f}
+                label={copy.label}
+                description={copy.description}
+                value={features.includes(f)}
+                onValueChange={() => toggleFeature(f)}
+                testID={`create-list-module-${f}`}
+              />
+            );
+          })}
         </View>
       </KeyboardAwareScrollView>
 
