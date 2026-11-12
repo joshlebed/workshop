@@ -103,11 +103,11 @@ export const PIXEL_ICON_PATHS = {
   "chevron-up": [
     "M13 8h-2v2h2V8Zm-2 2H9v2h2v-2Zm4 0h-2v2h2v-2Zm-6 2H7v2h2v-2Zm8 0h-2v2h2v-2ZM7 14H5v2h2v-2Zm12 0h-2v2h2v-2Z",
   ],
-  // The poke: pixelarticons `pointer` turned a quarter-turn clockwise so the
-  // finger points right, like the old Facebook poke. Not a stock glyph —
-  // regenerate by rotating `pointer`'s raster (x, y, w, h) → (24-y-h, x, h, w).
+  // The poke: a solid hand pointing right with a sleeve cuff, after the old
+  // Facebook poke. Ours, drawn on the 12-cell grid (no stock glyph points
+  // right); solid because an outline hand turns to mush at 16px.
   poke: [
-    "M21 7h2v2H21zM13 5h8v2H13zM17 9h4v2H17zM15 9h2v8H15zM13 9h2v2H13zM13 13h2v2H13zM13 17h2v4H13zM11 3h2v4H11zM12 17h1v2H12zM5 21h8v2H5zM7 1h4v2H7zM9 5h2v2H9zM7 7h2v2H7zM5 3h2v2H5zM3 5h2v2H3zM3 19h2v2H3zM1 7h2v12H1z",
+    "M8 2h6v2H8zM0 4h4v2H0zM6 4h10v2H6zM0 6h4v2H0zM6 6h18v2H6zM0 8h4v2H0zM6 8h18v2H6zM0 10h4v2H0zM6 10h8v2H6zM0 12h4v2H0zM6 12h14v2H6zM0 14h4v2H0zM6 14h8v2H6zM0 16h4v2H0zM6 16h12v2H6zM0 18h4v2H0zM6 18h8v2H6zM8 20h8v2H8z",
   ],
   pause: ["M10 20H4V4h6v16Zm8-16v16h-6V4h6Zm-4 2v12h2V6h-2ZM6 18h2V6H6v12Z"],
 } as const;
