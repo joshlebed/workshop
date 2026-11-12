@@ -804,7 +804,7 @@ function EntryRow({
               (pressed || hovered) && styles.editBtnHover,
             ]}
           >
-            <PixelIcon name="pencil" size={16} color={tokens.text.secondary} />
+            <PixelIcon name="pencil" size={24} color={tokens.text.secondary} />
           </Pressable>
         ) : null}
         {/* Nudge (a "poke"): a quiet pointing hand beside the score, sized like the edit pencil. It
