@@ -346,7 +346,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   The client never decides any of this: `GET /v1/games/:id/leaderboard` carries an optional
   `nudges` block (`limit`, `remaining`, `nudgedUserIds`), present only when
   the viewer has played, and `GameBoard` renders from it via `src/games/lib/nudges.ts`: a bare
-  solid right-pointing hand (the `poke` glyph, ours) on every friend's row (the footer line is the only label). Reachability is deliberately
+  solid right-pointing hand with a cuff (the `poke` glyph, traced from the old Facebook poke icon; render it at 24) on every friend's row (the footer line is the only label). Reachability is deliberately
   not sent up front — the hand shows for everyone and a tap on a friend with no device toasts
   "<name> hasn't enabled HighScore notifications" from the 409. With none left the hands stay
   too; a tap toasts "You're out of pokes for today" client-side (the server still 429s). Like every

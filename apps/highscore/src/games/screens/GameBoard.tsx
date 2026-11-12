@@ -613,7 +613,7 @@ export default function GameBoard() {
               })}
               {nudgeLabel ? (
                 <View style={styles.nudgeAllowance} testID="game-board-nudge-allowance">
-                  <PixelIcon name="poke" size={16} color={tokens.text.muted} />
+                  <PixelIcon name="poke" size={24} color={tokens.text.muted} />
                   <Text variant="caption" tone="muted">
                     {nudgeLabel}
                   </Text>
@@ -829,7 +829,7 @@ function EntryRow({
             ) : (
               <PixelIcon
                 name="poke"
-                size={16}
+                size={24}
                 color={nudge === "sent" ? tokens.neon.yellow : tokens.text.secondary}
               />
             )}
