@@ -16,6 +16,7 @@ import {
   type Href,
   ThemeProvider as NavigationThemeProvider,
   Stack,
+  useNavigationContainerRef,
   useRouter,
   useSegments,
 } from "expo-router";
@@ -29,6 +30,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemetry";
 import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
+import { type NavState, registerNavigationState } from "../src/lib/goBack";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
@@ -296,6 +298,7 @@ function AuthGate() {
         <Stack.Screen name="g/[token]" />
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-list" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="+not-found" />
       </Stack>
     </SafeAreaView>
   );
@@ -306,6 +309,14 @@ installWebFocusRing();
 
 export default function RootLayout() {
   useApplyOtaUpdatesOnArrival();
+  // `goBack` reads the focused stack to tell real history from the home
+  // anchor a cold-opened route gets (3.8).
+  const navigationRef = useNavigationContainerRef();
+  useEffect(() => {
+    registerNavigationState(() =>
+      navigationRef.isReady() ? (navigationRef.getRootState() as NavState | undefined) : undefined,
+    );
+  }, [navigationRef]);
   const queryClient = useMemo(() => createQueryClient(), []);
   const persistOptions = useMemo(() => getPersistOptions(), []);
   // Light mode is off for now (UX pass decision, 2026-11-11): every screen

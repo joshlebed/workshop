@@ -517,6 +517,8 @@ listRoutes.get("/", async (c) => {
     archived_at: Date | string | null;
     muted_at: Date | string | null;
     unread_count: number;
+    open_item_count: number;
+    member_preview: Array<{ userId: string; displayName: string | null }> | null;
   }>(
     db,
     sql`
@@ -526,6 +528,17 @@ listRoutes.get("/", async (c) => {
         me.role::text AS my_role, me.pinned_at, me.archived_at, me.muted_at,
         (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
         (SELECT COUNT(*)::int FROM items i WHERE i.list_id = l.id AND i.archived_at IS NULL) AS item_count,
+        (SELECT COUNT(*)::int FROM items i
+          WHERE i.list_id = l.id AND i.archived_at IS NULL AND NOT i.completed) AS open_item_count,
+        (SELECT COALESCE(json_agg(json_build_object('userId', p.user_id, 'displayName', p.display_name)
+                                  ORDER BY p.joined_at, p.user_id), '[]'::json)
+          FROM (
+            SELECT m.user_id, m.joined_at, u.display_name
+            FROM list_members m JOIN users u ON u.id = m.user_id
+            WHERE m.list_id = l.id AND m.user_id <> ${userId}
+            ORDER BY m.joined_at, m.user_id
+            LIMIT 3
+          ) p) AS member_preview,
         CASE
           WHEN me.muted_at IS NOT NULL THEN 0
           ELSE LEAST(99, (
@@ -569,6 +582,11 @@ listRoutes.get("/", async (c) => {
     archivedAt: r.archived_at ? toIsoString(r.archived_at) : null,
     mutedAt: r.muted_at ? toIsoString(r.muted_at) : null,
     unreadCount: Number(r.unread_count),
+    openItemCount: Number(r.open_item_count),
+    memberPreview: (r.member_preview ?? []).map((m) => ({
+      userId: m.userId,
+      displayName: m.displayName ?? null,
+    })),
   }));
 
   return ok(c, { lists: summaries });

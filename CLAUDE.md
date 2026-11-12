@@ -253,8 +253,8 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   `POST /v1/telemetry/share-intent` (CloudWatch, filter `client_share_intent`), same as
   Workshop.
 
-- **Admin analytics dashboards live in each app** (Workshop: `/admin/analytics`, ProfileMenu →
-  "Admin: analytics"; HighScore: the Overview tab of `/admin`), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90|365` (365 is served as weekly buckets: distinct users per week, end-of-week MAU snapshot, summed counts; `bucket` on the response)
+- **Admin analytics dashboards live in each app** (Workshop: `/admin/analytics`, Settings →
+  Admin → Analytics; HighScore: the Overview tab of `/admin`), backed by `GET /v1/admin/analytics?client=<app>&range=7|30|90|365` (365 is served as weekly buckets: distinct users per week, end-of-week MAU snapshot, summed counts; `bucket` on the response)
   (`routes/v1/admin.ts`, gated on the real admin via `isAdminUser`, impersonation-aware).
   **"Active" means the user took an action that day, not that the app made a request**
   (`actionRows` in `lib/adminAnalytics.ts`): HighScore = posted a score, added a game,
@@ -493,7 +493,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   during that window briefly stacks two `Modal`s — on iOS the new one registers as visible
   but never actually presents, leaving the screen non-interactable until you navigate away.
   Chain through Sheet's `onClosed` prop instead (`createDeferredAction` in
-  `packages/ui/src/deferredAction.ts`, which `ActionSheet` uses; `ProfileMenu` does the same
+  `packages/ui/src/deferredAction.ts`, which `ActionSheet` uses; the share sheet does the same
   with a ref).
 - **`confirm()` from `@workshop/ui` is the in-app dialog on web only where `ConfirmDialogHost`
   is mounted.** Workshop mounts it in `app/_layout.tsx`; HighScore doesn't, so its web
@@ -566,6 +566,13 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   `sum(list.unreadCount across non-muted lists)` from `ListSummary`. Don't reintroduce a
   client-side cutoff-against-`getActivityLastViewedAt` derivation — no per-list granularity,
   and a single `/activity` visit cleared everything.
+- **Activity marks read on leave, not on open (UX pass 3.6).** `app/activity.tsx` snapshots
+  which events are unread when it opens (per list, the latest `unreadCount` events by other
+  people: `newEventIds` in `src/lib/activityCopy.ts`) to draw the "New" divider, and calls
+  `POST /v1/activity/read` from the focus effect's cleanup, then invalidates the lists query so
+  the bell clears. Opening a list still marks only that list read. `GET /v1/lists` also returns
+  `openItemCount` and `memberPreview` (up to three other members) for the home row; both are
+  optional on the client because web persists the lists cache.
 - **Real-time on web today is `useLivePollingInterval` (15s, visibility-gated).** No SSE/WS
   yet. Hook at `@workshop/api-client/useLivePollingInterval`; pass into queries via
   `refetchInterval`.

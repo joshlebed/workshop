@@ -1,18 +1,50 @@
+import { type Href, router } from "expo-router";
+
 /**
- * Deterministic "breadcrumb-style" back button. On web, the user can land on
- * any deep route via a share link with no in-app history — `router.back()`
- * (which proxies to `window.history.back()`) silently does nothing in that
- * case. This helper navigates up to `fallbackHref` when there's nothing to
- * pop, so the back button always behaves like a breadcrumb up to the
- * logical parent in the route hierarchy.
+ * Workshop's back button (UX pass 3.8). Pops when what sits beneath the
+ * current screen is real history, and otherwise goes to the screen's logical
+ * parent (`parentHref`).
  *
- * On native this behaves like `router.back()` for any pushed screen, and
- * falls back to `router.replace(fallbackHref)` if the stack only has the
- * deep-linked screen (the same problem in a different shape).
+ * "Not real history" is the cold-open case: `(lists)/_layout.tsx` anchors its
+ * stack on home, so a route reached by a deep link, a reload or a
+ * cross-navigator `replace` has home injected beneath it. For a screen whose
+ * parent is home that is the right place to land. For a screen whose parent
+ * is a list (add, add-bulk, settings, item detail) a plain `router.back()`
+ * dropped the person on home, and because the anchor inherits the deep link's
+ * params the URL read `/?id=<listId>`. In that case we `dismissTo` the parent
+ * instead: the current screen is replaced by the list, leaving home beneath it
+ * so the next back still works.
  *
- * `fallbackHref` is typed as a string here (not `Href`) because most callers
- * build it from a string template like `/list/${id}` and Href's typed-routes
- * union doesn't accept arbitrary string templates. The string is cast to
- * `Href` at the boundary so consumers stay ergonomic.
+ * HighScore keeps `@workshop/ui/navigation`'s simpler helper.
  */
-export { goBack } from "@workshop/ui/navigation";
+
+import { focusedStack, type NavState, resolveBack } from "./backResolver";
+
+export type { NavState } from "./backResolver";
+
+type StateGetter = () => NavState | undefined;
+
+let getRootState: StateGetter | null = null;
+
+/** Called once by the root layout with the navigation container's state getter. */
+export function registerNavigationState(getter: StateGetter): void {
+  getRootState = getter;
+}
+
+export function goBack(parentHref: string): void {
+  const action = resolveBack(focusedStack(getRootState?.()), parentHref, router.canGoBack());
+  if (action === "back") router.back();
+  else if (action === "dismissToParent") router.dismissTo(parentHref as Href);
+  else router.replace(parentHref as Href);
+}
+
+/**
+ * Land on a list that was just made (create, duplicate) with home directly
+ * beneath it, so back and swipe-back go home rather than through the flow
+ * that made it (3.8). Only for routes inside the `(lists)` stack; root-stack
+ * flows (join, accept, share) use `router.replace(…, { withAnchor: true })`.
+ */
+export function openListOverHome(listId: string): void {
+  router.dismissTo("/");
+  router.push(`/list/${listId}` as Href);
+}

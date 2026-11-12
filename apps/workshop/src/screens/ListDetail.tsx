@@ -50,6 +50,7 @@ import {
 } from "../api/items";
 import { syncSource } from "../api/sources";
 import { createSavedView, deleteSavedView, fetchSavedViews } from "../api/views";
+import { ShareListSheet } from "../components/ShareListSheet";
 import { useAuth } from "../hooks/useAuth";
 import { useFinePointer } from "../lib/finePointer";
 import { goBack } from "../lib/goBack";
@@ -118,6 +119,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   // Selected tag chips (AND). Stored as an array for stable identity in deps.
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const itemsKey = queryKeys.items.byList(list.id);
   const writeKey = useMemo(() => ["list-items-write", list.id], [list.id]);
   const livePoll = useLivePollingInterval();
@@ -742,8 +744,14 @@ export function ListDetail({ list, members, sources, token }: Props) {
                 />
               ) : null}
               <IconButton
-                icon="more"
-                accessibilityLabel="Open list settings"
+                icon="share"
+                accessibilityLabel="Share list"
+                onPress={() => setShareOpen(true)}
+                testID="list-detail-share"
+              />
+              <IconButton
+                icon="settings"
+                accessibilityLabel="List settings"
                 onPress={() => router.push(`/list/${list.id}/settings`)}
                 testID="list-detail-settings"
               />
@@ -1027,6 +1035,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
         ) : null}
 
         <ItemRowMenu item={menuItem} actions={menuActions} onClose={closeMenu} />
+        <ShareListSheet list={list} visible={shareOpen} onClose={() => setShareOpen(false)} />
       </Screen>
     </KeyboardAvoidingView>
   );

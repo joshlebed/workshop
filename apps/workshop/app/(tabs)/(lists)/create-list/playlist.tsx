@@ -13,14 +13,14 @@ import {
   tokens,
   useToast,
 } from "@workshop/ui";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { createList } from "../../../../src/api/lists";
 import { previewSource } from "../../../../src/api/sources";
 import { useAuth } from "../../../../src/hooks/useAuth";
-import { goBack } from "../../../../src/lib/goBack";
+import { goBack, openListOverHome } from "../../../../src/lib/goBack";
 import { sourceErrorMessage } from "../../../../src/lib/sourceErrors";
 
 function pickString(v: string | string[] | undefined): string {
@@ -102,7 +102,6 @@ function buildConfig(kind: SourceKind, rawUrl: string): Record<string, unknown> 
 const PREVIEW_DEBOUNCE_MS = 500;
 
 export default function CreateListPlaylist() {
-  const router = useRouter();
   const params = useLocalSearchParams<{
     template?: string;
     name?: string;
@@ -181,8 +180,8 @@ export default function CreateListPlaylist() {
       ),
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      router.dismissAll();
-      router.replace(`/list/${res.list.id}`);
+      // Home directly beneath the new list, so back goes home (3.8).
+      openListOverHome(res.list.id);
     },
     onError: (e) => {
       showToast({

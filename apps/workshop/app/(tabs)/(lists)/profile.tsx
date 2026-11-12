@@ -9,63 +9,120 @@ import {
   tokens,
   useToast,
 } from "@workshop/ui";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useAuth } from "../../../src/hooks/useAuth";
 import { goBack } from "../../../src/lib/goBack";
 import { pickProfilePhoto } from "../../../src/lib/profilePhoto";
 
+const AUTOSAVE_DEBOUNCE_MS = 700;
+
+/**
+ * Edit profile (3.5). Edits autosave like item detail: the name on a 700ms
+ * debounce (and on blur, and when leaving), the photo as soon as it is picked
+ * or removed, with a quiet "Saved" in the header. Nothing to discard.
+ */
 export default function EditProfile() {
   const { user, updateProfile } = useAuth();
   const { showToast } = useToast();
 
   const [name, setName] = useState(user?.displayName ?? "");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
-  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [photoBusy, setPhotoBusy] = useState(false);
 
-  const initialName = user?.displayName ?? "";
-  const initialAvatar = user?.avatarUrl ?? null;
+  const savedName = (user?.displayName ?? "").trim();
+  const nameRef = useRef(name);
+  nameRef.current = name;
+  const savedNameRef = useRef(savedName);
+  savedNameRef.current = savedName;
+  const inflightRef = useRef<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const trimmed = name.trim();
+  const nameError =
+    trimmed.length === 0 ? "A name is needed so people on your lists know who you are." : null;
 
-  const nameChanged = trimmed !== initialName.trim();
-  const avatarChanged = avatarUrl !== initialAvatar;
-  const dirty = nameChanged || avatarChanged;
-  const nameValid = trimmed.length >= 1 && trimmed.length <= 40;
-  const canSave = dirty && nameValid && !busy;
-
-  async function onPickPhoto() {
-    const picked = await pickProfilePhoto();
-    if (picked) setAvatarUrl(picked.dataUrl);
-  }
-
-  async function onSave() {
-    if (!canSave) return;
-    try {
-      setBusy(true);
-      // Send only what changed so an unchanged field is never re-validated or
-      // re-written. `avatarUrl: null` clears the picture.
-      const patch: { displayName?: string; avatarUrl?: string | null } = {};
-      if (nameChanged) patch.displayName = trimmed;
-      if (avatarChanged) patch.avatarUrl = avatarUrl;
-      await updateProfile(patch);
-      showToast({ message: "Profile updated", tone: "success" });
-      goBack("/");
-    } catch (e) {
-      showToast({ message: errorMessage(e, "Could not save profile"), tone: "danger" });
-      setBusy(false);
+  const flushName = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
-  }
+    const next = nameRef.current.trim();
+    if (next.length === 0 || next.length > 40) return;
+    if (next === savedNameRef.current || next === inflightRef.current) return;
+    inflightRef.current = next;
+    setStatus("saving");
+    updateProfile({ displayName: next })
+      .then(() => setStatus("saved"))
+      .catch((e) => {
+        setStatus("idle");
+        showToast({ message: errorMessage(e, "Couldn't save your name."), tone: "danger" });
+      })
+      .finally(() => {
+        inflightRef.current = null;
+      });
+  }, [updateProfile, showToast]);
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (trimmed === savedName || trimmed.length === 0) return;
+    timerRef.current = setTimeout(flushName, AUTOSAVE_DEBOUNCE_MS);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [trimmed, savedName, flushName]);
+
+  // Fade "Saved" out a moment after the last save lands.
+  useEffect(() => {
+    if (status !== "saved") return;
+    const t = setTimeout(() => setStatus("idle"), 1800);
+    return () => clearTimeout(t);
+  }, [status]);
+
+  // Leaving (back, swipe back, browser back) never drops the last keystrokes.
+  useEffect(() => () => flushName(), [flushName]);
+
+  const savePhoto = async (avatarUrl: string | null) => {
+    setPhotoBusy(true);
+    setStatus("saving");
+    try {
+      await updateProfile({ avatarUrl });
+      setStatus("saved");
+    } catch (e) {
+      setStatus("idle");
+      showToast({ message: errorMessage(e, "Couldn't save your photo."), tone: "danger" });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const onPickPhoto = async () => {
+    const picked = await pickProfilePhoto();
+    if (picked) await savePhoto(picked.dataUrl);
+  };
+
+  const onBack = () => {
+    flushName();
+    goBack("/settings");
+  };
+
+  const avatarUrl = user?.avatarUrl ?? null;
 
   return (
     <Screen style={styles.root}>
       <ScreenHeader
-        leading="close"
-        onLeadingPress={() => goBack("/")}
-        leadingLabel="Close profile editor"
-        leadingTestID="profile-edit-close"
-        eyebrow="Account"
-        title="Edit profile"
+        leading="back"
+        onLeadingPress={onBack}
+        leadingTestID="profile-edit-back"
+        title="Profile"
+        trailing={
+          status === "idle" ? null : (
+            <Text variant="caption" tone="muted" style={styles.saved} testID="profile-save-status">
+              {status === "saving" ? "Saving…" : "Saved"}
+            </Text>
+          )
+        }
       />
 
       <KeyboardAwareScrollView
@@ -87,16 +144,17 @@ export default function EditProfile() {
               testID="profile-photo-pick"
               label={avatarUrl ? "Change photo" : "Upload photo"}
               variant="secondary"
-              size="md"
-              onPress={onPickPhoto}
+              loading={photoBusy}
+              disabled={photoBusy}
+              onPress={() => void onPickPhoto()}
             />
             {avatarUrl ? (
               <Button
                 testID="profile-photo-remove"
-                label="Remove"
-                variant="secondary"
-                size="md"
-                onPress={() => setAvatarUrl(null)}
+                label="Remove photo"
+                variant="ghost"
+                disabled={photoBusy}
+                onPress={() => void savePhoto(null)}
               />
             ) : null}
           </View>
@@ -104,21 +162,26 @@ export default function EditProfile() {
 
         <TextField
           label="Display name"
-          hint="Shown to people on your shared lists."
+          hint={nameError ? undefined : "Shown to people on your shared lists."}
+          error={nameError ?? undefined}
           testID="profile-display-name"
           value={name}
           onChangeText={setName}
-          placeholder="Ada Lovelace"
+          onBlur={() => {
+            if (trimmed.length === 0) setName(savedName);
+            else setName(trimmed);
+            flushName();
+          }}
+          placeholder="Your name"
           autoComplete="name"
           maxLength={40}
-          inputStyle={styles.input}
           returnKeyType="done"
-          onSubmitEditing={onSave}
+          onSubmitEditing={flushName}
         />
 
         {user?.email ? (
           <View style={styles.field}>
-            <Text variant="caption" tone="muted">
+            <Text variant="label" tone="secondary">
               Email
             </Text>
             <Text tone="secondary" numberOfLines={1}>
@@ -126,16 +189,6 @@ export default function EditProfile() {
             </Text>
           </View>
         ) : null}
-
-        <Button
-          testID="profile-save"
-          label="Save changes"
-          size="lg"
-          disabled={!canSave}
-          loading={busy}
-          onPress={onSave}
-          style={styles.saveButton}
-        />
       </KeyboardAwareScrollView>
     </Screen>
   );
@@ -149,14 +202,9 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.xl,
   },
-  avatarSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: tokens.space.lg,
-  },
+  saved: { paddingHorizontal: tokens.space.sm },
+  avatarSection: { flexDirection: "row", alignItems: "center", gap: tokens.space.lg },
   avatarPreview: { width: 72, height: 72, borderRadius: 36 },
-  avatarButtons: { flex: 1, gap: tokens.space.sm },
-  field: { gap: tokens.space.sm },
-  input: { fontSize: tokens.font.size.lg, paddingVertical: tokens.space.md },
-  saveButton: { marginTop: tokens.space.sm },
+  avatarButtons: { flex: 1, gap: tokens.space.sm, alignItems: "flex-start" },
+  field: { gap: tokens.space.xs },
 });

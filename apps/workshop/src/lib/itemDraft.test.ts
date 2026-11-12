@@ -87,3 +87,41 @@ describe("isDraftDirty", () => {
     );
   });
 });
+
+describe("reconcileTextDraft (list settings name/description)", () => {
+  it("never lets a refetch replace a focused or locally edited field", async () => {
+    const { reconcileTextDraft } = await import("./itemDraft");
+    expect(
+      reconcileTextDraft({
+        draft: "Movies to",
+        prevServer: "Movies",
+        nextServer: "Movies",
+        focused: true,
+      }),
+    ).toBe("Movies to");
+    expect(
+      reconcileTextDraft({
+        draft: "Movies 2",
+        prevServer: "Movies",
+        nextServer: "Films",
+        focused: false,
+      }),
+    ).toBe("Movies 2");
+    expect(
+      reconcileTextDraft({
+        draft: "Movies",
+        prevServer: "Movies",
+        nextServer: "Films",
+        focused: false,
+      }),
+    ).toBe("Films");
+    expect(
+      reconcileTextDraft({
+        draft: "Films ",
+        prevServer: "Movies",
+        nextServer: "Films",
+        focused: false,
+      }),
+    ).toBe("Films");
+  });
+});

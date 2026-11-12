@@ -149,7 +149,7 @@ export function ListPublicLanding({
               label="Open list"
               variant="primary"
               size="lg"
-              onPress={() => router.replace(`/list/${preview.id}`)}
+              onPress={() => router.replace(`/list/${preview.id}`, { withAnchor: true })}
               testID="list-landing-open"
             />
           </>
