@@ -657,6 +657,11 @@ export interface OfficialCatalogEntry {
  * `docs/catalog-ops-runbook.md`. Keep sorted by title.
  */
 export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
+  {
+    normalizedUrl: "city2city.goldfishwatercooler.com",
+    title: "City2City",
+    category: "geography",
+  },
   { normalizedUrl: "hbd.gg/play", title: "EthnoGuessr", category: "geography" },
   {
     normalizedUrl: "farflung.game",
