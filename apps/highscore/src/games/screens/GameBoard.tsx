@@ -3,7 +3,7 @@ import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { HIGHSCORE_WEB_URL } from "@workshop/shared/constants";
-import type { Game, GameStandingsEntry } from "@workshop/shared/games";
+import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import { formatScoreValue, STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { confirm, formatRelative, haptics, openExternalUrl } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
@@ -37,6 +37,7 @@ import {
   fetchGameLeaderboard,
   fetchMyGames,
   removeGame,
+  sendGameNudge,
   upsertGameScore,
 } from "../api/games";
 import { setScoreDirection } from "../api/teach";
@@ -47,6 +48,12 @@ import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { formatGameDateLabel, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
+import {
+  type NudgeRowStatus,
+  nudgeAllowanceLabel,
+  nudgeRowStatus,
+  withNudgeSent,
+} from "../lib/nudges";
 import { writePostedScore } from "../lib/postedScore";
 import { scoreLineLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
@@ -241,6 +248,37 @@ export default function GameBoard() {
     },
   });
 
+  // Nudge a friend on this board. The server owns the rules; the cached board
+  // takes the new allowance at once so the row flips without a refetch.
+  const nudgeMutation = useMutation({
+    mutationFn: ({ userId, periodKey }: { userId: string; name: string; periodKey: string }) => {
+      if (!gameId) throw new Error("missing game id");
+      return sendGameNudge(gameId, { userId, periodKey }, token);
+    },
+    onSuccess: (data, { userId, name, periodKey }) => {
+      haptics.medium();
+      queryClient.setQueryData<GameLeaderboardResponse>(
+        queryKeys.games.leaderboard(gameId ?? "", periodKey),
+        (board) =>
+          board?.nudges
+            ? { ...board, nudges: withNudgeSent(board.nudges, userId, data.nudges) }
+            : board,
+      );
+      showToast(
+        data.delivered
+          ? { message: `Nudged ${name}`, tone: "success" }
+          : { message: `Nudge sent, but it may not reach ${name}`, tone: "default" },
+      );
+    },
+    onError: (e, { periodKey }) => {
+      showToast({ message: errorMessage(e, "Couldn't send that nudge"), tone: "danger" });
+      // A refusal means the board's nudge state is stale (limit hit elsewhere…).
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.games.leaderboard(gameId ?? "", periodKey),
+      });
+    },
+  });
+
   // Guideline 1.2: long-press a friend's score to report it.
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
@@ -290,6 +328,8 @@ export default function GameBoard() {
 
   const isToday = date === today;
   const entries = boardQuery.data?.entries ?? [];
+  const nudgeState = boardQuery.data?.nudges ?? null;
+  const nudgeLabel = nudgeAllowanceLabel(nudgeState);
   const myEntry = entries.find((e) => e.userId === user?.id);
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
   // The composer posts a first result OR edits an existing one — on any day
@@ -532,6 +572,17 @@ export default function GameBoard() {
                     teachAvailable={teachAvailable}
                     isMe={false}
                     onPressPlayer={openProfile}
+                    nudge={nudgeRowStatus(nudgeState, entry.userId)}
+                    nudgePending={
+                      nudgeMutation.isPending && nudgeMutation.variables?.userId === entry.userId
+                    }
+                    onNudge={() =>
+                      nudgeMutation.mutate({
+                        userId: entry.userId,
+                        name: entry.displayName?.trim() || "your friend",
+                        periodKey: date,
+                      })
+                    }
                     onReport={() =>
                       setReportTarget({
                         userId: entry.userId,
@@ -544,6 +595,14 @@ export default function GameBoard() {
                   />
                 );
               })}
+              {nudgeLabel ? (
+                <View style={styles.nudgeAllowance} testID="game-board-nudge-allowance">
+                  <PixelIcon name="zap" size={16} color={tokens.text.muted} />
+                  <Text variant="caption" tone="muted">
+                    {nudgeLabel}
+                  </Text>
+                </View>
+              ) : null}
               {teachAvailable ? (
                 <Pressable
                   accessibilityRole="button"
@@ -590,6 +649,10 @@ interface EntryRowProps {
   onReport?: () => void;
   /** Tap the avatar or name → that player's profile. */
   onPressPlayer?: (userId: string) => void;
+  /** A friend's row: whether (and how) the nudge control shows. */
+  nudge?: NudgeRowStatus;
+  nudgePending?: boolean;
+  onNudge?: () => void;
 }
 
 function EntryRow({
@@ -600,6 +663,9 @@ function EntryRow({
   onEdit,
   onReport,
   onPressPlayer,
+  nudge = "hidden",
+  nudgePending = false,
+  onNudge,
 }: EntryRowProps) {
   const name = entry.displayName ?? "Someone";
   // Same distillation as the home card (and the Lists clipboard recap): a
@@ -723,6 +789,46 @@ function EntryRow({
             ]}
           >
             <PixelIcon name="pencil" size={16} color={tokens.text.secondary} />
+          </Pressable>
+        ) : null}
+        {nudge !== "hidden" ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={
+              nudge === "sent"
+                ? `Nudged ${name}`
+                : nudge === "spent"
+                  ? `No nudges left today for ${name}`
+                  : `Nudge ${name}`
+            }
+            aria-disabled={nudge !== "available" || nudgePending}
+            onPress={onNudge}
+            disabled={nudge !== "available" || nudgePending}
+            testID={`game-board-nudge-${entry.userId}`}
+            hitSlop={8}
+            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+              styles.nudgeBtn,
+              nudge === "available" ? styles.nudgeBtnAvailable : styles.nudgeBtnQuiet,
+              nudge === "available" && (pressed || hovered) && styles.nudgeBtnHover,
+            ]}
+          >
+            {nudgePending ? (
+              <ActivityIndicator size="small" color={tokens.neon.yellow} />
+            ) : (
+              <>
+                <PixelIcon
+                  name={nudge === "sent" ? "check" : "zap"}
+                  size={16}
+                  color={nudge === "available" ? tokens.neon.yellow : tokens.text.muted}
+                />
+                <Text
+                  variant="overline"
+                  style={nudge === "available" ? styles.nudgeLabel : styles.nudgeLabelQuiet}
+                >
+                  {nudge === "sent" ? "Nudged" : "Nudge"}
+                </Text>
+              </>
+            )}
           </Pressable>
         ) : null}
         {scoreValue !== null ? (
@@ -1008,6 +1114,31 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   editBtnHover: { backgroundColor: tokens.bg.elevated },
+  // Nudge: a small bezel pill left of the score box on a friend's row.
+  nudgeBtn: {
+    flexShrink: 0,
+    minWidth: 76,
+    height: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: tokens.space.sm,
+    borderRadius: tokens.radius.sm,
+    borderWidth: tokens.bezel,
+  },
+  nudgeBtnAvailable: { borderColor: tokens.neon.yellow },
+  nudgeBtnQuiet: { borderColor: "transparent" },
+  nudgeBtnHover: { backgroundColor: tokens.bg.elevated },
+  nudgeLabel: { color: tokens.neon.yellow },
+  nudgeLabelQuiet: { color: tokens.text.muted },
+  nudgeAllowance: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: tokens.space.xs,
+    marginTop: tokens.space.lg,
+  },
   // Same share-text style as the home card's rows.
   scoreText: {
     color: tokens.text.secondary,

@@ -237,7 +237,48 @@ export interface GameLeaderboardResponse {
   gameId: string;
   periodKey: string;
   entries: GameStandingsEntry[];
+  /**
+   * Present only when the viewer may nudge on this board: they have played
+   * this game on `periodKey` and the day is still current. Absent on older
+   * servers and on past days — treat that as "no nudging".
+   */
+  nudges?: GameNudgeState;
 }
+
+/** Nudges a player may send per day; admins are unlimited. */
+export const NUDGE_DAILY_LIMIT = 5;
+
+/** The viewer's nudge allowance and what they can still do on one board. */
+export interface GameNudgeState {
+  /** Daily allowance; null = unlimited (admin). */
+  limit: number | null;
+  /** Nudges left today across every game; null = unlimited. */
+  remaining: number | null;
+  /** Friends on this board the viewer has already nudged today. */
+  nudgedUserIds: string[];
+  /** Friends on this board who have a device that can receive a nudge. */
+  reachableUserIds: string[];
+}
+
+/** `POST /v1/games/:id/nudges` */
+export interface SendGameNudgeRequest {
+  userId: string;
+  periodKey: string;
+}
+
+export interface SendGameNudgeResponse {
+  nudges: GameNudgeState;
+  /** Expo accepted the push for at least one of the friend's devices. */
+  delivered: boolean;
+}
+
+/** `details.reason` on a refused nudge (409, or 429 for `daily_limit`). */
+export type GameNudgeRefusal =
+  | "not_played"
+  | "friend_not_played"
+  | "unreachable"
+  | "already_nudged"
+  | "daily_limit";
 
 /** `POST /v1/games` / `PUT /v1/games/:id/scores` responses. */
 export interface AddGameResponse {

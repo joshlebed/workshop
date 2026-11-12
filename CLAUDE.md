@@ -333,6 +333,20 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   DB is a prod copy with real tokens, so point it at a local stub before exercising any send**.
   Agents never send (see Prohibited); runbook: `docs/push-runbook.md`.
 
+- **Nudges: one rule set, in `apps/backend/src/lib/nudges.ts`.** After posting a score a player
+  can nudge a friend who has also played that game that day (`POST /v1/games/:id/nudges`,
+  `{ userId, periodKey }`); the friend gets a push whose `data.url` opens the board. Rules:
+  friends only (a non-friend or a block 404s), both have a score for that game and day, the
+  friend has a `push_tokens` row (else 409 `unreachable`, nothing stored), once per friend per
+  game per day (the `game_nudges` primary key), and `NUDGE_DAILY_LIMIT` (5, `@workshop/shared/games`)
+  per sender per `period_key` — admins (`isAdminUser`) are unlimited. Only a current day can be
+  nudged (`isNudgeablePeriod`: UTC today ±1, because period keys are the client's local date).
+  The client never decides any of this: `GET /v1/games/:id/leaderboard` carries an optional
+  `nudges` block (`limit`, `remaining`, `nudgedUserIds`, `reachableUserIds`), present only when
+  the viewer has played, and `GameBoard` renders from it via `src/games/lib/nudges.ts`. Like every
+  push path it goes through `sendExpoPushMessages`, so **stub `EXPO_PUSH_URL` before tapping
+  Nudge in a sandbox** — the DB is a prod copy with real tokens. `game_nudges` is in `actionRows`.
+
 - **Vendor-credit alarms are reactive and live in `infra/vendor_alarms.tf`.** OpenAI
   (`lib/teach/openai.ts`) and TypeSafe (`lib/jev.ts`) swallow every non-2xx and fall back,
   so a dead balance or revoked key is only visible as a `logger.warn` line. CloudWatch

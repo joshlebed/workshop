@@ -1021,6 +1021,39 @@ export const gameScoreReactions = pgTable(
 );
 
 /**
+ * Nudges: after posting a score, a player pokes a friend who has also played
+ * that game that day (`POST /v1/games/:id/nudges`); the recipient gets a push.
+ * One row per (sender, recipient, game, day) — the primary key is the "already
+ * nudged" guard — and a sender's rows for one `period_key` are their daily
+ * allowance (`NUDGE_DAILY_LIMIT`; admins are unlimited). Every FK cascades, so
+ * account deletion needs no extra step.
+ */
+export const gameNudges = pgTable(
+  "game_nudges",
+  {
+    senderId: uuid("sender_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    recipientId: uuid("recipient_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    periodKey: text("period_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    // Request origin (see `requestOriginColumns`); NULL = no client headers.
+    client: text("client"),
+    platform: text("platform"),
+    appVersion: text("app_version"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.senderId, t.periodKey, t.gameId, t.recipientId] }),
+    recipientIdx: index("game_nudges_recipient_idx").on(t.recipientId, t.createdAt),
+  }),
+);
+
+/**
  * Per-user, per-day "play with me" share links — the Games-tab copy-scores
  * CTA (`/g/:token`). One row per (user, UTC day): minting is idempotent within
  * a day and rotates to a fresh token the next day. The token resolves to the
