@@ -64,7 +64,7 @@ export default function AddBulk() {
   const existing = useMemo(
     () =>
       itemsQuery.data
-        ? [...itemsQuery.data.ordered, ...itemsQuery.data.unordered, ...itemsQuery.data.completed]
+        ? [...itemsQuery.data.open, ...itemsQuery.data.inbox, ...itemsQuery.data.completed]
         : [],
     [itemsQuery.data],
   );

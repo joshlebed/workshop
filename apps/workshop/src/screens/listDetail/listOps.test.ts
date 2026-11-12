@@ -1,4 +1,4 @@
-import type { Item, ListItemsResponse } from "@workshop/shared";
+import type { Item, ListRowsResponse } from "@workshop/shared";
 import { describe, expect, it } from "vitest";
 import {
   applyComplete,
@@ -10,6 +10,7 @@ import {
   type DragEntry,
   findItem,
   itemMatches,
+  moveRequest,
   resolveDrop,
   stepNeighbours,
   tagChipCounts,
@@ -36,8 +37,8 @@ function item(id: string, extra: Partial<Item> = {}): Item {
   };
 }
 
-const ranked = (id: string): DragEntry => ({ kind: "row", id, section: "ordered" });
-const open = (id: string): DragEntry => ({ kind: "row", id, section: "unordered" });
+const row = (id: string): DragEntry => ({ kind: "row", id, section: "open" });
+const waiting = (id: string): DragEntry => ({ kind: "row", id, section: "inbox" });
 const titles = (xs: Item[]) => xs.map((i) => i.id);
 
 describe("completionCopy", () => {
@@ -53,80 +54,15 @@ describe("completionCopy", () => {
   });
 });
 
-describe("resolveDrop — implicit boundary (native, Ranked non-empty)", () => {
-  // [A, B, C | U, V]
-  const entries = [ranked("A"), ranked("B"), ranked("C"), open("U"), open("V")];
+describe("resolveDrop — one list", () => {
+  const entries = [row("A"), row("B"), row("C"), row("D")];
   const drop = (from: number, to: number) => resolveDrop(entries, from, to);
 
-  it("reorders within Ranked with the same neighbours as before", () => {
-    expect(drop(0, 1)).toEqual({
-      itemId: "A",
-      section: "ranked",
-      beforeItemId: "B",
-      afterItemId: "C",
-    });
-    expect(drop(2, 0)).toEqual({
-      itemId: "C",
-      section: "ranked",
-      beforeItemId: null,
-      afterItemId: "A",
-    });
-    expect(drop(0, 2)).toEqual({
-      itemId: "A",
-      section: "ranked",
-      beforeItemId: "C",
-      afterItemId: null,
-    });
-  });
-
-  it("promotes to the top, between, and to the end of Ranked", () => {
-    expect(drop(3, 0)).toEqual({
-      itemId: "U",
-      section: "ranked",
-      beforeItemId: null,
-      afterItemId: "A",
-    });
-    expect(drop(3, 1)).toEqual({
-      itemId: "U",
-      section: "ranked",
-      beforeItemId: "A",
-      afterItemId: "B",
-    });
-    expect(drop(4, 3)).toEqual({
-      itemId: "V",
-      section: "ranked",
-      beforeItemId: "C",
-      afterItemId: null,
-    });
-  });
-
-  it("demotes to a place in the open block", () => {
-    expect(drop(0, 4)).toEqual({
-      itemId: "A",
-      section: "unranked",
-      beforeItemId: "V",
-      afterItemId: null,
-    });
-    expect(drop(2, 3)).toEqual({
-      itemId: "C",
-      section: "unranked",
-      beforeItemId: "U",
-      afterItemId: "V",
-    });
-  });
-
-  it("reorders within the open block", () => {
-    expect(drop(3, 4)).toEqual({
-      itemId: "U",
-      section: "unranked",
-      beforeItemId: "V",
-      afterItemId: null,
-    });
-  });
-
-  it("drops open-to-open moves where the open block is recency-sorted (album shelf)", () => {
-    expect(resolveDrop(entries, 3, 4, { openReorderable: false })).toBeNull();
-    expect(resolveDrop(entries, 0, 4, { openReorderable: false })?.section).toBe("unranked");
+  it("moves to the top, between two rows, and to the bottom", () => {
+    expect(drop(2, 0)).toEqual({ itemId: "C", beforeItemId: null, afterItemId: "A" });
+    expect(drop(0, 1)).toEqual({ itemId: "A", beforeItemId: "B", afterItemId: "C" });
+    expect(drop(0, 3)).toEqual({ itemId: "A", beforeItemId: "D", afterItemId: null });
+    expect(drop(3, 1)).toEqual({ itemId: "D", beforeItemId: "A", afterItemId: "B" });
   });
 
   it("ignores no-ops and bad indices", () => {
@@ -136,74 +72,96 @@ describe("resolveDrop — implicit boundary (native, Ranked non-empty)", () => {
   });
 });
 
-describe("resolveDrop — divider marker (web)", () => {
-  it("promotes into an empty Ranked section", () => {
-    // [RANKED_TOP, divider, U, V, W]: drag V above the divider
-    const entries: DragEntry[] = [{ kind: "divider", id: "div" }, open("U"), open("V"), open("W")];
-    expect(resolveDrop(entries, 2, 0)).toEqual({
-      itemId: "V",
-      section: "ranked",
-      beforeItemId: null,
+describe("resolveDrop — the inbox under a divider (web)", () => {
+  // [A, B, | inbox: X, Y]
+  const entries: DragEntry[] = [
+    row("A"),
+    row("B"),
+    { kind: "divider", id: "div" },
+    waiting("X"),
+    waiting("Y"),
+  ];
+
+  it("places an inbox row dragged above the heading", () => {
+    // Y → 1: [A, Y, B, div, X]
+    expect(resolveDrop(entries, 4, 1)).toEqual({
+      itemId: "Y",
+      beforeItemId: "A",
+      afterItemId: "B",
+    });
+    // X onto the heading: the bottom of the list.
+    expect(resolveDrop(entries, 3, 2)).toEqual({
+      itemId: "X",
+      beforeItemId: "B",
       afterItemId: null,
     });
   });
 
-  it("demotes the last ranked row below the divider", () => {
-    const entries: DragEntry[] = [
-      ranked("A"),
-      { kind: "divider", id: "div" },
-      open("U"),
-      open("V"),
-    ];
-    // A → index 2: [div, U, A, V]
-    expect(resolveDrop(entries, 0, 2)).toEqual({
-      itemId: "A",
-      section: "unranked",
-      beforeItemId: "U",
-      afterItemId: "V",
-    });
-    // A → index 1 swaps it with the divider: top of the open block.
-    expect(resolveDrop(entries, 0, 1)).toEqual({
-      itemId: "A",
-      section: "unranked",
-      beforeItemId: null,
-      afterItemId: "U",
-    });
+  it("keeps the inbox's own order: an inbox row dropped inside it stays put", () => {
+    expect(resolveDrop(entries, 3, 4)).toBeNull();
   });
 
-  it("works on a list without ranking (no marker, all open)", () => {
-    const entries = [open("A"), open("B"), open("C")];
-    expect(resolveDrop(entries, 2, 0)).toEqual({
-      itemId: "C",
-      section: "unranked",
+  it("lands a list row dropped into the inbox at the bottom of the list", () => {
+    expect(resolveDrop(entries, 0, 4)).toEqual({
+      itemId: "A",
+      beforeItemId: "B",
+      afterItemId: null,
+    });
+    // Already the last list row: nothing changes.
+    expect(resolveDrop(entries, 1, 4)).toBeNull();
+  });
+
+  it("starts an empty list from the inbox", () => {
+    const empty: DragEntry[] = [{ kind: "divider", id: "div" }, waiting("X"), waiting("Y")];
+    expect(resolveDrop(empty, 2, 0)).toEqual({
+      itemId: "Y",
       beforeItemId: null,
-      afterItemId: "A",
+      afterItemId: null,
     });
   });
 });
 
-describe("resolveDrop — slot marker (native, empty Ranked)", () => {
-  const entries: DragEntry[] = [{ kind: "slot", id: "slot" }, open("U"), open("V"), open("W")];
-  it("ranks a row dropped directly under the slot", () => {
-    // V → 1: [slot, V, U, W]
+describe("resolveDrop — the inbox after the list (native, implicit boundary)", () => {
+  const entries = [row("A"), row("B"), waiting("X"), waiting("Y")];
+  it("places an inbox row dropped beside a list row", () => {
+    expect(resolveDrop(entries, 3, 0)).toEqual({
+      itemId: "Y",
+      beforeItemId: null,
+      afterItemId: "A",
+    });
+    // Just under the last list row: the bottom of the list.
+    expect(resolveDrop(entries, 3, 2)).toEqual({
+      itemId: "Y",
+      beforeItemId: "B",
+      afterItemId: null,
+    });
+  });
+  it("leaves the inbox's order alone and sends a list row to the bottom of the list", () => {
+    expect(resolveDrop(entries, 2, 3)).toBeNull();
+    expect(resolveDrop(entries, 0, 3)).toEqual({
+      itemId: "A",
+      beforeItemId: "B",
+      afterItemId: null,
+    });
+  });
+});
+
+describe("resolveDrop — slot marker (native, nothing placed yet)", () => {
+  const entries: DragEntry[] = [{ kind: "slot", id: "slot" }, waiting("U"), waiting("V")];
+  it("starts the list with a row dropped onto or right under the slot", () => {
+    expect(resolveDrop(entries, 1, 0)).toEqual({
+      itemId: "U",
+      beforeItemId: null,
+      afterItemId: null,
+    });
     expect(resolveDrop(entries, 2, 1)).toEqual({
       itemId: "V",
-      section: "ranked",
       beforeItemId: null,
       afterItemId: null,
     });
   });
-  it("ranks a row dropped above the slot", () => {
-    expect(resolveDrop(entries, 3, 0)?.section).toBe("ranked");
-  });
-  it("keeps a row dropped lower down in the open block", () => {
-    // U → 3: [slot, V, W, U]
-    expect(resolveDrop(entries, 1, 3)).toEqual({
-      itemId: "U",
-      section: "unranked",
-      beforeItemId: "W",
-      afterItemId: null,
-    });
+  it("keeps a row dropped lower down in the inbox", () => {
+    expect(resolveDrop(entries, 1, 2)).toBeNull();
   });
 });
 
@@ -225,68 +183,86 @@ describe("stepNeighbours", () => {
 });
 
 describe("optimistic edits", () => {
-  const data = (): ListItemsResponse => ({
-    ordered: [item("R1", { position: 1024 }), item("R2", { position: 2048 })],
-    unordered: [
-      item("U3", { createdAt: "2026-01-03T00:00:00.000Z" }),
-      item("U1", { createdAt: "2026-01-01T00:00:00.000Z" }),
+  const data = (): ListRowsResponse => ({
+    open: [
+      item("A", { position: 1024 }),
+      item("B", { position: 2048 }),
+      item("C", { position: 3072 }),
     ],
-    completed: [item("D1", { completed: true, completedAt: "2026-01-05T00:00:00.000Z" })],
+    inbox: [item("X"), item("Y")],
+    completed: [item("D1", { completed: true, position: 1536 })],
     suggested: [],
+    ordered: [],
+    unordered: [],
   });
 
-  it("completes onto the top of Done", () => {
-    const next = applyComplete(data(), "U3", "me", new Date("2026-02-01T00:00:00.000Z"));
-    expect(titles(next.unordered)).toEqual(["U1"]);
-    expect(titles(next.completed)).toEqual(["U3", "D1"]);
+  it("completes onto the top of Done, from the list or the inbox", () => {
+    const next = applyComplete(data(), "B", "me", new Date("2026-02-01T00:00:00.000Z"));
+    expect(titles(next.open)).toEqual(["A", "C"]);
+    expect(titles(next.completed)).toEqual(["B", "D1"]);
     expect(next.completed[0]).toMatchObject({ completed: true, completedBy: "me" });
+    expect(titles(applyComplete(data(), "X", "me").inbox)).toEqual(["Y"]);
   });
 
-  it("reopens a ranked row into its rank and an open row by age", () => {
-    const rankedDone = applyComplete(data(), "R1", "me");
-    expect(titles(applyUncomplete(rankedDone, "R1", true).ordered)).toEqual(["R1", "R2"]);
-    const withMid = {
-      ...data(),
-      completed: [item("U2", { completed: true, createdAt: "2026-01-02T00:00:00.000Z" })],
-    };
-    expect(titles(applyUncomplete(withMid, "U2", true).unordered)).toEqual(["U3", "U2", "U1"]);
+  it("reopens a row into its old place by position", () => {
+    expect(titles(applyUncomplete(data(), "D1", false).open)).toEqual(["A", "D1", "B", "C"]);
+  });
+
+  it("reopens a never-placed row into the inbox, or the top of a list without one", () => {
+    const d = { ...data(), completed: [item("N", { completed: true })] };
+    expect(titles(applyUncomplete(d, "N", true).inbox)).toEqual(["N", "X", "Y"]);
+    expect(titles(applyUncomplete(d, "N", false).open)).toEqual(["N", "A", "B", "C"]);
   });
 
   it("removes and restores in place", () => {
     const before = data();
-    const placement = findItem(before, "U1");
+    const placement = findItem(before, "B");
     expect(placement).not.toBeNull();
-    const removed = applyRemove(before, "U1");
-    expect(titles(removed.unordered)).toEqual(["U3"]);
+    const removed = applyRemove(before, "B");
+    expect(titles(removed.open)).toEqual(["A", "C"]);
     const restored = applyRestore(removed, placement as NonNullable<typeof placement>);
-    expect(titles(restored.unordered)).toEqual(["U3", "U1"]);
+    expect(titles(restored.open)).toEqual(["A", "B", "C"]);
     // Restoring twice is harmless.
     expect(applyRestore(restored, placement as NonNullable<typeof placement>)).toBe(restored);
   });
 
-  it("moves between sections like the server", () => {
-    const promoted = applyMove(data(), "U1", {
-      section: "ranked",
-      beforeItemId: "R1",
-      afterItemId: "R2",
-    });
-    expect(titles(promoted.ordered)).toEqual(["R1", "U1", "R2"]);
-    const demoted = applyMove(data(), "R2", {
-      section: "unranked",
-      beforeItemId: null,
+  it("moves like the server: below `before`, above `after`, else to the top", () => {
+    expect(titles(applyMove(data(), "C", { beforeItemId: "A", afterItemId: "B" }).open)).toEqual([
+      "A",
+      "C",
+      "B",
+    ]);
+    expect(titles(applyMove(data(), "A", { beforeItemId: null, afterItemId: "C" }).open)).toEqual([
+      "B",
+      "A",
+      "C",
+    ]);
+    expect(titles(applyMove(data(), "C", { beforeItemId: null, afterItemId: null }).open)).toEqual([
+      "C",
+      "A",
+      "B",
+    ]);
+    expect(applyMove(data(), "D1", { beforeItemId: null, afterItemId: null })).toEqual(data());
+  });
+
+  it("places an inbox row in the list, and puts it back for Undo", () => {
+    const placed = applyMove(data(), "Y", { beforeItemId: "A", afterItemId: "B" });
+    expect(titles(placed.open)).toEqual(["A", "Y", "B", "C"]);
+    expect(titles(placed.inbox)).toEqual(["X"]);
+    const back = applyMove(placed, "Y", { beforeItemId: null, afterItemId: null, toInbox: true });
+    expect(titles(back.inbox)).toEqual(["Y", "X"]);
+    expect(back.inbox[0]?.position).toBeNull();
+  });
+
+  it("sends `section: list`, and `section: inbox` only to undo an Add to list", () => {
+    expect(moveRequest({ beforeItemId: "A", afterItemId: null })).toEqual({
+      section: "list",
+      beforeItemId: "A",
       afterItemId: null,
     });
-    expect(titles(demoted.unordered)).toEqual(["R2", "U3", "U1"]);
-    expect(demoted.unordered[0]?.position).toBeNull();
-    const appended = applyMove(data(), "U3", {
-      section: "ranked",
-      beforeItemId: null,
-      afterItemId: null,
+    expect(moveRequest({ beforeItemId: null, afterItemId: null, toInbox: true })).toEqual({
+      section: "inbox",
     });
-    expect(titles(appended.ordered)).toEqual(["R1", "R2", "U3"]);
-    expect(
-      applyMove(data(), "D1", { section: "ranked", beforeItemId: null, afterItemId: null }),
-    ).toEqual(data());
   });
 });
 

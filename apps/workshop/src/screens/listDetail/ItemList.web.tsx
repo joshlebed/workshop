@@ -1,18 +1,19 @@
 // Web list-detail row container (@dnd-kit).
 //
-// Every open row is draggable, on every list (2.7). On a ranking list the
-// Ranked rows, a boundary marker and the open rows form ONE sortable list, so
-// a drag can reorder inside either block or cross the boundary in both
-// directions (2.8); `resolveDrop` (listOps.ts) turns the result into the
-// neighbour-relative move. While Ranked is empty, a "Ranked" drop target
-// appears above the list for the length of the drag. Done rows never drag.
+// One order per list (docs/list-types.md → "Order"): every open row drags
+// anywhere in the list. On a list with a source, the sync inbox ("New from
+// Spotify") follows the list under its heading; its rows drag up into the
+// list (or join it from the menu), never reorder among themselves, and a list
+// row dropped into the inbox lands at the bottom of the list. List rows, the
+// inbox heading and inbox rows form ONE sortable list so a drag can cross the
+// heading; `resolveDrop` (listOps.ts) turns the result into the
+// neighbour-relative move. Done rows never drag.
 //
 // Activation (shared `REORDER_ACTIVATION`): mouse after 10px of travel, touch
 // after a 500ms hold with 8px tolerance, so a tap still opens the row and a
 // swipe still scrolls. A drag handle shows in the left gutter on hover/focus.
 
 import {
-  type CollisionDetection,
   closestCenter,
   DndContext,
   type DragEndEvent,
@@ -20,15 +21,14 @@ import {
   DragOverlay,
   type DragStartEvent,
   MouseSensor,
-  pointerWithin,
   TouchSensor,
-  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
+import { listKind } from "@workshop/shared/listKinds";
 import {
   easeOutCss,
   Icon,
@@ -43,30 +43,22 @@ import {
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View, type ViewInstance } from "react-native";
 import Animated, { LayoutAnimationConfig, useReducedMotion } from "react-native-reanimated";
-import { ItemRow, RankedDropZone, SectionHeader } from "./ItemRow";
+import { ItemRow, ListDropZone, SectionHeader } from "./ItemRow";
 import type { DragEntry } from "./listOps";
-import { resolveDrop } from "./listOps";
+import { resolveDrop, withArticle } from "./listOps";
 import type { ItemListProps } from "./listProps";
 import { baseRowProps } from "./rowProps";
 
-const DIVIDER_ID = "__ranked-divider__";
-const RANKED_DROP_ID = "__ranked-drop__";
-
-// The empty-Ranked target wins whenever the pointer is inside it (it floats
-// over the first rows); everywhere else, rows sort by closest center.
-const collisionDetection: CollisionDetection = (args) => {
-  const onTarget = pointerWithin(args).filter((c) => c.id === RANKED_DROP_ID);
-  return onTarget.length > 0 ? onTarget : closestCenter(args);
-};
+const DIVIDER_ID = "__inbox-divider__";
 
 export function ItemList(props: ItemListProps) {
   const {
-    ordered,
-    unordered,
+    open,
+    inbox,
     completed,
+    inboxTitle,
+    listEmpty,
     listItemKind,
-    rankingOn,
-    openReorderable,
     scrollToItemId,
     copy,
     doneCollapsed,
@@ -95,29 +87,23 @@ export function ItemList(props: ItemListProps) {
   );
 
   const entries = useMemo<DragEntry[]>(() => {
-    const open = unordered.map((it) => ({
-      kind: "row" as const,
-      id: it.id,
-      section: "unordered" as const,
-    }));
-    // No visible ranked rows (none yet, or a filter hides them): no boundary
-    // to drop across, so no marker; ranking goes through the floating target.
-    if (!rankingOn || ordered.length === 0) return open;
+    const list = open.map((it) => ({ kind: "row" as const, id: it.id, section: "open" as const }));
+    if (inbox.length === 0) return list;
     return [
-      ...ordered.map((it) => ({ kind: "row" as const, id: it.id, section: "ordered" as const })),
+      ...list,
       { kind: "divider" as const, id: DIVIDER_ID },
-      ...open,
+      ...inbox.map((it) => ({ kind: "row" as const, id: it.id, section: "inbox" as const })),
     ];
-  }, [ordered, unordered, rankingOn]);
+  }, [open, inbox]);
   const entryIds = useMemo(() => entries.map((e) => e.id), [entries]);
   const itemById = useMemo(() => {
     const m = new Map<string, Item>();
-    for (const it of [...ordered, ...unordered]) m.set(it.id, it);
+    for (const it of [...open, ...inbox]) m.set(it.id, it);
     return m;
-  }, [ordered, unordered]);
+  }, [open, inbox]);
 
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [overRankedDrop, setOverRankedDrop] = useState(false);
+  const [overListDrop, setOverListDrop] = useState(false);
   // Layout transitions animate rows sliding into place after a complete or a
   // menu move, but must stay off around a drop: dnd-kit already shows the
   // row in its new slot, and a second animation would replay the move.
@@ -141,34 +127,35 @@ export function ItemList(props: ItemListProps) {
     setSettling(true);
   }, []);
 
-  const handleDragOver = useCallback((event: DragOverEvent) => {
-    setOverRankedDrop(event.over?.id === RANKED_DROP_ID);
-  }, []);
+  // With nothing placed yet, the heading sits first: an inbox row dragged
+  // onto it (or above it) starts the list, and the drop cell lights up.
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      setOverListDrop(listEmpty && event.over?.id === DIVIDER_ID);
+    },
+    [listEmpty],
+  );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       setActiveId(null);
-      setOverRankedDrop(false);
+      setOverListDrop(false);
       settle();
       const { active, over } = event;
       if (!over) return;
       const id = String(active.id);
-      if (over.id === RANKED_DROP_ID) {
-        onDrop({ itemId: id, section: "ranked", beforeItemId: null, afterItemId: null });
-        return;
-      }
       const from = entryIds.indexOf(id);
       const to = entryIds.indexOf(String(over.id));
       if (from < 0 || to < 0) return;
-      const drop = resolveDrop(entries, from, to, { openReorderable });
+      const drop = resolveDrop(entries, from, to);
       if (drop) onDrop(drop);
     },
-    [entries, entryIds, onDrop, openReorderable, settle],
+    [entries, entryIds, onDrop, settle],
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
-    setOverRankedDrop(false);
+    setOverListDrop(false);
     settle();
   }, [settle]);
 
@@ -183,16 +170,11 @@ export function ItemList(props: ItemListProps) {
     return () => clearTimeout(t);
   }, [scrollToItemId, reduceMotion]);
 
-  const dragging = activeId !== null;
   const activeItem = activeId ? (itemById.get(activeId) ?? null) : null;
   const activeSection =
-    activeItem && ordered.some((it) => it.id === activeItem.id) ? "ordered" : "unordered";
-  const draggingOpenRow = dragging && unordered.some((it) => it.id === activeId);
-  const sectionCount =
-    (ordered.length > 0 ? 1 : 0) + (unordered.length > 0 ? 1 : 0) + (completed.length > 0 ? 1 : 0);
-  const showHeaders = sectionCount > 1;
-  const showDoneHeader = completed.length > 0 && (showHeaders || doneCollapsible);
+    activeItem && inbox.some((it) => it.id === activeItem.id) ? "inbox" : "open";
   const completedToRender = doneCollapsed ? [] : completed;
+  const noun = listKind(listItemKind).noun.one;
 
   // Rows fade in (`base`) and out (`fast`) as they join or leave a section
   // (complete, reopen, delete, undo, a filter), and their neighbours slide to
@@ -204,21 +186,21 @@ export function ItemList(props: ItemListProps) {
 
   const renderEntry = (entry: DragEntry) => {
     if (entry.kind !== "row") {
-      // The boundary: the open block's header (and, on a demote, the place to
-      // drop). Zero-height when there is nothing to label.
-      const showOpenHeader =
-        (showHeaders && unordered.length > 0) || (dragging && ordered.length > 0);
+      // The inbox heading (and, while nothing is placed, the drop cell above it).
       return (
         <SortableMarker key={entry.id} id={entry.id}>
-          {showOpenHeader ? (
-            <SectionHeader
-              kind="unordered"
-              count={unordered.length}
-              listItemKind={listItemKind}
-              doneWord={copy.done}
-              first={ordered.length === 0}
+          {listEmpty ? (
+            <ListDropZone
+              active={overListDrop}
+              label={`Drag ${withArticle(noun)} here to start the list`}
             />
           ) : null}
+          <SectionHeader
+            kind="inbox"
+            label={inboxTitle}
+            count={inbox.length}
+            first={open.length === 0 && !listEmpty}
+          />
         </SortableMarker>
       );
     }
@@ -244,7 +226,7 @@ export function ItemList(props: ItemListProps) {
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
-      collisionDetection={collisionDetection}
+      collisionDetection={closestCenter}
     >
       <View style={styles.frame}>
         <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
@@ -261,32 +243,22 @@ export function ItemList(props: ItemListProps) {
             {/* Rows already there when the list opens appear at once; only
                 rows that join later fade in. */}
             <LayoutAnimationConfig skipEntering>
-              {ordered.length > 0 && showHeaders ? (
-                <SectionHeader
-                  kind="ordered"
-                  count={ordered.length}
-                  listItemKind={listItemKind}
-                  doneWord={copy.done}
-                  first
-                />
-              ) : null}
               <SortableContext items={entryIds} strategy={verticalListSortingStrategy}>
                 {entries.map(renderEntry)}
               </SortableContext>
 
-              {showDoneHeader ? (
+              {completed.length > 0 && (open.length + inbox.length > 0 || doneCollapsible) ? (
                 <Animated.View layout={layout}>
                   <SectionHeader
                     kind="completed"
+                    label={copy.done}
                     count={completed.length}
-                    listItemKind={listItemKind}
-                    doneWord={copy.done}
                     collapsible={
                       doneCollapsible
                         ? { collapsed: doneCollapsed, onToggle: onToggleDone }
                         : undefined
                     }
-                    first={ordered.length === 0 && unordered.length === 0}
+                    first={open.length === 0 && inbox.length === 0}
                   />
                 </Animated.View>
               ) : null}
@@ -299,39 +271,21 @@ export function ItemList(props: ItemListProps) {
             {placeholder}
           </ScrollView>
         </PullToRefresh>
-        {/* Floats over the top of the list instead of pushing it down, so the
-          lifted row stays under the finger and the target is reachable
-          without scrolling. */}
-        {rankingOn && ordered.length === 0 && draggingOpenRow ? (
-          <RankedDrop active={overRankedDrop} />
-        ) : null}
         {/* The lifted row follows the pointer in an overlay; its slot in the
             list stays behind as a faint placeholder showing where it lands. */}
         <DragOverlay
           dropAnimation={reduceMotion ? null : { duration: tokens.motion.base, easing: easeOutCss }}
         >
           {activeItem ? (
-            // Dimmed over the Ranked target so the highlighted target shows through.
-            <View style={overRankedDrop ? styles.overlayOnTarget : undefined}>
-              <ItemRow
-                {...baseRowProps(props, activeItem, activeSection)}
-                isDragging
-                dragHandle={<Icon name="drag" size={16} tone="muted" />}
-              />
-            </View>
+            <ItemRow
+              {...baseRowProps(props, activeItem, activeSection)}
+              isDragging
+              dragHandle={<Icon name="drag" size={16} tone="muted" />}
+            />
           ) : null}
         </DragOverlay>
       </View>
     </DndContext>
-  );
-}
-
-function RankedDrop({ active }: { active: boolean }) {
-  const { setNodeRef } = useDroppable({ id: RANKED_DROP_ID });
-  return (
-    <View ref={setNodeRef as unknown as React.Ref<ViewInstance>} style={styles.dropOverlay}>
-      <RankedDropZone active={active} />
-    </View>
   );
 }
 
@@ -397,20 +351,6 @@ function stripButtonRole(attributes: unknown): Record<string, unknown> {
 
 const styles = StyleSheet.create({
   frame: { flex: 1, position: "relative" },
-  overlayOnTarget: { opacity: 0.75 },
-  dropOverlay: {
-    position: "absolute",
-    top: 0,
-    left: pageLayout.gutter,
-    right: pageLayout.gutter,
-    // Held to the reading column like the rows beneath it (5.7a): with
-    // left/right set, a max width and auto margins centre it.
-    maxWidth: pageLayout.columnMaxWidth - 2 * pageLayout.gutter,
-    marginHorizontal: "auto",
-    paddingBottom: tokens.space.sm,
-    backgroundColor: tokens.bg.canvas,
-    boxShadow: "0px 8px 16px rgba(0, 0, 0, 0.35)",
-  },
   // The header blocks carry their own gutter.
   header: { marginHorizontal: -pageLayout.gutter },
   listContent: {

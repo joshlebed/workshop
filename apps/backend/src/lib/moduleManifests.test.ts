@@ -68,30 +68,16 @@ describe("inspectModuleChange — module removal warnings (§6)", () => {
     });
   });
 
-  it("uses singular grammar when the count is one", async () => {
-    const db = fakeDb([1]);
-    const warnings = await inspectModuleChange({
-      listId: LIST_ID,
-      currentModules: ["ranking"],
-      nextModules: [],
-      db,
-    });
-    expect(warnings[0]?.message).toBe("1 item will lose their manual order.");
-  });
-
-  it("emits one warning per removed module with data", async () => {
-    const db = fakeDb([3, 5]);
+  it("never warns about the retired ranking module (every list has one order)", async () => {
+    const db = fakeDb([3]);
     const warnings = await inspectModuleChange({
       listId: LIST_ID,
       currentModules: ["todo", "ranking"],
       nextModules: [],
       db,
     });
-    expect(warnings.map((w) => w.code)).toEqual([
-      MODULE_REMOVAL_WARNINGS.todo,
-      MODULE_REMOVAL_WARNINGS.ranking,
-    ]);
-    expect(warnings.map((w) => w.affectedCount)).toEqual([3, 5]);
+    expect(warnings.map((w) => w.code)).toEqual([MODULE_REMOVAL_WARNINGS.todo]);
+    expect(warnings.map((w) => w.affectedCount)).toEqual([3]);
   });
 
   it("skips an unknown module name silently (forward compat)", async () => {

@@ -1,20 +1,24 @@
 // Native (iOS / Android) list-detail row container.
 //
-// Every open row reorders by long-press (2.7), on every list. The library
-// (`react-native-reorderable-list`) can only reorder inside one list's `data`,
-// so on a ranking list Ranked and open rows share one list:
+// One order per list (docs/list-types.md → "Order"): every open row reorders
+// by long-press. The library (`react-native-reorderable-list`) can only
+// reorder inside one list's `data`, so the list and, on a list with a source,
+// the sync inbox share one list:
 //
-// - Ranked non-empty: `[...ranked, ...open]`; the boundary is implicit (a row
-//   lands Ranked when it is at the top or directly beneath a ranked row).
-// - Ranked empty: `[slot, ...open]`, where `slot` is a constant-height
-//   "Ranked" drop cell (2.8): a row dropped onto it or right beneath it ranks.
+// - `[...list, ...inbox]`; the boundary is implicit (a row lands in the list
+//   at the top or directly beneath a list row). The inbox heading decorates
+//   its first cell. An inbox row dropped inside the inbox stays put; a list
+//   row dropped there lands at the bottom of the list.
+// - Nothing placed yet: `[slot, ...inbox]`, where `slot` is a constant-height
+//   drop cell: an inbox row dropped onto it or right beneath it starts the list.
 //
 // `resolveDrop` (listOps.ts, shared with web) turns `{from, to}` into the
-// neighbour-relative move. Section headers stay OUT of the data except that
+// neighbour-relative move. Section headings stay OUT of the data except that
 // one slot cell (a header row inside the list once desynced the library's
-// per-cell layout); the open block's header decorates its first cell.
+// per-cell layout).
 
 import type { Item } from "@workshop/shared";
+import { listKind } from "@workshop/shared/listKinds";
 import {
   haptics,
   layout,
@@ -39,24 +43,22 @@ import {
   useIsActive,
   useReorderableDrag,
 } from "react-native-reorderable-list";
-import { ItemRow, RankedDropZone, SectionHeader } from "./ItemRow";
-import { type DragEntry, resolveDrop } from "./listOps";
+import { ItemRow, ListDropZone, SectionHeader } from "./ItemRow";
+import { type DragEntry, resolveDrop, withArticle } from "./listOps";
 import type { ItemListProps } from "./listProps";
 import { baseRowProps } from "./rowProps";
 
-const SLOT_ID = "__ranked-slot__";
-type Cell =
-  | { kind: "slot"; id: string }
-  | { kind: "row"; item: Item; section: "ordered" | "unordered" };
+const SLOT_ID = "__list-slot__";
+type Cell = { kind: "slot"; id: string } | { kind: "row"; item: Item; section: "open" | "inbox" };
 
 export function ItemList(props: ItemListProps) {
   const {
-    ordered,
-    unordered,
+    open,
+    inbox,
     completed,
+    inboxTitle,
+    listEmpty,
     listItemKind,
-    rankingOn,
-    openReorderable,
     copy,
     doneCollapsed,
     doneCollapsible,
@@ -74,18 +76,16 @@ export function ItemList(props: ItemListProps) {
   const dropDuration = useMotionDuration("base");
 
   const cells = useMemo<Cell[]>(() => {
-    const open = unordered.map((item) => ({
+    const list = open.map((item) => ({ kind: "row" as const, item, section: "open" as const }));
+    const waiting = inbox.map((item) => ({
       kind: "row" as const,
       item,
-      section: "unordered" as const,
+      section: "inbox" as const,
     }));
-    if (!rankingOn) return open;
-    if (ordered.length === 0) return [{ kind: "slot" as const, id: SLOT_ID }, ...open];
-    return [
-      ...ordered.map((item) => ({ kind: "row" as const, item, section: "ordered" as const })),
-      ...open,
-    ];
-  }, [ordered, unordered, rankingOn]);
+    if (listEmpty && waiting.length > 0)
+      return [{ kind: "slot" as const, id: SLOT_ID }, ...waiting];
+    return [...list, ...waiting];
+  }, [open, inbox, listEmpty]);
 
   const entries = useMemo<DragEntry[]>(
     () =>
@@ -97,37 +97,42 @@ export function ItemList(props: ItemListProps) {
 
   const handleReorder = useCallback(
     ({ from, to }: ReorderableListReorderEvent) => {
-      const drop = resolveDrop(entries, from, to, { openReorderable });
+      const drop = resolveDrop(entries, from, to);
       if (drop) onDrop(drop);
     },
-    [entries, onDrop, openReorderable],
+    [entries, onDrop],
   );
 
-  const sectionCount =
-    (ordered.length > 0 ? 1 : 0) + (unordered.length > 0 ? 1 : 0) + (completed.length > 0 ? 1 : 0);
-  const showHeaders = sectionCount > 1;
-  const firstOpenIndex = cells.findIndex((c) => c.kind === "row" && c.section === "unordered");
+  const firstInboxIndex = cells.findIndex((c) => c.kind === "row" && c.section === "inbox");
+  const noun = listKind(listItemKind).noun.one;
 
   const renderCell = useCallback(
     ({ item: cell, index }: ListRenderItemInfo<Cell>) => {
-      if (cell.kind === "slot") return <RankedDropZone active={false} />;
+      if (cell.kind === "slot") {
+        return (
+          <ListDropZone
+            active={false}
+            label={`Hold ${withArticle(noun)} and drag it here to start the list`}
+          />
+        );
+      }
       return (
         <DraggableRow
           rowProps={baseRowProps(props, cell.item, cell.section)}
-          openHeader={
-            index === firstOpenIndex && showHeaders && ordered.length > 0 ? (
+          heading={
+            index === firstInboxIndex ? (
               <SectionHeader
-                kind="unordered"
-                count={unordered.length}
-                listItemKind={listItemKind}
-                doneWord={copy.done}
+                kind="inbox"
+                label={inboxTitle}
+                count={inbox.length}
+                first={index === 0}
               />
             ) : null
           }
         />
       );
     },
-    [props, firstOpenIndex, showHeaders, ordered.length, unordered.length, listItemKind, copy.done],
+    [props, firstInboxIndex, inboxTitle, inbox.length, noun],
   );
 
   const completedToRender = doneCollapsed ? [] : completed;
@@ -146,15 +151,6 @@ export function ItemList(props: ItemListProps) {
         testID="list-detail-list"
       >
         {header ? <View style={styles.header}>{header}</View> : null}
-        {ordered.length > 0 && showHeaders ? (
-          <SectionHeader
-            kind="ordered"
-            count={ordered.length}
-            listItemKind={listItemKind}
-            doneWord={copy.done}
-            first
-          />
-        ) : null}
         <NestedReorderableList
           data={cells}
           keyExtractor={keyExtractor}
@@ -168,12 +164,11 @@ export function ItemList(props: ItemListProps) {
           shouldUpdateActiveItem
         />
 
-        {completed.length > 0 && (showHeaders || doneCollapsible) ? (
+        {completed.length > 0 && (cells.length > 0 || doneCollapsible) ? (
           <SectionHeader
             kind="completed"
+            label={copy.done}
             count={completed.length}
-            listItemKind={listItemKind}
-            doneWord={copy.done}
             collapsible={
               doneCollapsible ? { collapsed: doneCollapsed, onToggle: onToggleDone } : undefined
             }
@@ -217,10 +212,10 @@ function onIndexChange(_event: ReorderableListIndexChangeEvent) {
 // tick, the same one each crossed slot gives.
 const DraggableRow = memo(function DraggableRow({
   rowProps,
-  openHeader,
+  heading,
 }: {
   rowProps: ReturnType<typeof baseRowProps>;
-  openHeader: React.ReactNode;
+  heading: React.ReactNode;
 }) {
   const drag = useReorderableDrag();
   const isActive = useIsActive();
@@ -230,7 +225,7 @@ const DraggableRow = memo(function DraggableRow({
   }, [drag]);
   return (
     <>
-      {openHeader}
+      {heading}
       <ItemRow {...rowProps} isDragging={isActive} onLongPressBody={onLongPressBody} />
     </>
   );

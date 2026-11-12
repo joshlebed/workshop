@@ -316,17 +316,15 @@ export const items = pgTable(
     kind: text("kind"),
     content: jsonb("content").notNull().default(sql`'{}'::jsonb`),
     /**
-     * Manual ordering when the parent list has the `ranking` module enabled.
-     * `NULL` = unordered (renders in the recency-sorted section). Backfilled
-     * from `items.metadata->>'position'` in 0014.
+     * The list's one order (lib/positions.ts): sparse integers, ascending =
+     * top. `NULL` = not placed yet: on a list with a source, the sync inbox.
+     * Done and deleted rows keep theirs so they return to the same place.
      */
     position: integer("position"),
     /**
-     * Hand-placed order inside the unranked block (UX pass 2.7). Sparse
-     * integers like `position`, ascending = top. `NULL` = never placed by
-     * hand: those rows sort first, newest first, so a list nobody has dragged
-     * keeps its recency order and a new item lands at the top. Independent of
-     * `position` (the Ranked block); see `moveItemUnranked` in lib/positions.ts.
+     * Retired (the old second order for unranked rows, UX pass 2.7). No
+     * longer read or written; migration 0058 mirrored `position` into it so a
+     * code rollback reads the same order. Droppable once that is moot.
      */
     orderKey: integer("order_key"),
     addedBy: uuid("added_by")

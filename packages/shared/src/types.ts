@@ -725,33 +725,29 @@ export interface UpdateItemRequest {
 }
 
 /**
- * `POST /v1/items/:id/move` — server computes the new `position` per the
- * sparse-integer allocator (§3.4 of the redesign). Only one of
- * beforeItemId/afterItemId is required; both → insert between.
+ * `POST /v1/items/:id/move` — places a row in its list's one order (see
+ * docs/list-types.md → "Order"). `beforeItemId` is the open row displayed
+ * directly above the drop, `afterItemId` the one directly below; either may
+ * be omitted, and neither puts the row at the top. Moving a row out of the
+ * sync inbox places it in the list. This client sends `section: "list"`, and
+ * `section: "inbox"` only to undo an "Add to list" (a row back to the inbox;
+ * nothing happens on a list without a source).
  *
- * Both null is ambiguous on the wire: it is "demote to unordered"
- * (`position = NULL`) unless `ordered: true`, which means "put it in the
- * ordered section" — appended to the end of the block, or as its first row
- * when the block is empty. Promote paths must send `ordered: true` whenever
- * they have no neighbour to name (an empty Ranked section), otherwise the
- * server reads the request as a demote and the first item can never be ranked.
+ * Legacy (previous bundles, still accepted): `section: "ranked" | "unranked"`
+ * and `ordered: true` mean the same as `"list"`. A body with no `section`, no
+ * neighbours and no `ordered` was "remove from ranking": on a list with a
+ * source it returns the row to the inbox, elsewhere it changes nothing.
  */
 export interface MoveItemRequest {
   beforeItemId?: string | null;
   afterItemId?: string | null;
+  /** Legacy: previous bundles' "append to the Ranked block". */
   ordered?: boolean;
-  /**
-   * The block the row lands in (UX pass 2.7). Absent = the legacy semantics
-   * above, kept for old clients. `ranked`: neighbours are ranked rows; neither
-   * → append to the block (start it when empty). `unranked`: neighbours are
-   * open unranked rows (`before` is the row displayed above); neither → top of
-   * the block; a ranked row moved here leaves the ranking. `unranked` works on
-   * every list, with or without the ranking feature.
-   */
   section?: MoveSection;
 }
 
-export type MoveSection = "ranked" | "unranked";
+/** Where a row goes: `list` (or the legacy aliases `ranked` / `unranked`), or back to the `inbox`. */
+export type MoveSection = "list" | "inbox" | "ranked" | "unranked";
 
 /**
  * `PUT /v1/items/:id/tags` — replaces the item's tag set wholesale. The
@@ -824,16 +820,33 @@ export interface UpdateSavedViewRequest {
 }
 
 export interface ListItemsResponse {
-  ordered: Item[];
-  unordered: Item[];
+  /**
+   * The list: every placed open row in its one order, top first. Always sent
+   * by the one-order backend; optional in this type only because other
+   * readers (HighScore's flatten, fixtures, a web cache from the previous
+   * bundle) know just the legacy fields. Workshop reads `ListRowsResponse`.
+   */
+  open?: Item[];
+  /**
+   * The sync inbox ("New from Spotify"): rows a source brought in that no
+   * person has placed yet, newest first. Empty on lists without a source.
+   */
+  inbox?: Item[];
   completed: Item[];
   /**
    * Pending suggestions on Letterboxd-match lists (`letterboxd` module).
-   * Empty on every other list — suggestions promote into ordered/unordered
-   * once another member accepts.
+   * Empty on every other list — an accepted suggestion lands at the top of
+   * the list.
    */
   suggested: Item[];
+  /** Legacy, for previous bundles: always empty (there is no Ranked block). */
+  ordered: Item[];
+  /** Legacy, for previous bundles: `open` then `inbox`, one plain list. */
+  unordered: Item[];
 }
+
+/** `ListItemsResponse` as the one-order backend sends it. */
+export type ListRowsResponse = ListItemsResponse & { open: Item[]; inbox: Item[] };
 
 export interface ItemResponse {
   item: Item;

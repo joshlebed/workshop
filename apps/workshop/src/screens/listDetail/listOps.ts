@@ -1,9 +1,9 @@
-// Pure list-detail logic (UX pass phase 2): the optimistic cache edits behind
-// complete / delete / move, the drag-drop resolver both platforms share, the
-// keyboard "Move up / Move down" neighbours, filtering and the per-kind copy.
+// Pure list-detail logic: the optimistic cache edits behind complete / delete
+// / move, the drag-drop resolver both platforms share, the keyboard "Move up /
+// Move down" neighbours, filtering and the per-kind copy.
 // No React, no network, so it is unit-tested directly (listOps.test.ts).
 
-import type { Item, ItemKind, ListItemsResponse, MoveSection } from "@workshop/shared";
+import type { Item, ItemKind, ListRowsResponse, MoveItemRequest } from "@workshop/shared";
 import { listKind } from "@workshop/shared/listKinds";
 
 // --- Copy ------------------------------------------------------------------
@@ -52,24 +52,35 @@ export function itemCountLabel(n: number, kind: ItemKind | null = null): string 
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** "an album", "a film": a noun with its indefinite article. */
+export function withArticle(noun: string): string {
+  return /^[aeiou]/i.test(noun) ? `an ${noun}` : `a ${noun}`;
+}
+
 // --- Optimistic cache edits ------------------------------------------------
+//
+// One order per list (docs/list-types.md → "Order"): `open` is the list, top
+// first; `inbox` holds rows a sync brought in that nobody has placed yet
+// (lists with a source only); `completed` is Done.
 
-export type SectionName = "ordered" | "unordered" | "completed";
+export type SectionName = "open" | "inbox" | "completed";
 
-function withoutItem(data: ListItemsResponse, itemId: string): ListItemsResponse {
+const SECTIONS = ["open", "inbox", "completed"] as const;
+
+function withoutItem(data: ListRowsResponse, itemId: string): ListRowsResponse {
   return {
     ...data,
-    ordered: data.ordered.filter((i) => i.id !== itemId),
-    unordered: data.unordered.filter((i) => i.id !== itemId),
+    open: data.open.filter((i) => i.id !== itemId),
+    inbox: data.inbox.filter((i) => i.id !== itemId),
     completed: data.completed.filter((i) => i.id !== itemId),
   };
 }
 
 export function findItem(
-  data: ListItemsResponse,
+  data: ListRowsResponse,
   itemId: string,
 ): { item: Item; section: SectionName; index: number } | null {
-  for (const section of ["ordered", "unordered", "completed"] as const) {
+  for (const section of SECTIONS) {
     const index = data[section].findIndex((i) => i.id === itemId);
     const item = data[section][index];
     if (index >= 0 && item) return { item, section, index };
@@ -77,13 +88,13 @@ export function findItem(
   return null;
 }
 
-/** Done: leaves its open section and lands on top of Done. */
+/** Done: leaves the list (or the inbox) and lands on top of Done. */
 export function applyComplete(
-  data: ListItemsResponse,
+  data: ListRowsResponse,
   itemId: string,
   userId: string | null,
   now: Date = new Date(),
-): ListItemsResponse {
+): ListRowsResponse {
   const found = findItem(data, itemId);
   if (!found || found.section === "completed") return data;
   const rest = withoutItem(data, itemId);
@@ -97,106 +108,107 @@ export function applyComplete(
 }
 
 /**
- * Reopened: a ranked row goes back to its rank (by `position`); anything else
- * goes back into the open block where its age puts it. The server's
- * hand-placed order wins on the refetch; for a list nobody has reordered this
- * is already exact.
+ * Reopened: back to its place in the list (rows keep their `position` while
+ * done). A row that was never placed goes back to the inbox on a list with a
+ * source, else to the top of the list, which is where the server reads it.
  */
 export function applyUncomplete(
-  data: ListItemsResponse,
+  data: ListRowsResponse,
   itemId: string,
-  rankingOn: boolean,
-): ListItemsResponse {
+  hasSource: boolean,
+): ListRowsResponse {
   const found = findItem(data, itemId);
   if (found?.section !== "completed") return data;
   const rest = withoutItem(data, itemId);
   const open: Item = { ...found.item, completed: false, completedAt: null, completedBy: null };
-  if (rankingOn && typeof open.position === "number") {
-    const pos = open.position;
-    const at = rest.ordered.findIndex((i) => (i.position ?? 0) > pos);
-    const ordered = rest.ordered.slice();
-    ordered.splice(at < 0 ? ordered.length : at, 0, open);
-    return { ...rest, ordered };
+  if (typeof open.position !== "number") {
+    return hasSource
+      ? { ...rest, inbox: [open, ...rest.inbox] }
+      : { ...rest, open: [open, ...rest.open] };
   }
-  const created = Date.parse(open.createdAt);
-  const at = rest.unordered.findIndex((i) => Date.parse(i.createdAt) < created);
-  const unordered = rest.unordered.slice();
-  unordered.splice(at < 0 ? unordered.length : at, 0, open);
-  return { ...rest, unordered };
+  const pos = open.position;
+  const at = rest.open.findIndex((i) => typeof i.position === "number" && i.position > pos);
+  const list = rest.open.slice();
+  list.splice(at < 0 ? list.length : at, 0, open);
+  return { ...rest, open: list };
 }
 
 /** Deleted: gone at once. */
-export function applyRemove(data: ListItemsResponse, itemId: string): ListItemsResponse {
+export function applyRemove(data: ListRowsResponse, itemId: string): ListRowsResponse {
   return withoutItem(data, itemId);
 }
 
 /** Undo of a delete: back where it was, if that section still exists. */
 export function applyRestore(
-  data: ListItemsResponse,
+  data: ListRowsResponse,
   placement: { item: Item; section: SectionName; index: number },
-): ListItemsResponse {
+): ListRowsResponse {
   if (findItem(data, placement.item.id)) return data;
   const list = data[placement.section].slice();
   list.splice(Math.min(placement.index, list.length), 0, placement.item);
   return { ...data, [placement.section]: list };
 }
 
+/**
+ * Where a move puts a row: just below `beforeItemId` (the row displayed
+ * above), else just above `afterItemId`, else at the top of the list.
+ * `toInbox` is only the Undo of "Add to list".
+ */
 export interface MoveIntent {
-  section: MoveSection;
   beforeItemId: string | null;
   afterItemId: string | null;
+  toInbox?: boolean;
 }
 
-/**
- * Mirror of `POST /v1/items/:id/move` with a `section`: the row lands right
- * below `before`, else right above `after`, else at the end of Ranked / the
- * top of the open block. Neighbours that aren't in the target section are
- * ignored, the same way the server only reads their keys.
- */
+/** The request for a move (`POST /v1/items/:id/move`). */
+export function moveRequest(intent: MoveIntent): MoveItemRequest {
+  if (intent.toInbox) return { section: "inbox" };
+  return {
+    section: "list",
+    beforeItemId: intent.beforeItemId,
+    afterItemId: intent.afterItemId,
+  };
+}
+
+/** Mirror of the server's move, on the cached rows. */
 export function applyMove(
-  data: ListItemsResponse,
+  data: ListRowsResponse,
   itemId: string,
   intent: MoveIntent,
-): ListItemsResponse {
+): ListRowsResponse {
   const found = findItem(data, itemId);
   if (!found || found.section === "completed") return data;
   const rest = withoutItem(data, itemId);
-  const ranked = intent.section === "ranked";
-  const target = (ranked ? rest.ordered : rest.unordered).slice();
-  const moved: Item = {
-    ...found.item,
-    position: ranked ? (found.item.position ?? 0) : null,
-  };
-  const beforeIdx = intent.beforeItemId
-    ? target.findIndex((i) => i.id === intent.beforeItemId)
-    : -1;
-  const afterIdx = intent.afterItemId ? target.findIndex((i) => i.id === intent.afterItemId) : -1;
+  if (intent.toInbox) {
+    return { ...rest, inbox: [{ ...found.item, position: null }, ...rest.inbox] };
+  }
+  const list = rest.open.slice();
+  const beforeIdx = intent.beforeItemId ? list.findIndex((i) => i.id === intent.beforeItemId) : -1;
+  const afterIdx = intent.afterItemId ? list.findIndex((i) => i.id === intent.afterItemId) : -1;
   let at: number;
   if (beforeIdx >= 0) at = beforeIdx + 1;
   else if (afterIdx >= 0) at = afterIdx;
-  else at = ranked ? target.length : 0;
-  target.splice(at, 0, moved);
-  return ranked ? { ...rest, ordered: target } : { ...rest, unordered: target };
+  else at = 0;
+  list.splice(at, 0, found.item);
+  return { ...rest, open: list };
 }
 
 // --- Drag and drop ---------------------------------------------------------
 
 /**
- * One entry of the combined draggable list both platforms render. Rows carry
- * the section they started in; markers are layout landmarks that never move
- * by themselves:
+ * One entry of the draggable list both platforms render: the list's rows,
+ * then (on a list with a source) the inbox's. Markers never move by
+ * themselves:
  *
- * - `divider`: the Ranked / open boundary (web renders it as the open
- *   section's header). Above it is Ranked.
- * - `slot`: the empty Ranked section (native renders a quiet "Ranked" drop
- *   cell when there is no ranked row to drop beside). It and the row
- *   directly beneath it are Ranked.
+ * - `divider`: the inbox's heading (web). Above it is the list.
+ * - `slot`: native's drop cell for an empty list over a non-empty inbox. It
+ *   and the row directly beneath it are the list.
  *
- * With no marker, the boundary is implicit: a row lands Ranked when it is at
- * the very top of a non-empty Ranked block or directly beneath a ranked row.
+ * With no marker the boundary is implicit: a row lands in the list at the
+ * very top or directly beneath a list row.
  */
 export type DragEntry =
-  | { kind: "row"; id: string; section: "ordered" | "unordered" }
+  | { kind: "row"; id: string; section: "open" | "inbox" }
   | { kind: "divider"; id: string }
   | { kind: "slot"; id: string };
 
@@ -207,18 +219,16 @@ export interface DropResult extends MoveIntent {
 /**
  * Turn a library `{from, to}` (arrayMove convention, shared by dnd-kit and
  * react-native-reorderable-list) into the move to send, or null when nothing
- * changes. Neighbours are the nearest *rows* of the landing section, so a
- * drop under a filter places the row between the two rows the user saw.
- * `openReorderable: false` (album shelf: the detected block is
- * recency-sorted) drops open-to-open moves.
+ * changes. Neighbours are the nearest list rows the person saw, so a drop
+ * under a filter lands between the two visible rows. The inbox keeps its own
+ * newest-first order: an inbox row dropped inside it stays put, and a list
+ * row dropped into it lands at the bottom of the list.
  */
 export function resolveDrop(
   entries: readonly DragEntry[],
   from: number,
   to: number,
-  options: { openReorderable?: boolean } = {},
 ): DropResult | null {
-  const openReorderable = options.openReorderable ?? true;
   if (from === to) return null;
   if (from < 0 || from >= entries.length || to < 0 || to >= entries.length) return null;
   const moved = entries[from];
@@ -228,66 +238,68 @@ export function resolveDrop(
   post.splice(from, 1);
   post.splice(to, 0, moved);
 
-  const rankedHere = (index: number): boolean => {
-    const divider = post.findIndex((e) => e.kind === "divider");
-    if (divider >= 0) return index < divider;
-    const slot = post.findIndex((e) => e.kind === "slot");
-    if (slot >= 0) return index <= slot + 1;
-    const above = post[index - 1];
-    const rankedOthers = entries.some(
-      (e) => e.kind === "row" && e.section === "ordered" && e.id !== moved.id,
+  const divider = post.findIndex((e) => e.kind === "divider");
+  const slot = post.findIndex((e) => e.kind === "slot");
+  let landsInList: boolean;
+  if (divider >= 0) landsInList = to < divider;
+  else if (slot >= 0) landsInList = to <= slot + 1;
+  else {
+    const above = post[to - 1];
+    landsInList = to === 0 || (above?.kind === "row" && above.section === "open");
+  }
+
+  const listIds = (arr: readonly DragEntry[]) =>
+    arr.flatMap((e) =>
+      e.kind === "row" && e.section === "open" && e.id !== moved.id ? [e.id] : [],
     );
-    if (index === 0) return rankedOthers;
-    return !!above && above.kind === "row" && above.section === "ordered" && above.id !== moved.id;
-  };
 
-  const landsRanked = rankedHere(to);
-  // Only the dragged row changes section; every other row keeps its own.
-  const sectionOf = (e: DragEntry): "ordered" | "unordered" | null => {
-    if (e.kind !== "row") return null;
-    if (e.id === moved.id) return landsRanked ? "ordered" : "unordered";
-    return e.section;
-  };
-  const landing = landsRanked ? "ordered" : "unordered";
+  if (!landsInList) {
+    if (moved.section === "inbox") return null;
+    // A list row dropped into the inbox: the bottom of the list.
+    const others = listIds(entries);
+    const last = others.at(-1) ?? null;
+    const preAfter = (() => {
+      for (let i = from + 1; i < entries.length; i += 1) {
+        const e = entries[i];
+        if (e?.kind === "row") return e.section === "open" ? e.id : null;
+      }
+      return null;
+    })();
+    if (preAfter === null) return null; // already the last row of the list
+    return { itemId: moved.id, beforeItemId: last, afterItemId: null };
+  }
 
-  const neighbour = (step: -1 | 1): string | null => {
-    for (let i = to + step; i >= 0 && i < post.length; i += step) {
-      const e = post[i];
-      if (e?.kind !== "row") continue;
-      return sectionOf(e) === landing ? e.id : null;
+  const neighbour = (arr: readonly DragEntry[], index: number, step: -1 | 1): string | null => {
+    for (let i = index + step; i >= 0 && i < arr.length; i += step) {
+      const e = arr[i];
+      if (e?.kind !== "row") {
+        if (step === 1 && e?.kind === "divider") return null;
+        continue;
+      }
+      if (e.id === moved.id) continue;
+      return e.section === "open" ? e.id : null;
     }
     return null;
   };
-  const beforeItemId = neighbour(-1);
-  const afterItemId = neighbour(1);
+  const beforeItemId = neighbour(post, to, -1);
+  const afterItemId = neighbour(post, to, 1);
 
-  if (moved.section === landing) {
-    if (landing === "unordered" && !openReorderable) return null;
-    // Same section, same neighbours: a no-op.
-    const pre = entries;
-    const preNeighbour = (step: -1 | 1): string | null => {
-      for (let i = from + step; i >= 0 && i < pre.length; i += step) {
-        const e = pre[i];
-        if (e?.kind !== "row") continue;
-        return e.section === landing ? e.id : null;
-      }
+  if (moved.section === "open") {
+    // Same neighbours as before the drag: a no-op.
+    if (
+      neighbour(entries, from, -1) === beforeItemId &&
+      neighbour(entries, from, 1) === afterItemId
+    ) {
       return null;
-    };
-    if (preNeighbour(-1) === beforeItemId && preNeighbour(1) === afterItemId) return null;
+    }
   }
-
-  return {
-    itemId: moved.id,
-    section: landsRanked ? "ranked" : "unranked",
-    beforeItemId,
-    afterItemId,
-  };
+  return { itemId: moved.id, beforeItemId, afterItemId };
 }
 
 /**
  * Neighbours for the row menu's "Move up" / "Move down" (the keyboard and
  * screen-reader path for reorder), within the rows the user can see. Null
- * when the row is already at that end of its section.
+ * when the row is already at that end of the list.
  */
 export function stepNeighbours(
   visible: readonly { id: string }[],

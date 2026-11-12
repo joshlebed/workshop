@@ -6,7 +6,7 @@
 // Anatomy (plan §2 "One row"): [check] [cover] title / one quiet line [⋯].
 // The whole row except the checkbox and the ⋯ opens the item.
 
-import type { Item, ItemKind } from "@workshop/shared";
+import type { Item } from "@workshop/shared";
 import {
   alpha,
   formatRelative,
@@ -22,7 +22,7 @@ import {
   webSpaceKey,
 } from "@workshop/ui";
 import { type ReactNode, useEffect, useState } from "react";
-import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Image, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useReducedMotion,
@@ -31,13 +31,12 @@ import Animated, {
 } from "react-native-reanimated";
 import { keepFocusOn } from "../../lib/a11y/keepFocusNear";
 import { itemPlaceholderGlyph } from "./itemGlyph";
+import type { Section } from "./types";
 
 interface ItemRowProps {
   item: Item;
   /** Section bucket — drives leading affordance + chrome. */
-  section: "ordered" | "unordered" | "completed";
-  /** 1-indexed rank in the whole Ranked block (ranked rows only). */
-  rank?: number;
+  section: Section;
   /** Brief highlight after the row was added or surfaced by a sync. */
   isNew: boolean;
   /** True while the row is lifted by a drag. */
@@ -76,7 +75,6 @@ interface ItemRowProps {
 export function ItemRow({
   item,
   section,
-  rank,
   isNew,
   isDragging,
   addedByName,
@@ -111,9 +109,6 @@ export function ItemRow({
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
 
-  const rankNumeral = typeof rank === "number" && section === "ordered" ? rank : null;
-  // With a checkbox in the leading slot the rank moves inline, a quiet
-  // tabular figure before the title; without one it keeps the leading slot.
   const leading = checkbox ? (
     <Checkbox
       checked={checkbox.checked}
@@ -122,12 +117,6 @@ export function ItemRow({
       hint={checkbox.hint}
       testID={`item-row-check-${item.id}`}
     />
-  ) : rankNumeral !== null ? (
-    <View style={styles.rankSlot}>
-      <Text variant="heading" headerRole={false} style={[styles.rankLeading, styles.rankColor]}>
-        {rankNumeral}
-      </Text>
-    </View>
   ) : null;
 
   const cover = !showCover ? null : showImage ? (
@@ -162,9 +151,6 @@ export function ItemRow({
             style={[styles.rowTitle, isCompleted && styles.rowTitleCompleted]}
             testID={`item-title-${item.id}`}
           >
-            {checkbox && rankNumeral !== null ? (
-              <Text style={[styles.rankInline, styles.rankColor]}>{`${rankNumeral}  `}</Text>
-            ) : null}
             {item.title}
           </Text>
         </View>
@@ -202,8 +188,8 @@ export function ItemRow({
       {leading}
       <Pressable
         accessibilityRole="button"
-        // No label: the name is the row's own text (rank, title, line,
-        // tags), so a voice-control user can say what they see (WCAG 2.5.3).
+        // No label: the name is the row's own text (title, line, tags), so
+        // a voice-control user can say what they see (WCAG 2.5.3).
         accessibilityHint={view.bodyHint}
         onPress={onPressBody}
         // Shared hold threshold (500ms, the iOS long-press minimum).
@@ -364,17 +350,18 @@ function describeItem(item: Item): ItemView {
 
 function describeProvenance(
   item: Item,
-  section: "ordered" | "unordered" | "completed",
+  section: Section,
   addedByName: string | null,
   doneWord: string,
 ): string | null {
   if (section === "completed" && item.completedAt) {
     return `${doneWord} ${formatRelative(item.completedAt)}`;
   }
-  if (item.kind === "spotify_album" && section === "unordered") {
+  // An inbox row says when the sync found it (the album shelf's `detectedAt`).
+  if (section === "inbox") {
     const c = item.content as { detectedAt?: string };
-    const detectedAt = typeof c.detectedAt === "string" ? c.detectedAt : null;
-    return detectedAt ? `Added ${formatRelative(detectedAt)}` : null;
+    const at = typeof c.detectedAt === "string" ? c.detectedAt : item.createdAt;
+    return `Added ${formatRelative(at)}`;
   }
   // Attribution only when someone else added the row, first name only.
   if (!addedByName) return null;
@@ -383,40 +370,23 @@ function describeProvenance(
 }
 
 interface SectionHeaderProps {
-  kind: "ordered" | "unordered" | "completed";
+  /** `inbox` (the sync inbox, titled for its source) or `completed` (Done). */
+  kind: "inbox" | "completed";
+  /** The heading: the inbox's "New from Spotify", or the list's Done word. */
+  label: string;
   count: number;
-  listItemKind: ItemKind | null;
-  /** The list's completion word, for the Done header. */
-  doneWord: string;
   collapsible?: { collapsed: boolean; onToggle: () => void };
   /** The first thing in the list: no section space above it. */
   first?: boolean;
 }
 
-const UNORDERED_LABEL_BY_KIND: Record<ItemKind, string> = {
-  movie: "Watchlist",
-  tv: "Watchlist",
-  book: "Reading",
-  link: "Ideas",
-  spotify_album: "From the playlist",
-  plain: "Up next",
-};
-
 export function SectionHeader({
   kind,
+  label,
   count,
-  listItemKind,
-  doneWord,
   collapsible,
   first = false,
 }: SectionHeaderProps) {
-  const label =
-    kind === "ordered"
-      ? "Ranked"
-      : kind === "completed"
-        ? doneWord
-        : UNORDERED_LABEL_BY_KIND[listItemKind ?? "plain"];
-
   const body = (
     <View style={[styles.sectionHeader, first && styles.sectionHeaderFirst]}>
       <Text
@@ -478,37 +448,20 @@ function SectionChevron({ up }: { up: boolean }) {
 }
 
 /**
- * The empty Ranked section as a drop target. Web shows it only while a row is
- * being dragged; native keeps a constant-height cell (its reorder library
- * measures cells once) whenever Ranked is empty.
+ * Where an inbox row goes while nothing is placed yet (a freshly connected
+ * album shelf): a quiet dashed cell at the top of the list. Native keeps it as
+ * a constant-height cell in the reorderable data (its library measures cells
+ * once); web draws it above the inbox heading. `active` while a row is over it.
  */
-export function RankedDropZone({ active }: { active: boolean }) {
-  // Web floats this over the top of the list for the length of a drag, so it
-  // stays one compact line; native's cell carries the section label too.
-  if (Platform.OS === "web") {
-    return (
-      <View
-        testID="list-detail-ranked-drop"
-        style={[styles.dropZone, styles.dropZoneCompact, active && styles.dropZoneActive]}
-      >
-        <Text variant="caption" tone={active ? "secondary" : "muted"}>
-          Drop here to rank
-        </Text>
-      </View>
-    );
-  }
+export function ListDropZone({ active, label }: { active: boolean; label: string }) {
   return (
-    <View testID="list-detail-ranked-drop">
-      <View style={[styles.sectionHeader, styles.sectionHeaderFirst]}>
-        <Text variant="eyebrow" tone="secondary">
-          Ranked
-        </Text>
-      </View>
-      <View style={[styles.dropZone, active && styles.dropZoneActive]}>
-        <Text variant="caption" tone={active ? "secondary" : "muted"}>
-          Hold a row and drag it here to rank it
-        </Text>
-      </View>
+    <View
+      testID="list-detail-list-drop"
+      style={[styles.dropZone, styles.dropZoneFirst, active && styles.dropZoneActive]}
+    >
+      <Text variant="caption" tone={active ? "secondary" : "muted"}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -516,9 +469,6 @@ export function RankedDropZone({ active }: { active: boolean }) {
 const CHECK = 22;
 
 const styles = StyleSheet.create({
-  // A rank is information, not identity: neutral, like the rest of the row.
-  // The list hue stays in the list's badge (DESIGN.md color strategy).
-  rankColor: { color: tokens.text.secondary },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -597,12 +547,6 @@ const styles = StyleSheet.create({
   },
   checkCircleHover: { borderColor: tokens.text.secondary },
   checkCircleOn: { backgroundColor: tokens.border.control, borderColor: tokens.border.control },
-  rankSlot: { width: 28, alignItems: "center", justifyContent: "center" },
-  rankLeading: { fontVariant: ["tabular-nums"] },
-  rankInline: {
-    fontWeight: tokens.font.weight.semibold,
-    fontVariant: ["tabular-nums"],
-  },
   cover: {
     width: 44,
     height: 44,
@@ -664,7 +608,7 @@ const styles = StyleSheet.create({
     borderStyle: "dashed",
     borderColor: tokens.border.default,
   },
-  dropZoneCompact: { minHeight: tokens.hit, marginTop: tokens.space.sm },
+  dropZoneFirst: { marginTop: tokens.space.sm },
   dropZoneActive: {
     borderColor: tokens.accent.default,
     backgroundColor: alpha(tokens.accent.default, 0.08),

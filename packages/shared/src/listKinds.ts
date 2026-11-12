@@ -13,15 +13,18 @@
 // docs/list-types.md.
 //
 // Three kinds of feature:
-// - **Toggles** (`todo`, `ranking`, `letterboxd`): the owner turns them on and
-//   off in list settings. `todo` and `ranking` are offered on every kind;
-//   `letterboxd` only on movie lists.
+// - **Toggles** (`todo`, `letterboxd`): the owner turns them on and off in
+//   list settings. `todo` is offered on every kind; `letterboxd` only on movie
+//   lists. Every list has one hand-ordered sequence; there is no ordering
+//   feature (the old `ranking` module is retired: dropped from every write,
+//   tolerated in stored data).
 // - **Derived** (`sources`): never a toggle. It is on exactly when the list has
 //   at least one attached source, and the backend keeps it that way in the
 //   same transaction that attaches or removes one (see `resolveListModules`).
 //   Kinds with a `syncSources` entry get a "Synced from" section in settings.
-// - **Legacy** (`leaderboard`): retired, never offered, left alone where it
-//   still exists.
+// - **Legacy** (`leaderboard`, `ranking`): retired, never offered. A stored
+//   `leaderboard` is left alone; `ranking` is dropped whenever a list is
+//   written.
 //
 // Runtime-imported by the Workshop client, so this module must not
 // value-import a sibling (Metro cannot resolve `./x.js`; see CLAUDE.md). The
@@ -34,10 +37,10 @@ import type { SourceKind } from "./sourceKinds.js";
 /** A list's kind: its `item_kind`, or `blank` for a list with none. */
 export type ListKindKey = ItemKind | "blank";
 
-/** Features the owner turns on and off. `sources` is derived, `leaderboard` retired. */
-export type ToggleFeature = "todo" | "ranking" | "letterboxd";
+/** Features the owner turns on and off. `sources` is derived; `leaderboard` and `ranking` retired. */
+export type ToggleFeature = "todo" | "letterboxd";
 
-export const TOGGLE_FEATURES: readonly ToggleFeature[] = ["todo", "ranking", "letterboxd"];
+export const TOGGLE_FEATURES: readonly ToggleFeature[] = ["todo", "letterboxd"];
 
 /** Source kinds a person attaches by link ("Synced from"). `letterboxd_match` belongs to its feature. */
 export type SyncSourceKind = Extract<SourceKind, "spotify_playlist" | "letterboxd_list">;
@@ -87,7 +90,7 @@ export interface ListKindProfile {
   glyph: string;
 }
 
-const BASIC_FEATURES: readonly ToggleFeature[] = ["todo", "ranking"];
+const BASIC_FEATURES: readonly ToggleFeature[] = ["todo"];
 
 export const LIST_KINDS: Readonly<Record<ListKindKey, ListKindProfile>> = {
   blank: {
@@ -151,7 +154,7 @@ export const LIST_KINDS: Readonly<Record<ListKindKey, ListKindProfile>> = {
     done: "Watched",
     verb: "watch",
     completedVerb: "watched",
-    features: ["todo", "ranking", "letterboxd"],
+    features: ["todo", "letterboxd"],
     syncSources: ["letterboxd_list"],
     add: { mode: "search", bulk: true, title: "Add movies" },
     empty: {
@@ -248,11 +251,6 @@ export function featureCopy(
         label: kind.done === "Done" ? "Check things off" : `Mark ${kind.done.toLowerCase()}`,
         description: `Ticked ${kind.noun.many} move to a ${kind.done} section.`,
       };
-    case "ranking":
-      return {
-        label: "Ranked section",
-        description: `Number your top ${kind.noun.many} above the rest. Dragging works either way.`,
-      };
     case "letterboxd":
       return {
         label: "Letterboxd match",
@@ -309,6 +307,23 @@ export function sourceDisplayName(kind: string): string {
   return (SYNC_SOURCE_COPY as Partial<Record<string, SyncSourceCopy>>)[kind]?.name ?? "Linked list";
 }
 
+// --- The sync inbox ----------------------------------------------------------------
+
+const SOURCE_BRAND: Readonly<Record<string, string>> = {
+  spotify_playlist: "Spotify",
+  letterboxd_list: "Letterboxd",
+  letterboxd_match: "Letterboxd",
+};
+
+/**
+ * The heading over rows a sync brought in that nobody has placed yet, named
+ * for where they came from: "New from Spotify", "New from Letterboxd".
+ */
+export function inboxTitle(sourceKinds: readonly string[]): string {
+  const brands = [...new Set(sourceKinds.map((k) => SOURCE_BRAND[k]).filter(Boolean))];
+  return brands.length === 1 ? `New from ${brands[0]}` : "New arrivals";
+}
+
 // --- Module resolution (backend) -------------------------------------------------
 
 // Same order as `MODULE_NAMES` in ./modules.ts (pinned by listKinds.test.ts).
@@ -355,7 +370,9 @@ export function resolveListModules(args: {
   const next = new Set<string>();
   const notOffered: ToggleFeature[] = [];
   for (const m of args.requested) {
-    if (m === "sources") continue;
+    // `sources` is derived; `ranking` is retired (previous bundles still send
+    // it from their templates and settings switch, so it is ignored, not refused).
+    if (m === "sources" || m === "ranking") continue;
     if ((TOGGLE_FEATURES as readonly string[]).includes(m)) {
       const feature = m as ToggleFeature;
       if (isFeatureOffered(args.itemKind, feature) || current.has(feature)) next.add(feature);

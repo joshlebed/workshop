@@ -12,7 +12,7 @@ describe("one-tap create (4.2, 4.3)", () => {
       emoji: "🎬",
       color: "sunset",
       itemKind: "movie",
-      modules: ["todo", "ranking"],
+      modules: ["todo"],
     });
     expect(req.sources).toBeUndefined();
   });

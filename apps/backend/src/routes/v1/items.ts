@@ -3,7 +3,7 @@ import type {
   ItemContent,
   ItemKind,
   LinkPreview,
-  ListItemsResponse,
+  ListRowsResponse,
   ModuleName,
 } from "@workshop/shared";
 import {
@@ -28,12 +28,7 @@ import { logger } from "../../lib/logger.js";
 import { requireModule, stripModuleGatedItemFields } from "../../lib/moduleGate.js";
 import { requireCapability } from "../../lib/permissions.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
-import {
-  appendPosition,
-  moveItemPosition,
-  moveItemUnranked,
-  UNRANKED_ORDER_SQL,
-} from "../../lib/positions.js";
+import { byPosition, placeItem, RECENCY_ORDER_SQL, topPosition } from "../../lib/positions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { requestOriginColumns } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
@@ -107,18 +102,18 @@ const updateItemSchema = z
   .refine((v) => Object.keys(v).length > 0, "at least one field required");
 
 const moveItemSchema = z.object({
+  // The open rows displayed directly above (`before`) and below (`after`) the
+  // drop. Neither → the top of the list. See `MoveItemRequest`.
   beforeItemId: z.union([z.string().uuid(), z.null()]).optional(),
   afterItemId: z.union([z.string().uuid(), z.null()]).optional(),
-  // Disambiguates a neighbour-less body: `true` → append to the ordered
-  // section (the only way to rank the first item of an empty block);
-  // absent/false → demote. See `MoveItemRequest` in @workshop/shared.
+  // Legacy (previous bundles): `true` meant "append to the Ranked block".
+  // Read as "into the list" so a neighbour-less body is never a demote.
   ordered: z.boolean().optional(),
-  // UX pass 2.7: names the block the row lands in, which makes the neighbour
-  // ids unambiguous. Absent = the legacy semantics above, untouched for old
-  // clients. `ranked`: neighbours are ranked rows, neither → append. `unranked`:
-  // neighbours are open unranked rows (before = displayed above), neither →
-  // top of the block; a ranked row moved here leaves the ranking.
-  section: z.enum(["ranked", "unranked"]).optional(),
+  // `list`: the list's one order. `ranked` and `unranked` are what previous
+  // bundles send; both mean the same thing now. `inbox`: back to the sync
+  // inbox (the Undo of "Add to list"). Absent with no neighbours and no
+  // `ordered` is the oldest legacy shape, the demote (see the route).
+  section: z.enum(["list", "inbox", "ranked", "unranked"]).optional(),
 });
 
 // Tags are manual lowercase labels (spec §2.1): trim, lowercase, collapse
@@ -337,23 +332,27 @@ export async function fetchItemShape(itemId: string, db: DbClient = getDb()): Pr
 }
 
 /**
- * Fetch every non-archived item on a list, joined with the parent list's
- * modules so we can split into the three sections AND strip module-gated
- * fields in one pass. Sections:
+ * Fetch every non-archived item on a list, split into the sections the list
+ * screen draws, with module-gated fields stripped:
  *
- * - `ordered`:   position IS NOT NULL, sorted by position ASC. Suppressed
- *                when `ranking` is off (items collapse into `unordered`) —
- *                EXCEPT on `leaderboard` lists, whose games are always an
- *                ordered, reorderable list (the status-card view drags them).
- * - `unordered`: position IS NULL (or ranking off), in hand-placed order
- *                (`order_key`, NULLs first), then newest first (2.7).
- * - `completed`: completed=true, sorted by completed_at DESC. Suppressed
- *                when `todo` is off (items keep their ordered/unordered slot).
+ * - `open`:      the list itself, in its one order (`position` ascending;
+ *                an unplaced row on a list without a source reads at the top,
+ *                newest first).
+ * - `inbox`:     lists with an attached source only: rows a sync brought in
+ *                that no person has placed yet (`position IS NULL`), newest
+ *                first. Shown as "New from Spotify" below the list.
+ * - `completed`: `todo` on and ticked, most recently done first. With `todo`
+ *                off a ticked row stays where it is in `open`.
+ * - `suggested`: pending Letterboxd-match suggestions.
+ *
+ * `ordered` / `unordered` are the shape previous bundles read: `ordered` is
+ * always empty (no Ranked block) and `unordered` is `open` then `inbox`, so an
+ * un-updated client shows one plain list in the right order.
  */
 export async function fetchItemsForList(
   listId: string,
   db: DbClient = getDb(),
-): Promise<ListItemsResponse & { modules: ModuleName[] }> {
+): Promise<ListRowsResponse & { modules: ModuleName[] }> {
   const [listRow] = await db
     .select({ modules: lists.modules })
     .from(lists)
@@ -371,51 +370,40 @@ export async function fetchItemsForList(
         (SELECT array_agg(t.tag ORDER BY t.tag) FROM item_tags t WHERE t.item_id = i.id) AS tags
       FROM items i
       WHERE i.list_id = ${listId} AND i.archived_at IS NULL
-      ORDER BY ${UNRANKED_ORDER_SQL}
+      ORDER BY ${RECENCY_ORDER_SQL}
     `,
   );
 
-  const rankingOn = hasModule(modules, "ranking");
-  const leaderboardOn = hasModule(modules, "leaderboard");
+  const hasSource = hasModule(modules, "sources");
   const todoOn = hasModule(modules, "todo");
   const letterboxdOn = hasModule(modules, "letterboxd");
-  const ordered: Item[] = [];
-  const unordered: Item[] = [];
+  const open: Item[] = [];
+  const inbox: Item[] = [];
   const completed: Item[] = [];
   const suggested: Item[] = [];
   const shaped = new Map<string, Item>();
+  // Rows arrive newest first: the inbox's order and every section's
+  // tie-break. The list itself is then sorted by position (stable).
   for (const r of rows) {
     const item = applyModuleFilters(rowToItem(r), modules);
     shaped.set(r.id, item);
     // Pending suggestions live in their own section on Letterboxd-match
-    // lists — outside the ranking until another member accepts. Without the
-    // module they fall through and bucket like any other item.
+    // lists until another member accepts. Without the module they fall
+    // through and bucket like any other item.
     if (letterboxdOn && r.suggestion_state === "pending") {
       suggested.push(item);
       continue;
     }
-    const isCompleted = todoOn && Boolean(r.completed);
-    if (isCompleted) {
+    if (todoOn && r.completed) {
       completed.push(item);
       continue;
     }
-    // A leaderboard's games are an ordered, reorderable list even without the
-    // `ranking` module — bucket them all into `ordered` (in the SQL's
-    // position-ASC order) so the status-card view can drag-reorder them. Any
-    // null-position game (added before this rule) sorts last and earns a
-    // position the first time it's dragged.
-    if (leaderboardOn || (rankingOn && typeof r.position === "number")) {
-      ordered.push(item);
-    } else {
-      unordered.push(item);
-    }
+    if (hasSource && r.position === null) inbox.push(item);
+    else open.push(item);
   }
-  // The SQL returns the unranked order; the Ranked block re-sorts by
-  // position (stable, so ties keep the unranked order; a leaderboard's
-  // null-position games sort last).
-  ordered.sort(
-    (a, b) => (a.position ?? Number.MAX_SAFE_INTEGER) - (b.position ?? Number.MAX_SAFE_INTEGER),
-  );
+  // The two hidden legacy leaderboard lists keep the reading they always had
+  // (their positions were never sent, so they read newest first).
+  if (!hasModule(modules, "leaderboard")) open.sort(byPosition);
   completed.sort((a, b) => {
     const ta = a.completedAt ? Date.parse(a.completedAt) : 0;
     const tb = b.completedAt ? Date.parse(b.completedAt) : 0;
@@ -424,7 +412,15 @@ export async function fetchItemsForList(
   if (letterboxdOn) {
     await annotateLetterboxd(listId, rows, shaped, db);
   }
-  return { ordered, unordered, completed, suggested, modules };
+  return {
+    open,
+    inbox,
+    completed,
+    suggested,
+    ordered: [],
+    unordered: [...open, ...inbox],
+    modules,
+  };
 }
 
 /** Thrown by `createItem` when content validation fails. */
@@ -450,13 +446,16 @@ export class ItemKindMismatchRouteError extends Error {
 
 /**
  * Insert one item. Validates the content against the kind's zod schema,
- * asserts the kind fits the parent list's `item_kind`, and assigns a
- * default `position` when the parent has the `ranking` module enabled.
+ * asserts the kind fits the parent list's `item_kind`, and puts the row at
+ * the top of the list (a person added it, so it is placed, even on a list
+ * with a source). Bulk paste passes `position` so the pasted rows land at
+ * the top in the order they were pasted.
  */
 export async function createItem(
   listId: string,
   userId: string,
   data: z.infer<typeof createItemSchema>,
+  options: { position?: number | undefined } = {},
 ): Promise<Item> {
   const db = getDb();
   const inserted = await db.transaction(async (tx) => {
@@ -502,12 +501,7 @@ export async function createItem(
     }
 
     const modules = (parent.modules ?? []) as ModuleName[];
-    let position: number | null = null;
-    if (hasModule(modules, "leaderboard")) {
-      // A leaderboard's games are an ordered list — assign a position on create
-      // so a new game is immediately reorderable in the status-card view.
-      position = await appendPosition(listId, tx);
-    }
+    const position = options.position ?? (await topPosition(listId, tx));
 
     const [row] = await tx
       .insert(items)
@@ -861,7 +855,22 @@ itemRoutes.post(
   },
 );
 
-// --- Move (Ranked block: ranking + leaderboard modules; unranked: any list) ---
+// --- Move: one order per list (docs/list-types.md → "Order") ---
+//
+// Every open row has a place in the list's one order; a move puts it just
+// below `beforeItemId`, else just above `afterItemId`, else at the top. On a
+// list with a source, moving an inbox row ("New from Spotify") places it in
+// the list. Moves inside the list write no activity (a drag is many small
+// changes); a row leaving the inbox logs `item_promoted` ("moved … into the
+// list"). Every request shape a previous bundle sends is accepted:
+//
+// - `section: "ranked" | "unranked"` with or without neighbours, and
+//   `ordered: true`: the same as `section: "list"` (neither neighbour → top).
+// - No `section`, neighbours named: between them.
+// - No `section`, no neighbours, no `ordered`: the old "remove from ranking".
+//   Read as `section: "inbox"` (this client's Undo of "Add to list"): on a
+//   list with a source the row returns to the inbox (the album shelf's old
+//   "Remove from order"); anywhere else there is no inbox, so the row stays.
 
 itemRoutes.post(
   "/:id/move",
@@ -880,67 +889,45 @@ itemRoutes.post(
 
     const parsed = await parseJsonBody(c, moveItemSchema);
     if (!parsed.ok) return parsed.response;
-    const { section } = parsed.data;
+    const { section, ordered } = parsed.data;
     const beforeItemId = parsed.data.beforeItemId ?? null;
     const afterItemId = parsed.data.afterItemId ?? null;
 
     const mods = await getParentModules(db, listId);
-    const rankable = hasModule(mods, "ranking") || hasModule(mods, "leaderboard");
-    // Any list's open rows can be hand-ordered (2.7). The Ranked block — and
-    // every legacy request shape, which only ever addressed it — still needs
-    // `ranking` (or a leaderboard, whose games are always an ordered list);
-    // lists with neither keep the existing `ranking.disabled` 409.
-    if (section !== "unranked" && !rankable) {
-      const gate = requireModule(c, mods, "ranking");
-      if (gate) return gate;
-    }
+    const hasSource = hasModule(mods, "sources");
+    const [current] = await db
+      .select({ position: items.position, title: items.title })
+      .from(items)
+      .where(eq(items.id, itemId))
+      .limit(1);
+    if (!current) return err(c, "NOT_FOUND", "item not found");
+    const wasInInbox = hasSource && current.position === null;
 
-    const wasOrdered = (
-      await db.select({ position: items.position }).from(items).where(eq(items.id, itemId)).limit(1)
-    )[0]?.position;
-    // A stale `position` on a list with ranking off isn't a ranked row.
-    const wasOrderedFlag =
-      typeof wasOrdered === "number" && (section !== "unranked" || hasModule(mods, "ranking"));
-
-    let isOrderedFlag: boolean;
-    if (section === "unranked") {
-      await db.transaction(async (tx) => {
-        if (typeof wasOrdered === "number" && hasModule(mods, "ranking")) {
-          await tx.update(items).set({ position: null }).where(eq(items.id, itemId));
-        }
-        await moveItemUnranked({ listId, itemId, beforeItemId, afterItemId, db: tx });
-      });
-      isOrderedFlag = false;
-    } else {
-      const result = await moveItemPosition({
-        listId,
-        itemId,
-        beforeItemId,
-        afterItemId,
-        // `section: "ranked"` with no neighbours means the same as the legacy
-        // `ordered: true`: append to the block (or start it).
-        ordered: section === "ranked" || (parsed.data.ordered ?? false),
-        db,
-      });
-      isOrderedFlag = result.position !== null;
-    }
-
+    const toInbox =
+      section === "inbox" || (section === undefined && !beforeItemId && !afterItemId && !ordered);
     let eventType: "item_promoted" | "item_demoted" | null = null;
-    if (!wasOrderedFlag && isOrderedFlag) eventType = "item_promoted";
-    else if (wasOrderedFlag && !isOrderedFlag) eventType = "item_demoted";
+    if (toInbox) {
+      if (hasSource && current.position !== null) {
+        await db
+          .update(items)
+          .set({ position: null, updatedAt: new Date() })
+          .where(eq(items.id, itemId));
+        eventType = "item_demoted";
+      }
+    } else {
+      await db.transaction(async (tx) => {
+        await placeItem({ listId, itemId, beforeItemId, afterItemId, hasSource, db: tx });
+      });
+      if (wasInInbox) eventType = "item_promoted";
+    }
 
     if (eventType) {
-      const [row] = await db
-        .select({ title: items.title })
-        .from(items)
-        .where(eq(items.id, itemId))
-        .limit(1);
       await recordEvent({
         listId,
         actorId: userId,
         type: eventType,
         itemId,
-        payload: { title: row?.title ?? "" },
+        payload: { title: current.title },
       });
     }
 
@@ -956,7 +943,7 @@ itemRoutes.post(
  * `POST /v1/items/:id/unarchive` — the Undo behind "Deleted · Undo" (2.3).
  * Any member of the (live) parent list can restore an item; clearing
  * `archived_at` is all it takes because every read filters on it. The row
- * keeps its `position` / `order_key`, so it returns to where it was.
+ * keeps its `position`, so it returns to where it was.
  * Idempotent: restoring a live item returns it unchanged. The per-kind dedup
  * indexes (album shelf `spotifyAlbumId`, movie `tmdbId`) cover archived rows
  * too, so a restore can't normally collide; if one ever does it is a 409.
