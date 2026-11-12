@@ -5,6 +5,7 @@ import {
   type PressableProps,
   StyleSheet,
   Text,
+  View,
   type ViewInstance,
   type ViewStyle,
 } from "react-native";
@@ -67,21 +68,26 @@ export function Button({
         style,
       ]}
     >
+      {/* The label keeps its place (invisible) while the spinner sits over
+          it, so the button never changes width between the two. */}
+      <View style={[styles.content, loading && styles.contentHidden]}>
+        {leftIcon}
+        <Text
+          style={[
+            styles.label,
+            {
+              color: isDisabled && !loading ? disabledLabelColor[variant] : labelColor[variant],
+            },
+          ]}
+        >
+          {label}
+        </Text>
+      </View>
       {loading ? (
-        <ActivityIndicator color={labelColor[variant]} />
-      ) : (
-        <>
-          {leftIcon}
-          <Text
-            style={[
-              styles.label,
-              { color: isDisabled ? disabledLabelColor[variant] : labelColor[variant] },
-            ]}
-          >
-            {label}
-          </Text>
-        </>
-      )}
+        <View style={styles.spinner} pointerEvents="none">
+          <ActivityIndicator color={labelColor[variant]} accessibilityLabel={label} />
+        </View>
+      ) : null}
     </Pressable>
   );
 }
@@ -96,19 +102,41 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   // 44pt on every platform: web ignores hitSlop, so the box itself is the target.
+  // The min heights set the box; the padding only matters once a label
+  // wraps or the user's text size grows.
   sizeMd: {
-    paddingVertical: 10,
+    paddingVertical: tokens.space.sm,
     paddingHorizontal: tokens.space.lg,
     minHeight: tokens.hit,
     minWidth: tokens.hit,
   },
-  sizeLg: { paddingVertical: 14, paddingHorizontal: tokens.space.xl, minHeight: 52 },
+  sizeLg: {
+    paddingVertical: tokens.space.md,
+    paddingHorizontal: tokens.space.xl,
+    minHeight: tokens.hit + tokens.space.sm,
+  },
   label: { fontSize: tokens.font.size.md, fontWeight: tokens.font.weight.semibold },
+  content: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: tokens.space.sm,
+  },
+  contentHidden: { opacity: 0 },
+  spinner: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 });
 
 const variantStyle: Record<Variant, ViewStyle> = {
   primary: { backgroundColor: tokens.accent.default, borderColor: tokens.accent.default },
-  secondary: { backgroundColor: tokens.bg.elevated, borderColor: tokens.border.default },
+  secondary: { backgroundColor: tokens.bg.elevated, borderColor: tokens.border.control },
   ghost: { backgroundColor: "transparent", borderColor: "transparent" },
   danger: { backgroundColor: tokens.status.danger, borderColor: tokens.status.danger },
 };

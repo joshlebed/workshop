@@ -1,4 +1,5 @@
 import { Pressable, type PressableProps, StyleSheet, View, type ViewStyle } from "react-native";
+import { haptics } from "./haptics";
 import { Icon, type IconName } from "./Icon";
 import { type PressState, webAria } from "./interaction";
 import { Text } from "./Text";
@@ -38,7 +39,17 @@ export function Chip({
     <Pressable
       {...rest}
       testID={testID}
-      onPress={!interactive || disabled ? undefined : onPress}
+      onPress={
+        !interactive || disabled
+          ? undefined
+          : () => {
+              // Chips are toggles and pickers: a selection tick on every tap.
+              haptics.selection();
+              onPress?.();
+            }
+      }
+      // A display-only chip is not a stop in the tab order.
+      focusable={interactive}
       accessibilityRole={interactive ? "button" : undefined}
       accessibilityState={{ selected, disabled }}
       aria-disabled={interactive ? disabled : undefined}
@@ -62,6 +73,10 @@ export function Chip({
               size={14}
               tone={selected ? "accent" : tone === "danger" ? "danger" : "secondary"}
             />
+          ) : selected ? (
+            // Selected isn't only a color: amber vs grey is ~1.3:1 in
+            // lightness, so a check marks it too (WCAG 1.4.1).
+            <Icon name="check" size={12} tone="accent" />
           ) : null}
           <Text variant="label" style={selected ? styles.labelSelected : styles.labelUnselected}>
             {label}
@@ -92,9 +107,10 @@ const styles = StyleSheet.create({
   },
   unselected: {
     backgroundColor: tokens.bg.elevated,
-    borderColor: tokens.border.default,
+    // The outline is the chip's edge on canvas: `border.control` (≥3:1).
+    borderColor: tokens.border.control,
   },
-  hovered: { borderColor: tokens.border.strong },
+  hovered: { borderColor: tokens.text.muted },
   danger: { borderColor: tokens.status.danger },
   selected: {
     backgroundColor: tokens.accent.muted,

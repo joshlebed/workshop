@@ -15,13 +15,21 @@
 // per-cell layout); the open block's header decorates its first cell.
 
 import type { Item } from "@workshop/shared";
-import { PullToRefresh, REORDER_AUTOSCROLL, tokens } from "@workshop/ui";
-import * as Haptics from "expo-haptics";
+import {
+  haptics,
+  layout,
+  motionPresets,
+  PullToRefresh,
+  REORDER_AUTOSCROLL,
+  tokens,
+  useMotionDuration,
+} from "@workshop/ui";
 import { memo, useCallback, useMemo } from "react";
 import { type ListRenderItemInfo, StyleSheet } from "react-native";
-import Animated, { FadeIn, FadeOut, useReducedMotion } from "react-native-reanimated";
+import Animated, { LayoutAnimationConfig, runOnJS } from "react-native-reanimated";
 import {
   NestedReorderableList,
+  type ReorderableListIndexChangeEvent,
   type ReorderableListReorderEvent,
   ScrollViewContainer,
   useIsActive,
@@ -53,7 +61,9 @@ export function ItemList(props: ItemListProps) {
     refreshing,
     onRefresh,
   } = props;
-  const reduceMotion = useReducedMotion();
+  // The drop's slide into place, on the token (the library defaults to 200ms
+  // `Easing.out(ease)`); instant under reduced motion.
+  const dropDuration = useMotionDuration("base");
 
   const cells = useMemo<Cell[]>(() => {
     const open = unordered.map((item) => ({
@@ -113,8 +123,6 @@ export function ItemList(props: ItemListProps) {
   );
 
   const completedToRender = doneCollapsed ? [] : completed;
-  const entering = reduceMotion ? undefined : FadeIn.duration(tokens.motion.base);
-  const exiting = reduceMotion ? undefined : FadeOut.duration(tokens.motion.fast);
 
   return (
     <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
@@ -125,6 +133,7 @@ export function ItemList(props: ItemListProps) {
             count={ordered.length}
             listItemKind={listItemKind}
             doneWord={copy.done}
+            first
           />
         ) : null}
         <NestedReorderableList
@@ -135,6 +144,8 @@ export function ItemList(props: ItemListProps) {
           scrollable={false}
           autoscrollThreshold={REORDER_AUTOSCROLL.threshold}
           autoscrollSpeedScale={REORDER_AUTOSCROLL.speedScale}
+          animationDuration={dropDuration}
+          onIndexChange={onIndexChange}
           shouldUpdateActiveItem
         />
 
@@ -147,13 +158,22 @@ export function ItemList(props: ItemListProps) {
             collapsible={
               doneCollapsible ? { collapsed: doneCollapsed, onToggle: onToggleDone } : undefined
             }
+            first={cells.length === 0}
           />
         ) : null}
-        {completedToRender.map((item) => (
-          <Animated.View key={item.id} entering={entering} exiting={exiting}>
-            <ItemRow {...baseRowProps(props, item, "completed")} isDragging={false} />
-          </Animated.View>
-        ))}
+        {/* Done rows fade in as they join (a completion, expanding Done) and
+            out as they leave; the ones there when the list opens just appear. */}
+        <LayoutAnimationConfig skipEntering>
+          {completedToRender.map((item) => (
+            <Animated.View
+              key={item.id}
+              entering={motionPresets.enter}
+              exiting={motionPresets.exit}
+            >
+              <ItemRow {...baseRowProps(props, item, "completed")} isDragging={false} />
+            </Animated.View>
+          ))}
+        </LayoutAnimationConfig>
       </ScrollViewContainer>
     </PullToRefresh>
   );
@@ -163,7 +183,18 @@ function keyExtractor(cell: Cell): string {
   return cell.kind === "slot" ? cell.id : cell.item.id;
 }
 
-// One draggable cell. Long-press on the body lifts the row with a haptic.
+function tickSelection() {
+  haptics.selection();
+}
+
+// A selection tick for each slot the lifted row crosses (a UI-thread worklet).
+function onIndexChange(_event: ReorderableListIndexChangeEvent) {
+  "worklet";
+  runOnJS(tickSelection)();
+}
+
+// One draggable cell. Long-press on the body lifts the row with a selection
+// tick, the same one each crossed slot gives.
 const DraggableRow = memo(function DraggableRow({
   rowProps,
   openHeader,
@@ -174,9 +205,7 @@ const DraggableRow = memo(function DraggableRow({
   const drag = useReorderableDrag();
   const isActive = useIsActive();
   const onLongPressBody = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {
-      /* haptics unavailable on simulator — non-fatal */
-    });
+    haptics.selection();
     drag();
   }, [drag]);
   return (
@@ -189,8 +218,8 @@ const DraggableRow = memo(function DraggableRow({
 
 const styles = StyleSheet.create({
   listContent: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.sm,
-    paddingBottom: tokens.space.xxl * 2,
+    paddingBottom: layout.bottomInset,
   },
 });

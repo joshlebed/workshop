@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type {
@@ -21,23 +20,28 @@ import {
   confirm,
   EmojiBadge,
   formatRelative,
+  haptics,
   Icon,
   IconButton,
   type ListColorKey,
   ListRow,
+  layout,
+  Reveal,
   Screen,
   ScreenHeader,
   SectionHeader,
   Skeleton,
   Switch,
+  screenColumnStyle,
   Text,
   TextField,
   tokens,
+  useRevealAfterLoading,
   useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Image, Platform, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import {
   archiveListEntirely,
@@ -49,10 +53,16 @@ import {
 import { removeMember } from "../../../../../src/api/members";
 import { transferOwnership } from "../../../../../src/api/share";
 import { syncSource } from "../../../../../src/api/sources";
+import { ColorChoices, EmojiChoices } from "../../../../../src/components/ListLookChoices";
 import { ShareListSheet } from "../../../../../src/components/ShareListSheet";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { pickCoverPhoto } from "../../../../../src/lib/coverPhoto";
 import { firstEmoji } from "../../../../../src/lib/emoji";
+import {
+  FAILURE_TOAST_KEY,
+  failureMessage,
+  loadErrorMessage,
+} from "../../../../../src/lib/errorCopy";
 import { goBack, openListOverHome } from "../../../../../src/lib/goBack";
 import { reconcileTextDraft } from "../../../../../src/lib/itemDraft";
 import { sourceErrorMessage } from "../../../../../src/lib/sourceErrors";
@@ -100,14 +110,14 @@ function featureWarningCopy(w: ConfigWarning): { title: string; message: string;
       };
     case MODULE_REMOVAL_WARNINGS.ranking:
       return {
-        title: `Drop the ranking of ${items("item", "items")}?`,
-        message: "The order is kept, and comes back if you turn ranking on again.",
+        title: `Remove ${items("item", "items")} from ranking?`,
+        message: "Their order is kept and comes back if you turn ranking on again.",
         confirm: "Turn off",
       };
     case MODULE_REMOVAL_WARNINGS.sources:
       return {
-        title: `Stop syncing ${items("source", "sources")}?`,
-        message: "Items already pulled in stay on the list.",
+        title: "Stop syncing?",
+        message: "New items stop coming in. Items already pulled in stay on the list.",
         confirm: "Stop syncing",
       };
     case MODULE_REMOVAL_WARNINGS.letterboxd:
@@ -138,6 +148,8 @@ export default function ListSettings() {
   });
 
   const list = listQuery.data?.list;
+  // Settings that replace the skeleton fade in; cached settings paint at once.
+  const settingsRevealed = useRevealAfterLoading(!list && listQuery.isPending);
   const members = listQuery.data?.members ?? [];
   const sources: ListSource[] = listQuery.data?.sources ?? [];
   const isOwner = !!list && !!user && list.ownerId === user.id;
@@ -186,7 +198,11 @@ export default function ListSettings() {
     onError: (e, { label }, ctx) => {
       if (ctx?.detail) queryClient.setQueryData(queryKeys.lists.detail(id), ctx.detail);
       if (ctx?.lists) queryClient.setQueryData(queryKeys.lists.all, ctx.lists);
-      showToast({ message: errorMessage(e, `Couldn't save the ${label}.`), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, `Couldn't save the ${label}.`),
+        tone: "danger",
+      });
     },
     onSettled: (_r, error) => {
       pendingRef.current = Math.max(0, pendingRef.current - 1);
@@ -304,7 +320,10 @@ export default function ListSettings() {
     }
     setEmojiError(null);
     setCustomEmoji("");
-    if (list && picked !== list.emoji) save({ patch: { emoji: picked }, label: "emoji" });
+    if (list && picked !== list.emoji) {
+      haptics.selection();
+      save({ patch: { emoji: picked }, label: "emoji" });
+    }
   };
 
   // --- Features ---------------------------------------------------------------
@@ -338,6 +357,8 @@ export default function ListSettings() {
           setPendingModules(null);
           return;
         }
+        // Confirmed a destructive feature change (the Switch already ticked).
+        haptics.warning();
         acknowledgedWarnings = preview.warnings.map((w) => w.code);
       }
       setStatus("saving");
@@ -355,7 +376,11 @@ export default function ListSettings() {
       ]);
     } catch (e) {
       setStatus("idle");
-      showToast({ message: errorMessage(e, "Couldn't change that feature."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't change that feature."),
+        tone: "danger",
+      });
     } finally {
       setPendingModules(null);
     }
@@ -364,12 +389,18 @@ export default function ListSettings() {
   // --- Other actions --------------------------------------------------------
   const duplicateMutation = useMutation({
     mutationFn: () => duplicateList(id, {}, token),
+    // A create: `success`, on the tap.
+    onMutate: () => haptics.success(),
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
       openListOverHome(res.list.id);
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't duplicate the list."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't duplicate the list."),
+        tone: "danger",
+      });
     },
   });
 
@@ -406,7 +437,11 @@ export default function ListSettings() {
       showToast({ message: "Ownership handed over", tone: "success" });
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't hand over the list."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't hand over the list."),
+        tone: "danger",
+      });
     },
   });
 
@@ -423,7 +458,11 @@ export default function ListSettings() {
       showToast({ message: "Member removed" });
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't remove that member."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't remove that member."),
+        tone: "danger",
+      });
     },
   });
 
@@ -434,7 +473,11 @@ export default function ListSettings() {
       router.dismissTo("/");
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't delete the list."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't delete the list."),
+        tone: "danger",
+      });
     },
   });
 
@@ -443,11 +486,13 @@ export default function ListSettings() {
   const onDeleteList = async () => {
     const ok = await confirm({
       title: `Delete ${listLabel}?`,
-      message: "Everyone on it loses access.",
+      message: "Everyone on it loses access. This can't be undone.",
       confirmLabel: "Delete list",
       destructive: true,
     });
-    if (ok) deleteMutation.mutate();
+    if (!ok) return;
+    haptics.warning();
+    deleteMutation.mutate();
   };
   const onLeaveList = async () => {
     if (!user) return;
@@ -457,17 +502,21 @@ export default function ListSettings() {
       confirmLabel: "Leave list",
       destructive: true,
     });
-    if (ok) removeMemberMutation.mutate(user.id);
+    if (!ok) return;
+    haptics.warning();
+    removeMemberMutation.mutate(user.id);
   };
   const onRemoveMember = async (member: ListMemberSummary) => {
     const who = member.displayName ?? "this member";
     const ok = await confirm({
       title: `Remove ${who} from ${listLabel}?`,
       message: "They lose access to the list. Items they added stay.",
-      confirmLabel: "Remove",
+      confirmLabel: "Remove member",
       destructive: true,
     });
-    if (ok) removeMemberMutation.mutate(member.userId);
+    if (!ok) return;
+    haptics.warning();
+    removeMemberMutation.mutate(member.userId);
   };
   const onMakeOwner = async (member: ListMemberSummary) => {
     const who = member.displayName ?? "this member";
@@ -477,7 +526,9 @@ export default function ListSettings() {
       confirmLabel: "Make owner",
       destructive: true,
     });
-    if (ok) transferMutation.mutate(member.userId);
+    if (!ok) return;
+    haptics.warning();
+    transferMutation.mutate(member.userId);
   };
 
   const [memberMenuFor, setMemberMenuFor] = useState<ListMemberSummary | null>(null);
@@ -502,7 +553,7 @@ export default function ListSettings() {
   if (!id) {
     return (
       <Screen style={styles.center}>
-        <Text>Missing list id</Text>
+        <Text>This link is incomplete. Open the list from your lists.</Text>
       </Screen>
     );
   }
@@ -545,22 +596,22 @@ export default function ListSettings() {
       />
 
       <KeyboardAwareScrollView
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[styles.body, screenColumnStyle]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
       >
         {!list && listQuery.isPending ? (
-          <View style={styles.section} testID="settings-skeleton">
-            <Skeleton.Block width={72} height={12} />
+          <View testID="settings-skeleton">
+            <Skeleton.Block width={72} height={12} style={styles.skeletonInset} />
             <Skeleton.Rows count={3} badge={44} />
             <Skeleton.Block width={72} height={12} style={styles.skeletonGap} />
-            <Skeleton.Block height={44} radius={tokens.radius.md} />
+            <Skeleton.Block height={44} radius={tokens.radius.md} style={styles.skeletonInset} />
           </View>
         ) : list ? (
-          <>
+          <Reveal when={settingsRevealed} fill={false}>
             {/* --- Members, with sharing first --- */}
-            <View style={styles.section}>
+            <View>
               <SectionHeader
                 title="Members"
                 trailing={
@@ -568,7 +619,7 @@ export default function ListSettings() {
                     {members.length}
                   </Text>
                 }
-                style={styles.sectionHeader}
+                first
               />
               <ListRow
                 leading={
@@ -621,8 +672,8 @@ export default function ListSettings() {
 
             {/* --- Details (owner) --- */}
             {isOwner ? (
-              <View style={styles.section}>
-                <SectionHeader title="Details" style={styles.sectionHeader} />
+              <View>
+                <SectionHeader title="Details" />
                 <View style={styles.fields}>
                   <TextField
                     label="Name"
@@ -646,30 +697,12 @@ export default function ListSettings() {
                     <Text variant="label" tone="secondary">
                       Emoji
                     </Text>
-                    <View style={styles.emojiRow} role="radiogroup" aria-label="Emoji">
-                      {emojiChoices.map((choice) => {
-                        const selected = choice === list.emoji;
-                        return (
-                          <Pressable
-                            key={choice}
-                            role="radio"
-                            aria-checked={selected}
-                            accessibilityLabel={`Emoji ${choice}`}
-                            onPress={() => {
-                              if (!selected) save({ patch: { emoji: choice }, label: "emoji" });
-                            }}
-                            style={({ pressed }) => [
-                              styles.emojiCell,
-                              selected && styles.emojiCellSelected,
-                              pressed && styles.cellPressed,
-                            ]}
-                            testID={`settings-emoji-${choice}`}
-                          >
-                            <Text style={styles.emojiGlyph}>{choice}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
+                    <EmojiChoices
+                      choices={emojiChoices}
+                      value={list.emoji}
+                      onChange={(choice) => save({ patch: { emoji: choice }, label: "emoji" })}
+                      testIDPrefix="settings"
+                    />
                     <TextField
                       accessibilityLabel="Type or paste any emoji"
                       placeholder="Or type or paste any emoji"
@@ -691,36 +724,14 @@ export default function ListSettings() {
                     <Text variant="label" tone="secondary">
                       Color
                     </Text>
-                    <View style={styles.colorRow} role="radiogroup" aria-label="Color">
-                      {COLOR_KEYS.map((key) => {
-                        const selected = key === list.color;
-                        return (
-                          <Pressable
-                            key={key}
-                            role="radio"
-                            aria-checked={selected}
-                            accessibilityLabel={`Color ${key}`}
-                            onPress={() => {
-                              if (!selected)
-                                save({ patch: { color: key as ListColor }, label: "color" });
-                            }}
-                            style={styles.colorTarget}
-                            testID={`settings-color-${key}`}
-                          >
-                            {({ pressed }) => (
-                              <View
-                                style={[
-                                  styles.colorCell,
-                                  { backgroundColor: tokens.list[key] },
-                                  selected && styles.colorCellSelected,
-                                  pressed && styles.cellPressed,
-                                ]}
-                              />
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
+                    <ColorChoices
+                      choices={COLOR_KEYS}
+                      value={list.color}
+                      onChange={(key) =>
+                        save({ patch: { color: key as ListColor }, label: "color" })
+                      }
+                      testIDPrefix="settings"
+                    />
                   </View>
 
                   <View style={styles.field}>
@@ -746,8 +757,9 @@ export default function ListSettings() {
                           variant="secondary"
                           onPress={async () => {
                             const picked = await pickCoverPhoto();
-                            if (picked)
-                              save({ patch: { coverPhotoUrl: picked.dataUrl }, label: "photo" });
+                            if (!picked) return;
+                            haptics.light();
+                            save({ patch: { coverPhotoUrl: picked.dataUrl }, label: "photo" });
                           }}
                         />
                         {list.coverPhotoUrl ? (
@@ -755,7 +767,10 @@ export default function ListSettings() {
                             testID="settings-cover-remove"
                             label="Remove"
                             variant="ghost"
-                            onPress={() => save({ patch: { coverPhotoUrl: null }, label: "photo" })}
+                            onPress={() => {
+                              haptics.light();
+                              save({ patch: { coverPhotoUrl: null }, label: "photo" });
+                            }}
                           />
                         ) : null}
                       </View>
@@ -784,8 +799,8 @@ export default function ListSettings() {
 
             {/* --- Features (owner) --- */}
             {isOwner ? (
-              <View style={styles.section}>
-                <SectionHeader title="Features" style={styles.sectionHeader} />
+              <View>
+                <SectionHeader title="Features" />
                 <View style={styles.fields}>
                   {FEATURES.map((f) => (
                     <Switch
@@ -829,15 +844,12 @@ export default function ListSettings() {
             </View>
 
             {/* --- The destructive action, last --- */}
-            <View style={styles.section}>
-              <SectionHeader
-                title={isOwner ? "Delete list" : "Leave list"}
-                style={styles.sectionHeader}
-              />
+            <View>
+              <SectionHeader title={isOwner ? "Delete list" : "Leave list"} />
               <View style={styles.fields}>
                 <Text tone="secondary">
                   {isOwner
-                    ? "Removes the list for everyone on it. This can't be undone from the app."
+                    ? "Deletes the list for everyone on it. This can't be undone."
                     : "Items you added stay on the list."}
                 </Text>
                 <View style={styles.dangerRow}>
@@ -863,11 +875,13 @@ export default function ListSettings() {
                 </View>
               </View>
             </View>
-          </>
+          </Reveal>
         ) : (
-          <View style={styles.section}>
+          <View style={styles.message}>
             <Text tone="secondary">
-              {listQuery.isError ? errorMessage(listQuery.error, "Couldn't load this list.") : ""}
+              {listQuery.isError
+                ? `Couldn't load this list. ${loadErrorMessage(listQuery.error)}`
+                : ""}
             </Text>
           </View>
         )}
@@ -918,7 +932,7 @@ function SourceRow({
 }) {
   return (
     <ListRow
-      title={SOURCE_NAMES[source.kind] ?? "Linked source"}
+      title={SOURCE_NAMES[source.kind] ?? "Linked list"}
       subtitle={
         source.lastSyncedAt ? `Synced ${formatRelative(source.lastSyncedAt)}` : "Not synced yet"
       }
@@ -940,53 +954,24 @@ function SourceRow({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
-  body: { paddingBottom: tokens.space.xxl * 2 },
+  body: { paddingTop: layout.contentTopGap, paddingBottom: layout.bottomInset },
   saved: { paddingHorizontal: tokens.space.sm },
-  section: { paddingTop: tokens.space.xl },
-  sectionHeader: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.xs },
-  fields: { gap: tokens.space.lg, paddingHorizontal: tokens.space.lg },
+  // A block with no section label still keeps the section rhythm.
+  section: { paddingTop: layout.sectionTop },
+  message: { paddingHorizontal: layout.gutter },
+  fields: { gap: tokens.space.lg, paddingHorizontal: layout.gutter },
   field: { gap: tokens.space.sm },
-  skeletonGap: { marginTop: tokens.space.md },
+  skeletonInset: { marginHorizontal: layout.gutter },
+  skeletonGap: { marginHorizontal: layout.gutter, marginTop: layout.sectionTop },
   shareMark: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: tokens.radius.pill,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: tokens.accent.muted,
   },
-  memberAvatar: { width: 44, height: 44, borderRadius: 22 },
-  emojiRow: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
-  emojiCell: {
-    width: 44,
-    height: 44,
-    borderRadius: tokens.radius.md,
-    borderWidth: 1,
-    borderColor: tokens.border.subtle,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emojiCellSelected: { borderColor: tokens.accent.default, backgroundColor: tokens.accent.muted },
-  cellPressed: { opacity: 0.7 },
-  // lineHeight pinned so the glyph isn't clipped to the body line box on iOS.
-  emojiGlyph: { fontSize: tokens.font.size.lg, lineHeight: 24 },
-  // Each swatch sits in a 44pt press target (web ignores hitSlop).
-  colorRow: { flexDirection: "row", flexWrap: "wrap" },
-  colorTarget: {
-    width: tokens.hit,
-    height: tokens.hit,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: tokens.radius.pill,
-  },
-  colorCell: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  colorCellSelected: { borderColor: tokens.text.primary },
+  memberAvatar: { width: 44, height: 44, borderRadius: tokens.radius.pill },
   coverRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
   coverButtons: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap", flex: 1 },
   coverPreview: { width: 64, height: 64, borderRadius: tokens.radius.md },
@@ -995,7 +980,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  coverPreviewEmoji: { fontSize: 28, lineHeight: 32 },
+  coverPreviewEmoji: { fontSize: tokens.font.size.xxl, lineHeight: tokens.font.lineHeight.xxl },
   sourceRow: { marginHorizontal: 0, paddingHorizontal: 0 },
   dangerRow: { flexDirection: "row" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },

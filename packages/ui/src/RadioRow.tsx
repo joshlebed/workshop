@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
-import { interaction, type PressState } from "./interaction";
+import { haptics } from "./haptics";
+import { interaction, type PressState, webSpaceKey } from "./interaction";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -30,6 +31,13 @@ export function RadioRow({
   testID,
   style,
 }: RadioRowProps) {
+  const choose = disabled
+    ? undefined
+    : () => {
+        // A selection tick when the choice changes, none on a re-tap.
+        if (!selected) haptics.selection();
+        onSelect();
+      };
   return (
     <Pressable
       role="radio"
@@ -39,7 +47,8 @@ export function RadioRow({
       accessibilityState={{ checked: selected, disabled }}
       aria-checked={selected}
       aria-disabled={disabled}
-      onPress={disabled ? undefined : onSelect}
+      onPress={choose}
+      {...webSpaceKey(choose)}
       testID={testID}
       style={({ pressed, hovered }: PressState) => [
         styles.row,
@@ -56,7 +65,8 @@ export function RadioRow({
       <View style={styles.text}>
         <Text variant="label">{label}</Text>
         {description ? (
-          <Text variant="caption" tone="muted">
+          // On the accent tint `muted` drops under 4.5:1; `secondary` clears it.
+          <Text variant="caption" tone={selected ? "secondary" : "muted"}>
             {description}
           </Text>
         ) : null}
@@ -84,14 +94,19 @@ const styles = StyleSheet.create({
   ring: {
     width: 18,
     height: 18,
-    borderRadius: 9,
+    borderRadius: tokens.radius.pill,
     borderWidth: 1.5,
-    borderColor: tokens.border.strong,
+    borderColor: tokens.border.control,
     alignItems: "center",
     justifyContent: "center",
     marginTop: tokens.space.xxs,
   },
   ringOn: { borderColor: tokens.accent.default },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: tokens.accent.default },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.accent.default,
+  },
   text: { flex: 1, minWidth: 0, gap: tokens.space.xxs },
 });

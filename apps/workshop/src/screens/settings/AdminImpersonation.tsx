@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import { Button, Icon, ListRow, Text, tokens, useToast } from "@workshop/ui";
+import { Button, Icon, ListRow, layout, Text, tokens, useToast, webAria } from "@workshop/ui";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { fetchImpersonationTargets } from "../../api/users";
 import { useAuth } from "../../hooks/useAuth";
+import { FAILURE_TOAST_KEY, failureMessage } from "../../lib/errorCopy";
 
 /**
  * Admin impersonation, moved from the old profile sheet into Settings → Admin
@@ -47,7 +47,11 @@ export function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: 
       setDropdownOpen(false);
       onSessionChanged();
     } catch (e) {
-      showToast({ message: errorMessage(e, "Couldn't impersonate that user."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't impersonate that user."),
+        tone: "danger",
+      });
     } finally {
       setBusy(false);
     }
@@ -60,7 +64,11 @@ export function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: 
       showToast({ message: "Back to your account", tone: "success" });
       onSessionChanged();
     } catch (e) {
-      showToast({ message: errorMessage(e, "Couldn't stop impersonating."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't stop impersonating."),
+        tone: "danger",
+      });
     } finally {
       setBusy(false);
     }
@@ -105,6 +113,8 @@ export function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: 
         accessibilityRole="button"
         accessibilityLabel="User to impersonate"
         accessibilityState={{ disabled: selectDisabled, expanded: dropdownOpen }}
+        aria-expanded={dropdownOpen}
+        aria-disabled={selectDisabled}
         onPress={selectDisabled ? undefined : () => setDropdownOpen((open) => !open)}
         style={({ pressed }) => [
           accountActionStyles.select,
@@ -122,7 +132,7 @@ export function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: 
         >
           {selectedTarget?.email ??
             (loadingTargets
-              ? "Loading users..."
+              ? "Loading users…"
               : targetsQuery.isError
                 ? "Couldn't load users"
                 : targets.length === 0
@@ -152,6 +162,7 @@ export function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: 
                 accessibilityRole="button"
                 accessibilityLabel={`Impersonate ${targetUser.email}`}
                 accessibilityState={{ selected }}
+                {...webAria({ "aria-pressed": selected })}
                 onPress={() => {
                   setTarget(targetUser.email);
                   setDropdownOpen(false);
@@ -178,10 +189,10 @@ export function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: 
       {targetsQuery.isError ? (
         <View style={accountActionStyles.retryRow}>
           <Text variant="caption" tone="muted" style={accountActionStyles.retryText}>
-            User emails could not be loaded.
+            Couldn't load user emails.
           </Text>
           <Button
-            label="Retry"
+            label="Try again"
             size="md"
             variant="secondary"
             disabled={targetsQuery.isFetching}
@@ -216,14 +227,14 @@ export function AdminImpersonationRow({ onSessionChanged }: { onSessionChanged: 
 }
 
 const accountActionStyles = StyleSheet.create({
-  form: { gap: tokens.space.sm, paddingHorizontal: tokens.space.lg, paddingTop: tokens.space.xs },
+  form: { gap: tokens.space.sm, paddingHorizontal: layout.gutter, paddingTop: tokens.space.xs },
   select: {
     minHeight: tokens.hit,
     borderWidth: 1,
     borderColor: tokens.border.default,
     borderRadius: tokens.radius.md,
     paddingHorizontal: tokens.space.md,
-    paddingVertical: 10,
+    paddingVertical: tokens.space.sm,
     backgroundColor: tokens.bg.surface,
     flexDirection: "row",
     alignItems: "center",

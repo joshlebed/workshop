@@ -49,3 +49,15 @@ export function getPersistOptions(): Omit<PersistQueryClientOptions, "queryClien
     },
   };
 }
+
+/**
+ * Run once the persisted cache has been restored. A restored entry keeps its
+ * original `dataUpdatedAt`, so for up to `staleTime` after it was saved a
+ * reload counted it fresh and fetched nothing: a list renamed elsewhere, or a
+ * view just saved, kept its old state across the reload. Marking everything
+ * stale keeps the cached content on screen (content before chrome) and
+ * refetches what is mounted.
+ */
+export function refreshRestoredCache(client: QueryClient): Promise<void> {
+  return client.invalidateQueries();
+}

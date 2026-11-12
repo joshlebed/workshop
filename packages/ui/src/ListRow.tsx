@@ -8,7 +8,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { Icon } from "./Icon";
-import { interaction, type PressState } from "./interaction";
+import { interaction, type PressState, webAria } from "./interaction";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -98,7 +98,9 @@ export function ListRow({
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled, selected }}
       aria-disabled={disabled}
-      aria-selected={selected}
+      // `aria-selected` isn't allowed on a button; the open row of a
+      // navigation list is the current page.
+      {...webAria({ "aria-current": selected ? "page" : undefined })}
       onPress={disabled ? undefined : onPress}
       onLongPress={disabled ? undefined : onLongPress}
       delayLongPress={delayLongPress}
@@ -106,6 +108,7 @@ export function ListRow({
       style={({ pressed, hovered }: PressState) => [
         styles.row,
         hovered && !disabled ? styles.hovered : null,
+        selected ? styles.selected : null,
         pressed && !disabled ? styles.pressed : null,
         disabled ? styles.disabled : null,
         style,
@@ -140,14 +143,13 @@ const styles = StyleSheet.create({
   },
   hovered: { backgroundColor: interaction.hover },
   pressed: { backgroundColor: interaction.pressed },
+  selected: { backgroundColor: interaction.pressed },
   disabled: { opacity: 0.5 },
   leading: { position: "relative" },
   body: { flex: 1, minWidth: 0, gap: tokens.space.xxs },
   title: {
-    fontSize: tokens.font.size.md,
-    lineHeight: 22,
     fontWeight: tokens.font.weight.medium,
-    letterSpacing: -0.2,
+    letterSpacing: tokens.font.tracking.heading,
   },
   trailing: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
 });

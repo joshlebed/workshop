@@ -29,16 +29,20 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
-import { Icon, PullToRefresh, REORDER_ACTIVATION, tokens } from "@workshop/ui";
+import {
+  easeOutCss,
+  Icon,
+  motionPresets,
+  PullToRefresh,
+  layout as pageLayout,
+  REORDER_ACTIVATION,
+  screenColumnStyle,
+  tokens,
+  useMotionDuration,
+} from "@workshop/ui";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View, type ViewInstance } from "react-native";
-import Animated, {
-  Easing,
-  FadeIn,
-  FadeOut,
-  LinearTransition,
-  useReducedMotion,
-} from "react-native-reanimated";
+import Animated, { LayoutAnimationConfig, useReducedMotion } from "react-native-reanimated";
 import { ItemRow, RankedDropZone, SectionHeader } from "./ItemRow";
 import type { DragEntry } from "./listOps";
 import { resolveDrop } from "./listOps";
@@ -124,7 +128,8 @@ export function ItemList(props: ItemListProps) {
   const settle = useCallback(() => {
     setSettling(true);
     if (settleTimer.current) clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(() => setSettling(false), 400);
+    // Past dnd-kit's drop animation (`base`) and the optimistic re-render.
+    settleTimer.current = setTimeout(() => setSettling(false), tokens.motion.base * 2);
   }, []);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -185,14 +190,13 @@ export function ItemList(props: ItemListProps) {
   const showDoneHeader = completed.length > 0 && (showHeaders || doneCollapsible);
   const completedToRender = doneCollapsed ? [] : completed;
 
-  const layout =
-    reduceMotion || settling
-      ? undefined
-      : LinearTransition.duration(tokens.motion.base).easing(
-          Easing.bezier(...tokens.motion.easeOut),
-        );
-  const entering = reduceMotion ? undefined : FadeIn.duration(tokens.motion.base);
-  const exiting = reduceMotion ? undefined : FadeOut.duration(tokens.motion.fast);
+  // Rows fade in (`base`) and out (`fast`) as they join or leave a section
+  // (complete, reopen, delete, undo, a filter), and their neighbours slide to
+  // close or open the gap (`base`). Reduced motion keeps the fades and drops
+  // the slide.
+  const layout = reduceMotion || settling ? undefined : motionPresets.move;
+  const entering = motionPresets.enter;
+  const exiting = motionPresets.exit;
 
   const renderEntry = (entry: DragEntry) => {
     if (entry.kind !== "row") {
@@ -208,6 +212,7 @@ export function ItemList(props: ItemListProps) {
               count={unordered.length}
               listItemKind={listItemKind}
               doneWord={copy.done}
+              first={ordered.length === 0}
             />
           ) : null}
         </SortableMarker>
@@ -239,39 +244,48 @@ export function ItemList(props: ItemListProps) {
     >
       <View style={styles.frame}>
         <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
-          <ScrollView contentContainerStyle={styles.listContent} testID="list-detail-list">
-            {ordered.length > 0 && showHeaders ? (
-              <SectionHeader
-                kind="ordered"
-                count={ordered.length}
-                listItemKind={listItemKind}
-                doneWord={copy.done}
-              />
-            ) : null}
-            <SortableContext items={entryIds} strategy={verticalListSortingStrategy}>
-              {entries.map(renderEntry)}
-            </SortableContext>
-
-            {showDoneHeader ? (
-              <Animated.View layout={layout}>
+          <ScrollView
+            contentContainerStyle={[styles.listContent, screenColumnStyle]}
+            testID="list-detail-list"
+          >
+            {/* Rows already there when the list opens appear at once; only
+                rows that join later fade in. */}
+            <LayoutAnimationConfig skipEntering>
+              {ordered.length > 0 && showHeaders ? (
                 <SectionHeader
-                  kind="completed"
-                  count={completed.length}
+                  kind="ordered"
+                  count={ordered.length}
                   listItemKind={listItemKind}
                   doneWord={copy.done}
-                  collapsible={
-                    doneCollapsible
-                      ? { collapsed: doneCollapsed, onToggle: onToggleDone }
-                      : undefined
-                  }
+                  first
                 />
-              </Animated.View>
-            ) : null}
-            {completedToRender.map((item) => (
-              <Animated.View key={item.id} layout={layout} entering={entering} exiting={exiting}>
-                <ItemRow {...baseRowProps(props, item, "completed")} isDragging={false} />
-              </Animated.View>
-            ))}
+              ) : null}
+              <SortableContext items={entryIds} strategy={verticalListSortingStrategy}>
+                {entries.map(renderEntry)}
+              </SortableContext>
+
+              {showDoneHeader ? (
+                <Animated.View layout={layout}>
+                  <SectionHeader
+                    kind="completed"
+                    count={completed.length}
+                    listItemKind={listItemKind}
+                    doneWord={copy.done}
+                    collapsible={
+                      doneCollapsible
+                        ? { collapsed: doneCollapsed, onToggle: onToggleDone }
+                        : undefined
+                    }
+                    first={ordered.length === 0 && unordered.length === 0}
+                  />
+                </Animated.View>
+              ) : null}
+              {completedToRender.map((item) => (
+                <Animated.View key={item.id} layout={layout} entering={entering} exiting={exiting}>
+                  <ItemRow {...baseRowProps(props, item, "completed")} isDragging={false} />
+                </Animated.View>
+              ))}
+            </LayoutAnimationConfig>
           </ScrollView>
         </PullToRefresh>
         {/* Floats over the top of the list instead of pushing it down, so the
@@ -283,14 +297,7 @@ export function ItemList(props: ItemListProps) {
         {/* The lifted row follows the pointer in an overlay; its slot in the
             list stays behind as a faint placeholder showing where it lands. */}
         <DragOverlay
-          dropAnimation={
-            reduceMotion
-              ? null
-              : {
-                  duration: tokens.motion.base,
-                  easing: `cubic-bezier(${tokens.motion.easeOut.join(",")})`,
-                }
-          }
+          dropAnimation={reduceMotion ? null : { duration: tokens.motion.base, easing: easeOutCss }}
         >
           {activeItem ? (
             // Dimmed over the Ranked target so the highlighted target shows through.
@@ -317,8 +324,19 @@ function RankedDrop({ active }: { active: boolean }) {
   );
 }
 
+// Neighbours shuffle aside on the motion tokens while a row is dragged over
+// them (dnd-kit's default is 250ms `ease`); none under reduced motion.
+function useSortableTransition() {
+  const duration = useMotionDuration("base");
+  return duration ? { duration, easing: easeOutCss } : null;
+}
+
 function SortableMarker({ id, children }: { id: string; children: ReactNode }) {
-  const { setNodeRef, transform, transition } = useSortable({ id, disabled: true });
+  const { setNodeRef, transform, transition } = useSortable({
+    id,
+    disabled: true,
+    transition: useSortableTransition(),
+  });
   const style = {
     transform: CSS.Translate.toString(transform) ?? undefined,
     transition: transition ?? undefined,
@@ -333,6 +351,7 @@ function SortableMarker({ id, children }: { id: string; children: ReactNode }) {
 function SortableRow({ id, children }: { id: string; children: ReactNode }) {
   const { setNodeRef, transform, transition, listeners, attributes, isDragging } = useSortable({
     id,
+    transition: useSortableTransition(),
   });
   // `touchAction: "pan-y"` lets vertical scroll through until the hold
   // activates; the lifted row sits above its neighbours.
@@ -371,15 +390,19 @@ const styles = StyleSheet.create({
   dropOverlay: {
     position: "absolute",
     top: 0,
-    left: tokens.space.xl,
-    right: tokens.space.xl,
+    left: pageLayout.gutter,
+    right: pageLayout.gutter,
+    // Held to the reading column like the rows beneath it (5.7a): with
+    // left/right set, a max width and auto margins centre it.
+    maxWidth: pageLayout.columnMaxWidth - 2 * pageLayout.gutter,
+    marginHorizontal: "auto",
     paddingBottom: tokens.space.sm,
     backgroundColor: tokens.bg.canvas,
     boxShadow: "0px 8px 16px rgba(0, 0, 0, 0.35)",
   },
   listContent: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: pageLayout.gutter,
     paddingTop: tokens.space.sm,
-    paddingBottom: tokens.space.xxl * 2,
+    paddingBottom: pageLayout.bottomInset,
   },
 });

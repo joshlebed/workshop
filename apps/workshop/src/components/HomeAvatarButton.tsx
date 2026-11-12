@@ -40,10 +40,10 @@ const styles = StyleSheet.create({
   ring: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: tokens.radius.pill,
     overflow: "hidden",
     backgroundColor: tokens.bg.surface,
   },
   ringActive: { opacity: 0.85, backgroundColor: interaction.pressed },
-  avatar: { width: 36, height: 36, borderRadius: 18 },
+  avatar: { width: 36, height: 36, borderRadius: tokens.radius.pill },
 });

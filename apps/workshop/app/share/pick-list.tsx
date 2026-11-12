@@ -10,10 +10,12 @@ import {
   Icon,
   type ListColorKey,
   ListRow,
+  layout,
   PullToRefresh,
   Screen,
   ScreenHeader,
   Skeleton,
+  screenColumnStyle,
   Text,
   tokens,
   useToast,
@@ -114,6 +116,8 @@ export default function PickList() {
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const quickSave = async (list: ListSummary, share: SharePayload) => {
+    // On the tap, not after the preview + create round trip.
+    haptics.success();
     setSavingId(list.id);
     try {
       let preview: LinkPreview | null = null;
@@ -136,7 +140,6 @@ export default function PickList() {
         sharedItemRequest(share, list.itemKind, preview),
         token,
       );
-      haptics.success();
       noteItemAdded(list.id, item.id);
       void rememberShareList(list.id);
       void queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(list.id) });
@@ -206,34 +209,42 @@ export default function PickList() {
         title="Add to a list"
       />
       {payload ? (
-        <View style={styles.urlPill} testID="share-pick-url">
-          <View style={styles.urlDot} />
-          <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.urlText}>
-            {shareCaption(payload)}
-          </Text>
+        <View style={[styles.urlPillHost, screenColumnStyle]}>
+          <View style={styles.urlPill} testID="share-pick-url">
+            <View style={styles.urlDot} />
+            <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.urlText}>
+              {shareCaption(payload)}
+            </Text>
+          </View>
         </View>
       ) : null}
 
       <View style={styles.body}>
         {listsQuery.isPending ? (
-          <Skeleton.Rows count={6} testID="share-pick-loading" />
+          <View style={screenColumnStyle}>
+            <Skeleton.Rows count={6} testID="share-pick-loading" />
+          </View>
         ) : listsQuery.isError && !listsQuery.data ? (
           <PullToRefresh
             refreshing={listsQuery.isRefetching}
             onRefresh={() => listsQuery.refetch()}
           >
-            <ScrollView contentContainerStyle={styles.center}>
+            <ScrollView contentContainerStyle={[styles.center, screenColumnStyle]}>
               <EmptyState
                 title="Couldn't load your lists"
                 description="Check your connection and try again. What you shared is still here."
                 action={
-                  <Button label="Retry" variant="secondary" onPress={() => listsQuery.refetch()} />
+                  <Button
+                    label="Try again"
+                    variant="secondary"
+                    onPress={() => listsQuery.refetch()}
+                  />
                 }
               />
             </ScrollView>
           </PullToRefresh>
         ) : lists.length === 0 ? (
-          <ScrollView contentContainerStyle={styles.listContent}>
+          <ScrollView contentContainerStyle={[styles.listContent, screenColumnStyle]}>
             <Text tone="secondary" style={styles.emptyLead}>
               {payload
                 ? "You don't have a list yet. Make one for this."
@@ -250,7 +261,7 @@ export default function PickList() {
               testID="share-pick-list"
               data={lists}
               keyExtractor={(l) => l.id}
-              contentContainerStyle={styles.listContent}
+              contentContainerStyle={[styles.listContent, screenColumnStyle]}
               ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
               renderItem={({ item }) => (
                 <PickRow
@@ -301,12 +312,13 @@ function PickRow({
       leading={<EmojiBadge emoji={list.emoji} color={accent} />}
       trailing={
         saving ? (
-          <ActivityIndicator color={tokens.text.muted} />
+          <ActivityIndicator color={tokens.text.muted} accessibilityLabel="Adding" />
         ) : lastUsed ? (
           <Badge label="Last used" tone="neutral" testID="share-pick-last-used" />
         ) : null
       }
-      accessibilityLabel={`Add to ${list.name}${lastUsed ? ", last used" : ""}`}
+      // Named by its own text (WCAG 2.5.3) under the "Add to a list" heading.
+      accessibilityHint="Adds to this list"
       onPress={onPress}
       disabled={disabled}
       testID={`share-pick-row-${list.id}`}
@@ -314,7 +326,10 @@ function PickRow({
   );
 }
 
+const ROW_BADGE = 44;
+
 const styles = StyleSheet.create({
+  urlPillHost: {},
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,
@@ -326,7 +341,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.xsm,
-    marginHorizontal: tokens.space.lg,
+    marginHorizontal: layout.gutter,
     paddingHorizontal: tokens.space.md,
     paddingVertical: tokens.space.xs,
     borderRadius: tokens.radius.pill,
@@ -335,22 +350,28 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.subtle,
     maxWidth: "100%",
   },
-  urlDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: tokens.accent.default },
-  urlText: { letterSpacing: 0.1, flexShrink: 1 },
+  urlDot: {
+    width: 6,
+    height: 6,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.accent.default,
+  },
+  urlText: { flexShrink: 1 },
   body: { flex: 1 },
   center: { flexGrow: 1, alignItems: "center", justifyContent: "center" },
   listContent: { paddingTop: tokens.space.xs, paddingBottom: tokens.space.xxl },
-  emptyLead: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.sm },
+  emptyLead: { paddingHorizontal: layout.gutter, paddingBottom: tokens.space.sm },
+  // Starts where a row's text does: margin + padding + badge + gap.
   rowSeparator: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: tokens.border.subtle,
-    marginLeft: tokens.space.lg + 44 + tokens.space.md,
+    marginLeft: tokens.space.xs + tokens.space.md + ROW_BADGE + tokens.space.md,
   },
   createRow: { marginTop: tokens.space.sm },
   createGlyphBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: ROW_BADGE,
+    height: ROW_BADGE,
+    borderRadius: tokens.radius.pill,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,

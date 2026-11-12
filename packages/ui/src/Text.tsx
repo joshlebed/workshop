@@ -11,50 +11,52 @@ type Tone = "primary" | "secondary" | "muted" | "onAccent" | "danger";
 // default (RN's auto line-height runs tight on large weights and made titles
 // feel cramped). Titles also get a touch of negative tracking — large text
 // reads tighter and more composed with letters pulled in slightly.
+const { size, lineHeight, tracking, weight } = tokens.font;
+
 const variantStyle: Record<Variant, TextStyle> = {
   display: {
-    fontSize: tokens.font.size.xxxl,
-    lineHeight: 40,
-    fontWeight: tokens.font.weight.bold,
-    letterSpacing: -0.6,
+    fontSize: size.xxxl,
+    lineHeight: lineHeight.xxxl,
+    fontWeight: weight.bold,
+    letterSpacing: tracking.display,
   },
   title: {
-    fontSize: tokens.font.size.xxl,
-    lineHeight: 34,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: -0.4,
+    fontSize: size.xxl,
+    lineHeight: lineHeight.xxl,
+    fontWeight: weight.semibold,
+    letterSpacing: tracking.title,
   },
   heading: {
-    fontSize: tokens.font.size.lg,
-    lineHeight: 24,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: -0.2,
+    fontSize: size.lg,
+    lineHeight: lineHeight.lg,
+    fontWeight: weight.semibold,
+    letterSpacing: tracking.heading,
   },
-  body: { fontSize: tokens.font.size.md, lineHeight: 22, fontWeight: tokens.font.weight.regular },
-  caption: {
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.regular,
-  },
-  label: { fontSize: tokens.font.size.sm, lineHeight: 18, fontWeight: tokens.font.weight.medium },
+  body: { fontSize: size.md, lineHeight: lineHeight.md, fontWeight: weight.regular },
+  caption: { fontSize: size.xs, lineHeight: lineHeight.xs, fontWeight: weight.regular },
+  label: { fontSize: size.sm, lineHeight: lineHeight.sm, fontWeight: weight.medium },
   // Section labels and kickers: small, uppercase, tracked. Defaults to the
   // muted tone (see `defaultTone`).
   eyebrow: {
-    fontSize: tokens.font.size.xs,
-    lineHeight: 16,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.8,
+    fontSize: size.xs,
+    lineHeight: lineHeight.xs,
+    fontWeight: weight.semibold,
+    letterSpacing: tracking.eyebrow,
     textTransform: "uppercase",
   },
 };
 
 // Headings announce themselves to assistive tech: `title` and `display` are
 // level 1, `heading` level 2. Pass `headerRole={false}` for text that only
-// borrows the look (a big number, a hero line that isn't a heading).
+// borrows the look (a big number, a hero line that isn't a heading), or a
+// level (`headerRole={1}`) when the outline needs a different one than the
+// look implies: a screen's one level-1 heading set in `heading` size.
 const headingLevel: Partial<Record<Variant, number>> = { display: 1, title: 1, heading: 2 };
 
-function roleProps(variant: Variant, headerRole: boolean | undefined) {
-  const level = headingLevel[variant];
+type HeaderRole = boolean | 1 | 2 | 3;
+
+function roleProps(variant: Variant, headerRole: HeaderRole | undefined) {
+  const level = typeof headerRole === "number" ? headerRole : headingLevel[variant];
   if (!level || headerRole === false) return {};
   return { accessibilityRole: "header" as const, ...webAria({ "aria-level": level }) };
 }
@@ -74,8 +76,11 @@ const toneColor: Record<Tone, string> = {
 export interface UITextProps extends TextProps {
   variant?: Variant;
   tone?: Tone;
-  /** `title` / `heading` / `display` carry the header role; `false` opts out. */
-  headerRole?: boolean;
+  /**
+   * `title` / `display` are level-1 headings and `heading` level 2; `false`
+   * opts out, a number sets the level.
+   */
+  headerRole?: HeaderRole;
 }
 
 export function Text({ variant = "body", tone, headerRole, style, ...rest }: UITextProps) {
@@ -100,7 +105,7 @@ type AnimatedRNTextProps = ComponentProps<typeof AnimatedRNText>;
 export interface AnimatedUITextProps extends AnimatedRNTextProps {
   variant?: Variant;
   tone?: Tone;
-  headerRole?: boolean;
+  headerRole?: HeaderRole;
 }
 
 export function AnimatedText({

@@ -10,19 +10,19 @@ describe("sourceErrorMessage", () => {
   describe("spotify, settings context (default)", () => {
     it("returns the invalid-URL copy for INVALID_PLAYLIST_URL", () => {
       expect(sourceErrorMessage(apiErr("INVALID_PLAYLIST_URL"), "fallback")).toBe(
-        "That doesn't look like a Spotify playlist URL.",
+        "That isn't a Spotify playlist link. Check it and try again.",
       );
     });
 
     it("returns the not-available copy for PLAYLIST_NOT_AVAILABLE", () => {
       expect(sourceErrorMessage(apiErr("PLAYLIST_NOT_AVAILABLE"), "fallback")).toBe(
-        "Source playlist is private or deleted. Update the source URL in settings.",
+        "The linked playlist is private or deleted. Make it public on Spotify, then sync again.",
       );
     });
 
     it("returns the upstream copy for SPOTIFY_UNAVAILABLE", () => {
       expect(sourceErrorMessage(apiErr("SPOTIFY_UNAVAILABLE"), "fallback")).toBe(
-        "Spotify is having a moment. Try again.",
+        "Spotify isn't responding. Try again in a moment.",
       );
     });
   });
@@ -34,15 +34,15 @@ describe("sourceErrorMessage", () => {
       );
     });
 
-    it("uses give-it-a-beat phrasing for SPOTIFY_UNAVAILABLE", () => {
+    it("uses the same not-responding phrasing for SPOTIFY_UNAVAILABLE", () => {
       expect(sourceErrorMessage(apiErr("SPOTIFY_UNAVAILABLE"), "fallback", "creation")).toBe(
-        "Spotify is having a moment. Give it a beat.",
+        "Spotify isn't responding. Try again in a moment.",
       );
     });
 
     it("matches the settings copy for INVALID_PLAYLIST_URL", () => {
       expect(sourceErrorMessage(apiErr("INVALID_PLAYLIST_URL"), "fallback", "creation")).toBe(
-        "That doesn't look like a Spotify playlist URL.",
+        "That isn't a Spotify playlist link. Check it and try again.",
       );
     });
   });
@@ -50,33 +50,33 @@ describe("sourceErrorMessage", () => {
   describe("letterboxd, settings context (default)", () => {
     it("returns the invalid-URL copy for INVALID_LETTERBOXD_URL", () => {
       expect(sourceErrorMessage(apiErr("INVALID_LETTERBOXD_URL"), "fallback")).toBe(
-        "That doesn't look like a Letterboxd list URL.",
+        "That isn't a Letterboxd list link. Check it and try again.",
       );
     });
 
     it("returns the not-found copy for LIST_NOT_FOUND", () => {
       expect(sourceErrorMessage(apiErr("LIST_NOT_FOUND"), "fallback")).toBe(
-        "Source list isn't reachable. Update the source URL in settings.",
+        "Couldn't find the linked Letterboxd list. Check that it still exists.",
       );
     });
 
     it("returns the not-available copy for LIST_NOT_AVAILABLE", () => {
       expect(sourceErrorMessage(apiErr("LIST_NOT_AVAILABLE"), "fallback")).toBe(
-        "Source list is private or deleted. Update the source URL in settings.",
+        "The linked Letterboxd list is private or deleted. Make it public on Letterboxd, then sync again.",
       );
     });
 
     it("returns the upstream copy for LIST_FETCH_FAILED", () => {
       expect(sourceErrorMessage(apiErr("LIST_FETCH_FAILED"), "fallback")).toBe(
-        "Letterboxd is having a moment. Try again.",
+        "Letterboxd isn't responding. Try again in a moment.",
       );
     });
   });
 
   describe("letterboxd, creation context", () => {
-    it("uses check-the-URL phrasing for LIST_NOT_FOUND", () => {
+    it("uses check-the-link phrasing for LIST_NOT_FOUND", () => {
       expect(sourceErrorMessage(apiErr("LIST_NOT_FOUND"), "fallback", "creation")).toBe(
-        "We couldn't find that Letterboxd list. Check the URL and try again.",
+        "Couldn't find that Letterboxd list. Check the link and try again.",
       );
     });
 

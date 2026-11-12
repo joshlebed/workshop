@@ -92,8 +92,38 @@ export function shareSaveErrorMessage(listName: string, error: unknown): string 
   return `Couldn't add to “${listName}”.`;
 }
 
+/**
+ * The line under "Couldn't load this list / item": the way forward, never the
+ * raw `e.message` ("Failed to fetch", a server string).
+ */
+export function loadErrorMessage(error: unknown): string {
+  if (isNetworkError(error)) return "Check your connection and try again.";
+  return "Something went wrong on our side. Try again in a moment.";
+}
+
 /** Creating a list failed. */
 export function createListErrorMessage(error: unknown): string {
   if (isNetworkError(error)) return "Couldn't make the list. Check your connection and try again.";
   return "Couldn't make the list. Try again in a moment.";
+}
+
+/** Toasts for failed writes share this key, so a burst of failures shows one. */
+export const FAILURE_TOAST_KEY = "failure";
+
+/**
+ * The message for a failed write's toast (UX pass 5, critique): `fallback`
+ * says what didn't happen ("Couldn't move that item."). A server message is
+ * used only when it is already a plain sentence written for people; raw
+ * fetch errors ("Failed to fetch"), codes and lowercase validator text never
+ * reach the screen. A network failure is left to the offline toast, which
+ * replaces this one (same key) and offers Retry.
+ */
+export function failureMessage(error: unknown, fallback: string): string {
+  if (isNetworkError(error)) return `${fallback} Check your connection.`;
+  const message = error instanceof ApiError ? error.message.trim() : "";
+  const status = error instanceof ApiError ? error.status : 500;
+  if (status < 500 && /^[A-Z][^_{}<>]*[.?]$/.test(message) && message.length <= 140) {
+    return message;
+  }
+  return status >= 500 ? `${fallback} Try again in a moment.` : fallback;
 }

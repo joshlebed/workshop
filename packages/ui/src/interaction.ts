@@ -30,3 +30,20 @@ export function webAria(attrs: Record<string, string | number | boolean | undefi
   for (const [k, v] of Object.entries(attrs)) if (v !== undefined) out[k] = v;
   return out as object;
 }
+
+/**
+ * Web: Space activates a checkbox, switch, radio or menu item (ARIA
+ * keyboard patterns). react-native-web's Pressable only maps Space to
+ * `role="button"`, so these roles answered Enter alone. Spread onto the
+ * `Pressable`; returns `{}` on native.
+ */
+export function webSpaceKey(onPress: (() => void) | undefined): object {
+  if (Platform.OS !== "web" || !onPress) return {};
+  return {
+    onKeyDown: (e: { key: string; preventDefault: () => void; repeat?: boolean }) => {
+      if (e.key !== " " && e.key !== "Spacebar") return;
+      e.preventDefault();
+      if (!e.repeat) onPress();
+    },
+  };
+}

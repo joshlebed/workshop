@@ -13,7 +13,6 @@
 // regular ItemList below; this panel owns everything above it.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Item, List, ListMemberSummary } from "@workshop/shared";
 import {
@@ -23,6 +22,7 @@ import {
   confirm,
   haptics,
   Icon,
+  layout,
   openExternalUrl,
   SectionHeader,
   Text,
@@ -34,6 +34,7 @@ import { useState } from "react";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { acceptItem, fetchLetterboxdStatus, suggestFilm } from "../../api/letterboxd";
 import { useAuth } from "../../hooks/useAuth";
+import { FAILURE_TOAST_KEY, failureMessage } from "../../lib/errorCopy";
 
 interface Props {
   list: List;
@@ -64,10 +65,11 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
   const [username, setUsername] = useState("");
   const connectMutation = useMutation({
     mutationFn: (name: string) => connectLetterboxd(name),
+    // Haptics fire on the tap (`onMutate`), not on the server's answer.
+    onMutate: () => haptics.light(),
     onSuccess: (filmCount) => {
-      haptics.medium();
       showToast({
-        message: `Connected — ${filmCount} ${filmCount === 1 ? "film" : "films"} on your watchlist`,
+        message: `Connected. ${filmCount} ${filmCount === 1 ? "film" : "films"} on your watchlist.`,
         tone: "success",
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.letterboxd.status(list.id) });
@@ -75,7 +77,11 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
       onRequestSync();
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't connect that username."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't connect that username."),
+        tone: "danger",
+      });
     },
   });
 
@@ -83,19 +89,23 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
   const [suggestOpen, setSuggestOpen] = useState(false);
   const suggestMutation = useMutation({
     mutationFn: (letterboxdUrl: string) => suggestFilm(list.id, { letterboxdUrl }, token),
+    onMutate: () => haptics.light(),
     onSuccess: () => {
-      haptics.medium();
       setSuggestUrl("");
       setSuggestOpen(false);
       queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(list.id) });
       showToast({
-        message: "Suggested — it joins the list when someone accepts.",
+        message: "Suggested. It joins the list when someone accepts it.",
         tone: "success",
       });
     },
     onError: (e) => {
       showToast({
-        message: errorMessage(e, "Couldn't suggest that film. Is it a letterboxd.com/film/… URL?"),
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(
+          e,
+          "Couldn't suggest that film. Paste the link to its page on letterboxd.com.",
+        ),
         tone: "danger",
       });
     },
@@ -103,22 +113,26 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
 
   const acceptMutation = useMutation({
     mutationFn: (item: Item) => acceptItem(item.id, token),
+    onMutate: () => haptics.light(),
     onSuccess: async (_res, item) => {
-      haptics.medium();
       queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(list.id) });
       const c = item.content as { letterboxdUrl?: string };
       if (c.letterboxdUrl) {
         const open = await confirm({
           title: "Add it on Letterboxd too?",
           message:
-            "Workshop can't edit your Letterboxd watchlist — open the film page and tap the watchlist icon there.",
+            "Workshop can't edit your Letterboxd watchlist. Open the film's page and add it to your watchlist there.",
           confirmLabel: "Open Letterboxd",
         });
         if (open) openExternalUrl(c.letterboxdUrl);
       }
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't accept that suggestion."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't accept that suggestion."),
+        tone: "danger",
+      });
     },
   });
 
@@ -131,10 +145,8 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
     <View style={styles.root}>
       {!connected ? (
         <Card style={styles.connectCard} elevated testID="letterboxd-connect-banner">
-          <Text variant="heading" style={styles.connectLead}>
-            Connect your Letterboxd
-          </Text>
-          <Text variant="caption" tone="secondary" style={styles.connectCopy}>
+          <Text variant="heading">Connect your Letterboxd</Text>
+          <Text variant="caption" tone="secondary">
             Films on your watchlist and{" "}
             {connectedCount === 1 ? "another member's" : "other members'"} show up here
             automatically.
@@ -167,7 +179,7 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
 
       {suggested.length > 0 ? (
         <View style={styles.suggestions} testID="letterboxd-suggestions">
-          <SectionHeader title="Suggestions" />
+          <SectionHeader title="Suggestions" inset={false} first={connected} />
           {suggested.map((item) => {
             const lb = item.letterboxd;
             const acceptances = lb?.acceptances ?? [];
@@ -185,7 +197,7 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
                   />
                 ) : (
                   <View style={[styles.poster, { backgroundColor: alpha(accent, 0.12) }]}>
-                    <Text style={styles.posterGlyph}>🎬</Text>
+                    <Text>🎬</Text>
                   </View>
                 )}
                 <Pressable
@@ -194,9 +206,14 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
                   onPress={() => openExternalUrl(c.letterboxdUrl ?? item.url)}
                   style={styles.suggestionBody}
                 >
-                  <Text numberOfLines={1} style={styles.suggestionTitle}>
+                  <Text variant="label" numberOfLines={1}>
                     {item.title}
-                    {c.year ? <Text tone="muted"> ({c.year})</Text> : null}
+                    {c.year ? (
+                      <Text variant="label" tone="muted">
+                        {" "}
+                        ({c.year})
+                      </Text>
+                    ) : null}
                   </Text>
                   <Text variant="caption" tone="muted" numberOfLines={1}>
                     Suggested by {suggesterName}
@@ -233,7 +250,7 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
             value={suggestUrl}
             onChangeText={setSuggestUrl}
             placeholder="https://letterboxd.com/film/…"
-            accessibilityLabel="Letterboxd film URL"
+            accessibilityLabel="Letterboxd film link"
             autoCapitalize="none"
             autoCorrect={false}
             autoFocus
@@ -288,7 +305,7 @@ export function LetterboxdPanel({ list, members, suggested, token, accent, onReq
 
 const styles = StyleSheet.create({
   root: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingBottom: tokens.space.sm,
     gap: tokens.space.sm,
   },
@@ -296,8 +313,6 @@ const styles = StyleSheet.create({
     gap: tokens.space.sm,
     padding: tokens.space.lg,
   },
-  connectLead: { letterSpacing: -0.2 },
-  connectCopy: { lineHeight: 18 },
   connectRow: {
     flexDirection: "row",
     gap: tokens.space.sm,
@@ -317,7 +332,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  posterGlyph: { fontSize: tokens.font.size.md },
   suggestionBody: {
     flex: 1,
     minWidth: 0,
@@ -325,7 +339,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: tokens.space.xxs,
   },
-  suggestionTitle: { fontSize: tokens.font.size.sm },
   acceptedTag: {
     flexDirection: "row",
     alignItems: "center",

@@ -3,19 +3,22 @@ import {
   EmojiBadge,
   type ListColorKey,
   ListRow,
+  layout,
   Screen,
   ScreenHeader,
   SectionHeader,
   Switch,
+  screenColumnStyle,
   Text,
   tokens,
 } from "@workshop/ui";
-import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { type Href, useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, StyleSheet, View } from "react-native";
 import { useCreateFromTemplate } from "../../../../src/hooks/useCreateFromTemplate";
 import { goBack } from "../../../../src/lib/goBack";
 import { normalizeSharePayload, shareAddParams } from "../../../../src/lib/sharePayload";
+import { useEscapeToClose } from "../../../../src/lib/shortcuts/useShortcuts";
 
 // Session memory: someone who customizes once likely wants to again.
 let customizeFirstPreference = false;
@@ -61,6 +64,9 @@ export default function CreateListType() {
     create({ template, addParams: carried });
   };
 
+  const isFocused = useIsFocused();
+  useEscapeToClose(() => goBack("/"), isFocused);
+
   return (
     <Screen style={styles.root}>
       <ScreenHeader
@@ -71,20 +77,19 @@ export default function CreateListType() {
         title="New list"
       />
 
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView contentContainerStyle={[styles.body, screenColumnStyle]}>
         <Text tone="secondary" style={styles.lead}>
           {share
             ? "Pick a kind of list. What you shared goes in first."
             : "Pick a kind of list. You can rename it and change anything later."}
         </Text>
         {groupTemplates().map((group) => (
-          <View key={group.id} style={styles.group}>
-            <SectionHeader title={group.title} style={styles.groupHeader} />
+          <View key={group.id}>
+            <SectionHeader title={group.title} />
             {group.templates.map((tpl) => (
               <ListRow
                 key={tpl.id}
                 testID={`create-list-template-${tpl.id}`}
-                accessibilityLabel={tpl.displayName}
                 accessibilityHint={
                   customizeFirst
                     ? "Choose a name and look next"
@@ -104,7 +109,7 @@ export default function CreateListType() {
                 subtitle={tpl.description}
                 trailing={
                   pendingTemplateId === tpl.id ? (
-                    <ActivityIndicator color={tokens.text.muted} />
+                    <ActivityIndicator color={tokens.text.muted} accessibilityLabel="Creating" />
                   ) : undefined
                 }
               />
@@ -133,9 +138,8 @@ function first(value: string | string[] | undefined): string | null {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
-  body: { paddingTop: tokens.space.xs, paddingBottom: tokens.space.xxl * 2 },
-  lead: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.sm },
-  group: { paddingTop: tokens.space.md },
-  groupHeader: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.xs },
-  customize: { marginTop: tokens.space.xl, marginHorizontal: tokens.space.sm },
+  body: { paddingTop: layout.contentTopGap, paddingBottom: layout.bottomInset },
+  lead: { paddingHorizontal: layout.gutter },
+  // 4 margin + the tile's 12 padding puts its label on the gutter, like a row.
+  customize: { marginTop: layout.sectionTop, marginHorizontal: tokens.space.xs },
 });

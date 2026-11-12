@@ -7,10 +7,12 @@ import {
   EmojiBadge,
   Icon,
   type ListColorKey,
+  layout,
   Screen,
   ScreenHeader,
   SectionHeader,
   Skeleton,
+  screenColumnStyle,
   Text,
   tokens,
 } from "@workshop/ui";
@@ -99,17 +101,17 @@ export function ListPublicLanding({ preview, viewer, returnPath, onJoin, onBefor
         onLeadingPress={() => goBack("/")}
         leadingTestID="list-landing-back"
       />
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView contentContainerStyle={[styles.body, screenColumnStyle]}>
         <View style={styles.hero}>
           <EmojiBadge emoji={preview.emoji} color={accent} size={72} shape="rounded" />
-          <Text variant="title" style={styles.title} testID="list-landing-name">
+          <Text variant="title" style={styles.centered} testID="list-landing-name">
             {preview.name}
           </Text>
-          <Text tone="muted" style={styles.byline} testID="list-landing-byline">
+          <Text tone="muted" style={styles.centered} testID="list-landing-byline">
             {byline}
           </Text>
           {preview.description ? (
-            <Text tone="secondary" style={styles.description}>
+            <Text tone="secondary" style={styles.centered}>
               {preview.description}
             </Text>
           ) : null}
@@ -128,7 +130,7 @@ export function ListPublicLanding({ preview, viewer, returnPath, onJoin, onBefor
         ) : visibility === "join" ? (
           <Card style={styles.cta} elevated>
             <Text variant="heading">Join this list</Text>
-            <Text tone="secondary" style={styles.ctaBody}>
+            <Text tone="secondary">
               {owner
                 ? `${owner} shared it with you. Joining lets you add to it, and it shows up on your home.`
                 : "Joining lets you add to it, and it shows up on your home."}
@@ -159,22 +161,20 @@ export function ListPublicLanding({ preview, viewer, returnPath, onJoin, onBefor
         ) : (
           <Card style={styles.cta} elevated>
             <Text variant="heading">This link doesn't let you join</Text>
-            <Text tone="secondary" style={styles.ctaBody}>
-              Ask {owner ?? "the owner"} for a new link.
-            </Text>
+            <Text tone="secondary">Ask {owner ?? "the owner"} for a new link.</Text>
           </Card>
         )}
 
         {readOnly ? (
           <View style={styles.items} testID="list-landing-items">
-            <SectionHeader title="Items" style={styles.itemsLabel} />
+            <SectionHeader title="Items" inset={false} />
             {itemsQuery.isPending ? (
               <Skeleton.Rows count={4} />
             ) : itemsQuery.isError ? (
               <View style={styles.itemsError}>
                 <Text tone="secondary">Couldn't load the items.</Text>
                 <Button
-                  label="Retry"
+                  label="Try again"
                   variant="secondary"
                   size="md"
                   onPress={() => void itemsQuery.refetch()}
@@ -229,13 +229,15 @@ export function ListPublicLandingSkeleton() {
         onLeadingPress={() => goBack("/")}
         leadingTestID="list-landing-back"
       />
-      <View style={[styles.body, styles.hero]} testID="list-landing-loading">
+      <View style={[styles.body, styles.hero, screenColumnStyle]} testID="list-landing-loading">
         <Skeleton.Block width={72} height={72} radius={tokens.radius.md} />
         <Skeleton.Block width="60%" height={28} />
         <Skeleton.Block width="45%" height={14} />
       </View>
-      <View style={styles.ctaSkeleton}>
-        <Skeleton.Block height={160} radius={tokens.radius.lg} />
+      <View style={screenColumnStyle}>
+        <View style={styles.ctaSkeleton}>
+          <Skeleton.Block height={160} radius={tokens.radius.lg} />
+        </View>
       </View>
     </Screen>
   );
@@ -243,34 +245,26 @@ export function ListPublicLandingSkeleton() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: tokens.bg.canvas },
-  body: { paddingTop: tokens.space.lg, paddingBottom: tokens.space.xxl * 2 },
-  ctaSkeleton: { marginHorizontal: tokens.space.xl, marginTop: tokens.space.xl },
+  body: { paddingTop: tokens.space.lg, paddingBottom: layout.bottomInset },
+  ctaSkeleton: { marginHorizontal: layout.gutter, marginTop: tokens.space.xl },
   hero: {
     alignItems: "center",
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     gap: tokens.space.md,
   },
-  title: { textAlign: "center", letterSpacing: -0.5 },
-  byline: { textAlign: "center", letterSpacing: 0.2 },
-  description: { textAlign: "center", lineHeight: 22 },
+  centered: { textAlign: "center" },
   cta: {
     marginTop: tokens.space.xl,
-    marginHorizontal: tokens.space.xl,
+    marginHorizontal: layout.gutter,
     gap: tokens.space.md,
     padding: tokens.space.xl,
   },
-  ctaBody: { lineHeight: 22 },
   readOnly: {
     marginTop: tokens.space.lg,
-    marginHorizontal: tokens.space.xl,
+    marginHorizontal: layout.gutter,
     textAlign: "center",
   },
-  items: {
-    paddingHorizontal: tokens.space.xl,
-    paddingTop: tokens.space.xl,
-    gap: tokens.space.sm,
-  },
-  itemsLabel: { marginBottom: tokens.space.xs },
+  items: { paddingHorizontal: layout.gutter, gap: tokens.space.sm },
   itemsError: { gap: tokens.space.sm, alignItems: "flex-start" },
   itemRow: {
     flexDirection: "row",
@@ -281,8 +275,13 @@ const styles = StyleSheet.create({
     borderBottomColor: tokens.border.subtle,
   },
   itemMark: { width: 18, alignItems: "center" },
-  itemDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: tokens.border.default },
+  itemDot: {
+    width: 8,
+    height: 8,
+    borderRadius: tokens.radius.pill,
+    backgroundColor: tokens.border.default,
+  },
   itemTitle: { flex: 1, color: tokens.text.primary },
   itemTitleDone: { flex: 1, color: tokens.text.muted, textDecorationLine: "line-through" },
-  ownLists: { paddingHorizontal: tokens.space.xl, paddingTop: tokens.space.xl },
+  ownLists: { paddingHorizontal: layout.gutter, paddingTop: tokens.space.xl },
 });

@@ -1,26 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import {
   Button,
+  haptics,
+  layout,
   Screen,
   ScreenHeader,
   SectionHeader,
+  screenColumnStyle,
   Text,
   TextField,
   tokens,
   useToast,
 } from "@workshop/ui";
-import { useLocalSearchParams } from "expo-router";
+import { useIsFocused, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 import { createItemsBulk, fetchItems } from "../../../../../src/api/items";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { splitAgainstList } from "../../../../../src/lib/duplicates";
+import { FAILURE_TOAST_KEY, failureMessage } from "../../../../../src/lib/errorCopy";
 import { goBack } from "../../../../../src/lib/goBack";
 import { parsePasteLines } from "../../../../../src/lib/parsePasteLines";
 import { noteItemAdded } from "../../../../../src/lib/recentlyAdded";
+import { useEscapeToClose, useSubmitShortcut } from "../../../../../src/lib/shortcuts/useShortcuts";
 
 // Server-side BULK_LIMIT in lists.ts. Mirrored here so the client can chunk
 // silently rather than 400 the request. If you bump one, bump both.
@@ -61,6 +65,8 @@ export default function AddBulk() {
   const overLimit = fresh.length > BULK_LIMIT;
 
   const mutation = useMutation<{ created: number }, Error, void>({
+    // A bulk add is a create: `success`, on the tap.
+    onMutate: () => haptics.success(),
     mutationFn: async () => {
       // Bottom-up, so the first pasted line ends up on top of the list.
       const queue = fresh.slice().reverse();
@@ -103,10 +109,11 @@ export default function AddBulk() {
     onError: (e) => {
       const added = (e as { added?: number }).added ?? 0;
       showToast({
+        key: FAILURE_TOAST_KEY,
         message:
           added > 0
             ? `Added ${added}, then something went wrong. The rest are still here.`
-            : errorMessage(e, "Couldn't add those."),
+            : failureMessage(e, "Couldn't add those."),
         tone: "danger",
       });
     },
@@ -117,9 +124,16 @@ export default function AddBulk() {
     fresh.length === 0
       ? skipped.length > 0
         ? "Everything here is already on the list."
-        : "Paste one per line."
+        : "Nothing to add yet."
       : `${fresh.length} ${fresh.length === 1 ? "item" : "items"} to add`;
   const statusLine = [countLabel, skippedNote].filter(Boolean).join(" · ");
+
+  // Web: Escape closes, ⌘Enter adds everything (5.7b).
+  const isFocused = useIsFocused();
+  useEscapeToClose(() => goBack(`/list/${id}`), isFocused);
+  useSubmitShortcut(() => {
+    if (canSubmit && !mutation.isPending) mutation.mutate();
+  }, isFocused);
 
   return (
     <Screen style={styles.root}>
@@ -133,15 +147,25 @@ export default function AddBulk() {
 
       <KeyboardAwareScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[styles.body, screenColumnStyle]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
       >
-        <Text tone="secondary" style={styles.intro}>
-          One per line. Numbered or bulleted lists are fine; leading{" "}
-          <Text style={styles.code}>1.</Text>, <Text style={styles.code}>-</Text>, or{" "}
-          <Text style={styles.code}>*</Text> markers are stripped automatically.
+        <Text variant="label" tone="secondary" style={styles.regular}>
+          One item per line. Numbers and bullets at the start of a line (
+          <Text variant="label" style={styles.code}>
+            1.
+          </Text>
+          ,{" "}
+          <Text variant="label" style={styles.code}>
+            -
+          </Text>
+          ,{" "}
+          <Text variant="label" style={styles.code}>
+            *
+          </Text>
+          ) are left out.
         </Text>
 
         <TextField
@@ -157,29 +181,30 @@ export default function AddBulk() {
         />
 
         <View style={styles.countRow}>
-          <Text tone="muted" style={styles.count} testID="add-bulk-count">
+          <Text variant="caption" tone="muted" testID="add-bulk-count">
             {statusLine}
           </Text>
         </View>
         {overLimit ? (
-          <Text tone="muted" style={styles.count} testID="add-bulk-batches">
+          <Text variant="caption" tone="muted" testID="add-bulk-batches">
             Added in batches of {BULK_LIMIT}.
           </Text>
         ) : null}
 
         {fresh.length > 0 ? (
-          <View style={styles.previewBlock}>
-            <SectionHeader title="Preview" />
+          <View>
+            {/* `first`: the body's 16 gap plus the header's 8 make the 24 above. */}
+            <SectionHeader title="Preview" inset={false} first />
             <View style={styles.previewList}>
               {fresh.slice(0, 8).map((title) => (
                 <View key={title} style={styles.previewRow}>
-                  <Text tone="primary" numberOfLines={1} style={styles.previewTitle}>
+                  <Text variant="label" numberOfLines={1} style={styles.regular}>
                     {title}
                   </Text>
                 </View>
               ))}
               {fresh.length > 8 ? (
-                <Text tone="muted" style={styles.previewMore}>
+                <Text variant="caption" tone="muted" style={styles.previewMore}>
                   + {fresh.length - 8} more
                 </Text>
               ) : null}
@@ -189,7 +214,7 @@ export default function AddBulk() {
       </KeyboardAwareScrollView>
 
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-        <View style={styles.footer}>
+        <View style={[styles.footer, screenColumnStyle]}>
           <Button
             testID="add-bulk-submit"
             label={fresh.length === 0 ? "Add" : `Add ${fresh.length}`}
@@ -212,14 +237,14 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   body: {
     paddingTop: tokens.space.md,
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.lg,
   },
-  intro: { fontSize: tokens.font.size.sm, lineHeight: 20 },
+  regular: { fontWeight: tokens.font.weight.regular },
+  // Inherits the size of the sentence it sits in.
   code: {
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-    fontSize: tokens.font.size.sm,
     color: tokens.text.secondary,
   },
   input: {
@@ -228,8 +253,6 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.md,
   },
   countRow: { flexDirection: "row" },
-  count: { fontSize: tokens.font.size.xs, letterSpacing: 0.2 },
-  previewBlock: { gap: tokens.space.sm },
   previewList: {
     gap: tokens.space.xs,
     paddingVertical: tokens.space.sm,
@@ -240,10 +263,9 @@ const styles = StyleSheet.create({
     borderColor: tokens.border.subtle,
   },
   previewRow: { paddingVertical: tokens.space.xs },
-  previewTitle: { fontSize: tokens.font.size.sm },
-  previewMore: { paddingTop: tokens.space.xs, fontSize: tokens.font.size.xs },
+  previewMore: { paddingTop: tokens.space.xs },
   footer: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingBottom: tokens.space.xl,
     paddingTop: tokens.space.sm,
     backgroundColor: tokens.bg.canvas,

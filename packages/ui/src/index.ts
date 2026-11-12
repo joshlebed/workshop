@@ -30,20 +30,38 @@ export type { IconName, IconProps, IconTone } from "./Icon";
 export { Icon } from "./Icon";
 export type { IconButtonProps } from "./IconButton";
 export { IconButton } from "./IconButton";
-export { interaction, webAria } from "./interaction";
-export { HomeHeader, homeLayout, Screen, screenColumnMaxWidth } from "./Layout";
+export type { PressState } from "./interaction";
+export { interaction, webAria, webSpaceKey } from "./interaction";
+export {
+  HomeHeader,
+  homeLayout,
+  layout,
+  Screen,
+  ScreenColumn,
+  screenColumnMaxWidth,
+  screenColumnStyle,
+} from "./Layout";
 export type { ListRowProps } from "./ListRow";
 export { ListRow } from "./ListRow";
 export type { ModalProps } from "./Modal";
 export { Modal } from "./Modal";
-export type { NewItemsPillProps } from "./NewItemsPill";
-export { NewItemsPill } from "./NewItemsPill";
+export type { MotionSpeed } from "./motion";
+export {
+  easeOut,
+  easeOutCss,
+  motionPresets,
+  timing,
+  useMotionDuration,
+  useRevealAfterLoading,
+} from "./motion";
 export { goBack } from "./navigation";
 export { normalizeExternalUrl, openExternalUrl } from "./openUrl";
 export type { PullToRefreshProps } from "./PullToRefresh";
 export { PullToRefresh } from "./PullToRefresh";
 export type { RadioRowProps } from "./RadioRow";
 export { RadioRow } from "./RadioRow";
+export type { RevealProps } from "./Reveal";
+export { Reveal } from "./Reveal";
 export { formatRelative } from "./relativeTime";
 export { neighborsForOrderedReorder } from "./reorder";
 export { REORDER_ACTIVATION } from "./reorderActivation";

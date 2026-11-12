@@ -7,9 +7,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from "react-native";
+import {
+  AccessibilityInfo,
+  Platform,
+  Pressable,
+  type StyleProp,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from "react-native";
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -18,6 +25,7 @@ import Animated, {
 import { copyToClipboard } from "./clipboard";
 import { Icon } from "./Icon";
 import { interaction, type PressState } from "./interaction";
+import { motionPresets, timing } from "./motion";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -30,9 +38,18 @@ interface Toast {
   actionLabel?: string;
   onAction?: () => void;
   key?: string;
+  /** `Date.now()` when raised; `dismissForNavigation` keeps the newest. */
+  createdAt: number;
   /** Set when dismissed; the row plays its exit before it is removed. */
   leaving?: boolean;
 }
+
+/**
+ * A toast raised within this window before a navigation belongs to the
+ * destination ("Added to Movies" after the share picker lands on the list,
+ * "Deleted · Undo" after item detail goes back), so it survives it.
+ */
+const NAVIGATION_GRACE_MS = 600;
 
 interface ShowToastInput {
   message: string;
@@ -55,6 +72,30 @@ interface ToastContextValue {
    * unregister function; the viewport honours the largest active lift.
    */
   registerBottomInset: (px: number) => () => void;
+  /**
+   * The navigation rule (UX pass 5, review carry-over 3): a toast belongs to
+   * the screen that raised it, so opening another screen on top dismisses
+   * it. Call when a new screen is opened (not on back, which returns to the
+   * toast's own screen). Toasts raised in the last `NAVIGATION_GRACE_MS`
+   * were raised by the navigation itself and stay.
+   */
+  dismissForNavigation: () => void;
+  /**
+   * Dismiss the toast with this key, if one is showing. A write that fails
+   * takes back its optimistic "Marked done · Undo" before the failure shows.
+   */
+  dismissKey: (key: string) => void;
+  /**
+   * Run the newest visible toast's action (its Undo) and dismiss it. Returns
+   * false when no toast offers one. For a keyboard shortcut: the toast's own
+   * button sits at the end of the tab order and leaves in a few seconds.
+   */
+  runLatestAction: (actionLabel?: string) => boolean;
+  /**
+   * Say something to screen readers without a visible toast (a row moved by
+   * Move up / Move down, whose result is visible already).
+   */
+  announce: (message: string) => void;
 }
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -70,6 +111,16 @@ interface ToastStateContextValue {
   toasts: Toast[];
   dismiss: (id: number) => void;
   registerOverlay: () => () => void;
+  /** Hold / restart a toast's auto-dismiss while the pointer or focus is on it. */
+  hold: (id: number, held: boolean) => void;
+  announcement: Announcement;
+}
+
+/** What the screen-reader live region says now (`n` re-announces a repeat). */
+interface Announcement {
+  text: string;
+  assertive: boolean;
+  n: number;
 }
 
 const ToastStateContext = createContext<ToastStateContextValue | null>(null);
@@ -102,7 +153,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   // Dismiss marks the toast as leaving so it can play its exit, then drops
   // it once the exit (`motion.fast`) has run.
+  // Auto-dismiss timers, held while the pointer or keyboard focus is on the
+  // toast (WCAG 2.2.1) and restarted with the full duration when it leaves.
+  const timersRef = useRef(
+    new Map<number, { ms: number; handle: ReturnType<typeof setTimeout> | null }>(),
+  );
   const dismiss = useCallback((id: number) => {
+    const timer = timersRef.current.get(id);
+    if (timer?.handle) clearTimeout(timer.handle);
+    timersRef.current.delete(id);
     setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -115,30 +174,97 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       const id = idRef.current;
       setToasts((prev) => [
         ...(key ? prev.filter((t) => t.key !== key) : prev),
-        { id, message, tone, actionLabel, onAction, key },
+        { id, message, tone, actionLabel, onAction, key, createdAt: Date.now() },
       ]);
       const effectiveDuration =
         durationMs ?? (tone === "danger" ? DANGER_DURATION_MS : DEFAULT_DURATION_MS);
       if (effectiveDuration > 0) {
-        setTimeout(() => dismiss(id), effectiveDuration);
+        timersRef.current.set(id, {
+          ms: effectiveDuration,
+          handle: setTimeout(() => dismiss(id), effectiveDuration),
+        });
       }
+      // Screen readers: one persistent live region per host says it (a
+      // region inserted together with its text is often not read), and
+      // native announces it directly (iOS has no live regions).
+      const sentence = /[.!?…]$/.test(message.trim()) ? message.trim() : `${message.trim()}.`;
+      const spoken = actionLabel ? `${sentence} ${actionLabel} available.` : message;
+      setAnnouncement((prev) => ({ text: spoken, assertive: tone === "danger", n: prev.n + 1 }));
+      if (Platform.OS !== "web") AccessibilityInfo.announceForAccessibility(spoken);
+    },
+    [dismiss],
+  );
+
+  const hold = useCallback(
+    (id: number, held: boolean) => {
+      const t = timersRef.current.get(id);
+      if (!t) return;
+      if (t.handle) clearTimeout(t.handle);
+      t.handle = held ? null : setTimeout(() => dismiss(id), t.ms);
+    },
+    [dismiss],
+  );
+  const [announcement, setAnnouncement] = useState<Announcement>({
+    text: "",
+    assertive: false,
+    n: 0,
+  });
+
+  const toastsRef = useRef<Toast[]>([]);
+  toastsRef.current = toasts;
+  const dismissForNavigation = useCallback(() => {
+    const cutoff = Date.now() - NAVIGATION_GRACE_MS;
+    for (const t of toastsRef.current) {
+      if (!t.leaving && t.createdAt < cutoff) dismiss(t.id);
+    }
+  }, [dismiss]);
+
+  const announce = useCallback((message: string) => {
+    setAnnouncement((prev) => ({ text: message, assertive: false, n: prev.n + 1 }));
+    if (Platform.OS !== "web") AccessibilityInfo.announceForAccessibility(message);
+  }, []);
+
+  const runLatestAction = useCallback(
+    (actionLabel?: string) => {
+      const latest = [...toastsRef.current]
+        .reverse()
+        .find((t) => !t.leaving && t.onAction && (!actionLabel || t.actionLabel === actionLabel));
+      if (!latest) return false;
+      latest.onAction?.();
+      dismiss(latest.id);
+      return true;
+    },
+    [dismiss],
+  );
+
+  const dismissKey = useCallback(
+    (key: string) => {
+      for (const t of toastsRef.current) if (t.key === key && !t.leaving) dismiss(t.id);
     },
     [dismiss],
   );
 
   const value = useMemo(
-    () => ({ showToast, registerBottomInset }),
-    [showToast, registerBottomInset],
+    () => ({
+      showToast,
+      registerBottomInset,
+      dismissForNavigation,
+      dismissKey,
+      runLatestAction,
+      announce,
+    }),
+    [showToast, registerBottomInset, dismissForNavigation, dismissKey, runLatestAction, announce],
   );
   const stateValue = useMemo(
-    () => ({ toasts, dismiss, registerOverlay }),
-    [toasts, dismiss, registerOverlay],
+    () => ({ toasts, dismiss, registerOverlay, hold, announcement }),
+    [toasts, dismiss, registerOverlay, hold, announcement],
   );
 
   return (
     <ToastContext.Provider value={value}>
       <ToastStateContext.Provider value={stateValue}>
         {children}
+        {overlayCount === 0 ? <ToastAnnouncer announcement={announcement} /> : null}
         {overlayCount === 0 ? (
           <ToastViewport
             toasts={toasts}
@@ -162,7 +288,39 @@ export function ToastOverlay() {
   const registerOverlay = state?.registerOverlay;
   useEffect(() => registerOverlay?.(), [registerOverlay]);
   if (!state) return null;
-  return <ToastViewport toasts={state.toasts} dismiss={state.dismiss} style={styles.overlay} />;
+  return (
+    <>
+      <ToastAnnouncer announcement={state.announcement} />
+      <ToastViewport toasts={state.toasts} dismiss={state.dismiss} style={styles.overlay} />
+    </>
+  );
+}
+
+/**
+ * Web: two always-mounted, visually hidden live regions (polite status,
+ * assertive alert). The text is set a tick after the region is cleared so a
+ * repeated message ("Marked done" twice) is read again. Native announces from
+ * `showToast` instead.
+ */
+function ToastAnnouncer({ announcement }: { announcement: Announcement }) {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    if (!announcement.text) return;
+    setText("");
+    const t = setTimeout(() => setText(announcement.text), 50);
+    return () => clearTimeout(t);
+  }, [announcement]);
+  if (Platform.OS !== "web") return null;
+  return (
+    <>
+      <View role="status" aria-live="polite" style={styles.srOnly}>
+        <Text>{announcement.assertive ? "" : text}</Text>
+      </View>
+      <View role="alert" aria-live="assertive" style={styles.srOnly}>
+        <Text>{announcement.assertive ? text : ""}</Text>
+      </View>
+    </>
+  );
 }
 
 function ToastViewport({
@@ -191,28 +349,70 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
   const progress = useSharedValue(0);
   const leaving = !!toast.leaving;
   useEffect(() => {
-    progress.value = leaving
-      ? withTiming(0, { duration: tokens.motion.fast, easing: Easing.in(Easing.cubic) })
-      : withTiming(1, {
-          duration: tokens.motion.base,
-          easing: Easing.bezier(...tokens.motion.easeOut),
-        });
+    // Rises 12px and fades in at `base`; fades back out at `fast` (the
+    // provider removes it after `fast`). Reduced motion: the fade only.
+    progress.value = withTiming(leaving ? 0 : 1, timing(leaving ? "fast" : "base"));
   }, [leaving, progress]);
   const motionStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
     transform: reduceMotion ? [] : [{ translateY: (1 - progress.value) * 12 }],
   }));
-  const isAlert = toast.tone === "danger";
+  const hold = useContext(ToastStateContext)?.hold;
+  // Web: where keyboard focus came from, to hand it back when the toast
+  // goes (Undo or Dismiss would otherwise leave focus on <body>).
+  const cameFromRef = useRef<HTMLElement | null>(null);
+  const holdHandlers = (
+    Platform.OS === "web"
+      ? {
+          onMouseEnter: () => hold?.(toast.id, true),
+          onMouseLeave: () => hold?.(toast.id, false),
+          onFocus: (e: { relatedTarget?: unknown; currentTarget?: unknown }) => {
+            hold?.(toast.id, true);
+            const from = e.relatedTarget as HTMLElement | null | undefined;
+            const row = e.currentTarget as HTMLElement | undefined;
+            if (from && !row?.contains(from)) cameFromRef.current = from;
+          },
+          onBlur: () => hold?.(toast.id, false),
+        }
+      : {}
+  ) as object;
+  const leave = () => {
+    onDismiss();
+    const back = cameFromRef.current;
+    if (!back || typeof document === "undefined") return;
+    // Watch for a moment: the action re-renders the screen (Undo puts a row
+    // back) and can drop focus more than once.
+    let ticks = 0;
+    const settle = () => {
+      const now = document.activeElement;
+      if (!now || now === document.body || !document.contains(now)) {
+        // The same control may have re-rendered as a new node (a row that
+        // moved section): find it again by its test id.
+        const id = back.dataset?.testid;
+        const target = document.contains(back)
+          ? back
+          : id
+            ? document.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+            : null;
+        target?.focus();
+      }
+      ticks += 1;
+      if (ticks < 20) setTimeout(settle, 50);
+    };
+    setTimeout(settle, tokens.motion.fast);
+  };
   return (
     <Animated.View
+      // A stacked toast slides into the gap one above it leaves.
+      layout={motionPresets.move}
       style={[styles.row, tone, motionStyle]}
       testID={`toast-${toast.tone}`}
-      // A live region: polite status for confirmations, assertive alert for
-      // failures, so screen readers announce toasts without moving focus.
-      role={isAlert ? "alert" : "status"}
-      aria-live={isAlert ? "assertive" : "polite"}
+      // Announced through `ToastAnnouncer`'s live regions, not here (a region
+      // mounted with its text is often skipped, and two would read twice).
+      // Pointer or focus on the toast holds its auto-dismiss.
+      {...holdHandlers}
     >
-      <Text style={styles.message} selectable>
+      <Text variant="label" style={styles.message} selectable>
         {toast.message}
       </Text>
       {toast.actionLabel ? (
@@ -220,7 +420,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
           accessibilityRole="button"
           onPress={() => {
             toast.onAction?.();
-            onDismiss();
+            leave();
           }}
           style={({ pressed, hovered }: PressState) => [
             styles.action,
@@ -229,7 +429,9 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
           ]}
           testID="toast-action"
         >
-          <Text style={styles.actionLabel}>{toast.actionLabel}</Text>
+          <Text variant="label" style={styles.actionLabel}>
+            {toast.actionLabel}
+          </Text>
         </Pressable>
       ) : null}
       {showCopy ? (
@@ -252,7 +454,7 @@ function ToastRow({ toast, onDismiss }: { toast: Toast; onDismiss: () => void })
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Dismiss"
-        onPress={onDismiss}
+        onPress={leave}
         style={({ pressed, hovered }: PressState) => [
           styles.iconBtn,
           hovered && styles.iconBtnHover,
@@ -279,6 +481,16 @@ const toneStyle = {
 } as const;
 
 const styles = StyleSheet.create({
+  // Visually hidden, still read (the usual sr-only clip).
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    margin: -1,
+    padding: 0,
+    overflow: "hidden",
+    borderWidth: 0,
+  },
   viewport: {
     position: "absolute",
     bottom: tokens.space.xl,
@@ -307,7 +519,7 @@ const styles = StyleSheet.create({
     maxWidth: 480,
     width: "100%",
   },
-  message: { flex: 1, color: tokens.text.primary, fontSize: tokens.font.size.sm },
+  message: { flex: 1, color: tokens.text.primary, fontWeight: tokens.font.weight.regular },
   // A text action in the accent, not a filled button: an Undo follows every
   // tick, so it has to stay quiet until it is wanted.
   action: {
@@ -317,7 +529,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   actionLabel: {
-    fontSize: tokens.font.size.sm,
     fontWeight: tokens.font.weight.semibold,
     color: tokens.accent.default,
   },

@@ -11,8 +11,8 @@ import {
   tokens,
 } from "@workshop/ui";
 import { memo, useCallback, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import { homeRowSubtitle } from "./homeRow";
+import { Platform, StyleSheet, View } from "react-native";
+import { homeRowSubtitle, memberStackFaces } from "./homeRow";
 import { RowMoreButton } from "./RowMoreButton";
 
 export interface HomeListRowProps {
@@ -21,6 +21,8 @@ export interface HomeListRowProps {
   selfId: string | null;
   onPress: () => void;
   onOpenMenu: () => void;
+  /** The list open in the right pane of the desktop two-pane layout. */
+  selected?: boolean;
 }
 
 /**
@@ -34,6 +36,7 @@ export const HomeListRow = memo(function HomeListRow({
   selfId,
   onPress,
   onOpenMenu,
+  selected,
 }: HomeListRowProps) {
   const accent = tokens.list[list.color as ListColorKey] ?? tokens.accent.default;
   const subtitle = homeRowSubtitle(list, latestEvent, selfId);
@@ -53,22 +56,32 @@ export const HomeListRow = memo(function HomeListRow({
   const trackRow = track("row");
   const moreVisible = active.hover !== 0 || active.focus !== 0;
 
-  const a11yParts = [list.name, subtitle];
-  if (unread > 0) a11yParts.push(`${unread} new`);
-  if (others > 0) a11yParts.push(`shared with ${others} ${others === 1 ? "person" : "people"}`);
-  if (list.pinnedAt) a11yParts.unshift("Pinned");
-  if (list.mutedAt) a11yParts.push("activity muted");
+  // What only the badge, the pin and the avatars say. On web the row is named
+  // by its own text (so a voice-control user can say what they see, WCAG
+  // 2.5.3) and these extras are its description; native reads one label.
+  const unreadLabel = unread > 9 ? "9+" : String(unread);
+  const extras: string[] = [];
+  if (unread > 0) extras.push(`${unreadLabel} new`);
+  if (others > 0) extras.push(`shared with ${others} ${others === 1 ? "person" : "people"}`);
+  if (list.pinnedAt) extras.push("pinned");
+  const nativeLabel = [list.name, subtitle, list.mutedAt ? "Muted" : null, ...extras]
+    .filter(Boolean)
+    .join(", ");
+  const describedById = `list-card-desc-${list.id}`;
+  const web = Platform.OS === "web";
 
   return (
     <View style={styles.wrap}>
       <ListRow
-        accessibilityLabel={a11yParts.join(", ")}
+        accessibilityLabel={web ? undefined : nativeLabel}
         accessibilityHint="Long press for list actions"
         onPress={onPress}
         onLongPress={onOpenMenu}
         delayLongPress={350}
+        selected={selected}
         testID={`list-card-${list.id}`}
         pressableProps={{
+          ...(web && extras.length > 0 ? { "aria-describedby": describedById } : {}),
           onContextMenu: (e: { preventDefault: () => void }) => {
             e.preventDefault();
             onOpenMenu();
@@ -104,17 +117,19 @@ export const HomeListRow = memo(function HomeListRow({
                 Muted
               </Text>
             ) : null}
-            {others > 0 ? <MemberStack list={list} others={others} accent={accent} /> : null}
+            <MemberStack list={list} others={others} />
             {unread > 0 ? (
-              <Badge
-                label={unread > 9 ? "9+" : String(unread)}
-                tone="accent"
-                testID={`list-card-unread-${list.id}`}
-              />
+              <Badge label={unreadLabel} tone="accent" testID={`list-card-unread-${list.id}`} />
             ) : null}
           </View>
         }
       />
+      {web && extras.length > 0 ? (
+        // Referenced by aria-describedby; hidden nodes still describe.
+        <Text nativeID={describedById} style={styles.hidden}>
+          {extras.join(", ")}
+        </Text>
+      ) : null}
       <RowMoreButton
         visible={moreVisible}
         label={`Actions for ${list.name}`}
@@ -126,20 +141,17 @@ export const HomeListRow = memo(function HomeListRow({
   );
 });
 
-function MemberStack({
-  list,
-  others,
-  accent,
-}: {
-  list: ListSummary;
-  others: number;
-  accent: string;
-}) {
-  // Three faces when that is everyone; otherwise two and a "+N".
-  const shown = (list.memberPreview ?? []).slice(0, others <= 3 ? 3 : 2);
-  const extra = others - shown.length;
+function MemberStack({ list, others }: { list: ListSummary; others: number }) {
+  const faces = memberStackFaces(others, list.memberPreview);
+  if (!faces) return null;
+  const { shown, extra } = faces;
   return (
-    <View style={styles.stack} testID={`list-card-members-${list.id}`}>
+    <View
+      style={styles.stack}
+      testID={`list-card-members-${list.id}`}
+      // The row's name says "shared with N people"; the faces are decoration.
+      aria-hidden
+    >
       {shown.map((m, i) => (
         <Avatar
           key={m.userId}
@@ -156,13 +168,12 @@ function MemberStack({
       {extra > 0 ? (
         <View
           style={[
-            styles.avatar,
             styles.more,
-            shown.length > 0 ? styles.avatarOverlap : null,
+            styles.avatarOverlap,
             { backgroundColor: tokens.bg.elevated, borderColor: tokens.bg.canvas },
           ]}
         >
-          <Text style={[styles.moreText, shown.length === 0 ? { color: accent } : null]}>
+          <Text variant="caption" tone="secondary" style={styles.moreText}>
             +{extra}
           </Text>
         </View>
@@ -173,25 +184,28 @@ function MemberStack({
 
 const styles = StyleSheet.create({
   wrap: { position: "relative" },
+  hidden: { display: "none" },
   titleRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xsm, minWidth: 0 },
   title: {
     flexShrink: 1,
-    fontSize: tokens.font.size.md,
-    lineHeight: 22,
     fontWeight: tokens.font.weight.medium,
-    letterSpacing: -0.2,
+    letterSpacing: tokens.font.tracking.heading,
   },
   titleUnread: { fontWeight: tokens.font.weight.semibold },
   trailing: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   trailingHidden: { opacity: 0 },
   stack: { flexDirection: "row", alignItems: "center" },
-  avatar: { width: 26, height: 26, borderRadius: 13, borderWidth: 2 },
-  avatarOverlap: { marginLeft: -8 },
-  more: { alignItems: "center", justifyContent: "center" },
-  moreText: {
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.secondary,
+  avatar: { width: 26, height: 26, borderRadius: tokens.radius.pill, borderWidth: 2 },
+  avatarOverlap: { marginLeft: -tokens.space.sm },
+  // Floors, so a "+12" or a larger text size grows the chip instead of clipping.
+  more: {
+    minWidth: 26,
+    minHeight: 26,
+    borderRadius: tokens.radius.pill,
+    borderWidth: 2,
+    paddingHorizontal: tokens.space.xxs,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  moreText: { fontWeight: tokens.font.weight.semibold, fontVariant: ["tabular-nums"] },
 });

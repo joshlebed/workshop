@@ -1,6 +1,6 @@
 import { SHARED_TYPES_VERSION } from "@workshop/shared/constants";
 import { describe, expect, it } from "vitest";
-import { getPersistBusterKey } from "./query";
+import { createQueryClient, getPersistBusterKey, refreshRestoredCache } from "./query";
 
 describe("getPersistBusterKey", () => {
   it("derives a stable key from a types version", () => {
@@ -14,5 +14,16 @@ describe("getPersistBusterKey", () => {
 
   it("defaults to SHARED_TYPES_VERSION", () => {
     expect(getPersistBusterKey()).toBe(`workshop:${SHARED_TYPES_VERSION}`);
+  });
+});
+
+describe("refreshRestoredCache", () => {
+  it("marks restored entries stale so a reload refetches them", async () => {
+    const client = createQueryClient();
+    client.setQueryData(["lists"], { lists: [] });
+    expect(client.getQueryState(["lists"])?.isInvalidated).toBe(false);
+    await refreshRestoredCache(client);
+    expect(client.getQueryState(["lists"])?.isInvalidated).toBe(true);
+    expect(client.getQueryData(["lists"])).toEqual({ lists: [] });
   });
 });

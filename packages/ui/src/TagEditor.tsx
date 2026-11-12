@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { StyleSheet, View, type ViewStyle } from "react-native";
 import { Chip } from "./Chip";
+import { haptics } from "./haptics";
 import { TextField } from "./TextField";
 import { tokens } from "./theme";
 
@@ -77,6 +78,8 @@ export function TagEditor({
     if (!tag || tag.length > 40) return;
     setDraft("");
     if (tags.includes(tag) || full) return;
+    // Same tick a suggestion chip gives (`Chip` handles its own).
+    haptics.selection();
     onChange([...tags, tag]);
   };
 

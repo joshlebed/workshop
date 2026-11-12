@@ -6,6 +6,7 @@ import {
   Button,
   ConfirmDialogHost,
   installWebFocusRing,
+  layout,
   Text,
   ThemeProvider,
   ToastProvider,
@@ -33,7 +34,7 @@ import { AuthProvider, type AuthStatus, useAuth } from "../src/hooks/useAuth";
 import { type NavState, registerNavigationState } from "../src/lib/goBack";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
-import { createQueryClient, getPersistOptions } from "../src/lib/query";
+import { createQueryClient, getPersistOptions, refreshRestoredCache } from "../src/lib/query";
 import { PENDING_RETURN_PATH_KEY, safeReturnPath } from "../src/lib/returnPath";
 import {
   normalizeSharePayload,
@@ -41,6 +42,9 @@ import {
   stashPendingShare,
   takePendingShare,
 } from "../src/lib/sharePayload";
+import { GlobalShortcuts } from "../src/lib/shortcuts/GlobalShortcuts";
+import { ToastNavigationRule } from "../src/lib/ToastNavigationRule";
+import { ScreenHeadingFocus } from "../src/lib/useFocusScreenHeading";
 
 // Web: remember the very first page load's referrer / landing path / utm_* for
 // signup attribution, before any redirect rewrites the URL (no-op on native and
@@ -279,7 +283,7 @@ function AuthGate() {
           backgroundColor: tokens.bg.canvas,
         }}
       >
-        <ActivityIndicator color={tokens.accent.default} />
+        <ActivityIndicator color={tokens.accent.default} accessibilityLabel="Loading" />
       </View>
     );
   }
@@ -295,7 +299,7 @@ function AuthGate() {
             flex: 1,
             alignItems: "center",
             justifyContent: "center",
-            paddingHorizontal: tokens.space.xl,
+            paddingHorizontal: layout.gutter,
           }}
         >
           <View style={{ width: "100%", maxWidth: 340, gap: tokens.space.md }}>
@@ -313,7 +317,13 @@ function AuthGate() {
   }
 
   return (
-    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: tokens.bg.canvas }}>
+    // The page's one `main` landmark (web): every screen renders inside it.
+    // Toasts and dialogs (portals) sit outside, as live regions and dialogs.
+    <SafeAreaView
+      edges={["top"]}
+      style={{ flex: 1, backgroundColor: tokens.bg.canvas }}
+      role="main"
+    >
       <Stack
         screenOptions={{
           headerShown: false,
@@ -371,11 +381,18 @@ export default function RootLayout() {
           <ThemeProvider forceScheme="dark">
             <NavigationThemeProvider value={DarkTheme}>
               <StatusBar style="light" />
-              <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
+              <PersistQueryClientProvider
+                client={queryClient}
+                persistOptions={persistOptions}
+                onSuccess={() => void refreshRestoredCache(queryClient)}
+              >
                 <ToastProvider>
                   <OfflineRetryWatcher />
+                  <ToastNavigationRule />
+                  <ScreenHeadingFocus />
                   <AuthProvider>
                     <AuthGate />
+                    <GlobalShortcuts />
                   </AuthProvider>
                   {/* Backs `confirm()` on web with the in-app dialog. */}
                   <ConfirmDialogHost />

@@ -19,7 +19,11 @@
       ]
     },
     "apps/workshop": {
-      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"]
+      "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"],
+      // Workshop's haptics go through `haptics` from @workshop/ui (UX pass 5.3),
+      // but the native module stays declared by the app so autolinking and the
+      // iOS fingerprint don't move.
+      "ignoreDependencies": ["expo-haptics"]
     },
     "apps/highscore": {
       "entry": ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}", "functions/**/*.ts", "scripts/*.mjs"],

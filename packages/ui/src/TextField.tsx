@@ -1,5 +1,7 @@
-import { type ReactNode, type Ref, useId, useState } from "react";
+import { type ReactNode, type Ref, useEffect, useId, useState } from "react";
 import {
+  AccessibilityInfo,
+  Platform,
   StyleSheet,
   TextInput,
   type TextInputInstance,
@@ -71,6 +73,17 @@ export function TextField({
   const labelId = `${id}-label`;
   const helpId = `${id}-help`;
   const [focused, setFocused] = useState(false);
+  // A web textarea keeps its first height and clips what wraps past it (a
+  // long item title lost its third line); native multiline inputs grow on
+  // their own. Track the content height and size the textarea to it. The
+  // handler is deliberately not memoized: react-native-web re-measures on
+  // every new handler, which catches a value set from props, not typing.
+  const growOnWeb = !!multiline && Platform.OS === "web";
+  const [webHeight, setWebHeight] = useState<number | null>(null);
+  // iOS has no live regions: say a new error out loud (web uses role="alert").
+  useEffect(() => {
+    if (error && Platform.OS !== "web") AccessibilityInfo.announceForAccessibility(error);
+  }, [error]);
   const search = variant === "search";
   const bare = variant === "bare";
   const help = error || hint;
@@ -99,6 +112,8 @@ export function TextField({
         {search ? <Icon name="search" size={16} tone="muted" /> : null}
         <TextInput
           ref={ref}
+          // The app is dark only (UX pass 0.15), so the iOS keyboard is too.
+          keyboardAppearance="dark"
           {...rest}
           testID={testID}
           editable={editable}
@@ -110,6 +125,14 @@ export function TextField({
             "aria-describedby": help ? helpId : undefined,
             "aria-invalid": error ? true : undefined,
           })}
+          onContentSizeChange={
+            growOnWeb
+              ? (e) => {
+                  setWebHeight(e.nativeEvent.contentSize.height);
+                  rest.onContentSizeChange?.(e);
+                }
+              : rest.onContentSizeChange
+          }
           onFocus={(e) => {
             setFocused(true);
             onFocus?.(e);
@@ -124,6 +147,7 @@ export function TextField({
             bare ? styles.inputBare : null,
             flatInput,
             { fontSize },
+            growOnWeb && webHeight ? { height: webHeight } : null,
           ]}
         />
         {trailing}
@@ -144,6 +168,9 @@ export function TextField({
           variant="caption"
           tone={error ? "danger" : "muted"}
           nativeID={helpId}
+          // An error is announced as it appears (and is the field's
+          // description through aria-describedby); a hint is only described.
+          role={error ? "alert" : undefined}
           accessibilityLiveRegion={error ? "polite" : undefined}
         >
           {help}
@@ -163,14 +190,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: tokens.space.md,
     borderRadius: tokens.radius.md,
     borderWidth: 1,
-    borderColor: tokens.border.default,
+    // `border.control`: an input's edge clears 3:1 on canvas and surface.
+    borderColor: tokens.border.control,
     backgroundColor: tokens.bg.surface,
   },
   fieldSearch: {
     borderRadius: tokens.radius.pill,
     paddingLeft: tokens.space.md,
     paddingRight: tokens.space.xs,
-    borderColor: tokens.border.subtle,
   },
   fieldMultiline: { alignItems: "flex-start", minHeight: 88 },
   fieldBare: {
@@ -190,8 +217,8 @@ const styles = StyleSheet.create({
     minWidth: 0,
     color: tokens.text.primary,
     fontSize: MIN_INPUT_FONT_SIZE,
-    lineHeight: 22,
-    paddingVertical: 10,
+    lineHeight: tokens.font.lineHeight.md,
+    paddingVertical: tokens.space.sm,
     // The input element itself is the click/tap target on web: 44pt.
     minHeight: tokens.hit,
   },

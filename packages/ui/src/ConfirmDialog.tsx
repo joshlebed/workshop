@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -8,7 +8,6 @@ import {
   type ViewInstance,
 } from "react-native";
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
@@ -16,6 +15,8 @@ import Animated, {
 } from "react-native-reanimated";
 import { Button } from "./Button";
 import { type ConfirmRequest, confirmStore } from "./confirmStore";
+import { webAria } from "./interaction";
+import { timing } from "./motion";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -66,6 +67,8 @@ function ConfirmDialog({
     destructive = false,
   } = request;
   const cardRef = useRef<ViewInstance>(null);
+  const messageId = `confirm-message-${useId().replace(/:/g, "")}`;
+  const destructiveRef = useRef(destructive);
   const cancelRef = useRef<ViewInstance>(null);
   const confirmRef = useRef<ViewInstance>(null);
   const answerRef = useRef(onAnswer);
@@ -74,13 +77,11 @@ function ConfirmDialog({
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withTiming(1, {
-      duration: tokens.motion.fast,
-      easing: Easing.bezier(...tokens.motion.easeOut),
-    });
+    progress.value = withTiming(1, timing("fast"));
   }, [progress]);
 
-  // Keyboard contract (web): focus starts on the confirm button, Tab and
+  // Keyboard contract (web): focus starts on the confirm button (on Cancel
+  // when the action is destructive, so a stray Enter never deletes), Tab and
   // Shift+Tab cycle inside the dialog, Escape cancels, Enter confirms unless
   // focus is on Cancel. Focus returns to the opener when the dialog closes.
   useEffect(() => {
@@ -88,7 +89,10 @@ function ConfirmDialog({
     const opener = document.activeElement as HTMLElement | null;
     const asEl = (r: React.RefObject<ViewInstance | null>) =>
       r.current as unknown as HTMLElement | null;
-    const focusTimer = setTimeout(() => asEl(confirmRef)?.focus(), 0);
+    const focusTimer = setTimeout(
+      () => asEl(destructiveRef.current ? cancelRef : confirmRef)?.focus(),
+      0,
+    );
     const onKey = (e: KeyboardEvent) => {
       const cancelEl = asEl(cancelRef);
       const confirmEl = asEl(confirmRef);
@@ -151,11 +155,12 @@ function ConfirmDialog({
           role="alertdialog"
           aria-modal
           aria-label={title}
+          {...webAria({ "aria-describedby": message ? messageId : undefined })}
           testID="confirm-dialog"
         >
           <Text variant="heading">{title}</Text>
           {message ? (
-            <Text tone="secondary" style={styles.message}>
+            <Text tone="secondary" style={styles.message} nativeID={messageId}>
               {message}
             </Text>
           ) : null}

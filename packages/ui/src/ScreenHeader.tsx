@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { StyleSheet, View, type ViewStyle } from "react-native";
 import { IconButton } from "./IconButton";
+import { screenColumnStyle } from "./Layout";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -17,6 +18,12 @@ export interface ScreenHeaderProps {
   leadingLabel?: string;
   leadingTestID?: string;
   title?: string;
+  /**
+   * Heading level of `title`: 1 (default) because a screen's title is its one
+   * level-1 heading. A header that isn't the page's (the desktop sidebar)
+   * passes 2.
+   */
+  titleLevel?: 1 | 2;
   /** Small tracked kicker above the title ("Settings", "Account"). */
   eyebrow?: string;
   /** Rendered just before the title block (an `EmojiBadge`, an avatar). */
@@ -40,6 +47,7 @@ export function ScreenHeader({
   leadingLabel,
   leadingTestID,
   title,
+  titleLevel = 1,
   eyebrow,
   titleAccessory,
   trailing,
@@ -49,7 +57,7 @@ export function ScreenHeader({
 }: ScreenHeaderProps) {
   const hasLeading = leading !== "none";
   return (
-    <View style={[styles.root, style]} testID={testID}>
+    <View style={[styles.root, screenColumnStyle, style]} testID={testID}>
       {hasLeading ? (
         <IconButton
           icon={leading === "back" ? "back" : "close"}
@@ -72,7 +80,7 @@ export function ScreenHeader({
                   </Text>
                 ) : null}
                 {title ? (
-                  <Text variant="heading" numberOfLines={1} headerRole>
+                  <Text variant="heading" numberOfLines={1} headerRole={titleLevel}>
                     {title}
                   </Text>
                 ) : null}

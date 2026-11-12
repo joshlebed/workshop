@@ -84,7 +84,11 @@ export function SearchResultRow({
         testID={`${rowTestId}-${onList ? "on-list" : "add"}`}
       >
         {loading ? (
-          <ActivityIndicator size="small" color={tokens.text.secondary} />
+          <ActivityIndicator
+            size="small"
+            color={tokens.text.secondary}
+            accessibilityLabel="Adding"
+          />
         ) : (
           <Text variant="label" tone={onList ? "muted" : "primary"}>
             {onList ? "On list" : "Add"}
@@ -124,7 +128,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  placeholderGlyph: { fontSize: tokens.font.size.lg },
+  placeholderGlyph: { fontSize: tokens.font.size.lg, lineHeight: tokens.font.lineHeight.lg },
   body: { flex: 1, gap: tokens.space.xxs },
   addPill: {
     minWidth: 72,

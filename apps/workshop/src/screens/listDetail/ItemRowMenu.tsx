@@ -7,6 +7,7 @@
 
 import type { Item } from "@workshop/shared";
 import { ActionSheet } from "@workshop/ui";
+import { useState } from "react";
 
 export interface ItemRowMenuActions {
   onMoveUp?: () => void;
@@ -16,7 +17,6 @@ export interface ItemRowMenuActions {
   onUnrank?: () => void;
   /** Complete / reopen, with the label in the list's own word. */
   completion?: { label: string; onPress: () => void };
-  onEdit?: () => void;
   onDelete: () => void;
 }
 
@@ -28,12 +28,19 @@ interface ItemRowMenuProps {
 
 // The chosen action runs from the sheet's `onClosed` (ActionSheet handles it),
 // after its Modal has finished dismissing (0.13).
-export function ItemRowMenu({ item, actions: a, onClose }: ItemRowMenuProps) {
+export function ItemRowMenu({ item, actions, onClose }: ItemRowMenuProps) {
+  const visible = item !== null && actions !== null;
+  // Keep the last row's title and actions through the exit animation, so the
+  // sheet slides away whole instead of emptying first.
+  const [shown, setShown] = useState({ item, actions });
+  if (visible && (shown.item !== item || shown.actions !== actions)) setShown({ item, actions });
+  const a = visible ? actions : shown.actions;
+  const title = visible ? item.title : shown.item?.title;
   return (
     <ActionSheet
-      visible={item !== null && a !== null}
+      visible={visible}
       onClose={onClose}
-      title={item?.title}
+      title={title}
       testID="item-row-menu-sheet"
       cancelTestID="item-row-menu-cancel"
       items={
@@ -66,7 +73,6 @@ export function ItemRowMenu({ item, actions: a, onClose }: ItemRowMenuProps) {
                 onPress: a.onUnrank,
                 testID: "item-row-menu-unrank",
               },
-              a.onEdit && { label: "Edit", onPress: a.onEdit, testID: "item-row-menu-edit" },
               {
                 label: "Delete",
                 icon: "trash" as const,

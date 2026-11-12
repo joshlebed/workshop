@@ -1,6 +1,6 @@
 # Workshop — usability pass: audit and engineering plan
 
-Status: approved 2026-11-11, in progress · Opened: 2026-11-11 · Scope: `apps/workshop` + `packages/ui` (HighScore untouched)
+Status: approved 2026-11-11, done through Phase 5 (in review) · Opened: 2026-11-11 · Scope: `apps/workshop` + `packages/ui` (HighScore untouched)
 
 The feature set is settled. This document is the audit of how the app feels to use today and the
 plan for making it production grade. It follows `PRODUCT.md` and `DESIGN.md`; nothing here changes
@@ -285,6 +285,40 @@ join, provider, name, Join), landing in the list with home beneath it. Decisions
 | 5.6 | _Deferred._ Light mode stays off; 0.15 pins the app to dark. Revisit as its own project (primitives on `useTheme()`, light-specific accent and status text tokens).                | —    |
 | 5.7 | **Desktop web**: the page scrolls instead of an inner box, hover states, and a two-pane layout (lists left, list right) above about 900px.                                         | L    |
 
+**Phase 5 status (2026-11-12): done, rows 5.1–5.5 and 5.7 (all three parts; 5.6 deferred by
+decision)**, in the `joshlebed/ux-pass-phase-5` PR (stacked on Phase 4). Verified in the running web
+app at 390×844, 1440×900, 200% zoom and 320px wide with reduced motion, keyboard-only, with axe on
+22 routes, the full Playwright suite (now on scratch users only), and on the iOS simulator. HighScore
+home and a game screen are pixel-identical before and after. Decisions and deviations:
+
+- **5.7c two-pane, built**: `TwoPaneShell` (web, ≥900px) renders the `(lists)` stack in a right
+  pane beside `HomeLists variant="sidebar"`. The sidebar is chrome, not a route, so URLs,
+  back/forward, deep links and reload are the stack's own (`tests/e2e/desktop.spec.ts`); item
+  detail, add, settings and the create flow push inside the pane; sheets are centred dialogs from
+  720px. Picking a list in the sidebar replaces the open one (home stays beneath), so browser
+  back from list B goes to the "Open a list" placeholder, not to list A: the stack stays two deep
+  instead of growing with every click. Below 900px, and for someone with no lists, the phone
+  layout is untouched. Activity, sign-in and the share picker stay single column (root stack).
+- **5.7a page scroll**: the scroll view of every screen spans its pane, so the scrollbar is at
+  the window edge and the wheel works anywhere; content is held to the 560 column. The header
+  (and list search) stays put above it. A true document scroll would fight react-navigation's
+  stack cards.
+- **5.7b**: one shortcut catalog (`src/lib/shortcuts/`) feeds the handlers and the `?` sheet
+  (also Settings → Keyboard shortcuts): `/` or ⌘K, `N`, Escape, ⌘Enter, ⌘Z (Undo while its toast
+  shows), ⌘/, `?`. None fire while typing, while a sheet is open, or on a screen underneath; the
+  old home ⌘N fired from underneath list detail and Chrome swallows ⌘N anyway, so new list is `N`.
+- **Toast rule (carry-over 3)**: opening a new screen dismisses the toasts raised before it;
+  going back keeps them (item detail's "Deleted · Undo" survives the trip back to the list).
+- **Tick hold**: a ticked row stays in place, checked, for 1.2s, then moves to Done; ticks in a
+  row land together and an untick inside the hold sends nothing (the critique's error-prevention
+  finding). The write is sent when the hold ends, or at once when the screen or app is left.
+- **Contrast**: `text.muted` #86817C → #908B87 and a new `border.control` #726E6A (≥3:1 on every
+  surface) for every control edge; HighScore's shared Google button keeps its old edge.
+- **Found and fixed**: a reload within 30s showed stale data (the restored cache counted as
+  fresh); failed writes stacked three contradictory toasts with raw "Failed to fetch"; the iOS
+  keyboard was light; every `SectionHeader` rendered as an `<h1>`; Space didn't toggle checkboxes,
+  switches or radios on web; home and list emoji/color pickers were two implementations.
+
 ## 4. Sequencing
 
 ```
@@ -338,3 +372,80 @@ above as each lands, so they cannot regress.
 One Graphite stack, one PR per phase, each verified in the running app before the next starts:
 plan (#585) ← phase 0 ← phase 1 ← phase 2 ← phase 3 ← phase 4 ← phase 5. Nothing merges until the
 human review pass at the end.
+
+## 9. Final status (2026-11-12)
+
+The pass is done through Phase 5; nothing is merged yet (human review of the whole stack first).
+
+**Nielsen heuristics** (impeccable `critique`, scored 0–4 by an independent reviewer walking every
+route as a new and an existing user at 390×844 and 1440×900; the automated detector found 0
+anti-patterns on 221 files and 10 page views):
+
+| #   | Heuristic                   | Baseline  | After Phase 5 | Final     | Still holding it down                                                         |
+| --- | --------------------------- | --------- | ------------- | --------- | ----------------------------------------------------------------------------- |
+| 1   | Visibility of system status | 2         | 3             | 3         | No Saving/Saved in item detail; writes queued offline show no "will save" cue |
+| 2   | Match with the real world   | 2         | 3             | 4         | Nits (⌘ shown on Linux)                                                       |
+| 3   | User control and freedom    | 1         | 3             | 3         | Undo windows 5–6s; Back from Hidden lists lands on Settings                   |
+| 4   | Consistency and standards   | 1         | 3             | 3         | Tag/note placeholders differ; toast centred on the window, not the pane       |
+| 5   | Error prevention            | 1         | 3             | 4         |                                                                               |
+| 6   | Recognition over recall     | 2         | 3             | 3         | Save view sits at the end of the tag strip, off-screen at 390                 |
+| 7   | Flexibility and efficiency  | 2         | 3             | 3         | No arrow keys between rows                                                    |
+| 8   | Aesthetic and minimalist    | 3         | 3             | 3         | List settings shows features that don't fit the list type                     |
+| 9   | Error recovery              | 2         | 2             | 3         | A 500 has no Retry; the Spotify link error doesn't mark the field             |
+| 10  | Help and documentation      | 3         | 3             | 3         |                                                                               |
+|     | **Total**                   | **19/40** | **29/40**     | **32/40** | Target 32+: met                                                               |
+
+The baseline column is the plan's 19/40 estimate; its per-heuristic split is reconstructed from
+§1. Cognitive load: 2 of 8 checks fail (row menu choices, list settings features).
+
+**Audit dimensions** (0–4): accessibility 3 (axe: 0 findings of any severity on 22 routes at both
+widths, keyboard-only journeys complete; VoiceOver unverified on a device, radio groups move by
+Tab), performance 3 (transform/opacity motion only, no jank seen; not profiled), theming 3 (tokens
+everywhere, 19 deliberate off-scale literals; dark only by decision), responsive 4 (44pt targets,
+16px inputs, 320px reflow, 200% zoom, desktop two-pane), anti-patterns 3 (detector clean; the
+emoji-in-a-tinted-disc mark repeats on every screen). **16/20.**
+
+**Journeys (§5), measured** at 390×844; each also completed keyboard-only at 1440×900:
+
+| Journey                        | Before the pass                                      | Target                     | Measured                                               |
+| ------------------------------ | ---------------------------------------------------- | -------------------------- | ------------------------------------------------------ |
+| Complete an item               | 2 taps + sheet, no feedback until the server answers | 1 tap, instant, undoable   | 1 tap, instant, Undo toast (⌘Z on web)                 |
+| Add five plain items           | 15 taps, 5 modal round trips                         | 2 taps + five Returns      | 2 taps + five Returns                                  |
+| Share a list                   | 3 taps, clipboard only, owner only                   | 2 taps, native share sheet | 2 taps, system share sheet (copy where there is none)  |
+| New user joins from a link     | 4 taps, then the list is lost                        | 4 taps, lands in the list  | 4 taps + 1 text entry, lands in the list, home beneath |
+| First list from a cold install | 5 taps + 2 text entries                              | 4 taps + 1 text entry      | 3 taps + 1 text entry                                  |
+| Undo a mistake                 | not possible                                         | every reversible action    | 1 tap on the toast: complete, delete, move, rank, hide |
+
+**Known gaps left** (in scope but not done, or product calls): which features list settings offers
+per list type; activity not batched; no Saving/Saved in item detail; Undo windows don't pause on
+native; native swipe actions (2.1, 3.2) were never built; arrow-key row navigation.
+
+**Needs a physical device** (collected from Phases 0–5):
+
+- iOS haptics everywhere (complete, add, creates, joins, destructive confirms, selection, per-slot
+  ticks while dragging) and the Sheet under iOS Reduce Motion.
+- Native drag: long-press thresholds on a real touchscreen, the empty-Ranked slot cell, the drop
+  slide; the double scale on a lifted row (library 1.025 × row 1.02).
+- The iOS Modal/Alert race when a sheet chains into a confirm (0.13) and the system Alert path of
+  `confirm()`; native status-bar glyphs on a light-mode phone (0.15).
+- VoiceOver: announcements (toasts, Move up / Move down), rows read by their own text, the home
+  row label, expanded state of Done, Switch/RadioRow state.
+- The native share sheet (3.3), the back gesture after create / join / accept (3.8), long-press on a
+  home row.
+- The share extension hand-off into the signed-out stash and its resume after sign-in (4.4);
+  keyboard avoidance on the display-name step; real Apple / Google sign-in and the provider-name
+  prefill; Spotify / Letterboxd import creation.
+- Native multiline inputs growing with text and the emoji glyph sizes at large Dynamic Type.
+
+Checked on the iOS simulator in Phase 5 (not a device): home, list detail, quick add with
+Return, long-press reorder and scroll after it, delete + Undo, a sheet above the keyboard, the
+row menu, the tick hold, the dark keyboard, and names/roles/states in the accessibility tree.
+
+**Operator actions**:
+
+- Review the legal text in `apps/workshop/src/lib/legal.ts` (`/privacy`, `/terms`), then set
+  `https://workshop-a2v.pages.dev/privacy` as Workshop's privacy policy URL in App Store Connect.
+- Flip `app.json` `userInterfaceStyle` to `dark` with the next native version bump (0.15 pinned dark
+  in JS only to keep the OTA path open), and drop the leftover `EXPO_PUBLIC_ENABLE_GAMES` /
+  `expo-haptics` cleanups that need a native bump.
+- Decide which list features list settings should offer per list type.

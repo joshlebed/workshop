@@ -37,11 +37,21 @@ describe("theme tokens", () => {
           "surface": "#191715",
         },
         "border": {
+          "control": "#726E6A",
           "default": "#3C3835",
           "strong": "#55504C",
           "subtle": "#2D2926",
         },
         "font": {
+          "lineHeight": {
+            "lg": 24,
+            "md": 22,
+            "sm": 18,
+            "xl": 28,
+            "xs": 16,
+            "xxl": 34,
+            "xxxl": 40,
+          },
           "size": {
             "lg": 18,
             "md": 16,
@@ -50,6 +60,12 @@ describe("theme tokens", () => {
             "xs": 12,
             "xxl": 28,
             "xxxl": 34,
+          },
+          "tracking": {
+            "display": -0.6,
+            "eyebrow": 0.8,
+            "heading": -0.2,
+            "title": -0.4,
           },
           "weight": {
             "bold": "700",
@@ -101,7 +117,7 @@ describe("theme tokens", () => {
           "warning": "#F5A524",
         },
         "text": {
-          "muted": "#86817C",
+          "muted": "#908B87",
           "onAccent": "#0E0C0B",
           "primary": "#F2F0ED",
           "secondary": "#A7A29E",
@@ -124,11 +140,21 @@ describe("theme tokens", () => {
           "surface": "#F7F4F2",
         },
         "border": {
+          "control": "#847F7B",
           "default": "#D4CEC9",
           "strong": "#AFA8A1",
           "subtle": "#E3DFDA",
         },
         "font": {
+          "lineHeight": {
+            "lg": 24,
+            "md": 22,
+            "sm": 18,
+            "xl": 28,
+            "xs": 16,
+            "xxl": 34,
+            "xxxl": 40,
+          },
           "size": {
             "lg": 18,
             "md": 16,
@@ -137,6 +163,12 @@ describe("theme tokens", () => {
             "xs": 12,
             "xxl": 28,
             "xxxl": 34,
+          },
+          "tracking": {
+            "display": -0.6,
+            "eyebrow": 0.8,
+            "heading": -0.2,
+            "title": -0.4,
           },
           "weight": {
             "bold": "700",

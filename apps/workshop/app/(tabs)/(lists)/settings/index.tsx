@@ -4,18 +4,22 @@ import {
   Avatar,
   confirm,
   ListRow,
+  layout,
   Screen,
   ScreenHeader,
   SectionHeader,
+  screenColumnStyle,
   Text,
   tokens,
 } from "@workshop/ui";
 import Constants from "expo-constants";
 import { useRouter } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { Linking, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { fetchLists } from "../../../../src/api/lists";
+import { KeyboardShortcutsSheet } from "../../../../src/components/KeyboardShortcutsSheet";
 import { useAuth } from "../../../../src/hooks/useAuth";
+import { useFinePointer } from "../../../../src/lib/finePointer";
 import { goBack } from "../../../../src/lib/goBack";
 import { AdminImpersonationRow } from "../../../../src/screens/settings/AdminImpersonation";
 import { LetterboxdRow } from "../../../../src/screens/settings/LetterboxdRow";
@@ -65,6 +69,9 @@ export default function Settings() {
   }, [queryClient, router]);
 
   const showAdmin = !!user?.isAdmin || !!impersonation;
+  // Keyboard shortcuts are listed only where there's a keyboard (5.7b).
+  const finePointer = useFinePointer();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const name = user?.displayName?.trim() || "You";
 
   return (
@@ -75,8 +82,8 @@ export default function Settings() {
         leadingTestID="settings-back"
         title="Settings"
       />
-      <ScrollView contentContainerStyle={styles.body} testID="settings-screen">
-        <Group title="You">
+      <ScrollView contentContainerStyle={[styles.body, screenColumnStyle]} testID="settings-screen">
+        <Group title="You" first>
           <ListRow
             leading={
               <Avatar
@@ -90,7 +97,8 @@ export default function Settings() {
             subtitle={user?.email ?? undefined}
             chevron
             onPress={() => router.push("/profile")}
-            accessibilityLabel={`Edit profile, ${name}`}
+            // Named by its own text (name, email; WCAG 2.5.3); the hint says where it goes.
+            accessibilityHint="Edit profile"
             testID="settings-profile"
           />
         </Group>
@@ -123,6 +131,18 @@ export default function Settings() {
             onPress={() => router.push("/terms")}
             testID="settings-terms"
           />
+          {finePointer ? (
+            <ListRow
+              title="Keyboard shortcuts"
+              trailing={
+                <Text variant="label" tone="muted">
+                  ?
+                </Text>
+              }
+              onPress={() => setShortcutsOpen(true)}
+              testID="settings-shortcuts"
+            />
+          ) : null}
           <ListRow
             title="Version"
             trailing={
@@ -144,7 +164,6 @@ export default function Settings() {
             subtitle="Also deletes your HighScore account"
             chevron
             onPress={() => router.push("/settings/delete-account")}
-            accessibilityLabel="Delete account"
             testID="settings-delete-account"
           />
         </Group>
@@ -163,14 +182,23 @@ export default function Settings() {
           </Group>
         ) : null}
       </ScrollView>
+      <KeyboardShortcutsSheet visible={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </Screen>
   );
 }
 
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
+function Group({
+  title,
+  first,
+  children,
+}: {
+  title: string;
+  first?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <View style={styles.group}>
-      <SectionHeader title={title} style={styles.groupHeader} />
+    <View>
+      <SectionHeader title={title} first={first} />
       {children}
     </View>
   );
@@ -178,13 +206,14 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
-  body: { paddingBottom: tokens.space.xxl * 2 },
-  group: { paddingTop: tokens.space.lg },
-  groupHeader: { paddingHorizontal: tokens.space.lg, paddingBottom: tokens.space.xs },
-  avatar: { width: 48, height: 48, borderRadius: 24 },
+  body: { paddingTop: layout.contentTopGap, paddingBottom: layout.bottomInset },
+  // A group with no label (Sign out) keeps the section rhythm.
+  group: { paddingTop: layout.sectionTop },
+  // The row's leading slot is 44 everywhere (DESIGN.md Row).
+  avatar: { width: 44, height: 44, borderRadius: tokens.radius.pill },
   danger: {
     color: tokens.status.danger,
-    fontSize: tokens.font.size.md,
     fontWeight: tokens.font.weight.medium,
+    letterSpacing: tokens.font.tracking.heading,
   },
 });

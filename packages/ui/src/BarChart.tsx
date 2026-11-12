@@ -230,6 +230,10 @@ export function BarChart({
             return (
               <Pressable
                 key={p.day}
+                // Each bar is a labelled image for screen readers, not a tab
+                // stop (a 90-day chart was 90 stops); hover shows the value.
+                role="img"
+                focusable={false}
                 accessibilityLabel={`${labelFor(p.day)}: ${p.value}`}
                 onHoverIn={() => setActive(i)}
                 onHoverOut={() => setActive((cur) => (cur === i ? null : cur))}

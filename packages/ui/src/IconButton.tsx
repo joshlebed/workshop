@@ -22,6 +22,12 @@ export interface IconButtonProps extends Omit<PressableProps, "children" | "styl
   busy?: boolean;
   /** Toggle buttons: exposes `aria-pressed` on web. */
   toggled?: boolean;
+  /**
+   * Web hover tooltip (`title`). Defaults to the accessible name, so every
+   * icon-only control says what it does on hover; pass a string to add a
+   * shortcut ("New list  (N)").
+   */
+  tooltip?: string;
   style?: ViewStyle;
 }
 
@@ -36,6 +42,7 @@ export function IconButton({
   disabled = false,
   busy = false,
   toggled,
+  tooltip,
   style,
   ...rest
 }: IconButtonProps) {
@@ -49,7 +56,7 @@ export function IconButton({
       accessibilityState={{ disabled: inert, busy, selected: toggled }}
       aria-disabled={inert}
       aria-busy={busy}
-      {...webAria({ "aria-pressed": toggled })}
+      {...webAria({ "aria-pressed": toggled, title: tooltip ?? accessibilityLabel })}
       style={({ pressed, hovered }: PressState) => [
         styles.base,
         hovered && !inert ? styles.hovered : null,
@@ -59,7 +66,11 @@ export function IconButton({
       ]}
     >
       {busy ? (
-        <ActivityIndicator size="small" color={tokens.text.secondary} />
+        <ActivityIndicator
+          size="small"
+          color={tokens.text.secondary}
+          accessibilityLabel="Working"
+        />
       ) : icon ? (
         <Icon name={icon} tone={iconTone} size={iconSize} />
       ) : (

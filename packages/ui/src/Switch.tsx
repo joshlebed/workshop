@@ -1,13 +1,14 @@
 import { useEffect } from "react";
 import { Pressable, StyleSheet, View, type ViewStyle } from "react-native";
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import { interaction, type PressState } from "./interaction";
+import { haptics } from "./haptics";
+import { interaction, type PressState, webSpaceKey } from "./interaction";
+import { timing } from "./motion";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -43,19 +44,18 @@ export function Switch({
   const reduceMotion = useReducedMotion();
   const on = useSharedValue(value ? 1 : 0);
   useEffect(() => {
-    on.value = reduceMotion
-      ? value
-        ? 1
-        : 0
-      : withTiming(value ? 1 : 0, {
-          duration: tokens.motion.fast,
-          easing: Easing.bezier(...tokens.motion.easeOut),
-        });
+    on.value = reduceMotion ? (value ? 1 : 0) : withTiming(value ? 1 : 0, timing("fast"));
   }, [value, on, reduceMotion]);
   const knobStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: on.value * (TRACK_W - KNOB - 4) }],
   }));
 
+  const toggle = disabled
+    ? undefined
+    : () => {
+        haptics.selection();
+        onValueChange(!value);
+      };
   return (
     <Pressable
       role="switch"
@@ -65,7 +65,8 @@ export function Switch({
       accessibilityState={{ checked: value, disabled }}
       aria-checked={value}
       aria-disabled={disabled}
-      onPress={disabled ? undefined : () => onValueChange(!value)}
+      onPress={toggle}
+      {...webSpaceKey(toggle)}
       testID={testID}
       style={({ pressed, hovered }: PressState) => [
         styles.row,
@@ -79,7 +80,8 @@ export function Switch({
       <View style={styles.text}>
         <Text variant="label">{label}</Text>
         {description ? (
-          <Text variant="caption" tone="muted">
+          // On the accent tint `muted` drops under 4.5:1; `secondary` clears it.
+          <Text variant="caption" tone={value ? "secondary" : "muted"}>
             {description}
           </Text>
         ) : null}
@@ -115,7 +117,8 @@ const styles = StyleSheet.create({
     padding: 2,
     justifyContent: "center",
   },
-  trackOff: { backgroundColor: tokens.border.subtle },
+  // The off track has to read on the row's surface fill (≥3:1).
+  trackOff: { backgroundColor: tokens.border.control },
   trackOn: { backgroundColor: tokens.accent.default },
   knob: {
     width: KNOB,

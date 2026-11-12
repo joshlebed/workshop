@@ -21,6 +21,7 @@ export function baseRowProps(
       ? null
       : (p.memberNameById.get(item.addedBy) ?? null);
   const done = section === "completed";
+  const checked = done || (p.heldDoneIds?.has(item.id) ?? false);
   const override = p.letterboxdBadgeByItem?.get(item.id);
   return {
     item,
@@ -35,9 +36,9 @@ export function baseRowProps(
     ...(p.todoOn && item.kind !== "spotify_album"
       ? {
           checkbox: {
-            checked: done,
-            onToggle: () => p.onToggleComplete(item, !done),
-            hint: done ? p.copy.unmark : p.copy.mark,
+            checked,
+            onToggle: () => p.onToggleComplete(item, !checked),
+            hint: checked ? p.copy.unmark : p.copy.mark,
           },
         }
       : {}),

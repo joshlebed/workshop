@@ -1,13 +1,20 @@
-import { expect, test } from "@playwright/test";
-import { disableAutoDevSignIn, signInAsDev } from "./helpers";
+import {
+  cleanupScratchUser,
+  createScratchList,
+  expect,
+  ITEM_ROWS,
+  mintScratchUser,
+  type ScratchUser,
+  seedSession,
+  test,
+} from "./helpers";
 
-// Happy-path for chunk 2b-1: dev-sign-in → create movie list → search →
-// add a movie via the search modal → verify it lands on the list.
+// Search-backed lists: search → add a movie from the results → it lands on
+// the list. The sandbox has no TMDB key, so `GET /v1/search/media` is mocked;
+// the test is about the client wiring (debounce → fetch → render → select →
+// POST), not TMDB itself (apps/backend/src/routes/v1/search.test.ts).
 //
-// The backend's TMDB_API_KEY is unset in dev, so `GET /v1/search/media` would
-// return 500. We mock it directly to a fixed result set — the test is about
-// the client wiring (debounce → fetch → render → select → POST), not TMDB
-// itself (covered by `apps/backend/src/routes/v1/search.test.ts`).
+// A scratch user owns a `zz-ux-scratch-e2e-*` movie list; cleanup deletes it.
 
 const MEDIA_FIXTURE = {
   results: [
@@ -28,9 +35,29 @@ const MEDIA_FIXTURE = {
   ],
 };
 
-test("create movie list → search → add via search result", async ({ page }) => {
-  await disableAutoDevSignIn(page);
+test.use({ viewport: { width: 390, height: 844 } });
 
+let user: ScratchUser | null = null;
+let listId = "";
+
+test.beforeAll(async () => {
+  user = await mintScratchUser("search");
+  listId = (
+    await createScratchList(user, {
+      name: "search",
+      emoji: "🎬",
+      color: "sunset",
+      itemKind: "movie",
+      modules: ["todo", "ranking"],
+    })
+  ).id;
+});
+
+test.afterAll(async () => cleanupScratchUser(user));
+
+test("movie list → search → add via search result", async ({ page }) => {
+  if (!user) throw new Error("no scratch user");
+  await seedSession(page, user.token);
   await page.route("**/v1/search/media**", async (route) => {
     await route.fulfill({
       status: 200,
@@ -39,42 +66,26 @@ test("create movie list → search → add via search result", async ({ page }) 
     });
   });
 
-  await page.goto("/");
+  await page.goto(`/list/${listId}`);
+  await page.getByTestId("list-detail-empty-add").click();
 
-  await signInAsDev(page, { displayName: "E2E Search" });
-
-  // Create a movie-typed list.
-  await page.getByTestId("fab-create-list").click();
-  await page.getByTestId("create-list-type-movie").click();
-
-  const listName = `E2E movies ${Date.now()}`;
-  await page.getByTestId("create-list-name").fill(listName);
-  await page.getByTestId("create-list-submit").click();
-
-  // Skip the share step in the create-list flow.
-  await expect(page.getByTestId("create-list-share-done")).toBeVisible();
-  await page.getByTestId("create-list-share-done").click();
-
-  // Land on list detail; open the add flow.
-  await expect(page.getByTestId("empty-add-item")).toBeVisible();
-  await page.getByTestId("empty-add-item").click();
-
-  // The search input should be visible (movie list → search flow, not free-form).
+  // The search input (movie list → search flow, not free-form).
   const searchInput = page.getByTestId("add-item-search");
   await expect(searchInput).toBeVisible();
-
-  // Type a query — debounced 300ms → fetch → render result rows.
   await searchInput.fill("matrix");
 
   const matrixRow = page.getByTestId("search-result-603");
   await expect(matrixRow).toBeVisible();
-  await expect(matrixRow).toContainText("The Matrix (1999)");
+  await expect(matrixRow).toContainText("The Matrix");
+  await expect(matrixRow).toContainText("1999");
 
-  // Add the first result.
+  // Add the first result; the surface stays open, clears the search and
+  // confirms the add inline (2.4).
   await page.getByTestId("search-result-603-add").click();
+  await expect(page.getByTestId("add-item-added")).toContainText("The Matrix");
+  await page.getByTestId("add-item-cancel").click();
 
-  // After add, screen pops back to list detail; the new item is on the list.
-  const itemRow = page.locator('[data-testid^="item-row-"]').first();
-  await expect(itemRow).toBeVisible();
-  await expect(itemRow).toContainText("The Matrix");
+  const row = page.locator(ITEM_ROWS).first();
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("The Matrix");
 });

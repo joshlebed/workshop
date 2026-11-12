@@ -28,6 +28,8 @@ export interface ItemListProps {
   /** Album shelf: the detected block keeps its recency order. */
   openReorderable: boolean;
   newItemIds: Set<string>;
+  /** Rows just ticked done, still in place while they settle (drawn checked). */
+  heldDoneIds?: ReadonlyMap<string, unknown>;
   /** Scroll this row into view once it renders (after a quick add). */
   scrollToItemId: string | null;
   memberNameById: Map<string, string>;

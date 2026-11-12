@@ -6,6 +6,7 @@
 import type { ReactNode } from "react";
 import { ScrollView, StyleSheet } from "react-native";
 import { Chip } from "./Chip";
+import { layout } from "./Layout";
 import { tokens } from "./theme";
 
 export interface TagFilterBarProps {
@@ -41,11 +42,14 @@ export function TagFilterBar({
       contentContainerStyle={styles.row}
       testID={testID ?? "tag-filter-bar"}
       accessibilityLabel="Filter items by tag"
+      role="group"
     >
       <Chip
         label="All"
         selected={allSelected}
-        onPress={allSelected ? undefined : onClearAll}
+        // Always a toggle button (aria-pressed), even while it is the
+        // current state; pressing it then is a no-op clear.
+        onPress={onClearAll}
         testID="tag-filter-all"
       />
       {tags.map(({ tag, count }) => (
@@ -66,6 +70,6 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     gap: tokens.space.sm,
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
   },
 });

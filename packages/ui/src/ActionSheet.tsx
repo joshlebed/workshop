@@ -1,8 +1,8 @@
 import { type ReactNode, useRef } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
 import { createDeferredAction } from "./deferredAction";
 import { Icon, type IconName } from "./Icon";
-import { interaction, type PressState } from "./interaction";
+import { interaction, type PressState, webSpaceKey } from "./interaction";
 import { Sheet } from "./Sheet";
 import { Text } from "./Text";
 import { tokens } from "./theme";
@@ -31,6 +31,8 @@ export interface ActionSheetProps {
   /** Label of the trailing cancel row; `null` hides it. Default "Cancel". */
   cancelLabel?: string | null;
   cancelTestID?: string;
+  /** The dialog's name for assistive tech when there is no `title` (a custom `header`). */
+  accessibilityLabel?: string;
   testID?: string;
 }
 
@@ -48,10 +50,13 @@ export function ActionSheet({
   items,
   cancelLabel = "Cancel",
   cancelTestID,
+  accessibilityLabel,
   testID,
 }: ActionSheetProps) {
+  const name = accessibilityLabel ?? title ?? "Actions";
   const deferred = useRef(createDeferredAction()).current;
   const actions = items.filter(Boolean) as ActionSheetItem[];
+  const iconColumn = actions.some((i) => !!i.icon);
 
   return (
     <Sheet
@@ -61,6 +66,7 @@ export function ActionSheet({
         onClose();
       }}
       onClosed={() => deferred.flush()}
+      accessibilityLabel={name}
       testID={testID}
       contentStyle={styles.content}
     >
@@ -70,11 +76,17 @@ export function ActionSheet({
             {title}
           </Text>
         ) : null)}
-      <View accessibilityRole="menu" style={styles.list}>
+      <View
+        accessibilityRole="menu"
+        aria-label={name}
+        style={styles.list}
+        {...((Platform.OS === "web" ? { onKeyDown: menuArrowKeys } : {}) as object)}
+      >
         {actions.map((item) => (
           <ActionRow
             key={item.label}
             item={item}
+            iconColumn={iconColumn}
             onPress={() => {
               deferred.defer(item.onPress);
               onClose();
@@ -96,14 +108,42 @@ export function ActionSheet({
   );
 }
 
+/**
+ * Web: the menu's arrow keys (ARIA menu pattern). Up / Down move between
+ * items and wrap, Home / End jump to the ends; Tab still works too.
+ */
+function menuArrowKeys(e: { key: string; currentTarget: unknown; preventDefault: () => void }) {
+  if (typeof document === "undefined") return;
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+  const menu = e.currentTarget as HTMLElement;
+  const items = Array.from(
+    menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])'),
+  );
+  if (items.length === 0) return;
+  e.preventDefault();
+  const at = items.indexOf(document.activeElement as HTMLElement);
+  const next =
+    e.key === "Home"
+      ? 0
+      : e.key === "End"
+        ? items.length - 1
+        : e.key === "ArrowDown"
+          ? (at + 1) % items.length
+          : (at - 1 + items.length) % items.length;
+  items[next]?.focus();
+}
+
 function ActionRow({
   item,
   onPress,
   muted = false,
+  iconColumn = false,
 }: {
   item: ActionSheetItem;
   onPress: () => void;
   muted?: boolean;
+  /** Some item has an icon: keep the labels in one column (5, polish). */
+  iconColumn?: boolean;
 }) {
   const danger = item.tone === "danger";
   const color = danger ? tokens.status.danger : muted ? tokens.text.muted : tokens.text.primary;
@@ -114,6 +154,7 @@ function ActionRow({
       accessibilityState={{ disabled: item.disabled }}
       aria-disabled={item.disabled}
       onPress={item.disabled ? undefined : onPress}
+      {...webSpaceKey(item.disabled ? undefined : onPress)}
       testID={item.testID}
       style={({ pressed, hovered }: PressState) => [
         styles.row,
@@ -122,8 +163,12 @@ function ActionRow({
         item.disabled ? styles.rowDisabled : null,
       ]}
     >
-      {item.icon ? <Icon name={item.icon} size={20} color={color} /> : null}
-      <Text style={[styles.label, { color }, danger && styles.labelDanger]}>{item.label}</Text>
+      {item.icon ? (
+        <Icon name={item.icon} size={ICON_SIZE} color={color} />
+      ) : iconColumn ? (
+        <View style={styles.iconSpacer} />
+      ) : null}
+      <Text style={[{ color }, danger && styles.labelDanger]}>{item.label}</Text>
       {item.detail ? (
         <Text variant="caption" tone="muted" numberOfLines={1} style={styles.detail}>
           {item.detail}
@@ -133,7 +178,10 @@ function ActionRow({
   );
 }
 
+const ICON_SIZE = 20;
+
 const styles = StyleSheet.create({
+  iconSpacer: { width: ICON_SIZE },
   content: { gap: tokens.space.sm, paddingHorizontal: tokens.space.lg },
   title: { paddingHorizontal: tokens.space.sm, paddingBottom: tokens.space.xs },
   list: { gap: tokens.space.xxs },
@@ -148,7 +196,6 @@ const styles = StyleSheet.create({
   rowHovered: { backgroundColor: interaction.hover },
   rowPressed: { backgroundColor: interaction.pressed },
   rowDisabled: { opacity: 0.5 },
-  label: { fontSize: tokens.font.size.md, lineHeight: 22 },
   labelDanger: { fontWeight: tokens.font.weight.semibold },
   detail: { flex: 1, textAlign: "right" },
 });
