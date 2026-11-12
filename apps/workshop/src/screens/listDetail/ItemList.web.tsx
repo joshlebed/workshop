@@ -75,6 +75,10 @@ export function ItemList(props: ItemListProps) {
     onDrop,
     refreshing,
     onRefresh,
+    header,
+    placeholder,
+    scrollY,
+    scrollRef,
   } = props;
   const reduceMotion = useReducedMotion();
 
@@ -245,9 +249,15 @@ export function ItemList(props: ItemListProps) {
       <View style={styles.frame}>
         <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
           <ScrollView
+            ref={scrollRef as never}
             contentContainerStyle={[styles.listContent, screenColumnStyle]}
+            onScroll={(e) => {
+              if (scrollY) scrollY.value = e.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
             testID="list-detail-list"
           >
+            {header ? <View style={styles.header}>{header}</View> : null}
             {/* Rows already there when the list opens appear at once; only
                 rows that join later fade in. */}
             <LayoutAnimationConfig skipEntering>
@@ -286,6 +296,7 @@ export function ItemList(props: ItemListProps) {
                 </Animated.View>
               ))}
             </LayoutAnimationConfig>
+            {placeholder}
           </ScrollView>
         </PullToRefresh>
         {/* Floats over the top of the list instead of pushing it down, so the
@@ -400,6 +411,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
     boxShadow: "0px 8px 16px rgba(0, 0, 0, 0.35)",
   },
+  // The header blocks carry their own gutter.
+  header: { marginHorizontal: -pageLayout.gutter },
   listContent: {
     paddingHorizontal: pageLayout.gutter,
     paddingTop: tokens.space.sm,

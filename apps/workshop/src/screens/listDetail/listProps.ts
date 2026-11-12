@@ -3,10 +3,33 @@
 // list-detail row container.
 
 import type { Item, ItemKind } from "@workshop/shared";
+import type { ReactNode, RefObject } from "react";
+import type { SharedValue } from "react-native-reanimated";
 import type { CompletionCopy, DropResult } from "./listOps";
 import type { Section } from "./types";
 
+/** What the screen needs from the list's scroll view (web ScrollView, native container). */
+export interface ListScrollHandle {
+  scrollTo: (options: { y: number; animated?: boolean }) => void;
+}
+
 export interface ItemListProps {
+  /**
+   * Rendered at the top of the scroll content, above the rows: the list's
+   * title block, search and filters, so they scroll away with the list and
+   * only a compact bar stays pinned (UX pass 5 review).
+   */
+  header?: ReactNode;
+  /**
+   * Shown under the header in place of rows (no row matches the filter).
+   * Rendering it here, not instead of the list, keeps the header and its
+   * focused search field mounted while the person types.
+   */
+  placeholder?: ReactNode;
+  /** Written with the scroll offset, for the pinned bar's title. */
+  scrollY?: SharedValue<number>;
+  /** Lets the screen scroll back to the search field. */
+  scrollRef?: RefObject<ListScrollHandle | null>;
   /** Visible rows per section (already filtered). */
   ordered: Item[];
   unordered: Item[];

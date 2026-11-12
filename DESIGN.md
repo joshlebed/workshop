@@ -85,6 +85,13 @@ Spacing: 4 · 8 · 12 · 16 · 24 · 32 (plus 2 and 6 for optical nudges). Radiu
   works anywhere. Content is held to the 560 reading column by `screenColumnStyle` (on a
   scroll view's `contentContainerStyle`) or `ScreenColumn` (a block that doesn't scroll);
   `ScreenHeader` applies it to itself and stays put above the scroll (the sticky header).
+- **Pin only a compact bar.** Anything taller than the 56pt bar scrolls with the content. On
+  list detail the title block, search field and tag bar sit at the top of the scroll (the
+  list's `ItemList` `header` prop); the bar keeps back, share and settings, fades the list name
+  in once the big title has gone (`fast`, at once under reduced motion), and once the search
+  and tags have gone too it offers a search button, or a chip naming the active filter with
+  its own clear. `/` and ⌘K jump back to the field. Scrolled, only the 56pt bar stays pinned. Home already works this way (its
+  search is the list header).
   Floating chrome goes in `Screen`'s `overlay` prop so a FAB stays at the column's corner,
   not the window's. Native ignores all of this.
 - **Desktop two-pane (web, 900px and up)**: the lists sit in a 360 sidebar on the left and

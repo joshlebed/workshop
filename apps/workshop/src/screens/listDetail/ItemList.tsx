@@ -25,8 +25,12 @@ import {
   useMotionDuration,
 } from "@workshop/ui";
 import { memo, useCallback, useMemo } from "react";
-import { type ListRenderItemInfo, StyleSheet } from "react-native";
-import Animated, { LayoutAnimationConfig, runOnJS } from "react-native-reanimated";
+import { type ListRenderItemInfo, StyleSheet, View } from "react-native";
+import Animated, {
+  LayoutAnimationConfig,
+  runOnJS,
+  useAnimatedScrollHandler,
+} from "react-native-reanimated";
 import {
   NestedReorderableList,
   type ReorderableListIndexChangeEvent,
@@ -60,6 +64,10 @@ export function ItemList(props: ItemListProps) {
     onDrop,
     refreshing,
     onRefresh,
+    header,
+    placeholder,
+    scrollY,
+    scrollRef,
   } = props;
   // The drop's slide into place, on the token (the library defaults to 200ms
   // `Easing.out(ease)`); instant under reduced motion.
@@ -124,9 +132,20 @@ export function ItemList(props: ItemListProps) {
 
   const completedToRender = doneCollapsed ? [] : completed;
 
+  // The pinned bar fades the list name in once the title block scrolls away.
+  const scrollHandler = useAnimatedScrollHandler((e) => {
+    if (scrollY) scrollY.value = e.contentOffset.y;
+  });
+
   return (
     <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
-      <ScrollViewContainer contentContainerStyle={styles.listContent} testID="list-detail-list">
+      <ScrollViewContainer
+        ref={scrollRef as never}
+        contentContainerStyle={styles.listContent}
+        onScroll={scrollHandler}
+        testID="list-detail-list"
+      >
+        {header ? <View style={styles.header}>{header}</View> : null}
         {ordered.length > 0 && showHeaders ? (
           <SectionHeader
             kind="ordered"
@@ -174,6 +193,7 @@ export function ItemList(props: ItemListProps) {
             </Animated.View>
           ))}
         </LayoutAnimationConfig>
+        {placeholder}
       </ScrollViewContainer>
     </PullToRefresh>
   );
@@ -217,6 +237,8 @@ const DraggableRow = memo(function DraggableRow({
 });
 
 const styles = StyleSheet.create({
+  // The header blocks carry their own gutter.
+  header: { marginHorizontal: -layout.gutter },
   listContent: {
     paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.sm,

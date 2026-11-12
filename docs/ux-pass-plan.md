@@ -307,6 +307,11 @@ home and a game screen are pixel-identical before and after. Decisions and devia
   (also Settings → Keyboard shortcuts): `/` or ⌘K, `N`, Escape, ⌘Enter, ⌘Z (Undo while its toast
   shows), ⌘/, `?`. None fire while typing, while a sheet is open, or on a screen underneath; the
   old home ⌘N fired from underneath list detail and Chrome swallows ⌘N anyway, so new list is `N`.
+- **List detail pins only a compact bar** (review follow-up): the title block, search field
+  and tag bar scroll with the rows; the bar keeps back, share and settings, fades the list name
+  in once the title has gone and then offers search, or a chip for an active filter. At rest the
+  page looks as before (first row at y≈270 at 390×844 on a list with a tag bar); once scrolled,
+  only the 56pt bar stays pinned instead of everything above the rows.
 - **Toast rule (carry-over 3)**: opening a new screen dismisses the toasts raised before it;
   going back keeps them (item detail's "Deleted · Undo" survives the trip back to the list).
 - **Tick hold**: a ticked row stays in place, checked, for 1.2s, then moves to Done; ticks in a

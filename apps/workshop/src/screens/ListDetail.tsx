@@ -24,10 +24,13 @@ import {
   Fab,
   formatRelative,
   haptics,
+  Icon,
   IconButton,
+  interaction,
   type ListColorKey,
   layout,
   openExternalUrl,
+  type PressState,
   Reveal,
   Screen,
   ScreenHeader,
@@ -36,14 +39,33 @@ import {
   TagFilterBar,
   Text,
   TextField,
+  timing,
   tokens,
   useRevealAfterLoading,
   useToast,
 } from "@workshop/ui";
 import { useIsFocused, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppState, Platform, StyleSheet, type TextInputInstance, View } from "react-native";
+import {
+  AppState,
+  type LayoutChangeEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  type ScrollViewInstance,
+  StyleSheet,
+  type TextInputInstance,
+  View,
+} from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import Animated, {
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import {
   archiveItem,
   completeItem,
@@ -89,6 +111,7 @@ import {
   stepNeighbours,
   tagChipCounts,
 } from "./listDetail/listOps";
+import type { ListScrollHandle } from "./listDetail/listProps";
 import { rankAnchorsOf, rankByIdOf } from "./listDetail/ranks";
 import { SavedViewsBar } from "./listDetail/SavedViewsBar";
 import type { Section } from "./listDetail/types";
@@ -864,65 +887,71 @@ export function ListDetail({ list, members, sources, token }: Props) {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isFocused]);
+
+  // The pinned bar shows the list name once the title block has scrolled
+  // away (`titleBottom` is where it ends inside the scroll content).
+  const scrollY = useSharedValue(0);
+  const [titleBottom, setTitleBottom] = useState(0);
+  const [scrolledPast, setScrolledPast] = useState(false);
+  // Where the search field and tag bar end: past it, the bar offers search.
+  const [toolsBottom, setToolsBottom] = useState(0);
+  const [toolsHidden, setToolsHidden] = useState(false);
+  useAnimatedReaction(
+    () => toolsBottom > 0 && scrollY.value > toolsBottom - tokens.space.sm,
+    (past, before) => {
+      if (past !== before) runOnJS(setToolsHidden)(past);
+    },
+    [toolsBottom],
+  );
+  useAnimatedReaction(
+    () => titleBottom > 0 && scrollY.value > titleBottom - tokens.space.sm,
+    (past, before) => {
+      if (past !== before) runOnJS(setScrolledPast)(past);
+    },
+    [titleBottom],
+  );
+  const listScrollRef = useRef<ListScrollHandle>(null);
+  const plainScrollRef = useRef<ScrollViewInstance>(null);
+  // Back up to the search field and put the cursor in it (the bar's search
+  // control, a filter chip, `/` and ⌘K while the header is scrolled away).
+  const scrollToField = useCallback(() => {
+    // A jump, not a smooth scroll: focusing the field mid-animation stopped
+    // the scroll short of the top.
+    const target: ListScrollHandle | null = listScrollRef.current ?? plainScrollRef.current;
+    target?.scrollTo({ y: 0, animated: false });
+    setTimeout(() => filterInputRef.current?.focus?.(), 0);
+  }, []);
+  const filtering = filterActive || tagFilterActive;
+  const filterSummary = filterActive
+    ? `“${filter.trim()}”`
+    : selectedTags.length === 1
+      ? (selectedTags[0] ?? "")
+      : `${selectedTags.length} tags`;
+
   useShortcuts(
     {
-      search: () => filterInputRef.current?.focus?.(),
+      // `/` and ⌘K: the field may have scrolled away with the header.
+      search: () => (toolsHidden ? scrollToField() : filterInputRef.current?.focus?.()),
       new: canAdd ? () => router.push(`/list/${list.id}/add`) : undefined,
     },
     isFocused,
   );
 
-  return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <Screen
-        style={styles.column}
-        overlay={
-          canAdd && !(isEmptyAfterFetch && !hasSources) ? (
-            <Fab
-              accessibilityLabel="Add item"
-              tooltip="Add item  (N)"
-              onPress={() => router.push(`/list/${list.id}/add`)}
-              testID="fab-add-item"
-            />
-          ) : null
-        }
-      >
-        <ListHeader
-          list={list}
-          members={members}
-          accent={accent}
-          subline={headerSubline}
-          onRename={list.ownerId === user?.id ? renameList : undefined}
-          trailing={
-            <>
-              {hasSources ? (
-                <IconButton
-                  icon="refresh"
-                  accessibilityLabel="Sync now"
-                  onPress={() => refreshMutation.mutate()}
-                  busy={refreshing}
-                  testID="list-detail-refresh"
-                />
-              ) : null}
-              <IconButton
-                icon="share"
-                accessibilityLabel="Share list"
-                onPress={() => setShareOpen(true)}
-                testID="list-detail-share"
-              />
-              <IconButton
-                icon="settings"
-                accessibilityLabel="List settings"
-                onPress={() => router.push(`/list/${list.id}/settings`)}
-                testID="list-detail-settings"
-              />
-            </>
-          }
-        />
-
+  // UX pass 5 review: only a compact bar stays pinned (back, the list name
+  // once the big title has scrolled away, share, settings). The title block,
+  // search and filters scroll with the rows, so a phone shows content from
+  // the top instead of a third of the screen of fixed chrome.
+  const scrollHeader = (
+    <>
+      <ListTitleBlock
+        list={list}
+        members={members}
+        accent={accent}
+        subline={headerSubline}
+        onRename={list.ownerId === user?.id ? renameList : undefined}
+        onLayout={(e) => setTitleBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
+      />
+      <View onLayout={(e) => setToolsBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
         {showSearch ? (
           <View style={[styles.toolbar, screenColumnStyle]}>
             <TextField
@@ -992,174 +1021,269 @@ export function ListDetail({ list, members, sources, token }: Props) {
             />
           </View>
         ) : null}
+      </View>
+    </>
+  );
 
-        {itemsQuery.isPending ? (
-          <View style={screenColumnStyle}>
-            <Skeleton.Rows count={6} badge={0} testID="list-detail-loading" />
-          </View>
-        ) : itemsLoadFailed ? (
-          <View style={styles.center}>
-            <EmptyState
-              motion
-              illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
-              title="Couldn't load this list"
-              description={
-                isSpotifyShelf
-                  ? sourceErrorMessage(itemsQuery.error, loadErrorMessage(itemsQuery.error))
-                  : loadErrorMessage(itemsQuery.error)
-              }
-              action={
-                <Button
-                  label="Try again"
-                  variant="secondary"
-                  onPress={() => itemsQuery.refetch()}
-                  testID="list-detail-retry"
-                />
-              }
+  const filterEmptyView = (
+    <View style={styles.center}>
+      <EmptyState
+        title="No matches"
+        description={
+          tagFilterActive && !filterActive
+            ? `Nothing in this list is tagged ${selectedTags.map((t) => `“${t}”`).join(" and ")}.`
+            : tagFilterActive
+              ? `Nothing tagged ${selectedTags.map((t) => `“${t}”`).join(" and ")} matches “${filter.trim()}.”`
+              : `Nothing in this list matches “${filter.trim()}.”`
+        }
+        action={
+          <Button
+            label={tagFilterActive ? "Clear filters" : "Clear search"}
+            variant="secondary"
+            onPress={() => {
+              setFilter("");
+              setSelectedTags([]);
+            }}
+            testID="list-detail-filter-clear"
+          />
+        }
+      />
+    </View>
+  );
+
+  return (
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <Screen
+        style={styles.column}
+        overlay={
+          canAdd && !(isEmptyAfterFetch && !hasSources) ? (
+            <Fab
+              accessibilityLabel="Add item"
+              tooltip="Add item  (N)"
+              onPress={() => router.push(`/list/${list.id}/add`)}
+              testID="fab-add-item"
             />
-          </View>
-        ) : isFilterEmpty ? (
-          <View style={styles.center}>
-            <EmptyState
-              title="No matches"
-              description={
-                tagFilterActive && !filterActive
-                  ? `Nothing in this list is tagged ${selectedTags.map((t) => `“${t}”`).join(" and ")}.`
-                  : tagFilterActive
-                    ? `Nothing tagged ${selectedTags.map((t) => `“${t}”`).join(" and ")} matches “${filter.trim()}.”`
-                    : `Nothing in this list matches “${filter.trim()}.”`
-              }
-              action={
-                <Button
-                  label={tagFilterActive ? "Clear filters" : "Clear search"}
-                  variant="secondary"
-                  onPress={() => {
-                    setFilter("");
-                    setSelectedTags([]);
-                  }}
-                  testID="list-detail-filter-clear"
+          ) : null
+        }
+      >
+        <ListBar
+          name={list.name}
+          titleVisible={scrolledPast}
+          trailing={
+            <>
+              {toolsHidden && showSearch ? (
+                filtering ? (
+                  <FilterSummaryChip
+                    label={filterSummary}
+                    onPress={scrollToField}
+                    onClear={() => {
+                      setFilter("");
+                      setSelectedTags([]);
+                    }}
+                  />
+                ) : (
+                  <IconButton
+                    icon="search"
+                    accessibilityLabel="Search this list"
+                    onPress={scrollToField}
+                    testID="list-detail-bar-search"
+                  />
+                )
+              ) : null}
+              {hasSources ? (
+                <IconButton
+                  icon="refresh"
+                  accessibilityLabel="Sync now"
+                  onPress={() => refreshMutation.mutate()}
+                  busy={refreshing}
+                  testID="list-detail-refresh"
                 />
-              }
-            />
-          </View>
-        ) : isEmptyAfterFetch ? (
-          <View style={letterboxdOn ? styles.listWrap : styles.center}>
-            {letterboxdOn ? (
-              <>
-                <LetterboxdPanel
-                  list={list}
-                  members={members}
-                  suggested={suggestedRaw}
-                  token={token}
-                  accent={accent}
-                  onRequestSync={() => refreshMutation.mutate()}
+              ) : null}
+              <IconButton
+                icon="share"
+                accessibilityLabel="Share list"
+                onPress={() => setShareOpen(true)}
+                testID="list-detail-share"
+              />
+              <IconButton
+                icon="settings"
+                accessibilityLabel="List settings"
+                onPress={() => router.push(`/list/${list.id}/settings`)}
+                testID="list-detail-settings"
+              />
+            </>
+          }
+        />
+
+        {itemsQuery.isPending || itemsLoadFailed || (isEmptyAfterFetch && !isFilterEmpty) ? (
+          <ScrollView
+            ref={plainScrollRef}
+            style={styles.listWrap}
+            contentContainerStyle={[styles.stateScroll, screenColumnStyle]}
+            onScroll={(e) => {
+              scrollY.value = e.nativeEvent.contentOffset.y;
+            }}
+            scrollEventThrottle={16}
+            keyboardShouldPersistTaps="handled"
+          >
+            {scrollHeader}
+            {itemsQuery.isPending ? (
+              <View style={screenColumnStyle}>
+                <Skeleton.Rows count={6} badge={0} testID="list-detail-loading" />
+              </View>
+            ) : itemsLoadFailed ? (
+              <View style={styles.center}>
+                <EmptyState
+                  motion
+                  illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
+                  title="Couldn't load this list"
+                  description={
+                    isSpotifyShelf
+                      ? sourceErrorMessage(itemsQuery.error, loadErrorMessage(itemsQuery.error))
+                      : loadErrorMessage(itemsQuery.error)
+                  }
+                  action={
+                    <Button
+                      label="Try again"
+                      variant="secondary"
+                      onPress={() => itemsQuery.refetch()}
+                      testID="list-detail-retry"
+                    />
+                  }
                 />
-                <View style={styles.center}>
+              </View>
+            ) : (
+              <View style={letterboxdOn ? styles.listWrap : styles.center}>
+                {letterboxdOn ? (
+                  <>
+                    <LetterboxdPanel
+                      list={list}
+                      members={members}
+                      suggested={suggestedRaw}
+                      token={token}
+                      accent={accent}
+                      onRequestSync={() => refreshMutation.mutate()}
+                    />
+                    <View style={styles.center}>
+                      <EmptyState
+                        motion
+                        illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
+                        title="No films in common yet"
+                        description={
+                          members.length < 2
+                            ? "Share this list with a friend and connect your Letterboxd accounts. Films you both want to watch show up here."
+                            : "Once two members connect Letterboxd, films on both watchlists show up here. You can also suggest one above."
+                        }
+                        action={
+                          <Button
+                            label="Check for matches"
+                            onPress={() => refreshMutation.mutate()}
+                            loading={refreshing}
+                            testID="list-detail-empty-refresh"
+                          />
+                        }
+                      />
+                    </View>
+                  </>
+                ) : hasSources ? (
                   <EmptyState
                     motion
                     illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
-                    title="No films in common yet"
+                    title={lastRefreshedAt ? "Nothing synced yet" : "Syncing…"}
                     description={
-                      members.length < 2
-                        ? "Share this list with a friend and connect your Letterboxd accounts. Films you both want to watch show up here."
-                        : "Once two members connect Letterboxd, films on both watchlists show up here. You can also suggest one above."
+                      lastRefreshedAt
+                        ? lastRefreshedByName
+                          ? `Last synced by ${lastRefreshedByName}. Check that the linked list is public and not empty.`
+                          : "Check that the linked list is public and not empty."
+                        : "This usually takes a few seconds."
                     }
                     action={
-                      <Button
-                        label="Check for matches"
-                        onPress={() => refreshMutation.mutate()}
-                        loading={refreshing}
-                        testID="list-detail-empty-refresh"
-                      />
+                      lastRefreshedAt ? (
+                        <Button
+                          label="Sync now"
+                          onPress={() => refreshMutation.mutate()}
+                          loading={refreshing}
+                          testID="list-detail-empty-refresh"
+                        />
+                      ) : undefined
                     }
                   />
-                </View>
-              </>
-            ) : hasSources ? (
-              <EmptyState
-                motion
-                illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
-                title={lastRefreshedAt ? "Nothing synced yet" : "Syncing…"}
-                description={
-                  lastRefreshedAt
-                    ? lastRefreshedByName
-                      ? `Last synced by ${lastRefreshedByName}. Check that the linked list is public and not empty.`
-                      : "Check that the linked list is public and not empty."
-                    : "This usually takes a few seconds."
-                }
-                action={
-                  lastRefreshedAt ? (
-                    <Button
-                      label="Sync now"
-                      onPress={() => refreshMutation.mutate()}
-                      loading={refreshing}
-                      testID="list-detail-empty-refresh"
-                    />
-                  ) : undefined
-                }
-              />
-            ) : (
-              <EmptyState
-                motion
-                illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
-                title={kindEmptyCopy(itemKind).title}
-                description={kindEmptyCopy(itemKind).description}
-                accessibilityLabel={`${kindEmptyCopy(itemKind).title}. ${kindEmptyCopy(itemKind).description}`}
-                action={
-                  <Button
-                    label={kindEmptyCopy(itemKind).action}
-                    onPress={() => router.push(`/list/${list.id}/add`)}
-                    testID="list-detail-empty-add"
-                  />
-                }
-                hint={
-                  <View style={styles.emptyHintGroup}>
-                    {members.length > 1 ? (
-                      <Text
-                        variant="caption"
-                        tone="muted"
-                        style={styles.emptySharedLine}
-                        testID="list-detail-empty-shared-line"
-                      >
-                        Shared with {members.length - 1} {members.length === 2 ? "other" : "others"}
-                        {". "}Anything you add shows up for them too.
-                      </Text>
-                    ) : null}
-                    {showKeyHints ? (
-                      <View
-                        style={styles.emptyKbdRow}
-                        accessibilityElementsHidden
-                        testID="list-detail-empty-kbd"
-                      >
-                        <Text variant="caption" tone="muted">
-                          press
-                        </Text>
-                        <Text variant="caption" style={styles.emptyKbd} tone="secondary">
-                          n
-                        </Text>
-                        <Text variant="caption" tone="muted">
-                          to add
-                        </Text>
+                ) : (
+                  <EmptyState
+                    motion
+                    illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
+                    title={kindEmptyCopy(itemKind).title}
+                    description={kindEmptyCopy(itemKind).description}
+                    accessibilityLabel={`${kindEmptyCopy(itemKind).title}. ${kindEmptyCopy(itemKind).description}`}
+                    action={
+                      <Button
+                        label={kindEmptyCopy(itemKind).action}
+                        onPress={() => router.push(`/list/${list.id}/add`)}
+                        testID="list-detail-empty-add"
+                      />
+                    }
+                    hint={
+                      <View style={styles.emptyHintGroup}>
+                        {members.length > 1 ? (
+                          <Text
+                            variant="caption"
+                            tone="muted"
+                            style={styles.emptySharedLine}
+                            testID="list-detail-empty-shared-line"
+                          >
+                            Shared with {members.length - 1}{" "}
+                            {members.length === 2 ? "other" : "others"}
+                            {". "}Anything you add shows up for them too.
+                          </Text>
+                        ) : null}
+                        {showKeyHints ? (
+                          <View
+                            style={styles.emptyKbdRow}
+                            accessibilityElementsHidden
+                            testID="list-detail-empty-kbd"
+                          >
+                            <Text variant="caption" tone="muted">
+                              press
+                            </Text>
+                            <Text variant="caption" style={styles.emptyKbd} tone="secondary">
+                              n
+                            </Text>
+                            <Text variant="caption" tone="muted">
+                              to add
+                            </Text>
+                          </View>
+                        ) : null}
                       </View>
-                    ) : null}
-                  </View>
-                }
-              />
+                    }
+                  />
+                )}
+              </View>
             )}
-          </View>
+          </ScrollView>
         ) : (
           <Reveal when={itemsRevealed} style={styles.listWrap}>
-            {letterboxdOn ? (
-              <LetterboxdPanel
-                list={list}
-                members={members}
-                suggested={suggestedRaw}
-                token={token}
-                accent={accent}
-                onRequestSync={() => refreshMutation.mutate()}
-              />
-            ) : null}
             <ItemList
+              header={
+                <>
+                  {scrollHeader}
+                  {letterboxdOn ? (
+                    <LetterboxdPanel
+                      list={list}
+                      members={members}
+                      suggested={suggestedRaw}
+                      token={token}
+                      accent={accent}
+                      onRequestSync={() => refreshMutation.mutate()}
+                    />
+                  ) : null}
+                </>
+              }
+              placeholder={isFilterEmpty ? filterEmptyView : undefined}
+              scrollY={scrollY}
+              scrollRef={listScrollRef}
               ordered={filtered.ordered}
               unordered={filtered.unordered}
               completed={filtered.completed}
@@ -1207,9 +1331,10 @@ export function ListDetail({ list, members, sources, token }: Props) {
 }
 
 /**
- * The list's header block (back, settings, badge, name, members + count).
- * Exported so the route can paint it from the home cache before the list's
- * own detail request lands (2.13).
+ * The list's header (back, actions, badge, name, members + count), drawn at
+ * rest. Exported so the route can paint it from the home cache before the
+ * list's own detail request lands (2.13); the live screen splits it into the
+ * pinned `ListBar` and the scrolling `ListTitleBlock`.
  */
 export function ListHeader({
   list,
@@ -1227,45 +1352,160 @@ export function ListHeader({
   /** Owners rename the list in place (4.3). */
   onRename?: (name: string) => Promise<void>;
 }) {
-  const twoPane = useTwoPane();
   return (
     <>
-      <ScreenHeader
-        // In the desktop two-pane layout the sidebar is the way between
-        // lists, so the list itself has no back button (5.7c).
-        leading={twoPane ? "none" : "back"}
-        onLeadingPress={() => goBack("/")}
-        leadingTestID="list-detail-back"
-        trailing={trailing}
+      <ListBar name={list.name} titleVisible={false} trailing={trailing} />
+      <ListTitleBlock
+        list={list}
+        members={members}
+        accent={accent}
+        subline={subline}
+        onRename={onRename}
       />
-      <View style={[styles.titleBlock, screenColumnStyle]}>
-        <EmojiBadge
-          emoji={list.emoji}
-          color={accent}
-          imageUrl={list.coverPhotoUrl}
-          size={44}
-          shape="rounded"
-        />
-        <View style={styles.titleText}>
-          <ListNameEditor name={list.name} onRename={onRename} style={styles.titleName} />
-          <View style={styles.sublineRow}>
-            {members.length > 1 ? <MemberStack members={members} /> : null}
-            {subline ? (
-              <Text
-                variant="caption"
-                tone="muted"
-                style={styles.subline}
-                testID="list-detail-subline"
-              >
-                {subline}
-              </Text>
-            ) : (
-              <Skeleton.Block width={120} height={12} />
-            )}
-          </View>
+    </>
+  );
+}
+
+/**
+ * The one pinned bar (UX pass 5 review): back, the list name once the big
+ * title has scrolled out (a `fast` fade; at once under reduced motion), and
+ * the actions. The bar's name is decoration for sighted users: the title
+ * block's heading stays the screen's h1.
+ */
+function ListBar({
+  name,
+  titleVisible,
+  trailing,
+}: {
+  name: string;
+  titleVisible: boolean;
+  trailing?: React.ReactNode;
+}) {
+  const twoPane = useTwoPane();
+  const reduceMotion = useReducedMotion();
+  const shown = useSharedValue(titleVisible ? 1 : 0);
+  useEffect(() => {
+    shown.value = reduceMotion
+      ? titleVisible
+        ? 1
+        : 0
+      : withTiming(titleVisible ? 1 : 0, timing("fast"));
+  }, [titleVisible, reduceMotion, shown]);
+  const fade = useAnimatedStyle(() => ({ opacity: shown.value }));
+  return (
+    <ScreenHeader
+      // In the desktop two-pane layout the sidebar is the way between
+      // lists, so the list itself has no back button (5.7c).
+      leading={twoPane ? "none" : "back"}
+      onLeadingPress={() => goBack("/")}
+      leadingTestID="list-detail-back"
+      style={titleVisible ? { ...styles.bar, ...styles.barScrolled } : styles.bar}
+      center={
+        <Animated.View
+          style={[styles.barTitle, fade]}
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          aria-hidden
+          testID="list-detail-bar-title"
+        >
+          <Text variant="heading" headerRole={false} numberOfLines={1}>
+            {name}
+          </Text>
+        </Animated.View>
+      }
+      trailing={trailing}
+    />
+  );
+}
+
+/** Badge, name (renamable by the owner), members and count; scrolls with the list. */
+function ListTitleBlock({
+  list,
+  members,
+  accent,
+  subline,
+  onRename,
+  onLayout,
+}: {
+  list: Pick<List, "name" | "emoji" | "coverPhotoUrl">;
+  members: ListMemberSummary[];
+  accent: string;
+  subline: string | null;
+  onRename?: (name: string) => Promise<void>;
+  onLayout?: (e: LayoutChangeEvent) => void;
+}) {
+  return (
+    <View style={[styles.titleBlock, screenColumnStyle]} onLayout={onLayout}>
+      <EmojiBadge
+        emoji={list.emoji}
+        color={accent}
+        imageUrl={list.coverPhotoUrl}
+        size={44}
+        shape="rounded"
+      />
+      <View style={styles.titleText}>
+        <ListNameEditor name={list.name} onRename={onRename} style={styles.titleName} />
+        <View style={styles.sublineRow}>
+          {members.length > 1 ? <MemberStack members={members} /> : null}
+          {subline ? (
+            <Text
+              variant="caption"
+              tone="muted"
+              style={styles.subline}
+              testID="list-detail-subline"
+            >
+              {subline}
+            </Text>
+          ) : (
+            <Skeleton.Block width={120} height={12} />
+          )}
         </View>
       </View>
-    </>
+    </View>
+  );
+}
+
+/**
+ * In the pinned bar while the header is scrolled away and a search or tag
+ * filter is on: says what's filtering, scrolls back to the field on tap, and
+ * clears it with its own button.
+ */
+function FilterSummaryChip({
+  label,
+  onPress,
+  onClear,
+}: {
+  label: string;
+  onPress: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <View style={styles.filterChip} testID="list-detail-bar-filter">
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Filtered by ${label}. Edit the filter`}
+        onPress={onPress}
+        style={({ hovered, pressed }: PressState) => [
+          styles.filterChipLabel,
+          hovered && { backgroundColor: interaction.hover },
+          pressed && { backgroundColor: interaction.pressed },
+        ]}
+      >
+        <Icon name="search" size={14} tone="accent" />
+        <Text variant="label" style={styles.filterChipText} numberOfLines={1}>
+          {label}
+        </Text>
+      </Pressable>
+      <IconButton
+        icon="close"
+        iconSize={14}
+        iconTone="secondary"
+        accessibilityLabel="Clear filter"
+        onPress={onClear}
+        testID="list-detail-bar-filter-clear"
+      />
+    </View>
   );
 }
 
@@ -1437,8 +1677,8 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.xs,
     paddingBottom: tokens.space.xs,
   },
-  // Tag chip bar pins with the toolbar above the scrolling rows, mirroring
-  // the day rail: the active filter stays visible while results scroll.
+  // The tag bar scrolls with the header; while it's out of view the pinned
+  // bar's filter chip shows what's filtering.
   tagBarWrap: {
     paddingTop: tokens.space.xs,
     paddingBottom: tokens.space.sm,
@@ -1486,4 +1726,34 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.xxl,
   },
   listWrap: { flex: 1 },
+  stateScroll: { flexGrow: 1 },
+  bar: {
+    backgroundColor: tokens.bg.canvas,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "transparent",
+  },
+  // Content slides under the bar once the title has gone: a hairline marks
+  // the edge.
+  barScrolled: { borderBottomColor: tokens.border.subtle },
+  barTitle: { flex: 1, minWidth: 0 },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    maxWidth: 180,
+    borderRadius: tokens.radius.pill,
+    borderWidth: 1,
+    borderColor: tokens.accent.default,
+    backgroundColor: tokens.accent.muted,
+  },
+  filterChipLabel: {
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.xs,
+    minHeight: tokens.hit,
+    paddingLeft: tokens.space.md,
+    borderTopLeftRadius: tokens.radius.pill,
+    borderBottomLeftRadius: tokens.radius.pill,
+  },
+  filterChipText: { flexShrink: 1, color: tokens.accent.default },
 });
