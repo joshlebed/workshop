@@ -9,7 +9,7 @@ import type { GameNudgeState } from "@workshop/shared/games";
  * - `available`: tap to send. Shown for every friend on the board; a friend
  *   with notifications off is only discovered on the tap (`unreachable`).
  * - `sent`: already sent on this game today.
- * - `spent`: today's allowance is used up.
+ * - `spent`: today's allowance is used up. The control stays and a tap says so.
  */
 export type NudgeRowStatus = "hidden" | "available" | "sent" | "spent";
 

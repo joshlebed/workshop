@@ -586,13 +586,19 @@ export default function GameBoard() {
                     nudgePending={
                       nudgeMutation.isPending && nudgeMutation.variables?.userId === entry.userId
                     }
-                    onNudge={() =>
+                    onNudge={() => {
+                      // Out for the day: the bolt stays tappable and says so,
+                      // without a request the server would only refuse.
+                      if (nudgeRowStatus(nudgeState, entry.userId) === "spent") {
+                        showToast({ message: "You're out of pings for today", tone: "default" });
+                        return;
+                      }
                       nudgeMutation.mutate({
                         userId: entry.userId,
                         name: entry.displayName?.trim() || "Your friend",
                         periodKey: date,
-                      })
-                    }
+                      });
+                    }}
                     onReport={() =>
                       setReportTarget({
                         userId: entry.userId,
@@ -802,9 +808,9 @@ function EntryRow({
           </Pressable>
         ) : null}
         {/* Nudge: a quiet bolt beside the score, sized like the edit pencil. It
-            lights up once sent; with no nudges left it is simply not offered
-            (the footer says so). */}
-        {nudge === "available" || nudge === "sent" ? (
+            lights up once sent; with none left it still takes a tap, which
+            toasts that the day's allowance is used up. */}
+        {nudge !== "hidden" ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={nudge === "sent" ? `Pinged ${name}` : `Ping ${name}`}
@@ -815,7 +821,7 @@ function EntryRow({
             hitSlop={8}
             style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
               styles.editBtn,
-              nudge === "available" && (pressed || hovered) && styles.editBtnHover,
+              nudge !== "sent" && (pressed || hovered) && styles.editBtnHover,
             ]}
           >
             {nudgePending ? (

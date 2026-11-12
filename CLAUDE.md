@@ -348,7 +348,8 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   the viewer has played, and `GameBoard` renders from it via `src/games/lib/nudges.ts`: a bare
   bolt on every friend's row (the footer line is the only label). Reachability is deliberately
   not sent up front — the bolt shows for everyone and a tap on a friend with no device toasts
-  "<name> hasn't enabled HighScore notifications" from the 409. Like every
+  "<name> hasn't enabled HighScore notifications" from the 409. With none left the bolts stay
+  too; a tap toasts "You're out of pings for today" client-side (the server still 429s). Like every
   push path it goes through `sendExpoPushMessages`, so **stub `EXPO_PUSH_URL` before tapping
   Nudge in a sandbox** — the DB is a prod copy with real tokens. `game_nudges` is in `actionRows`.
 
