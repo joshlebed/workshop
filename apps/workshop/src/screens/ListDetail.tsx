@@ -6,13 +6,12 @@ import type {
   Item,
   List,
   ListDetailResponse,
-  ListItemsResponse,
   ListMemberSummary,
+  ListRowsResponse,
   ListSource,
-  MoveItemRequest,
   SavedView,
 } from "@workshop/shared";
-import { listKind } from "@workshop/shared/listKinds";
+import { inboxTitle as inboxTitleFor, listKind } from "@workshop/shared/listKinds";
 import { hasModule } from "@workshop/shared/modules";
 import {
   Avatar,
@@ -107,12 +106,12 @@ import {
   itemCountLabel,
   itemMatches,
   type MoveIntent,
+  moveRequest,
   type SectionName,
   stepNeighbours,
   tagChipCounts,
 } from "./listDetail/listOps";
 import type { ListScrollHandle } from "./listDetail/listProps";
-import { rankAnchorsOf, rankByIdOf } from "./listDetail/ranks";
 import { SavedViewsBar } from "./listDetail/SavedViewsBar";
 import type { Section } from "./listDetail/types";
 import { useTwoPane } from "./twoPane/TwoPane";
@@ -126,18 +125,21 @@ interface Props {
 
 type Placement = { item: Item; section: SectionName; index: number };
 
+/** A stable empty list, so memos keyed on a missing section don't rerun. */
+const EMPTY: Item[] = [];
+
 /**
  * Unified list-detail screen. The shape of the screen falls out of `list.modules`:
  *
+ * - Every list is one hand-ordered sequence; every open row drags.
  * - `todo` on    → a checkbox on every open row, a Done section below.
- * - `ranking` on → a Ranked block above the open rows.
- * - `sources` on → header refresh button and source provenance.
+ * - `sources` on → header refresh button, and a sync inbox ("New from
+ *                  Spotify") below the list for rows nobody has placed yet.
  *
  * Every write here is optimistic (2.2): the cache changes in `onMutate`, a
  * failure puts it back and says so, and reversible ones offer Undo (2.3).
  * `list.itemKind === "spotify_album"` keeps the album-shelf affordances —
- * body-press opens Spotify, no Edit, and the detected block stays in
- * recency order.
+ * body-press opens Spotify, no Edit.
  */
 /** How long a ticked row stays put before it moves to Done. */
 const COMPLETE_HOLD_MS = 1200;
@@ -191,7 +193,8 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const isSpotifyShelf = itemKind === "spotify_album";
   const isOwner = list.ownerId === user?.id;
   const hasSources = sources.length > 0 && hasModule(list.modules, "sources");
-  const rankingOn = hasModule(list.modules, "ranking");
+  // The server reads unplaced rows as an inbox exactly when `sources` is on.
+  const inboxOn = hasModule(list.modules, "sources");
   const todoOn = hasModule(list.modules, "todo");
   const letterboxdOn = hasModule(list.modules, "letterboxd");
   const copy = completionCopy(itemKind);
@@ -254,29 +257,35 @@ export function ListDetail({ list, members, sources, token }: Props) {
       return { ...last, addedCount };
     },
     onMutate: () => {
-      const cur = queryClient.getQueryData<ListItemsResponse>(itemsKey);
+      const cur = queryClient.getQueryData<ListRowsResponse>(itemsKey);
       const prevIds = new Set<string>();
       if (cur) {
-        for (const it of [...cur.ordered, ...cur.unordered, ...cur.completed]) prevIds.add(it.id);
+        for (const it of [...cur.open, ...cur.inbox, ...cur.completed]) prevIds.add(it.id);
       }
       beforeRefreshIdsRef.current = prevIds;
     },
     onSuccess: (res) => {
-      queryClient.setQueryData<ListItemsResponse>(itemsKey, {
-        ordered: res.ordered,
-        unordered: res.unordered,
+      queryClient.setQueryData<ListRowsResponse>(itemsKey, {
+        open: res.open,
+        inbox: res.inbox,
         completed: res.completed,
         suggested: res.suggested,
+        ordered: res.ordered,
+        unordered: res.unordered,
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(list.id) });
       const added = res.addedCount;
       const before = beforeRefreshIdsRef.current ?? new Set<string>();
+      // New arrivals wait in the inbox below the list: show them.
       const fresh = new Set<string>();
-      for (const it of res.unordered) {
+      for (const it of [...res.inbox, ...res.open]) {
         if (!before.has(it.id)) fresh.add(it.id);
       }
-      if (fresh.size > 0) setNewItemIds(fresh);
+      if (fresh.size > 0) {
+        setNewItemIds(fresh);
+        setScrollToItemId([...fresh][0] ?? null);
+      }
       showToast({
         message: added === 0 ? "Nothing new" : `${added} new ${added === 1 ? "item" : "items"}`,
         tone: added === 0 ? "default" : "success",
@@ -293,8 +302,8 @@ export function ListDetail({ list, members, sources, token }: Props) {
   // --- Optimistic writes (2.2, 2.3) ----------------------------------------
 
   const setItems = useCallback(
-    (fn: (d: ListItemsResponse) => ListItemsResponse) => {
-      queryClient.setQueryData<ListItemsResponse>(itemsKey, (d) => (d ? fn(d) : d));
+    (fn: (d: ListRowsResponse) => ListRowsResponse) => {
+      queryClient.setQueryData<ListRowsResponse>(itemsKey, (d) => (d ? fn(d) : d));
     },
     [queryClient, itemsKey],
   );
@@ -311,21 +320,14 @@ export function ListDetail({ list, members, sources, token }: Props) {
     Item,
     Error,
     { item: Item; intent: MoveIntent },
-    { previous?: ListItemsResponse }
+    { previous?: ListRowsResponse }
   >({
     mutationKey: writeKey,
-    mutationFn: async ({ item, intent }) => {
-      // The album shelf's detected block stays in recency order, so a demote
-      // there uses the legacy shape (clear the rank, keep the shelf's order).
-      const body: MoveItemRequest =
-        isSpotifyShelf && intent.section === "unranked"
-          ? { beforeItemId: null, afterItemId: null }
-          : intent;
-      return (await moveItem(item.id, body, token)).item;
-    },
+    mutationFn: async ({ item, intent }) =>
+      (await moveItem(item.id, moveRequest(intent), token)).item,
     onMutate: async ({ item, intent }) => {
       await queryClient.cancelQueries({ queryKey: itemsKey });
-      const previous = queryClient.getQueryData<ListItemsResponse>(itemsKey);
+      const previous = queryClient.getQueryData<ListRowsResponse>(itemsKey);
       setItems((d) => applyMove(d, item.id, intent));
       return previous ? { previous } : {};
     },
@@ -350,12 +352,12 @@ export function ListDetail({ list, members, sources, token }: Props) {
     onMutate: async ({ item, next }) => {
       await queryClient.cancelQueries({ queryKey: itemsKey });
       setItems((d) =>
-        next ? applyComplete(d, item.id, selfId) : applyUncomplete(d, item.id, rankingOn),
+        next ? applyComplete(d, item.id, selfId) : applyUncomplete(d, item.id, inboxOn),
       );
     },
     onError: (e, { item, next }) => {
       setItems((d) =>
-        next ? applyUncomplete(d, item.id, rankingOn) : applyComplete(d, item.id, selfId),
+        next ? applyUncomplete(d, item.id, inboxOn) : applyComplete(d, item.id, selfId),
       );
       dismissKey("complete");
       showToast({
@@ -492,7 +494,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
 
   const deleteItem = useCallback(
     (item: Item) => {
-      const data = queryClient.getQueryData<ListItemsResponse>(itemsKey);
+      const data = queryClient.getQueryData<ListRowsResponse>(itemsKey);
       const placement = data ? findItem(data, item.id) : null;
       if (!placement) return;
       haptics.warning();
@@ -550,13 +552,13 @@ export function ListDetail({ list, members, sources, token }: Props) {
   // --- Derived rows --------------------------------------------------------
 
   const data = itemsQuery.data;
-  const orderedRaw = data?.ordered ?? [];
-  const unorderedRaw = data?.unordered ?? [];
-  const completedRaw = data?.completed ?? [];
-  const suggestedRaw = useMemo(() => data?.suggested ?? [], [data?.suggested]);
+  const openRaw = data?.open ?? EMPTY;
+  const inboxRaw = data?.inbox ?? EMPTY;
+  const completedRaw = data?.completed ?? EMPTY;
+  const suggestedRaw = data?.suggested ?? EMPTY;
   const allRows = useMemo(
-    () => [...orderedRaw, ...unorderedRaw, ...completedRaw],
-    [orderedRaw, unorderedRaw, completedRaw],
+    () => [...openRaw, ...inboxRaw, ...completedRaw],
+    [openRaw, inboxRaw, completedRaw],
   );
 
   // Letterboxd-match overlap badge per item, replacing "Added by …".
@@ -589,21 +591,20 @@ export function ListDetail({ list, members, sources, token }: Props) {
 
   const filtered = useMemo(() => {
     if (!anyFilterActive) {
-      return { ordered: orderedRaw, unordered: unorderedRaw, completed: completedRaw };
+      return { open: openRaw, inbox: inboxRaw, completed: completedRaw };
     }
     const keep = (it: Item) => itemMatches(it, itemFilter);
     return {
-      ordered: orderedRaw.filter(keep),
-      unordered: unorderedRaw.filter(keep),
+      open: openRaw.filter(keep),
+      inbox: inboxRaw.filter(keep),
       completed: completedRaw.filter(keep),
     };
-  }, [orderedRaw, unorderedRaw, completedRaw, itemFilter, anyFilterActive]);
+  }, [openRaw, inboxRaw, completedRaw, itemFilter, anyFilterActive]);
 
   // Chip counts follow the current result (text search included), in a
   // stable order so a tap never reshuffles the bar (2.11).
   const tagChips = useMemo(
-    () =>
-      tagChipCounts(allRows, [...filtered.ordered, ...filtered.unordered, ...filtered.completed]),
+    () => tagChipCounts(allRows, [...filtered.open, ...filtered.inbox, ...filtered.completed]),
     [allRows, filtered],
   );
 
@@ -617,7 +618,6 @@ export function ListDetail({ list, members, sources, token }: Props) {
   }, [tagChips, selectedTags, itemsQuery.isPending]);
 
   const selectedTagSet = useMemo(() => new Set(selectedTags), [selectedTags]);
-  const rankById = useMemo(() => rankByIdOf(orderedRaw), [orderedRaw]);
 
   const memberNameById = useMemo(() => {
     const map = new Map<string, string>();
@@ -637,9 +637,9 @@ export function ListDetail({ list, members, sources, token }: Props) {
     : null;
   const refreshing = refreshMutation.isPending;
 
-  const totalRows = filtered.ordered.length + filtered.unordered.length + filtered.completed.length;
+  const totalRows = filtered.open.length + filtered.inbox.length + filtered.completed.length;
   const totalRowsUnfiltered = allRows.length;
-  const openCount = orderedRaw.length + unorderedRaw.length;
+  const openCount = openRaw.length + inboxRaw.length;
 
   // --- Done section (2.10) -------------------------------------------------
 
@@ -712,15 +712,12 @@ export function ListDetail({ list, members, sources, token }: Props) {
 
   /** Where a row sits now, as a move that would put it back (for Undo). */
   const placementIntent = (item: Item): MoveIntent | null => {
-    const inRanked = orderedRaw.findIndex((i) => i.id === item.id);
-    const rows = inRanked >= 0 ? orderedRaw : unorderedRaw;
-    const i = rows.findIndex((r) => r.id === item.id);
+    if (inboxRaw.some((i) => i.id === item.id)) {
+      return { beforeItemId: null, afterItemId: null, toInbox: true };
+    }
+    const i = openRaw.findIndex((r) => r.id === item.id);
     if (i < 0) return null;
-    return {
-      section: inRanked >= 0 ? "ranked" : "unranked",
-      beforeItemId: rows[i - 1]?.id ?? null,
-      afterItemId: rows[i + 1]?.id ?? null,
-    };
+    return { beforeItemId: openRaw[i - 1]?.id ?? null, afterItemId: openRaw[i + 1]?.id ?? null };
   };
 
   const moveWithUndo = (item: Item, intent: MoveIntent, message: string) => {
@@ -753,76 +750,51 @@ export function ListDetail({ list, members, sources, token }: Props) {
   };
 
   const onRowMenu = (item: Item, section: Section) => {
-    const open = section !== "completed";
+    const done = section === "completed";
+    const inList = section === "open";
     // Move up / down step past the row the user can see above or below.
-    const visible = section === "ordered" ? filtered.ordered : filtered.unordered;
-    const stepUp = open ? stepNeighbours(visible, item.id, "up") : null;
-    const stepDown = open ? stepNeighbours(visible, item.id, "down") : null;
-    const canStep = section === "ordered" || !isSpotifyShelf;
-    const block = section === "ordered" ? "ranked" : "unranked";
-    // Rank anchors come from the whole Ranked block, never the filtered view (0.8).
-    const anchors = rankAnchorsOf(orderedRaw.filter((i) => i.id !== item.id));
+    const stepUp = inList ? stepNeighbours(filtered.open, item.id, "up") : null;
+    const stepDown = inList ? stepNeighbours(filtered.open, item.id, "down") : null;
     setMenuItem(item);
     setMenuActions({
+      ...(section === "inbox"
+        ? {
+            onAddToList: () =>
+              moveWithUndo(item, { beforeItemId: null, afterItemId: null }, "Added to the list"),
+          }
+        : {}),
       ...(todoOn
         ? {
             completion: {
-              label: open ? copy.mark : copy.unmark,
-              onPress: () => toggleComplete(item, open),
+              label: done ? copy.unmark : copy.mark,
+              onPress: () => toggleComplete(item, !done),
             },
           }
         : {}),
-      ...(canStep && stepUp
+      ...(stepUp
         ? {
             onMoveUp: () => {
               haptics.selection();
-              moveMutation.mutate({ item, intent: { section: block, ...stepUp } });
+              moveMutation.mutate({ item, intent: stepUp });
               // The move shows on screen; say it for screen readers.
               announce(`Moved “${item.title}” up`);
             },
           }
         : {}),
-      ...(canStep && stepDown
+      ...(stepDown
         ? {
             onMoveDown: () => {
               haptics.selection();
-              moveMutation.mutate({ item, intent: { section: block, ...stepDown } });
+              moveMutation.mutate({ item, intent: stepDown });
               announce(`Moved “${item.title}” down`);
             },
           }
         : {}),
-      ...(open && rankingOn
+      // Already first in the whole list (not just the filtered view): nothing to do.
+      ...(inList && openRaw[0]?.id !== item.id
         ? {
-            ...(section !== "ordered" || orderedRaw[0]?.id !== item.id
-              ? {
-                  onRankTop: () =>
-                    moveWithUndo(
-                      item,
-                      { section: "ranked", beforeItemId: null, afterItemId: anchors.firstId },
-                      "Ranked at top",
-                    ),
-                }
-              : {}),
-            ...(section !== "ordered" || orderedRaw.at(-1)?.id !== item.id
-              ? {
-                  onRankBottom: () =>
-                    moveWithUndo(
-                      item,
-                      { section: "ranked", beforeItemId: anchors.lastId, afterItemId: null },
-                      "Ranked at bottom",
-                    ),
-                }
-              : {}),
-            ...(section === "ordered"
-              ? {
-                  onUnrank: () =>
-                    moveWithUndo(
-                      item,
-                      { section: "unranked", beforeItemId: null, afterItemId: null },
-                      "Removed from ranking",
-                    ),
-                }
-              : {}),
+            onMoveToTop: () =>
+              moveWithUndo(item, { beforeItemId: null, afterItemId: null }, "Moved to top"),
           }
         : {}),
       onDelete: () => deleteItem(item),
@@ -1320,18 +1292,16 @@ export function ListDetail({ list, members, sources, token }: Props) {
               placeholder={isFilterEmpty ? filterEmptyView : undefined}
               scrollY={scrollY}
               scrollRef={listScrollRef}
-              ordered={filtered.ordered}
-              unordered={filtered.unordered}
+              open={filtered.open}
+              inbox={filtered.inbox}
               completed={filtered.completed}
-              rankById={rankById}
+              inboxTitle={inboxTitleFor(sources.map((src) => src.kind))}
+              listEmpty={openRaw.length === 0 && inboxRaw.length > 0 && !anyFilterActive}
               letterboxdBadgeByItem={letterboxdBadgeByItem}
               listItemKind={itemKind}
-              isAlbumShelf={isSpotifyShelf}
-              rankingOn={rankingOn}
               todoOn={todoOn}
               copy={copy}
               showCover={kind.cover}
-              openReorderable={!isSpotifyShelf}
               newItemIds={newItemIds}
               heldDoneIds={heldDone}
               scrollToItemId={scrollToItemId}

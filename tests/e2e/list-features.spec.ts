@@ -25,13 +25,15 @@ interface Case {
   syncedFrom: string | null;
 }
 
+// `modules` is what a previous bundle's template sends (with the retired
+// `ranking`); the backend drops it.
 const CASES: Case[] = [
   {
     name: "blank",
     itemKind: null,
     modules: ["ranking"],
     holds: "Anything",
-    switches: ["Check things off", "Ranked section"],
+    switches: ["Check things off"],
     syncedFrom: null,
   },
   {
@@ -39,7 +41,7 @@ const CASES: Case[] = [
     itemKind: "plain",
     modules: ["todo", "ranking"],
     holds: "Text items",
-    switches: ["Check things off", "Ranked section"],
+    switches: ["Check things off"],
     syncedFrom: null,
   },
   {
@@ -47,7 +49,7 @@ const CASES: Case[] = [
     itemKind: "link",
     modules: ["todo", "ranking"],
     holds: "Links and places",
-    switches: ["Mark tried", "Ranked section"],
+    switches: ["Mark tried"],
     syncedFrom: null,
   },
   {
@@ -55,7 +57,7 @@ const CASES: Case[] = [
     itemKind: "movie",
     modules: ["todo", "ranking"],
     holds: "Movies",
-    switches: ["Mark watched", "Ranked section", "Letterboxd match"],
+    switches: ["Mark watched", "Letterboxd match"],
     syncedFrom: "Connect a Letterboxd list",
   },
   {
@@ -63,7 +65,7 @@ const CASES: Case[] = [
     itemKind: "tv",
     modules: ["todo", "ranking"],
     holds: "TV shows",
-    switches: ["Mark watched", "Ranked section"],
+    switches: ["Mark watched"],
     syncedFrom: null,
   },
   {
@@ -71,7 +73,7 @@ const CASES: Case[] = [
     itemKind: "book",
     modules: ["todo", "ranking"],
     holds: "Books",
-    switches: ["Mark read", "Ranked section"],
+    switches: ["Mark read"],
     syncedFrom: null,
   },
   {
@@ -79,7 +81,7 @@ const CASES: Case[] = [
     itemKind: "spotify_album",
     modules: ["ranking"],
     holds: "Albums",
-    switches: ["Mark listened", "Ranked section"],
+    switches: ["Mark listened"],
     syncedFrom: "Connect a Spotify playlist",
   },
 ];
@@ -116,8 +118,11 @@ for (const c of CASES) {
     for (const label of c.switches) {
       await expect(features.getByRole("switch", { name: label })).toBeVisible();
     }
-    // The old one-size-fits-all switches are gone everywhere.
+    // The old one-size-fits-all switches are gone everywhere, and so is the
+    // retired ordering switch (every list is one hand-ordered sequence).
     await expect(page.getByRole("switch", { name: "Syncing" })).toHaveCount(0);
+    await expect(page.getByRole("switch", { name: /rank|order/i })).toHaveCount(0);
+    await expect(features).not.toContainText(/rank/i);
     if (c.itemKind !== "movie") {
       await expect(page.getByRole("switch", { name: /Letterboxd/ })).toHaveCount(0);
     }
@@ -145,7 +150,7 @@ test("a toggle saves and survives a reload", async ({ page }) => {
     "false",
   );
   const { list } = await api<{ list: { modules: string[] } }>(user, "GET", `/v1/lists/${id}`);
-  expect(list.modules).toEqual(["ranking"]);
+  expect(list.modules).toEqual([]);
 });
 
 test("Letterboxd match brings its own source, so syncing follows it", async ({ page }) => {
@@ -164,7 +169,7 @@ test("Letterboxd match brings its own source, so syncing follows it", async ({ p
       );
       return [res.list.modules.join(","), res.sources.map((s) => s.kind).join(",")];
     })
-    .toEqual(["todo,ranking,sources,letterboxd", "letterboxd_match"]);
+    .toEqual(["todo,sources,letterboxd", "letterboxd_match"]);
   // A viewer without Letterboxd is pointed at Settings → Connections.
   await expect(page.getByTestId("settings-letterboxd-connect")).toBeVisible();
   await match.click();
@@ -178,7 +183,7 @@ test("Letterboxd match brings its own source, so syncing follows it", async ({ p
       );
       return [res.list.modules.join(","), res.sources.length];
     })
-    .toEqual(["todo,ranking", 0]);
+    .toEqual(["todo", 0]);
 });
 
 test("an album shelf with no playlist offers Connect, not Add", async ({ page }) => {

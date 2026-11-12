@@ -8,7 +8,7 @@ import {
   MODULE_REMOVAL_WARNINGS,
   type ModuleName,
 } from "@workshop/shared/modules";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { gameScores, items, listSources } from "../db/schema.js";
 import type { DbClient } from "./sql.js";
 
@@ -45,18 +45,10 @@ const MODULE_MANIFESTS: Record<ModuleName, ModuleManifest> = {
     },
   },
   ranking: {
+    // Retired: every list has one order, so dropping the module loses nothing
+    // (and the backend drops it from every write).
     name: "ranking",
-    inspectRemoval: async (listId, db) => {
-      const count = await countItemsWith(listId, db, isNotNull(items.position));
-      if (count === 0) return [];
-      return [
-        {
-          code: MODULE_REMOVAL_WARNINGS.ranking,
-          message: `${count} item${count === 1 ? "" : "s"} will lose their manual order.`,
-          affectedCount: count,
-        },
-      ];
-    },
+    inspectRemoval: async () => [],
   },
   leaderboard: {
     name: "leaderboard",

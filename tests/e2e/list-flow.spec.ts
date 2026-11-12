@@ -12,10 +12,10 @@ import {
 } from "./helpers";
 
 // Create a list the long way (FAB → template picker with "Customize first" →
-// name it → Create), add an item, rank it from the row menu, complete it from
-// the row menu. The one-tap create path is first-run.spec.ts; the checkbox
-// and Undo paths are list-loop.spec.ts. This one keeps the Customize form,
-// the Ranked section and the menu's complete covered.
+// name it → Create), add two items, move one to the top from the row menu,
+// complete it from the row menu. The one-tap create path is first-run.spec.ts;
+// the checkbox and Undo paths are list-loop.spec.ts. This one keeps the
+// Customize form, the one order and the menu's complete covered.
 //
 // A scratch user (with one API-made list, so home shows the FAB) owns
 // everything; cleanup deletes every list it owns.
@@ -31,7 +31,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => cleanupScratchUser(user));
 
-test("create list → add item → rank → complete", async ({ page }) => {
+test("create list → add items → move to top → complete", async ({ page }) => {
   if (!user) throw new Error("no scratch user");
   await seedSession(page, user.token);
   await page.goto("/");
@@ -52,7 +52,7 @@ test("create list → add item → rank → complete", async ({ page }) => {
   await page.getByTestId("add-item-title").fill(itemTitle);
   await page.getByTestId("add-item-submit").click();
   await expect(page.getByTestId("add-item-added")).toContainText(itemTitle);
-  // A second row, so the list has more than one section to label.
+  // A second row, so there is something to move past.
   await page.getByTestId("add-item-title").fill("Museum afternoon");
   await page.getByTestId("add-item-title").press("Enter");
   await expect(page.getByTestId("add-item-added")).toContainText("Museum afternoon");
@@ -61,16 +61,20 @@ test("create list → add item → rank → complete", async ({ page }) => {
   await page.waitForURL(/\/list\/[^/]+$/);
   await expect(page.getByTestId("list-detail-name")).toHaveText(listName);
 
-  // Both items land in the open (unranked) block, newest first; with one
-  // section there are no section headers.
+  // Both items land at the top as they are added (newest first), in one list
+  // with no section headings and no numbers.
   const row = itemRow(page, itemTitle);
   await expect(page.locator(ITEM_ROWS)).toHaveCount(2);
-  await expect(page.getByTestId("list-detail-section-ordered")).toHaveCount(0);
+  await expect(page.locator(ITEM_ROWS).first()).toContainText("Museum afternoon");
+  await expect(page.locator('[data-testid^="list-detail-section-"]')).toHaveCount(0);
 
-  // Row menu → rank at the top. The Ranked section appears above the rest.
+  // Row menu → Move to top; there is no Ranked section, and no rank words.
   await row.locator('[data-testid^="item-row-menu-"]').click();
-  await page.getByTestId("item-row-menu-rank-top").click();
-  await expect(page.getByTestId("list-detail-section-ordered")).toBeVisible();
+  await expect(page.getByTestId("item-row-menu-sheet")).not.toContainText(/rank/i);
+  await page.getByTestId("item-row-menu-top").click();
+  await expect(page.locator(ITEM_ROWS).first()).toContainText(itemTitle);
+  await expect(page.locator('[data-testid^="list-detail-section-"]')).toHaveCount(0);
+  await page.reload();
   await expect(page.locator(ITEM_ROWS).first()).toContainText(itemTitle);
 
   // Row menu → mark done. The Done section appears.

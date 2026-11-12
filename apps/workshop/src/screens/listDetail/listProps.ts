@@ -31,25 +31,22 @@ export interface ItemListProps {
   /** Lets the screen scroll back to the search field. */
   scrollRef?: RefObject<ListScrollHandle | null>;
   /** Visible rows per section (already filtered). */
-  ordered: Item[];
-  unordered: Item[];
+  open: Item[];
+  inbox: Item[];
   completed: Item[];
+  /** The inbox's heading ("New from Spotify"), named for the list's source. */
+  inboxTitle: string;
   /**
-   * 1-based rank of every ranked item in the whole (unfiltered) Ranked block.
-   * Rows read their numeral from here so a filter never renumbers them.
+   * Nothing placed yet while the inbox has rows (a freshly connected album
+   * shelf): the list shows where to drop one.
    */
-  rankById: Map<string, number>;
+  listEmpty: boolean;
   listItemKind: ItemKind | null;
-  isAlbumShelf: boolean;
-  /** The Ranked block exists on this list (ranking feature on). */
-  rankingOn: boolean;
   /** Completion is on: open rows get a checkbox, Done rows a filled one. */
   todoOn: boolean;
   copy: CompletionCopy;
   /** Artwork tiles on rows (media and link lists). */
   showCover: boolean;
-  /** Album shelf: the detected block keeps its recency order. */
-  openReorderable: boolean;
   newItemIds: Set<string>;
   /** Rows just ticked done, still in place while they settle (drawn checked). */
   heldDoneIds?: ReadonlyMap<string, unknown>;

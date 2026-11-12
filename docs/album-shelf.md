@@ -1,5 +1,9 @@
 # Album Shelf — Spec + Plan (post-redesign feature)
 
+> **2026-11-12:** the shelf's "ordered" and "detected" blocks are now the list and its
+> inbox ("New from Spotify", below the list). No numerals, no demote menu item; see
+> [list-types.md → Order](list-types.md#order). The spec below is the original design.
+
 Status: proposed · Date: 2026-04-27 · Owner: @joshlebed · Picks up after Phase 5 of [`redesign-plan.md`](./redesign-plan.md)
 
 This doc covers a single post-redesign feature: a 6th list type, **Album

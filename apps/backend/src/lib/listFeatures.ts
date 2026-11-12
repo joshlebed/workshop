@@ -23,6 +23,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Context } from "hono";
 import { listSources, lists } from "../db/schema.js";
 import { recordEvent } from "./events.js";
+import { appendUnplaced } from "./positions.js";
 import { err } from "./response.js";
 import type { DbClient } from "./sql.js";
 
@@ -143,6 +144,11 @@ export async function reconcileListModules(args: {
   });
   if (modules.join(",") !== current.join(",")) {
     await db.update(lists).set({ modules }).where(eq(lists.id, listId));
+  }
+  // The last source went: there is no inbox any more, so rows still waiting
+  // in it join the list below everything a person placed.
+  if (current.includes("sources") && !modules.includes("sources")) {
+    await appendUnplaced(listId, db);
   }
   return modules;
 }

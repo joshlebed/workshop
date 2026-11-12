@@ -45,6 +45,7 @@ import { inspectModuleChange } from "../../lib/moduleManifests.js";
 import { notifyListArchived, notifyListJoined } from "../../lib/opsNotifications.js";
 import { requireCapability } from "../../lib/permissions.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
+import { LIST_ORDER_SQL, POSITION_SPACING, topPositions } from "../../lib/positions.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { requestOriginColumns } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
@@ -1368,12 +1369,15 @@ listRoutes.post(
       });
 
       // Copy non-archived items.
+      // The copy has no source, so it has no inbox: placed rows keep their
+      // order and unplaced ones (the source's inbox) follow, newest first.
       const sourceItems = await tx
         .select()
         .from(items)
-        .where(and(eq(items.listId, source.id), isNull(items.archivedAt)));
+        .where(and(eq(items.listId, source.id), isNull(items.archivedAt)))
+        .orderBy(sql`(position IS NULL), ${LIST_ORDER_SQL}`);
       const preserveCompletion = parsed.data.preserveCompletion ?? false;
-      for (const it of sourceItems) {
+      for (const [index, it] of sourceItems.entries()) {
         const [newItem] = await tx
           .insert(items)
           .values({
@@ -1383,7 +1387,7 @@ listRoutes.post(
             url: it.url,
             note: it.note,
             content: it.content,
-            position: it.position,
+            position: (index + 1) * POSITION_SPACING,
             addedBy: userId,
             completed: preserveCompletion ? it.completed : false,
             completedAt: preserveCompletion ? it.completedAt : null,
@@ -1567,16 +1571,23 @@ listRoutes.post(
     }
 
     const created: Awaited<ReturnType<typeof createItem>>[] = [];
-    for (const row of parsed.data.items) {
-      if (!row.title.trim()) continue;
+    const rowsToAdd = parsed.data.items.filter((row) => row.title.trim());
+    // The pasted rows land at the top of the list, in the order they were pasted.
+    const positions = await topPositions(listId, rowsToAdd.length, db);
+    for (const [i, row] of rowsToAdd.entries()) {
       try {
-        const item = await createItem(listId, userId, {
-          title: row.title,
-          url: row.url,
-          note: row.note,
-          kind: row.kind,
-          content: row.content,
-        });
+        const item = await createItem(
+          listId,
+          userId,
+          {
+            title: row.title,
+            url: row.url,
+            note: row.note,
+            kind: row.kind,
+            content: row.content,
+          },
+          { position: positions[i] },
+        );
         created.push(item);
       } catch (e) {
         if (e instanceof ItemContentError) {

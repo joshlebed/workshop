@@ -99,13 +99,6 @@ function featureWarningCopy(
         message: "They come back if you turn this on again.",
         confirm: "Turn off",
       };
-    case MODULE_REMOVAL_WARNINGS.ranking:
-      return {
-        title: `Remove ${n} ${things} from ranking?`,
-        message:
-          "Their ranks come back if you turn the ranked section on again. You can still drag the list into any order.",
-        confirm: "Turn off",
-      };
     case MODULE_REMOVAL_WARNINGS.letterboxd:
       return {
         title: `Keep ${n} ${n === 1 ? "suggestion" : "suggestions"} as regular films?`,

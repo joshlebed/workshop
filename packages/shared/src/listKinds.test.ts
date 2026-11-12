@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ITEM_KIND_NAMES } from "./itemKinds";
 import {
   featureCopy,
+  inboxTitle,
   isFeatureOffered,
   isSyncSourceOffered,
   LIST_KINDS,
@@ -34,10 +35,10 @@ describe("list kind registry", () => {
     expect(listKind("movie").label).toBe("Movies");
   });
 
-  it("offers check-off and the ranked section everywhere, Letterboxd match only on movies", () => {
+  it("offers check-off everywhere, Letterboxd match only on movies, and no ordering toggle", () => {
     for (const k of KINDS) {
       expect(isFeatureOffered(k, "todo")).toBe(true);
-      expect(isFeatureOffered(k, "ranking")).toBe(true);
+      expect(isFeatureOffered(k, "ranking")).toBe(false);
       expect(isFeatureOffered(k, "letterboxd")).toBe(k === "movie");
       expect(isFeatureOffered(k, "sources")).toBe(false);
       expect(isFeatureOffered(k, "leaderboard")).toBe(false);
@@ -77,10 +78,6 @@ describe("list kind registry", () => {
     expect(featureCopy("spotify_album", "todo").label).toBe("Mark listened");
     expect(featureCopy("plain", "todo").label).toBe("Check things off");
     expect(featureCopy(null, "todo").description).toBe("Ticked items move to a Done section.");
-    expect(featureCopy("tv", "ranking").label).toBe("Ranked section");
-    expect(featureCopy("tv", "ranking").description).toBe(
-      "Number your top shows above the rest. Dragging works either way.",
-    );
     expect(featureCopy("movie", "letterboxd").label).toBe("Letterboxd match");
     for (const k of KINDS) {
       for (const f of TOGGLE_FEATURES) {
@@ -106,7 +103,8 @@ describe("list kind registry", () => {
       requested: [...MODULE_NAMES].reverse(),
       syncSourceCount: 1,
     });
-    expect(all.modules).toEqual([...MODULE_NAMES]);
+    // Everything but the retired `ranking`, which every write drops.
+    expect(all.modules).toEqual(MODULE_NAMES.filter((m) => m !== "ranking"));
   });
 
   it("only offers the template defaults the registry allows", () => {
@@ -127,8 +125,19 @@ describe("resolveListModules", () => {
       resolveListModules({ itemKind: "plain", requested: ["todo", "sources"], syncSourceCount: 0 }),
     ).toEqual({ modules: ["todo"], notOffered: [] });
     expect(
-      resolveListModules({ itemKind: "spotify_album", requested: ["ranking"], syncSourceCount: 1 }),
-    ).toEqual({ modules: ["ranking", "sources"], notOffered: [] });
+      resolveListModules({ itemKind: "spotify_album", requested: [], syncSourceCount: 1 }),
+    ).toEqual({ modules: ["sources"], notOffered: [] });
+  });
+
+  it("ignores the retired ranking module a previous bundle still sends, even when stored", () => {
+    expect(
+      resolveListModules({
+        itemKind: "movie",
+        requested: ["todo", "ranking"],
+        current: ["todo", "ranking"],
+        syncSourceCount: 0,
+      }),
+    ).toEqual({ modules: ["todo"], notOffered: [] });
   });
 
   it("turns sources on with Letterboxd match, which owns its own source", () => {
@@ -172,5 +181,13 @@ describe("resolveListModules", () => {
         syncSourceCount: 0,
       }).modules,
     ).toEqual(["leaderboard"]);
+  });
+});
+
+describe("inboxTitle", () => {
+  it("names the inbox for where its rows came from", () => {
+    expect(inboxTitle(["spotify_playlist"])).toBe("New from Spotify");
+    expect(inboxTitle(["letterboxd_list", "letterboxd_match"])).toBe("New from Letterboxd");
+    expect(inboxTitle([])).toBe("New arrivals");
   });
 });

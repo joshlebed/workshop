@@ -1,7 +1,18 @@
-// Sparse-integer position allocator for `items.position` (§3.4 of the
-// redesign). Spacing of 1024 between siblings gives ~10⁹ headroom before any
-// rebalance is needed; collisions trigger an eager rebalance of the list's
-// ordered section in a single SQL statement.
+// One order per list (docs/list-types.md → "Order"). `items.position` is the
+// order of a list's open items: sparse integers, ascending = top, spacing 1024
+// so a drop between two neighbours is one midpoint and a collision triggers an
+// eager renumber of the list in a single statement.
+//
+// `position IS NULL` means "not placed yet". On a list with an attached source
+// that is the sync inbox ("New from Spotify"): rows a sync brought in that no
+// person has moved into the list. Elsewhere NULL rows only exist transiently
+// (rows from before the one-order migration, a list whose source was removed
+// before any were placed): they read at the top, newest first, and the first
+// hand placement on the list gives them positions (`materializePositions`).
+//
+// Positions are list-wide: done and deleted rows keep theirs, so reopening a
+// row or undoing a delete puts it back where it was. `items.order_key` (the
+// retired second order) is no longer read or written.
 
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { items } from "../db/schema.js";
@@ -11,143 +22,33 @@ export const POSITION_SPACING = 1024;
 
 /**
  * Trigger a normalizing rebalance when `MIN(position) < REBALANCE_FLOOR`.
- * The "move to top" operation forever decrements positions; in practice
- * the rebalance never fires under normal usage, but it bounds the long
- * tail before positions become inscrutable in the DB (§3.8 of the
- * redesign).
+ * New items and "move to top" forever decrement positions; in practice the
+ * rebalance never fires, but it bounds the long tail before positions become
+ * inscrutable (or overflow the int column).
  */
 export const REBALANCE_FLOOR = -1_000_000_000;
 
-interface MoveArgs {
-  listId: string;
-  itemId: string;
-  beforeItemId?: string | null;
-  afterItemId?: string | null;
-  /** With no neighbours: `true` → append to the ordered section; else demote. */
-  ordered?: boolean;
-  db: DbClient;
-}
-
-interface MoveResult {
-  position: number | null;
-  rebalanced: boolean;
-}
-
 /**
- * Compute the next position for `itemId`, then UPDATE the row. Returns the
- * new position (null when demoting to unordered) plus whether the list's
- * ordered section was rebalanced as a side effect.
- *
- * - both null            → demote (position = NULL) — unless `ordered` is
- *                          true, which appends to the end of the ordered
- *                          section instead (how the first item of an empty
- *                          Ranked section gets a position)
- * - only beforeItemId    → place just after `before`
- * - only afterItemId     → place just before `after`
- * - both                 → place between them, rebalancing on collision
+ * Newest first. The album shelf has always sorted synced rows by when the
+ * sync first saw them (`detectedAt`), everything else by `created_at`.
  */
-export async function moveItemPosition(args: MoveArgs): Promise<MoveResult> {
-  const { listId, itemId, beforeItemId, afterItemId, ordered = false, db } = args;
+const RECENCY = "COALESCE(content->>'detectedAt', created_at::text) DESC, id ASC";
 
-  if (!beforeItemId && !afterItemId && ordered) {
-    const position = await appendPosition(listId, db);
-    await db.update(items).set({ position, updatedAt: new Date() }).where(eq(items.id, itemId));
-    return { position, rebalanced: false };
-  }
+/** Newest first (the inbox's order, and every tie-break). */
+export const RECENCY_ORDER_SQL = sql.raw(RECENCY);
 
-  if (!beforeItemId && !afterItemId) {
-    await db
-      .update(items)
-      .set({ position: null, updatedAt: new Date() })
-      .where(eq(items.id, itemId));
-    return { position: null, rebalanced: false };
-  }
+/** The list's order: placed rows top-down, unplaced rows first, newest first. */
+export const LIST_ORDER_SQL = sql.raw(`position ASC NULLS FIRST, ${RECENCY}`);
 
-  const attempt = async (): Promise<number | null> => {
-    const beforePos = beforeItemId ? await lookupPosition(db, beforeItemId) : null;
-    const afterPos = afterItemId ? await lookupPosition(db, afterItemId) : null;
-    let lower: number | null;
-    let upper: number | null;
-    if (beforePos !== null && afterPos !== null) {
-      lower = Math.min(beforePos, afterPos);
-      upper = Math.max(beforePos, afterPos);
-    } else if (beforePos !== null) {
-      lower = beforePos;
-      upper = await neighborPosition(db, listId, "above", beforePos);
-    } else if (afterPos !== null) {
-      lower = await neighborPosition(db, listId, "below", afterPos);
-      upper = afterPos;
-    } else {
-      return null;
-    }
-    return computeBetween(lower, upper);
-  };
-
-  let newPos = await attempt();
-  let rebalanced = false;
-  if (newPos === null) {
-    await rebalanceList(listId, db);
-    rebalanced = true;
-    newPos = await attempt();
-  }
-  if (newPos === null) {
-    // Fallback: append to the end.
-    newPos = await appendPosition(listId, db);
-  }
-  await db
-    .update(items)
-    .set({ position: newPos, updatedAt: new Date() })
-    .where(eq(items.id, itemId));
-
-  // §3.8: opportunistic rebalance when "move-to-top forever" has driven the
-  // list's MIN(position) below the floor. Cheap to check (single-row index
-  // probe) and amortizes across many moves before firing.
-  if (!rebalanced) {
-    const min = await minPositionForList(db, listId);
-    if (shouldRebalanceForOverflow(min)) {
-      await rebalanceList(listId, db);
-      rebalanced = true;
-      newPos = await lookupPosition(db, itemId);
-    }
-  }
-
-  return { position: newPos, rebalanced };
-}
-
-async function minPositionForList(db: DbClient, listId: string): Promise<number | null> {
-  const [row] = await db
-    .select({ min: sql<number | null>`MIN(position)::int` })
-    .from(items)
-    .where(and(eq(items.listId, listId), isNull(items.archivedAt), sql`position IS NOT NULL`));
-  const min = row?.min;
-  if (min === null || min === undefined) return null;
-  return Number(min);
-}
-
-async function lookupPosition(db: DbClient, id: string): Promise<number | null> {
-  const [row] = await db
-    .select({ position: items.position })
-    .from(items)
-    .where(eq(items.id, id))
-    .limit(1);
-  return row?.position ?? null;
-}
-
-async function neighborPosition(
-  db: DbClient,
-  listId: string,
-  direction: "above" | "below",
-  anchor: number,
-): Promise<number | null> {
-  const cmp = direction === "above" ? sql`position > ${anchor}` : sql`position < ${anchor}`;
-  const order = direction === "above" ? sql`position ASC` : sql`position DESC`;
-  const rows = await db
-    .select({ position: items.position })
-    .from(items)
-    .where(and(eq(items.listId, listId), isNull(items.archivedAt), sql`position IS NOT NULL`, cmp))
-    .orderBy(order)
-    .limit(1);
-  return rows[0]?.position ?? null;
+/** `LIST_ORDER_SQL` for rows already read newest first: a stable sort by position, NULLs first. */
+export function byPosition(
+  a: { position?: number | null },
+  b: { position?: number | null },
+): number {
+  const pa = a.position ?? null;
+  const pb = b.position ?? null;
+  if (pa === null || pb === null) return pa === pb ? 0 : pa === null ? -1 : 1;
+  return pa - pb;
 }
 
 export function computeBetween(lower: number | null, upper: number | null): number | null {
@@ -159,203 +60,202 @@ export function computeBetween(lower: number | null, upper: number | null): numb
 }
 
 /**
- * Returns true when the list's ordered section has drifted into negative
- * territory deep enough to warrant a normalizing rebalance. Callers check
- * this post-move; an opportunistic rebalance keeps the long tail of
- * "move-to-top forever" from producing inscrutable positions in the DB.
+ * True when the list's positions have drifted deep enough below zero
+ * ("add at top" forever) to warrant a normalizing renumber.
  */
 export function shouldRebalanceForOverflow(minPosition: number | null): boolean {
   if (minPosition === null) return false;
   return minPosition < REBALANCE_FLOOR;
 }
 
-/**
- * Rebalance the list's ordered section to fresh n*1024 spacing. Single SQL
- * statement; runs in milliseconds at Workshop's scale.
- */
-async function rebalanceList(listId: string, db: DbClient): Promise<void> {
-  await db.execute(sql`
-    WITH renumbered AS (
-      SELECT id,
-             (ROW_NUMBER() OVER (ORDER BY position) * ${POSITION_SPACING})::int AS new_position
-      FROM items
-      WHERE list_id = ${listId}
-        AND position IS NOT NULL
-        AND archived_at IS NULL
-    )
-    UPDATE items
-    SET position = renumbered.new_position
-    FROM renumbered
-    WHERE items.id = renumbered.id
-  `);
-}
-
-/**
- * Append-to-end allocator used by item creation when the list has the
- * `ranking` module enabled. Returns `MAX(position) + spacing` so the new
- * item sorts at the bottom of the ordered section.
- */
-export async function appendPosition(listId: string, db: DbClient): Promise<number> {
-  const [row] = await db
-    .select({ max: sql<number>`COALESCE(MAX(position), 0)::int` })
-    .from(items)
-    .where(and(eq(items.listId, listId), isNull(items.archivedAt), sql`position IS NOT NULL`));
-  return Number(row?.max ?? 0) + POSITION_SPACING;
-}
-
-// --- Unranked block order (`items.order_key`, UX pass 2.7) ---------------
-//
-// The Ranked block is ordered by `position`; everything else that is open
-// (every item on a list without the ranking feature) is ordered by
-// `order_key`. NULL keys sort first, newest first, so a list nobody has
-// dragged keeps its recency order and new items land at the top without the
-// create path knowing about keys. The first hand placement on a list
-// "materializes" its NULL rows (gives them keys above the current minimum in
-// their displayed order), after which the usual sparse-integer midpoint
-// arithmetic applies. Keys are list-wide (ranked, done and archived rows keep
-// theirs), so a row returning to the block — uncompleted, removed from
-// ranking, restored — lands where it was.
-
-/**
- * The display order of a list's unranked block. Shared by
- * `fetchItemsForList` and the materialize/renumber statements here so a
- * hand placement never reshuffles rows it didn't touch. The recency
- * expression is the one the album shelf has always used (`detectedAt` for
- * synced albums, else `created_at`).
- */
-export const UNRANKED_ORDER_SQL = sql.raw(
-  "order_key ASC NULLS FIRST, COALESCE(content->>'detectedAt', created_at::text) DESC, id ASC",
-);
-
-interface UnrankedMoveArgs {
+interface PlaceArgs {
   listId: string;
   itemId: string;
   /** The open row displayed directly above the drop, if any. */
   beforeItemId?: string | null;
   /** The open row displayed directly below the drop, if any. */
   afterItemId?: string | null;
+  /**
+   * The list has an attached source, so a NULL position is the sync inbox and
+   * must stay NULL. Without one, NULL rows are materialized first.
+   */
+  hasSource: boolean;
   db: DbClient;
 }
 
-interface UnrankedMoveResult {
-  orderKey: number;
+interface PlaceResult {
+  position: number;
   rebalanced: boolean;
 }
 
 /**
- * Place `itemId` in the unranked block between two neighbours (either may be
- * null: only `before` → just below it, only `after` → just above it, neither
- * → top of the block). Does not touch `position`; the route clears it first
- * when the move takes a row out of the Ranked block.
+ * Place `itemId` in the list's one order: just below `before`, else just
+ * above `after`, else at the top. A neighbour that is not a placed row of the
+ * same list (an inbox row, another list's id) is ignored, so a drop beside it
+ * still lands. A drop under a filter names the two rows the person saw; the
+ * row lands between them, wherever hidden rows sit.
  */
-export async function moveItemUnranked(args: UnrankedMoveArgs): Promise<UnrankedMoveResult> {
-  const { listId, itemId, beforeItemId, afterItemId, db } = args;
-  await materializeOrderKeys(listId, db);
+export async function placeItem(args: PlaceArgs): Promise<PlaceResult> {
+  const { listId, itemId, db } = args;
+  const beforeItemId = args.beforeItemId === itemId ? null : (args.beforeItemId ?? null);
+  const afterItemId = args.afterItemId === itemId ? null : (args.afterItemId ?? null);
+  if (!args.hasSource) await materializePositions(listId, db);
 
   const attempt = async (): Promise<number | null> => {
-    const beforeKey = beforeItemId ? await lookupOrderKey(db, beforeItemId) : null;
-    const afterKey = afterItemId ? await lookupOrderKey(db, afterItemId) : null;
+    const beforePos = beforeItemId ? await lookupPosition(db, listId, beforeItemId) : null;
+    const afterPos = afterItemId ? await lookupPosition(db, listId, afterItemId) : null;
     let lower: number | null;
     let upper: number | null;
-    if (beforeKey !== null && afterKey !== null) {
-      lower = Math.min(beforeKey, afterKey);
-      upper = Math.max(beforeKey, afterKey);
-    } else if (beforeKey !== null) {
-      lower = beforeKey;
-      upper = await neighborOrderKey(db, listId, itemId, "above", beforeKey);
-    } else if (afterKey !== null) {
-      lower = await neighborOrderKey(db, listId, itemId, "below", afterKey);
-      upper = afterKey;
+    if (beforePos !== null && afterPos !== null) {
+      lower = Math.min(beforePos, afterPos);
+      upper = Math.max(beforePos, afterPos);
+    } else if (beforePos !== null) {
+      lower = beforePos;
+      upper = await neighbourPosition(db, listId, itemId, "below", beforePos);
+    } else if (afterPos !== null) {
+      lower = await neighbourPosition(db, listId, itemId, "above", afterPos);
+      upper = afterPos;
     } else {
-      // Top of the block: above the smallest key on the list.
       lower = null;
-      upper = await minOrderKey(db, listId, itemId);
+      upper = await minPosition(db, listId, itemId);
     }
     return computeBetween(lower, upper);
   };
 
-  let key = await attempt();
+  let position = await attempt();
   let rebalanced = false;
-  if (key === null) {
-    await renumberOrderKeys(listId, db);
+  if (position === null) {
+    await rebalanceList(listId, db);
     rebalanced = true;
-    key = await attempt();
+    position = await attempt();
   }
-  if (key === null) key = (await minOrderKey(db, listId, itemId)) ?? POSITION_SPACING;
-  await db.update(items).set({ orderKey: key, updatedAt: new Date() }).where(eq(items.id, itemId));
+  // Still no room (cannot happen after a renumber): the top is always free.
+  if (position === null) position = await topPosition(listId, db, itemId);
+  await db.update(items).set({ position, updatedAt: new Date() }).where(eq(items.id, itemId));
 
-  if (!rebalanced && shouldRebalanceForOverflow(await minOrderKey(db, listId, null))) {
-    await renumberOrderKeys(listId, db);
+  if (!rebalanced && shouldRebalanceForOverflow(await minPosition(db, listId, null))) {
+    await rebalanceList(listId, db);
     rebalanced = true;
-    key = (await lookupOrderKey(db, itemId)) ?? key;
+    position = (await lookupPosition(db, listId, itemId)) ?? position;
   }
-  return { orderKey: key, rebalanced };
+  return { position, rebalanced };
+}
+
+/** The position that puts a row above every other row on the list. */
+export async function topPosition(
+  listId: string,
+  db: DbClient,
+  excludeId: string | null = null,
+): Promise<number> {
+  return computeBetween(null, await minPosition(db, listId, excludeId)) ?? POSITION_SPACING;
 }
 
 /**
- * Give every NULL-keyed row on the list a key above the current minimum,
- * preserving their displayed (newest-first) order. A no-op once the list has
- * no NULL keys; new items reintroduce a few at the top.
+ * `count` ascending positions above every row on the list, for rows that
+ * should land at the top in the order given (bulk paste keeps the pasted
+ * order). Renumbers first when the top has drifted past the floor.
  */
-async function materializeOrderKeys(listId: string, db: DbClient): Promise<void> {
+export async function topPositions(listId: string, count: number, db: DbClient): Promise<number[]> {
+  let min = await minPosition(db, listId, null);
+  if (min !== null && min - count * POSITION_SPACING < REBALANCE_FLOOR) {
+    await rebalanceList(listId, db);
+    min = await minPosition(db, listId, null);
+  }
+  const base = min ?? (count + 1) * POSITION_SPACING;
+  return Array.from({ length: count }, (_, i) => base - (count - i) * POSITION_SPACING);
+}
+
+/**
+ * Give unplaced rows (NULL position, not a pending suggestion) positions at
+ * the bottom of the list, newest first, as one block. Used when a list stops
+ * having a source: its inbox joins the list below everything a person placed.
+ */
+export async function appendUnplaced(listId: string, db: DbClient): Promise<void> {
+  await db.execute(sql`
+    WITH ceiling AS (
+      SELECT COALESCE(MAX(position), 0) AS m
+      FROM items
+      WHERE list_id = ${listId} AND archived_at IS NULL AND position IS NOT NULL
+    ),
+    pending AS (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY ${sql.raw(RECENCY)}) AS rn
+      FROM items
+      WHERE list_id = ${listId} AND archived_at IS NULL AND position IS NULL
+        AND suggestion_state IS NULL
+    )
+    UPDATE items
+    SET position = (ceiling.m + pending.rn * ${POSITION_SPACING})::int
+    FROM pending, ceiling
+    WHERE items.id = pending.id
+  `);
+}
+
+/**
+ * Give every unplaced row on a list without a source a position above the
+ * current top, in the order they read (newest first). A no-op once the list
+ * has none. Pending suggestions are left alone: they live in their own
+ * section until accepted.
+ */
+async function materializePositions(listId: string, db: DbClient): Promise<void> {
   await db.execute(sql`
     WITH floor AS (
-      SELECT COALESCE(MIN(order_key), 0) AS m
+      SELECT COALESCE(MIN(position), ${POSITION_SPACING}) AS m
       FROM items
-      WHERE list_id = ${listId} AND archived_at IS NULL AND order_key IS NOT NULL
+      WHERE list_id = ${listId} AND archived_at IS NULL AND position IS NOT NULL
     ),
     pending AS (
       SELECT id,
-             ROW_NUMBER() OVER (ORDER BY ${UNRANKED_ORDER_SQL}) AS rn,
+             ROW_NUMBER() OVER (ORDER BY ${sql.raw(RECENCY)}) AS rn,
              COUNT(*) OVER () AS n
       FROM items
-      WHERE list_id = ${listId} AND archived_at IS NULL AND order_key IS NULL
+      WHERE list_id = ${listId} AND archived_at IS NULL AND position IS NULL
+        AND suggestion_state IS NULL
     )
     UPDATE items
-    SET order_key = (floor.m - (pending.n - pending.rn + 1) * ${POSITION_SPACING})::int
+    SET position = (floor.m - (pending.n - pending.rn + 1) * ${POSITION_SPACING})::int
     FROM pending, floor
     WHERE items.id = pending.id
   `);
 }
 
-/** Re-space every keyed row on the list to n*1024 in its current order. */
-async function renumberOrderKeys(listId: string, db: DbClient): Promise<void> {
+/** Re-space every placed row on the list to n*1024 in its current order. */
+async function rebalanceList(listId: string, db: DbClient): Promise<void> {
   await db.execute(sql`
     WITH renumbered AS (
       SELECT id,
-             (ROW_NUMBER() OVER (ORDER BY ${UNRANKED_ORDER_SQL}) * ${POSITION_SPACING})::int AS k
+             (ROW_NUMBER() OVER (ORDER BY ${LIST_ORDER_SQL}) * ${POSITION_SPACING})::int AS p
       FROM items
-      WHERE list_id = ${listId} AND archived_at IS NULL
+      WHERE list_id = ${listId} AND archived_at IS NULL AND position IS NOT NULL
     )
     UPDATE items
-    SET order_key = renumbered.k
+    SET position = renumbered.p
     FROM renumbered
     WHERE items.id = renumbered.id
   `);
 }
 
-async function lookupOrderKey(db: DbClient, id: string): Promise<number | null> {
+async function lookupPosition(db: DbClient, listId: string, id: string): Promise<number | null> {
   const [row] = await db
-    .select({ orderKey: items.orderKey })
+    .select({ position: items.position })
     .from(items)
-    .where(eq(items.id, id))
+    .where(and(eq(items.id, id), eq(items.listId, listId), isNull(items.archivedAt)))
     .limit(1);
-  return row?.orderKey ?? null;
+  return row?.position ?? null;
 }
 
-async function minOrderKey(
+async function minPosition(
   db: DbClient,
   listId: string,
   excludeId: string | null,
 ): Promise<number | null> {
   const [row] = await db
-    .select({ min: sql<number | null>`MIN(order_key)::int` })
+    .select({ min: sql<number | null>`MIN(position)::int` })
     .from(items)
     .where(
       and(
         eq(items.listId, listId),
         isNull(items.archivedAt),
-        sql`order_key IS NOT NULL`,
+        sql`position IS NOT NULL`,
         excludeId ? sql`id <> ${excludeId}` : sql`TRUE`,
       ),
     );
@@ -363,29 +263,32 @@ async function minOrderKey(
   return min === null || min === undefined ? null : Number(min);
 }
 
-async function neighborOrderKey(
+/**
+ * The nearest placed position on the list next to `anchor`: "below" in the
+ * displayed list is the next larger position, "above" the next smaller one.
+ */
+async function neighbourPosition(
   db: DbClient,
   listId: string,
   excludeId: string,
   direction: "above" | "below",
   anchor: number,
 ): Promise<number | null> {
-  // "above" in key space = the next larger key (the row displayed below).
-  const cmp = direction === "above" ? sql`order_key > ${anchor}` : sql`order_key < ${anchor}`;
-  const order = direction === "above" ? sql`order_key ASC` : sql`order_key DESC`;
+  const cmp = direction === "below" ? sql`position > ${anchor}` : sql`position < ${anchor}`;
+  const order = direction === "below" ? sql`position ASC` : sql`position DESC`;
   const rows = await db
-    .select({ orderKey: items.orderKey })
+    .select({ position: items.position })
     .from(items)
     .where(
       and(
         eq(items.listId, listId),
         isNull(items.archivedAt),
-        sql`order_key IS NOT NULL`,
+        sql`position IS NOT NULL`,
         sql`id <> ${excludeId}`,
         cmp,
       ),
     )
     .orderBy(order)
     .limit(1);
-  return rows[0]?.orderKey ?? null;
+  return rows[0]?.position ?? null;
 }

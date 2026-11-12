@@ -537,22 +537,24 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   writes through on every change. Any new item-create surface (bulk paste, share flow) should
   pass `tags` on create rather than firing a second request, and must invalidate
   `queryKeys.tags.byList(listId)` so a brand-new tag reaches the filter bar.
-- **Item order is two keys: `position` (the Ranked block) and `order_key` (every open row
-  outside it, on every list).** `POST /v1/items/:id/move` takes `section: "ranked" |
-"unranked"` plus the neighbour ids of the rows displayed above (`beforeItemId`) and below
-  (`afterItemId`) the drop; `unranked` works on any list (no `ranking` needed) and takes a
-  ranked row out of the ranking. `order_key` NULL sorts first, newest first, so a list nobody
-  has dragged keeps its recency order and new items land on top without the create path
-  knowing; the first hand placement materializes the NULLs (`moveItemUnranked` in
-  `lib/positions.ts`). **Legacy shapes are kept for old binaries**: no `section`, both
-  neighbours null = demote unless `ordered: true` (append to Ranked), neighbours set = within
-  Ranked, and lists without `ranking` still 409 them. This client always sends `section`,
-  except the album shelf's demote, which uses the legacy shape so its detected block stays in
-  recency order (`docs/album-shelf.md`). Client drop logic is `resolveDrop` in
-  `apps/workshop/src/screens/listDetail/listOps.ts` (both platforms).
+- **A list is one hand-ordered sequence: `items.position`, ascending = top** (`lib/positions.ts`,
+  docs/list-types.md → "Order"). New rows get a position above the top (create, bulk paste in
+  pasted order, accepted Letterboxd suggestion); done and deleted rows keep theirs, so reopen and
+  Undo return them to their place. `position IS NULL` on a list with a source (`sources` module)
+  is the **sync inbox** ("New from Spotify"), shown below the list: sync inserts land there and
+  nothing a person placed moves; a move places one. Elsewhere a NULL row reads at the top and is
+  materialized on the next move. `POST /v1/items/:id/move` takes `section: "list"` plus the
+  neighbours displayed above (`beforeItemId`) and below (`afterItemId`); neither = top;
+  `section: "inbox"` is only the Undo of "Add to list". **Legacy shapes stay accepted for old
+  binaries** (`ranked` / `unranked` / `ordered: true` = `list`; no section and no neighbours =
+  back to the inbox on a source list, no-op elsewhere); the read keeps `ordered: []` and
+  `unordered = open + inbox` for them. The `ranking` module is retired: every write drops it,
+  stored copies are ignored (migration 0058 stripped it). `items.order_key` is no longer read or
+  written (0058 mirrored `position` into it for rollback; droppable later). Client drop logic is
+  `resolveDrop` in `apps/workshop/src/screens/listDetail/listOps.ts` (both platforms).
 - **What a list offers follows its kind: `@workshop/shared/listKinds`, not screen branches.**
   One registry per `item_kind` (plus `blank` for NULL) says which toggles list settings offers
-  (`todo` and `ranking` everywhere, `letterboxd` on movies only), the list's words (noun, Done
+  (`todo` everywhere, `letterboxd` on movies only), the list's words (noun, Done
   word, "N to watch", feature labels), the add mode (`search` / `quick` / `sync_only`), Paste
   many, the empty state and the glyph. `sources` is **derived**, never a toggle: on exactly when
   a `list_sources` row exists, kept so by `apps/backend/src/lib/listFeatures.ts` in the same
@@ -572,7 +574,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
 - **Lists and items are soft-deleted via `archived_at`.** `DELETE /v1/lists/:id` (owner-only)
   and `DELETE /v1/items/:id` set the row's `archived_at`; `POST /v1/items/:id/unarchive`
   (any member of the live parent list, event `item_restored`) is the delete Undo, and the row
-  keeps its `position` / `order_key` so it returns to where it was. Every read path filters `archived_at IS NULL` —
+  keeps its `position` so it returns to where it was. Every read path filters `archived_at IS NULL` —
   `requireListMember`/`requireItemMember` 404 archived rows, `GET /v1/lists` filters lists,
   items reads filter both item and parent list, the activity feed joins through both, and the
   public invite preview/accept checks the same. **When you add a new query touching `lists` or

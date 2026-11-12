@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import type { Item, ListItemsResponse } from "@workshop/shared";
+import type { Item, ListRowsResponse } from "@workshop/shared";
 import {
   ActionSheet,
   alpha,
@@ -238,7 +238,7 @@ export default function ItemDetail() {
     onMutate: () => {
       haptics.warning();
       if (listId) {
-        queryClient.setQueryData<ListItemsResponse>(queryKeys.items.byList(listId), (d) =>
+        queryClient.setQueryData<ListRowsResponse>(queryKeys.items.byList(listId), (d) =>
           d ? applyRemove(d, itemId ?? "") : d,
         );
       }

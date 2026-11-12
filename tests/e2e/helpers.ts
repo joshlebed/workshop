@@ -284,7 +284,7 @@ export const ITEM_ROWS =
 
 /** The item row whose title contains `title`. */
 export function itemRow(page: Page, title: string): Locator {
-  // The title element may lead with a rank numeral, so match by substring.
+  // Match by substring: the title element may carry more than the title.
   return page.locator(ITEM_ROWS, {
     has: page.locator('[data-testid^="item-title-"]', { hasText: title }),
   });

@@ -1,6 +1,7 @@
 import { apiRequest } from "@workshop/api-client/api";
 import type {
   CreateListSourceRequest,
+  ListRowsResponse,
   ListSource,
   ListSourceResponse,
   ListSourcesResponse,
@@ -8,6 +9,7 @@ import type {
   SourcePreviewResponse,
   SyncSourceResponse,
 } from "@workshop/shared";
+import { withListRows } from "./items";
 
 export function fetchSources(listId: string, token: string | null): Promise<ListSourcesResponse> {
   return apiRequest<ListSourcesResponse>({
@@ -54,16 +56,18 @@ export function deleteSource(
   });
 }
 
-export function syncSource(
+export async function syncSource(
   listId: string,
   sourceId: string,
   token: string | null,
-): Promise<SyncSourceResponse> {
-  return apiRequest<SyncSourceResponse>({
-    method: "POST",
-    path: `/v1/lists/${listId}/sources/${sourceId}/sync`,
-    token,
-  });
+): Promise<SyncSourceResponse & ListRowsResponse> {
+  return withListRows(
+    await apiRequest<SyncSourceResponse>({
+      method: "POST",
+      path: `/v1/lists/${listId}/sources/${sourceId}/sync`,
+      token,
+    }),
+  );
 }
 
 export type { ListSource };

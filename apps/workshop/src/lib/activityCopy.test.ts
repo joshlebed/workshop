@@ -33,10 +33,11 @@ describe("describeActivity (glossary verbs)", () => {
     expect(describeActivity(ev({ type: "list_archived" }))).toBe("deleted the list");
   });
 
-  it("says ranked / removed from ranking, not pinned", () => {
-    expect(describeActivity(ev({ type: "item_promoted", payload: t }))).toBe("ranked Past Lives");
-    expect(describeActivity(ev({ type: "item_demoted", payload: t }))).toBe(
-      "removed Past Lives from ranking",
+  it("says moved for every change of place, old ranked-section events included", () => {
+    expect(describeActivity(ev({ type: "item_promoted", payload: t }))).toBe("moved Past Lives");
+    expect(describeActivity(ev({ type: "item_demoted", payload: t }))).toBe("moved Past Lives");
+    expect(describeActivity(ev({ type: "module_enabled", payload: { module: "ranking" } }))).toBe(
+      "turned on numbering",
     );
   });
 
@@ -97,7 +98,7 @@ describe("describeActivity (glossary verbs)", () => {
     ];
     for (const type of types) {
       const text = describeActivity(ev({ type, payload: { title: "X", module: "ranking" } }));
-      expect(text).not.toMatch(/archiv|pinned|checked off|uncrossed|module/i);
+      expect(text).not.toMatch(/archiv|pinned|checked off|uncrossed|module|rank|ordered/i);
     }
   });
 });

@@ -191,25 +191,27 @@ patch.
 
 ## List-detail drag: one combined list per platform, one shared resolver
 
-Every open row reorders by drag on every list (UX pass 2.7); done rows never drag. Both
-platforms render Ranked and open rows in ONE reorderable list and hand the library's
-`{from, to}` to `resolveDrop` (`src/screens/listDetail/listOps.ts`, unit-tested), which
-returns `{ section, beforeItemId, afterItemId }` for `POST /v1/items/:id/move` (see the root
-CLAUDE.md move bullet). Neighbours are the _visible_ rows, so a drop under a filter lands
-between the two rows the user saw.
+A list is one hand-ordered sequence (root CLAUDE.md order bullet); done rows never drag. On a
+list with a source the sync inbox ("New from Spotify") follows the list under its heading: its
+rows drag up into the list (or "Add to list" from the menu, with Undo), never reorder among
+themselves, and a list row dropped into it lands at the bottom of the list. Both platforms
+render the list and the inbox in ONE reorderable list and hand the library's `{from, to}` to
+`resolveDrop` (`src/screens/listDetail/listOps.ts`, unit-tested), which returns
+`{ beforeItemId, afterItemId }`; `moveRequest` turns that into the `section: "list"` body.
+Neighbours are the _visible_ rows, so a drop under a filter lands between the two rows the
+user saw (verified: no snap-back after the refetch). There are no numerals and no rank words
+anywhere.
 
-- **Web** (`ItemList.web.tsx`, dnd-kit): `[...ranked, divider, ...open]`; the divider is a
-  disabled sortable that renders the open block's header. With no visible ranked row the
-  divider is omitted and an empty-Ranked "Drop here to rank" target **floats over the top of
-  the list** while an open row is dragged (a target that pushed content down made Chrome's
-  scroll anchoring shift the page under the pointer). The lifted row renders in a
-  `DragOverlay`; the row in the list stays as a faint placeholder. The drag handle shows in
-  the left gutter on hover/focus only.
-- **Native** (`ItemList.tsx`, react-native-reorderable-list): `[...ranked, ...open]` with an
-  implicit boundary, or `[slot, ...open]` when Ranked is empty, where `slot` is a
-  constant-height "Ranked" drop cell (the one non-row cell in the data; section headers
-  otherwise stay out of the data because a header row once desynced the library's per-cell
-  layout). Native drag, haptics and the slot cell were not exercised on a device in phase 2.
+- **Web** (`ItemList.web.tsx`, dnd-kit): `[...list, divider, ...inbox]`; the divider is a
+  disabled sortable that renders the inbox heading, plus a dashed "Drag an album here to start
+  the list" cell above it while nothing is placed. The lifted row renders in a `DragOverlay`;
+  the row in the list stays as a faint placeholder. The drag handle shows in the left gutter on
+  hover/focus only.
+- **Native** (`ItemList.tsx`, react-native-reorderable-list): `[...list, ...inbox]` with an
+  implicit boundary (the inbox heading decorates its first cell), or `[slot, ...inbox]` while
+  nothing is placed, where `slot` is the constant-height drop cell (the one non-row cell in the
+  data; headings otherwise stay out of it because a header row once desynced the library's
+  per-cell layout). Native drag and the slot cell have not been exercised on a device.
 
 ## `expo-share-intent` is patched: capture `attributedContentText`
 
@@ -313,7 +315,7 @@ pushes; only add / add-bulk / create are modals. Unknown routes render `app/+not
 Every home row's second line follows one rule, `src/screens/home/homeRow.ts` (unit-tested):
 `<count in the list's own noun> · <who did what last> · <age>`, falling back to
 `· updated <age>`. Verbs come from `describeActivity` (`src/lib/activityCopy.ts`), shared with the
-activity feed so both say "deleted", "ranked", "watched". Row actions open one `ActionSheet` from
+activity feed so both say "deleted", "moved", "watched". Row actions open one `ActionSheet` from
 long-press, right-click, or the web-only trailing "more" button (`RowMoreButton.web.tsx`; the
 native file renders nothing). Swipe actions on native were not built (not verifiable without a
 device). `ShareListSheet` (`src/components/`) is the one share surface (list header, row menu,

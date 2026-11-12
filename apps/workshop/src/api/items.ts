@@ -5,17 +5,33 @@ import type {
   CreateItemRequest,
   ItemResponse,
   ListItemsResponse,
+  ListRowsResponse,
   MoveItemRequest,
   UpdateItemRequest,
   UpdateItemTagsRequest,
 } from "@workshop/shared";
 
-export function fetchItems(listId: string, token: string | null): Promise<ListItemsResponse> {
-  return apiRequest<ListItemsResponse>({
-    method: "GET",
-    path: `/v1/lists/${listId}/items`,
-    token,
-  });
+/**
+ * A list's rows in today's shape. A backend from before the one-order release
+ * (only for the minutes a deploy takes) sends `ordered` / `unordered` and no
+ * `open` / `inbox`; read that as one list.
+ */
+export function withListRows<T extends ListItemsResponse>(d: T): T & ListRowsResponse {
+  return {
+    ...d,
+    open: d.open ?? [...(d.ordered ?? []), ...(d.unordered ?? [])],
+    inbox: d.inbox ?? [],
+  };
+}
+
+export async function fetchItems(listId: string, token: string | null): Promise<ListRowsResponse> {
+  return withListRows(
+    await apiRequest<ListItemsResponse>({
+      method: "GET",
+      path: `/v1/lists/${listId}/items`,
+      token,
+    }),
+  );
 }
 
 export function fetchItem(itemId: string, token: string | null): Promise<ItemResponse> {
@@ -100,8 +116,8 @@ export function uncompleteItem(itemId: string, token: string | null): Promise<It
 }
 
 /**
- * Move an item. This client always names the landing block with `section`
- * (`ranked` | `unranked`); neighbours are the rows displayed directly above
+ * Move an item in its list's one order (build the body with `moveRequest`
+ * from listOps): neighbours are the rows displayed directly above
  * (`beforeItemId`) and below (`afterItemId`) the drop. See `MoveItemRequest`
  * for the legacy shapes older clients still send.
  */

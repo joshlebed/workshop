@@ -328,7 +328,7 @@ export default function Activity() {
         <View style={styles.center}>
           <EmptyState
             title="No activity yet"
-            description="When you or the people on your lists add, rank or finish something, it shows up here."
+            description="When you or the people on your lists add, move or finish something, it shows up here."
           />
         </View>
       ) : filteredEvents.length === 0 ? (
@@ -467,8 +467,7 @@ const MARKS: Record<ActivityMark, { icon?: IconName; text?: string }> = {
   sync: { icon: "refresh" },
   minus: { text: "−" },
   undo: { text: "↺" },
-  rank: { text: "↑" },
-  unrank: { text: "↓" },
+  move: { text: "↕" },
   in: { text: "→" },
   out: { text: "←" },
   edit: { text: "·" },
