@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
-import { useToast } from "@workshop/ui";
+import { haptics, useToast } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { acceptInvite, fetchInvitePreview } from "../../src/api/invites";
@@ -73,6 +73,7 @@ export default function InviteLanding() {
   }
 
   const onJoin = async () => {
+    haptics.success();
     try {
       const res = await acceptInvite(inviteToken, token);
       await removeItem(PENDING_INVITE_TOKEN_KEY).catch(() => {});

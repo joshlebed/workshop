@@ -24,7 +24,7 @@ export function Modal({ visible, onRequestClose, children, contentStyle, testID 
     >
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Close modal"
+        accessibilityLabel="Close"
         style={styles.backdrop}
         onPress={onRequestClose}
       >

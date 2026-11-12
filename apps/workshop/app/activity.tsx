@@ -1,5 +1,4 @@
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { ActivityEvent, ActivityFeedResponse, ItemKind } from "@workshop/shared";
@@ -12,12 +11,17 @@ import {
   type IconName,
   type ListColorKey,
   ListRow,
+  layout,
   PullToRefresh,
+  Reveal,
   Screen,
   ScreenHeader,
+  SectionHeader,
   Skeleton,
+  screenColumnStyle,
   Text,
   tokens,
+  useRevealAfterLoading,
 } from "@workshop/ui";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -35,6 +39,7 @@ import {
   shortAge,
   splitAtReadMarker,
 } from "../src/lib/activityCopy";
+import { loadErrorMessage } from "../src/lib/errorCopy";
 import { goBack } from "../src/lib/goBack";
 
 const PAGE_SIZE = 50;
@@ -234,6 +239,7 @@ export default function Activity() {
     setFilter(filter?.kind === next.kind && filter.id === next.id ? null : next);
 
   const isInitialLoading = feedQuery.isPending;
+  const feedRevealed = useRevealAfterLoading(isInitialLoading);
   // Only an empty cache gets the error state; a failed background refetch
   // keeps the feed already on screen (0.9).
   const isError = feedQuery.isError && !feedQuery.data;
@@ -254,7 +260,7 @@ export default function Activity() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterStrip}
-          style={styles.filterScroll}
+          style={[styles.filterScroll, screenColumnStyle]}
           testID="activity-filter-strip"
         >
           <Chip
@@ -304,15 +310,17 @@ export default function Activity() {
 
       {isInitialLoading ? (
         <View style={styles.skeleton}>
-          <Skeleton.Rows count={8} testID="activity-skeleton" />
+          <View style={screenColumnStyle}>
+            <Skeleton.Rows count={8} testID="activity-skeleton" />
+          </View>
         </View>
       ) : isError ? (
         <View style={styles.center}>
           <EmptyState
             title="Couldn't load activity"
-            description={errorMessage(feedQuery.error)}
+            description={loadErrorMessage(feedQuery.error)}
             action={
-              <Button label="Retry" variant="secondary" onPress={() => feedQuery.refetch()} />
+              <Button label="Try again" variant="secondary" onPress={() => feedQuery.refetch()} />
             }
           />
         </View>
@@ -331,53 +339,58 @@ export default function Activity() {
           />
         </View>
       ) : (
-        <PullToRefresh
-          refreshing={feedQuery.isRefetching && !feedQuery.isFetchingNextPage}
-          onRefresh={() => feedQuery.refetch()}
-        >
-          <FlatList
-            testID="activity-feed"
-            data={items}
-            keyExtractor={(it) => it.id}
-            contentContainerStyle={styles.body}
-            renderItem={({ item }) =>
-              item.kind === "new" ? (
-                <View style={styles.dayHeading} testID="activity-new-divider">
-                  <Text style={[styles.dayHeadingText, styles.newText]}>New</Text>
-                </View>
-              ) : item.kind === "heading" ? (
-                <View
-                  style={[styles.dayHeading, item.afterNew ? styles.afterNew : null]}
-                  testID={item.afterNew ? "activity-earlier" : `activity-day-${item.label}`}
-                >
-                  <Text style={styles.dayHeadingText}>{item.label}</Text>
-                </View>
-              ) : (
-                <ActivityRow
-                  event={item.event}
-                  list={listLookup.get(item.event.listId) ?? null}
-                  showList={item.showList}
-                  fresh={item.fresh}
-                  selfId={selfId}
-                  onPress={() => void openEvent(item.event)}
-                />
-              )
-            }
-            onEndReached={() => {
-              if (feedQuery.hasNextPage && !feedQuery.isFetchingNextPage) {
-                feedQuery.fetchNextPage();
+        <Reveal when={feedRevealed}>
+          <PullToRefresh
+            refreshing={feedQuery.isRefetching && !feedQuery.isFetchingNextPage}
+            onRefresh={() => feedQuery.refetch()}
+          >
+            <FlatList
+              testID="activity-feed"
+              data={items}
+              keyExtractor={(it) => it.id}
+              contentContainerStyle={[styles.body, screenColumnStyle]}
+              renderItem={({ item, index }) =>
+                item.kind === "new" ? (
+                  <SectionHeader
+                    title="New"
+                    first={index === 0}
+                    trailing={<View style={styles.freshDot} />}
+                    testID="activity-new-divider"
+                  />
+                ) : item.kind === "heading" ? (
+                  <SectionHeader
+                    title={item.label}
+                    first={index === 0}
+                    style={item.afterNew ? styles.afterNew : undefined}
+                    testID={item.afterNew ? "activity-earlier" : `activity-day-${item.label}`}
+                  />
+                ) : (
+                  <ActivityRow
+                    event={item.event}
+                    list={listLookup.get(item.event.listId) ?? null}
+                    showList={item.showList}
+                    fresh={item.fresh}
+                    selfId={selfId}
+                    onPress={() => void openEvent(item.event)}
+                  />
+                )
               }
-            }}
-            onEndReachedThreshold={0.5}
-            ListFooterComponent={
-              feedQuery.isFetchingNextPage ? (
-                <View style={styles.footerLoader}>
-                  <ActivityIndicator color={tokens.accent.default} />
-                </View>
-              ) : undefined
-            }
-          />
-        </PullToRefresh>
+              onEndReached={() => {
+                if (feedQuery.hasNextPage && !feedQuery.isFetchingNextPage) {
+                  feedQuery.fetchNextPage();
+                }
+              }}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={
+                feedQuery.isFetchingNextPage ? (
+                  <View style={styles.footerLoader}>
+                    <ActivityIndicator color={tokens.accent.default} accessibilityLabel="Loading" />
+                  </View>
+                ) : undefined
+              }
+            />
+          </PullToRefresh>
+        </Reveal>
       )}
     </Screen>
   );
@@ -405,11 +418,12 @@ function ActivityRow({ event, list, showList, fresh, selfId, onPress }: Activity
 
   return (
     <ListRow
-      accessibilityLabel={`${fresh ? "New: " : ""}${who} ${description}${list ? ` in ${list.name}` : ""}, ${when}`}
+      // Named by its own text (sentence, list, age; WCAG 2.5.3). New rows sit
+      // under the visible "New" divider.
       onPress={onPress}
       testID={`activity-row-${event.id}`}
       leading={
-        <View style={[styles.avatar, { backgroundColor: alpha(accent, 0.12) }]}>
+        <View style={[styles.avatar, { backgroundColor: alpha(accent, 0.12) }]} aria-hidden>
           {mark.icon ? (
             <Icon name={mark.icon} size={16} color={accent} />
           ) : (
@@ -418,7 +432,7 @@ function ActivityRow({ event, list, showList, fresh, selfId, onPress }: Activity
         </View>
       }
       title={
-        <Text variant="body" numberOfLines={2} style={styles.line}>
+        <Text numberOfLines={2}>
           <Text style={styles.actorName}>{who}</Text>
           <Text> {description}</Text>
         </Text>
@@ -426,8 +440,8 @@ function ActivityRow({ event, list, showList, fresh, selfId, onPress }: Activity
       subtitle={
         list && showList ? (
           <View style={styles.listChipRow}>
-            <Text style={styles.listChipEmoji}>{list.emoji}</Text>
-            <Text variant="caption" tone="muted" numberOfLines={1} style={styles.listChipName}>
+            <Text variant="caption">{list.emoji}</Text>
+            <Text variant="caption" tone="muted" numberOfLines={1}>
               {list.name}
             </Text>
           </View>
@@ -478,7 +492,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.xs,
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.xs,
     paddingBottom: tokens.space.sm,
   },
@@ -490,54 +504,35 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.border.default,
     marginLeft: tokens.space.xs,
   },
-  body: { paddingBottom: tokens.space.xxl * 2 },
+  body: { paddingBottom: layout.bottomInset },
   center: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
   },
   skeleton: { paddingTop: tokens.space.sm },
-  dayHeading: {
-    paddingHorizontal: tokens.space.lg,
-    paddingTop: tokens.space.xl,
-    paddingBottom: tokens.space.sm,
-  },
+  // "Earlier", after the unread block: a rule above it closes "New".
   afterNew: {
     marginTop: tokens.space.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: tokens.border.default,
   },
-  dayHeadingText: {
-    color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    lineHeight: 22,
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: -0.2,
-  },
-  newText: { color: tokens.accent.default },
   avatar: {
     width: 44,
     height: 44,
-    borderRadius: 22,
+    borderRadius: tokens.radius.pill,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarGlyph: {
-    fontSize: tokens.font.size.md,
-    fontWeight: tokens.font.weight.semibold,
-    lineHeight: tokens.font.size.md + 2,
-  },
-  line: { color: tokens.text.primary, fontSize: tokens.font.size.sm, lineHeight: 20 },
+  avatarGlyph: { fontWeight: tokens.font.weight.semibold },
   actorName: { fontWeight: tokens.font.weight.semibold, color: tokens.text.primary },
   listChipRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.xs },
-  listChipEmoji: { fontSize: tokens.font.size.xs, lineHeight: 16 },
-  listChipName: { letterSpacing: 0.1 },
   trailing: { flexDirection: "row", alignItems: "center", gap: tokens.space.xsm },
   freshDot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: tokens.radius.pill,
     backgroundColor: tokens.accent.default,
   },
   when: { fontVariant: ["tabular-nums"] },

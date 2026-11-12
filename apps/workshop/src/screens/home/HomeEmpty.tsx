@@ -1,10 +1,10 @@
-import { getTemplate, type ListTemplate, templateListName } from "@workshop/shared/templates";
+import { getTemplate, type ListTemplate } from "@workshop/shared/templates";
 import {
   Button,
   EmojiBadge,
-  homeLayout,
   type ListColorKey,
   ListRow,
+  layout,
   SectionHeader,
   Text,
   tokens,
@@ -13,7 +13,7 @@ import { ActivityIndicator, StyleSheet, View } from "react-native";
 
 /**
  * The starters on an empty home (4.2), most common first. Each makes a
- * ready list in one tap; "Start from scratch" is the blank template.
+ * ready list in one tap; "Blank list" is the blank template.
  */
 export const HOME_STARTER_IDS = ["movie_watchlist", "date_ideas", "shared_todo"] as const;
 
@@ -49,7 +49,7 @@ export function HomeEmpty({
   if (hiddenCount > 0) {
     return (
       <View style={styles.root} testID="home-all-hidden">
-        <Text tone="secondary" style={styles.lead}>
+        <Text tone="secondary" style={[styles.lead, styles.leadAboveRow]}>
           Every list you have is hidden from home.
         </Text>
         <ListRow
@@ -86,7 +86,9 @@ export function HomeEmpty({
         />
       }
       trailing={
-        pendingTemplateId === t.id ? <ActivityIndicator color={tokens.text.muted} /> : undefined
+        pendingTemplateId === t.id ? (
+          <ActivityIndicator color={tokens.text.muted} accessibilityLabel="Creating" />
+        ) : undefined
       }
       disabled={busy}
       onPress={() => onCreate(t)}
@@ -102,9 +104,11 @@ export function HomeEmpty({
         A list is one place for the films, plans or errands you're keeping, and everyone you share
         it with can add to it.
       </Text>
-      <SectionHeader title="Start with" style={styles.header} />
-      {starters().map((t) => row(t, templateListName(t), `home-starter-${t.id}`))}
-      {blank ? row(blank, "Start from scratch", "home-starter-blank_list") : null}
+      <SectionHeader title="Start with" />
+      {/* The same names as the template picker (5, critique: home said
+          "Movies to watch", the picker "Movie watchlist"). */}
+      {starters().map((t) => row(t, t.displayName, `home-starter-${t.id}`))}
+      {blank ? row(blank, blank.displayName, "home-starter-blank_list") : null}
       <View style={styles.more}>
         <Button
           label="More templates"
@@ -122,17 +126,11 @@ export function HomeEmpty({
 const styles = StyleSheet.create({
   // A ghost button's label lines up with the row titles' left edge.
   flush: { marginLeft: -(tokens.space.lg + 1) },
-  root: { paddingTop: homeLayout.contentTopGap, paddingBottom: homeLayout.bottomInset },
-  lead: {
-    paddingHorizontal: homeLayout.horizontalInset,
-    paddingBottom: tokens.space.lg,
-  },
-  header: {
-    paddingHorizontal: homeLayout.horizontalInset,
-    paddingBottom: tokens.space.xs,
-  },
+  root: { paddingTop: layout.contentTopGap, paddingBottom: layout.bottomInset },
+  lead: { paddingHorizontal: layout.gutter },
+  leadAboveRow: { paddingBottom: tokens.space.sm },
   more: {
-    paddingHorizontal: homeLayout.horizontalInset,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.md,
     alignItems: "flex-start",
   },

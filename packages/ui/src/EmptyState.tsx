@@ -1,12 +1,12 @@
 import { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, {
-  Easing,
   useAnimatedStyle,
   useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { timing } from "./motion";
 import { Text } from "./Text";
 import { tokens } from "./theme";
 
@@ -53,10 +53,7 @@ export function EmptyState({
       progress.value = 1;
       return;
     }
-    progress.value = withTiming(1, {
-      duration: tokens.motion.slow,
-      easing: Easing.bezier(...tokens.motion.easeOut),
-    });
+    progress.value = withTiming(1, timing("slow"));
   }, [motion, reduceMotion, progress]);
 
   const animatedStyle = useAnimatedStyle(() => ({

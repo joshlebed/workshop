@@ -6,14 +6,17 @@ import { LIST_TEMPLATES, type ListTemplate, templateListName } from "@workshop/s
 import {
   Button,
   Card,
+  haptics,
+  layout,
   Screen,
   ScreenHeader,
+  screenColumnStyle,
   Text,
   TextField,
   tokens,
   useToast,
 } from "@workshop/ui";
-import { useLocalSearchParams } from "expo-router";
+import { useIsFocused, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
@@ -21,6 +24,7 @@ import { createList } from "../../../../src/api/lists";
 import { previewSource } from "../../../../src/api/sources";
 import { useAuth } from "../../../../src/hooks/useAuth";
 import { goBack, openListOverHome } from "../../../../src/lib/goBack";
+import { useEscapeToClose } from "../../../../src/lib/shortcuts/useShortcuts";
 import { sourceErrorMessage } from "../../../../src/lib/sourceErrors";
 
 function pickString(v: string | string[] | undefined): string {
@@ -74,15 +78,15 @@ const SOURCE_COPY: Record<SourceKind, SourceCopy> = {
   // autoSource with no URL prompt); the entry keeps the record exhaustive
   // for the SourceKind union.
   letterboxd_match: {
-    lead: "Letterboxd Match",
+    lead: "Letterboxd match",
     defaultPrompt: "Workshop matches films across members' Letterboxd watchlists.",
     fieldLabel: "",
     placeholder: "",
     hint: "",
     submitLabel: "Create list",
     checkingLabel: "Checking…",
-    errorFallback: "Couldn't set up Letterboxd matching. Try again?",
-    createErrorFallback: "Couldn't create the list",
+    errorFallback: "Couldn't set up Letterboxd matching. Try again in a moment.",
+    createErrorFallback: "Couldn't make the list. Try again in a moment.",
   },
 };
 
@@ -183,6 +187,8 @@ export default function CreateListPlaylist() {
         },
         token,
       ),
+    // A create: `success`, on the tap.
+    onMutate: () => haptics.success(),
     onSuccess: async (res) => {
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
       // Home directly beneath the new list, so back goes home (3.8).
@@ -196,6 +202,9 @@ export default function CreateListPlaylist() {
     },
   });
 
+  const isFocused = useIsFocused();
+  useEscapeToClose(() => goBack("/create-list/type"), isFocused);
+
   return (
     <Screen style={styles.root}>
       <ScreenHeader
@@ -203,7 +212,7 @@ export default function CreateListPlaylist() {
         onLeadingPress={() => goBack("/create-list/type")}
         leadingTestID="source-playlist-back"
         center={
-          <View style={styles.stepDots} accessibilityLabel={`Step ${step} of ${steps}`}>
+          <View style={styles.stepDots} role="img" accessibilityLabel={`Step ${step} of ${steps}`}>
             {Array.from({ length: steps }, (_, i) => `step-${i}`).map((key, i) => (
               <View key={key} style={[styles.stepDot, i < step ? styles.stepDotActive : null]} />
             ))}
@@ -214,18 +223,14 @@ export default function CreateListPlaylist() {
 
       <KeyboardAwareScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[styles.body, screenColumnStyle]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
       >
         <View style={styles.intro}>
-          <Text variant="title" style={styles.lead}>
-            {copy.lead}
-          </Text>
-          <Text tone="secondary" style={styles.tagline}>
-            {template.requiresSource?.promptCopy ?? copy.defaultPrompt}
-          </Text>
+          <Text variant="title">{copy.lead}</Text>
+          <Text tone="secondary">{template.requiresSource?.promptCopy ?? copy.defaultPrompt}</Text>
         </View>
 
         <View style={styles.field}>
@@ -243,25 +248,34 @@ export default function CreateListPlaylist() {
           />
           {previewing ? (
             <View style={styles.previewStatus}>
-              <ActivityIndicator color={tokens.text.muted} size="small" />
+              <ActivityIndicator
+                color={tokens.text.muted}
+                size="small"
+                accessibilityLabel="Loading"
+              />
               <Text variant="caption" tone="muted">
                 {copy.checkingLabel}
               </Text>
             </View>
           ) : null}
           {!previewing && previewError ? (
-            <Text variant="caption" tone="danger" testID="source-playlist-error">
+            <Text
+              variant="caption"
+              tone="danger"
+              testID="source-playlist-error"
+              accessibilityRole="alert"
+            >
               {previewError}
             </Text>
           ) : null}
-          <Text variant="caption" tone="muted" style={styles.hint}>
+          <Text variant="caption" tone="muted">
             {copy.hint}
           </Text>
         </View>
 
         {preview ? (
           <Card style={styles.previewCard} elevated testID="source-playlist-preview">
-            <Text variant="caption" tone="muted" style={styles.previewKind}>
+            <Text variant="caption" tone="muted">
               Preview
             </Text>
             <SourcePreviewBody preview={preview} />
@@ -270,7 +284,7 @@ export default function CreateListPlaylist() {
       </KeyboardAwareScrollView>
 
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-        <View style={styles.footer}>
+        <View style={[styles.footer, screenColumnStyle]}>
           <Button
             testID="source-playlist-submit"
             label={copy.submitLabel}
@@ -345,35 +359,31 @@ const styles = StyleSheet.create({
   stepDot: {
     width: 18,
     height: 3,
-    borderRadius: 1.5,
+    borderRadius: tokens.radius.pill,
     backgroundColor: tokens.border.subtle,
   },
   stepDotActive: { backgroundColor: tokens.accent.default },
   // Balances the leading back button so the step dots sit centred.
   headerSpacer: { width: tokens.hit },
   body: {
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.lg,
     gap: tokens.space.xl,
   },
   footer: {
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl,
     backgroundColor: tokens.bg.canvas,
   },
   intro: { gap: tokens.space.xs },
-  lead: { letterSpacing: -0.4 },
-  tagline: { fontSize: tokens.font.size.md, lineHeight: 22 },
   previewCard: {
     gap: tokens.space.xs,
     borderColor: tokens.accent.default,
     borderWidth: 1,
   },
-  previewKind: { letterSpacing: 0.2 },
   field: { gap: tokens.space.sm },
-  hint: { lineHeight: 16 },
   previewStatus: {
     flexDirection: "row",
     alignItems: "center",

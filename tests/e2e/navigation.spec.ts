@@ -1,43 +1,47 @@
-import { expect, test } from "@playwright/test";
+import {
+  api,
+  cleanupScratchUser,
+  createScratchList,
+  expect,
+  mintScratchUser,
+  type ScratchUser,
+  seedSession,
+  test,
+  toast,
+} from "./helpers";
 
-// UX pass phase 3 journeys (docs/ux-pass-plan.md §5): share a list in two taps
-// and hide a list with Undo, plus the 3.8 back fallback for a cold-opened modal
-// and the branded not-found page. Lists are made through the API, named
-// `zz-ux-scratch-e2e-*`, and deleted afterwards. Relies on the auto dev sign-in
-// (EXPO_PUBLIC_DEV_AUTH=1) and the backend's dev route (DEV_AUTH_ENABLED=1).
+// UX pass phase 3 journeys (docs/ux-pass-plan.md §5): "share a list" in two
+// taps and hide a list with Undo, plus the 3.8 back fallback for a cold-opened
+// modal and the branded not-found page. A scratch user owns a
+// `zz-ux-scratch-e2e-*` list made through the API; cleanup deletes it.
 
-const API = process.env.WORKSHOP_E2E_API_URL ?? "http://localhost:8787";
-
-let token = "";
+let user: ScratchUser | null = null;
 let listId = "";
 let listName = "";
 
-test.beforeAll(async ({ request }) => {
-  const auth = await request.post(`${API}/v1/auth/dev`, {
-    data: { email: "joshlebed@gmail.com" },
-    headers: { "X-Workshop-Client": "workshop" },
-  });
-  const body = (await auth.json()) as { token?: string; accessToken?: string };
-  token = body.token ?? body.accessToken ?? "";
-  listName = `zz-ux-scratch-e2e-nav-${Date.now()}`;
-  const created = await request.post(`${API}/v1/lists`, {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { name: listName, emoji: "🧭", color: "ocean", itemKind: "plain", modules: ["todo"] },
-  });
-  listId = ((await created.json()) as { list: { id: string } }).list.id;
+test.beforeAll(async () => {
+  user = await mintScratchUser("nav");
+  const list = await createScratchList(user, { name: "nav", emoji: "🧭", color: "ocean" });
+  listId = list.id;
+  listName = list.name;
 });
 
-test.afterAll(async ({ request }) => {
-  if (listId) {
-    await request.delete(`${API}/v1/lists/${listId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  }
+test.afterAll(async () => cleanupScratchUser(user));
+
+test.beforeEach(async ({ page }) => {
+  if (!user) throw new Error("no scratch user");
+  await seedSession(page, user.token);
 });
 
 test.use({ viewport: { width: 390, height: 844 } });
 
-test("share a list: two taps from the list", async ({ page, context, request }) => {
+async function shareVisibility(): Promise<string> {
+  if (!user) throw new Error("no scratch user");
+  const res = await api<{ list: { shareVisibility: string } }>(user, "GET", `/v1/lists/${listId}`);
+  return res.list.shareVisibility;
+}
+
+test("share a list: two taps from the list", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto(`/list/${listId}`);
 
@@ -46,30 +50,16 @@ test("share a list: two taps from the list", async ({ page, context, request }) 
   await expect(page.getByTestId("share-sheet")).toBeVisible();
   await page.getByTestId("share-sheet-share").click();
   // Headless Chromium has no Web Share, so the link is copied.
-  await expect(page.getByText("Link copied")).toBeVisible();
+  await expect(toast(page, /copied/i)).toBeVisible();
   const copied = await page.evaluate(() => navigator.clipboard.readText());
   expect(copied).toMatch(/\/l\/[A-Za-z0-9]+$/);
 
   // Owners pick who the link lets in; the choice saves on tap.
   await page.getByTestId("list-detail-share").click();
   await page.getByTestId("share-visibility-view").click();
-  await expect
-    .poll(async () => {
-      const res = await request.get(`${API}/v1/lists/${listId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return ((await res.json()) as { list: { shareVisibility: string } }).list.shareVisibility;
-    })
-    .toBe("view");
+  await expect.poll(shareVisibility).toBe("view");
   await page.getByTestId("share-visibility-join").click();
-  await expect
-    .poll(async () => {
-      const res = await request.get(`${API}/v1/lists/${listId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      return ((await res.json()) as { list: { shareVisibility: string } }).list.shareVisibility;
-    })
-    .toBe("join");
+  await expect.poll(shareVisibility).toBe("join");
 });
 
 test("hide a list from the home row menu, then undo", async ({ page }) => {
@@ -80,10 +70,10 @@ test("hide a list from the home row menu, then undo", async ({ page }) => {
   // The row menu opens from right-click (and long-press / the hover "more").
   await row.click({ button: "right" });
   await page.getByTestId("row-menu-hide").click();
-  await expect(page.getByText(`Hidden “${listName}”`)).toBeVisible();
+  await expect(toast(page, listName)).toBeVisible();
   await expect(row).toHaveCount(0);
 
-  await page.getByTestId("toast-action").click();
+  await toast(page, listName).getByTestId("toast-action").click();
   await expect(row).toBeVisible();
   await page.waitForTimeout(1000);
   await page.reload();

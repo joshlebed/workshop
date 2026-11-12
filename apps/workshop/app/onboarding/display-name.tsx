@@ -1,4 +1,4 @@
-import { Button, Screen, Text, TextField, tokens } from "@workshop/ui";
+import { Button, haptics, layout, Screen, Text, TextField, tokens } from "@workshop/ui";
 import { useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -23,6 +23,7 @@ export default function DisplayName() {
 
   async function handleSave() {
     if (!canSubmit) return;
+    haptics.light();
     try {
       setBusy(true);
       setError(null);
@@ -92,7 +93,7 @@ const styles = StyleSheet.create({
   fill: {
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingVertical: tokens.space.xxl,
   },
   form: {

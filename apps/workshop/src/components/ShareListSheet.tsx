@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { List, ListDetailResponse, ListListResponse, ShareVisibility } from "@workshop/shared";
 import {
   Button,
   confirm,
   EmojiBadge,
+  haptics,
   Icon,
   type ListColorKey,
   RadioRow,
@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { resetListShareSlug, SHARE_VISIBILITY_LABELS, updateListShare } from "../api/share";
 import { useAuth } from "../hooks/useAuth";
+import { FAILURE_TOAST_KEY, failureMessage } from "../lib/errorCopy";
 import { buildListShareUrl, shareOrCopyLink } from "../lib/share";
 
 export type ShareableList = Pick<
@@ -102,7 +103,11 @@ export function ShareListSheet({
     onError: (e, { listId, prev }) => {
       setVisibility(prev);
       patchCaches(listId, { shareVisibility: prev });
-      showToast({ message: errorMessage(e, "Couldn't change sharing."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't change sharing."),
+        tone: "danger",
+      });
     },
     onSettled: (_r, _e, { listId }) => refresh(listId),
   });
@@ -116,7 +121,11 @@ export function ShareListSheet({
       showToast({ message: "New link made. The old one no longer works.", tone: "success" });
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't reset the link."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't reset the link."),
+        tone: "danger",
+      });
     },
   });
 
@@ -140,7 +149,9 @@ export function ShareListSheet({
       confirmLabel: "Reset link",
       destructive: true,
     });
-    if (ok) resetMutation.mutate(list.id);
+    if (!ok) return;
+    haptics.warning();
+    resetMutation.mutate(list.id);
   };
 
   const accent = list
@@ -158,6 +169,7 @@ export function ShareListSheet({
         afterClose.current = null;
         action?.();
       }}
+      accessibilityLabel={list ? `Share ${list.name}` : "Share"}
       testID="share-sheet"
     >
       {list ? (

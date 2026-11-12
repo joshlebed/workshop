@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { CreateListRequest } from "@workshop/shared";
 import type { ListTemplate } from "@workshop/shared/templates";
-import { useToast } from "@workshop/ui";
+import { haptics, useToast } from "@workshop/ui";
 import { createList } from "../api/lists";
 import { openNewList, templateCreateRequest } from "../lib/createFromTemplate";
 import { createListErrorMessage } from "../lib/errorCopy";
@@ -36,7 +36,9 @@ export function useCreateFromTemplate() {
   });
   return {
     create: (vars: CreateVars) => {
-      if (!mutation.isPending) mutation.mutate(vars);
+      if (mutation.isPending) return;
+      haptics.success();
+      mutation.mutate(vars);
     },
     pendingTemplateId: mutation.isPending ? (mutation.variables?.template.id ?? null) : null,
   };

@@ -1,4 +1,12 @@
-import { Button, EmptyState, Screen, ScreenHeader, tokens } from "@workshop/ui";
+import {
+  Button,
+  EmptyState,
+  layout,
+  Screen,
+  ScreenHeader,
+  screenColumnStyle,
+  tokens,
+} from "@workshop/ui";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { goBack } from "../lib/goBack";
 
@@ -27,7 +35,7 @@ export function LinkErrorScreen({
         onLeadingPress={() => goBack("/")}
         leadingTestID="link-error-back"
       />
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView contentContainerStyle={[styles.body, screenColumnStyle]}>
         <EmptyState
           title={title}
           description={message}
@@ -57,6 +65,6 @@ export function LinkErrorScreen({
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
-  body: { flexGrow: 1, justifyContent: "center", paddingBottom: tokens.space.xxl * 2 },
+  body: { flexGrow: 1, justifyContent: "center", paddingBottom: layout.bottomInset },
   actions: { gap: tokens.space.sm, alignItems: "center" },
 });

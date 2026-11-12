@@ -10,17 +10,26 @@ import type { Item, ItemKind } from "@workshop/shared";
 import {
   alpha,
   formatRelative,
-  haptics,
   Icon,
   IconButton,
   interaction,
+  layout,
   REORDER_ACTIVATION,
   Text,
+  timing,
   tokens,
   webAria,
+  webSpaceKey,
 } from "@workshop/ui";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { keepFocusOn } from "../../lib/a11y/keepFocusNear";
 import { itemPlaceholderGlyph } from "./itemGlyph";
 
 interface ItemRowProps {
@@ -36,7 +45,7 @@ interface ItemRowProps {
   addedByName: string | null;
   /** Wins over the default provenance line (Letterboxd overlap badge). */
   provenanceOverride?: string;
-  /** List accent hex: tints the cover placeholder and the rank numeral. */
+  /** List accent hex: tints the cover placeholder. */
   accent: string;
   /**
    * The completion checkbox (lists with the to-do feature). Open rows get an
@@ -115,7 +124,9 @@ export function ItemRow({
     />
   ) : rankNumeral !== null ? (
     <View style={styles.rankSlot}>
-      <Text style={[styles.rankLeading, { color: accent }]}>{rankNumeral}</Text>
+      <Text variant="heading" headerRole={false} style={[styles.rankLeading, styles.rankColor]}>
+        {rankNumeral}
+      </Text>
     </View>
   ) : null;
 
@@ -128,6 +139,8 @@ export function ItemRow({
     />
   ) : (
     <View
+      // Decorative stand-in art: not part of the row's name.
+      aria-hidden
       style={[
         styles.cover,
         styles.coverPlaceholder,
@@ -150,23 +163,18 @@ export function ItemRow({
             testID={`item-title-${item.id}`}
           >
             {checkbox && rankNumeral !== null ? (
-              <Text style={[styles.rankInline, { color: accent }]}>{`${rankNumeral}  `}</Text>
+              <Text style={[styles.rankInline, styles.rankColor]}>{`${rankNumeral}  `}</Text>
             ) : null}
             {item.title}
           </Text>
         </View>
         {view.subline ? (
-          <Text
-            variant="caption"
-            tone={isCompleted ? "muted" : "secondary"}
-            numberOfLines={1}
-            style={styles.subline}
-          >
+          <Text variant="caption" tone={isCompleted ? "muted" : "secondary"} numberOfLines={1}>
             {view.subline}
           </Text>
         ) : null}
         {meta ? (
-          <Text variant="caption" tone="muted" numberOfLines={1} style={styles.meta}>
+          <Text variant="caption" tone="muted" numberOfLines={1}>
             {meta}
           </Text>
         ) : null}
@@ -176,10 +184,11 @@ export function ItemRow({
 
   return (
     <View
-      style={[styles.row, isNew && styles.rowNew, isDragging && styles.rowDragging]}
+      style={[styles.row, isDragging && styles.rowDragging]}
       testID={`item-row-${item.id}`}
       {...(isNew ? { dataSet: { new: "true" } } : {})}
     >
+      <NewRowWash on={isNew && !isDragging} />
       {dragHandle ? (
         <View
           style={[styles.handle, (hovered || focused || isDragging) && styles.handleVisible]}
@@ -193,7 +202,9 @@ export function ItemRow({
       {leading}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={view.bodyLabel(item.title)}
+        // No label: the name is the row's own text (rank, title, line,
+        // tags), so a voice-control user can say what they see (WCAG 2.5.3).
+        accessibilityHint={view.bodyHint}
         onPress={onPressBody}
         // Shared hold threshold (500ms, the iOS long-press minimum).
         onLongPress={onLongPressBody}
@@ -223,6 +234,20 @@ export function ItemRow({
   );
 }
 
+/**
+ * The new-row highlight (2.6): on at once while the row is new, then fades
+ * out at `slow` when the highlight ends instead of blinking off. Opacity only,
+ * so it plays under reduced motion too.
+ */
+function NewRowWash({ on }: { on: boolean }) {
+  const opacity = useSharedValue(on ? 1 : 0);
+  useEffect(() => {
+    opacity.value = on ? 1 : withTiming(0, timing("slow"));
+  }, [on, opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View pointerEvents="none" style={[styles.wash, style]} />;
+}
+
 function Checkbox({
   checked,
   onToggle,
@@ -236,6 +261,12 @@ function Checkbox({
   hint: string;
   testID: string;
 }) {
+  // The row moves into Done (or back) and remounts there: keep keyboard focus
+  // on this checkbox instead of dropping it to <body> (web; no-op on native).
+  const toggle = () => {
+    keepFocusOn(testID);
+    onToggle();
+  };
   return (
     <Pressable
       accessibilityRole="checkbox"
@@ -244,10 +275,10 @@ function Checkbox({
       accessibilityLabel={label}
       accessibilityHint={hint}
       {...webAria({ title: hint })}
-      onPress={() => {
-        haptics.selection();
-        onToggle();
-      }}
+      // The haptic (`light`, a committing tap) fires in the toggle handler.
+      onPress={toggle}
+      // Space toggles a checkbox on web too (react-native-web maps it to buttons only).
+      {...webSpaceKey(toggle)}
       testID={testID}
       style={styles.checkTarget}
     >
@@ -271,10 +302,9 @@ function Checkbox({
 interface ItemView {
   imageUrl?: string;
   subline: string;
-  bodyLabel: (title: string) => string;
+  /** Where pressing the row goes, when it isn't the item's detail. */
+  bodyHint?: string;
 }
-
-const openLabel = (title: string) => `Open ${title}`;
 
 /**
  * The one quiet line under the title. What people wrote wins over what was
@@ -290,7 +320,7 @@ function describeItem(item: Item): ItemView {
       return {
         ...(typeof c.coverUrl === "string" ? { imageUrl: c.coverUrl } : {}),
         subline: note ?? subline,
-        bodyLabel: (t) => `Open ${t} on Spotify`,
+        bodyHint: "Opens in Spotify",
       };
     }
     case "movie":
@@ -301,7 +331,6 @@ function describeItem(item: Item): ItemView {
       return {
         ...(poster ? { imageUrl: poster } : {}),
         subline: [year, note ?? overview].filter(Boolean).join(" · "),
-        bodyLabel: openLabel,
       };
     }
     case "book": {
@@ -311,7 +340,6 @@ function describeItem(item: Item): ItemView {
       return {
         ...(cover ? { imageUrl: cover } : {}),
         subline: note ?? [authors, year].filter(Boolean).join(" · "),
-        bodyLabel: openLabel,
       };
     }
     case "link": {
@@ -327,11 +355,10 @@ function describeItem(item: Item): ItemView {
       return {
         ...(image ? { imageUrl: image } : {}),
         subline: note ?? siteName,
-        bodyLabel: openLabel,
       };
     }
     default:
-      return { subline: note ?? "", bodyLabel: openLabel };
+      return { subline: note ?? "" };
   }
 }
 
@@ -347,7 +374,7 @@ function describeProvenance(
   if (item.kind === "spotify_album" && section === "unordered") {
     const c = item.content as { detectedAt?: string };
     const detectedAt = typeof c.detectedAt === "string" ? c.detectedAt : null;
-    return detectedAt ? `Detected ${formatRelative(detectedAt)}` : "Detected";
+    return detectedAt ? `Added ${formatRelative(detectedAt)}` : null;
   }
   // Attribution only when someone else added the row, first name only.
   if (!addedByName) return null;
@@ -362,6 +389,8 @@ interface SectionHeaderProps {
   /** The list's completion word, for the Done header. */
   doneWord: string;
   collapsible?: { collapsed: boolean; onToggle: () => void };
+  /** The first thing in the list: no section space above it. */
+  first?: boolean;
 }
 
 const UNORDERED_LABEL_BY_KIND: Record<ItemKind, string> = {
@@ -369,7 +398,7 @@ const UNORDERED_LABEL_BY_KIND: Record<ItemKind, string> = {
   tv: "Watchlist",
   book: "Reading",
   link: "Ideas",
-  spotify_album: "Detected",
+  spotify_album: "From the playlist",
   plain: "Up next",
 };
 
@@ -379,6 +408,7 @@ export function SectionHeader({
   listItemKind,
   doneWord,
   collapsible,
+  first = false,
 }: SectionHeaderProps) {
   const label =
     kind === "ordered"
@@ -388,11 +418,13 @@ export function SectionHeader({
         : UNORDERED_LABEL_BY_KIND[listItemKind ?? "plain"];
 
   const body = (
-    <View style={styles.sectionHeader}>
+    <View style={[styles.sectionHeader, first && styles.sectionHeaderFirst]}>
       <Text
         variant="eyebrow"
         tone="secondary"
-        accessibilityRole={collapsible ? undefined : "header"}
+        // A level-2 heading under the list's title; the collapsible Done
+        // header is a button instead (a heading can't sit inside one).
+        headerRole={collapsible ? false : 2}
       >
         {label}
       </Text>
@@ -402,12 +434,7 @@ export function SectionHeader({
       {collapsible ? (
         <View style={styles.sectionHeaderToggle}>
           <Text variant="eyebrow">{collapsible.collapsed ? "Show" : "Hide"}</Text>
-          <Icon
-            name="chevron-down"
-            size={12}
-            tone="muted"
-            style={collapsible.collapsed ? undefined : styles.chevronUp}
-          />
+          <SectionChevron up={!collapsible.collapsed} />
         </View>
       ) : null}
     </View>
@@ -420,7 +447,7 @@ export function SectionHeader({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${collapsible.collapsed ? "Show" : "Hide"} ${label.toLowerCase()}, ${count}`}
+      // Named by its own text ("Done 1 Hide", WCAG 2.5.3); state is aria-expanded.
       aria-expanded={!collapsible.collapsed}
       onPress={collapsible.onToggle}
       testID={`list-detail-section-${kind}`}
@@ -432,6 +459,21 @@ export function SectionHeader({
     >
       {body}
     </Pressable>
+  );
+}
+
+/** The Done toggle's chevron turns with the section (`fast`); snaps under reduced motion. */
+function SectionChevron({ up }: { up: boolean }) {
+  const reduceMotion = useReducedMotion();
+  const turn = useSharedValue(up ? 1 : 0);
+  useEffect(() => {
+    turn.value = reduceMotion ? (up ? 1 : 0) : withTiming(up ? 1 : 0, timing("fast"));
+  }, [up, turn, reduceMotion]);
+  const style = useAnimatedStyle(() => ({ transform: [{ rotate: `${turn.value * 180}deg` }] }));
+  return (
+    <Animated.View style={style}>
+      <Icon name="chevron-down" size={12} tone="muted" />
+    </Animated.View>
   );
 }
 
@@ -457,7 +499,7 @@ export function RankedDropZone({ active }: { active: boolean }) {
   }
   return (
     <View testID="list-detail-ranked-drop">
-      <View style={styles.sectionHeader}>
+      <View style={[styles.sectionHeader, styles.sectionHeaderFirst]}>
         <Text variant="eyebrow" tone="secondary">
           Ranked
         </Text>
@@ -474,6 +516,9 @@ export function RankedDropZone({ active }: { active: boolean }) {
 const CHECK = 22;
 
 const styles = StyleSheet.create({
+  // A rank is information, not identity: neutral, like the rest of the row.
+  // The list hue stays in the list's badge (DESIGN.md color strategy).
+  rankColor: { color: tokens.text.secondary },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -485,7 +530,14 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.canvas,
   },
   // Just added or just synced: a faint warm wash that clears after a moment.
-  rowNew: { backgroundColor: alpha(tokens.accent.default, 0.07) },
+  wash: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: alpha(tokens.accent.default, 0.07),
+  },
   // Lifted: a neutral drop shadow and a slight scale (DESIGN.md: no colored
   // glow), on the surface step so it reads above its neighbours.
   rowDragging: {
@@ -496,12 +548,13 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     transform: [{ scale: 1.02 }],
   },
+  // Sits in the page gutter, left of the row.
   handle: {
     position: "absolute",
-    left: -tokens.space.xl,
+    left: -layout.gutter,
     top: 0,
     bottom: 0,
-    width: tokens.space.xl,
+    width: layout.gutter,
     alignItems: "center",
     justifyContent: "center",
     opacity: 0,
@@ -537,20 +590,15 @@ const styles = StyleSheet.create({
     height: CHECK,
     borderRadius: CHECK / 2,
     borderWidth: 1.5,
-    borderColor: tokens.border.strong,
+    // The ring is the control's edge: `border.control` clears 3:1 on canvas.
+    borderColor: tokens.border.control,
     alignItems: "center",
     justifyContent: "center",
   },
   checkCircleHover: { borderColor: tokens.text.secondary },
-  checkCircleOn: { backgroundColor: tokens.border.strong, borderColor: tokens.border.strong },
+  checkCircleOn: { backgroundColor: tokens.border.control, borderColor: tokens.border.control },
   rankSlot: { width: 28, alignItems: "center", justifyContent: "center" },
-  rankLeading: {
-    fontSize: tokens.font.size.lg,
-    lineHeight: 24,
-    fontWeight: tokens.font.weight.semibold,
-    fontVariant: ["tabular-nums"],
-    letterSpacing: -0.5,
-  },
+  rankLeading: { fontVariant: ["tabular-nums"] },
   rankInline: {
     fontWeight: tokens.font.weight.semibold,
     fontVariant: ["tabular-nums"],
@@ -566,30 +614,31 @@ const styles = StyleSheet.create({
   // Pin lineHeight so iOS doesn't clip the emoji to the body line box.
   // Dimmed: a column of identical placeholder glyphs should recede behind
   // real artwork, not compete with it.
-  coverPlaceholderGlyph: { fontSize: 20, lineHeight: 24, opacity: 0.55 },
+  coverPlaceholderGlyph: {
+    fontSize: tokens.font.size.xl,
+    lineHeight: tokens.font.lineHeight.xl,
+    opacity: 0.55,
+  },
   rowBody: { flex: 1, minWidth: 0, gap: tokens.space.xxs },
   rowTitleLine: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   rowTitle: {
     flexShrink: 1,
     color: tokens.text.primary,
-    fontSize: tokens.font.size.md,
-    lineHeight: 22,
     fontWeight: tokens.font.weight.medium,
-    letterSpacing: -0.1,
+    letterSpacing: tokens.font.tracking.heading,
   },
   rowTitleCompleted: { textDecorationLine: "line-through", color: tokens.text.muted },
-  subline: { marginTop: 1 },
-  meta: { marginTop: 1 },
   // 44pt target; the negative margin keeps the old 32pt visual footprint.
   menuBtn: { marginHorizontal: -tokens.space.xsm, borderRadius: tokens.radius.sm },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: tokens.space.sm,
-    minHeight: tokens.hit,
-    paddingTop: tokens.space.lg,
-    paddingBottom: tokens.space.xs,
+    paddingTop: layout.sectionTop,
+    paddingBottom: layout.sectionBottom,
   },
+  // Under the toolbar, not under rows: the list's own top padding is enough.
+  sectionHeaderFirst: { paddingTop: tokens.space.sm },
   sectionHeaderCount: {
     fontWeight: tokens.font.weight.medium,
     fontVariant: ["tabular-nums"],
@@ -600,8 +649,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space.xs,
   },
-  chevronUp: { transform: [{ rotate: "180deg" }] },
   sectionHeaderPressable: {
+    minHeight: tokens.hit,
     borderRadius: tokens.radius.sm,
     marginHorizontal: -tokens.space.xs,
     paddingHorizontal: tokens.space.xs,

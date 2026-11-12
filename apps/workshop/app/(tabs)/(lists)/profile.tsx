@@ -1,9 +1,10 @@
-import { errorMessage } from "@workshop/api-client/api";
 import {
   Avatar,
   Button,
+  layout,
   Screen,
   ScreenHeader,
+  screenColumnStyle,
   Text,
   TextField,
   tokens,
@@ -13,6 +14,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useAuth } from "../../../src/hooks/useAuth";
+import { FAILURE_TOAST_KEY, failureMessage } from "../../../src/lib/errorCopy";
 import { goBack } from "../../../src/lib/goBack";
 import { pickProfilePhoto } from "../../../src/lib/profilePhoto";
 
@@ -57,7 +59,11 @@ export default function EditProfile() {
       .then(() => setStatus("saved"))
       .catch((e) => {
         setStatus("idle");
-        showToast({ message: errorMessage(e, "Couldn't save your name."), tone: "danger" });
+        showToast({
+          key: FAILURE_TOAST_KEY,
+          message: failureMessage(e, "Couldn't save your name."),
+          tone: "danger",
+        });
       })
       .finally(() => {
         inflightRef.current = null;
@@ -91,7 +97,11 @@ export default function EditProfile() {
       setStatus("saved");
     } catch (e) {
       setStatus("idle");
-      showToast({ message: errorMessage(e, "Couldn't save your photo."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't save your photo."),
+        tone: "danger",
+      });
     } finally {
       setPhotoBusy(false);
     }
@@ -126,7 +136,7 @@ export default function EditProfile() {
       />
 
       <KeyboardAwareScrollView
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[styles.body, screenColumnStyle]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
@@ -198,13 +208,13 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   body: {
     paddingTop: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.xl,
   },
   saved: { paddingHorizontal: tokens.space.sm },
   avatarSection: { flexDirection: "row", alignItems: "center", gap: tokens.space.lg },
-  avatarPreview: { width: 72, height: 72, borderRadius: 36 },
+  avatarPreview: { width: 72, height: 72, borderRadius: tokens.radius.pill },
   avatarButtons: { flex: 1, gap: tokens.space.sm, alignItems: "flex-start" },
   field: { gap: tokens.space.xs },
 });

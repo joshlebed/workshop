@@ -1,6 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
-import { Button, Screen, ScreenHeader, Text, TextField, tokens } from "@workshop/ui";
+import {
+  Button,
+  haptics,
+  layout,
+  Screen,
+  ScreenHeader,
+  screenColumnStyle,
+  Text,
+  TextField,
+  tokens,
+} from "@workshop/ui";
 import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { fetchLists } from "../../../../src/api/lists";
@@ -40,6 +50,8 @@ export default function DeleteAccount() {
   const canDelete = !blocked && confirmationMatches(typed) && !busy;
   const onDelete = async () => {
     if (!canDelete) return;
+    // The typed word is the confirm; the destructive tap gets `warning`.
+    haptics.warning();
     setBusy(true);
     setError(null);
     try {
@@ -59,7 +71,10 @@ export default function DeleteAccount() {
         leadingTestID="delete-account-back"
         title="Delete account"
       />
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.body, screenColumnStyle]}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text variant="heading">Deleting your account is permanent</Text>
         <View style={styles.list}>
           {ACCOUNT_DELETION_CONSEQUENCES.map((line) => (
@@ -119,19 +134,20 @@ export default function DeleteAccount() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
   body: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.md,
-    paddingBottom: tokens.space.xxl * 2,
+    paddingBottom: layout.bottomInset,
     gap: tokens.space.lg,
   },
   list: { gap: tokens.space.md },
   bullet: { flexDirection: "row", gap: tokens.space.md, alignItems: "flex-start" },
+  // Centred on the first 22pt line: (22 - 6) / 2 = 8.
   bulletDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    marginTop: 9,
+    width: 6,
+    height: 6,
+    borderRadius: tokens.radius.pill,
+    marginTop: tokens.space.sm,
     backgroundColor: tokens.text.muted,
   },
-  bulletText: { flex: 1, lineHeight: 22 },
+  bulletText: { flex: 1 },
 });

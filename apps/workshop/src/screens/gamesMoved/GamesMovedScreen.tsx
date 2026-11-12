@@ -1,4 +1,4 @@
-import { Button, Screen, Text, tokens } from "@workshop/ui";
+import { Button, layout, Screen, Text, tokens } from "@workshop/ui";
 import { Pressable, StyleSheet, View } from "react-native";
 import {
   HANDOFF_PLATFORM,
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.md,
   },

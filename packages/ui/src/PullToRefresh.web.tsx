@@ -25,12 +25,16 @@ import {
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   StyleSheet,
   View,
 } from "react-native";
 import { tokens } from "./theme";
+
+// One curve and the motion tokens, like every other animation (5.2).
+const EASE_OUT = Easing.bezier(...tokens.motion.easeOut);
 
 const PULL_THRESHOLD = 70;
 const MAX_PULL = 120;
@@ -61,20 +65,32 @@ export function PullToRefresh({ refreshing, onRefresh, children }: PullToRefresh
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: SPINNER_REFRESH_Y,
-          duration: 180,
+          duration: tokens.motion.fast,
+          easing: EASE_OUT,
           useNativeDriver: true,
         }),
-        Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: true }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: tokens.motion.fast,
+          easing: EASE_OUT,
+          useNativeDriver: true,
+        }),
       ]).start();
     } else {
       // Snap back when the refresh resolves.
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: SPINNER_REST_Y,
-          duration: 220,
+          duration: tokens.motion.base,
+          easing: EASE_OUT,
           useNativeDriver: true,
         }),
-        Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: tokens.motion.base,
+          easing: EASE_OUT,
+          useNativeDriver: true,
+        }),
       ]).start();
       pullRef.current = 0;
       triggeredRef.current = false;
@@ -127,10 +143,16 @@ export function PullToRefresh({ refreshing, onRefresh, children }: PullToRefresh
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: SPINNER_REFRESH_Y,
-          duration: 160,
+          duration: tokens.motion.fast,
+          easing: EASE_OUT,
           useNativeDriver: true,
         }),
-        Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: true }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: tokens.motion.fast,
+          easing: EASE_OUT,
+          useNativeDriver: true,
+        }),
       ]).start();
       onRefresh();
       return;
@@ -139,11 +161,22 @@ export function PullToRefresh({ refreshing, onRefresh, children }: PullToRefresh
     Animated.parallel([
       Animated.timing(translateY, {
         toValue: SPINNER_REST_Y,
-        duration: 200,
+        duration: tokens.motion.base,
+        easing: EASE_OUT,
         useNativeDriver: true,
       }),
-      Animated.timing(rotate, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(rotate, {
+        toValue: 0,
+        duration: tokens.motion.base,
+        easing: EASE_OUT,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: tokens.motion.fast,
+        easing: EASE_OUT,
+        useNativeDriver: true,
+      }),
     ]).start(() => {
       pullRef.current = 0;
     });
@@ -206,7 +239,12 @@ export function PullToRefresh({ refreshing, onRefresh, children }: PullToRefresh
           },
         ]}
       >
-        <ActivityIndicator color={tokens.accent.default} />
+        {/* Hidden from assistive tech until it means something. */}
+        <ActivityIndicator
+          color={tokens.accent.default}
+          accessibilityLabel="Refreshing"
+          aria-hidden={!refreshing}
+        />
       </Animated.View>
       {childWithScroll}
     </View>

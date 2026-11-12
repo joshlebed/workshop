@@ -1,11 +1,20 @@
-import { expect, test } from "@playwright/test";
-import { disableAutoDevSignIn, signInAsDev } from "./helpers";
+import {
+  cleanupScratchUser,
+  createScratchList,
+  expect,
+  ITEM_ROWS,
+  mintScratchUser,
+  type ScratchUser,
+  seedSession,
+  test,
+} from "./helpers";
 
-// Happy-path for chunk 2b-2: dev-sign-in → create date-idea list → paste a URL
-// in the add-item form → see the inline link preview → save the item.
+// Link lists: type a title, paste a URL under "Details", see the inline link
+// preview, save. Runs at the default desktop viewport (two-pane right pane).
 //
-// `/v1/link-preview` is mocked so the spec doesn't depend on a live backend
-// fetcher (covered separately by apps/backend/src/routes/v1/link-preview.test.ts).
+// `/v1/link-preview` is mocked so the spec doesn't depend on a live fetcher
+// (covered by apps/backend/src/routes/v1/link-preview.test.ts). A scratch user
+// owns a `zz-ux-scratch-e2e-*` link list; cleanup deletes it.
 
 const PREVIEW_FIXTURE = {
   preview: {
@@ -19,9 +28,27 @@ const PREVIEW_FIXTURE = {
   },
 };
 
-test("create date-idea list → paste URL → see preview → save", async ({ page }) => {
-  await disableAutoDevSignIn(page);
+let user: ScratchUser | null = null;
+let listId = "";
 
+test.beforeAll(async () => {
+  user = await mintScratchUser("preview");
+  listId = (
+    await createScratchList(user, {
+      name: "preview",
+      emoji: "💜",
+      color: "rose",
+      itemKind: "link",
+      modules: ["todo", "ranking"],
+    })
+  ).id;
+});
+
+test.afterAll(async () => cleanupScratchUser(user));
+
+test("link list → paste URL → see preview → save", async ({ page }) => {
+  if (!user) throw new Error("no scratch user");
+  await seedSession(page, user.token);
   await page.route("**/v1/link-preview**", async (route) => {
     await route.fulfill({
       status: 200,
@@ -30,26 +57,10 @@ test("create date-idea list → paste URL → see preview → save", async ({ pa
     });
   });
 
-  await page.goto("/");
+  await page.goto(`/list/${listId}`);
+  await page.getByTestId("list-detail-empty-add").click();
 
-  await signInAsDev(page, { displayName: "E2E Preview" });
-
-  // Create a date-idea list (free-form flow).
-  await page.getByTestId("fab-create-list").click();
-  await page.getByTestId("create-list-type-date_idea").click();
-
-  const listName = `E2E preview ${Date.now()}`;
-  await page.getByTestId("create-list-name").fill(listName);
-  await page.getByTestId("create-list-submit").click();
-
-  // Skip the share step in the create-list flow.
-  await expect(page.getByTestId("create-list-share-done")).toBeVisible();
-  await page.getByTestId("create-list-share-done").click();
-
-  await expect(page.getByTestId("empty-add-item")).toBeVisible();
-  await page.getByTestId("empty-add-item").click();
-
-  // Free-form fields are visible (date_idea → free-form, not search).
+  // Free-form fields (link list → free-form, not search).
   const titleInput = page.getByTestId("add-item-title");
   await page.getByTestId("add-item-details-toggle").click();
   const urlInput = page.getByTestId("add-item-url");
@@ -59,17 +70,16 @@ test("create date-idea list → paste URL → see preview → save", async ({ pa
   await titleInput.fill("Picnic at the park");
   await urlInput.fill("https://example.com/picnic");
 
-  // Inline preview card appears after the 300ms debounce → mocked fetch.
-  const previewCard = page.getByTestId("link-preview-card");
-  await expect(previewCard).toBeVisible();
+  // Inline preview card appears after the debounce → mocked fetch.
+  await expect(page.getByTestId("link-preview-card")).toBeVisible();
   await expect(page.getByTestId("link-preview-title")).toContainText("Picnic in the park");
 
-  // Submit the item.
   await page.getByTestId("add-item-submit").click();
+  await expect(page.getByTestId("add-item-added")).toContainText("Picnic at the park");
   await page.getByTestId("add-item-cancel").click();
 
   // Back on list detail; the new item is on the list.
-  const itemRow = page.locator('[data-testid^="item-row-"]').first();
-  await expect(itemRow).toBeVisible();
-  await expect(itemRow).toContainText("Picnic at the park");
+  const row = page.locator(ITEM_ROWS).first();
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("Picnic at the park");
 });

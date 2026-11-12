@@ -365,6 +365,17 @@ and dismiss the modal. Don't wrap a whole sheet form in `KeyboardStickyView`; re
 sticky keyboard footers for full-screen forms that separate scroll content from the
 footer.
 
+## Motion and haptics go through `@workshop/ui`, never by hand (UX pass 5.2, 5.3)
+
+Durations and easing come from `motion.ts` (`timing(speed)`, `motionPresets`, `easeOutCss`,
+`useMotionDuration`); haptics from the `haptics` wrapper, fired on the tap (`onMutate`), never on
+the server's answer. `Switch`, `RadioRow`, `Chip` and `TagEditor` already tick `selection`, so a
+screen using them adds no second haptic. Under reduced motion fades stay and movement goes; a
+hand-written transform must check `useReducedMotion()`. The surface-by-surface table and the
+haptics map are in DESIGN.md → Motion / Haptics. Reanimated `entering` plays on first mount too:
+wrap a list in `LayoutAnimationConfig skipEntering` so rows already there don't fade on open, and
+use `Reveal` + `useRevealAfterLoading` for a skeleton → content crossfade.
+
 ## Don't add `react-native-worklets/plugin` manually
 
 `babel-preset-expo` auto-wires it. Adding it to `babel.config.js` runs it twice.
@@ -388,11 +399,22 @@ at fontSize 24/28/40 in a `body` (22) line box renders cut off and shifted low o
 (`ItemRow` `coverPlaceholderGlyph`, the item-detail hero, list settings/empty-state emoji all
 hit this). Pin a `lineHeight` on **every** emoji/glyph `<Text>` style (e.g. `24/28`, `40/48`).
 
-## Wrap top-level screens in `Screen` from `@workshop/ui`
+## Wrap top-level screens in `Screen` from `@workshop/ui`; hold content to the column
 
-No-op on native; on web it constrains content to a ~560px reading column. Without it,
-RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on
-web.
+On web `Screen` is the full width of its pane so the page scrolls at the window edge (UX pass
+5.7a, see DESIGN.md → Layout). Put `screenColumnStyle` on every vertical scroll view's
+`contentContainerStyle`, wrap fixed blocks (toolbars, footers, skeletons) in `ScreenColumn` or
+give them `screenColumnStyle`, and pass a FAB through `Screen`'s `overlay` prop. A block with
+`screenColumnStyle` must not also carry a horizontal margin. On native none of this does
+anything. Sheets present as a centred dialog on web from 720px.
+
+## Toasts are dismissed when a new screen opens
+
+`ToastNavigationRule` (root layout) watches the navigation state: when the focused screen is
+one that wasn't in the previous state (push, modal, replace), toasts raised more than 600ms
+earlier are dismissed (`dismissForNavigation`); going back keeps them. Raise a toast that
+should land with a navigation in the same tick as the navigation (the share picker's
+"Added to …", item detail's "Deleted · Undo" before going back).
 
 ## Don't spread dnd-kit's `attributes` onto a `View` wrapping a `Pressable`
 

@@ -19,7 +19,7 @@ export function HeaderActivityButton({
 }: HeaderActivityButtonProps) {
   const hasUnread = unreadCount > 0;
   const label = error
-    ? "Activity (couldn't load, tap to retry)"
+    ? "Activity couldn't load. Try again"
     : hasUnread
       ? `Activity, ${unreadCount} new`
       : "Activity";
@@ -56,7 +56,7 @@ export function HeaderActivityButton({
           tone="danger"
           ringColor={tokens.bg.canvas}
           style={styles.badge}
-          accessibilityLabel="Activity load failed"
+          accessibilityLabel="Activity couldn't load"
         />
       ) : null}
     </View>
@@ -64,5 +64,5 @@ export function HeaderActivityButton({
 }
 
 const styles = StyleSheet.create({
-  badge: { position: "absolute", top: 2, right: 0, pointerEvents: "none" },
+  badge: { position: "absolute", top: tokens.space.xxs, right: 0, pointerEvents: "none" },
 });

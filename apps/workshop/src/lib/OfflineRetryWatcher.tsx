@@ -1,9 +1,10 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@workshop/ui";
 import { useEffect } from "react";
+import { FAILURE_TOAST_KEY } from "./errorCopy";
 import { isOfflineError } from "./offline";
 
-// Subscribes to the MutationCache and surfaces a "Retry?" toast whenever a
+// Subscribes to the MutationCache and surfaces a "Retry" toast whenever a
 // mutation fails because the device is offline. Per-mutation `onError`
 // handlers still run first (and revert their optimistic updates), so this is
 // purely additive — the toast lets the user re-fire the mutation once the
@@ -22,10 +23,13 @@ export function OfflineRetryWatcher() {
       if (seen.has(mutation.mutationId)) return;
       if (!isOfflineError(mutation.state.error)) return;
       seen.add(mutation.mutationId);
+      // Same key as the per-write failure toasts: this one replaces the
+      // "Couldn't …" that the mutation's own onError just raised.
       showToast({
-        message: "You're offline. Couldn't save change.",
+        key: FAILURE_TOAST_KEY,
+        message: "You're offline, so that change didn't save.",
         tone: "danger",
-        actionLabel: "Retry?",
+        actionLabel: "Retry",
         onAction: () => {
           mutation.execute(mutation.state.variables).catch(() => {});
         },

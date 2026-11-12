@@ -1,6 +1,6 @@
 import type { ActivityEvent, ListSummary } from "@workshop/shared";
 import { describe, expect, it } from "vitest";
-import { homeRowCount, homeRowSubtitle, matchesListSearch } from "./homeRow";
+import { homeRowCount, homeRowSubtitle, matchesListSearch, memberStackFaces } from "./homeRow";
 
 const now = new Date("2026-11-12T12:00:00Z").getTime();
 
@@ -100,5 +100,27 @@ describe("matchesListSearch", () => {
     expect(matchesListSearch("Movies", "MOV")).toBe(true);
     expect(matchesListSearch("Movies", "books")).toBe(false);
     expect(matchesListSearch("Movies", "  ")).toBe(true);
+  });
+});
+
+describe("memberStackFaces", () => {
+  const faces = ["a", "b", "c", "d"];
+
+  it("draws nothing without a preview (a list cached before memberPreview existed)", () => {
+    expect(memberStackFaces(1, undefined)).toBeNull();
+    expect(memberStackFaces(4, [])).toBeNull();
+  });
+
+  it("draws nothing for a list only the viewer is on", () => {
+    expect(memberStackFaces(0, faces)).toBeNull();
+  });
+
+  it("shows up to three faces when that is everyone", () => {
+    expect(memberStackFaces(3, faces)).toEqual({ shown: ["a", "b", "c"], extra: 0 });
+    expect(memberStackFaces(1, ["a"])).toEqual({ shown: ["a"], extra: 0 });
+  });
+
+  it("shows two faces and a count past three", () => {
+    expect(memberStackFaces(5, faces)).toEqual({ shown: ["a", "b"], extra: 3 });
   });
 });

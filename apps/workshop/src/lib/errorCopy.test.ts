@@ -2,8 +2,10 @@ import { ApiError } from "@workshop/api-client/apiError";
 import { describe, expect, it } from "vitest";
 import {
   createListErrorMessage,
+  failureMessage,
   joinErrorMessage,
   linkLoadError,
+  loadErrorMessage,
   shareSaveErrorMessage,
   signInErrorMessage,
 } from "./errorCopy";
@@ -26,6 +28,7 @@ describe("error copy", () => {
         linkLoadError(e).title,
         shareSaveErrorMessage("Date ideas", e),
         createListErrorMessage(e),
+        loadErrorMessage(e),
       ]) {
         expect(msg).not.toMatch(DEV_STRINGS);
         expect(msg).not.toMatch(/!/);
@@ -67,5 +70,21 @@ describe("error copy", () => {
     expect(shareSaveErrorMessage("Date ideas", network)).toBe(
       "Couldn't add to “Date ideas”. Check your connection.",
     );
+  });
+});
+
+describe("failureMessage", () => {
+  it("keeps a plain sentence the server wrote for people", () => {
+    const e = new ApiError("CONFLICT", "That tag already exists.", 409);
+    expect(failureMessage(e, "Couldn't save.")).toBe("That tag already exists.");
+  });
+  it("never shows raw fetch or validator text", () => {
+    expect(failureMessage(network, "Couldn't move that item.")).toBe(
+      "Couldn't move that item. Check your connection.",
+    );
+    const raw = new ApiError("VALIDATION", "invalid content for item kind", 400);
+    expect(failureMessage(raw, "Couldn't save.")).toBe("Couldn't save.");
+    expect(failureMessage(server, "Couldn't save.")).toBe("Couldn't save. Try again in a moment.");
+    expect(failureMessage(new Error("boom"), "Couldn't save.")).not.toMatch(DEV_STRINGS);
   });
 });

@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type {
   BookResult,
@@ -22,11 +21,14 @@ import {
   Icon,
   IconButton,
   interaction,
+  layout,
   normalizeExternalUrl,
   Screen,
   ScreenHeader,
   SearchResultRow,
+  SectionHeader,
   Skeleton,
+  screenColumnStyle,
   TagEditor,
   Text,
   TextField,
@@ -34,7 +36,7 @@ import {
   useToast,
   withTagDraft,
 } from "@workshop/ui";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -52,6 +54,7 @@ import { searchBooks, searchMedia } from "../../../../../src/api/search";
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { useDebouncedQuery } from "../../../../../src/hooks/useDebouncedQuery";
 import { onListResultIds, titleKey } from "../../../../../src/lib/duplicates";
+import { FAILURE_TOAST_KEY, failureMessage } from "../../../../../src/lib/errorCopy";
 import { goBack } from "../../../../../src/lib/goBack";
 import { forgetItemAdded, noteItemAdded } from "../../../../../src/lib/recentlyAdded";
 import {
@@ -59,6 +62,7 @@ import {
   rememberShareList,
   titleFromSharedText,
 } from "../../../../../src/lib/sharePayload";
+import { useEscapeToClose } from "../../../../../src/lib/shortcuts/useShortcuts";
 
 const SEARCH_KINDS: readonly ItemKind[] = ["movie", "tv", "book"];
 /** How long Return waits for a pasted link's preview before adding anyway. */
@@ -132,9 +136,13 @@ export default function AddItem() {
 
   const addMutation = useMutation<Item, Error, { key: string; body: CreateItemRequest }>({
     mutationFn: async ({ body }) => (await createItem(id, body, token)).item,
-    onMutate: ({ key }) => setPendingKey(key),
+    onMutate: ({ key }) => {
+      // On the tap: an add is a commit (`light`); saving a share is `success`.
+      if (fromShare) haptics.success();
+      else haptics.light();
+      setPendingKey(key);
+    },
     onSuccess: (item, { body }) => {
-      haptics.success();
       noteItemAdded(id, item.id);
       if (fromShare) {
         void rememberShareList(id);
@@ -153,7 +161,11 @@ export default function AddItem() {
       if (fromShare) goBack(`/list/${id}`);
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't add that."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't add that."),
+        tone: "danger",
+      });
     },
     onSettled: () => setPendingKey(null),
   });
@@ -161,6 +173,7 @@ export default function AddItem() {
   const undoMutation = useMutation<unknown, Error, Added>({
     mutationFn: (a) => archiveItem(a.id, token),
     onMutate: (a) => {
+      haptics.light();
       forgetItemAdded(id, a.id);
       setAdded((prev) => prev.filter((x) => x.id !== a.id));
       queryClient.setQueryData<ListItemsResponse>(itemsKey, (d) =>
@@ -170,7 +183,11 @@ export default function AddItem() {
     onError: (e, a) => {
       noteItemAdded(id, a.id);
       setAdded((prev) => [a, ...prev]);
-      showToast({ message: errorMessage(e, "Couldn't undo that."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't undo that."),
+        tone: "danger",
+      });
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: itemsKey });
@@ -179,6 +196,8 @@ export default function AddItem() {
   });
 
   const close = () => goBack(`/list/${id}`);
+  const isFocused = useIsFocused();
+  useEscapeToClose(close, isFocused);
   const header = (
     <ScreenHeader
       leading="close"
@@ -217,7 +236,7 @@ export default function AddItem() {
     return (
       <Screen style={styles.root}>
         {header}
-        <View style={styles.body} accessibilityLabel="Loading" aria-busy>
+        <View style={[styles.body, screenColumnStyle]} accessibilityLabel="Loading" aria-busy>
           <Skeleton.Block height={tokens.hit} radius={tokens.radius.md} />
         </View>
       </Screen>
@@ -372,7 +391,7 @@ function QuickAdd({
 
   return (
     <KeyboardAwareScrollView
-      contentContainerStyle={styles.body}
+      contentContainerStyle={[styles.body, screenColumnStyle]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       bottomOffset={tokens.space.lg}
@@ -540,14 +559,33 @@ function SearchFlow({
     onAdd(key, body);
     setQuery("");
     inputRef.current?.focus();
+    // Web: Return blurs the field after this handler runs; take it back.
+    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const onListIds = onListResultIds(results, existing);
   const onList = (r: { id: string }) => onListIds.has(r.id);
 
+  // Return adds the top result, like Return in quick add (5, critique: it
+  // did nothing and dropped focus). With no results it adds the typed name.
+  const submitTop = () => {
+    if (failed || noMatches) {
+      if (typed.length > 0) add("anyway", { kind: itemKind, title: clampTitle(typed) });
+      return;
+    }
+    if (!data) return;
+    if (itemKind === "book") {
+      const top = (data as BookSearchResponse).results.find((r) => !onList(r));
+      if (top) add(top.id, { kind: "book", title: top.title, content: buildBookContent(top) });
+      return;
+    }
+    const top = (data as MediaSearchResponse).results.find((r) => !onList(r));
+    if (top) add(top.id, { kind: itemKind, title: top.title, content: buildMediaContent(top) });
+  };
+
   return (
     <KeyboardAwareScrollView
-      contentContainerStyle={styles.body}
+      contentContainerStyle={[styles.body, screenColumnStyle]}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="interactive"
       bottomOffset={tokens.space.lg}
@@ -565,6 +603,11 @@ function SearchFlow({
         autoCapitalize="none"
         autoCorrect={false}
         maxLength={200}
+        returnKeyType="done"
+        submitBehavior="submit"
+        blurOnSubmit={false}
+        onSubmitEditing={submitTop}
+        accessibilityHint="Return adds the top result"
       />
 
       {typed.length < 2 ? (
@@ -574,19 +617,31 @@ function SearchFlow({
       ) : null}
 
       {showLoading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={tokens.accent.default} />
+        <View
+          style={styles.resultSkeletons}
+          accessibilityLabel="Searching"
+          accessibilityRole="progressbar"
+          testID="add-item-search-loading"
+        >
+          {[0, 1, 2].map((i) => (
+            <Skeleton.Block key={i} height={RESULT_ROW_HEIGHT} radius={tokens.radius.md} />
+          ))}
         </View>
       ) : null}
 
       {failed ? (
-        <Text tone="secondary" style={styles.helper} testID="add-item-search-error">
-          Search isn't working right now.
+        <Text
+          tone="secondary"
+          style={styles.helper}
+          testID="add-item-search-error"
+          accessibilityRole="alert"
+        >
+          Search isn't working right now. You can still add it by name.
         </Text>
       ) : null}
       {noMatches ? (
         <Text tone="secondary" style={styles.helper} testID="add-item-search-empty">
-          No matches.
+          No matches. Check the spelling, or add it by name.
         </Text>
       ) : null}
 
@@ -647,7 +702,7 @@ function AddedList({ items, onUndo }: { items: Added[]; onUndo: (a: Added) => vo
   if (items.length === 0) return null;
   return (
     <View style={styles.added} testID="add-item-added" accessibilityLiveRegion="polite">
-      <Text variant="eyebrow">Added</Text>
+      <SectionHeader title="Added" inset={false} first />
       {items.slice(0, 8).map((a) => (
         <View key={a.id} style={styles.addedRow} testID={`add-item-added-${a.id}`}>
           <Icon name="check" size={14} tone="secondary" />
@@ -692,7 +747,7 @@ function LinkPreviewSection({
   if (loading && !preview) {
     return (
       <View style={styles.previewLoading} testID="link-preview-loading">
-        <ActivityIndicator color={tokens.accent.default} size="small" />
+        <ActivityIndicator color={tokens.accent.default} size="small" aria-hidden />
         <Text tone="secondary" variant="caption">
           Fetching preview…
         </Text>
@@ -702,7 +757,7 @@ function LinkPreviewSection({
   if (failed && !preview) {
     return (
       <Text tone="muted" variant="caption" testID="link-preview-error">
-        No preview for this link. It will be added with its address.
+        No preview for this link. It's saved as the address.
       </Text>
     );
   }
@@ -790,16 +845,20 @@ function singleUrl(text: string): string | null {
   return normalizeHttpUrl(t) ?? (/^www\.\S+\.\S+/i.test(t) ? normalizeExternalUrl(t) : null);
 }
 
+// A `SearchResultRow`: its 84pt poster plus 12 padding and a 1pt border on
+// each side, so the placeholders hold the results' place.
+const RESULT_ROW_HEIGHT = 110;
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
   body: {
     paddingTop: tokens.space.md,
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.md,
   },
   helper: { textAlign: "center", paddingVertical: tokens.space.md },
-  center: { alignItems: "center", justifyContent: "center", paddingVertical: tokens.space.xl },
+  resultSkeletons: { gap: tokens.space.sm },
   disclosure: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -850,7 +909,7 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.elevated,
   },
   previewImagePlaceholder: { alignItems: "center", justifyContent: "center" },
-  previewGlyph: { fontSize: 20, lineHeight: 24 },
+  previewGlyph: { fontSize: tokens.font.size.xl, lineHeight: tokens.font.lineHeight.xl },
   previewBody: { flex: 1, gap: tokens.space.xxs, justifyContent: "center" },
   previewLoading: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
 });

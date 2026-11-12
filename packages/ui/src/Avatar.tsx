@@ -30,10 +30,10 @@ const SIZE: Record<NonNullable<AvatarProps["size"]>, number> = {
   lg: 48,
 };
 
-const FONT_SIZE: Record<NonNullable<AvatarProps["size"]>, number> = {
-  sm: tokens.font.size.xs,
-  md: tokens.font.size.sm,
-  lg: tokens.font.size.lg,
+const FONT: Record<NonNullable<AvatarProps["size"]>, { fontSize: number; lineHeight: number }> = {
+  sm: { fontSize: tokens.font.size.xs, lineHeight: tokens.font.lineHeight.xs },
+  md: { fontSize: tokens.font.size.sm, lineHeight: tokens.font.lineHeight.sm },
+  lg: { fontSize: tokens.font.size.lg, lineHeight: tokens.font.lineHeight.lg },
 };
 
 const PALETTE = [
@@ -81,7 +81,7 @@ export function Avatar({ name, imageUrl, size = "md", style, testID }: AvatarPro
 
   return (
     <View testID={testID} style={[styles.base, circle, { backgroundColor: colorFor(name) }, style]}>
-      <Text tone="onAccent" style={[styles.label, { fontSize: FONT_SIZE[size] }]}>
+      <Text tone="onAccent" style={[styles.label, FONT[size]]}>
         {initialsFor(name)}
       </Text>
     </View>

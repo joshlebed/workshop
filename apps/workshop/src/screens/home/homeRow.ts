@@ -63,5 +63,20 @@ export function matchesListSearch(name: string, query: string): boolean {
   return q.length === 0 || fold(name).includes(q);
 }
 
+/**
+ * The faces in a home row's member stack: three when that is everyone,
+ * otherwise two and a "+N". Null when there is no preview to draw (a response
+ * cached before `memberPreview` existed): a bare "+1" with no faces reads as
+ * noise, so the row shows nothing until the next fetch brings faces.
+ */
+export function memberStackFaces<M>(
+  others: number,
+  preview: readonly M[] | undefined,
+): { shown: M[]; extra: number } | null {
+  if (others <= 0 || !preview || preview.length === 0) return null;
+  const shown = preview.slice(0, others <= 3 ? 3 : 2);
+  return { shown, extra: Math.max(0, others - shown.length) };
+}
+
 /** Home search appears past this many lists. */
 export const HOME_SEARCH_THRESHOLD = 8;

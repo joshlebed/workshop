@@ -118,7 +118,7 @@ export const LIST_TEMPLATES: readonly ListTemplate[] = [
     id: "reading_list",
     displayName: "Reading list",
     defaultName: "Books to read",
-    description: "Books to read, by hand-rank or whim.",
+    description: "Books to read, in the order you choose.",
     group: "watch_read",
     defaults: {
       itemKind: "book",

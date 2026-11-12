@@ -6,7 +6,7 @@
 // everyone.
 
 import type { SavedView } from "@workshop/shared";
-import { Button, Chip, Sheet, Text, TextField, tokens } from "@workshop/ui";
+import { Button, Chip, layout, Sheet, Text, TextField, tokens } from "@workshop/ui";
 import { useEffect, useState } from "react";
 import { Platform, ScrollView, StyleSheet, View } from "react-native";
 
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     gap: tokens.space.sm,
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
   },
   sheetHeader: { gap: tokens.space.xxs },
   actions: {

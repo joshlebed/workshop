@@ -5,17 +5,22 @@ import {
   Modal as RNModal,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
+  type ViewInstance,
   type ViewStyle,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Animated, {
-  Easing,
   runOnJS,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
+import { focusFirstFocusable } from "./a11yFocus";
+import { webAria } from "./interaction";
+import { timing } from "./motion";
 import { ToastOverlay } from "./Toast";
 import { tokens } from "./theme";
 
@@ -31,11 +36,13 @@ export interface SheetProps {
   children: React.ReactNode;
   /** Style for the scrolling content container (padding, gap). */
   contentStyle?: ViewStyle;
+  /** The dialog's accessible name (web `aria-label`): the sheet's title. */
+  accessibilityLabel?: string;
   testID?: string;
 }
 
-const ENTER_DURATION_MS = tokens.motion.slow;
-const EXIT_DURATION_MS = tokens.motion.base;
+// Enters at `slow`, leaves at `base`, both on the one ease-out curve. Under
+// reduced motion the sheet fades in place instead of sliding up.
 const SHEET_OFFSCREEN_PX = 600;
 
 /**
@@ -54,10 +61,20 @@ export function Sheet({
   onClosed,
   children,
   contentStyle,
+  accessibilityLabel,
   testID,
 }: SheetProps) {
+  const sheetRef = useRef<ViewInstance>(null);
+  // Web: react-native-web's Modal traps Tab and returns focus to the opener
+  // on close, but it starts focus on the first node it can focus, which is
+  // the backdrop. Move it to the sheet's first control instead.
+  const focusSheet = useCallback(() => {
+    if (Platform.OS !== "web") return;
+    setTimeout(() => focusFirstFocusable(sheetRef.current), 30);
+  }, []);
   const [rendered, setRendered] = useState(visible);
   const progress = useSharedValue(visible ? 1 : 0);
+  const reduceMotion = useReducedMotion();
   const onClosedRef = useRef(onClosed);
   onClosedRef.current = onClosed;
 
@@ -69,25 +86,30 @@ export function Sheet({
   useEffect(() => {
     if (visible) {
       setRendered(true);
-      progress.value = withTiming(1, {
-        duration: ENTER_DURATION_MS,
-        easing: Easing.bezier(...tokens.motion.easeOut),
-      });
+      progress.value = withTiming(1, timing("slow"));
       return;
     }
-    progress.value = withTiming(
-      0,
-      { duration: EXIT_DURATION_MS, easing: Easing.in(Easing.cubic) },
-      (finished) => {
-        if (finished) runOnJS(handleExitComplete)();
-      },
-    );
+    progress.value = withTiming(0, timing("base"), (finished) => {
+      if (finished) runOnJS(handleExitComplete)();
+    });
   }, [visible, progress, handleExitComplete]);
 
+  // Desktop web (5.7c): a sheet that slid up across a 1440px window read as
+  // a phone artifact, so from `DIALOG_MIN_WIDTH` it is a centred dialog of
+  // reading width that fades and rises a few pixels instead.
+  const { width } = useWindowDimensions();
+  const dialog = Platform.OS === "web" && width >= DIALOG_MIN_WIDTH;
+  const offscreen = dialog ? DIALOG_RISE_PX : SHEET_OFFSCREEN_PX;
+
   const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
-  const sheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: (1 - progress.value) * SHEET_OFFSCREEN_PX }],
-  }));
+  const sheetStyle = useAnimatedStyle(() =>
+    reduceMotion
+      ? { opacity: progress.value, transform: [] }
+      : {
+          opacity: dialog ? progress.value : 1,
+          transform: [{ translateY: (1 - progress.value) * offscreen }],
+        },
+  );
 
   return (
     <RNModal
@@ -95,24 +117,38 @@ export function Sheet({
       onRequestClose={onRequestClose}
       transparent
       animationType="none"
+      onShow={focusSheet}
+      // react-native-web hands unknown props to the Modal's role="dialog"
+      // node, so this names the dialog; native ignores it.
+      {...webAria({ "aria-label": accessibilityLabel })}
       testID={testID}
     >
       <View style={styles.modalRoot}>
         <Animated.View pointerEvents="none" style={[styles.backdrop, backdropStyle]} />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Close sheet"
+          accessibilityLabel="Close"
           style={styles.backdropPress}
           onPress={onRequestClose}
+          // Pointer-only on web: Escape closes, and Tab stays in the sheet.
+          tabIndex={-1}
         />
         <KeyboardAvoidingView
           pointerEvents="box-none"
-          style={styles.sheetHost}
+          style={[styles.sheetHost, dialog && styles.dialogHost]}
           behavior={Platform.OS === "ios" ? "padding" : undefined}
         >
-          <Animated.View pointerEvents="box-none" style={[styles.sheetFrame, sheetStyle]}>
+          <Animated.View
+            pointerEvents="box-none"
+            style={[styles.sheetFrame, dialog && styles.dialogFrame, sheetStyle]}
+          >
             <ToastOverlay />
-            <View style={styles.sheet} aria-modal accessibilityViewIsModal>
+            <View
+              ref={sheetRef}
+              style={[styles.sheet, dialog && styles.dialog]}
+              aria-modal
+              accessibilityViewIsModal
+            >
               <ScrollView
                 style={styles.scroll}
                 contentContainerStyle={[styles.content, contentStyle]}
@@ -129,6 +165,11 @@ export function Sheet({
     </RNModal>
   );
 }
+
+/** Window width from which a sheet presents as a centred dialog on web. */
+const DIALOG_MIN_WIDTH = 720;
+const DIALOG_MAX_WIDTH = 520;
+const DIALOG_RISE_PX = 12;
 
 const styles = StyleSheet.create({
   modalRoot: {
@@ -155,6 +196,9 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   sheetFrame: { maxHeight: "85%" },
+  dialogHost: { justifyContent: "center", alignItems: "center", padding: tokens.space.xl },
+  dialogFrame: { width: "100%", maxWidth: DIALOG_MAX_WIDTH },
+  dialog: { borderRadius: tokens.radius.lg, borderWidth: 1 },
   sheet: {
     flexShrink: 1,
     backgroundColor: tokens.bg.surface,

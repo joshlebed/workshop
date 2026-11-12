@@ -4,7 +4,6 @@
 // whether to render the dashboard or the "admins only" note.
 
 import { useQuery } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { AdminAnalyticsResponse } from "@workshop/shared";
 import {
@@ -18,9 +17,11 @@ import {
   Card,
   Chip,
   HorizontalBars,
+  layout,
   Screen,
   ScreenHeader,
   Skeleton,
+  screenColumnStyle,
   Text,
   tokens,
 } from "@workshop/ui";
@@ -29,6 +30,7 @@ import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { fetchAdminAnalytics } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
+import { failureMessage } from "../lib/errorCopy";
 
 const CLIENT = "workshop" as const;
 
@@ -77,7 +79,7 @@ export default function AdminAnalytics() {
           </Card>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.body}>
+        <ScrollView contentContainerStyle={[styles.body, screenColumnStyle]}>
           <View style={styles.rangeRow} testID="admin-analytics-range">
             {ADMIN_ANALYTICS_RANGES.map((days) => (
               <Chip
@@ -92,9 +94,9 @@ export default function AdminAnalytics() {
 
           {query.isError ? (
             <Card>
-              <Text tone="danger">{errorMessage(query.error)}</Text>
+              <Text tone="danger">{failureMessage(query.error, "Couldn't load analytics.")}</Text>
               <Button
-                label="Retry"
+                label="Try again"
                 variant="secondary"
                 onPress={() => void query.refetch()}
                 style={styles.gap}
@@ -124,7 +126,9 @@ export default function AdminAnalytics() {
                     <Text variant="caption" tone="muted">
                       {stat.label}
                     </Text>
-                    <Text style={styles.statValue}>{stat.value.toLocaleString()}</Text>
+                    <Text variant="title" headerRole={false} style={styles.statValue}>
+                      {stat.value.toLocaleString()}
+                    </Text>
                   </Card>
                 ))}
               </View>
@@ -184,7 +188,7 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { paddingTop: tokens.space.lg, paddingBottom: tokens.space.md },
   body: {
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.md,
   },
@@ -192,12 +196,7 @@ const styles = StyleSheet.create({
   loading: { gap: tokens.space.md },
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
   statTile: { flexGrow: 1, flexBasis: "30%", gap: tokens.space.xxs },
-  statValue: {
-    fontSize: tokens.font.size.xxl,
-    lineHeight: 34,
-    fontWeight: tokens.font.weight.semibold,
-    color: tokens.text.primary,
-  },
+  statValue: { fontVariant: ["tabular-nums"] },
   chartCard: { gap: tokens.space.sm },
   chart: { paddingTop: tokens.space.md },
   gap: { marginTop: tokens.space.sm },

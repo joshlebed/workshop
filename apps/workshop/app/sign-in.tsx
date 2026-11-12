@@ -4,7 +4,9 @@ import {
   EmojiBadge,
   GoogleSignInButton,
   type ListColorKey,
+  layout,
   Screen,
+  screenColumnStyle,
   Text,
   tokens,
 } from "@workshop/ui";
@@ -60,7 +62,10 @@ export default function SignIn() {
 
   return (
     <Screen style={styles.root}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={[styles.scroll, screenColumnStyle]}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.topSpacer} />
         <View style={styles.column}>
           <View style={styles.wordmarkRow} accessibilityRole="header" accessibilityLabel="Workshop">
@@ -96,6 +101,7 @@ export default function SignIn() {
               onError={(e) => setError(signInErrorMessage("google", e))}
               loading={busy === "google"}
               disabled={busy !== null && busy !== "google"}
+              controlBorder
             />
           ) : null}
           {DEV_AUTH_ENABLED ? (
@@ -124,7 +130,7 @@ export default function SignIn() {
           ) : null}
           {!apple.available && !GOOGLE_SIGN_IN_CONFIGURED && !DEV_AUTH_ENABLED ? (
             <Text tone="muted" style={styles.center} testID="sign-in-providers-unconfigured">
-              Sign-in isn't set up on this build yet.
+              Sign-in isn't available in this version of the app.
             </Text>
           ) : null}
           {error ? (
@@ -206,7 +212,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingVertical: tokens.space.xl,
     gap: tokens.space.xl,
   },
@@ -228,30 +234,31 @@ const styles = StyleSheet.create({
   },
   // lineHeight must be set explicitly: the shared <Text> defaults to the
   // `body` variant (lineHeight 22), and overriding only fontSize would leave a
-  // 34px glyph in a 22px line box, which iOS clips.
+  // 34px glyph in a 22px line box, which iOS clips. The -1 tracking is the
+  // logotype's own, tighter than the `display` text step.
   wordmark: {
     color: tokens.text.primary,
     fontSize: tokens.font.size.xxxl,
-    lineHeight: 42,
+    lineHeight: tokens.font.lineHeight.xxxl,
     fontWeight: tokens.font.weight.semibold,
     letterSpacing: -1.0,
   },
   wordmarkAccent: {
     color: tokens.text.muted,
     fontSize: tokens.font.size.xxxl,
-    lineHeight: 42,
+    lineHeight: tokens.font.lineHeight.xxxl,
     fontWeight: tokens.font.weight.regular,
     letterSpacing: -1.0,
   },
   dot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
+    borderRadius: tokens.radius.pill,
     backgroundColor: tokens.accent.default,
     transform: [{ translateY: -3 }],
   },
   taglineBlock: { gap: tokens.space.xs },
-  tagline: { fontSize: tokens.font.size.lg, lineHeight: 24 },
+  tagline: { fontSize: tokens.font.size.lg, lineHeight: tokens.font.lineHeight.lg },
   listIntro: {
     flexDirection: "row",
     alignItems: "center",

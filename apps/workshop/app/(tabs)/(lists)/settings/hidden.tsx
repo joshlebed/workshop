@@ -1,16 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ListListResponse } from "@workshop/shared";
 import {
   Button,
   EmojiBadge,
   EmptyState,
+  haptics,
   type ListColorKey,
   ListRow,
+  layout,
   Screen,
   ScreenHeader,
   Skeleton,
+  screenColumnStyle,
   Text,
   tokens,
   useToast,
@@ -18,6 +20,7 @@ import {
 import { FlatList, StyleSheet, View } from "react-native";
 import { fetchLists, unarchiveList } from "../../../../src/api/lists";
 import { useAuth } from "../../../../src/hooks/useAuth";
+import { FAILURE_TOAST_KEY, failureMessage } from "../../../../src/lib/errorCopy";
 import { goBack } from "../../../../src/lib/goBack";
 import { homeRowCount } from "../../../../src/screens/home/homeRow";
 
@@ -45,6 +48,7 @@ export default function HiddenLists() {
   >({
     mutationFn: ({ id }) => unarchiveList(id, token),
     onMutate: async ({ id }) => {
+      haptics.light();
       await queryClient.cancelQueries({ queryKey: queryKeys.lists.all });
       const previous = queryClient.getQueryData<ListListResponse>(queryKeys.lists.all);
       if (previous) {
@@ -57,7 +61,11 @@ export default function HiddenLists() {
     onSuccess: (_r, { name }) => showToast({ message: `“${name}” is back on home` }),
     onError: (e, _v, ctx) => {
       if (ctx?.previous) queryClient.setQueryData(queryKeys.lists.all, ctx.previous);
-      showToast({ message: errorMessage(e, "Couldn't unhide that list."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't unhide that list."),
+        tone: "danger",
+      });
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.lists.all }),
   });
@@ -71,7 +79,9 @@ export default function HiddenLists() {
         title="Hidden lists"
       />
       {listsQuery.isPending ? (
-        <Skeleton.Rows count={3} />
+        <View style={screenColumnStyle}>
+          <Skeleton.Rows count={3} />
+        </View>
       ) : hidden.length === 0 ? (
         <View style={styles.center}>
           <EmptyState
@@ -83,6 +93,7 @@ export default function HiddenLists() {
         <FlatList
           data={hidden}
           keyExtractor={(l) => l.id}
+          contentContainerStyle={screenColumnStyle}
           ListHeaderComponent={
             <Text variant="caption" tone="muted" style={styles.intro}>
               Only you stop seeing these. Everyone else still has them.
@@ -122,10 +133,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
   },
   intro: {
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.sm,
   },

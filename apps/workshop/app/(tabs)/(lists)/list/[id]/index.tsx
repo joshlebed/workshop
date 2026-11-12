@@ -2,7 +2,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ListSummary } from "@workshop/shared";
-import { type ListColorKey, Screen, ScreenHeader, Skeleton, tokens } from "@workshop/ui";
+import {
+  type ListColorKey,
+  layout,
+  Reveal,
+  Screen,
+  ScreenHeader,
+  Skeleton,
+  screenColumnStyle,
+  tokens,
+  useRevealAfterLoading,
+} from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
@@ -99,6 +109,15 @@ export default function ListDetailRoute() {
       .catch(() => {});
   }, [id, token, queryClient]);
 
+  const detailAvailable = !!token && !!listQuery.data;
+  const detailDenied = !token || (listQuery.isError && isAccessDenied(listQuery.error));
+  const stillLoading =
+    (!!token && listQuery.isPending && !detailDenied) ||
+    (authStatus === "loading" && previewQuery.isPending) ||
+    (detailDenied && previewQuery.isPending);
+  // The list fades in over its skeleton; a list home already had paints at once.
+  const revealed = useRevealAfterLoading(stillLoading);
+
   if (!id) {
     return (
       <LinkErrorScreen
@@ -108,21 +127,16 @@ export default function ListDetailRoute() {
     );
   }
 
-  const detailAvailable = !!token && !!listQuery.data;
-  const detailDenied = !token || (listQuery.isError && isAccessDenied(listQuery.error));
-  const stillLoading =
-    (!!token && listQuery.isPending && !detailDenied) ||
-    (authStatus === "loading" && previewQuery.isPending) ||
-    (detailDenied && previewQuery.isPending);
-
   if (detailAvailable) {
     return (
-      <ListDetail
-        list={listQuery.data.list}
-        members={listQuery.data.members}
-        sources={listQuery.data.sources ?? []}
-        token={token}
-      />
+      <Reveal when={revealed}>
+        <ListDetail
+          list={listQuery.data.list}
+          members={listQuery.data.members}
+          sources={listQuery.data.sources ?? []}
+          token={token}
+        />
+      </Reveal>
     );
   }
 
@@ -178,7 +192,7 @@ function ListDetailSkeleton({ summary }: { summary: ListSummary | null }) {
             list={summary}
             members={[]}
             accent={accent}
-            subline={`${summary.memberCount} ${summary.memberCount === 1 ? "member" : "members"}`}
+            subline={summary.memberCount > 1 ? `${summary.memberCount} members` : ""}
           />
         ) : (
           <>
@@ -187,7 +201,7 @@ function ListDetailSkeleton({ summary }: { summary: ListSummary | null }) {
               onLeadingPress={() => goBack("/")}
               leadingTestID="list-detail-back"
             />
-            <View style={styles.skeletonTitle}>
+            <View style={[styles.skeletonTitle, screenColumnStyle]}>
               <Skeleton.Block width={44} height={44} radius={tokens.radius.md} />
               <View style={styles.skeletonTitleText}>
                 <Skeleton.Block width="70%" height={24} />
@@ -196,10 +210,12 @@ function ListDetailSkeleton({ summary }: { summary: ListSummary | null }) {
             </View>
           </>
         )}
-        <View style={styles.skeletonToolbar}>
+        <View style={[styles.skeletonToolbar, screenColumnStyle]}>
           <Skeleton.Block height={44} radius={tokens.radius.pill} />
         </View>
-        <Skeleton.Rows count={7} badge={0} />
+        <View style={screenColumnStyle}>
+          <Skeleton.Rows count={7} badge={0} />
+        </View>
       </Screen>
     </View>
   );
@@ -210,20 +226,15 @@ const styles = StyleSheet.create({
   skeletonTitle: {
     flexDirection: "row",
     alignItems: "center",
-    gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.xl,
+    gap: tokens.space.md,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.sm,
   },
   skeletonTitleText: { flex: 1, gap: tokens.space.sm },
   skeletonToolbar: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.md,
-  },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

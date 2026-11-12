@@ -1,4 +1,12 @@
-import { Button, Screen, ScreenHeader, Text, tokens } from "@workshop/ui";
+import {
+  Button,
+  layout,
+  Screen,
+  ScreenHeader,
+  screenColumnStyle,
+  Text,
+  tokens,
+} from "@workshop/ui";
 import { Linking, ScrollView, StyleSheet, View } from "react-native";
 import { goBack } from "../../lib/goBack";
 import type { LegalSection } from "../../lib/legal";
@@ -33,7 +41,7 @@ export function LegalScreen({
         leadingTestID={`${testID}-back`}
         title={title}
       />
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView contentContainerStyle={[styles.body, screenColumnStyle]}>
         <Text tone="secondary" style={styles.intro}>
           {intro}
         </Text>
@@ -73,22 +81,24 @@ export function LegalScreen({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
   body: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.sm,
-    paddingBottom: tokens.space.xxl * 2,
+    paddingBottom: layout.bottomInset,
     gap: tokens.space.md,
   },
-  intro: { fontSize: tokens.font.size.lg, lineHeight: 26 },
+  intro: { fontSize: tokens.font.size.lg, lineHeight: tokens.font.lineHeight.lg },
   section: { gap: tokens.space.sm, marginTop: tokens.space.lg },
-  paragraph: { lineHeight: 24 },
+  // Long-form reading text takes the next line-height step for air.
+  paragraph: { lineHeight: tokens.font.lineHeight.lg },
   bullet: { flexDirection: "row", gap: tokens.space.md, alignItems: "flex-start" },
+  // Centred on the first 24pt line: (24 - 8) / 2 = 8.
   bulletDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    marginTop: 10,
+    width: 8,
+    height: 8,
+    borderRadius: tokens.radius.pill,
+    marginTop: tokens.space.sm,
     backgroundColor: tokens.text.muted,
   },
-  bulletText: { flex: 1, lineHeight: 24 },
+  bulletText: { flex: 1, lineHeight: tokens.font.lineHeight.lg },
   contact: { marginTop: tokens.space.xl, alignItems: "flex-start" },
 });

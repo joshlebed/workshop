@@ -33,7 +33,9 @@ export function Badge({
       accessibilityLabel={accessibilityLabel}
       testID={testID}
     >
-      <Text style={[styles.label, { color: labelColor[tone] }]}>{label}</Text>
+      <Text variant="caption" style={[styles.label, { color: labelColor[tone] }]}>
+        {label}
+      </Text>
     </View>
   );
 }
@@ -53,16 +55,12 @@ const labelColor: Record<NonNullable<BadgeProps["tone"]>, string> = {
 const styles = StyleSheet.create({
   base: {
     minWidth: 18,
-    height: 18,
+    // A floor, not a height: the label grows with the user's text size.
+    minHeight: 18,
     paddingHorizontal: tokens.space.xs,
     borderRadius: tokens.radius.pill,
     alignItems: "center",
     justifyContent: "center",
   },
-  label: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: tokens.font.weight.bold,
-    letterSpacing: 0.1,
-  },
+  label: { fontWeight: tokens.font.weight.bold, fontVariant: ["tabular-nums"] },
 });

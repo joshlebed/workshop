@@ -6,7 +6,9 @@ const STYLE_ID = "workshop-focus-ring";
  * Installs the app's one focus style: a 2px accent ring at low emphasis,
  * offset 2px, shown only for `:focus-visible` (keyboard), so a mouse click
  * never leaves a ring behind. Text inputs draw their own focus border
- * (`TextField`) and are excluded. Call once from an app's root layout;
+ * (`TextField`) and are excluded. A screen heading focused by script after a navigation
+ * (`data-focus-heading`, Workshop's `useFocusScreenHeading`) is a reading
+ * position for assistive tech, not a control, and is excluded too. Call once from an app's root layout;
  * deliberately not automatic, so a second app that imports a shared
  * component (HighScore) keeps its own focus styling.
  */
@@ -21,6 +23,7 @@ export function installWebFocusRing(): void {
   outline-offset: 2px;
 }
 input:focus-visible, textarea:focus-visible { outline: none !important; }
+[data-focus-heading]:focus { outline: none !important; }
 `;
   document.head.appendChild(el);
 }

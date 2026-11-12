@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { AcceptInviteResponse, ListPreview } from "@workshop/shared";
-import { useToast } from "@workshop/ui";
+import { haptics, useToast } from "@workshop/ui";
 import { useCallback } from "react";
 import { joinListBySlug } from "../api/share";
 import { joinErrorMessage } from "../lib/errorCopy";
@@ -31,6 +31,7 @@ export function useJoinList({
 
   const join = useCallback(async () => {
     if (!slug) return;
+    haptics.success();
     try {
       const res = await joinListBySlug(slug, token);
       await Promise.all([

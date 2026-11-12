@@ -1,4 +1,4 @@
-import { Button, Screen, Text, tokens } from "@workshop/ui";
+import { Button, layout, Screen, Text, tokens } from "@workshop/ui";
 import { useRouter } from "expo-router";
 import { StyleSheet, View } from "react-native";
 
@@ -8,7 +8,7 @@ export default function NotFound() {
   return (
     <Screen style={styles.root} testID="not-found">
       <View style={styles.body}>
-        <Text variant="heading" headerRole style={styles.text}>
+        <Text variant="heading" headerRole={1} style={styles.text}>
           There’s nothing at this address.
         </Text>
         <Button
@@ -29,7 +29,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: tokens.space.lg,
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
   },
   text: { textAlign: "center" },
 });

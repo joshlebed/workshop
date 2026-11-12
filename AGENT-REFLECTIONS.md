@@ -29,6 +29,20 @@ trail.
 
 ### Dev / sandbox environment
 
+- **`/v1/auth/*` rate limit (30/min per IP) starves parallel agents in one sandbox.** Every
+  web page load spends one or two auth requests (dev sign-in, refresh), and all agents and
+  Playwright runs share the sandbox's IP bucket, so a busy session lands pages on `/sign-in`
+  with `RATE_LIMITED`. Workarounds: navigate in-app (`history.pushState` + `popstate`)
+  instead of reloading, mint scratch users once per spec file, and the e2e helpers give each
+  context its own `X-Forwarded-For` lane. Fix idea: exempt `STAGE=local` from the auth
+  family, or key it on user agent + IP in dev.
+- **impeccable's `live` mode is awkward here.** `npx impeccable live` won't start at the
+  repo root without choosing an app, then injects a script tag into
+  `apps/workshop/public/index.html`; the skill's `live-server.mjs` 404s `/detect.js` on
+  impeccable 4.8.2 (the npm package no longer ships it). What works: `npx impeccable
+live-server --background` and inject its `detect.js` from Playwright; URL scans need
+  `IMPECCABLE_BROWSER` pointed at Playwright's chromium with `--no-sandbox` (root).
+
 - **Movie / TV search 500s in the sandbox.** `GET /v1/search/media` returns 500 because
   `apps/backend/.env` has no `TMDB_API_KEY` (setup doesn't write one), so the add-item flow on
   any movie or TV list shows "Search failed. Try again." and can't be exercised in the preview.
@@ -128,17 +142,6 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
   settings, activity, and sign-in on `localhost:8082`, reports non-200s + console
   errors, and exits non-zero on failure. Would shave ~90s per smoke iteration during UI
   work (vs. one-off agent-browser calls that each rebuild). ~30m + a tiny shell script.
-
-- **`useScrollSticky({ threshold })` hook in `apps/workshop/src/lib/`.** The "ref
-  scroll-Y + onScroll + threshold" pattern is already implemented in
-  `packages/ui/src/NewItemsPill.tsx`; the Phase 5d Sheet enter/exit and the Phase
-  5e two-pane sticky pane will want the same shape. Extract to a hook + a vitest.
-  ~30m.
-
-- **`pillViewport top: 140` in `NewItemsPill.tsx` is a magic number.** It was derived by
-  adding up paddings + line heights from memory; breaks silently when the toolbar
-  height changes. **Fix:** replace with a `<View onLayout>` measure on the toolbar
-  exposed via context to children that want to position relative to it. ~30m.
 
 ### Docs / planning
 
@@ -289,17 +292,6 @@ root without --no-sandbox is not supported`. The dev server still serves fine â€
   settings, activity, and sign-in on `localhost:8082`, reports non-200s + console
   errors, and exits non-zero on failure. Would shave ~90s per smoke iteration during UI
   work (vs. one-off agent-browser calls that each rebuild). ~30m + a tiny shell script.
-
-- **`useScrollSticky({ threshold })` hook in `apps/workshop/src/lib/`.** The "ref
-  scroll-Y + onScroll + threshold" pattern is already implemented in
-  `packages/ui/src/NewItemsPill.tsx`; the Phase 5d Sheet enter/exit and the Phase
-  5e two-pane sticky pane will want the same shape. Extract to a hook + a vitest.
-  ~30m.
-
-- **`pillViewport top: 140` in `NewItemsPill.tsx` is a magic number.** It was derived by
-  adding up paddings + line heights from memory; breaks silently when the toolbar
-  height changes. **Fix:** replace with a `<View onLayout>` measure on the toolbar
-  exposed via context to children that want to position relative to it. ~30m.
 
 ### Docs / planning
 

@@ -1,8 +1,8 @@
-import { errorMessage } from "@workshop/api-client/api";
-import { Button, confirm, ListRow, Text, TextField, tokens, useToast } from "@workshop/ui";
+import { Button, confirm, ListRow, layout, Text, TextField, tokens, useToast } from "@workshop/ui";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { useAuth } from "../../hooks/useAuth";
+import { FAILURE_TOAST_KEY, failureMessage } from "../../lib/errorCopy";
 
 /**
  * Settings → Connections → Letterboxd (3.5). A row that shows the connected
@@ -31,7 +31,8 @@ export function LetterboxdRow() {
       setUsername("");
     } catch (e) {
       showToast({
-        message: errorMessage(e, "Couldn't connect that Letterboxd account."),
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't connect that Letterboxd account."),
         tone: "danger",
       });
     } finally {
@@ -53,7 +54,11 @@ export function LetterboxdRow() {
       showToast({ message: "Letterboxd disconnected" });
       setOpen(false);
     } catch (e) {
-      showToast({ message: errorMessage(e, "Couldn't disconnect."), tone: "danger" });
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't disconnect."),
+        tone: "danger",
+      });
     } finally {
       setBusy(null);
     }
@@ -70,9 +75,9 @@ export function LetterboxdRow() {
           </Text>
         }
         onPress={() => setOpen((v) => !v)}
-        accessibilityLabel={
-          connected ? `Letterboxd, connected as ${connected}` : "Letterboxd, not connected"
-        }
+        // Named by its own text (WCAG 2.5.3); it opens and closes the form
+        // below, so it carries aria-expanded.
+        pressableProps={{ "aria-expanded": open }}
         testID="settings-letterboxd"
       />
       {open ? (
@@ -118,7 +123,7 @@ export function LetterboxdRow() {
 const styles = StyleSheet.create({
   form: {
     gap: tokens.space.md,
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.xs,
     paddingBottom: tokens.space.md,
   },

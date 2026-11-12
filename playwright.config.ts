@@ -7,8 +7,13 @@ import { defineConfig, devices } from "@playwright/test";
 //   • Web bundle on http://localhost:8082 with `EXPO_PUBLIC_DEV_AUTH=1`
 //
 // The `pnpm run e2e` script in package.json starts both with the right
-// env vars before invoking Playwright. CI integration lands in Phase 5
-// (see docs/redesign-plan.md §3 Phase 5).
+// env vars before invoking Playwright; against already-running services
+// (the Niteshift sandbox) run `pnpm exec playwright test` directly.
+//
+// The sandbox DB is a copy of production, so specs never use the real owner
+// account the web app auto-signs-in as: each mints scratch users, makes
+// `zz-ux-scratch-e2e-*` lists and deletes them afterwards. See
+// tests/e2e/helpers.ts (also for the per-test auth rate-limit lane).
 
 const WEB_PORT = Number(process.env.WORKSHOP_E2E_WEB_PORT ?? 8082);
 

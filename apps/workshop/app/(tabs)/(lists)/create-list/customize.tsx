@@ -8,21 +8,24 @@ import {
 import {
   Button,
   EmojiBadge,
-  Icon,
   type ListColorKey,
+  layout,
   Screen,
   ScreenHeader,
+  screenColumnStyle,
   Text,
   TextField,
   tokens,
 } from "@workshop/ui";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
+import { ColorChoices, EmojiChoices } from "../../../../src/components/ListLookChoices";
 import { useCreateFromTemplate } from "../../../../src/hooks/useCreateFromTemplate";
 import { pickCoverPhoto } from "../../../../src/lib/coverPhoto";
 import { goBack } from "../../../../src/lib/goBack";
+import { useEscapeToClose, useSubmitShortcut } from "../../../../src/lib/shortcuts/useShortcuts";
 
 const COLOR_KEYS: readonly ListColorKey[] = [
   "sunset",
@@ -130,24 +133,36 @@ export default function CreateListCustomize() {
   };
 
   const totalSteps = requiresSource ? 3 : 2;
+  // Web: Escape steps back, ⌘Enter creates (5.7b).
+  const isFocused = useIsFocused();
+  useEscapeToClose(() => goBack("/create-list/type"), isFocused);
+  useSubmitShortcut(onSubmit, isFocused);
+
   return (
     <Screen style={styles.root}>
       <ScreenHeader
         leading="back"
         onLeadingPress={() => goBack("/create-list/type")}
         center={
-          <View style={styles.stepDots} accessibilityLabel={`Step 2 of ${totalSteps}`}>
-            {Array.from({ length: totalSteps }, (_, i) => `step-${i}`).map((id, i) => (
-              <View key={id} style={[styles.stepDot, i < 2 ? styles.stepDotActive : null]} />
-            ))}
-          </View>
+          <>
+            {/* The screen's level-1 heading, for assistive tech only: the
+                header shows step dots, and the preview below shows the name. */}
+            <Text headerRole={1} style={styles.srOnly}>
+              New list
+            </Text>
+            <View style={styles.stepDots} role="img" accessibilityLabel={`Step 2 of ${totalSteps}`}>
+              {Array.from({ length: totalSteps }, (_, i) => `step-${i}`).map((id, i) => (
+                <View key={id} style={[styles.stepDot, i < 2 ? styles.stepDotActive : null]} />
+              ))}
+            </View>
+          </>
         }
         trailing={<View style={styles.headerSpacer} />}
       />
 
       <KeyboardAwareScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[styles.body, screenColumnStyle]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
@@ -156,11 +171,12 @@ export default function CreateListCustomize() {
           <EmojiBadge emoji={emoji} color={accentHex} size={72} imageUrl={coverPhotoUrl} />
           <View style={styles.previewText}>
             {trimmedName !== template.displayName ? (
-              <Text variant="caption" tone="muted" style={styles.previewKind}>
+              <Text variant="caption" tone="muted">
                 {template.displayName}
               </Text>
             ) : null}
-            <Text variant="title" numberOfLines={1} style={styles.previewName}>
+            {/* A preview of the name, not a heading (the header holds the one h1). */}
+            <Text variant="title" numberOfLines={1} headerRole={false}>
               {trimmedName.length > 0 ? trimmedName : templateListName(template)}
             </Text>
           </View>
@@ -182,7 +198,7 @@ export default function CreateListCustomize() {
         {!requiresSource ? (
           <View style={styles.field}>
             <View style={styles.fieldLabelRow}>
-              <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+              <Text variant="label" tone="secondary">
                 Cover photo
               </Text>
               <Text variant="caption" tone="muted">
@@ -214,50 +230,16 @@ export default function CreateListCustomize() {
         ) : null}
 
         <View style={styles.field}>
-          <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+          <Text variant="label" tone="secondary">
             Look
           </Text>
-          <View style={styles.colorRow}>
-            {COLOR_KEYS.map((key) => (
-              <Pressable
-                key={key}
-                accessibilityRole="button"
-                accessibilityLabel={`Use color ${key}`}
-                accessibilityState={{ selected: key === color }}
-                aria-pressed={key === color}
-                onPress={() => setColor(key)}
-                style={({ pressed }) => [styles.colorCell, pressed && styles.colorCellPressed]}
-              >
-                <View style={[styles.colorSwatch, { backgroundColor: tokens.list[key] }]}>
-                  {key === color ? <Icon name="check" size={18} tone="onAccent" /> : null}
-                </View>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.emojiRow}>
-            {emojiChoicesFor(template).map((choice) => (
-              <Pressable
-                key={choice}
-                accessibilityRole="button"
-                accessibilityLabel={`Use emoji ${choice}`}
-                accessibilityState={{ selected: choice === emoji }}
-                aria-pressed={choice === emoji}
-                onPress={() => setEmoji(choice)}
-                style={({ pressed }) => [
-                  styles.emojiCell,
-                  choice === emoji && styles.emojiCellSelected,
-                  pressed && styles.emojiCellPressed,
-                ]}
-              >
-                <Text style={styles.emojiGlyph}>{choice}</Text>
-              </Pressable>
-            ))}
-          </View>
+          <ColorChoices choices={COLOR_KEYS} value={color} onChange={setColor} />
+          <EmojiChoices choices={emojiChoicesFor(template)} value={emoji} onChange={setEmoji} />
         </View>
 
         <View style={styles.field}>
           <View style={styles.fieldLabelRow}>
-            <Text variant="label" tone="secondary" style={styles.fieldLabel}>
+            <Text variant="label" tone="secondary">
               Description
             </Text>
             <Text variant="caption" tone="muted">
@@ -277,7 +259,7 @@ export default function CreateListCustomize() {
       </KeyboardAwareScrollView>
 
       <KeyboardStickyView offset={{ closed: 0, opened: 0 }}>
-        <View style={styles.footer}>
+        <View style={[styles.footer, screenColumnStyle]}>
           <Button
             testID="create-list-submit"
             label={requiresSource ? "Continue" : "Create list"}
@@ -293,6 +275,15 @@ export default function CreateListCustomize() {
 }
 
 const styles = StyleSheet.create({
+  srOnly: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    margin: -1,
+    padding: 0,
+    overflow: "hidden",
+    borderWidth: 0,
+  },
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
   scroll: { flex: 1 },
   stepDots: {
@@ -305,20 +296,20 @@ const styles = StyleSheet.create({
   stepDot: {
     width: 18,
     height: 3,
-    borderRadius: 1.5,
+    borderRadius: tokens.radius.pill,
     backgroundColor: tokens.border.subtle,
   },
   stepDotActive: { backgroundColor: tokens.accent.default },
   // Balances the leading back button so the step dots sit centred.
   headerSpacer: { width: tokens.hit },
   body: {
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.sm,
     paddingBottom: tokens.space.lg,
     gap: tokens.space.xl,
   },
   footer: {
-    paddingHorizontal: tokens.space.lg,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl,
     backgroundColor: tokens.bg.canvas,
@@ -330,42 +321,11 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.sm,
   },
   previewText: { flex: 1, minWidth: 0, gap: tokens.space.xxs },
-  previewKind: { letterSpacing: 0.2 },
-  previewName: { letterSpacing: -0.4 },
   field: { gap: tokens.space.sm },
-  fieldLabel: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   fieldLabelRow: {
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
   },
-  emojiRow: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
-  emojiCell: {
-    width: 44,
-    height: 44,
-    borderRadius: tokens.radius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.bg.surface,
-  },
-  emojiCellSelected: { backgroundColor: tokens.accent.muted },
-  emojiCellPressed: { opacity: 0.7 },
-  emojiGlyph: { fontSize: tokens.font.size.lg },
-  colorRow: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
-  colorCell: {
-    width: tokens.hit,
-    height: tokens.hit,
-    borderRadius: tokens.radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  colorSwatch: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   coverRow: { flexDirection: "row", gap: tokens.space.sm, flexWrap: "wrap" },
-  colorCellPressed: { opacity: 0.8 },
 });

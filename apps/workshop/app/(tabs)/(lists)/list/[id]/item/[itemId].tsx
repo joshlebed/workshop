@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ApiError, errorMessage } from "@workshop/api-client/api";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { Item, ListItemsResponse } from "@workshop/shared";
 import {
@@ -13,12 +12,14 @@ import {
   Icon,
   IconButton,
   interaction,
+  layout,
   normalizeExternalUrl,
   openExternalUrl,
   Screen,
   ScreenHeader,
   SectionHeader,
   Skeleton,
+  screenColumnStyle,
   TagEditor,
   Text,
   TextField,
@@ -40,6 +41,11 @@ import {
 } from "../../../../../../src/api/items";
 import { fetchListDetail, fetchListTags } from "../../../../../../src/api/lists";
 import { useAuth } from "../../../../../../src/hooks/useAuth";
+import {
+  FAILURE_TOAST_KEY,
+  failureMessage,
+  loadErrorMessage,
+} from "../../../../../../src/lib/errorCopy";
 import { goBack } from "../../../../../../src/lib/goBack";
 import {
   type DraftField,
@@ -153,14 +159,15 @@ export default function ItemDetail() {
   const completeMutation = useMutation({
     mutationFn: (nextCompleted: boolean) =>
       nextCompleted ? completeItem(itemId ?? "", token) : uncompleteItem(itemId ?? "", token),
+    // On the tap, not the server's answer: a commit is `light`.
+    onMutate: () => haptics.light(),
     onSuccess: async () => {
-      haptics.medium();
       await invalidateItem();
       await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
     },
     onError: (e) =>
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't update item",
+        message: failureMessage(e, "Couldn't update that item."),
         tone: "danger",
       }),
   });
@@ -188,7 +195,7 @@ export default function ItemDetail() {
     onError: (e) => {
       setSaveStatus("idle");
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't save",
+        message: failureMessage(e, "Couldn't save your changes."),
         tone: "danger",
       });
     },
@@ -205,8 +212,8 @@ export default function ItemDetail() {
 
   const tagsMutation = useMutation({
     mutationFn: (tags: string[]) => updateItemTags(itemId ?? "", { tags }, token),
+    // The tag chips give the selection tick (`Chip` / `TagEditor`).
     onSuccess: async () => {
-      haptics.light();
       await invalidateItem();
       if (listId) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.tags.byList(listId) });
@@ -214,7 +221,7 @@ export default function ItemDetail() {
     },
     onError: (e) =>
       showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't update tags",
+        message: failureMessage(e, "Couldn't update the tags."),
         tone: "danger",
       }),
   });
@@ -229,13 +236,22 @@ export default function ItemDetail() {
   const archiveMutation = useMutation({
     mutationFn: (title: string) => archiveItem(itemId ?? "", token).then(() => title),
     onMutate: () => {
-      haptics.medium();
+      haptics.warning();
       if (listId) {
         queryClient.setQueryData<ListItemsResponse>(queryKeys.items.byList(listId), (d) =>
           d ? applyRemove(d, itemId ?? "") : d,
         );
       }
       goBack(`/list/${listId}`);
+    },
+    // The row came back off the list optimistically; put it back and say so.
+    onError: (e) => {
+      refreshList();
+      showToast({
+        key: FAILURE_TOAST_KEY,
+        message: failureMessage(e, "Couldn't delete that item."),
+        tone: "danger",
+      });
     },
     onSuccess: (title) => {
       refreshList();
@@ -245,19 +261,17 @@ export default function ItemDetail() {
         actionLabel: "Undo",
         durationMs: 6000,
         onAction: () => {
+          haptics.light();
           unarchiveItem(itemId ?? "", token)
             .then(refreshList)
             .catch((e) =>
-              showToast({ message: errorMessage(e, "Couldn't restore that."), tone: "danger" }),
+              showToast({
+                key: FAILURE_TOAST_KEY,
+                message: failureMessage(e, "Couldn't restore that."),
+                tone: "danger",
+              }),
             );
         },
-      });
-    },
-    onError: (e) => {
-      refreshList();
-      showToast({
-        message: e instanceof ApiError ? e.message : "Couldn't delete",
-        tone: "danger",
       });
     },
   });
@@ -346,7 +360,10 @@ export default function ItemDetail() {
   if (!itemId || !listId) {
     return (
       <Screen style={styles.center}>
-        <EmptyState title="Missing item id" />
+        <EmptyState
+          title="This link is incomplete"
+          description="It's missing the part that names the item. Open it from its list."
+        />
       </Screen>
     );
   }
@@ -355,7 +372,9 @@ export default function ItemDetail() {
     return (
       <Screen style={styles.root}>
         <ItemHeader parentList={parentList} onBack={onBack} />
-        <ItemDetailSkeleton />
+        <View style={screenColumnStyle}>
+          <ItemDetailSkeleton />
+        </View>
       </Screen>
     );
   }
@@ -367,10 +386,10 @@ export default function ItemDetail() {
         <ItemHeader parentList={parentList} onBack={onBack} />
         <View style={styles.center}>
           <EmptyState
-            title="Couldn't load this"
-            description={itemQuery.error instanceof Error ? itemQuery.error.message : undefined}
+            title="Couldn't load this item"
+            description={loadErrorMessage(itemQuery.error)}
             action={
-              <Button label="Retry" variant="secondary" onPress={() => itemQuery.refetch()} />
+              <Button label="Try again" variant="secondary" onPress={() => itemQuery.refetch()} />
             }
           />
         </View>
@@ -414,7 +433,7 @@ export default function ItemDetail() {
       />
 
       <KeyboardAwareScrollView
-        contentContainerStyle={styles.body}
+        contentContainerStyle={[styles.body, screenColumnStyle]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
         bottomOffset={tokens.space.lg}
@@ -464,7 +483,7 @@ export default function ItemDetail() {
         />
 
         <View style={styles.tagSection}>
-          <SectionHeader title="Tags" />
+          <SectionHeader title="Tags" inset={false} first />
           <TagEditor
             tags={loadedItem.tags ?? []}
             listTags={(listTagsQuery.data?.tags ?? []).map((t) => t.tag)}
@@ -491,6 +510,7 @@ export default function ItemDetail() {
           item={loadedItem}
           addedByName={addedByMember?.displayName ?? null}
           completedByName={completedByMember?.displayName ?? null}
+          doneWord={copy.done}
         />
       </KeyboardAwareScrollView>
 
@@ -498,6 +518,7 @@ export default function ItemDetail() {
         visible={menuOpen}
         onClose={() => setMenuOpen(false)}
         testID="item-menu"
+        accessibilityLabel={`Actions for ${loadedItem.title}`}
         cancelTestID="item-menu-cancel"
         items={[
           !!loadedItem.url && {
@@ -643,7 +664,7 @@ function KindHero({ item, view, accent, onOpenUrl }: KindHeroProps) {
       <View style={styles.heroMeta}>
         {view.eyebrow ? <Text variant="eyebrow">{view.eyebrow}</Text> : null}
         {view.subline ? (
-          <Text variant="caption" tone="secondary" numberOfLines={4} style={styles.heroSubline}>
+          <Text variant="caption" tone="secondary" numberOfLines={4}>
             {view.subline}
           </Text>
         ) : null}
@@ -758,9 +779,11 @@ interface ProvenanceProps {
   item: Item;
   addedByName: string | null;
   completedByName: string | null;
+  /** The list's own completion word ("Watched", "Read", "Done"). */
+  doneWord: string;
 }
 
-function Provenance({ item, addedByName, completedByName }: ProvenanceProps) {
+function Provenance({ item, addedByName, completedByName, doneWord }: ProvenanceProps) {
   const parts: string[] = [];
   if (addedByName) {
     parts.push(`Added by ${firstName(addedByName)} · ${formatRelative(item.createdAt)}`);
@@ -769,14 +792,14 @@ function Provenance({ item, addedByName, completedByName }: ProvenanceProps) {
   }
   if (item.completed && item.completedAt) {
     const who = completedByName ? `by ${firstName(completedByName)} · ` : "";
-    parts.push(`Completed ${who}${formatRelative(item.completedAt)}`);
+    parts.push(`${doneWord} ${who}${formatRelative(item.completedAt)}`);
   } else if (item.updatedAt && item.updatedAt !== item.createdAt) {
     parts.push(`Edited ${formatRelative(item.updatedAt)}`);
   }
   return (
     <View style={styles.provenance}>
       {parts.map((p) => (
-        <Text key={p} variant="caption" tone="muted" style={styles.provenanceLine}>
+        <Text key={p} variant="caption" tone="muted">
           {p}
         </Text>
       ))}
@@ -794,7 +817,7 @@ function describeItem(item: Item): KindView {
       const poster = typeof c.posterUrl === "string" ? c.posterUrl : undefined;
       const year = typeof c.year === "number" ? String(c.year) : null;
       const runtime = typeof c.runtimeMinutes === "number" ? `${c.runtimeMinutes} min` : null;
-      const eyebrow = [item.kind === "tv" ? "TV" : "MOVIE", year, runtime]
+      const eyebrow = [item.kind === "tv" ? "TV" : "Movie", year, runtime]
         .filter(Boolean)
         .join(" · ");
       const overview = typeof c.overview === "string" ? c.overview : "";
@@ -811,8 +834,8 @@ function describeItem(item: Item): KindView {
       const authors = Array.isArray(c.authors) ? (c.authors as string[]).join(", ") : "";
       const year = typeof c.year === "number" ? String(c.year) : null;
       const pageCount =
-        typeof c.pageCount === "number" && c.pageCount > 0 ? `${c.pageCount} pp` : null;
-      const eyebrow = ["BOOK", authors || null, year, pageCount].filter(Boolean).join(" · ");
+        typeof c.pageCount === "number" && c.pageCount > 0 ? `${c.pageCount} pages` : null;
+      const eyebrow = ["Book", authors || null, year, pageCount].filter(Boolean).join(" · ");
       const description = typeof c.description === "string" ? c.description : "";
       return {
         ...(cover ? { imageUrl: cover } : {}),
@@ -832,7 +855,8 @@ function describeItem(item: Item): KindView {
               ? c.thumbnailUrl
               : undefined;
       const siteName = typeof c.siteName === "string" ? c.siteName : "";
-      const eyebrow = siteName ? siteName.toUpperCase() : "LINK";
+      // Sentence case in the source; the eyebrow variant draws it in capitals.
+      const eyebrow = siteName || "Link";
       const description = typeof c.description === "string" ? c.description : "";
       return {
         ...(image ? { imageUrl: image } : {}),
@@ -907,12 +931,9 @@ function listColorHex(color: string | null | undefined): string {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
-  saveIndicator: {
-    fontVariant: ["tabular-nums"],
-    letterSpacing: 0.2,
-  },
+  saveIndicator: { fontVariant: ["tabular-nums"] },
   body: {
-    paddingHorizontal: tokens.space.xl,
+    paddingHorizontal: layout.gutter,
     paddingTop: tokens.space.md,
     paddingBottom: tokens.space.xxl,
     gap: tokens.space.lg,
@@ -937,11 +958,13 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.elevated,
   },
   heroPlaceholder: { alignItems: "center", justifyContent: "center" },
-  // Pin lineHeight (≈1.2×) so the 40px hero emoji isn't clipped to the shared
-  // Text body line box (22) — iOS clips glyphs taller than their line box.
-  heroPlaceholderGlyph: { fontSize: 40, lineHeight: 48 },
+  // Pin lineHeight so the hero emoji isn't clipped to the shared Text body
+  // line box (22) — iOS clips glyphs taller than their line box.
+  heroPlaceholderGlyph: {
+    fontSize: tokens.font.size.xxxl,
+    lineHeight: tokens.font.lineHeight.xxxl,
+  },
   heroMeta: { flex: 1, gap: tokens.space.xs, paddingTop: tokens.space.xxs },
-  heroSubline: { lineHeight: 19 },
   // 44pt target; the negative inset keeps the label aligned with the text above.
   openLink: {
     alignSelf: "flex-start",
@@ -955,10 +978,7 @@ const styles = StyleSheet.create({
   },
   openLinkHovered: { backgroundColor: interaction.hover },
   openLinkPressed: { backgroundColor: interaction.pressed },
-  openLinkText: {
-    fontWeight: tokens.font.weight.semibold,
-    letterSpacing: 0.2,
-  },
+  openLinkText: { fontWeight: tokens.font.weight.semibold },
 
   // Hero — plain
   heroPlain: {
@@ -972,8 +992,8 @@ const styles = StyleSheet.create({
     color: tokens.text.primary,
     fontSize: tokens.font.size.xxl,
     fontWeight: tokens.font.weight.semibold,
-    letterSpacing: -0.4,
-    lineHeight: 36,
+    letterSpacing: tokens.font.tracking.title,
+    lineHeight: tokens.font.lineHeight.xxl,
     paddingVertical: tokens.space.xs,
     paddingHorizontal: 0,
     margin: 0,
@@ -1021,7 +1041,6 @@ const styles = StyleSheet.create({
     borderTopColor: tokens.border.subtle,
     gap: tokens.space.xxs,
   },
-  provenanceLine: { lineHeight: 18 },
 
   center: {
     flex: 1,

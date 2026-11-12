@@ -314,33 +314,43 @@ const GLYPHS: Record<IconName, Glyph> = {
       </>
     );
   },
-  // Two slider tracks with knobs: "adjust this", the settings affordance.
+  // A gear (UX pass 3.4 asked for one; sliders read as "filter"): an outlined
+  // ring with eight short teeth and a hub, on the same stroke as every icon.
+  // No fills, so it reads on any surface.
   settings: (size, s, c) => {
-    const knob = size * 0.26;
-    const track = (top: number, knobLeft: number) => (
+    const ring = size * 0.6;
+    const hub = size * 0.22;
+    const tooth = { w: size * 0.13, h: size * 0.12 };
+    const radius = ring / 2 + tooth.h / 2 - s / 2;
+    return (
       <>
-        {bar(size * 0.8, s, c, { top: top + knob / 2 - s / 2 })}
+        {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+          <View
+            key={deg}
+            style={[
+              abs,
+              {
+                width: tooth.w,
+                height: tooth.h,
+                borderRadius: s / 2,
+                backgroundColor: c,
+                transform: [{ rotate: `${deg}deg` }, { translateY: -radius }],
+              },
+            ]}
+          />
+        ))}
         <View
           style={[
             abs,
-            {
-              top,
-              left: knobLeft,
-              width: knob,
-              height: knob,
-              borderRadius: knob / 2,
-              borderWidth: s,
-              borderColor: c,
-              backgroundColor: tokens.bg.canvas,
-            },
+            { width: ring, height: ring, borderRadius: ring / 2, borderWidth: s, borderColor: c },
           ]}
         />
-      </>
-    );
-    return (
-      <>
-        {track(size * 0.18, size * 0.24)}
-        {track(size * 0.56, size * 0.5)}
+        <View
+          style={[
+            abs,
+            { width: hub, height: hub, borderRadius: hub / 2, borderWidth: s, borderColor: c },
+          ]}
+        />
       </>
     );
   },

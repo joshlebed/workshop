@@ -57,7 +57,7 @@ export function AppleSignInButton({ onPress, loading, disabled, testID }: AppleS
       />
       {loading ? (
         <View style={styles.spinner} pointerEvents="none">
-          <ActivityIndicator color="#1F1B17" />
+          <ActivityIndicator color="#1F1B17" accessibilityLabel="Signing in" />
         </View>
       ) : null}
     </View>

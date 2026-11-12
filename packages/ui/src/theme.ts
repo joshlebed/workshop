@@ -11,23 +11,32 @@
 type ColorScheme = {
   bg: { canvas: string; surface: string; elevated: string };
   text: { primary: string; secondary: string; muted: string; onAccent: string };
-  border: { subtle: string; default: string; strong: string };
+  /**
+   * `subtle` / `default` / `strong` are dividers and quiet card edges
+   * (decorative, no contrast floor). `control` is the edge of anything you
+   * operate (TextField box, Chip outline, secondary Button, checkbox and
+   * radio rings, the off Switch track): ≥3:1 on canvas, surface and elevated
+   * (WCAG 1.4.11), UX pass 5.5.
+   */
+  border: { subtle: string; default: string; strong: string; control: string };
 };
 
 // Neutrals are tinted warm (OKLCH hue ~66, the amber accent's hue) at very
 // low chroma, so every surface belongs to one warm family instead of the
 // old navy-canvas / neutral-surface mismatch. Canvas is the darkest layer;
 // surface and elevated step up in lightness, not hue. Values derived in
-// OKLCH and checked for WCAG AA (muted clears 4.5:1 on canvas + surface).
+// OKLCH and checked for WCAG AA (muted clears 4.5:1 on canvas, surface and
+// elevated; `border.control` clears 3:1 on all three).
 const darkColors: ColorScheme = {
   bg: { canvas: "#0E0C0B", surface: "#191715", elevated: "#24221F" },
   text: {
     primary: "#F2F0ED",
     secondary: "#A7A29E",
-    muted: "#86817C",
+    // ≥4.5:1 on canvas, surface and elevated (was #86817C, 4.11:1 on elevated).
+    muted: "#908B87",
     onAccent: "#0E0C0B",
   },
-  border: { subtle: "#2D2926", default: "#3C3835", strong: "#55504C" },
+  border: { subtle: "#2D2926", default: "#3C3835", strong: "#55504C", control: "#726E6A" },
 };
 
 const lightColors: ColorScheme = {
@@ -39,7 +48,12 @@ const lightColors: ColorScheme = {
     // Accent is amber in both modes; dark text on amber stays readable.
     onAccent: "#0E0C0B",
   },
-  border: { subtle: "#E3DFDA", default: "#D4CEC9", strong: "#AFA8A1" },
+  border: {
+    subtle: "#E3DFDA",
+    default: "#D4CEC9",
+    strong: "#AFA8A1",
+    control: "#847F7B",
+  },
 };
 
 const SHARED = {
@@ -72,6 +86,12 @@ const SHARED = {
   hit: 44,
   font: {
     size: { xs: 12, sm: 13, md: 16, lg: 18, xl: 22, xxl: 28, xxxl: 34 },
+    // The line height that goes with each size. `Text` variants use these;
+    // a hand-set `fontSize` takes the matching step, never its own number.
+    lineHeight: { xs: 16, sm: 18, md: 22, lg: 24, xl: 28, xxl: 34, xxxl: 40 },
+    // Letter spacing: large text pulls in, small uppercase labels open up.
+    // Body sizes take the font's own spacing (no entry).
+    tracking: { display: -0.6, title: -0.4, heading: -0.2, eyebrow: 0.8 },
     weight: {
       regular: "400" as const,
       medium: "500" as const,

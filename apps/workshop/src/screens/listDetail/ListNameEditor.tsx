@@ -1,6 +1,6 @@
-import { interaction, Text, TextField, tokens } from "@workshop/ui";
+import { interaction, Text, TextField, tokens, webAria } from "@workshop/ui";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, type TextStyle } from "react-native";
+import { Pressable, StyleSheet, type TextStyle, View } from "react-native";
 
 /**
  * The list's name in its header, editable in place (UX pass 4.3): a list
@@ -59,26 +59,33 @@ export function ListNameEditor({
     );
   }
 
+  // Web: the heading wraps the rename button (a heading inside a button is
+  // flattened into the button's name and stops being a heading), so the
+  // screen keeps its level-1 heading and the post-navigation focus can land
+  // on it. Native keeps the plain button.
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${name}. Rename list`}
-      onPress={() => setEditing(true)}
-      testID="list-detail-name"
-      style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-        styles.target,
-        hovered && { backgroundColor: interaction.hover },
-        pressed && { backgroundColor: interaction.pressed },
-      ]}
-    >
-      <Text variant="title" numberOfLines={2} style={style}>
-        {name}
-      </Text>
-    </Pressable>
+    <View {...webAria({ role: "heading", "aria-level": 1 })} style={styles.heading}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${name}. Rename list`}
+        onPress={() => setEditing(true)}
+        testID="list-detail-name"
+        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+          styles.target,
+          hovered && { backgroundColor: interaction.hover },
+          pressed && { backgroundColor: interaction.pressed },
+        ]}
+      >
+        <Text variant="title" numberOfLines={2} style={style} headerRole={false}>
+          {name}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  heading: { maxWidth: "100%" },
   target: {
     alignSelf: "flex-start",
     minHeight: tokens.hit,

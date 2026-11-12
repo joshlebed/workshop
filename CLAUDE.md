@@ -600,7 +600,13 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
   Native's types don't declare (`aria-pressed`, `aria-level`, `aria-describedby`) go through
   `webAria({...})` from `packages/ui/src/interaction.ts`, which returns `{}` on native. Build
   new controls on the primitives instead of hand-rolling a `Pressable`. HighScore's own
-  `src/theme` controls still use `accessibilityState` only.
+  `src/theme` controls still use `accessibilityState` only. Two more react-native-web traps
+  (UX pass 5.5): its `Pressable` maps Space only to `role="button"`, so a checkbox, switch,
+  radio or menu item needs `{...webSpaceKey(onPress)}` (`interaction.ts`); and a bare
+  `accessibilityRole="header"` renders an `<h1>`, so set the level (`Text headerRole={2}`).
+  A heading inside a `Pressable` stops being a heading: wrap the button in the heading
+  instead (`ListNameEditor`). An `accessibilityLabel` on a row that rewords its visible
+  text fails WCAG 2.5.3; let the text name it and put extras in a hint.
 
 - **iOS Safari zooms the page when a focused `<input>`/`<textarea>` has font-size < 16px, and
   never zooms back out.** Any `TextInput` rendered on web must use `tokens.font.size.md` (16) or
@@ -609,9 +615,23 @@ type '"/games"' is not assignable…`). It only reproduces after `.expo/types/ro
   blocks pinch-zoom on Android, so fix the font size instead (see `PASTE_INPUT_FONT_SIZE` in
   HighScore's `GameScorePasteSheet.tsx`).
 
-- **Wrap top-level screens in `Screen` from `@workshop/ui`** when adding a new route.
-  No-op on native; on web it constrains content to a ~560px reading column. Without it,
-  RN-Web stretches edge-to-edge. The `Sheet` modal is intentionally outside the column on web.
+- **Wrap top-level screens in `Screen` from `@workshop/ui`, and hold content to the column
+  yourself.** On web `Screen` is full width so the page scrolls at the window edge (UX pass
+  5.7a); a new screen must put `screenColumnStyle` on its scroll view's
+  `contentContainerStyle` (and wrap any non-scrolling block in `ScreenColumn`), or its content
+  stretches edge to edge. `ScreenHeader` does it for itself; a FAB goes in `Screen`'s `overlay`
+  prop. Never add a horizontal margin to an element that also carries `screenColumnStyle`
+  (`width: 100%` plus a margin overflows); wrap it instead. Native ignores all of it.
+- **Workshop has a desktop two-pane layout on web at ≥900px** (`src/screens/twoPane/`):
+  `(lists)/_layout.tsx` renders the stack inside `TwoPaneShell`, which puts `HomeLists
+variant="sidebar"` beside it. Routes in the `(lists)` stack render in the right pane; root
+  routes (activity, sign-in, share picker) don't. `useTwoPane()` tells a screen it is in a
+  pane. Keep the stack's element at the same tree position whether or not the sidebar shows,
+  or crossing the breakpoint remounts every screen.
+- **Web keyboard shortcuts go through `src/lib/shortcuts/`** (`useShortcuts(handlers,
+isFocused)`, `useEscapeToClose`, `useSubmitShortcut`, one `catalog.ts` that also feeds the `?`
+  sheet). Don't add a raw `window` keydown listener: they fired from screens underneath others
+  (home's ⌘N did) and while typing. Add a new shortcut to the catalog so the sheet lists it.
 
 ## CI speed
 
