@@ -12,6 +12,12 @@ import type {
   ModuleName,
   UpdateListRequest,
 } from "@workshop/shared";
+import {
+  featureCopy,
+  type ListKindProfile,
+  listKind,
+  type ToggleFeature,
+} from "@workshop/shared/listKinds";
 import { MODULE_REMOVAL_WARNINGS } from "@workshop/shared/modules";
 import {
   ActionSheet,
@@ -19,7 +25,6 @@ import {
   Button,
   confirm,
   EmojiBadge,
-  formatRelative,
   haptics,
   Icon,
   IconButton,
@@ -52,7 +57,6 @@ import {
 } from "../../../../../src/api/lists";
 import { removeMember } from "../../../../../src/api/members";
 import { transferOwnership } from "../../../../../src/api/share";
-import { syncSource } from "../../../../../src/api/sources";
 import { ColorChoices, EmojiChoices } from "../../../../../src/components/ListLookChoices";
 import { ShareListSheet } from "../../../../../src/components/ShareListSheet";
 import { useAuth } from "../../../../../src/hooks/useAuth";
@@ -65,7 +69,7 @@ import {
 } from "../../../../../src/lib/errorCopy";
 import { goBack, openListOverHome } from "../../../../../src/lib/goBack";
 import { reconcileTextDraft } from "../../../../../src/lib/itemDraft";
-import { sourceErrorMessage } from "../../../../../src/lib/sourceErrors";
+import { SyncedFrom } from "../../../../../src/screens/listSettings/SyncedFrom";
 
 const COLOR_KEYS: readonly ListColorKey[] = [
   "sunset",
@@ -81,48 +85,30 @@ const EMOJI_CHOICES = ["🎬", "📺", "📚", "💜", "✈️", "🍿", "🎮",
 
 const AUTOSAVE_DEBOUNCE_MS = 700;
 
-/** Features (was "Modules"), in plain words. Leaderboard is retired and never shown. */
-const FEATURES: ReadonlyArray<{ mod: ModuleName; label: string; description: string }> = [
-  { mod: "todo", label: "Check off items", description: "Tick things off once they're done." },
-  { mod: "ranking", label: "Ranking", description: "Keep a ranked section at the top." },
-  {
-    mod: "sources",
-    label: "Syncing",
-    description: "Pull in new items from a linked playlist or list.",
-  },
-  {
-    mod: "letterboxd",
-    label: "Letterboxd matching",
-    description: "Suggest films that are on members' watchlists.",
-  },
-];
-
-/** What turning a feature off costs, asked before it happens. */
-function featureWarningCopy(w: ConfigWarning): { title: string; message: string; confirm: string } {
+/** What turning a feature off costs, asked before it happens, in the list's own words. */
+function featureWarningCopy(
+  w: ConfigWarning,
+  kind: ListKindProfile,
+): { title: string; message: string; confirm: string } {
   const n = w.affectedCount ?? 0;
-  const items = (one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const things = n === 1 ? kind.noun.one : kind.noun.many;
   switch (w.code) {
     case MODULE_REMOVAL_WARNINGS.todo:
       return {
-        title: `Hide ${items("finished item", "finished items")}?`,
+        title: `Hide ${n} ${kind.done.toLowerCase()} ${things}?`,
         message: "They come back if you turn this on again.",
         confirm: "Turn off",
       };
     case MODULE_REMOVAL_WARNINGS.ranking:
       return {
-        title: `Remove ${items("item", "items")} from ranking?`,
-        message: "Their order is kept and comes back if you turn ranking on again.",
+        title: `Remove ${n} ${things} from ranking?`,
+        message:
+          "Their ranks come back if you turn the ranked section on again. You can still drag the list into any order.",
         confirm: "Turn off",
-      };
-    case MODULE_REMOVAL_WARNINGS.sources:
-      return {
-        title: "Stop syncing?",
-        message: "New items stop coming in. Items already pulled in stay on the list.",
-        confirm: "Stop syncing",
       };
     case MODULE_REMOVAL_WARNINGS.letterboxd:
       return {
-        title: `Keep ${items("suggestion", "suggestions")} as regular items?`,
+        title: `Keep ${n} ${n === 1 ? "suggestion" : "suggestions"} as regular films?`,
         message: "Matching stops. Turn it on again to bring suggestions back.",
         confirm: "Turn off",
       };
@@ -327,12 +313,15 @@ export default function ListSettings() {
   };
 
   // --- Features ---------------------------------------------------------------
+  // Only the toggles this kind of list offers (`@workshop/shared/listKinds`).
   // The switch flips at once; turning a feature off asks first when it hides
-  // something (the server's config preview names what), and reverts if declined
-  // or if the save fails.
+  // something (the server's config preview names what), and reverts if
+  // declined or if the save fails. `sources` is not a switch: it follows what
+  // "Synced from" has attached.
+  const kind = listKind(list?.itemKind ?? null);
   const [pendingModules, setPendingModules] = useState<ModuleName[] | null>(null);
   const modules = pendingModules ?? list?.modules ?? [];
-  const toggleFeature = async (mod: ModuleName) => {
+  const toggleFeature = async (mod: ToggleFeature) => {
     if (!list || pendingModules) return;
     const next = modules.includes(mod) ? modules.filter((m) => m !== mod) : [...modules, mod];
     setPendingModules(next);
@@ -341,12 +330,12 @@ export default function ListSettings() {
       let acknowledgedWarnings: string[] | undefined;
       if (preview.warnings.length > 0) {
         const first = preview.warnings[0];
-        const copy = first ? featureWarningCopy(first) : null;
+        const copy = first ? featureWarningCopy(first, kind) : null;
         const ok = copy
           ? await confirm({
               title: copy.title,
               message: preview.warnings
-                .map((w) => featureWarningCopy(w).message)
+                .map((w) => featureWarningCopy(w, kind).message)
                 .filter((m, i, all) => all.indexOf(m) === i)
                 .join(" "),
               confirmLabel: copy.confirm,
@@ -362,12 +351,13 @@ export default function ListSettings() {
         acknowledgedWarnings = preview.warnings.map((w) => w.code);
       }
       setStatus("saving");
-      await updateList(
+      const res = await updateList(
         id,
         { modules: next, ...(acknowledgedWarnings ? { acknowledgedWarnings } : {}) },
         token,
       );
-      patchCaches({ modules: next });
+      // The server's modules, which carry the derived `sources`.
+      patchCaches({ modules: res.list.modules });
       setStatus("saved");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
@@ -400,31 +390,6 @@ export default function ListSettings() {
         key: FAILURE_TOAST_KEY,
         message: failureMessage(e, "Couldn't duplicate the list."),
         tone: "danger",
-      });
-    },
-  });
-
-  const syncMutation = useMutation({
-    mutationFn: (sourceId: string) => syncSource(id, sourceId, token),
-    onSuccess: async (res) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.lists.detail(id) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.items.byList(id) }),
-      ]);
-      showToast({
-        message:
-          res.addedCount === 0
-            ? "Nothing new"
-            : `${res.addedCount} new ${res.addedCount === 1 ? "item" : "items"}`,
-        tone: res.addedCount === 0 ? "default" : "success",
-      });
-    },
-    onError: (e, sourceId) => {
-      showToast({
-        message: sourceErrorMessage(e, "Couldn't sync."),
-        tone: "danger",
-        actionLabel: "Retry",
-        onAction: () => syncMutation.mutate(sourceId),
       });
     },
   });
@@ -797,39 +762,69 @@ export default function ListSettings() {
               </View>
             ) : null}
 
-            {/* --- Features (owner) --- */}
+            {/* --- Features (owner): only what this kind of list offers --- */}
             {isOwner ? (
-              <View>
+              <View testID="settings-features">
                 <SectionHeader title="Features" />
+                <ListRow
+                  title="Holds"
+                  trailing={
+                    <Text tone="secondary" testID="settings-kind">
+                      {kind.label}
+                    </Text>
+                  }
+                  style={styles.kindRow}
+                />
                 <View style={styles.fields}>
-                  {FEATURES.map((f) => (
-                    <Switch
-                      key={f.mod}
-                      label={f.label}
-                      description={f.description}
-                      value={modules.includes(f.mod)}
-                      disabled={!!pendingModules}
-                      onValueChange={() => void toggleFeature(f.mod)}
-                      testID={`settings-module-${f.mod}`}
-                    />
-                  ))}
-                  {sources.map((src) => (
-                    <SourceRow
-                      key={src.id}
-                      source={src}
-                      busy={syncMutation.isPending && syncMutation.variables === src.id}
-                      onSync={() => syncMutation.mutate(src.id)}
-                    />
-                  ))}
+                  {kind.features.map((f) => {
+                    const copy = featureCopy(list.itemKind, f);
+                    return (
+                      <View key={f} style={styles.feature}>
+                        <Switch
+                          label={copy.label}
+                          description={copy.description}
+                          value={modules.includes(f)}
+                          disabled={!!pendingModules}
+                          onValueChange={() => void toggleFeature(f)}
+                          testID={`settings-module-${f}`}
+                        />
+                        {f === "letterboxd" && !user?.letterboxdUsername ? (
+                          // Matching reads each member's watchlist, so it
+                          // points to Settings → Connections first.
+                          <ListRow
+                            title="Connect your Letterboxd"
+                            subtitle="Matching needs your Letterboxd username."
+                            chevron
+                            onPress={() => router.push("/settings")}
+                            style={styles.inlineRow}
+                            testID="settings-letterboxd-connect"
+                          />
+                        ) : null}
+                      </View>
+                    );
+                  })}
                 </View>
               </View>
             ) : null}
+
+            {/* --- Synced from: kinds with a source (album shelf, movies) --- */}
+            <SyncedFrom
+              listId={id}
+              itemKind={list.itemKind}
+              sources={sources}
+              isOwner={isOwner}
+              token={token}
+            />
 
             {/* --- Duplicate --- */}
             <View style={styles.section}>
               <ListRow
                 title="Duplicate list"
-                subtitle="Copies the items. Checked-off state and syncing start fresh."
+                subtitle={
+                  kind.syncSources.length > 0
+                    ? "Copies the items. Checked-off state and syncing start fresh."
+                    : "Copies the items. Checked-off state starts fresh."
+                }
                 onPress={() => duplicateMutation.mutate()}
                 disabled={duplicateMutation.isPending}
                 trailing={
@@ -915,43 +910,6 @@ export default function ListSettings() {
   );
 }
 
-const SOURCE_NAMES: Record<string, string> = {
-  spotify_playlist: "Spotify playlist",
-  letterboxd_list: "Letterboxd list",
-  letterboxd_match: "Letterboxd watchlists",
-};
-
-function SourceRow({
-  source,
-  busy,
-  onSync,
-}: {
-  source: ListSource;
-  busy: boolean;
-  onSync: () => void;
-}) {
-  return (
-    <ListRow
-      title={SOURCE_NAMES[source.kind] ?? "Linked list"}
-      subtitle={
-        source.lastSyncedAt ? `Synced ${formatRelative(source.lastSyncedAt)}` : "Not synced yet"
-      }
-      style={styles.sourceRow}
-      trailing={
-        <Button
-          label="Sync now"
-          variant="secondary"
-          loading={busy}
-          disabled={busy}
-          onPress={onSync}
-          testID={`settings-source-${source.id}-sync`}
-        />
-      }
-      testID={`settings-source-${source.id}`}
-    />
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: tokens.bg.canvas },
   body: { paddingTop: layout.contentTopGap, paddingBottom: layout.bottomInset },
@@ -981,7 +939,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   coverPreviewEmoji: { fontSize: tokens.font.size.xxl, lineHeight: tokens.font.lineHeight.xxl },
-  sourceRow: { marginHorizontal: 0, paddingHorizontal: 0 },
+  kindRow: { minHeight: tokens.hit },
+  feature: { gap: tokens.space.xs },
+  inlineRow: { marginHorizontal: 0, paddingHorizontal: 0 },
   dangerRow: { flexDirection: "row" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 });

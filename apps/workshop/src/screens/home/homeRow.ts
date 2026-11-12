@@ -14,17 +14,9 @@
 // clause is the list's latest event from the feed; without one it falls back to
 // the list's `updatedAt`. The list description no longer competes for the line.
 
-import type { ActivityEvent, ItemKind, ListSummary } from "@workshop/shared";
+import type { ActivityEvent, ListSummary } from "@workshop/shared";
 import { describeActivity, firstName, shortAge } from "../../lib/activityCopy";
-import { completionCopy } from "../listDetail/listOps";
-
-const NOUNS: Partial<Record<ItemKind, [string, string]>> = {
-  movie: ["film", "films"],
-  tv: ["show", "shows"],
-  book: ["book", "books"],
-  link: ["link", "links"],
-  spotify_album: ["album", "albums"],
-};
+import { completionCopy, itemCountLabel } from "../listDetail/listOps";
 
 type CountableList = Pick<ListSummary, "itemKind" | "modules" | "itemCount" | "openItemCount">;
 
@@ -35,8 +27,7 @@ export function homeRowCount(list: CountableList): string {
     const copy = completionCopy(list.itemKind);
     return open > 0 ? copy.openCount(open) : `All ${copy.done.toLowerCase()}`;
   }
-  const [one, many] = (list.itemKind && NOUNS[list.itemKind]) ?? ["item", "items"];
-  return `${list.itemCount} ${list.itemCount === 1 ? one : many}`;
+  return itemCountLabel(list.itemCount, list.itemKind);
 }
 
 export function homeRowSubtitle(

@@ -421,8 +421,8 @@ emoji-in-a-tinted-disc mark repeats on every screen). **16/20.**
 | First list from a cold install | 5 taps + 2 text entries                              | 4 taps + 1 text entry      | 3 taps + 1 text entry                                  |
 | Undo a mistake                 | not possible                                         | every reversible action    | 1 tap on the toast: complete, delete, move, rank, hide |
 
-**Known gaps left** (in scope but not done, or product calls): which features list settings offers
-per list type; activity not batched; no Saving/Saved in item detail; Undo windows don't pause on
+**Known gaps left** (in scope but not done, or product calls): ~~which features list settings
+offers per list type~~ (done after the pass: [list-types.md](list-types.md)); activity not batched; no Saving/Saved in item detail; Undo windows don't pause on
 native; native swipe actions (2.1, 3.2) were never built; arrow-key row navigation.
 
 **Needs a physical device** (collected from Phases 0–5):
@@ -453,4 +453,5 @@ row menu, the tick hold, the dark keyboard, and names/roles/states in the access
 - Flip `app.json` `userInterfaceStyle` to `dark` with the next native version bump (0.15 pinned dark
   in JS only to keep the OTA path open), and drop the leftover `EXPO_PUBLIC_ENABLE_GAMES` /
   `expo-haptics` cleanups that need a native bump.
-- Decide which list features list settings should offer per list type.
+- ~~Decide which list features list settings should offer per list type.~~ Decided and built:
+  [list-types.md](list-types.md).

@@ -33,7 +33,7 @@ export function baseRowProps(
     accent: p.accent,
     showCover: p.showCover,
     doneWord: p.copy.done,
-    ...(p.todoOn && item.kind !== "spotify_album"
+    ...(p.todoOn
       ? {
           checkbox: {
             checked,

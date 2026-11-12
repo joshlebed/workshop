@@ -4,6 +4,7 @@
 // No React, no network, so it is unit-tested directly (listOps.test.ts).
 
 import type { Item, ItemKind, ListItemsResponse, MoveSection } from "@workshop/shared";
+import { listKind } from "@workshop/shared/listKinds";
 
 // --- Copy ------------------------------------------------------------------
 
@@ -38,24 +39,17 @@ function copyFor(word: string, verb: string): CompletionCopy {
  * The list's own completion word (glossary §6), shared by the row checkbox,
  * the row menu, the Done section header, item detail and the toasts so a
  * movie list never says "Mark complete" in one place and "Watched" in another.
+ * The words live in the list-kind registry (`@workshop/shared/listKinds`).
  */
 export function completionCopy(kind: ItemKind | null): CompletionCopy {
-  switch (kind) {
-    case "movie":
-    case "tv":
-      return copyFor("Watched", "watch");
-    case "book":
-      return copyFor("Read", "read");
-    case "link":
-      return copyFor("Tried", "try");
-    default:
-      return copyFor("Done", "do");
-  }
+  const profile = listKind(kind);
+  return copyFor(profile.done, profile.verb);
 }
 
-/** "12 items" / "1 item" for lists without completion. */
-export function itemCountLabel(n: number): string {
-  return `${n} ${n === 1 ? "item" : "items"}`;
+/** "12 films" / "1 item" for lists without completion, in the list's own noun. */
+export function itemCountLabel(n: number, kind: ItemKind | null = null): string {
+  const { one, many } = listKind(kind).noun;
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 // --- Optimistic cache edits ------------------------------------------------

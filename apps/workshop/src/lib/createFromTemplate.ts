@@ -5,6 +5,7 @@
  * open. The name is editable in the list header afterwards.
  */
 import type { CreateListRequest } from "@workshop/shared";
+import type { ToggleFeature } from "@workshop/shared/listKinds";
 import { type ListTemplate, templateListName } from "@workshop/shared/templates";
 import { type Href, router } from "expo-router";
 
@@ -13,6 +14,8 @@ export function templateCreateRequest(
   template: ListTemplate,
   overrides: Partial<Pick<CreateListRequest, "name" | "emoji" | "color" | "description">> & {
     coverPhotoUrl?: string | null;
+    /** Features chosen in Customize; the template's defaults otherwise. */
+    modules?: ToggleFeature[];
   } = {},
 ): CreateListRequest {
   const name = overrides.name?.trim() || templateListName(template);
@@ -22,7 +25,7 @@ export function templateCreateRequest(
     emoji: overrides.emoji ?? template.defaults.emoji,
     color: overrides.color ?? template.defaults.color,
     itemKind: template.defaults.itemKind,
-    modules: template.defaults.modules,
+    modules: overrides.modules ?? template.defaults.modules,
     ...(description ? { description } : {}),
     ...(overrides.coverPhotoUrl ? { coverPhotoUrl: overrides.coverPhotoUrl } : {}),
     // Templates like Letterboxd match attach a fixed-config source; no prompt.

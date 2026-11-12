@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ListColor, SourcePreview } from "@workshop/shared";
+import { listKind, type ToggleFeature } from "@workshop/shared/listKinds";
 import type { SourceKind } from "@workshop/shared/sourceKinds";
 import { LIST_TEMPLATES, type ListTemplate, templateListName } from "@workshop/shared/templates";
 import {
@@ -110,6 +111,7 @@ export default function CreateListPlaylist() {
     emoji?: string;
     color?: string;
     description?: string;
+    modules?: string;
     step?: string;
     steps?: string;
   }>();
@@ -132,6 +134,12 @@ export default function CreateListPlaylist() {
   const steps = Math.max(step, Number(pickString(params.steps)) || 2);
   const color = (pickString(params.color) || template.defaults.color) as ListColor;
   const description = pickString(params.description);
+  // Features chosen in Customize (comma list), kept to what the kind offers.
+  const offered = listKind(template.defaults.itemKind).features;
+  const modulesParam = pickString(params.modules);
+  const modules: ToggleFeature[] = modulesParam
+    ? offered.filter((f) => modulesParam.split(",").includes(f))
+    : template.defaults.modules;
 
   const [url, setUrl] = useState("");
   const trimmedUrl = url.trim();
@@ -176,7 +184,7 @@ export default function CreateListPlaylist() {
           emoji,
           color,
           itemKind: template.defaults.itemKind,
-          modules: template.defaults.modules,
+          modules,
           ...(description.length > 0 ? { description } : {}),
           sources: [
             {

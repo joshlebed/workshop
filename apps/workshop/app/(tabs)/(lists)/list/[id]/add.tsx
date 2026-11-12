@@ -15,6 +15,7 @@ import type {
   MediaSearchType,
 } from "@workshop/shared";
 import { linkPreviewToItemContent } from "@workshop/shared/linkContent";
+import { listKind } from "@workshop/shared/listKinds";
 import {
   Button,
   haptics,
@@ -64,7 +65,6 @@ import {
 } from "../../../../../src/lib/sharePayload";
 import { useEscapeToClose } from "../../../../../src/lib/shortcuts/useShortcuts";
 
-const SEARCH_KINDS: readonly ItemKind[] = ["movie", "tv", "book"];
 /** How long Return waits for a pasted link's preview before adding anyway. */
 const PREVIEW_WAIT_MS = 2500;
 
@@ -129,7 +129,10 @@ export default function AddItem() {
 
   const list = listQuery.data?.list;
   const itemKind = list?.itemKind ?? null;
-  const isSearchKind = !!itemKind && (SEARCH_KINDS as readonly string[]).includes(itemKind);
+  // How this kind of list takes a row (`@workshop/shared/listKinds`).
+  const kind = listKind(itemKind);
+  const isSearchKind = kind.add.mode === "search";
+  const isSyncOnly = kind.add.mode === "sync_only";
 
   const [added, setAdded] = useState<Added[]>([]);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
@@ -205,9 +208,9 @@ export default function AddItem() {
       leadingTestID="add-item-cancel"
       onLeadingPress={close}
       eyebrow={list?.name}
-      title={isSearchKind ? searchTitle(itemKind) : "Add items"}
+      title={kind.add.title}
       trailing={
-        list && itemKind !== "spotify_album" ? (
+        list && kind.add.bulk ? (
           <Button
             label="Paste many"
             variant="ghost"
@@ -245,6 +248,30 @@ export default function AddItem() {
 
   const addedList = <AddedList items={added} onUndo={(a) => undoMutation.mutate(a)} />;
 
+  // An album shelf only fills from its playlist; a direct link here (or a
+  // share aimed at it) explains that instead of offering a form that can't save.
+  if (isSyncOnly) {
+    const source = kind.syncSources[0];
+    return (
+      <Screen style={styles.root}>
+        {header}
+        <View style={[styles.body, screenColumnStyle]} testID="add-item-sync-only">
+          <Text tone="secondary">
+            {`${kind.empty.description} New ${kind.noun.many} arrive when it syncs.`}
+          </Text>
+          <Button
+            label={source ? "Open list settings" : "Back to the list"}
+            variant="secondary"
+            onPress={() =>
+              source ? router.replace(`/list/${id}/settings`) : goBack(`/list/${id}`)
+            }
+            testID="add-item-sync-only-settings"
+          />
+        </View>
+      </Screen>
+    );
+  }
+
   return (
     <Screen style={styles.root}>
       {header}
@@ -272,12 +299,6 @@ export default function AddItem() {
       )}
     </Screen>
   );
-}
-
-function searchTitle(kind: ItemKind | null): string {
-  if (kind === "book") return "Add books";
-  if (kind === "tv") return "Add shows";
-  return "Add movies";
 }
 
 /* ------------------------------ quick add -------------------------------- */

@@ -10,6 +10,7 @@ import type {
   ShareVisibility,
 } from "@workshop/shared";
 import { ITEM_KIND_NAMES, type ItemKind, isItemKind } from "@workshop/shared/itemKinds";
+import { resolveListModules } from "@workshop/shared/listKinds";
 import { MODULE_NAMES, type ModuleName, normalizeModules } from "@workshop/shared/modules";
 import { SOURCE_KIND_NAMES, type SourceKind } from "@workshop/shared/sourceKinds";
 import { and, eq, isNull, sql } from "drizzle-orm";
@@ -30,6 +31,16 @@ import {
 import { toIsoString } from "../../lib/dates.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
+import {
+  countSources,
+  featureNotOfferedResponse,
+  isLegacyLeaderboardList,
+  isSourceOfferedForKind,
+  LETTERBOXD_MATCH_SOURCE,
+  reconcileListModules,
+  sourceNotOfferedResponse,
+  syncLetterboxdMatchSource,
+} from "../../lib/listFeatures.js";
 import { inspectModuleChange } from "../../lib/moduleManifests.js";
 import { notifyListArchived, notifyListJoined } from "../../lib/opsNotifications.js";
 import { requireCapability } from "../../lib/permissions.js";
@@ -605,10 +616,37 @@ listRoutes.post("/", async (c) => {
     return retiredGameListResponse(c);
   }
 
+  // Features follow the list's kind (`@workshop/shared/listKinds`): a source
+  // must be one this kind syncs from, `sources` is derived from them, and
+  // Letterboxd match brings its own source.
+  const itemKind = data.itemKind ?? null;
+  const requestedSources = [...(data.sources ?? [])];
+  for (const source of requestedSources) {
+    if (!isSourceOfferedForKind(itemKind, source.kind)) {
+      return sourceNotOfferedResponse(c, itemKind, source.kind);
+    }
+  }
+  const hasMatchSource = requestedSources.some((s) => s.kind === LETTERBOXD_MATCH_SOURCE);
+  const requestedModules: string[] = [...data.modules];
+  if (hasMatchSource && !requestedModules.includes("letterboxd")) {
+    requestedModules.push("letterboxd");
+  }
+  const resolved = resolveListModules({
+    itemKind,
+    requested: requestedModules,
+    syncSourceCount: requestedSources.filter((s) => s.kind !== LETTERBOXD_MATCH_SOURCE).length,
+  });
+  if (resolved.notOffered.length > 0) {
+    return featureNotOfferedResponse(c, itemKind, resolved.notOffered);
+  }
+  if (resolved.modules.includes("letterboxd") && !hasMatchSource) {
+    requestedSources.push({ kind: LETTERBOXD_MATCH_SOURCE, config: {} });
+  }
+
   // Validate any sources up-front so we don't create an orphan list. The
   // dispatcher rejects unknown kinds with a v1 error envelope.
   const validatedSources: Array<{ kind: SourceKind; config: Record<string, unknown> }> = [];
-  for (const source of data.sources ?? []) {
+  for (const source of requestedSources) {
     const dispatch = dispatchFor(source.kind);
     const validated = await dispatch.preview(c, source.config);
     if (!validated.ok) return validated.response;
@@ -633,8 +671,8 @@ listRoutes.post("/", async (c) => {
             description: data.description ?? null,
             coverPhotoUrl: data.coverPhotoUrl ?? null,
             ownerId: userId,
-            itemKind: data.itemKind ?? null,
-            modules: data.modules,
+            itemKind,
+            modules: resolved.modules,
             shareSlug: generateShareSlug(),
           })
           .returning();
@@ -965,16 +1003,49 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
     }
   }
 
-  // Module removal warnings.
-  if (wantsModules) {
-    const nextModules = data.modules ?? [];
-    const currentModules = existing.modules ?? [];
-    const removedCount = currentModules.filter((m) => !nextModules.includes(m)).length;
+  // Features follow the kind (`@workshop/shared/listKinds`). `sources` is
+  // derived and a requested one is ignored, so an old client toggling
+  // "Syncing" by hand changes nothing; a newly requested toggle the kind
+  // doesn't offer is a 400. Legacy leaderboard rows keep their old behaviour.
+  const currentModules = existing.modules ?? [];
+  const nextItemKind = wantsItemKind ? (data.itemKind ?? null) : existing.itemKind;
+  const kindChanges = wantsItemKind && nextItemKind !== existing.itemKind;
+  let nextModules: ModuleName[] | null = null;
+  if ((wantsModules || kindChanges) && !isLegacyLeaderboardList(currentModules)) {
+    if (kindChanges) {
+      const attached = await db
+        .select({ kind: listSources.kind })
+        .from(listSources)
+        .where(eq(listSources.listId, listId));
+      const stranded = attached.find((s) => !isSourceOfferedForKind(nextItemKind, s.kind));
+      if (stranded) return sourceNotOfferedResponse(c, nextItemKind, stranded.kind);
+    }
+    const counts = await countSources(db, listId);
+    const resolved = resolveListModules({
+      itemKind: nextItemKind,
+      requested: wantsModules ? (data.modules ?? []) : currentModules,
+      // A kind change re-checks every toggle against the new kind.
+      current: kindChanges ? [] : currentModules,
+      syncSourceCount: counts.sync,
+    });
+    if (resolved.notOffered.length > 0) {
+      return featureNotOfferedResponse(c, nextItemKind, resolved.notOffered);
+    }
+    nextModules = resolved.modules;
+  } else if (wantsModules) {
+    nextModules = (data.modules ?? []) as ModuleName[];
+  }
+
+  // Module removal warnings. `sources` is left out: it only goes off as a
+  // consequence of a source being removed, which says so itself.
+  if (nextModules) {
+    const toggles = (m: readonly string[]) => m.filter((x) => x !== "sources");
+    const removedCount = toggles(currentModules).filter((m) => !nextModules.includes(m)).length;
     if (removedCount > 0) {
       const warnings = await inspectModuleChange({
         listId,
-        currentModules,
-        nextModules,
+        currentModules: toggles(currentModules),
+        nextModules: toggles(nextModules),
         db,
       });
       const acknowledged = new Set(data.acknowledgedWarnings ?? []);
@@ -992,18 +1063,28 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   if (data.description !== undefined) patch.description = data.description;
   if (data.coverPhotoUrl !== undefined) patch.coverPhotoUrl = data.coverPhotoUrl;
   if (wantsItemKind) patch.itemKind = data.itemKind ?? null;
-  if (wantsModules && data.modules !== undefined) patch.modules = data.modules as ModuleName[];
+  if (nextModules) patch.modules = nextModules;
 
-  const [updated] = await db.update(lists).set(patch).where(eq(lists.id, listId)).returning();
-  if (!updated) return err(c, "NOT_FOUND", "list not found");
-
-  // Activity events for module + item_kind transitions.
-  if (wantsModules) {
-    const next = data.modules ?? [];
-    const prev = existing.modules ?? [];
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx.update(lists).set(patch).where(eq(lists.id, listId)).returning();
+    if (!row) return null;
+    if (!nextModules || isLegacyLeaderboardList(currentModules)) return row;
+    // Letterboxd match owns its source; keep the two in step, then events
+    // for every toggle that changed (`sources` follows from source events).
+    const prev = currentModules;
+    const next = nextModules;
+    if (prev.includes("letterboxd") !== next.includes("letterboxd")) {
+      await syncLetterboxdMatchSource({
+        db: tx,
+        listId,
+        userId,
+        on: next.includes("letterboxd"),
+      });
+    }
     for (const m of next) {
-      if (!prev.includes(m)) {
+      if (m !== "sources" && !prev.includes(m)) {
         await recordEvent({
+          db: tx,
           listId,
           actorId: userId,
           type: "module_enabled",
@@ -1012,8 +1093,9 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
       }
     }
     for (const m of prev) {
-      if (!next.includes(m)) {
+      if (m !== "sources" && !next.includes(m as ModuleName)) {
         await recordEvent({
+          db: tx,
           listId,
           actorId: userId,
           type: "module_disabled",
@@ -1021,7 +1103,9 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
         });
       }
     }
-  }
+    return row;
+  });
+  if (!updated) return err(c, "NOT_FOUND", "list not found");
 
   return ok(c, { list: toListShape(updated) });
 });
@@ -1053,11 +1137,29 @@ listRoutes.post("/:id/config-preview", requireListMember, async (c) => {
 
   const warnings: ConfigWarning[] = [];
   if (parsed.data.modules !== undefined) {
+    const currentModules = existing.modules ?? [];
+    let nextModules: readonly string[] = parsed.data.modules;
+    if (!isLegacyLeaderboardList(currentModules)) {
+      const nextItemKind =
+        parsed.data.itemKind !== undefined ? (parsed.data.itemKind ?? null) : existing.itemKind;
+      const counts = await countSources(db, listId);
+      const resolved = resolveListModules({
+        itemKind: nextItemKind,
+        requested: parsed.data.modules,
+        current: nextItemKind === existing.itemKind ? currentModules : [],
+        syncSourceCount: counts.sync,
+      });
+      if (resolved.notOffered.length > 0) {
+        return featureNotOfferedResponse(c, nextItemKind, resolved.notOffered);
+      }
+      nextModules = resolved.modules;
+    }
+    const toggles = (m: readonly string[]) => m.filter((x) => x !== "sources");
     warnings.push(
       ...(await inspectModuleChange({
         listId,
-        currentModules: existing.modules ?? [],
-        nextModules: parsed.data.modules,
+        currentModules: toggles(currentModules),
+        nextModules: toggles(nextModules),
         db,
       })),
     );
@@ -1204,6 +1306,18 @@ listRoutes.post(
     if (isRetiredGameListConfig({ itemKind: nextItemKind, modules: nextModules })) {
       return retiredGameListResponse(c);
     }
+    if (!isLegacyLeaderboardList(nextModules)) {
+      const resolved = resolveListModules({
+        itemKind: nextItemKind,
+        requested: nextModules,
+        current: nextItemKind === source.itemKind ? (source.modules ?? []) : [],
+        // Re-derived once the copy's sources exist, below.
+        syncSourceCount: 0,
+      });
+      if (resolved.notOffered.length > 0) {
+        return featureNotOfferedResponse(c, nextItemKind, resolved.notOffered);
+      }
+    }
 
     const dup = await db.transaction(async (tx) => {
       let createdDup: DbList | undefined;
@@ -1312,6 +1426,18 @@ listRoutes.post(
             config: s.config,
           });
         }
+      }
+      // Letterboxd match brings its own source even when syncing starts
+      // fresh; `sources` then follows whatever the copy has attached.
+      if (!isLegacyLeaderboardList(created.modules)) {
+        await syncLetterboxdMatchSource({
+          db: tx,
+          listId: created.id,
+          userId,
+          on: (created.modules ?? []).includes("letterboxd"),
+        });
+        const modules = await reconcileListModules({ db: tx, listId: created.id });
+        if (modules) return { ...created, modules };
       }
 
       return created;
@@ -1492,24 +1618,16 @@ listRoutes.post("/:id/sources", requireListMember, async (c) => {
   if (denied) return denied;
   const db = getDb();
   const [list] = await db
-    .select({ modules: lists.modules })
+    .select({ itemKind: lists.itemKind, modules: lists.modules })
     .from(lists)
     .where(eq(lists.id, listId))
     .limit(1);
   if (!list) return err(c, "NOT_FOUND", "list not found");
-  if (!(list.modules ?? []).includes("sources")) {
-    return err(
-      c,
-      "CONFLICT",
-      "module_disabled",
-      {
-        code: "sources.disabled",
-        module: "sources",
-        message:
-          "This list doesn't have external sources enabled. Turn on Sources in list settings to attach a source.",
-      },
-      409,
-    );
+  // The kind decides what a list can sync from (`@workshop/shared/listKinds`);
+  // there is no `sources` switch to turn on first. Attaching turns `sources`
+  // on in the same transaction (and a Letterboxd-match source, Letterboxd match).
+  if (!isSourceOfferedForKind(list.itemKind, parsed.data.kind)) {
+    return sourceNotOfferedResponse(c, list.itemKind, parsed.data.kind);
   }
 
   const dispatch = dispatchFor(parsed.data.kind);
@@ -1550,6 +1668,7 @@ listRoutes.post("/:id/sources", requireListMember, async (c) => {
       type: "source_synced",
       payload: { kind: created.kind, addedCount: sync.addedCount },
     });
+    await reconcileListModules({ db: tx, listId });
     const [reread] = await tx
       .select()
       .from(listSources)
@@ -1569,17 +1688,26 @@ listRoutes.delete("/:id/sources/:sourceId", requireListMember, async (c) => {
   const denied = requireCapability(c, role, "edit_sources");
   if (denied) return denied;
   const db = getDb();
-  const [row] = await db
-    .delete(listSources)
-    .where(and(eq(listSources.id, sourceId), eq(listSources.listId, listId)))
-    .returning({ kind: listSources.kind });
-  if (!row) return err(c, "NOT_FOUND", "source not found");
-  await recordEvent({
-    listId,
-    actorId: userId,
-    type: "source_removed",
-    payload: { kind: row.kind },
+  // Removing the last source turns `sources` off, and removing the
+  // Letterboxd-match source turns Letterboxd match off, in the same
+  // transaction. Items it brought in stay.
+  const row = await db.transaction(async (tx) => {
+    const [deleted] = await tx
+      .delete(listSources)
+      .where(and(eq(listSources.id, sourceId), eq(listSources.listId, listId)))
+      .returning({ kind: listSources.kind });
+    if (!deleted) return null;
+    await recordEvent({
+      db: tx,
+      listId,
+      actorId: userId,
+      type: "source_removed",
+      payload: { kind: deleted.kind },
+    });
+    await reconcileListModules({ db: tx, listId });
+    return deleted;
   });
+  if (!row) return err(c, "NOT_FOUND", "source not found");
   return ok(c, { ok: true });
 });
 

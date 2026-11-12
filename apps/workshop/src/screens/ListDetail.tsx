@@ -4,7 +4,6 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type {
   Item,
-  ItemKind,
   List,
   ListDetailResponse,
   ListItemsResponse,
@@ -13,6 +12,7 @@ import type {
   MoveItemRequest,
   SavedView,
 } from "@workshop/shared";
+import { listKind } from "@workshop/shared/listKinds";
 import { hasModule } from "@workshop/shared/modules";
 import {
   Avatar,
@@ -186,7 +186,10 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const livePoll = useLivePollingInterval();
 
   const itemKind = list.itemKind;
+  // What this kind of list offers and calls things (`@workshop/shared/listKinds`).
+  const kind = listKind(itemKind);
   const isSpotifyShelf = itemKind === "spotify_album";
+  const isOwner = list.ownerId === user?.id;
   const hasSources = sources.length > 0 && hasModule(list.modules, "sources");
   const rankingOn = hasModule(list.modules, "ranking");
   const todoOn = hasModule(list.modules, "todo");
@@ -236,10 +239,19 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const beforeRefreshIdsRef = useRef<Set<string> | null>(null);
   const primarySource = sources[0] ?? null;
 
+  // Sync now syncs every attached source (a movie list can have a Letterboxd
+  // list and Letterboxd match); the last response carries the full rows.
   const refreshMutation = useMutation({
     mutationFn: async () => {
-      if (!primarySource) throw new Error("no source attached");
-      return syncSource(list.id, primarySource.id, token);
+      if (sources.length === 0) throw new Error("no source attached");
+      let last: Awaited<ReturnType<typeof syncSource>> | null = null;
+      let addedCount = 0;
+      for (const source of sources) {
+        last = await syncSource(list.id, source.id, token);
+        addedCount += last.addedCount;
+      }
+      if (!last) throw new Error("no source attached");
+      return { ...last, addedCount };
     },
     onMutate: () => {
       const cur = queryClient.getQueryData<ListItemsResponse>(itemsKey);
@@ -752,7 +764,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
     const anchors = rankAnchorsOf(orderedRaw.filter((i) => i.id !== item.id));
     setMenuItem(item);
     setMenuActions({
-      ...(todoOn && item.kind !== "spotify_album"
+      ...(todoOn
         ? {
             completion: {
               label: open ? copy.mark : copy.unmark,
@@ -846,7 +858,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
       }
       return line(copy.openCount(openCount));
     }
-    return line(itemCountLabel(openCount));
+    return line(itemCountLabel(openCount, itemKind));
   }, [
     hasSources,
     refreshing,
@@ -857,6 +869,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
     todoOn,
     openCount,
     copy,
+    itemKind,
   ]);
 
   const isEmptyAfterFetch = !itemsQuery.isPending && !itemsLoadFailed && totalRowsUnfiltered === 0;
@@ -869,7 +882,8 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const showSearch = !itemsQuery.isPending && !itemsLoadFailed && totalRowsUnfiltered > 0;
   // Shortcut hints only where there is a keyboard to press them (2.14).
   const showKeyHints = Platform.OS === "web" && finePointer;
-  const canAdd = !isSpotifyShelf;
+  // A sync-only kind (album shelf) has no manual add: rows come from its source.
+  const canAdd = kind.add.mode !== "sync_only";
 
   // Keyboard shortcuts, only while this screen is the one on top: an item
   // detail pushed over it must keep "n" and "/" to itself. Escape inside the
@@ -948,7 +962,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
         members={members}
         accent={accent}
         subline={headerSubline}
-        onRename={list.ownerId === user?.id ? renameList : undefined}
+        onRename={isOwner ? renameList : undefined}
         onLayout={(e) => setTitleBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}
       />
       <View onLayout={(e) => setToolsBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
@@ -1211,16 +1225,38 @@ export function ListDetail({ list, members, sources, token }: Props) {
                       ) : undefined
                     }
                   />
+                ) : !canAdd ? (
+                  // Nothing feeds a sync-only list yet: its one action is to
+                  // connect the source (owner), not a manual Add.
+                  <EmptyState
+                    motion
+                    illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
+                    title={kind.empty.title}
+                    description={
+                      isOwner
+                        ? kind.empty.description
+                        : `${kind.empty.description} The owner can connect one in list settings.`
+                    }
+                    action={
+                      isOwner ? (
+                        <Button
+                          label={kind.empty.action}
+                          onPress={() => router.push(`/list/${list.id}/settings`)}
+                          testID="list-detail-empty-connect"
+                        />
+                      ) : undefined
+                    }
+                  />
                 ) : (
                   <EmptyState
                     motion
                     illustration={<ListEmptyHalo accent={accent} emoji={list.emoji} />}
-                    title={kindEmptyCopy(itemKind).title}
-                    description={kindEmptyCopy(itemKind).description}
-                    accessibilityLabel={`${kindEmptyCopy(itemKind).title}. ${kindEmptyCopy(itemKind).description}`}
+                    title={kind.empty.title}
+                    description={kind.empty.description}
+                    accessibilityLabel={`${kind.empty.title}. ${kind.empty.description}`}
                     action={
                       <Button
-                        label={kindEmptyCopy(itemKind).action}
+                        label={kind.empty.action}
                         onPress={() => router.push(`/list/${list.id}/add`)}
                         testID="list-detail-empty-add"
                       />
@@ -1294,7 +1330,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
               rankingOn={rankingOn}
               todoOn={todoOn}
               copy={copy}
-              showCover={itemKind !== "plain" && itemKind !== null}
+              showCover={kind.cover}
               openReorderable={!isSpotifyShelf}
               newItemIds={newItemIds}
               heldDoneIds={heldDone}
@@ -1548,55 +1584,6 @@ const emptyHaloStyles = StyleSheet.create({
   },
   emoji: { fontSize: 48, lineHeight: 56 },
 });
-
-// Kind-aware copy for the zero-items empty state. The header has already
-// told the user which list this is; the empty surface should echo that by
-// naming the thing they haven't added yet. Falls back to the generic
-// "things you want to remember" line for `plain` / unknown.
-function kindEmptyCopy(kind: ItemKind | null): {
-  title: string;
-  description: string;
-  action: string;
-} {
-  switch (kind) {
-    case "movie":
-      return {
-        title: "No movies yet",
-        description: "Add the first one you want to watch.",
-        action: "Add a movie",
-      };
-    case "tv":
-      return {
-        title: "No shows yet",
-        description: "Add the first one you want to watch.",
-        action: "Add a show",
-      };
-    case "book":
-      return {
-        title: "Nothing on the shelf yet",
-        description: "Add the first book you want to read.",
-        action: "Add a book",
-      };
-    case "link":
-      return {
-        title: "Nothing saved yet",
-        description: "Add the first link you want to come back to.",
-        action: "Add a link",
-      };
-    case "spotify_album":
-      return {
-        title: "Nothing on the shelf yet",
-        description: "Pulls from a Spotify playlist when one is connected.",
-        action: "Add an album",
-      };
-    default:
-      return {
-        title: "Nothing here yet",
-        description: "Add the first thing you want to remember.",
-        action: "Add an item",
-      };
-  }
-}
 
 function MemberStack({ members }: { members: ListMemberSummary[] }) {
   const shown = members.slice(0, 3);
