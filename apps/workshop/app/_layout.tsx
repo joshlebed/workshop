@@ -34,8 +34,13 @@ import { type NavState, registerNavigationState } from "../src/lib/goBack";
 import { PENDING_INVITE_TOKEN_KEY } from "../src/lib/inviteStash";
 import { OfflineRetryWatcher } from "../src/lib/OfflineRetryWatcher";
 import { createQueryClient, getPersistOptions } from "../src/lib/query";
-import { safeReturnPath } from "../src/lib/returnPath";
-import { PENDING_RETURN_PATH_KEY } from "../src/screens/ListPublicLanding";
+import { PENDING_RETURN_PATH_KEY, safeReturnPath } from "../src/lib/returnPath";
+import {
+  normalizeSharePayload,
+  sharePayloadParams,
+  stashPendingShare,
+  takePendingShare,
+} from "../src/lib/sharePayload";
 
 // Web: remember the very first page load's referrer / landing path / utm_* for
 // signup attribution, before any redirect rewrites the URL (no-op on native and
@@ -58,8 +63,9 @@ function useApplyOtaUpdatesOnArrival() {
 // with `url` and/or `text`, which hands straight to the list-add flow. The sentinel URL is swallowed by
 // `app/+native-intent.tsx`; without that, expo-router would render its
 // "Unmatched Route" screen before this hook fires.
-// Signed-out users currently lose the payload — AuthGate bounces them to
-// `/sign-in` first; stashing through auth (cf. inviteStash) is a follow-up.
+// A share that arrives signed out is stashed (`sharePayload.ts`) and AuthGate
+// resumes it after sign-in (4.4); its telemetry is held until then, because
+// the telemetry endpoint needs a session.
 type ShareIntentPayload = ReturnType<typeof useShareIntent>["shareIntent"];
 
 // Snapshot the shape of what the native share extension handed us. Reported to
@@ -99,25 +105,45 @@ function useShareIntentRedirect(status: AuthStatus) {
   // Dedupe telemetry to one report per distinct payload (the effect re-runs on
   // unrelated renders while the intent is pending).
   const lastReportedRef = useRef<string | null>(null);
+  // A signed-out share's snapshot, reported once there is a session.
+  const heldTelemetryRef = useRef<ShareIntentTelemetry | null>(null);
+
   useEffect(() => {
-    if (status !== "signed-in" || !hasShareIntent) return;
+    if (status !== "signed-in" || !token || !heldTelemetryRef.current) return;
+    void reportShareIntent(heldTelemetryRef.current, token);
+    heldTelemetryRef.current = null;
+  }, [status, token]);
+
+  useEffect(() => {
+    if (!hasShareIntent) return;
+    if (status !== "signed-in" && status !== "signed-out" && status !== "needs-display-name") {
+      return;
+    }
+    const signedIn = status === "signed-in";
 
     const signature = `${shareIntent?.type ?? ""}|${shareIntent?.webUrl ?? ""}|${shareIntent?.text ?? ""}`;
     if (lastReportedRef.current !== signature) {
       lastReportedRef.current = signature;
-      const snapshot = buildShareIntentTelemetry(shareIntent, "layout-redirect");
+      const snapshot = buildShareIntentTelemetry(
+        shareIntent,
+        signedIn ? "layout-redirect" : "layout-stash",
+      );
       console.log("[share-intent]", JSON.stringify(snapshot));
-      void reportShareIntent(snapshot, token);
+      if (signedIn) void reportShareIntent(snapshot, token);
+      else heldTelemetryRef.current = snapshot;
     }
 
-    const webUrl = shareIntent?.webUrl?.trim();
-    const text = shareIntent?.text?.trim();
-    const params = new URLSearchParams();
-    if (webUrl) params.set("url", webUrl);
-    if (text) params.set("text", text);
-    const query = params.toString();
-    if (!query) return;
-    router.replace(`/share?${query}`);
+    const payload = normalizeSharePayload({ url: shareIntent?.webUrl, text: shareIntent?.text });
+    if (!payload) return;
+    if (!signedIn) {
+      // Keep it through sign-in (and the display-name step); AuthGate
+      // resumes it on the picker afterwards.
+      void stashPendingShare(payload);
+      resetShareIntent();
+      return;
+    }
+    const query = new URLSearchParams(sharePayloadParams(payload)).toString();
+    router.replace(`/share?${query}` as Href);
     resetShareIntent();
   }, [status, hasShareIntent, shareIntent, router, resetShareIntent, token]);
 }
@@ -155,10 +181,16 @@ function AuthGate() {
     // Play link (`/g/:token`). Games live in HighScore now; the route is a
     // pure hand-off that needs no session, so it mounts signed-out.
     const onGameShare = first === "g";
+    // Public pages: privacy and terms render for anyone, in any state (4.5).
+    const onPublicPage = first === "privacy" || first === "terms";
+    // `/share` and `/share/pick-list` mount signed-out so a web share (or a
+    // link into them) can stash its payload before sign-in (4.4).
+    const onShare = first === "share";
 
     if (status !== "signed-in") {
       postSignInResolvedRef.current = false;
     }
+    if (onPublicPage) return;
 
     // `/list/:id` (no trailing subroute) is the public-landing entry point;
     // signed-out visitors should see the landing page itself, not get
@@ -182,7 +214,8 @@ function AuthGate() {
         !onListLanding &&
         !onShareLanding &&
         !onFriendAccept &&
-        !onGameShare
+        !onGameShare &&
+        !onShare
       ) {
         router.replace("/sign-in");
       }
@@ -202,16 +235,16 @@ function AuthGate() {
     if (!needsPostSignInBounce || postSignInResolvedRef.current) return;
     postSignInResolvedRef.current = true;
 
-    // Consult the invite stash before bouncing to home so a user who arrived
-    // via an invite link lands on the list they were invited to. The
-    // accept-invite screen owns the eventual `removeItem` call. If no invite
-    // stash, also check the return-path stash (set by `ListPublicLanding`
-    // when an unauthed visitor signs in from the per-list landing page) so
-    // they land back on `/list/:id` instead of home.
+    // Where a new session goes, first match wins: a legacy invite's landing,
+    // the share link the visitor signed in from, a share that arrived signed
+    // out, else home.
     (async () => {
+      // A legacy invite link's landing (4.6): it shows the list and asks
+      // before joining; the landing clears the stash on join or not-found.
       const stashed = await getItem(PENDING_INVITE_TOKEN_KEY).catch(() => null);
       if (stashed) {
-        router.replace(`/onboarding/accept-invite?token=${encodeURIComponent(stashed)}`);
+        await removeItem(PENDING_RETURN_PATH_KEY).catch(() => {});
+        router.replace(`/invite/${encodeURIComponent(stashed)}` as Href);
         return;
       }
       // The stash is single-use: clear it whatever it held, so a stale path
@@ -220,10 +253,16 @@ function AuthGate() {
       if (rawReturnPath !== null) await removeItem(PENDING_RETURN_PATH_KEY).catch(() => {});
       const returnPath = safeReturnPath(rawReturnPath);
       if (returnPath) {
-        // `safeReturnPath` only passes `/l/…` and `/list/…`. `withAnchor` keeps
-        // home beneath a `/list/…` target so its back button pops instead of
-        // replacing forward (see apps/workshop/CLAUDE.md).
+        // `withAnchor` keeps home beneath a `/list/…` target so its back
+        // button pops instead of replacing forward (see apps/workshop/CLAUDE.md).
         router.replace(returnPath as Href, { withAnchor: true });
+        return;
+      }
+      // A share that arrived signed out picks up where it left off (4.4).
+      const share = await takePendingShare();
+      if (share) {
+        const query = new URLSearchParams(sharePayloadParams(share)).toString();
+        router.replace(`/share/pick-list?${query}` as Href);
         return;
       }
       router.replace("/");
@@ -291,6 +330,8 @@ function AuthGate() {
         <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="admin/analytics" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="sign-in" />
+        <Stack.Screen name="privacy" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="terms" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="onboarding/display-name" />
         <Stack.Screen name="onboarding/accept-invite" />
         <Stack.Screen name="invite/[token]" />

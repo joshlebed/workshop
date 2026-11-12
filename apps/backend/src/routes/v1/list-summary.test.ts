@@ -21,6 +21,7 @@ const ids = [1, 2, 3, 4, 5].map((n) => `00000000-0000-4000-8000-00000000000${n}`
 const [viewer, a, b, c, d] = ids as [string, string, string, string, string];
 const sharedListId = "00000000-0000-4000-8000-0000000000c1";
 const soloListId = "00000000-0000-4000-8000-0000000000c2";
+const blankListId = "00000000-0000-4000-8000-0000000000c3";
 
 async function rows(query: string, params: unknown[] = []) {
   const client = (testDb as unknown as { $client: PGlite }).$client;
@@ -43,8 +44,9 @@ beforeAll(async () => {
   await rows(
     `INSERT INTO lists (id, name, emoji, color, share_slug, owner_id, modules, item_kind) VALUES
        ($1, 'Shared', '🎬', 'sunset', 'shared', $3, '{todo}', 'movie'),
-       ($2, 'Solo', '📝', 'ocean', 'solo', $3, '{}', 'plain')`,
-    [sharedListId, soloListId, viewer],
+       ($2, 'Solo', '📝', 'ocean', 'solo', $3, '{}', 'plain'),
+       ($4, 'Blank', '📝', 'slate', 'blank', $3, '{ranking}', NULL)`,
+    [sharedListId, soloListId, viewer, blankListId],
   );
   // Joined in the order d, a, b, c (viewer first) so the preview order is checked.
   await rows(
@@ -54,8 +56,9 @@ beforeAll(async () => {
        ($1, $3, 'member', now() - interval '3 days'),
        ($1, $4, 'member', now() - interval '2 days'),
        ($1, $5, 'member', now() - interval '1 day'),
-       ($7, $2, 'owner', now())`,
-    [sharedListId, viewer, a, b, c, d, soloListId],
+       ($7, $2, 'owner', now()),
+       ($8, $2, 'owner', now())`,
+    [sharedListId, viewer, a, b, c, d, soloListId, blankListId],
   );
   await rows(
     `INSERT INTO items (list_id, title, kind, added_by, completed, archived_at) VALUES
@@ -88,5 +91,19 @@ describe("GET /v1/lists home-row fields", () => {
 
     expect(solo?.openItemCount).toBe(0);
     expect(solo?.memberPreview).toEqual([]);
+  });
+});
+
+describe("GET /v1/lists keeps Blank lists", () => {
+  // `item_kind` NULL used to make the legacy-game filter NULL and drop the
+  // row: every Blank list (and "Start from scratch", 4.2) vanished from home.
+  it("returns a list whose item kind is null", async () => {
+    const res = await listRoutes.request("/", {
+      headers: { Authorization: `Bearer ${signSession(viewer)}` },
+    });
+    const { lists } = (await res.json()) as { lists: ListSummary[] };
+    const blank = lists.find((l) => l.id === blankListId);
+    expect(blank).toBeDefined();
+    expect(blank?.itemKind).toBeNull();
   });
 });

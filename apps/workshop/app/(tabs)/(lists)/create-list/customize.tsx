@@ -1,7 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { ListColor } from "@workshop/shared";
-import { LIST_TEMPLATES, type ListTemplate } from "@workshop/shared/templates";
+import {
+  getTemplate,
+  LIST_TEMPLATES,
+  type ListTemplate,
+  templateListName,
+} from "@workshop/shared/templates";
 import {
   Button,
   EmojiBadge,
@@ -12,16 +15,14 @@ import {
   Text,
   TextField,
   tokens,
-  useToast,
 } from "@workshop/ui";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
-import { createList } from "../../../../src/api/lists";
-import { useAuth } from "../../../../src/hooks/useAuth";
+import { useCreateFromTemplate } from "../../../../src/hooks/useCreateFromTemplate";
 import { pickCoverPhoto } from "../../../../src/lib/coverPhoto";
-import { goBack, openListOverHome } from "../../../../src/lib/goBack";
+import { goBack } from "../../../../src/lib/goBack";
 
 const COLOR_KEYS: readonly ListColorKey[] = [
   "sunset",
@@ -53,12 +54,28 @@ const EMOJI_CHOICES = [
 
 function lookupTemplate(value: string | string[] | undefined): ListTemplate {
   const raw = Array.isArray(value) ? value[0] : value;
-  return LIST_TEMPLATES.find((t) => t.id === raw) ?? LIST_TEMPLATES[LIST_TEMPLATES.length - 1]!;
+  return LIST_TEMPLATES.find((t) => t.id === raw) ?? getTemplate("blank_list")!;
+}
+
+/** The template's own emoji always leads the grid, so it stays selectable. */
+function emojiChoicesFor(template: ListTemplate): string[] {
+  const own = template.defaults.emoji;
+  return [own, ...EMOJI_CHOICES.filter((e) => e !== own)];
+}
+
+function pick(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
 export default function CreateListCustomize() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ template?: string; type?: string }>();
+  const params = useLocalSearchParams<{
+    template?: string;
+    type?: string;
+    prefillUrl?: string;
+    prefillText?: string;
+    from?: string;
+  }>();
   // Back-compat: old links used `type`, new ones use `template`. Treat
   // `type=movie` as the `movie_watchlist` template.
   const templateParam =
@@ -67,11 +84,16 @@ export default function CreateListCustomize() {
       ? `${Array.isArray(params.type) ? params.type[0] : params.type}_watchlist`
       : undefined);
   const template = lookupTemplate(templateParam);
-  const { token } = useAuth();
-  const queryClient = useQueryClient();
-  const { showToast } = useToast();
+  // A share carried through "New list" (4.4) rides on to the add surface.
+  const carried: Record<string, string> = {};
+  for (const key of ["prefillUrl", "prefillText", "from"] as const) {
+    const v = pick(params[key]);
+    if (v) carried[key] = v;
+  }
+  const { create, pendingTemplateId } = useCreateFromTemplate();
 
-  const [name, setName] = useState("");
+  // Prefilled, so Create is live at once (4.3).
+  const [name, setName] = useState(() => templateListName(template));
   const [emoji, setEmoji] = useState(template.defaults.emoji);
   const [color, setColor] = useState<ListColor>(template.defaults.color);
   const [description, setDescription] = useState("");
@@ -82,39 +104,9 @@ export default function CreateListCustomize() {
   const accentHex = tokens.list[color as ListColorKey];
   const requiresSource = Boolean(template.requiresSource);
 
-  const mutation = useMutation({
-    mutationFn: () =>
-      createList(
-        {
-          name: trimmedName,
-          emoji,
-          color,
-          itemKind: template.defaults.itemKind,
-          modules: template.defaults.modules,
-          ...(description.trim().length > 0 ? { description: description.trim() } : {}),
-          ...(coverPhotoUrl ? { coverPhotoUrl } : {}),
-          // Templates like Letterboxd Match attach a fixed-config source
-          // automatically — no URL prompt step.
-          ...(template.autoSource
-            ? { sources: [{ kind: template.autoSource.kind, config: template.autoSource.config }] }
-            : {}),
-        },
-        token,
-      ),
-    onSuccess: async (res) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-      // Home directly beneath the new list, so back goes home (3.8).
-      openListOverHome(res.list.id);
-    },
-    onError: (e) => {
-      showToast({
-        message: e instanceof Error ? e.message : "Couldn't create list",
-        tone: "danger",
-      });
-    },
-  });
-
+  const pending = pendingTemplateId !== null;
   const onSubmit = () => {
+    if (!canSubmit || pending) return;
     if (requiresSource) {
       router.push({
         pathname: "/create-list/playlist",
@@ -124,11 +116,17 @@ export default function CreateListCustomize() {
           emoji,
           color,
           ...(description.trim().length > 0 ? { description: description.trim() } : {}),
+          step: "3",
+          steps: "3",
         },
       });
       return;
     }
-    mutation.mutate();
+    create({
+      template,
+      overrides: { name: trimmedName, emoji, color, description, coverPhotoUrl },
+      addParams: carried,
+    });
   };
 
   const totalSteps = requiresSource ? 3 : 2;
@@ -157,14 +155,13 @@ export default function CreateListCustomize() {
         <View style={styles.preview}>
           <EmojiBadge emoji={emoji} color={accentHex} size={72} imageUrl={coverPhotoUrl} />
           <View style={styles.previewText}>
-            <Text variant="caption" tone="muted" style={styles.previewKind}>
-              {template.displayName}
-            </Text>
+            {trimmedName !== template.displayName ? (
+              <Text variant="caption" tone="muted" style={styles.previewKind}>
+                {template.displayName}
+              </Text>
+            ) : null}
             <Text variant="title" numberOfLines={1} style={styles.previewName}>
-              {trimmedName.length > 0 ? trimmedName : "Untitled list"}
-            </Text>
-            <Text variant="eyebrow" style={styles.previewModules}>
-              {template.defaults.modules.join(" · ")}
+              {trimmedName.length > 0 ? trimmedName : templateListName(template)}
             </Text>
           </View>
         </View>
@@ -174,10 +171,12 @@ export default function CreateListCustomize() {
           testID="create-list-name"
           value={name}
           onChangeText={setName}
-          placeholder={template.displayName}
+          placeholder={templateListName(template)}
           autoFocus
+          selectTextOnFocus
           maxLength={80}
-          returnKeyType="next"
+          returnKeyType={requiresSource ? "next" : "done"}
+          onSubmitEditing={onSubmit}
         />
 
         {!requiresSource ? (
@@ -236,7 +235,7 @@ export default function CreateListCustomize() {
             ))}
           </View>
           <View style={styles.emojiRow}>
-            {EMOJI_CHOICES.map((choice) => (
+            {emojiChoicesFor(template).map((choice) => (
               <Pressable
                 key={choice}
                 accessibilityRole="button"
@@ -283,8 +282,8 @@ export default function CreateListCustomize() {
             testID="create-list-submit"
             label={requiresSource ? "Continue" : "Create list"}
             size="lg"
-            disabled={!canSubmit || mutation.isPending}
-            loading={mutation.isPending}
+            disabled={!canSubmit || pending}
+            loading={pending}
             onPress={onSubmit}
           />
         </View>
@@ -333,7 +332,6 @@ const styles = StyleSheet.create({
   previewText: { flex: 1, minWidth: 0, gap: tokens.space.xxs },
   previewKind: { letterSpacing: 0.2 },
   previewName: { letterSpacing: -0.4 },
-  previewModules: { marginTop: tokens.space.xxs },
   field: { gap: tokens.space.sm },
   fieldLabel: { letterSpacing: -0.1, fontSize: tokens.font.size.sm },
   fieldLabelRow: {

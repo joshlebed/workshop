@@ -24,7 +24,7 @@ import {
 } from "@workshop/ui";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FlatList, Platform, StyleSheet, View } from "react-native";
+import { FlatList, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { fetchActivity } from "../../../src/api/activity";
 import {
   archiveList,
@@ -39,7 +39,10 @@ import { HeaderActivityButton } from "../../../src/components/HeaderActivityButt
 import { HomeAvatarButton } from "../../../src/components/HomeAvatarButton";
 import { ShareListSheet } from "../../../src/components/ShareListSheet";
 import { useAuth } from "../../../src/hooks/useAuth";
+import { useCreateFromTemplate } from "../../../src/hooks/useCreateFromTemplate";
+import { isNetworkError } from "../../../src/lib/errorCopy";
 import { homeListOrder } from "../../../src/lib/homeListOrder";
+import { HomeEmpty } from "../../../src/screens/home/HomeEmpty";
 import { HomeListRow } from "../../../src/screens/home/HomeListRow";
 import {
   HOME_SEARCH_THRESHOLD,
@@ -265,6 +268,9 @@ export default function Home() {
     : [];
 
   const onCreateList = useCallback(() => router.push("/create-list/type"), [router]);
+  const { create: createFromTemplate, pendingTemplateId } = useCreateFromTemplate();
+  const hiddenCount = allLists.length - visibleLists.length;
+  const isEmpty = !listsQuery.isPending && !!listsQuery.data && visibleLists.length === 0;
   const onActivity = useCallback(() => router.push("/activity"), [router]);
 
   // Web-only keyboard shortcuts: Cmd/Ctrl+N → new list; Cmd/Ctrl+/ → activity.
@@ -315,22 +321,44 @@ export default function Home() {
             <Skeleton.Rows count={7} testID="home-skeleton" />
           </View>
         ) : listsQuery.isError && !listsQuery.data ? (
-          <View style={styles.center}>
-            <EmptyState
-              title="Couldn't load your lists"
-              description={errorMessage(listsQuery.error)}
-              action={
-                <Button label="Retry" variant="secondary" onPress={() => listsQuery.refetch()} />
-              }
-            />
-          </View>
-        ) : visibleLists.length === 0 ? (
-          <View style={styles.center}>
-            <View style={styles.emptyGlyphBadge}>
-              <Text style={styles.emptyGlyph}>✦</Text>
-            </View>
-            <Button label="Create a list" onPress={onCreateList} />
-          </View>
+          <PullToRefresh
+            refreshing={listsQuery.isRefetching}
+            onRefresh={() => listsQuery.refetch()}
+          >
+            <ScrollView contentContainerStyle={styles.center}>
+              <EmptyState
+                title="Couldn't load your lists"
+                description={
+                  isNetworkError(listsQuery.error)
+                    ? "Check your connection and try again."
+                    : "Something went wrong on our side. Try again in a moment."
+                }
+                action={
+                  <Button
+                    label="Try again"
+                    variant="secondary"
+                    loading={listsQuery.isRefetching}
+                    onPress={() => listsQuery.refetch()}
+                  />
+                }
+              />
+            </ScrollView>
+          </PullToRefresh>
+        ) : isEmpty ? (
+          <PullToRefresh
+            refreshing={listsQuery.isRefetching}
+            onRefresh={() => listsQuery.refetch()}
+          >
+            <ScrollView>
+              <HomeEmpty
+                hiddenCount={hiddenCount}
+                pendingTemplateId={pendingTemplateId}
+                onCreate={(template) => createFromTemplate({ template })}
+                onMoreTemplates={onCreateList}
+                onOpenHidden={() => router.push("/settings/hidden")}
+              />
+            </ScrollView>
+          </PullToRefresh>
         ) : (
           <PullToRefresh
             refreshing={listsQuery.isRefetching}
@@ -383,13 +411,16 @@ export default function Home() {
         )}
       </View>
 
-      <Fab
-        accessibilityLabel="Create new list"
-        accessibilityHint={Platform.OS === "web" ? "Keyboard shortcut: command N" : undefined}
-        tooltip="New list  (⌘N)"
-        onPress={onCreateList}
-        testID="fab-create-list"
-      />
+      {/* One create affordance: the empty home's starters replace the FAB. */}
+      {isEmpty ? null : (
+        <Fab
+          accessibilityLabel="Create new list"
+          accessibilityHint={Platform.OS === "web" ? "Keyboard shortcut: command N" : undefined}
+          tooltip="New list  (⌘N)"
+          onPress={onCreateList}
+          testID="fab-create-list"
+        />
+      )}
 
       <ActionSheet
         visible={menuOpen}
@@ -431,16 +462,7 @@ const styles = StyleSheet.create({
     paddingBottom: tokens.space.lg,
   },
   body: { flex: 1 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: tokens.space.lg },
-  emptyGlyphBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: tokens.accent.muted,
-  },
-  emptyGlyph: { fontSize: tokens.font.size.xxl, lineHeight: 32, color: tokens.accent.default },
+  center: { flexGrow: 1, alignItems: "center", justifyContent: "center", gap: tokens.space.lg },
   listContent: {
     paddingTop: homeLayout.contentTopGap,
     paddingBottom: homeLayout.bottomInset,

@@ -52,9 +52,47 @@ delete them from Workshop-side cleanups.
 A user with no display name stays on `/onboarding/display-name`; the post-sign-in bounce (stash
 lookup, then home) only runs once the status is `signed-in`. Letting `needs-display-name` fall
 through to that bounce while on onboarding consumed the return-path stash and looped the user
-between home and onboarding. The return path (`PENDING_RETURN_PATH_KEY`, set by
-`ListPublicLanding`) is single-use, cleared whenever it is read, and only `/l/…` or `/list/…`
-are honoured (`src/lib/returnPath.ts`). `/l/:slug` mounts signed-out so the landing can stash it.
+between home and onboarding. After sign-in the bounce goes, first match wins, to: a legacy
+invite's landing (`PENDING_INVITE_TOKEN_KEY` → `/invite/:token`), the return path
+(`PENDING_RETURN_PATH_KEY` in `src/lib/returnPath.ts`, set by `ListPublicLanding`; single-use,
+only `/l/…`, `/list/…` and `/invite/…` honoured), a share that arrived signed out
+(`workshop.pending-share`, 24h, `src/lib/sharePayload.ts`) → `/share/pick-list`, else home. The
+sign-in screen reads the same stashes (`useSignInContext`) to show "Sign in to join <list>" or
+"Saving from <host>". Routes that mount signed out: `/l/:slug`, `/list/:id`, `/invite/:token`,
+`/share*` (to stash), the hand-offs, and `/privacy` + `/terms` (public in every state).
+
+## First run, create and share (UX pass 4.1–4.4)
+
+- **One-tap create.** Tapping a template (picker, or a starter on the empty home) creates the list
+  with the template's `defaultName`/emoji/color and lands with home beneath it and the add surface
+  open (`useCreateFromTemplate` → `openNewList`). Owners rename by tapping the name in the list
+  header (`ListNameEditor`). Importers keep their link step (`create-list/playlist`, `step`/`steps`
+  params drive the dots). The empty home has no FAB: its starters are the one create affordance.
+- **Share picker** (`app/share/pick-list.tsx`): one tap saves into lists that take a free line or
+  a link (`canQuickSave`), with the preview converted by `linkPreviewToItemContent`
+  (`sharedItemRequest`), then lands on the list with "Added to <list>" and the row highlighted
+  (`noteItemAdded`). Other lists open `/list/:id/add?prefillUrl&prefillText&from=share`; in share
+  mode the first add closes the surface with the same toast. "New list" carries `?url=&text=`
+  through `/create-list/type` and Customize to the new list's add surface. Failures keep the
+  payload and toast Retry.
+- **Error copy** at the edges comes from `src/lib/errorCopy.ts` (unit-tested against developer
+  strings); share/invite link failures render `LinkErrorScreen` (Try again unless it's a 404).
+
+## Account deletion and the legal pages (4.5)
+
+Settings → Delete account (`settings/delete-account.tsx`) states the consequences
+(`ACCOUNT_DELETION_CONSEQUENCES` in `src/lib/accountDeletion.ts`, including that HighScore goes
+too), needs the typed word "delete", calls `DELETE /v1/users/me` through `useAuth().deleteAccount`
+(credentials clear only after the server confirms), and is blocked while impersonating. The
+provider-revocation outcome survives the sign-out in memory and the sign-in screen reports it.
+`/privacy` and `/terms` copy lives in `src/lib/legal.ts` (pinned by `legal.test.ts`); keep it
+literally true of the app. The iOS Apple button is the system `AppleAuthenticationButton`
+(`src/components/AppleSignInButton/impl.tsx`, Workshop's own copy of HighScore's approach); web
+keeps the plain `Button` (`impl.web.tsx`). It renders only when Apple sign-in is available, and
+Google only when its client id for the platform is set (`src/lib/googleSignIn.ts` / `.web.ts`):
+on iOS the Google hook throws on mount without `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`, which crashed
+the whole sign-in screen in a simulator build. The `workshop` target in `.niteshift/mobile.yaml`
+builds without OAuth ids on purpose (dev sign-in only); `ns mobile build workshop`.
 
 ## Item detail drafts never take a refetch over the user's typing
 
@@ -233,9 +271,10 @@ catches it before EAS does.
 
 ## Share extension payloads can include both URL and text
 
-Preserve both when handling `useShareIntent()` in `_layout.tsx`; it forwards both as `?url=` /
-`?text=` to `/share`, which redirects to `/share/pick-list` (normal item adds) with the same
-params. (Score shares belong to HighScore's own share extension.)
+Preserve both when handling `useShareIntent()` in `_layout.tsx`; it normalizes them
+(`normalizeSharePayload`) and forwards both as `?url=` / `?text=` to `/share`, which redirects to
+`/share/pick-list` with the same params. Signed out, the payload is stashed instead and resumed
+after sign-in. (Score shares belong to HighScore's own share extension.)
 
 ## A cross-navigator `router.replace` collapses the target stack — pass `withAnchor`
 

@@ -32,6 +32,7 @@ export default function ListsLayout() {
       <Stack.Screen name="index" />
       <Stack.Screen name="settings/index" />
       <Stack.Screen name="settings/hidden" />
+      <Stack.Screen name="settings/delete-account" />
       <Stack.Screen name="profile" />
       <Stack.Screen name="create-list/type" options={{ animation: "slide_from_right" }} />
       <Stack.Screen name="create-list/customize" options={{ animation: "slide_from_right" }} />
