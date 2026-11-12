@@ -34,11 +34,9 @@ export const PIXEL_ICON_PATHS = {
   users: [
     "M5 2h6v2H5zm10 0h4v2h-4zM5 10h6v2H5zm10 0h4v2h-4zm4-6h2v6h-2zm-8 0h2v6h-2zM3 4h2v6H3zM0 18h2v4H0zm14 0h2v4h-2zm8 0h2v4h-2zM4 14h8v2H4zm12 0h4v2h-4zM2 16h2v2H2zm10 0h2v2h-2zm8 0h2v2h-2z",
   ],
-  // A plain diagonal pencil: outlined barrel, eraser band, solid tip. Ours —
-  // the stock `pencil` has a third line down the barrel that turns to a
-  // checkerboard at small sizes.
+  // pixelarticons `pen-square` (a pen over a square): the edit control.
   pencil: [
-    "M16 2h4v2H16zM14 4h2v2H14zM20 4h2v2H20zM12 6h4v2H12zM20 6h2v2H20zM10 8h2v2H10zM16 8h4v2H16zM8 10h2v2H8zM16 10h2v2H16zM6 12h2v2H6zM14 12h2v2H14zM4 14h2v2H4zM12 14h2v2H12zM2 16h2v2H2zM10 16h2v2H10zM2 18h4v2H2zM8 18h2v2H8zM2 20h6v2H2z",
+    "M5 3h6v2H5zM3 5h2v14H3zm16 8h2v6h-2zM5 19h14v2H5zm3-9h2v6H8zm2 4h4v2h-4zm0-6h2v2h-2zm2-2h2v2h-2zm2-2h2v2h-2zm2-2h2v2h-2zm2 2h2v2h-2zm2 2h2v2h-2zm-2 2h2v2h-2zm-2 2h2v2h-2zm-2 2h2v2h-2zm-4 0h2v2h-2z",
   ],
   logout: [
     "M8 11h12v2H8zm8-2h2v2h-2z",
