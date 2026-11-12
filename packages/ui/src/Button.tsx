@@ -106,7 +106,8 @@ const labelColor: Record<Variant, string> = {
   primary: tokens.text.onAccent,
   secondary: tokens.text.primary,
   ghost: tokens.text.primary,
-  danger: tokens.text.primary,
+  // Dark label on the danger red: the light label measured 3.06:1, under AA.
+  danger: tokens.text.onAccent,
 };
 
 const disabledStyle: Record<Variant, ViewStyle> = {

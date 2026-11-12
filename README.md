@@ -7,7 +7,7 @@ Josh's personal monorepo for apps, scripts, and experiments. Two products, one b
 and one user account:
 
 - **Workshop.dev** (`apps/workshop`) — an umbrella for small products: lists, watchlist,
-  sharing, friends.
+  sharing.
 - **HighScore** (`apps/highscore`, `highscore.live`) — daily games. Its app owns the Games
   home, standings, catalog, friends, play links, and score-share flow. See
   [`docs/highscore-migration-plan.md`](docs/highscore-migration-plan.md).

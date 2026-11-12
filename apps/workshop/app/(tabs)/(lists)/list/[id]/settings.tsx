@@ -14,6 +14,7 @@ import { formatConfigWarning, MODULE_NAMES } from "@workshop/shared/modules";
 import {
   Avatar,
   Button,
+  confirm,
   formatRelative,
   IconButton,
   type ListColorKey,
@@ -242,16 +243,17 @@ export default function ListSettings() {
     setPreviewWarnings(null);
   };
 
-  const onSaveModules = async () => {
+  const onSaveModules = () => {
     if (!selectedModules) return;
     // First preview — if there are no warnings (or user already acknowledged),
-    // commit directly.
-    const result = await previewListConfig(id ?? "", { modules: selectedModules }, token);
-    if (result.warnings.length === 0) {
-      modulesMutation.mutate({});
-    } else {
-      setPreviewWarnings(result.warnings);
-    }
+    // commit directly. Runs through `previewMutation` so the Save button
+    // spins while the preview is in flight and a failure shows a toast
+    // (the old direct call had neither and left an unhandled rejection).
+    previewMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result.warnings.length === 0) modulesMutation.mutate({});
+      },
+    });
   };
 
   const onConfirmModules = () => {
@@ -398,9 +400,66 @@ export default function ListSettings() {
       router.replace("/");
     },
     onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't archive list"), tone: "danger" });
+      showToast({ message: errorMessage(e, "Couldn't delete list"), tone: "danger" });
     },
   });
+
+  // 0.1: irreversible actions confirm first, and the dialog names the list or
+  // the person so a mis-tap can't silently delete, leave, or hand off a list.
+  const listLabel = list ? `“${list.name}”` : "this list";
+
+  const onDeleteList = async () => {
+    const ok = await confirm({
+      title: `Delete ${listLabel}?`,
+      message: "Everyone on it loses access.",
+      confirmLabel: "Delete list",
+      destructive: true,
+    });
+    if (ok) archiveListMutation.mutate();
+  };
+
+  const onLeaveList = async () => {
+    if (!user) return;
+    const ok = await confirm({
+      title: `Leave ${listLabel}?`,
+      message: "You lose access until someone shares the link with you again.",
+      confirmLabel: "Leave list",
+      destructive: true,
+    });
+    if (ok) removeMemberMutation.mutate(user.id);
+  };
+
+  const onRemoveMember = async (member: ListMemberSummary) => {
+    const who = member.displayName ?? "this member";
+    const ok = await confirm({
+      title: `Remove ${who} from ${listLabel}?`,
+      message: "They lose access to the list. Items they added stay.",
+      confirmLabel: "Remove",
+      destructive: true,
+    });
+    if (ok) removeMemberMutation.mutate(member.userId);
+  };
+
+  const onMakeOwner = async (member: ListMemberSummary) => {
+    const who = member.displayName ?? "this member";
+    const ok = await confirm({
+      title: `Make ${who} the owner of ${listLabel}?`,
+      message: "You become a member and can no longer change its settings or delete it.",
+      confirmLabel: "Make owner",
+      destructive: true,
+    });
+    if (ok) transferMutation.mutate(member.userId);
+  };
+
+  const onResetLink = async () => {
+    const ok = await confirm({
+      title: `Reset the link for ${listLabel}?`,
+      message: "The current link stops working everywhere it has been shared. Members keep access.",
+      confirmLabel: "Reset link",
+      destructive: true,
+    });
+    if (ok) resetSlugMutation.mutate();
+  };
 
   const discardDetails = () => {
     if (!list) return;
@@ -733,8 +792,8 @@ export default function ListSettings() {
                 isCurrentUser={!!user && m.userId === user.id}
                 isOwner={isOwner}
                 disabled={removeMemberMutation.isPending || transferMutation.isPending}
-                onRemove={() => removeMemberMutation.mutate(m.userId)}
-                onMakeOwner={() => transferMutation.mutate(m.userId)}
+                onRemove={() => void onRemoveMember(m)}
+                onMakeOwner={() => void onMakeOwner(m)}
               />
             ))}
           </View>
@@ -848,7 +907,7 @@ export default function ListSettings() {
                   size="md"
                   loading={resetSlugMutation.isPending}
                   disabled={resetSlugMutation.isPending}
-                  onPress={() => resetSlugMutation.mutate()}
+                  onPress={() => void onResetLink()}
                 />
               </View>
               <Text variant="caption" tone="muted">
@@ -906,7 +965,7 @@ export default function ListSettings() {
                 size="md"
                 loading={archiveListMutation.isPending}
                 disabled={archiveListMutation.isPending}
-                onPress={() => archiveListMutation.mutate()}
+                onPress={() => void onDeleteList()}
               />
             </>
           ) : (
@@ -919,9 +978,7 @@ export default function ListSettings() {
                 size="md"
                 loading={removeMemberMutation.isPending}
                 disabled={!user || removeMemberMutation.isPending}
-                onPress={() => {
-                  if (user) removeMemberMutation.mutate(user.id);
-                }}
+                onPress={() => void onLeaveList()}
               />
             </>
           )}

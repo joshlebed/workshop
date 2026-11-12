@@ -14,8 +14,10 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useMemo } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from "react-native";
+import { fetchActivity } from "../../src/api/activity";
 import { fetchLists } from "../../src/api/lists";
 import { useAuth } from "../../src/hooks/useAuth";
+import { homeListOrder } from "../../src/lib/homeListOrder";
 
 const KIND_LABEL: Partial<Record<ItemKind, string>> = {
   movie: "Movies",
@@ -62,14 +64,22 @@ export default function PickList() {
     enabled: !!token,
   });
 
-  // Sort by recency (updatedAt) so the list the user just touched lands at
-  // the top — matches home's behaviour and removes a hunt-for-the-list step.
+  // Same lists in the same order as home (0.17): hidden lists are left out,
+  // pinned first, then latest activity. The activity feed is usually warm
+  // from home; without it the order falls back to `updatedAt`.
+  const activityQuery = useQuery({
+    queryKey: queryKeys.activity.feed,
+    queryFn: () => fetchActivity({ limit: 50 }, token),
+    enabled: !!token,
+    staleTime: 30_000,
+  });
   const lists = useMemo(() => {
-    const data = listsQuery.data?.lists ?? [];
-    return [...data].sort(
-      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
-  }, [listsQuery.data]);
+    const latest = new Map<string, string>();
+    for (const e of activityQuery.data?.events ?? []) {
+      if (!latest.has(e.listId)) latest.set(e.listId, e.createdAt);
+    }
+    return homeListOrder(listsQuery.data?.lists ?? [], (id) => latest.get(id));
+  }, [listsQuery.data, activityQuery.data]);
 
   const onPick = (list: ListSummary) => {
     const search = new URLSearchParams();
@@ -127,7 +137,7 @@ export default function PickList() {
           <View style={styles.center}>
             <ActivityIndicator color={tokens.accent.default} />
           </View>
-        ) : listsQuery.isError ? (
+        ) : listsQuery.isError && !listsQuery.data ? (
           <View style={styles.center}>
             <EmptyState
               title="Couldn't load your lists"

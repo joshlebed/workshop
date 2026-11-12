@@ -42,6 +42,7 @@ export function ItemList({
   ordered,
   unordered,
   completed,
+  rankById,
   listItemKind,
   modules,
   isAlbumShelf,
@@ -125,7 +126,7 @@ export function ItemList({
         <DraggableRow
           item={item}
           section={section}
-          rank={isOrdered ? index + 1 : null}
+          rank={isOrdered ? (rankById.get(item.id) ?? index + 1) : null}
           isNew={!isOrdered && newItemIds.has(item.id)}
           // The "Ideas" header rides on the first unranked cell — decoration on
           // a real row, never a draggable data row (which would desync).
@@ -156,6 +157,7 @@ export function ItemList({
       onRowMenu,
       onRowPressBody,
       resolveRowPressCover,
+      rankById,
     ],
   );
 

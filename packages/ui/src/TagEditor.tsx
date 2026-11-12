@@ -108,7 +108,8 @@ const styles = StyleSheet.create({
   },
   input: {
     color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
+    // 16px floor: iOS Safari zooms into smaller focused inputs.
+    fontSize: tokens.font.size.md,
     paddingVertical: 6,
     paddingHorizontal: tokens.space.sm,
     minWidth: 96,

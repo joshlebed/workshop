@@ -1,12 +1,12 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { ApiError, errorMessage } from "@workshop/api-client/api";
-import { queryKeys } from "@workshop/api-client/queryKeys";
 import { Button, EmptyState, tokens } from "@workshop/ui";
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
-import { fetchListItemsBySlug, fetchListPreviewBySlug, joinListBySlug } from "../../src/api/share";
+import { fetchListItemsBySlug, fetchListPreviewBySlug } from "../../src/api/share";
 import { useAuth } from "../../src/hooks/useAuth";
 import { ListPublicLanding } from "../../src/screens/ListPublicLanding";
+import { useJoinList } from "../../src/screens/useJoinList";
 
 /**
  * `/l/:slug` — canonical short share URL for a list.
@@ -28,10 +28,11 @@ export default function ListShortLink() {
   const slug = Array.isArray(params.slug) ? params.slug[0] : params.slug;
   const { token } = useAuth();
   const router = useRouter();
-  const queryClient = useQueryClient();
 
+  // Keyed by viewer kind: the `viewer` block differs before and after
+  // sign-in, and a cached signed-out answer must not survive sign-in.
   const previewQuery = useQuery({
-    queryKey: ["lists", "by-slug", slug ?? ""],
+    queryKey: ["lists", "by-slug", slug ?? "", token ? "viewer" : "anonymous"],
     queryFn: () => fetchListPreviewBySlug(slug ?? "", token),
     enabled: !!slug,
     retry: (failureCount, error) => {
@@ -50,6 +51,14 @@ export default function ListShortLink() {
     queryKey: ["lists", "by-slug-items", slug ?? ""],
     queryFn: () => fetchListItemsBySlug(slug ?? "", token),
     enabled: !!slug && !!previewQuery.data && visibility === "view" && !isMember,
+  });
+
+  // Join, then land in the list. `withAnchor` keeps home beneath it: this is a
+  // root-stack route replacing into the `(lists)` stack (apps/workshop/CLAUDE.md).
+  const onJoin = useJoinList({
+    preview: previewQuery.data?.preview,
+    token,
+    onJoined: (res) => router.replace(`/list/${res.list.id}`, { withAnchor: true }),
   });
 
   if (!slug) {
@@ -101,20 +110,7 @@ export default function ListShortLink() {
       shareSlug={slug}
       items={itemsQuery.data ?? null}
       joinPending={false}
-      onJoin={
-        previewQuery.data.preview.shareVisibility === "join" && token
-          ? async () => {
-              try {
-                const res = await joinListBySlug(slug, token);
-                await queryClient.invalidateQueries({ queryKey: queryKeys.lists.all });
-                router.replace(`/list/${res.list.id}`);
-              } catch {
-                // Errors surface through the landing component's own toast
-                // hook; rethrow would just unhandle the promise here.
-              }
-            }
-          : null
-      }
+      onJoin={onJoin}
     />
   );
 }

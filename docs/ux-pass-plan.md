@@ -75,6 +75,21 @@ Shippable as two or three PRs with no design decisions.
 | 0.17 | Share picker lists archived lists and sorts differently from home; "Any member" is offered "Delete view" then gets a 403; bell badge is stale after visiting Activity _(suspected)_.                                                                                                             | `share/pick-list.tsx:67`, `SavedViewsBar.tsx:114`, `activity.tsx`      |
 | 0.18 | **Remove the Friends surface from Workshop** (decided: multiplayer is per list). Delete `/friends`, `/friends/:id`, `src/friends/*` and the menu entry. `/friends/accept/:token` stays as a hand-off to HighScore, like `/g/:token`. Backend friends routes are untouched (HighScore uses them). | `app/friends/*`, `src/friends/*`, `ProfileMenu.tsx`, `profile.tsx:122` |
 
+**Phase 0 status (2026-11-11): done, all 18 rows**, in the `joshlebed/ux-pass-phase-0` PR
+(stacked on this plan). Verified in the running web app at 390×844. Not verifiable on web, so
+still owed a device check: 0.13 (iOS Modal/Alert race), 0.15's native status bar, and 0.7's
+native long-press. Deviations and extras:
+
+- 0.15 pins dark in JS only (status bar, navigation theme, `ThemeProvider forceScheme`).
+  `userInterfaceStyle` in `app.json` stays `automatic`: changing it moves the iOS fingerprint and
+  forces a version bump, which would stop Phase 0 reaching 0.7.0 installs over the air. Flip it
+  with the next native bump.
+- Found and fixed: a new user who had to pick a display name was bounced between home and
+  onboarding, and the share-link return path was consumed on the way (the real cause behind
+  0.3); `/l/:slug` bounced signed-out visitors to sign-in before the landing could stash where
+  they were; a list preview cached before sign-in kept saying "Sign in to join" after it; join
+  errors showed server codes (`list_view_only`).
+
 ### Phase 1 — Foundations in `packages/ui` (M–L, unblocks everything)
 
 Build the missing primitives, then migrate screens onto them. This is where consistency stops

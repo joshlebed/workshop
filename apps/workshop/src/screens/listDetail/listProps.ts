@@ -14,6 +14,11 @@ export interface ItemListProps {
   ordered: Item[];
   unordered: Item[];
   completed: Item[];
+  /**
+   * 1-based rank of every ranked item in the whole (unfiltered) Ranked block.
+   * Rows read their numeral from here so a filter never renumbers them.
+   */
+  rankById: Map<string, number>;
   /** The parent list's `itemKind` — drives kind-aware row rendering. */
   listItemKind: ItemKind | null;
   /** Modules enabled on the list — drives section visibility + affordances. */

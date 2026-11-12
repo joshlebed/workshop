@@ -53,6 +53,7 @@ import { ItemList } from "./listDetail/ItemList";
 import { ItemRowMenu, type ItemRowMenuActions } from "./listDetail/ItemRowMenu";
 import { LetterboxdPanel } from "./listDetail/LetterboxdPanel";
 import type { ReorderEvent } from "./listDetail/listProps";
+import { rankAnchorsOf, rankByIdOf } from "./listDetail/ranks";
 import { SavedViewsBar } from "./listDetail/SavedViewsBar";
 import type { Section } from "./listDetail/types";
 
@@ -103,6 +104,9 @@ export function ListDetail({ list, members, sources, token }: Props) {
     enabled: !!token,
     refetchInterval: livePoll,
   });
+  // A failed background refetch keeps the cached rows on screen; only a load
+  // with nothing to show swaps the list for the error state (0.9).
+  const itemsLoadFailed = itemsQuery.isError && !itemsQuery.data;
 
   // Saved views (spec §2.3): named, shared tag-filter presets. Cheap query,
   // its own key — applying a view just sets `selectedTags`.
@@ -329,6 +333,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
 
   const selectedTagSet = useMemo(() => new Set(selectedTags), [selectedTags]);
 
+  const rankById = useMemo(() => rankByIdOf(orderedRaw), [orderedRaw]);
   const filtered = useMemo(() => {
     const needle = filter.trim().toLowerCase();
     if (!needle && selectedTagSet.size === 0) {
@@ -471,7 +476,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
   const onRowMenu = (item: Item, section: Section) => {
     const confirmDelete = async () => {
       const ok = await confirm({
-        title: "Remove this item?",
+        title: `Delete “${item.title}”?`,
         confirmLabel: "Delete",
         destructive: true,
       });
@@ -481,12 +486,14 @@ export function ListDetail({ list, members, sources, token }: Props) {
     setMenuActions({
       section,
       isAlbumShelf: isSpotifyShelf,
+      // Anchors come from the whole Ranked block: with a filter on, the last
+      // *visible* ranked row isn't the bottom of the ranking (0.8).
       ...(section !== "ordered" && rankingOn
         ? {
             onPromote: () =>
               moveMutation.mutate({
                 item,
-                beforeItemId: filtered.ordered[filtered.ordered.length - 1]?.id ?? null,
+                beforeItemId: rankAnchorsOf(orderedRaw).lastId,
                 afterItemId: null,
                 ordered: true,
               }),
@@ -494,7 +501,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
               moveMutation.mutate({
                 item,
                 beforeItemId: null,
-                afterItemId: filtered.ordered[0]?.id ?? null,
+                afterItemId: rankAnchorsOf(orderedRaw).firstId,
                 ordered: true,
               }),
           }
@@ -565,11 +572,10 @@ export function ListDetail({ list, members, sources, token }: Props) {
     completedRaw.length,
   ]);
 
-  const isEmptyAfterFetch =
-    !itemsQuery.isPending && !itemsQuery.isError && totalRowsUnfiltered === 0;
+  const isEmptyAfterFetch = !itemsQuery.isPending && !itemsLoadFailed && totalRowsUnfiltered === 0;
   const isFilterEmpty =
     !itemsQuery.isPending &&
-    !itemsQuery.isError &&
+    !itemsLoadFailed &&
     anyFilterActive &&
     totalRows === 0 &&
     totalRowsUnfiltered > 0;
@@ -723,7 +729,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
           </View>
         </View>
 
-        {!itemsQuery.isPending && !itemsQuery.isError && (savedViews.length > 0 || canSaveView) ? (
+        {!itemsQuery.isPending && !itemsLoadFailed && (savedViews.length > 0 || canSaveView) ? (
           <View style={styles.savedViewsWrap}>
             <SavedViewsBar
               views={savedViews}
@@ -731,13 +737,16 @@ export function ListDetail({ list, members, sources, token }: Props) {
               onApply={onApplyView}
               onCreate={(name) => createViewMutation.mutate({ name, tags: selectedTags })}
               onDelete={onDeleteView}
+              canDelete={(view) =>
+                !!selfId && (view.createdBy === selfId || list.ownerId === selfId)
+              }
               canSave={canSaveView}
               busy={viewMutating}
             />
           </View>
         ) : null}
 
-        {tagCounts.length > 0 && !itemsQuery.isPending && !itemsQuery.isError ? (
+        {tagCounts.length > 0 && !itemsQuery.isPending && !itemsLoadFailed ? (
           <View style={styles.tagBarWrap}>
             <TagFilterBar
               tags={tagCounts}
@@ -756,7 +765,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
           <View style={styles.center}>
             <ActivityIndicator color={tokens.accent.default} />
           </View>
-        ) : itemsQuery.isError ? (
+        ) : itemsLoadFailed ? (
           <View style={styles.center}>
             <EmptyState
               motion
@@ -918,6 +927,7 @@ export function ListDetail({ list, members, sources, token }: Props) {
               ordered={filtered.ordered}
               unordered={filtered.unordered}
               completed={filtered.completed}
+              rankById={rankById}
               letterboxdBadgeByItem={letterboxdBadgeByItem}
               listItemKind={itemKind}
               isAlbumShelf={isSpotifyShelf}
@@ -1186,7 +1196,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 8,
     color: tokens.text.primary,
-    fontSize: tokens.font.size.sm,
+    // 16px floor: iOS Safari zooms into smaller focused inputs.
+    fontSize: tokens.font.size.md,
   },
   filterClear: { paddingHorizontal: tokens.space.xs, paddingVertical: tokens.space.xs },
   filterClearGlyph: { fontSize: tokens.font.size.sm },

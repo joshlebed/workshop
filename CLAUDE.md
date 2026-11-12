@@ -18,7 +18,7 @@ delete what's no longer true.
 ## What this repo is
 
 Personal monorepo. Two Expo apps on one backend: `apps/workshop` (published as
-**Workshop.dev**) is an umbrella for small products — lists, watchlist, sharing, friends —
+**Workshop.dev**) is an umbrella for small products — lists, watchlist, sharing —
 and `apps/highscore` (**HighScore**, `highscore.live`) owns daily games. Both build web + iOS
 from one component tree; shared code lives in `packages/*`. HighScore owns its Games UI in
 `apps/highscore/src/games/`. **Games were removed from Workshop on 2026-11-06** (PR-10, pulled
@@ -28,7 +28,11 @@ AASA still claims `/g/*`), which forwards to HighScore via `src/screens/gamesMov
 `src/lib/highscoreHandoff/`. The backend keeps 410ing `X-Workshop-Client: workshop` on
 `/v1/games*` + `/v1/game-share*` from `WORKSHOP_GAMES_SUNSET_AT` (2026-10-31 07:00Z) via
 `middleware/workshop-games-sunset.ts`, for binaries that never took the OTA. See
-`docs/highscore-migration-plan.md`.
+`docs/highscore-migration-plan.md`. **Friends were removed from Workshop on 2026-11-11** (UX pass
+0.18; multiplayer is per list, by share link): no `/friends` or `/friends/:id`, no Friends entry
+in the profile menu. `app/friends/accept/[token].tsx` survives as the same kind of hand-off,
+forwarding to `highscore.live/friends/accept/:token`. The backend friends routes and
+`@workshop/api-client/friends` stay: HighScore uses them.
 
 ## Stack at a glance
 
@@ -1214,7 +1218,8 @@ table, plus the friend-invite card and the play-link card:
    inviter ("Josh wants to be friends"), image via `functions/og/friend/[token].ts`. Unlike
    the list routes it never falls through to the default card on a missing preview — a
    friend link always reads as a friend invite, so a null preview (API down / games flag
-   off / bad token) still emits the generic "Add a friend" 👋 card.
+   off / bad token) still emits the generic "Add a friend" 👋 card. The page behind the card
+   is now the in-app hand-off to HighScore (Workshop has no friends surface since 2026-11-11).
 6. **Play link** — `functions/g/[token].ts` and `functions/og/g/[token].ts` are **301s to
    the `highscore.live` equivalents** (same token, same paths). Play links have been minted
    on HighScore since FIX-1; only pre-cutover iMessage history still points here. HighScore's

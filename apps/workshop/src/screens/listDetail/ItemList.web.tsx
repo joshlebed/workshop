@@ -33,7 +33,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import type { Item } from "@workshop/shared";
 import { hasModule } from "@workshop/shared/modules";
-import { PullToRefresh, Text, tokens } from "@workshop/ui";
+import { PullToRefresh, REORDER_ACTIVATION, Text, tokens } from "@workshop/ui";
 import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, View, type ViewInstance } from "react-native";
 import { COMPLETED_COLLAPSE_THRESHOLD } from "./completedSection";
@@ -46,6 +46,7 @@ export function ItemList({
   ordered,
   unordered,
   completed,
+  rankById,
   listItemKind,
   modules,
   isAlbumShelf,
@@ -90,16 +91,26 @@ export function ItemList({
   // Returns `undefined` to leave the default provenance untouched.
   const resolveProvenanceOverride = (item: Item): string | undefined =>
     letterboxdBadgeByItem?.get(item.id);
-  // Two sensors, never one with mixed activation:
-  //   - MouseSensor with `distance: 4`  → desktop stays snappy (no delay).
-  //   - TouchSensor with `delay: 250, tolerance: 8` → mobile web uses
-  //     press-and-hold; a finger movement > 8px before 250ms cancels the
+  // Two sensors, never one with mixed activation, on the shared
+  // `REORDER_ACTIVATION` thresholds (HighScore uses the same):
+  //   - MouseSensor with `distance: 10` → desktop has no delay, but a click
+  //     that drifts a few px (trackpads) stays a click instead of becoming a
+  //     zero-displacement drag that eats the open.
+  //   - TouchSensor with `delay: 500, tolerance: 8` → mobile web uses
+  //     press-and-hold; a finger movement > 8px before the hold cancels the
   //     pending activation so a regular swipe scrolls instead of dragging.
   // This is the official dnd-kit recommendation for lists that must scroll
   // on touch but reorder on hold (docs.dndkit.com/api-documentation/sensors/touch).
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: REORDER_ACTIVATION.mouseDistancePx },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: REORDER_ACTIVATION.longPressMs,
+        tolerance: REORDER_ACTIVATION.touchTolerancePx,
+      },
+    }),
   );
   const orderedIds = useMemo(() => ordered.map((it) => it.id), [ordered]);
   const orderedIdSet = useMemo(() => new Set(orderedIds), [orderedIds]);
@@ -179,7 +190,7 @@ export function ItemList({
               <SortableOrderedRow
                 key={item.id}
                 item={item}
-                rank={index + 1}
+                rank={rankById.get(item.id) ?? index + 1}
                 addedByName={resolveAddedByName(item)}
                 provenanceOverride={resolveProvenanceOverride(item)}
                 accent={accent}

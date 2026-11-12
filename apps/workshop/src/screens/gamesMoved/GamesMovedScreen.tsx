@@ -13,15 +13,23 @@ interface GamesMovedScreenProps {
   target?: HighScoreTarget;
   /** Dismiss back into Workshop. */
   onCancel?: () => void;
+  /** What moved. Defaults to the games copy; the friend-invite hand-off overrides it. */
+  copy?: { glyph: string; title: string; body: string };
 }
 
+const GAMES_COPY = {
+  glyph: "🕹️",
+  title: "Games moved to HighScore",
+  body: "Same account. Everything's there.",
+};
+
 /**
- * HighScore hand-off for inbound games links (`/g/:token`) — the only games
- * surface left in Workshop. Pushes the iOS app first wherever the user is on
- * an iPhone (native build or iOS browser); desktop / Android get
- * highscore.live.
+ * HighScore hand-off for inbound links to surfaces that moved there: play
+ * links (`/g/:token`) and friend invites (`/friends/accept/:token`). Pushes
+ * the iOS app first wherever the user is on an iPhone (native build or iOS
+ * browser); desktop / Android get highscore.live.
  */
-export function GamesMovedScreen({ target, onCancel }: GamesMovedScreenProps) {
+export function GamesMovedScreen({ target, onCancel, copy = GAMES_COPY }: GamesMovedScreenProps) {
   // Primary = the push. Secondary = the escape hatch for people who already
   // have the app (native) or who'd rather use the web (iOS browser).
   let primary: { label: string; onPress: () => void };
@@ -39,12 +47,12 @@ export function GamesMovedScreen({ target, onCancel }: GamesMovedScreenProps) {
   return (
     <Screen style={styles.root} testID="games-moved">
       <View style={styles.body}>
-        <Text style={styles.glyph}>🕹️</Text>
+        <Text style={styles.glyph}>{copy.glyph}</Text>
         <Text variant="title" style={styles.title}>
-          Games moved to HighScore
+          {copy.title}
         </Text>
         <Text tone="secondary" style={styles.copy}>
-          Same account. Everything's there.
+          {copy.body}
         </Text>
         <Button
           label={primary.label}

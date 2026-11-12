@@ -9,6 +9,7 @@ import { fetchListDetail, fetchListPreview, markListRead } from "../../../../../
 import { useAuth } from "../../../../../src/hooks/useAuth";
 import { ListDetail } from "../../../../../src/screens/ListDetail";
 import { ListPublicLanding } from "../../../../../src/screens/ListPublicLanding";
+import { useJoinList } from "../../../../../src/screens/useJoinList";
 
 /**
  * Thin route wrapper around `ListDetail`. Loads the list metadata + members
@@ -48,10 +49,21 @@ export default function ListDetailRoute() {
     },
   });
 
+  // The preview's `viewer` block depends on who is asking, so signed-in and
+  // signed-out answers are cached apart; otherwise a preview cached before
+  // sign-in keeps showing "Sign in to join" afterwards.
   const previewQuery = useQuery({
-    queryKey: ["lists", "preview", id ?? ""],
+    queryKey: ["lists", "preview", id ?? "", token ? "viewer" : "anonymous"],
     queryFn: () => fetchListPreview(id ?? "", token),
     enabled: !!id,
+  });
+
+  // A signed-in non-member on a `join` list can join right here (0.4); the
+  // route then re-renders as the member view once the detail refetches.
+  const onJoin = useJoinList({
+    preview: previewQuery.data?.preview,
+    token,
+    onJoined: () => {},
   });
 
   // Mark this list as read whenever the route mounts (and re-mounts on
@@ -103,7 +115,11 @@ export default function ListDetailRoute() {
 
   if (previewQuery.data) {
     return (
-      <ListPublicLanding preview={previewQuery.data.preview} viewer={previewQuery.data.viewer} />
+      <ListPublicLanding
+        preview={previewQuery.data.preview}
+        viewer={previewQuery.data.viewer}
+        onJoin={onJoin}
+      />
     );
   }
 
