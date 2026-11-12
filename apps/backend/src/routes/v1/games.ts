@@ -795,11 +795,11 @@ gameRoutes.get("/:id/leaderboard", async (c) => {
 const sendNudgeSchema = z.object({ userId: uuidSchema, periodKey: periodKeySchema });
 
 const NUDGE_REFUSALS: Record<GameNudgeRefusal, string> = {
-  not_played: "Post your score before pinging a friend.",
+  not_played: "Post your score before poking a friend.",
   friend_not_played: "They haven't played this one today.",
   unreachable: "They haven't enabled HighScore notifications.",
-  already_nudged: "You already pinged them on this game today.",
-  daily_limit: "You're out of pings for today.",
+  already_nudged: "You already poked them on this game today.",
+  daily_limit: "You're out of pokes for today.",
 };
 
 /**
@@ -814,8 +814,8 @@ gameRoutes.post("/:id/nudges", async (c) => {
   const parsed = await parseJsonBody(c, sendNudgeSchema);
   if (!parsed.ok) return parsed.response;
   const { userId: recipientId, periodKey } = parsed.data;
-  if (recipientId === userId) return err(c, "VALIDATION", "you can't ping yourself");
-  if (!isNudgeablePeriod(periodKey)) return err(c, "VALIDATION", "pings are for today only");
+  if (recipientId === userId) return err(c, "VALIDATION", "you can't poke yourself");
+  if (!isNudgeablePeriod(periodKey)) return err(c, "VALIDATION", "pokes are for today only");
 
   const [game] = await getDb().select().from(games).where(eq(games.id, gameId.data)).limit(1);
   if (!game) return err(c, "NOT_FOUND", "game not found");

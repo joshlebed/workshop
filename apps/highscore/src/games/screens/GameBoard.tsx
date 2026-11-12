@@ -267,8 +267,8 @@ export default function GameBoard() {
       );
       showToast(
         data.delivered
-          ? { message: `Pinged ${name}`, tone: "success" }
-          : { message: `Ping sent, but it may not reach ${name}`, tone: "default" },
+          ? { message: `You poked ${name}`, tone: "success" }
+          : { message: `Poke sent, but it may not reach ${name}`, tone: "default" },
       );
     },
     onError: (e, { name, periodKey }) => {
@@ -276,7 +276,7 @@ export default function GameBoard() {
         e instanceof ApiError ? (e.details as { reason?: unknown } | undefined)?.reason : null;
       // Notifications off is information, not a failure: say whose, quietly.
       showToast({
-        message: nudgeRefusalMessage(reason, name, errorMessage(e, "Couldn't send that ping")),
+        message: nudgeRefusalMessage(reason, name, errorMessage(e, "Couldn't send that poke")),
         tone: reason === "unreachable" ? "default" : "danger",
       });
       // A refusal means the board's nudge state is stale (limit hit elsewhere…).
@@ -587,10 +587,10 @@ export default function GameBoard() {
                       nudgeMutation.isPending && nudgeMutation.variables?.userId === entry.userId
                     }
                     onNudge={() => {
-                      // Out for the day: the bolt stays tappable and says so,
+                      // Out for the day: the hand stays tappable and says so,
                       // without a request the server would only refuse.
                       if (nudgeRowStatus(nudgeState, entry.userId) === "spent") {
-                        showToast({ message: "You're out of pings for today", tone: "default" });
+                        showToast({ message: "You're out of pokes for today", tone: "default" });
                         return;
                       }
                       nudgeMutation.mutate({
@@ -613,7 +613,7 @@ export default function GameBoard() {
               })}
               {nudgeLabel ? (
                 <View style={styles.nudgeAllowance} testID="game-board-nudge-allowance">
-                  <PixelIcon name="zap" size={16} color={tokens.text.muted} />
+                  <PixelIcon name="pointer" size={16} color={tokens.text.muted} />
                   <Text variant="caption" tone="muted">
                     {nudgeLabel}
                   </Text>
@@ -807,13 +807,13 @@ function EntryRow({
             <PixelIcon name="pencil" size={16} color={tokens.text.secondary} />
           </Pressable>
         ) : null}
-        {/* Nudge: a quiet bolt beside the score, sized like the edit pencil. It
+        {/* Nudge (a "poke"): a quiet pointing hand beside the score, sized like the edit pencil. It
             lights up once sent; with none left it still takes a tap, which
             toasts that the day's allowance is used up. */}
         {nudge !== "hidden" ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={nudge === "sent" ? `Pinged ${name}` : `Ping ${name}`}
+            accessibilityLabel={nudge === "sent" ? `Poked ${name}` : `Poke ${name}`}
             aria-disabled={nudge === "sent" || nudgePending}
             onPress={onNudge}
             disabled={nudge === "sent" || nudgePending}
@@ -828,7 +828,7 @@ function EntryRow({
               <ActivityIndicator size="small" color={tokens.text.secondary} />
             ) : (
               <PixelIcon
-                name="zap"
+                name="pointer"
                 size={16}
                 color={nudge === "sent" ? tokens.neon.yellow : tokens.text.secondary}
               />

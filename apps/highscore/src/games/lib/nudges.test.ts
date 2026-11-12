@@ -28,17 +28,13 @@ describe("nudgeRowStatus", () => {
 });
 
 describe("nudgeAllowanceLabel", () => {
-  it("says what the bolt does and what is left", () => {
-    expect(nudgeAllowanceLabel(state({ remaining: 4 }), 3)).toBe(
-      "Ping a friend to come see the board · 4 left today",
-    );
-    expect(nudgeAllowanceLabel(state({ remaining: 0 }), 3)).toBe("No pings left today");
-    expect(nudgeAllowanceLabel(state({ limit: null, remaining: null }), 3)).toBe(
-      "Ping a friend to come see the board",
-    );
+  it("says what the hand does and what is left", () => {
+    expect(nudgeAllowanceLabel(state({ remaining: 4 }), 3)).toBe("Poke a friend · 4 left today");
+    expect(nudgeAllowanceLabel(state({ remaining: 0 }), 3)).toBe("No pokes left today");
+    expect(nudgeAllowanceLabel(state({ limit: null, remaining: null }), 3)).toBe("Poke a friend");
   });
 
-  it("is silent when there is nobody to ping", () => {
+  it("is silent when there is nobody to poke", () => {
     expect(nudgeAllowanceLabel(null, 3)).toBeNull();
     expect(nudgeAllowanceLabel(state(), 0)).toBeNull();
   });
@@ -49,8 +45,8 @@ describe("nudgeRefusalMessage", () => {
     expect(nudgeRefusalMessage("unreachable", "Renata", "x")).toBe(
       "Renata hasn't enabled HighScore notifications",
     );
-    expect(nudgeRefusalMessage("daily_limit", "Renata", "You're out of pings for today.")).toBe(
-      "You're out of pings for today.",
+    expect(nudgeRefusalMessage("daily_limit", "Renata", "You're out of pokes for today.")).toBe(
+      "You're out of pokes for today.",
     );
   });
 });

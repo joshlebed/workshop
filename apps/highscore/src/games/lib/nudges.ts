@@ -25,16 +25,16 @@ export function nudgeRowStatus(
 
 /**
  * The footer line under the board — the one place that says what the bare
- * bolt on each row does. Null when there is no friend to send one to.
+ * hand on each row does. Null when there is no friend to send one to.
  */
 export function nudgeAllowanceLabel(
   state: GameNudgeState | null | undefined,
   friendCount: number,
 ): string | null {
   if (!state || friendCount === 0) return null;
-  if (state.remaining === null) return "Ping a friend to come see the board";
-  if (state.remaining <= 0) return "No pings left today";
-  return `Ping a friend to come see the board · ${state.remaining} left today`;
+  if (state.remaining === null) return "Poke a friend";
+  if (state.remaining <= 0) return "No pokes left today";
+  return `Poke a friend · ${state.remaining} left today`;
 }
 
 /** The toast for a refused send; `unreachable` names the friend. */

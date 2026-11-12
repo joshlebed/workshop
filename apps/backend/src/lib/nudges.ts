@@ -1,4 +1,4 @@
-// Nudges (shown to players as a "ping"): after posting a score, a player
+// Nudges (shown to players as a "poke", after the old Facebook one): after posting a score, a player
 // calls back a friend who played that game earlier that day to come and see
 // the board, and the friend gets a push. `sendGameNudge` owns every
 // rule (friends only, both played, the friend is reachable, once per friend
@@ -44,8 +44,8 @@ function buildNudgePushMessages(
   const name = sender.displayName?.trim() || "A friend";
   return tokens.map((to) => ({
     to,
-    title: `${name} played ${game.title}`,
-    body: "Scores are in. See where you stand now.",
+    title: `${name} poked you`,
+    body: `Scores are in on ${game.title}. See where you stand.`,
     data: {
       kind: "nudge",
       userId: sender.id,
