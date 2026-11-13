@@ -798,7 +798,7 @@ const NUDGE_REFUSALS: Record<GameNudgeRefusal, string> = {
   not_played: "Post your score before poking a friend.",
   friend_not_played: "They haven't played this one today.",
   sender_unreachable: "Turn on notifications to poke friends.",
-  unreachable: "They haven't enabled HighScore notifications.",
+  unreachable: "They need to enable notifications to receive pokes.",
   push_failed: "Failed to send poke",
   already_nudged: "You already poked them on this game today.",
   daily_limit: "You're out of pokes for today.",

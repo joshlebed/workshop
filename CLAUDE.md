@@ -349,10 +349,11 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   (`limit`, `remaining`, `nudgedUserIds`, `reachableUserIds`, `canSend`), present only when the
   viewer has played, and `GameBoard` renders from it via `src/games/lib/nudges.ts`: a bare
   right-pointing hand with a cuff (the `poke` glyph: ours, the old Facebook poke's silhouette as
-  an outline in the set's style) on the row of every friend who can be poked; the footer line is
-  the only label. A viewer with `canSend: false` still sees the hands: the tap runs
-  `ensurePushRegistered` (the OS permission dialog, then the token post) and pokes only if that
-  comes back `ready`. With none left the hands stay too; a tap toasts "You're out of pokes for
+  an outline in the set's style) on the row of every friend on the board; the footer line is
+  the only label. A tap checks, in order: the viewer's own device (`canSend: false` runs
+  `ensurePushRegistered` — the OS permission dialog, then the token post — and goes on only if
+  that comes back `ready`), then the friend's ("<name> doesn't have push notifications…", so
+  the viewer can tell them to turn notifications on), then the allowance. With none left the hands stay too; a tap toasts "You're out of pokes for
   today" client-side (the server still 429s). "Has a `push_tokens` row" is the only signal there
   is: a user who later switches notifications off in iOS Settings keeps their row and silently
   receives nothing. Like every push path it goes through `sendExpoPushMessages`, so **stub

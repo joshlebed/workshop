@@ -18,9 +18,11 @@ const state = (over: Partial<GameNudgeState> = {}): GameNudgeState => ({
 });
 
 describe("nudgeRowStatus", () => {
-  it("hides the control without state or for a friend with no device", () => {
+  it("hides the control without state, and flags a friend with no device", () => {
     expect(nudgeRowStatus(undefined, "a")).toBe("hidden");
-    expect(nudgeRowStatus(state(), "c")).toBe("hidden");
+    expect(nudgeRowStatus(state(), "c")).toBe("unreachable");
+    // Notifications off outranks an empty allowance: it's the more useful thing to say.
+    expect(nudgeRowStatus(state({ remaining: 0 }), "c")).toBe("unreachable");
   });
 
   it("is available, then sent, and spent once the allowance is gone", () => {
@@ -42,16 +44,20 @@ describe("nudgeRowStatus", () => {
 
 describe("nudgeAllowanceLabel", () => {
   it("says what the hand does and what is left", () => {
-    expect(nudgeAllowanceLabel(state({ remaining: 4 }))).toBe("Poke a friend · 4 left today");
-    expect(nudgeAllowanceLabel(state({ remaining: 0 }))).toBe("No pokes left today");
-    expect(nudgeAllowanceLabel(state({ limit: null, remaining: null }))).toBe(
+    expect(nudgeAllowanceLabel(state({ remaining: 4 }), 3)).toBe("Poke a friend · 4 left today");
+    expect(nudgeAllowanceLabel(state({ remaining: 0 }), 3)).toBe("No pokes left today");
+    expect(nudgeAllowanceLabel(state({ limit: null, remaining: null }), 3)).toBe(
       "Poke a friend · ∞ left today",
     );
   });
 
   it("is silent when there is nobody to poke", () => {
-    expect(nudgeAllowanceLabel(null)).toBeNull();
-    expect(nudgeAllowanceLabel(state({ reachableUserIds: [] }))).toBeNull();
+    expect(nudgeAllowanceLabel(null, 3)).toBeNull();
+    expect(nudgeAllowanceLabel(state(), 0)).toBeNull();
+    // Friends with notifications off still count: their hands show.
+    expect(nudgeAllowanceLabel(state({ reachableUserIds: [] }), 2)).toBe(
+      "Poke a friend · 5 left today",
+    );
   });
 });
 
@@ -62,13 +68,13 @@ describe("messages", () => {
       "Turn on notifications for HighScore in Settings to poke friends",
     );
     expect(pokeBlockedMessage("unsupported")).toBe(
-      "Poking needs notifications on in the HighScore iPhone app",
+      "Download the HighScore iPhone app and enable notifications to send pokes",
     );
   });
 
   it("maps the server's refusals, else keeps the fallback", () => {
     expect(nudgeRefusalMessage("unreachable", "Renata", "x")).toBe(
-      "Renata hasn't enabled HighScore notifications",
+      "Renata doesn't have push notifications. They need to enable notifications to receive pokes.",
     );
     expect(nudgeRefusalMessage("sender_unreachable", "Renata", "x")).toBe(
       "Turn on notifications to poke friends",

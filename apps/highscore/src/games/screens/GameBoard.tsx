@@ -50,6 +50,7 @@ import { askScoreDirection } from "../lib/askScoreDirection";
 import { formatGameDateLabel, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
 import {
+  friendUnreachableMessage,
   type NudgeRowStatus,
   nudgeAllowanceLabel,
   nudgeRefusalMessage,
@@ -259,6 +260,7 @@ export default function GameBoard() {
   const nudgeMutation = useMutation({
     mutationFn: async ({
       userId,
+      name,
       periodKey,
     }: {
       userId: string;
@@ -266,7 +268,7 @@ export default function GameBoard() {
       periodKey: string;
     }) => {
       if (!gameId) throw new Error("missing game id");
-      // Poking needs notifications on this side too. If this account has no
+      // Poking needs notifications on this side first. If this account has no
       // device yet, the tap is the moment to ask the OS for them.
       const key = queryKeys.games.leaderboard(gameId, periodKey);
       const board = queryClient.getQueryData<GameLeaderboardResponse>(key);
@@ -278,6 +280,14 @@ export default function GameBoard() {
           b?.nudges ? { ...b, nudges: { ...b.nudges, canSend: true } } : b,
         );
       }
+      // Then the friend's side, then the day's allowance: both are known
+      // from the board, so say so without a request the server would refuse.
+      const status = nudgeRowStatus(
+        queryClient.getQueryData<GameLeaderboardResponse>(key)?.nudges,
+        userId,
+      );
+      if (status === "unreachable") throw new PokeBlocked(friendUnreachableMessage(name));
+      if (status === "spent") throw new PokeBlocked("You're out of pokes for today");
       return sendGameNudge(gameId, { userId, periodKey }, token);
     },
     onSuccess: (data, { userId, name, periodKey }) => {
@@ -292,7 +302,8 @@ export default function GameBoard() {
       showToast({ message: `You poked ${name}`, tone: "success" });
     },
     onError: (e, { name, periodKey }) => {
-      // Notifications are off on this side: say how to fix it, nothing was sent.
+      // Known before asking the server (notifications off on either side, or
+      // out for the day): say so, nothing was sent.
       if (e instanceof PokeBlocked) {
         showToast({ message: e.message, tone: "default" });
         return;
@@ -367,7 +378,10 @@ export default function GameBoard() {
   const isToday = date === today;
   const entries = boardQuery.data?.entries ?? [];
   const nudgeState = boardQuery.data?.nudges ?? null;
-  const nudgeLabel = nudgeAllowanceLabel(nudgeState);
+  const nudgeLabel = nudgeAllowanceLabel(
+    nudgeState,
+    entries.filter((e) => e.userId !== user?.id).length,
+  );
   const myEntry = entries.find((e) => e.userId === user?.id);
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
   // The composer posts a first result OR edits an existing one — on any day
@@ -614,19 +628,13 @@ export default function GameBoard() {
                     nudgePending={
                       nudgeMutation.isPending && nudgeMutation.variables?.userId === entry.userId
                     }
-                    onNudge={() => {
-                      // Out for the day: the hand stays tappable and says so,
-                      // without a request the server would only refuse.
-                      if (nudgeRowStatus(nudgeState, entry.userId) === "spent") {
-                        showToast({ message: "You're out of pokes for today", tone: "default" });
-                        return;
-                      }
+                    onNudge={() =>
                       nudgeMutation.mutate({
                         userId: entry.userId,
                         name: entry.displayName?.trim() || "Your friend",
                         periodKey: date,
-                      });
-                    }}
+                      })
+                    }
                     onReport={() =>
                       setReportTarget({
                         userId: entry.userId,
