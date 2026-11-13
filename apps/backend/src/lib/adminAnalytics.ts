@@ -323,8 +323,15 @@ function versionAdoptionSegments(
     band.counts[entry.bucket] = (band.counts[entry.bucket] ?? 0) + 1;
     band.total += 1;
   }
+  // Keep what is in use now: rank by users over the last 7 buckets, then by
+  // the whole window. Ranking by the window alone folded a release from this
+  // week under versions that had been around for a month.
+  const recent = (counts: number[]) => counts.slice(-7).reduce((acc, v) => acc + v, 0);
   const ranked = [...bands.entries()].sort(
-    (a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0]),
+    (a, b) =>
+      recent(b[1].counts) - recent(a[1].counts) ||
+      b[1].total - a[1].total ||
+      a[0].localeCompare(b[0]),
   );
   const kept = ranked.slice(0, MAX_VERSION_SEGMENTS);
   const folded = ranked.slice(MAX_VERSION_SEGMENTS);
