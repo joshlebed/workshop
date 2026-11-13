@@ -180,6 +180,13 @@ this branch's backend lags it: to exercise a ported client feature that needs a 
 migrate, serve on :8787) and keep this branch's HighScore web on :8081. Pokes are documented in
 `main`'s root CLAUDE.md ("Nudges"); stub `EXPO_PUSH_URL` before tapping a hand.
 
+`1.0.0` was re-added to the list on 2026-11-13 (it had been dropped on 2026-09-16) so its last
+user gets the App Store update banner. Its native surface equals 1.0.1's: same lockfile and
+`package.json`, and an `@expo/fingerprint` diff of 9eaf5b4 vs 24c967c differs only in
+`expoConfig` and the `expo-image-picker` config plugin (Info.plist strings). The plan of record:
+banner first; about a week later the operator sets a minimum version and `1.0.0` / `1.0.1` leave
+the list.
+
 ## Preloaded natives (1.2.0 binary)
 
 The 1.2.0 binary ships native modules **no code imports yet**, so the features that need them can
