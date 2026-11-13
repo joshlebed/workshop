@@ -1,5 +1,5 @@
 // Ranked horizontal bars (label · bar · value) for small breakdowns such as
-// "versions in use". Bars are proportional to the largest row; the value is
+// "top routes". Bars are proportional to the largest row; the value is
 // a direct label in text tokens, the color only identifies the row's group.
 
 import { StyleSheet, View } from "react-native";

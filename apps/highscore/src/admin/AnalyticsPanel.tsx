@@ -16,7 +16,17 @@ import { useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { fetchAdminAnalytics } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
-import { BarChart, Button, bodyType, Card, Chip, HorizontalBars, Text, tokens } from "../theme";
+import {
+  BarChart,
+  Button,
+  bodyType,
+  Card,
+  Chip,
+  HorizontalBars,
+  StackedAreaChart,
+  Text,
+  tokens,
+} from "../theme";
 
 const CLIENT = "highscore" as const;
 
@@ -38,6 +48,7 @@ function formatGeneratedAt(iso: string): string {
 export function AnalyticsPanel() {
   const { token } = useAuth();
   const [range, setRange] = useState<AdminAnalyticsRange>(30);
+  const [versionMode, setVersionMode] = useState<"count" | "share">("count");
 
   const query = useQuery<AdminAnalyticsResponse>({
     queryKey: queryKeys.admin.analytics(CLIENT, range),
@@ -127,6 +138,36 @@ export function AnalyticsPanel() {
             </Card>
           ))}
 
+          {query.data.versionAdoption ? (
+            <Card style={styles.chartCard} testID="version-adoption">
+              <View style={styles.cardHeader}>
+                <Text variant="label">{query.data.versionAdoption.label}</Text>
+                <View style={styles.rangeRow}>
+                  <Chip
+                    label="Users"
+                    selected={versionMode === "count"}
+                    onPress={() => setVersionMode("count")}
+                    testID="version-adoption-mode-count"
+                  />
+                  <Chip
+                    label="Share"
+                    selected={versionMode === "share"}
+                    onPress={() => setVersionMode("share")}
+                    testID="version-adoption-mode-share"
+                  />
+                </View>
+              </View>
+              <StackedAreaChart
+                segments={query.data.versionAdoption.segments}
+                bucket={query.data.bucket}
+                mode={versionMode}
+              />
+              <Text variant="caption" tone="muted">
+                {query.data.versionAdoption.description}
+              </Text>
+            </Card>
+          ) : null}
+
           <Text variant="caption" tone="muted" style={styles.footer}>
             UTC {query.data.bucket === "week" ? "weeks" : "days"} · computed{" "}
             {formatGeneratedAt(query.data.generatedAt)}
@@ -151,6 +192,13 @@ const styles = StyleSheet.create({
     fontSize: tokens.font.size.xxl,
     lineHeight: 34,
     color: tokens.text.primary,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: tokens.space.sm,
   },
   chartCard: { gap: tokens.space.sm },
   chart: { paddingTop: tokens.space.md },

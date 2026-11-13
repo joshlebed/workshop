@@ -21,6 +21,7 @@ import {
   Screen,
   ScreenHeader,
   Skeleton,
+  StackedAreaChart,
   screenColumnStyle,
   Text,
   tokens,
@@ -49,6 +50,7 @@ function formatGeneratedAt(iso: string): string {
 export default function AdminAnalytics() {
   const { user, token } = useAuth();
   const [range, setRange] = useState<AdminAnalyticsRange>(30);
+  const [versionMode, setVersionMode] = useState<"count" | "share">("count");
   const isAdmin = Boolean(user?.isAdmin);
 
   const query = useQuery<AdminAnalyticsResponse>({
@@ -169,6 +171,36 @@ export default function AdminAnalytics() {
                 </Card>
               ))}
 
+              {query.data.versionAdoption ? (
+                <Card style={styles.chartCard} testID="version-adoption">
+                  <View style={styles.cardHeader}>
+                    <Text variant="label">{query.data.versionAdoption.label}</Text>
+                    <View style={styles.rangeRow}>
+                      <Chip
+                        label="Users"
+                        selected={versionMode === "count"}
+                        onPress={() => setVersionMode("count")}
+                        testID="version-adoption-mode-count"
+                      />
+                      <Chip
+                        label="Share"
+                        selected={versionMode === "share"}
+                        onPress={() => setVersionMode("share")}
+                        testID="version-adoption-mode-share"
+                      />
+                    </View>
+                  </View>
+                  <StackedAreaChart
+                    segments={query.data.versionAdoption.segments}
+                    bucket={query.data.bucket}
+                    mode={versionMode}
+                  />
+                  <Text variant="caption" tone="muted">
+                    {query.data.versionAdoption.description}
+                  </Text>
+                </Card>
+              ) : null}
+
               <Text variant="caption" tone="muted" style={styles.footer}>
                 UTC {query.data.bucket === "week" ? "weeks" : "days"} · computed{" "}
                 {formatGeneratedAt(query.data.generatedAt)}
@@ -197,6 +229,13 @@ const styles = StyleSheet.create({
   statGrid: { flexDirection: "row", flexWrap: "wrap", gap: tokens.space.sm },
   statTile: { flexGrow: 1, flexBasis: "30%", gap: tokens.space.xxs },
   statValue: { fontVariant: ["tabular-nums"] },
+  cardHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: tokens.space.sm,
+  },
   chartCard: { gap: tokens.space.sm },
   chart: { paddingTop: tokens.space.md },
   gap: { marginTop: tokens.space.sm },

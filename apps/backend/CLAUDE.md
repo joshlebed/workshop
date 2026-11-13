@@ -940,7 +940,7 @@ In-app dashboards: `GET /v1/admin/analytics` (admin-only; see the root CLAUDE.md
 serves DAU/MAU as distinct users who took an action that day (scores, games added,
 reactions, friendships for HighScore; items, lists, activity events, friendships for Workshop —
 `actionRows` in `lib/adminAnalytics.ts`), plus per-app content series; `user_activity_days`
-(any request) only feeds the versions-in-use breakdown. The CloudWatch log
+(any request) only feeds the version-adoption chart. The CloudWatch log
 below remains the source for request-level questions (latency, paths, errors).
 
 Every Lambda request emits one structured JSON line (`kind: "request"`) with
