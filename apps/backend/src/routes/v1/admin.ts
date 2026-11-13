@@ -14,6 +14,11 @@ import {
   sendAdminPush,
 } from "../../lib/adminPush.js";
 import {
+  createAlbumListSchema,
+  createListFromAlbumLibrary,
+  readAlbumLibrary,
+} from "../../lib/albumLibrary.js";
+import {
   clientReleaseQuerySchema,
   readClientRelease,
   updateClientReleaseSchema,
@@ -60,6 +65,28 @@ const analyticsQuerySchema = z.object({
       (ADMIN_ANALYTICS_RANGES as readonly number[]).includes(n),
     )
     .optional(),
+});
+
+/**
+ * Album lab (experiment): the caller's saved Spotify albums with the tags the
+ * lab clusters by. Real-admin gate like the rest of this file; the library
+ * returned is the session subject's, so it is empty while impersonating.
+ */
+adminRoutes.get("/album-library", async (c) => {
+  const denied = await requireRealAdmin(c);
+  if (denied) return denied;
+  return ok(c, { albums: await readAlbumLibrary(c.get("userId")) });
+});
+
+/** Album lab: save picked library albums as a Workshop album list. */
+adminRoutes.post("/album-library/lists", async (c) => {
+  const denied = await requireRealAdmin(c);
+  if (denied) return denied;
+  const parsed = await parseJsonBody(c, createAlbumListSchema);
+  if (!parsed.ok) return parsed.response;
+  const created = await createListFromAlbumLibrary(c.get("userId"), parsed.data);
+  if (!created) return err(c, "VALIDATION", "none of those albums are in your library");
+  return ok(c, created, 201);
 });
 
 /**

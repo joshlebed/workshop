@@ -1109,3 +1109,51 @@ export interface MarkActivityReadResponse {
 // surface. The legacy Lists-side leaderboard score shapes (`ItemScore`,
 // `LeaderboardEntry`, `ListScoresResponse`, …) were removed with the
 // `/v1/items/:id/scores` + `/v1/lists/:id/scores` bridge.
+
+/**
+ * One album in the admin-only album lab (`GET /v1/admin/album-library`): a
+ * Spotify album the user saved, plus the tags the lab groups and maps by.
+ * `genre`, `subgenre`, `energy` and `mood` are null until the album is tagged.
+ */
+export interface AlbumLibraryAlbum {
+  id: string;
+  name: string;
+  artists: string[];
+  year: number;
+  /** ISO timestamp of when the user saved it in Spotify. */
+  savedAt: string;
+  albumType: string;
+  trackCount: number;
+  label: string | null;
+  popularity: number | null;
+  imageUrl: string | null;
+  imageSmallUrl: string | null;
+  spotifyUrl: string;
+  genre: string | null;
+  subgenre: string | null;
+  vibes: string[];
+  /** 0 (still) to 100 (intense). */
+  energy: number | null;
+  /** 0 (dark) to 100 (bright). */
+  mood: number | null;
+  /** Community genre tags from MusicBrainz. */
+  tags: string[];
+  /** False when the tags were guessed from the artist, not this release. */
+  tagsKnown: boolean;
+}
+
+export interface AlbumLibraryResponse {
+  albums: AlbumLibraryAlbum[];
+}
+
+/** `POST /v1/admin/album-library/lists`: album ids in list order, first on top. */
+export interface CreateAlbumListRequest {
+  name: string;
+  albumIds: string[];
+}
+
+export interface CreateAlbumListResponse {
+  listId: string;
+  /** How many of the ids were in the library and became rows. */
+  added: number;
+}

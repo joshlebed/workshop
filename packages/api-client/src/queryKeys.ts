@@ -37,6 +37,8 @@ export const queryKeys = {
     /** `GET /v1/admin/analytics?client=…&range=…` — admin-only dashboard numbers. */
     analytics: (client: string, rangeDays: number) =>
       ["admin", "analytics", client, rangeDays] as const,
+    /** `GET /v1/admin/album-library` — the album lab's saved albums and tags. */
+    albumLibrary: ["admin", "albumLibrary"] as const,
     /** `GET /v1/admin/graph` — the HighScore friend graph for the admin users web. */
     graph: ["admin", "graph"] as const,
     /** `GET /v1/admin/client-release` — nudge values + who last set them. */
