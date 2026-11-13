@@ -339,6 +339,7 @@ function AuthGate() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="activity" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="admin/analytics" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="admin/albums" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="sign-in" />
         <Stack.Screen name="privacy" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="terms" options={{ animation: "slide_from_right" }} />

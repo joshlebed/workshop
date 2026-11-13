@@ -1279,3 +1279,49 @@ export const clientReleases = pgTable(
     ),
   }),
 );
+
+/**
+ * Album lab (admin-only experiment): Spotify albums with the genre / vibe
+ * tags the lab clusters by. One row per Spotify album id, shared by every
+ * user whose library holds it. `genre` … `tags_known` are NULL / empty until
+ * the album has been tagged; `tags_known = false` marks tags guessed from the
+ * artist rather than the release.
+ */
+export const spotifyAlbums = pgTable("spotify_albums", {
+  spotifyAlbumId: text("spotify_album_id").primaryKey(),
+  name: text("name").notNull(),
+  artists: jsonb("artists").$type<string[]>().notNull(),
+  releaseYear: integer("release_year").notNull(),
+  albumType: text("album_type").notNull(),
+  trackCount: integer("track_count").notNull(),
+  label: text("label"),
+  popularity: integer("popularity"),
+  imageUrl: text("image_url"),
+  imageSmallUrl: text("image_small_url"),
+  spotifyUrl: text("spotify_url").notNull(),
+  genre: text("genre"),
+  subgenre: text("subgenre"),
+  vibes: jsonb("vibes").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  energy: integer("energy"),
+  mood: integer("mood"),
+  tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  tagsKnown: boolean("tags_known").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+});
+
+/** Album lab: which albums a user has saved in Spotify, and when. */
+export const spotifyLibraryAlbums = pgTable(
+  "spotify_library_albums",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    spotifyAlbumId: text("spotify_album_id")
+      .notNull()
+      .references(() => spotifyAlbums.spotifyAlbumId, { onDelete: "cascade" }),
+    savedAt: timestamp("saved_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.spotifyAlbumId] }),
+  }),
+);

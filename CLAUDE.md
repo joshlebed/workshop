@@ -320,6 +320,21 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   `@workshop/ui`; the two screens are intentionally per-app copies. Workshop web persists the
   react-query cache to localStorage, so a new response field must be read as optional.
 
+- **The album lab (`/admin/albums` in Workshop, Settings → Admin → Album lab) is an admin-only
+  experiment over an imported Spotify library.** `spotify_albums` (one row per Spotify album id:
+  metadata plus `genre` / `subgenre` / `vibes` / `energy` / `mood` / MusicBrainz `tags`) and
+  `spotify_library_albums` (user × album × `saved_at`) are read by `GET /v1/admin/album-library`
+  and written only by `ops:import-album-library` (`apps/backend/scripts/import-album-library.ts`,
+  replaces one user's library from a JSON file). There is no in-app Spotify connection: the
+  backend's Spotify client is app-level (public playlists only), and Spotify caps a
+  development-mode app at 5 users, so the library and the tags were collected outside the app
+  (genre / vibe / energy / mood are a model's judgment; `tags_known = false` = guessed from the
+  artist). `POST /v1/admin/album-library/lists` saves picked albums as a `spotify_album` list;
+  it exists because album lists refuse manual adds (`POST /v1/lists/:id/items` 400s). Both
+  routes use the real-admin gate. The client is `apps/workshop/src/screens/albumLab/`: `model.ts`
+  holds every rule (search, shelves, similarity, the Dig queue, the map layout) and is
+  unit-tested; the Map is plain views in nested scroll views, so it needs no native module.
+
 - **HighScore's admin surface is one dashboard, `/admin`** (ProfileMenu → "Admin dashboard"),
   with tabs in the URL: `?tab=overview` (analytics, `src/admin/AnalyticsPanel.tsx`),
   `?tab=users` (the friend graph + `&view=force|clusters|tree|list` + `&user=<id>`), and

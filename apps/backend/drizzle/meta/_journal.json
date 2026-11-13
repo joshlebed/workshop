@@ -428,6 +428,13 @@
       "when": 1794533200501,
       "tag": "0060_users_display_name_check",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794611826912,
+      "tag": "0061_album_library",
+      "breakpoints": true
     }
   ]
 }

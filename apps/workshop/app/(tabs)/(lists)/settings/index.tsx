@@ -178,6 +178,14 @@ export default function Settings() {
                 testID="open-admin-analytics"
               />
             ) : null}
+            {user?.isAdmin ? (
+              <ListRow
+                title="Album lab"
+                chevron
+                onPress={() => router.push("/admin/albums")}
+                testID="open-album-lab"
+              />
+            ) : null}
             <AdminImpersonationRow onSessionChanged={onSessionChanged} />
           </Group>
         ) : null}
