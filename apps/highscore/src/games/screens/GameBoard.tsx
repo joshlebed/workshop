@@ -275,7 +275,12 @@ export default function GameBoard() {
       if (board?.nudges && !board.nudges.canSend) {
         const readiness =
           token && user ? await ensurePushRegistered(token, user.id) : "unsupported";
-        if (readiness !== "ready") throw new PokeBlocked(pokeBlockedMessage(readiness));
+        if (readiness !== "ready") {
+          // No push on this device: on web that means "get the app", in an
+          // installed app it means the binary predates notifications.
+          const why = readiness === "unsupported" && Platform.OS !== "web" ? "outdated" : readiness;
+          throw new PokeBlocked(pokeBlockedMessage(why));
+        }
         queryClient.setQueryData<GameLeaderboardResponse>(key, (b) =>
           b?.nudges ? { ...b, nudges: { ...b.nudges, canSend: true } } : b,
         );

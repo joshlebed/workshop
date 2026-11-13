@@ -45,8 +45,12 @@ export function nudgeAllowanceLabel(
  * too. Keyed by what asking the device for them came back with.
  */
 export function pokeBlockedMessage(
-  readiness: "denied" | "dismissed" | "unsupported" | "sender_unreachable",
+  readiness: "denied" | "dismissed" | "unsupported" | "outdated" | "sender_unreachable",
 ): string {
+  // An installed app too old to have notifications: updating is the fix.
+  if (readiness === "outdated") {
+    return "Update HighScore from the App Store and enable notifications to send pokes";
+  }
   if (readiness === "denied") {
     return "Turn on notifications for HighScore in Settings to poke friends";
   }

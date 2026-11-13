@@ -67,6 +67,9 @@ describe("messages", () => {
     expect(pokeBlockedMessage("denied")).toBe(
       "Turn on notifications for HighScore in Settings to poke friends",
     );
+    expect(pokeBlockedMessage("outdated")).toBe(
+      "Update HighScore from the App Store and enable notifications to send pokes",
+    );
     expect(pokeBlockedMessage("unsupported")).toBe(
       "Download the HighScore iPhone app and enable notifications to send pokes",
     );
