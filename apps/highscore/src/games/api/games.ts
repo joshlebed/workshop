@@ -13,6 +13,7 @@ import type {
   GameShareLinkPreview,
   GameShareLinkResponse,
   GamesResponse,
+  SendGameNudgeResponse,
   SetGameScoreSpecResponse,
   UpsertGameScoreRequest,
   UpsertGameScoreResponse,
@@ -90,6 +91,20 @@ export function moveGame(
   return apiRequest<{ position: number | null; rebalanced: boolean }>({
     method: "POST",
     path: `/v1/games/${gameId}/move`,
+    body,
+    token,
+  });
+}
+
+/** `POST /v1/games/:id/nudges` — nudge a friend who also played that day. */
+export function sendGameNudge(
+  gameId: string,
+  body: { userId: string; periodKey: string },
+  token: string | null,
+): Promise<SendGameNudgeResponse> {
+  return apiRequest<SendGameNudgeResponse>({
+    method: "POST",
+    path: `/v1/games/${gameId}/nudges`,
     body,
     token,
   });

@@ -34,8 +34,9 @@ export const PIXEL_ICON_PATHS = {
   users: [
     "M5 2h6v2H5zm10 0h4v2h-4zM5 10h6v2H5zm10 0h4v2h-4zm4-6h2v6h-2zm-8 0h2v6h-2zM3 4h2v6H3zM0 18h2v4H0zm14 0h2v4h-2zm8 0h2v4h-2zM4 14h8v2H4zm12 0h4v2h-4zM2 16h2v2H2zm10 0h2v2h-2zm8 0h2v2h-2z",
   ],
+  // pixelarticons `pen-square` (a pen over a square): the edit control.
   pencil: [
-    "M4 16H6V18H8V20H10V22H2V14H4V16ZM12 20H10V18H12V20ZM14 18H12V16H14V18ZM10 16H8V14H10V16ZM16 16H14V14H16V16ZM6 14H4V12H6V14ZM12 14H10V12H12V14ZM18 14H16V12H18V14ZM8 12H6V10H8V12ZM14 12H12V10H14V12ZM20 12H18V10H20V12ZM10 10H8V8H10V10ZM18 10H16V8H18V10ZM22 10H20V8H22V10ZM12 8H10V6H12V8ZM16 8H14V6H16V8ZM20 8H18V6H20V8ZM14 6H12V4H14V6ZM18 6H16V4H18V6ZM16 4H14V2H16V4Z",
+    "M5 3h6v2H5zM3 5h2v14H3zm16 8h2v6h-2zM5 19h14v2H5zm3-9h2v6H8zm2 4h4v2h-4zm0-6h2v2h-2zm2-2h2v2h-2zm2-2h2v2h-2zm2-2h2v2h-2zm2 2h2v2h-2zm2 2h2v2h-2zm-2 2h2v2h-2zm-2 2h2v2h-2zm-2 2h2v2h-2zm-4 0h2v2h-2z",
   ],
   logout: [
     "M8 11h12v2H8zm8-2h2v2h-2z",
@@ -44,7 +45,11 @@ export const PIXEL_ICON_PATHS = {
   mail: [
     "M6 8h2v2H6zm2 2h2v2H8zm10-2h-2v2h2zm-2 2h-2v2h2zm-6 2h4v2h-4zM2 6h2v12H2zm18 0h2v12h-2zM4 4h16v2H4zm0 14h16v2H4z",
   ],
-  trash: ["M18 22H6V20H18V22ZM9 6H15V4H17V6H22V8H20V20H18V8H6V20H4V8H2V6H7V4H9V6ZM15 4H9V2H15V4Z"],
+  // pixelarticons `trash` plus two bars inside the can (ours, on the grid).
+  trash: [
+    "M18 22H6V20H18V22ZM9 6H15V4H17V6H22V8H20V20H18V8H6V20H4V8H2V6H7V4H9V6ZM15 4H9V2H15V4Z",
+    "M9 11h2v6H9zM13 11h2v6h-2z",
+  ],
   "external-link": [
     "M11 5H5v2h6V5ZM5 7H3v12h2V7Zm12 12H5v2h12v-2Zm2-6h-2v6h2v-6Zm-8 0H9v2h2v-2Zm2-2h-2v2h2v-2Zm2-2h-2v2h2V9Zm2-2h-2v2h2V7Zm2-2h-2v2h2V5Zm2-2h-2v8h2V3Z",
     "M21 3h-8v2h8V3Z",
@@ -98,6 +103,12 @@ export const PIXEL_ICON_PATHS = {
   ],
   "chevron-up": [
     "M13 8h-2v2h2V8Zm-2 2H9v2h2v-2Zm4 0h-2v2h2v-2Zm-6 2H7v2h2v-2Zm8 0h-2v2h2v-2ZM7 14H5v2h2v-2Zm12 0h-2v2h2v-2Z",
+  ],
+  // The poke: a hand pointing right with a sleeve cuff — the old Facebook
+  // poke's silhouette, redrawn as an outline in the set's own style (2-unit
+  // pixels, one-pixel stroke). Ours; no stock glyph points right.
+  poke: [
+    "M10 4h12v2H10zM8 6h2v2H8zM22 6h2v2H22zM2 8h2v2H2zM6 8h2v2H6zM16 8h6v2H16zM2 10h2v2H2zM6 10h2v2H6zM16 10h2v2H16zM2 12h2v2H2zM6 12h2v2H6zM16 12h2v2H16zM2 14h2v2H2zM6 14h2v2H6zM14 14h2v2H14zM2 16h2v2H2zM6 16h2v2H6zM14 16h2v2H14zM2 18h2v2H2zM8 18h6v2H8z",
   ],
   pause: ["M10 20H4V4h6v16Zm8-16v16h-6V4h6Zm-4 2v12h2V6h-2ZM6 18h2V6H6v12Z"],
 } as const;
