@@ -5,11 +5,8 @@ import { getDb } from "../../db/client.js";
 import { type DbUser, letterboxdWatchlistFilms, userFlags, users } from "../../db/schema.js";
 import { deleteUserAccount } from "../../lib/accountDeletion.js";
 import { isAdminUser, userLabel } from "../../lib/admin.js";
-import {
-  containsObjectionableContent,
-  OBJECTIONABLE_CONTENT_MESSAGE,
-} from "../../lib/contentFilter.js";
 import { notifyDiscord } from "../../lib/discord.js";
+import { displayNameSchema } from "../../lib/displayName.js";
 import { logger } from "../../lib/logger.js";
 import { notifyLetterboxdConnected, notifySessionsRevoked } from "../../lib/opsNotifications.js";
 import {
@@ -34,16 +31,6 @@ import { rateLimit } from "../../middleware/rate-limit.js";
 export const userRoutes = new Hono();
 export const publicUserRoutes = new Hono();
 userRoutes.use("*", requireAuth);
-
-// Display names: stripped, 1–40 chars, no leading/trailing whitespace,
-// no embedded newlines. Permissive on character set — emoji + non-Latin OK.
-export const displayNameSchema = z
-  .string()
-  .transform((s) => s.trim())
-  .pipe(z.string().min(1, "display name required").max(40, "display name too long"))
-  .refine((s) => !/[\r\n]/.test(s), "display name must be a single line")
-  // Guideline 1.2: names are the most-seen user content on a leaderboard.
-  .refine((s) => !containsObjectionableContent(s), OBJECTIONABLE_CONTENT_MESSAGE);
 
 // Profile pictures are stored inline as base64 `data:` URLs (same approach as
 // list cover photos — there's no object store yet). The picker crops to a

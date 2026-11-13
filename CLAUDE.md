@@ -206,6 +206,17 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   system `AppleAuthenticationButton` (`src/components/AppleSignInButton`) — Apple
   rejects hand-drawn logos (Guideline 4).
 
+- **`users.display_name` is NULL or a valid name, and one module owns the rule:
+  `apps/backend/src/lib/displayName.ts`.** Valid = trimmed, single line, 1–40 characters,
+  passes the content filter. A name the user types (`PATCH /v1/users/me`) goes through
+  `displayNameSchema` and 400s when bad; a name a provider supplies at sign-in (Apple
+  `fullName`, Google `name`, dev `displayName`) goes through `normalizeProviderDisplayName`,
+  which folds line breaks to a space, trims, and returns NULL for anything still invalid —
+  never truncates, never fails the sign-in. NULL is a real state: the auth response says
+  `needsDisplayName: true` and HighScore routes to `/onboarding/display-name`. The CHECK
+  `users_display_name_check` (migration 0059: non-blank, `char_length <= 40`) backstops it.
+  **Any new path that writes `display_name` must use one of the two.**
+
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do
   dynamic origin matching (Cloudflare Pages branch previews). When adding a verb:
