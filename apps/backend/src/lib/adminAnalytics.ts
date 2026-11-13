@@ -339,7 +339,11 @@ function versionAdoptionSegments(
     )
     .map(([key, band]) => ({
       key,
-      label: `${PLATFORM_LABELS[band.platform]} · ${band.version}`,
+      // Requests from before the app sent its platform and version headers.
+      label:
+        band.platform === "other" && band.version === "unknown"
+          ? "Unknown version"
+          : `${PLATFORM_LABELS[band.platform]} · ${band.version}`,
       platform: band.platform,
       points: points(band.counts),
     }));

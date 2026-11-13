@@ -1,17 +1,18 @@
 // Stacked area chart for the admin analytics dashboards: one band per series
-// over daily (or weekly) points, e.g. users per app version. Pure
-// react-native Views so it bundles on web and iOS without SVG or a chart
-// library: the plot is cut into narrow columns and each column draws the
-// bands at heights interpolated between the two nearest points, which reads
-// as straight band edges at this size.
+// over daily (or weekly) points, e.g. users per app version. No chart
+// library: the bands are drawn by `StackedAreaBands` (SVG on web, plain
+// Views on native, so iOS needs no native module).
 //
 // Follows the dataviz mark spec: a hairline surface gap between bands,
-// recessive gridlines, a legend (always, since there are several series), a
-// crosshair + tooltip on hover/press, and text in text tokens only. Colors
-// are the validated dark categorical palette, assigned in stack order.
+// recessive gridlines, a legend (always, since there are several series)
+// plus a direct label on each band still present at the right edge when the
+// chart is wide enough, a crosshair + tooltip on hover/press, and text in
+// text tokens only. Colors are the validated dark categorical palette,
+// assigned in stack order.
 
 import { useMemo, useState } from "react";
 import { type LayoutChangeEvent, Pressable, StyleSheet, View } from "react-native";
+import { type StackedAreaBand, StackedAreaBands } from "./StackedAreaBands";
 import { Text } from "./Text";
 import { tokens as theme } from "./tokens";
 
@@ -50,9 +51,17 @@ const SERIES_COLORS = [
 const SURFACE = theme.bg.canvas;
 
 const PLOT_HEIGHT = 180;
-const COLUMN = 3;
-const GUTTER = 36;
+/** Left gutter holding the y-axis values. */
+const AXIS = 40;
+/** Right gutter holding the direct band labels, on charts at least `LABELS_FROM` wide. */
+const LABELS = 132;
+const LABELS_FROM = 620;
+/** A band gets a direct label only when it is at least this tall at the right edge. */
+const LABEL_MIN_BAND = 15;
 const TOOLTIP_WIDTH = 200;
+const TICK_WIDTH = 56;
+// Drawn over the bands, so it has to read on both a fill and the surface.
+const GRIDLINE = "rgba(255,255,255,0.22)";
 
 function niceCeiling(max: number): number {
   if (max <= 0) return 1;
@@ -79,7 +88,7 @@ export function StackedAreaChart({
   height = PLOT_HEIGHT,
   testID,
 }: StackedAreaChartProps) {
-  const [width, setWidth] = useState(0);
+  const [rootWidth, setRootWidth] = useState(0);
   const [active, setActive] = useState<number | null>(null);
   const days = useMemo(() => segments[0]?.points.map((p) => p.day) ?? [], [segments]);
   const n = days.length;
@@ -106,30 +115,29 @@ export function StackedAreaChart({
     [segments, days, totals, mode, ceiling],
   );
 
-  // One entry per column: the px height of each band, from cumulative
-  // rounded boundaries so neighbouring columns line up without seams.
-  const columns = useMemo(() => {
-    if (width <= 0 || n === 0) return [];
-    const count = Math.ceil(width / COLUMN);
-    return Array.from({ length: count }, (_, c) => {
-      const t = n > 1 ? Math.min(1, ((c + 0.5) * COLUMN) / width) * (n - 1) : 0;
-      const i0 = Math.min(Math.floor(t), Math.max(0, n - 2));
-      const f = t - i0;
-      let cumulative = 0;
-      let previousPx = 0;
-      return fractions.map((series) => {
-        const a = series[i0] ?? 0;
-        const b = series[i0 + 1] ?? a;
-        cumulative += a + (b - a) * f;
-        const boundary = Math.round(Math.min(1, cumulative) * height);
-        const h = boundary - previousPx;
-        previousPx = boundary;
-        return h;
+  // Cumulative edges per band. A single point is doubled so it still spans
+  // the plot as a flat band.
+  const bands = useMemo<StackedAreaBand[]>(() => {
+    const running = days.map(() => 0);
+    return segments.map((s, index) => {
+      const lower = [...running];
+      const upper = running.map((base, i) => base + (fractions[index]?.[i] ?? 0));
+      upper.forEach((v, i) => {
+        running[i] = v;
       });
+      const span = (edge: number[]) => (edge.length === 1 ? [...edge, ...edge] : edge);
+      return {
+        key: s.key,
+        color: SERIES_COLORS[index % SERIES_COLORS.length] ?? theme.text.secondary,
+        lower: span(lower),
+        upper: span(upper),
+      };
     });
-  }, [width, n, fractions, height]);
+  }, [segments, days, fractions]);
 
-  const onPlotLayout = (e: LayoutChangeEvent) => setWidth(Math.floor(e.nativeEvent.layout.width));
+  const showLabels = rootWidth >= LABELS_FROM;
+  const width = Math.max(0, rootWidth - AXIS - (showLabels ? LABELS : 0));
+  const onLayout = (e: LayoutChangeEvent) => setRootWidth(Math.floor(e.nativeEvent.layout.width));
 
   if (segments.length === 0 || totals.every((t) => t === 0)) {
     return (
@@ -141,8 +149,27 @@ export function StackedAreaChart({
 
   const labelFor = (day: string) =>
     bucket === "week" ? `Week of ${shortDay(day)}` : shortDay(day);
-  const colorOf = (index: number) =>
-    SERIES_COLORS[index % SERIES_COLORS.length] ?? theme.text.secondary;
+  const colorOf = (index: number) => bands[index]?.color ?? theme.text.secondary;
+  // Evenly spaced date ticks, always including the first and last point.
+  const tickCount = Math.min(n, width >= 480 ? 6 : 3);
+  const ticks = [
+    ...new Set(
+      Array.from({ length: tickCount }, (_, k) =>
+        tickCount > 1 ? Math.round((k * (n - 1)) / (tickCount - 1)) : 0,
+      ),
+    ),
+  ];
+  // Direct labels for the bands still present at the right edge.
+  const endLabels = showLabels
+    ? bands.flatMap((band, index) => {
+        const top = band.upper[band.upper.length - 1] ?? 0;
+        const bottom = band.lower[band.lower.length - 1] ?? 0;
+        if ((top - bottom) * height < LABEL_MIN_BAND) return [];
+        return [
+          { index, label: segments[index]?.label ?? "", y: (1 - (top + bottom) / 2) * height },
+        ];
+      })
+    : [];
   const xOf = (index: number) => (n > 1 ? (index / (n - 1)) * width : width / 2);
   const activeDay = active !== null ? days[active] : undefined;
   const activeTotal = active !== null ? (totals[active] ?? 0) : 0;
@@ -150,7 +177,7 @@ export function StackedAreaChart({
     mode === "share" ? `${fraction * 100}%` : String(ceiling * fraction);
 
   return (
-    <View testID={testID} style={styles.root}>
+    <View testID={testID} style={styles.root} onLayout={onLayout}>
       <View style={styles.legend}>
         {segments.map((s, i) => (
           <View key={s.key} style={styles.legendItem}>
@@ -162,27 +189,8 @@ export function StackedAreaChart({
         ))}
       </View>
       <View style={[styles.plot, { height }]}>
-        <View style={styles.area} onLayout={onPlotLayout}>
-          {columns.map((heights, c) => (
-            <View
-              // biome-ignore lint/suspicious/noArrayIndexKey: columns are positional slices of the plot.
-              key={c}
-              pointerEvents="none"
-              style={[styles.column, { left: c * COLUMN }]}
-            >
-              {heights.map((h, s) =>
-                h > 0 ? (
-                  <View
-                    key={segments[s]?.key ?? s}
-                    style={[
-                      { height: h, backgroundColor: colorOf(s) },
-                      h >= 3 ? styles.bandEdge : null,
-                    ]}
-                  />
-                ) : null,
-              )}
-            </View>
-          ))}
+        <View style={[styles.area, { width }]}>
+          <StackedAreaBands width={width} height={height} bands={bands} surface={SURFACE} />
           {active !== null ? (
             <View pointerEvents="none" style={[styles.crosshair, { left: xOf(active) }]} />
           ) : null}
@@ -203,34 +211,48 @@ export function StackedAreaChart({
             ))}
           </View>
         </View>
-        {/* Recessive gridlines at ½ / max, labelled in the right gutter. */}
-        {[1, 0.5].map((fraction) =>
+        {/* Recessive gridlines at ½ / max, labelled in the left gutter. */}
+        {[1, 0.5, 0].map((fraction) =>
           mode === "share" || Number.isInteger(ceiling * fraction) ? (
             <View
               key={fraction}
               pointerEvents="none"
-              style={[
-                styles.gridline,
-                { top: height * (1 - fraction), borderTopColor: theme.border.subtle },
-              ]}
+              style={[styles.gridRow, { top: height * (1 - fraction) }]}
             >
               <Text variant="caption" tone="muted" style={styles.gridLabel}>
                 {gridLabel(fraction)}
               </Text>
+              <View
+                style={[
+                  styles.gridline,
+                  {
+                    width,
+                    borderTopColor: fraction === 0 ? theme.border.default : GRIDLINE,
+                  },
+                ]}
+              />
             </View>
           ) : null,
         )}
-        <View
-          pointerEvents="none"
-          style={[styles.gridline, { top: height, borderTopColor: theme.border.default }]}
-        />
+        {endLabels.map((e) => (
+          <View
+            key={segments[e.index]?.key ?? e.index}
+            pointerEvents="none"
+            style={[styles.endLabel, { left: AXIS + width + 8, top: e.y - 8 }]}
+          >
+            <View style={[styles.swatch, { backgroundColor: colorOf(e.index) }]} />
+            <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.endLabelText}>
+              {e.label}
+            </Text>
+          </View>
+        ))}
         {activeDay && active !== null ? (
           <View
             pointerEvents="none"
             style={[
               styles.tooltip,
               {
-                left: xOf(active),
+                left: AXIS + xOf(active),
                 transform: [{ translateX: active > n / 2 ? -(TOOLTIP_WIDTH + 8) : 8 }],
               },
             ]}
@@ -257,15 +279,24 @@ export function StackedAreaChart({
         ) : null}
       </View>
       <View style={styles.axis}>
-        <Text variant="caption" tone="muted">
-          {days[0] ? shortDay(days[0]) : ""}
-        </Text>
-        <Text variant="caption" tone="muted">
-          {n > 2 ? shortDay(days[Math.floor(n / 2)] ?? "") : ""}
-        </Text>
-        <Text variant="caption" tone="muted">
-          {days[n - 1] ? shortDay(days[n - 1] ?? "") : ""}
-        </Text>
+        {ticks.map((i) => (
+          <Text
+            key={i}
+            variant="caption"
+            tone="muted"
+            numberOfLines={1}
+            style={[
+              styles.tick,
+              i === 0
+                ? { left: AXIS, textAlign: "left" }
+                : i === n - 1
+                  ? { left: AXIS + width - TICK_WIDTH, textAlign: "right" }
+                  : { left: AXIS + xOf(i) - TICK_WIDTH / 2 },
+            ]}
+          >
+            {shortDay(days[i] ?? "")}
+          </Text>
+        ))}
       </View>
     </View>
   );
@@ -277,22 +308,7 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   swatch: { width: 10, height: 10, borderRadius: theme.radius.sm },
   plot: { position: "relative", width: "100%", marginTop: 20 },
-  area: {
-    position: "absolute",
-    left: 0,
-    right: GUTTER,
-    top: 0,
-    bottom: 0,
-    overflow: "hidden",
-  },
-  column: {
-    position: "absolute",
-    bottom: 0,
-    width: COLUMN,
-    flexDirection: "column-reverse",
-  },
-  // The surface-colored line that separates a band from the one above it.
-  bandEdge: { borderTopWidth: 1, borderTopColor: SURFACE },
+  area: { position: "absolute", left: AXIS, top: 0, bottom: 0, overflow: "hidden" },
   crosshair: {
     position: "absolute",
     top: 0,
@@ -309,14 +325,17 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: "row",
   },
-  gridline: {
+  gridRow: { position: "absolute", left: 0, flexDirection: "row", alignItems: "center", height: 0 },
+  gridLabel: { width: AXIS, paddingRight: 6, textAlign: "right" },
+  gridline: { borderTopWidth: 1 },
+  endLabel: {
     position: "absolute",
-    left: 0,
-    right: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    alignItems: "flex-end",
+    width: LABELS - 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
-  gridLabel: { marginTop: -16, paddingRight: 2, width: GUTTER, textAlign: "right" },
+  endLabelText: { flexShrink: 1 },
   tooltip: {
     position: "absolute",
     top: 0,
@@ -329,10 +348,6 @@ const styles = StyleSheet.create({
     borderColor: theme.border.default,
   },
   tooltipRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  axis: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 6,
-    paddingRight: GUTTER,
-  },
+  axis: { position: "relative", height: 16, marginTop: 6 },
+  tick: { position: "absolute", top: 0, width: TICK_WIDTH, textAlign: "center" },
 });
