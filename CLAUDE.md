@@ -296,8 +296,11 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   requests; header-less requests count as `workshop`) — now only feeds the version-adoption
   chart: `versionAdoption` on the response (optional on the client), one band per platform +
   version with a point per bucket, each user counted once per platform per bucket on their
-  highest version, top 7 bands + "Other versions". It renders as `StackedAreaChart` (pure
-  Views cut into 3px columns, no SVG; a Users / Share toggle), which like `BarChart` exists
+  highest version. Bands are in a fixed order (iOS versions ascending, then web, then unknown)
+  and the 11 most used over the last 7 buckets are kept, the rest fold into "Other versions"
+  (12 chart colors; raise both together). It renders as `StackedAreaChart` (a Users / Share toggle; bands are drawn
+  by `StackedAreaBands`: raw SVG polygons in `.web.tsx`, 1px View columns on native so there
+  is no `react-native-svg` dependency), which like `BarChart` exists
   as per-app copies in `@workshop/ui` and `apps/highscore/src/theme`. Per-app content series
   (scores + scorers per day for HighScore, items + lists per day for Workshop) are computed
   from their source tables in `lib/adminAnalytics.ts`; add a series there, not client-side.
