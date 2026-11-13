@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { ensurePushRegistered } from "../../lib/pushRegistration";
 import { ReportSheet, type ReportTarget } from "../../moderation/ReportSheet";
 import {
   Avatar,
@@ -53,6 +54,7 @@ import {
   nudgeAllowanceLabel,
   nudgeRefusalMessage,
   nudgeRowStatus,
+  pokeBlockedMessage,
   withNudgeSent,
 } from "../lib/nudges";
 import { writePostedScore } from "../lib/postedScore";
@@ -63,6 +65,9 @@ import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useScoreCheck, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
 import { useViewDay } from "../state/viewDay";
+
+/** The viewer can't poke until notifications are on for them; carries the toast. */
+class PokeBlocked extends Error {}
 
 /**
  * Per-game board (G1b) — history for one game in My Games. The home card
@@ -252,8 +257,27 @@ export default function GameBoard() {
   // Nudge a friend on this board. The server owns the rules; the cached board
   // takes the new allowance at once so the row flips without a refetch.
   const nudgeMutation = useMutation({
-    mutationFn: ({ userId, periodKey }: { userId: string; name: string; periodKey: string }) => {
+    mutationFn: async ({
+      userId,
+      periodKey,
+    }: {
+      userId: string;
+      name: string;
+      periodKey: string;
+    }) => {
       if (!gameId) throw new Error("missing game id");
+      // Poking needs notifications on this side too. If this account has no
+      // device yet, the tap is the moment to ask the OS for them.
+      const key = queryKeys.games.leaderboard(gameId, periodKey);
+      const board = queryClient.getQueryData<GameLeaderboardResponse>(key);
+      if (board?.nudges && !board.nudges.canSend) {
+        const readiness =
+          token && user ? await ensurePushRegistered(token, user.id) : "unsupported";
+        if (readiness !== "ready") throw new PokeBlocked(pokeBlockedMessage(readiness));
+        queryClient.setQueryData<GameLeaderboardResponse>(key, (b) =>
+          b?.nudges ? { ...b, nudges: { ...b.nudges, canSend: true } } : b,
+        );
+      }
       return sendGameNudge(gameId, { userId, periodKey }, token);
     },
     onSuccess: (data, { userId, name, periodKey }) => {
@@ -265,19 +289,26 @@ export default function GameBoard() {
             ? { ...board, nudges: withNudgeSent(board.nudges, userId, data.nudges) }
             : board,
       );
-      showToast(
-        data.delivered
-          ? { message: `You poked ${name}`, tone: "success" }
-          : { message: `Poke sent, but it may not reach ${name}`, tone: "default" },
-      );
+      showToast({ message: `You poked ${name}`, tone: "success" });
     },
     onError: (e, { name, periodKey }) => {
+      // Notifications are off on this side: say how to fix it, nothing was sent.
+      if (e instanceof PokeBlocked) {
+        showToast({ message: e.message, tone: "default" });
+        return;
+      }
       const reason =
         e instanceof ApiError ? (e.details as { reason?: unknown } | undefined)?.reason : null;
-      // Notifications off is information, not a failure: say whose, quietly.
+      const informational = reason === "unreachable" || reason === "sender_unreachable";
       showToast({
-        message: nudgeRefusalMessage(reason, name, errorMessage(e, "Couldn't send that poke")),
-        tone: reason === "unreachable" ? "default" : "danger",
+        message: nudgeRefusalMessage(
+          reason,
+          name,
+          reason === "push_failed" || !(e instanceof ApiError)
+            ? "Failed to send poke"
+            : errorMessage(e, "Failed to send poke"),
+        ),
+        tone: informational ? "default" : "danger",
       });
       // A refusal means the board's nudge state is stale (limit hit elsewhere…).
       void queryClient.invalidateQueries({
@@ -336,10 +367,7 @@ export default function GameBoard() {
   const isToday = date === today;
   const entries = boardQuery.data?.entries ?? [];
   const nudgeState = boardQuery.data?.nudges ?? null;
-  const nudgeLabel = nudgeAllowanceLabel(
-    nudgeState,
-    entries.filter((e) => e.userId !== user?.id).length,
-  );
+  const nudgeLabel = nudgeAllowanceLabel(nudgeState);
   const myEntry = entries.find((e) => e.userId === user?.id);
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
   // The composer posts a first result OR edits an existing one — on any day

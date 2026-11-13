@@ -90,7 +90,13 @@ async function board(asUser: string, game = gameId, periodKey = PERIOD) {
   });
   expect(res.status).toBe(200);
   return (await res.json()) as {
-    nudges?: { limit: number | null; remaining: number | null; nudgedUserIds: string[] };
+    nudges?: {
+      limit: number | null;
+      remaining: number | null;
+      nudgedUserIds: string[];
+      reachableUserIds: string[];
+      canSend: boolean;
+    };
   };
 }
 
@@ -122,7 +128,9 @@ beforeAll(async () => {
       await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2)`, [low, high]);
     }
   }
-  for (const id of [stranger, notPlayed, blocked, ...friends]) {
+  // Everyone but `noPush` has a device; `noPush` has played, so can be seen
+  // on the board, but can neither be poked nor poke.
+  for (const id of [me, admin, stranger, notPlayed, blocked, ...friends]) {
     await rows(
       `INSERT INTO push_tokens (user_id, expo_push_token, platform, timezone)
        VALUES ($1, $2, 'ios', 'UTC')`,
@@ -162,6 +170,9 @@ describe("nudges", () => {
     expect(state?.limit).toBe(NUDGE_DAILY_LIMIT);
     expect(state?.remaining).toBe(NUDGE_DAILY_LIMIT);
     expect(state?.nudgedUserIds).toEqual([]);
+    expect(state?.canSend).toBe(true);
+    // Friends with a device; `noPush` played but has none; the stranger is not on the board.
+    expect([...(state?.reachableUserIds ?? [])].sort()).toEqual([blocked, ...friends].sort());
   });
 
   it("omits the block on a past day", async () => {
@@ -194,10 +205,8 @@ describe("nudges", () => {
     const res = await nudge(me, target);
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
-      delivered: boolean;
       nudges: { remaining: number | null; nudgedUserIds: string[] };
     };
-    expect(body.delivered).toBe(true);
     expect(body.nudges.remaining).toBe(NUDGE_DAILY_LIMIT - 1);
     expect(body.nudges.nudgedUserIds).toEqual([target]);
     expect(sendExpoPushMessages).toHaveBeenCalledTimes(1);
@@ -262,7 +271,18 @@ describe("nudges", () => {
     expect([...(after?.nudgedUserIds ?? [])].sort()).toEqual([...friends].sort());
   });
 
-  it("reports an undelivered push honestly and still counts the nudge", async () => {
+  it("refuses a sender with no device of their own, and says so on the board", async () => {
+    // `noPush` has played and is friends with the admin, who has a device.
+    expect((await board(noPush)).nudges?.canSend).toBe(false);
+    sendExpoPushMessages.mockClear();
+    const res = await nudge(noPush, admin);
+    expect(res.status).toBe(409);
+    expect(await reason(res)).toBe("sender_unreachable");
+    expect(sendExpoPushMessages).not.toHaveBeenCalled();
+    expect(await rows(`SELECT 1 FROM game_nudges WHERE sender_id = $1`, [noPush])).toHaveLength(0);
+  });
+
+  it("takes the nudge back when Expo does not accept the push", async () => {
     sendExpoPushMessages.mockResolvedValueOnce({
       sent: 0,
       failed: 1,
@@ -273,8 +293,16 @@ describe("nudges", () => {
     // The admin has not played the other game yet.
     expect(res.status).toBe(409);
     await postScore(otherGameId, admin);
-    const sent = await nudge(admin, friends[0] as string, otherGameId);
-    expect(sent.status).toBe(201);
-    expect(((await sent.json()) as { delivered: boolean }).delivered).toBe(false);
+    const failed = await nudge(admin, friends[0] as string, otherGameId);
+    expect(failed.status).toBe(500);
+    expect(await reason(failed)).toBe("push_failed");
+    expect(
+      await rows(
+        `SELECT 1 FROM game_nudges WHERE sender_id = $1 AND game_id = $2 AND recipient_id = $3`,
+        [admin, otherGameId, friends[0]],
+      ),
+    ).toHaveLength(0);
+    // Nothing was spent, so the same poke goes through once Expo answers.
+    expect((await nudge(admin, friends[0] as string, otherGameId)).status).toBe(201);
   });
 });

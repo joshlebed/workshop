@@ -5,9 +5,9 @@
 import type { GameNudgeState } from "@workshop/shared/games";
 
 /**
- * - `hidden`: no control (the viewer hasn't played, or it's a past day).
- * - `available`: tap to send. Shown for every friend on the board; a friend
- *   with notifications off is only discovered on the tap (`unreachable`).
+ * - `hidden`: no control (the viewer hasn't played, it's a past day, or the
+ *   friend has no device to be poked on).
+ * - `available`: tap to send.
  * - `sent`: already sent on this game today.
  * - `spent`: today's allowance is used up. The control stays and a tap says so.
  */
@@ -19,27 +19,42 @@ export function nudgeRowStatus(
 ): NudgeRowStatus {
   if (!state) return "hidden";
   if (state.nudgedUserIds.includes(userId)) return "sent";
+  if (!state.reachableUserIds.includes(userId)) return "hidden";
   if (state.remaining !== null && state.remaining <= 0) return "spent";
   return "available";
 }
 
 /**
  * The footer line under the board — the one place that says what the bare
- * hand on each row does. Null when there is no friend to send one to.
+ * hand on each row does. Null when there is nobody to poke.
  */
-export function nudgeAllowanceLabel(
-  state: GameNudgeState | null | undefined,
-  friendCount: number,
-): string | null {
-  if (!state || friendCount === 0) return null;
-  if (state.remaining === null) return "Poke a friend";
-  if (state.remaining <= 0) return "No pokes left today";
-  return `Poke a friend · ${state.remaining} left today`;
+export function nudgeAllowanceLabel(state: GameNudgeState | null | undefined): string | null {
+  if (!state) return null;
+  if (state.reachableUserIds.length === 0 && state.nudgedUserIds.length === 0) return null;
+  if (state.remaining !== null && state.remaining <= 0) return "No pokes left today";
+  return `Poke a friend · ${state.remaining ?? "∞"} left today`;
 }
 
-/** The toast for a refused send; `unreachable` names the friend. */
+/**
+ * Why the viewer can't poke yet: sending needs notifications on this side
+ * too. Keyed by what asking the device for them came back with.
+ */
+export function pokeBlockedMessage(
+  readiness: "denied" | "dismissed" | "unsupported" | "sender_unreachable",
+): string {
+  if (readiness === "denied") {
+    return "Turn on notifications for HighScore in Settings to poke friends";
+  }
+  if (readiness === "unsupported") {
+    return "Poking needs notifications on in the HighScore iPhone app";
+  }
+  return "Turn on notifications to poke friends";
+}
+
+/** The toast for a send the server refused. */
 export function nudgeRefusalMessage(reason: unknown, name: string, fallback: string): string {
   if (reason === "unreachable") return `${name} hasn't enabled HighScore notifications`;
+  if (reason === "sender_unreachable") return pokeBlockedMessage("sender_unreachable");
   return fallback;
 }
 

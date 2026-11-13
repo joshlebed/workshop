@@ -1,11 +1,11 @@
 // Nudges (shown to players as a "poke", after the old Facebook one): after posting a score, a player
 // calls back a friend who played that game earlier that day to come and see
 // the board, and the friend gets a push. `sendGameNudge` owns every
-// rule (friends only, both played, the friend is reachable, once per friend
+// rule (friends only, both played, both have notifications on, once per friend
 // per game per day, `NUDGE_DAILY_LIMIT` a day unless the sender is an admin);
 // `loadNudgeState` is the same rules read-only, for the board. Delivery goes
-// through the shared `sendExpoPushMessages` and is best-effort: a push
-// problem never fails the request, it is reported as `delivered: false`.
+// through the shared `sendExpoPushMessages`; if Expo does not accept it the
+// nudge is taken back and the request fails (`push_failed`).
 
 import type { GameNudgeRefusal, GameNudgeState } from "@workshop/shared/games";
 import { NUDGE_DAILY_LIMIT } from "@workshop/shared/games";
@@ -75,8 +75,8 @@ async function nudgesSentOn(senderId: string, periodKey: string): Promise<number
 
 /**
  * The sender's allowance plus, among `candidateIds` (the friends on one
- * board), who was already nudged. Whether a friend can receive one is not
- * exposed up front: the send answers `unreachable` when asked.
+ * board), who was already nudged, who has a device to receive one, and
+ * whether the sender has a device themselves (both are required to send).
  */
 export async function loadNudgeState(
   senderId: string,
@@ -84,12 +84,13 @@ export async function loadNudgeState(
   periodKey: string,
   candidateIds: string[],
 ): Promise<GameNudgeState> {
-  const [isAdmin, sent, nudged] = await Promise.all([
+  const db = getDb();
+  const [isAdmin, sent, nudged, withDevice] = await Promise.all([
     senderIsAdmin(senderId),
     nudgesSentOn(senderId, periodKey),
     candidateIds.length === 0
       ? []
-      : getDb()
+      : db
           .select({ userId: gameNudges.recipientId })
           .from(gameNudges)
           .where(
@@ -100,16 +101,23 @@ export async function loadNudgeState(
               inArray(gameNudges.recipientId, candidateIds),
             ),
           ),
+    db
+      .selectDistinct({ userId: pushTokens.userId })
+      .from(pushTokens)
+      .where(inArray(pushTokens.userId, [senderId, ...candidateIds])),
   ]);
+  const deviceIds = new Set(withDevice.map((row) => row.userId));
   return {
     limit: isAdmin ? null : NUDGE_DAILY_LIMIT,
     remaining: isAdmin ? null : Math.max(0, NUDGE_DAILY_LIMIT - sent),
     nudgedUserIds: nudged.map((row) => row.userId),
+    reachableUserIds: candidateIds.filter((id) => deviceIds.has(id)),
+    canSend: deviceIds.has(senderId),
   };
 }
 
 export type SendGameNudgeResult =
-  | { ok: true; delivered: boolean }
+  | { ok: true }
   /** Not a friend (or blocked): indistinguishable from "no such user". */
   | { ok: false; reason: "not_found" }
   | { ok: false; reason: GameNudgeRefusal };
@@ -128,7 +136,7 @@ export async function sendGameNudge(
   ]);
   if (blocked || !friendIds.includes(recipientId)) return { ok: false, reason: "not_found" };
 
-  const [played, tokenRows, isAdmin] = await Promise.all([
+  const [played, deviceRows, isAdmin] = await Promise.all([
     db
       .select({ userId: gameScores.userId })
       .from(gameScores)
@@ -140,15 +148,20 @@ export async function sendGameNudge(
         ),
       ),
     db
-      .select({ token: pushTokens.expoPushToken })
+      .select({ userId: pushTokens.userId, token: pushTokens.expoPushToken })
       .from(pushTokens)
-      .where(eq(pushTokens.userId, recipientId))
+      .where(inArray(pushTokens.userId, [senderId, recipientId]))
       .orderBy(pushTokens.expoPushToken),
     senderIsAdmin(senderId),
   ]);
+  const tokenRows = deviceRows.filter((row) => row.userId === recipientId);
   const playedIds = new Set(played.map((row) => row.userId));
   if (!playedIds.has(senderId)) return { ok: false, reason: "not_played" };
   if (!playedIds.has(recipientId)) return { ok: false, reason: "friend_not_played" };
+  // Notifications are the price of admission on both sides.
+  if (!deviceRows.some((row) => row.userId === senderId)) {
+    return { ok: false, reason: "sender_unreachable" };
+  }
   if (tokenRows.length === 0) return { ok: false, reason: "unreachable" };
   if (!isAdmin && (await nudgesSentOn(senderId, periodKey)) >= NUDGE_DAILY_LIMIT) {
     return { ok: false, reason: "daily_limit" };
@@ -213,5 +226,20 @@ export async function sendGameNudge(
   } catch (error) {
     logger.error("nudge push failed", { error, recipient_id: recipientId });
   }
-  return { ok: true, delivered };
+  if (!delivered) {
+    // Expo did not take it: the friend got nothing, so nothing is recorded
+    // and the sender's allowance is untouched.
+    await db
+      .delete(gameNudges)
+      .where(
+        and(
+          eq(gameNudges.senderId, senderId),
+          eq(gameNudges.periodKey, periodKey),
+          eq(gameNudges.gameId, game.id),
+          eq(gameNudges.recipientId, recipientId),
+        ),
+      );
+    return { ok: false, reason: "push_failed" };
+  }
+  return { ok: true };
 }

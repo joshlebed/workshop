@@ -335,23 +335,29 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
 
 - **Nudges (shown to players as a "poke"; code, table and route keep `nudge`): one rule set, in
   `apps/backend/src/lib/nudges.ts`.** The point is to pull early players back to see the board
-  once later players have posted. After posting a score a player
-  can nudge a friend who has also played that game that day (`POST /v1/games/:id/nudges`,
-  `{ userId, periodKey }`); the friend gets a push whose `data.url` opens the board. Rules:
-  friends only (a non-friend or a block 404s), both have a score for that game and day, the
-  friend has a `push_tokens` row (else 409 `unreachable`, nothing stored), once per friend per
-  game per day (the `game_nudges` primary key), and `NUDGE_DAILY_LIMIT` (5, `@workshop/shared/games`)
-  per sender per `period_key` — admins (`isAdminUser`) are unlimited. Only a current day can be
-  nudged (`isNudgeablePeriod`: UTC today ±1, because period keys are the client's local date).
-  The client never decides any of this: `GET /v1/games/:id/leaderboard` carries an optional
-  `nudges` block (`limit`, `remaining`, `nudgedUserIds`), present only when
-  the viewer has played, and `GameBoard` renders from it via `src/games/lib/nudges.ts`: a bare
-  right-pointing hand with a cuff (the `poke` glyph: ours, the old Facebook poke's silhouette as an outline in the set's style) on every friend's row (the footer line is the only label). Reachability is deliberately
-  not sent up front — the hand shows for everyone and a tap on a friend with no device toasts
-  "<name> hasn't enabled HighScore notifications" from the 409. With none left the hands stay
-  too; a tap toasts "You're out of pokes for today" client-side (the server still 429s). Like every
-  push path it goes through `sendExpoPushMessages`, so **stub `EXPO_PUSH_URL` before tapping
-  Nudge in a sandbox** — the DB is a prod copy with real tokens. `game_nudges` is in `actionRows`.
+  once later players have posted. After posting a score a player can poke a friend who has also
+  played that game that day (`POST /v1/games/:id/nudges`, `{ userId, periodKey }`); the friend
+  gets a push ("<name> poked you in <game>") whose `data.url` opens the board. Rules: friends
+  only (a non-friend or a block 404s), both have a score for that game and day, **both have a
+  `push_tokens` row** (the sender too: 409 `sender_unreachable`; the friend: 409 `unreachable`),
+  once per friend per game per day (the `game_nudges` primary key), and `NUDGE_DAILY_LIMIT` (5,
+  `@workshop/shared/games`) per sender per `period_key` — admins (`isAdminUser`) are unlimited.
+  Only a current day can be poked (`isNudgeablePeriod`: UTC today ±1, because period keys are
+  the client's local date). If Expo does not accept the push the row is deleted and the request
+  fails (500 `push_failed`), so a poke is never recorded or spent without being sent. The client
+  never decides any of this: `GET /v1/games/:id/leaderboard` carries an optional `nudges` block
+  (`limit`, `remaining`, `nudgedUserIds`, `reachableUserIds`, `canSend`), present only when the
+  viewer has played, and `GameBoard` renders from it via `src/games/lib/nudges.ts`: a bare
+  right-pointing hand with a cuff (the `poke` glyph: ours, the old Facebook poke's silhouette as
+  an outline in the set's style) on the row of every friend who can be poked; the footer line is
+  the only label. A viewer with `canSend: false` still sees the hands: the tap runs
+  `ensurePushRegistered` (the OS permission dialog, then the token post) and pokes only if that
+  comes back `ready`. With none left the hands stay too; a tap toasts "You're out of pokes for
+  today" client-side (the server still 429s). "Has a `push_tokens` row" is the only signal there
+  is: a user who later switches notifications off in iOS Settings keeps their row and silently
+  receives nothing. Like every push path it goes through `sendExpoPushMessages`, so **stub
+  `EXPO_PUSH_URL` before tapping the hand in a sandbox** — the DB is a prod copy with real
+  tokens. `game_nudges` is in `actionRows`.
 
 - **Vendor-credit alarms are reactive and live in `infra/vendor_alarms.tf`.** OpenAI
   (`lib/teach/openai.ts`) and TypeSafe (`lib/jev.ts`) swallow every non-2xx and fall back,

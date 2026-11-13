@@ -1,25 +1,38 @@
 import type { GameNudgeState } from "@workshop/shared/games";
 import { describe, expect, it } from "vitest";
-import { nudgeAllowanceLabel, nudgeRefusalMessage, nudgeRowStatus, withNudgeSent } from "./nudges";
+import {
+  nudgeAllowanceLabel,
+  nudgeRefusalMessage,
+  nudgeRowStatus,
+  pokeBlockedMessage,
+  withNudgeSent,
+} from "./nudges";
 
 const state = (over: Partial<GameNudgeState> = {}): GameNudgeState => ({
   limit: 5,
   remaining: 5,
   nudgedUserIds: [],
+  reachableUserIds: ["a", "b"],
+  canSend: true,
   ...over,
 });
 
 describe("nudgeRowStatus", () => {
-  it("hides the control without state", () => {
+  it("hides the control without state or for a friend with no device", () => {
     expect(nudgeRowStatus(undefined, "a")).toBe("hidden");
+    expect(nudgeRowStatus(state(), "c")).toBe("hidden");
   });
 
-  it("is available for any friend, then sent, and spent once the allowance is gone", () => {
+  it("is available, then sent, and spent once the allowance is gone", () => {
     expect(nudgeRowStatus(state(), "a")).toBe("available");
     expect(nudgeRowStatus(state({ nudgedUserIds: ["a"] }), "a")).toBe("sent");
     expect(nudgeRowStatus(state({ remaining: 0 }), "b")).toBe("spent");
     // A sent one still reads as sent when nothing is left.
     expect(nudgeRowStatus(state({ remaining: 0, nudgedUserIds: ["a"] }), "a")).toBe("sent");
+  });
+
+  it("stays available when the viewer has no device: the tap asks for notifications", () => {
+    expect(nudgeRowStatus(state({ canSend: false }), "a")).toBe("available");
   });
 
   it("never runs out for an unlimited sender", () => {
@@ -29,24 +42,39 @@ describe("nudgeRowStatus", () => {
 
 describe("nudgeAllowanceLabel", () => {
   it("says what the hand does and what is left", () => {
-    expect(nudgeAllowanceLabel(state({ remaining: 4 }), 3)).toBe("Poke a friend · 4 left today");
-    expect(nudgeAllowanceLabel(state({ remaining: 0 }), 3)).toBe("No pokes left today");
-    expect(nudgeAllowanceLabel(state({ limit: null, remaining: null }), 3)).toBe("Poke a friend");
+    expect(nudgeAllowanceLabel(state({ remaining: 4 }))).toBe("Poke a friend · 4 left today");
+    expect(nudgeAllowanceLabel(state({ remaining: 0 }))).toBe("No pokes left today");
+    expect(nudgeAllowanceLabel(state({ limit: null, remaining: null }))).toBe(
+      "Poke a friend · ∞ left today",
+    );
   });
 
   it("is silent when there is nobody to poke", () => {
-    expect(nudgeAllowanceLabel(null, 3)).toBeNull();
-    expect(nudgeAllowanceLabel(state(), 0)).toBeNull();
+    expect(nudgeAllowanceLabel(null)).toBeNull();
+    expect(nudgeAllowanceLabel(state({ reachableUserIds: [] }))).toBeNull();
   });
 });
 
-describe("nudgeRefusalMessage", () => {
-  it("names the friend whose notifications are off, else keeps the server's words", () => {
+describe("messages", () => {
+  it("tells a sender without notifications how to get them", () => {
+    expect(pokeBlockedMessage("dismissed")).toBe("Turn on notifications to poke friends");
+    expect(pokeBlockedMessage("denied")).toBe(
+      "Turn on notifications for HighScore in Settings to poke friends",
+    );
+    expect(pokeBlockedMessage("unsupported")).toBe(
+      "Poking needs notifications on in the HighScore iPhone app",
+    );
+  });
+
+  it("maps the server's refusals, else keeps the fallback", () => {
     expect(nudgeRefusalMessage("unreachable", "Renata", "x")).toBe(
       "Renata hasn't enabled HighScore notifications",
     );
-    expect(nudgeRefusalMessage("daily_limit", "Renata", "You're out of pokes for today.")).toBe(
-      "You're out of pokes for today.",
+    expect(nudgeRefusalMessage("sender_unreachable", "Renata", "x")).toBe(
+      "Turn on notifications to poke friends",
+    );
+    expect(nudgeRefusalMessage("push_failed", "Renata", "Failed to send poke")).toBe(
+      "Failed to send poke",
     );
   });
 });

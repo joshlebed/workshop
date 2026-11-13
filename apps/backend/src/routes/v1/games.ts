@@ -797,7 +797,9 @@ const sendNudgeSchema = z.object({ userId: uuidSchema, periodKey: periodKeySchem
 const NUDGE_REFUSALS: Record<GameNudgeRefusal, string> = {
   not_played: "Post your score before poking a friend.",
   friend_not_played: "They haven't played this one today.",
+  sender_unreachable: "Turn on notifications to poke friends.",
   unreachable: "They haven't enabled HighScore notifications.",
+  push_failed: "Failed to send poke",
   already_nudged: "You already poked them on this game today.",
   daily_limit: "You're out of pokes for today.",
 };
@@ -825,14 +827,17 @@ gameRoutes.post("/:id/nudges", async (c) => {
     if (result.reason === "not_found") return err(c, "NOT_FOUND", "friend not found");
     return err(
       c,
-      result.reason === "daily_limit" ? "RATE_LIMITED" : "CONFLICT",
+      result.reason === "daily_limit"
+        ? "RATE_LIMITED"
+        : result.reason === "push_failed"
+          ? "INTERNAL"
+          : "CONFLICT",
       NUDGE_REFUSALS[result.reason],
       { reason: result.reason },
     );
   }
   const response: SendGameNudgeResponse = {
     nudges: await loadNudgeState(userId, game.id, periodKey, [recipientId]),
-    delivered: result.delivered,
   };
   return ok(c, response, 201);
 });

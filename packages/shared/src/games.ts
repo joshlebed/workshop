@@ -256,6 +256,13 @@ export interface GameNudgeState {
   remaining: number | null;
   /** Friends on this board the viewer has already nudged today. */
   nudgedUserIds: string[];
+  /** Friends on this board who have a device that can receive one. */
+  reachableUserIds: string[];
+  /**
+   * The viewer has a device registered for notifications themselves. Sending
+   * needs it: you turn notifications on to poke, the same as to be poked.
+   */
+  canSend: boolean;
 }
 
 /** `POST /v1/games/:id/nudges` */
@@ -266,15 +273,18 @@ export interface SendGameNudgeRequest {
 
 export interface SendGameNudgeResponse {
   nudges: GameNudgeState;
-  /** Expo accepted the push for at least one of the friend's devices. */
-  delivered: boolean;
 }
 
-/** `details.reason` on a refused nudge (409, or 429 for `daily_limit`). */
+/**
+ * `details.reason` on a refused nudge: 409, except 429 for `daily_limit` and
+ * 500 for `push_failed` (Expo did not accept it; nothing is stored or spent).
+ */
 export type GameNudgeRefusal =
   | "not_played"
   | "friend_not_played"
+  | "sender_unreachable"
   | "unreachable"
+  | "push_failed"
   | "already_nudged"
   | "daily_limit";
 
