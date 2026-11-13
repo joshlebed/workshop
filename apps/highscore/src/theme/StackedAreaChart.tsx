@@ -24,7 +24,7 @@ export interface StackedAreaSegment {
 }
 
 export interface StackedAreaChartProps {
-  /** Bands in stack order, bottom first. At most eight are colored distinctly. */
+  /** Bands in stack order, bottom first. Twelve colors before they repeat. */
   segments: StackedAreaSegment[];
   /** What one point covers; a weekly point is labelled by the week it starts. */
   bucket?: "day" | "week";
@@ -37,6 +37,9 @@ export interface StackedAreaChartProps {
 
 // Dark-surface categorical palette (dataviz reference instance), validated
 // against this app's card surface: adjacent bands stay ≥8 ΔE apart under CVD.
+// The last four are lighter tints of blue / yellow / violet / green for a
+// chart with more than eight bands, ordered so neighbours stay ≥17 ΔE apart;
+// they repeat a hue, so the legend, direct labels and tooltip carry identity.
 const SERIES_COLORS = [
   "#3987e5",
   "#d95926",
@@ -46,6 +49,10 @@ const SERIES_COLORS = [
   "#008300",
   "#9085e9",
   "#e66767",
+  "#88b7ef",
+  "#dfb666",
+  "#bcb6f2",
+  "#66b566",
 ];
 // HighScore cards are transparent, so the surface behind a band is the canvas.
 const SURFACE = theme.bg.canvas;

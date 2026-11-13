@@ -53,7 +53,7 @@ const DAY_MS = 86_400_000;
 type Db = ReturnType<typeof getDb>;
 
 /** A run of consecutive UTC days charted as one bar; `start` labels it. */
-interface Bucket {
+export interface Bucket {
   start: string;
   days: string[];
 }
@@ -162,7 +162,7 @@ function utcDayOf(column: unknown) {
   return sql<string>`to_char((${column} AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD')`;
 }
 
-interface ActivityRow {
+export interface ActivityRow {
   userId: string;
   day: string;
   platform: string;
@@ -259,29 +259,35 @@ async function actionRows(db: Db, client: WorkshopClient): Promise<ActionRow[]> 
   return out;
 }
 
-/** Dotted-numeric comparison (`1.10.0` > `1.9.2`); anything non-numeric sorts lowest. */
+/**
+ * Version order for the adoption chart: dotted-numeric (`1.10.0` > `1.9.2`).
+ * Anything else (a build hash, `unknown`) sorts below every numeric version
+ * and alphabetically (by code unit) among itself, so the order never depends
+ * on the data.
+ */
 function compareVersions(a: string, b: string): number {
   const parse = (v: string) => (/^\d+(\.\d+)*$/.test(v) ? v.split(".").map(Number) : null);
   const pa = parse(a);
   const pb = parse(b);
-  if (!pa || !pb) return pa ? 1 : pb ? -1 : a.localeCompare(b);
+  if (!pa || !pb) return pa ? 1 : pb ? -1 : a < b ? -1 : a > b ? 1 : 0;
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
     if (diff !== 0) return diff;
   }
-  return 0;
+  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /** Bands the adoption chart draws before folding the rest into "Other versions". */
-const MAX_VERSION_SEGMENTS = 7;
+const MAX_VERSION_SEGMENTS = 11;
 
 /**
- * One band per (platform, version), aligned with `buckets`, in stack order:
- * platform (fixed order), then version ascending, so newer versions sit on
- * top of the ones they replace. The smallest bands past
+ * One band per (platform, version), aligned with `buckets`, in a fixed stack
+ * order: iOS versions oldest to newest, then web versions the same way, then
+ * unknown, so newer versions sit on top of the ones they replace and the
+ * legend reads the same on every load. The smallest bands past
  * `MAX_VERSION_SEGMENTS` fold into one "Other versions" band.
  */
-function versionAdoptionSegments(
+export function versionAdoptionSegments(
   buckets: Bucket[],
   rows: ActivityRow[],
 ): AdminAnalyticsVersionSegment[] {
